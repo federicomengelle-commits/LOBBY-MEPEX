@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MEPEX — Sistema de Gestión Integral</title>
+    <meta name="description"
+        content="Sistema de gestión integral para MEPEX — Montaje y Equipamiento para Exposiciones">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="assets/mepex_iso.png">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- SPA content renders here -->
+        <div class="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;">
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <!-- Scripts (order matters) -->
+    <script src="api.js"></script>
+    <script src="data.js"></script>
+    <script src="router.js"></script>
+    <script src="auth.js"></script>
+    <script src="lobby.js"></script>
+    <script src="modules.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
