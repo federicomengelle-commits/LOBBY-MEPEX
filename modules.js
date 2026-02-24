@@ -200,6 +200,7 @@ const Modules = {
             'clientes:ficha': 'clients',
             'eventos:evento': 'events',
             'eventos:proyecto': 'projects',
+            'proyectos:lista': 'projects',
         };
         return map[`${moduleId}:${sectionId}`] || null;
     },
@@ -475,11 +476,11 @@ const Modules = {
     _calcPriority(eventStartDate) {
         if (!eventStartDate) return { label: '—', class: 'badge-ghost', dias: null };
         const dias = Math.ceil((new Date(eventStartDate) - new Date()) / 86400000);
-        if (dias < 0)   return { label: 'Finalizado', class: 'badge-ghost', dias };
-        if (dias <= 14)  return { label: `Urgente · ${dias}d`, class: 'badge-danger priority-urgent', dias };
-        if (dias <= 30)  return { label: `Alta · ${dias}d`, class: 'badge-danger', dias };
-        if (dias <= 60)  return { label: `Media · ${dias}d`, class: 'badge-accent', dias };
-                         return { label: `Baja · ${dias}d`, class: 'badge-ghost', dias };
+        if (dias < 0) return { label: 'Finalizado', class: 'badge-ghost', dias };
+        if (dias <= 14) return { label: `Urgente · ${dias}d`, class: 'badge-danger priority-urgent', dias };
+        if (dias <= 30) return { label: `Alta · ${dias}d`, class: 'badge-danger', dias };
+        if (dias <= 60) return { label: `Media · ${dias}d`, class: 'badge-accent', dias };
+        return { label: `Baja · ${dias}d`, class: 'badge-ghost', dias };
     },
 
     // ═══════════════════════════════════════════
@@ -605,15 +606,15 @@ const Modules = {
     //  EVENTS TABLE — COMPLETE REPLACEMENT
     // ═══════════════════════════════════════════
     _eventsColumns: [
-        { id: 'nombre',    header: 'Evento',      defaultVisible: true },
-        { id: 'venue',     header: 'Lugar',        defaultVisible: true },
-        { id: 'armado',    header: 'F. Armado',    defaultVisible: true },
-        { id: 'evento',    header: 'F. Evento',    defaultVisible: true },
-        { id: 'desarme',   header: 'F. Desarme',   defaultVisible: true },
-        { id: 'prioridad', header: 'Prioridad',    defaultVisible: true },
-        { id: 'estado',    header: 'Estado',       defaultVisible: true },
-        { id: 'stands',    header: 'Stands',       defaultVisible: false },
-        { id: 'archivos',  header: 'Archivos',     defaultVisible: true },
+        { id: 'nombre', header: 'Evento', defaultVisible: true },
+        { id: 'venue', header: 'Lugar', defaultVisible: true },
+        { id: 'armado', header: 'F. Armado', defaultVisible: true },
+        { id: 'evento', header: 'F. Evento', defaultVisible: true },
+        { id: 'desarme', header: 'F. Desarme', defaultVisible: true },
+        { id: 'prioridad', header: 'Prioridad', defaultVisible: true },
+        { id: 'estado', header: 'Estado', defaultVisible: true },
+        { id: 'stands', header: 'Stands', defaultVisible: false },
+        { id: 'archivos', header: 'Archivos', defaultVisible: true },
     ],
 
     _renderEventsTable(events) {
@@ -733,25 +734,25 @@ const Modules = {
     //  PROJECTS TABLE — COMPLETE REPLACEMENT
     // ═══════════════════════════════════════════
     _projectsColumns: [
-        { id: 'numero',  header: '#',            defaultVisible: true },
-        { id: 'nombre',  header: 'Proyecto',     defaultVisible: true },
-        { id: 'tipo',    header: 'Tipo',          defaultVisible: true },
-        { id: 'estado',  header: 'Estado',        defaultVisible: true },
-        { id: 'evento',  header: 'Evento',        defaultVisible: true },
-        { id: 'cliente', header: 'Cliente',       defaultVisible: true },
-        { id: 'fecha',   header: 'F. Solicitud',  defaultVisible: true },
-        { id: 'area',    header: 'Área m²',       defaultVisible: false },
+        { id: 'numero', header: '#', defaultVisible: true },
+        { id: 'nombre', header: 'Proyecto', defaultVisible: true },
+        { id: 'tipo', header: 'Tipo', defaultVisible: true },
+        { id: 'estado', header: 'Estado', defaultVisible: true },
+        { id: 'evento', header: 'Evento', defaultVisible: true },
+        { id: 'cliente', header: 'Cliente', defaultVisible: true },
+        { id: 'fecha', header: 'F. Solicitud', defaultVisible: true },
+        { id: 'area', header: 'Área m²', defaultVisible: false },
     ],
 
     _projectStatusMap: {
-        'Ingreso':           'badge-ghost',
+        'Ingreso': 'badge-ghost',
         'Para presupuestar': 'badge-ghost',
         'Aguarda respuesta': 'badge-accent',
-        'Aprobado':          'badge-success',
-        'En proceso':        'badge-accent',
-        'Entregado a taller':'badge-success',
-        'Finalizado':        'badge-success',
-        'Rechazado':         'badge-danger',
+        'Aprobado': 'badge-success',
+        'En proceso': 'badge-accent',
+        'Entregado a taller': 'badge-success',
+        'Finalizado': 'badge-success',
+        'Rechazado': 'badge-danger',
     },
 
     _renderProjectsTable(projects) {
@@ -873,12 +874,12 @@ const Modules = {
     //  CLIENTS TABLE — IMPROVED
     // ═══════════════════════════════════════════
     _clientsColumns: [
-        { id: 'empresa',  header: 'Empresa',   defaultVisible: true },
-        { id: 'contacto', header: 'Contacto',  defaultVisible: true },
-        { id: 'cuit',     header: 'CUIT',      defaultVisible: true },
-        { id: 'email',    header: 'Email',     defaultVisible: true },
-        { id: 'telefono', header: 'Teléfono',  defaultVisible: true },
-        { id: 'rubro',    header: 'Rubro',     defaultVisible: true },
+        { id: 'empresa', header: 'Empresa', defaultVisible: true },
+        { id: 'contacto', header: 'Contacto', defaultVisible: true },
+        { id: 'cuit', header: 'CUIT', defaultVisible: true },
+        { id: 'email', header: 'Email', defaultVisible: true },
+        { id: 'telefono', header: 'Teléfono', defaultVisible: true },
+        { id: 'rubro', header: 'Rubro', defaultVisible: true },
     ],
 
     _renderClientsTable(clients) {

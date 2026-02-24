@@ -20,9 +20,9 @@ const Data = {
 
     // ─── PERMISOS POR ROL ───
     rolePermissions: {
-        admin: ['ventas', 'clientes', 'eventos', 'finanzas', 'produccion', 'inventario', 'rrhh', 'proveedores'],
-        ventas: ['ventas', 'clientes', 'eventos'],
-        operaciones: ['produccion', 'inventario', 'eventos', 'proveedores'],
+        admin: ['ventas', 'clientes', 'proyectos', 'eventos', 'finanzas', 'produccion', 'inventario', 'rrhh', 'proveedores'],
+        ventas: ['ventas', 'clientes', 'proyectos', 'eventos'],
+        operaciones: ['produccion', 'inventario', 'proyectos', 'eventos', 'proveedores'],
         taller: ['produccion', 'inventario'],
         finanzas: ['finanzas', 'clientes', 'proveedores'],
     },
@@ -202,41 +202,22 @@ const Data = {
             ],
         },
 
-        eventos: {
-            id: 'eventos',
-            name: 'Eventos / Proyectos',
-            shortName: 'Eventos',
-            icon: '🔶',
-            description: 'Gestión de eventos, proyectos, diseño y estados.',
-            status: 'development',
+        proyectos: {
+            id: 'proyectos',
+            name: 'Proyectos',
+            shortName: 'Proyectos',
+            icon: '🏗️',
+            description: 'Stands, exposiciones, congresos y alquileres vinculados a eventos y clientes.',
+            status: 'active',
             color: '#FF7200',
             order: 3,
             sections: [
                 {
-                    id: 'evento',
-                    name: 'Evento',
-                    icon: '🎪',
-                    description: 'Nombre, fechas, venue, organizador, plano, reglamento',
-                    fields: [
-                        { label: 'Nombre', type: 'text' },
-                        { label: 'Fechas (montaje/evento/desmontaje)', type: 'daterange' },
-                        { label: 'Lugar / Venue', type: 'text' },
-                        { label: 'Organizador', type: 'relation' },
-                        { label: 'Plano general', type: 'file' },
-                        { label: 'Reglamento', type: 'text' },
-                    ]
-                },
-                {
-                    id: 'proyecto',
-                    name: 'Proyecto',
-                    icon: '🏗️',
-                    description: 'Vinculado a cliente + evento. Tipos, estados, diseño.',
-                    fields: [
-                        { label: 'Cliente', type: 'relation' },
-                        { label: 'Evento', type: 'relation' },
-                        { label: 'Tipo', type: 'select', options: ['Stand personalizado', 'Stand prediseñado', 'Exposición', 'Congreso', 'Camarín', 'Alquiler', 'Estructura'] },
-                        { label: 'Estado', type: 'select', options: ['Ingreso', 'Para presupuestar', 'Aguarda respuesta', 'Aprobado', 'En proceso', 'En montaje', 'Entregado', 'En desmontaje', 'Finalizado'] },
-                    ]
+                    id: 'lista',
+                    name: 'Lista de Proyectos',
+                    icon: '📋',
+                    description: 'Todos los proyectos con filtros por estado y tipo',
+                    fields: []
                 },
                 {
                     id: 'diseno',
@@ -253,10 +234,52 @@ const Data = {
             connections: [
                 { to: 'ventas', label: 'Ver Cotización', context: 'Cotización origen del proyecto' },
                 { to: 'clientes', label: 'Ver Cliente', context: 'Cliente del proyecto' },
+                { to: 'eventos', label: 'Ver Evento', context: 'Evento al que pertenece' },
                 { to: 'produccion', label: 'Ver Producción', context: 'Estado de fabricación' },
                 { to: 'inventario', label: 'Ver Materiales', context: 'Materiales reservados' },
-                { to: 'rrhh', label: 'Ver Equipo', context: 'Personal asignado' },
                 { to: 'finanzas', label: 'Ver Finanzas', context: 'Movimientos del proyecto' },
+            ],
+        },
+
+        eventos: {
+            id: 'eventos',
+            name: 'Eventos',
+            shortName: 'Eventos',
+            icon: '🔶',
+            description: 'Gestión de eventos: fechas, venues, organizadores, planos y reglamentos.',
+            status: 'development',
+            color: '#FF7200',
+            order: 4,
+            sections: [
+                {
+                    id: 'evento',
+                    name: 'Evento',
+                    icon: '🎪',
+                    description: 'Nombre, fechas, venue, organizador, plano, reglamento',
+                    fields: [
+                        { label: 'Nombre', type: 'text' },
+                        { label: 'Fechas (montaje/evento/desmontaje)', type: 'daterange' },
+                        { label: 'Lugar / Venue', type: 'text' },
+                        { label: 'Organizador', type: 'relation' },
+                        { label: 'Plano general', type: 'file' },
+                        { label: 'Reglamento', type: 'text' },
+                    ]
+                },
+                {
+                    id: 'diseno',
+                    name: 'Diseño',
+                    icon: '🎨',
+                    description: 'Renders, planos, aprobación de diseño, versionado',
+                    fields: [
+                        { label: 'Archivos de diseño', type: 'file' },
+                        { label: 'Estado aprobación', type: 'select', options: ['Pendiente', 'Aprobado', 'Con cambios'] },
+                        { label: 'Historial de versiones', type: 'list' },
+                    ]
+                },
+            ],
+            connections: [
+                { to: 'proyectos', label: 'Ver Proyectos', context: 'Proyectos dentro de este evento' },
+                { to: 'clientes', label: 'Ver Cliente', context: 'Cliente organizador' },
             ],
         },
 
@@ -268,7 +291,7 @@ const Data = {
             description: 'Facturación, cobros, tesorería, rentabilidad, reportes.',
             status: 'upcoming',
             color: '#00ACC9',
-            order: 4,
+            order: 5,
             sections: [
                 {
                     id: 'facturacion', name: 'Facturación', icon: '🧾',
@@ -331,7 +354,7 @@ const Data = {
             description: 'Taller, logística, montaje, entregas, mantenimiento.',
             status: 'upcoming',
             color: '#00ACC9',
-            order: 5,
+            order: 6,
             sections: [
                 { id: 'taller', name: 'Producción en Taller', icon: '🔨', description: 'Tareas por proyecto, avance, materiales necesarios', fields: [{ label: 'Proyecto', type: 'relation' }, { label: 'Tareas', type: 'list' }, { label: 'Estado de avance', type: 'indicator' }, { label: 'Materiales', type: 'list' }] },
                 { id: 'logistica', name: 'Logística', icon: '🚛', description: 'Vehículos, cronograma, coordinación de armados simultáneos', fields: [{ label: 'Vehículo asignado', type: 'select' }, { label: 'Cronograma', type: 'timeline' }] },
@@ -356,7 +379,7 @@ const Data = {
             description: 'Stock de equipamiento, compras, tercerización.',
             status: 'upcoming',
             color: '#B0B0B0',
-            order: 6,
+            order: 7,
             sections: [
                 { id: 'stock', name: 'Stock de Equipamiento', icon: '📦', description: 'Panelería, iluminación, mobiliario, alfombras, estructura, herramientas', fields: [{ label: 'Categoría', type: 'select', options: ['Panelería', 'Iluminación', 'Mobiliario', 'Alfombras', 'Estructura', 'Carros', 'Escaleras', 'Herramientas'] }, { label: 'Estado', type: 'select', options: ['Disponible', 'Asignado', 'En reparación', 'Baja'] }, { label: 'Cantidad', type: 'number' }] },
                 { id: 'compras', name: 'Compras', icon: '🛒', description: 'Stock general, compras por proyecto, comparación de precios', fields: [{ label: 'Tipo', type: 'select', options: ['Reposición', 'Por proyecto'] }, { label: 'Proveedor', type: 'relation' }, { label: 'Precio', type: 'number' }] },
@@ -378,7 +401,7 @@ const Data = {
             description: 'Personal, asignaciones, pagos, vacaciones.',
             status: 'upcoming',
             color: '#B0B0B0',
-            order: 7,
+            order: 8,
             sections: [
                 { id: 'personal', name: 'Personal', icon: '👥', description: 'Fijos (17), eventuales base (3), pico (40). Datos, rol, antigüedad.', fields: [{ label: 'Nombre', type: 'text' }, { label: 'Tipo', type: 'select', options: ['Fijo', 'Eventual base', 'Eventual pico', 'Externo'] }, { label: 'Rol', type: 'text' }, { label: 'Antigüedad', type: 'date' }] },
                 { id: 'asignacion', name: 'Asignación', icon: '📌', description: 'Por proyecto, por evento, calendario de disponibilidad', fields: [{ label: 'Proyecto', type: 'relation' }, { label: 'Evento', type: 'relation' }, { label: 'Calendario', type: 'calendar' }] },
@@ -400,7 +423,7 @@ const Data = {
             description: 'Base de proveedores, gestión comercial, pagos planificados.',
             status: 'upcoming',
             color: '#B0B0B0',
-            order: 8,
+            order: 9,
             sections: [
                 { id: 'base-proveedores', name: 'Base de Proveedores', icon: '🏪', description: 'Datos, rubro, calificación (cumplimiento, calidad, precio)', fields: [{ label: 'Nombre', type: 'text' }, { label: 'Rubro', type: 'select', options: ['Gráfica', 'Transporte', 'Ferretería', 'Pintura', 'Aluminio', 'Maderas', 'Vidrios', 'Tech', 'Mano de obra'] }, { label: 'Calificación', type: 'rating' }, { label: 'Contacto', type: 'text' }] },
                 { id: 'gestion-comercial', name: 'Gestión Comercial', icon: '📑', description: 'Historial de compras, comparación de presupuestos', fields: [{ label: 'Historial', type: 'list' }, { label: 'Comparar precios', type: 'action' }] },

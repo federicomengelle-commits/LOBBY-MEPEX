@@ -16,6 +16,7 @@ const Router = {
             'lobby': { render: () => Lobby.render(), requiresAuth: true },
             'ventas': { render: () => Modules.render('ventas'), requiresAuth: true, module: 'ventas' },
             'clientes': { render: () => Modules.render('clientes'), requiresAuth: true, module: 'clientes' },
+            'proyectos': { render: () => Modules.render('proyectos'), requiresAuth: true, module: 'proyectos' },
             'eventos': { render: () => Modules.render('eventos'), requiresAuth: true, module: 'eventos' },
             'finanzas': { render: () => Modules.render('finanzas'), requiresAuth: true, module: 'finanzas' },
             'produccion': { render: () => Modules.render('produccion'), requiresAuth: true, module: 'produccion' },
