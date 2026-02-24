@@ -466,6 +466,126 @@ const Modules = {
             }
             .api-table-row { cursor: pointer; }
             .api-table-row:hover { background: rgba(255,255,255,0.03); }
+
+            /* ─── Ficha Panel ─── */
+            .ficha-overlay {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.4);
+                z-index: 200;
+            }
+            .ficha-overlay.active { display: block; }
+            .ficha-panel {
+                position: fixed;
+                top: 0;
+                right: 0;
+                width: 480px;
+                max-width: 100vw;
+                height: 100vh;
+                background: var(--bg-card, #1a1d23);
+                border-left: 1px solid var(--border, #2a2d35);
+                z-index: 201;
+                transform: translateX(100%);
+                transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .ficha-panel.open { transform: translateX(0); }
+            .ficha-panel-header {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                padding: 24px 20px 16px;
+                border-bottom: 1px solid var(--border, #2a2d35);
+                flex-shrink: 0;
+            }
+            .ficha-panel-title {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .ficha-panel-name {
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: var(--text-primary, #fff);
+                margin: 0;
+            }
+            .ficha-panel-header-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-shrink: 0;
+            }
+            .ficha-panel-body {
+                flex: 1;
+                overflow-y: auto;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+            }
+            .ficha-section {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .ficha-section-title {
+                font-size: 0.7rem;
+                font-weight: 600;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--text-muted, #888);
+                margin-bottom: 8px;
+            }
+            .ficha-row {
+                display: flex;
+                align-items: baseline;
+                gap: 12px;
+                padding: 7px 0;
+                border-bottom: 1px solid var(--border-subtle, #22252c);
+                min-height: 34px;
+            }
+            .ficha-row:last-child { border-bottom: none; }
+            .ficha-row-label {
+                font-size: 0.78rem;
+                color: var(--text-muted, #888);
+                min-width: 140px;
+                flex-shrink: 0;
+            }
+            .ficha-row-value {
+                font-size: 0.85rem;
+                color: var(--text-primary, #fff);
+                flex: 1;
+            }
+            .ficha-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                border-radius: 6px;
+                background: var(--bg-hover, #22252c);
+                font-size: 0.8rem;
+                color: var(--text-primary, #fff);
+                cursor: pointer;
+            }
+            .ficha-chip:hover { background: var(--primary, #FF7200); color: #fff; }
+            .ficha-notes {
+                width: 100%;
+                min-height: 80px;
+                background: var(--bg-hover, #22252c);
+                border: 1px solid var(--border, #2a2d35);
+                border-radius: 8px;
+                padding: 10px;
+                color: var(--text-muted, #888);
+                font-size: 0.85rem;
+                resize: none;
+                font-family: inherit;
+            }
+            @media (max-width: 600px) {
+                .ficha-panel { width: 100vw; }
+            }
         `;
         document.head.appendChild(style);
     },
@@ -862,10 +982,12 @@ const Modules = {
             });
         });
 
-        // Row click
+        // Row click → open ficha panel
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
             row.addEventListener('click', () => {
-                console.log('Abrir ficha proyecto:', row.dataset.id);
+                const id = row.dataset.id;
+                const proyecto = this._currentApiData.find(p => p.id == id);
+                if (proyecto) this._openFichaProyecto(proyecto);
             });
         });
     },
@@ -1102,5 +1224,163 @@ const Modules = {
                 this._loadSectionData(mod, sectionId);
             });
         });
+    },
+
+    // ═══════════════════════════════════════════
+    //  FICHA PANEL — PROJECT DETAIL SLIDE-IN
+    // ═══════════════════════════════════════════
+    _openFichaProyecto(p) {
+        this._injectStyles();
+
+        // Ensure overlay + panel exist in #app
+        let overlay = document.getElementById('fichaOverlay');
+        let panel = document.getElementById('fichaPanel');
+        const app = document.getElementById('app');
+
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'ficha-overlay';
+            overlay.id = 'fichaOverlay';
+            app.appendChild(overlay);
+        }
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'ficha-panel';
+            panel.id = 'fichaPanel';
+            app.appendChild(panel);
+        }
+
+        // Safe value helper
+        const v = (val) => (val != null && val !== '') ? val : '—';
+        const statusClass = this._projectStatusMap[p.status] || this._projectStatusClass(p.status);
+
+        // Format area: "40,5m²"
+        const formatArea = (area) => {
+            if (!area) return '—';
+            const num = parseFloat(area);
+            if (isNaN(num)) return v(area);
+            return num.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + 'm²';
+        };
+
+        // Format dimensions: "9,00 × 4,50m"
+        const formatDims = (dims) => {
+            if (!dims) return '—';
+            return dims;
+        };
+
+        panel.innerHTML = `
+            <div class="ficha-panel-header">
+                <div class="ficha-panel-title">
+                    <span class="ficha-panel-icon">🏗️</span>
+                    <h2 class="ficha-panel-name">${v(p.name)}</h2>
+                </div>
+                <div class="ficha-panel-header-actions">
+                    <span class="badge ${statusClass}">${v(p.status)}</span>
+                    <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
+                </div>
+            </div>
+            <div class="ficha-panel-body">
+                <!-- Sección: Información -->
+                <div class="ficha-section">
+                    <div class="ficha-section-title">Información</div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">N° Proyecto</span>
+                        <span class="ficha-row-value">${p.number ? '#' + p.number : '—'}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Estado</span>
+                        <span class="ficha-row-value"><span class="badge ${statusClass}">${v(p.status)}</span></span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Tipo</span>
+                        <span class="ficha-row-value">${v(p.type)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Fecha de solicitud</span>
+                        <span class="ficha-row-value">${p.requestDate ? API.formatDate(p.requestDate) : '—'}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Fecha último mov.</span>
+                        <span class="ficha-row-value">${(p.updatedAt || p.lastModified) ? API.formatDate(p.updatedAt || p.lastModified) : '—'}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">N° Lote</span>
+                        <span class="ficha-row-value">${v(p.lote)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Área</span>
+                        <span class="ficha-row-value">${formatArea(p.area)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Dimensiones</span>
+                        <span class="ficha-row-value">${formatDims(p.dimensions)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Responsable</span>
+                        <span class="ficha-row-value">${p.responsible ? '<span class="ficha-chip">' + p.responsible + '</span>' : '—'}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Teléfono contacto</span>
+                        <span class="ficha-row-value">${v(p.phone)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">N° modificaciones</span>
+                        <span class="ficha-row-value">${v(p.modifications)}</span>
+                    </div>
+                </div>
+
+                <!-- Sección: Vínculos -->
+                <div class="ficha-section">
+                    <div class="ficha-section-title">Vínculos</div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Cliente</span>
+                        <span class="ficha-row-value">${(p.clientName || p.clientId) ? '<span class="ficha-chip" data-link-type="cliente" data-link-id="' + (p.clientId || '') + '">👤 ' + (p.clientName || p.clientId) + '</span>' : '—'}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Evento</span>
+                        <span class="ficha-row-value">${(p.eventName || p.eventId) ? '<span class="ficha-chip" data-link-type="evento" data-link-id="' + (p.eventId || '') + '">🎪 ' + (p.eventName || p.eventId) + '</span>' : '—'}</span>
+                    </div>
+                </div>
+
+                <!-- Sección: Notas -->
+                <div class="ficha-section">
+                    <div class="ficha-section-title">Notas / Comentarios</div>
+                    <textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea>
+                </div>
+            </div>
+        `;
+
+        // Open with animation (rAF to ensure DOM is ready)
+        requestAnimationFrame(() => {
+            overlay.classList.add('active');
+            panel.classList.add('open');
+        });
+
+        // Close listeners
+        const cerrarBtn = document.getElementById('fichaCerrar');
+        if (cerrarBtn) cerrarBtn.addEventListener('click', () => this._closeFicha());
+        overlay.addEventListener('click', () => this._closeFicha());
+
+        // Escape key
+        this._fichaEscHandler = (e) => {
+            if (e.key === 'Escape') this._closeFicha();
+        };
+        document.addEventListener('keydown', this._fichaEscHandler);
+
+        // Chip console.log (future navigation)
+        panel.querySelectorAll('.ficha-chip[data-link-type]').forEach(chip => {
+            chip.addEventListener('click', () => {
+                console.log(`Navegar a ${chip.dataset.linkType}:`, chip.dataset.linkId);
+            });
+        });
+    },
+
+    _closeFicha() {
+        document.getElementById('fichaPanel')?.classList.remove('open');
+        document.getElementById('fichaOverlay')?.classList.remove('active');
+        if (this._fichaEscHandler) {
+            document.removeEventListener('keydown', this._fichaEscHandler);
+            this._fichaEscHandler = null;
+        }
     },
 };
