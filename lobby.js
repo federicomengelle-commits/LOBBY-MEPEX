@@ -68,12 +68,12 @@ const Lobby = {
         const kpis = await API.getKPIs();
 
         if (kpis) {
-            // Real data
+            // Datos reales desde Supabase
             const indicators = [
                 kpis.proyectos,
-                kpis.eventos,
                 kpis.clientes,
-                kpis.catalogo
+                kpis.proveedores,
+                kpis.eventos,
             ];
             dashboard.innerHTML = indicators.map(ind => this._renderIndicator(ind)).join('');
         } else {
