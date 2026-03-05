@@ -134,11 +134,8 @@ const Modules = {
         content.innerHTML = `
             <div class="module-view">
                 ${this._renderModuleSubHeader(mod, user)}
-                <div class="module-body">
-                    ${this._renderSectionSidebar(mod)}
-                    <div class="module-content" id="moduleContent">
-                        ${this._renderSectionContent(mod, this.currentSection)}
-                    </div>
+                <div class="module-content" id="moduleContent">
+                    ${this._renderSectionContent(mod, this.currentSection)}
                 </div>
             </div>
         `;
@@ -151,8 +148,6 @@ const Modules = {
 
     // ─── MODULE SUB-HEADER ───
     _renderModuleSubHeader(mod, user) {
-        const connections = (mod.connections || []).filter(c => Auth.hasAccess(c.to));
-
         return `
             <div class="module-subheader">
                 <div class="module-subheader-top">
@@ -171,37 +166,17 @@ const Modules = {
                         <h2 class="title-2">${mod.name}</h2>
                         <span class="badge ${Data.getStatusClass(mod.status)}">${Data.getStatusLabel(mod.status)}</span>
                     </div>
-                    ${connections.length > 0 ? `
-                        <div class="module-connections">
-                            <span class="connections-label label">Conectado con</span>
-                            <div class="connections-chips">
-                                ${connections.map(c => {
-            const target = Data.getModuleById(c.to);
-            return `<a href="#${c.to}" class="chip connection-chip" title="${c.context}">${target ? target.icon : '🔗'} ${c.label}</a>`;
-        }).join('')}
-                            </div>
-                        </div>
-                    ` : ''}
                 </div>
-            </div>
-        `;
-    },
-
-    // ─── SECTION SIDEBAR ───
-    _renderSectionSidebar(mod) {
-        return `
-            <aside class="module-section-sidebar">
-                <div class="sidebar-label label">Secciones</div>
-                <nav class="sidebar-nav">
+                <div class="module-section-tabs">
                     ${mod.sections.map(sec => `
-                        <button class="section-link ${sec.id === this.currentSection ? 'active' : ''}" data-section="${sec.id}">
-                            <span class="section-link-icon">${sec.icon}</span>
-                            <span class="section-link-text">${sec.name}</span>
+                        <button class="section-tab ${sec.id === this.currentSection ? 'active' : ''}" data-section="${sec.id}">
+                            <span class="section-tab-icon">${sec.icon}</span>
+                            <span class="section-tab-text">${sec.name}</span>
                             ${sec.isExternal ? '<span class="section-external-badge">↗</span>' : ''}
                         </button>
                     `).join('')}
-                </nav>
-            </aside>
+                </div>
+            </div>
         `;
     },
 
@@ -241,11 +216,6 @@ const Modules = {
 
             return `
                 <div class="section-content">
-                    <div class="section-header">
-                        <span class="section-icon">${section.icon}</span>
-                        <h2 class="title-3">${section.name}</h2>
-                    </div>
-                    <p class="section-description">${section.description}</p>
                     <div class="views-tabs-bar" id="viewsTabsBar">
                         ${views.map(v => `
                             <button class="views-tab ${v.id === activeView.id ? 'active' : ''}" data-view-id="${v.id}" title="${v.name}">
@@ -263,29 +233,29 @@ const Modules = {
                             <input type="text" class="api-search-input" id="apiSectionSearch" placeholder="Filtrar ${section.name.toLowerCase()}…" autocomplete="off">
                         </div>
                         <div class="api-toolbar-filters" id="apiToolbarFilters"></div>
-                        <div class="api-toolbar-actions">
-                            <button class="btn btn-primary btn-sm" id="btnNewRecord">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                Nuevo
-                            </button>
-                            <button class="btn btn-ghost btn-sm" id="btnToggleCols" title="Columnas visibles">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                                Columnas
-                            </button>
-                            <button class="btn btn-ghost btn-sm btn-lock ${this._isLocked ? 'is-locked' : ''}" id="btnToggleLock" title="${this._isLocked ? 'Desbloquear edición' : 'Bloquear edición'}">
-                                <svg class="lock-icon-locked" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                <svg class="lock-icon-unlocked" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
-                            </button>
-                        </div>
                         <span class="api-record-count" id="apiRecordCount">Cargando…</span>
                     </div>
-                    <div class="api-cols-panel mepex-cols-panel" id="apiColsPanel" style="display:none">
-                        <!-- Inyectado por cada _render*Table según el tipo -->
-                    </div>
-                    <div class="api-data-container" id="apiDataContainer">
-                        <div class="api-loading">
-                            <div class="api-spinner"></div>
-                            <span>Conectando con Supabase…</span>
+                    <div class="api-cols-panel mepex-cols-panel" id="apiColsPanel" style="display:none"></div>
+                    <div class="api-table-layout">
+                        <div class="api-table-main">
+                            <div class="api-data-container" id="apiDataContainer">
+                                <div class="api-loading">
+                                    <div class="api-spinner"></div>
+                                    <span>Conectando con Supabase…</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="api-side-actions" id="apiSideActions">
+                            <button class="side-action-btn btn-primary" id="btnNewRecord" title="Nuevo registro">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            </button>
+                            <button class="side-action-btn" id="btnToggleCols" title="Columnas visibles">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                            </button>
+                            <button class="side-action-btn ${this._isLocked ? 'is-locked' : ''}" id="btnToggleLock" title="${this._isLocked ? 'Desbloquear edición' : 'Bloquear edición'}">
+                                <svg class="lock-icon-locked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                <svg class="lock-icon-unlocked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -417,16 +387,12 @@ const Modules = {
 
     // ─── LOCK UI APPLICATION ───
     _applyLockUI() {
-        const container = document.querySelector('.section-content');
-        if (!container) return;
-
         const lockBtn = document.getElementById('btnToggleLock');
         if (lockBtn) {
             lockBtn.classList.toggle('is-locked', this._isLocked);
             lockBtn.title = this._isLocked ? 'Desbloquear edición' : 'Bloquear edición';
         }
 
-        // Toggle locked class on the table container for CSS-based hiding
         const dataContainer = document.getElementById('apiDataContainer');
         if (dataContainer) dataContainer.classList.toggle('table-locked', this._isLocked);
 
@@ -1099,9 +1065,7 @@ const Modules = {
         return `<td class="td-checkbox"><input type="checkbox" class="row-select-cb" data-row-id="${id}" ${this._selectedRows.has(id) ? 'checked' : ''}></td>`;
     },
 
-    _renderRowActions(id) {
-        return `<td class="td-actions"><button class="row-actions-btn" data-row-id="${id}" title="Acciones">&#8942;</button></td>`;
-    },
+    // _renderRowActions removed — row click opens ficha directly
 
     _attachSelectionListeners(data, type) {
         // Select all checkbox
@@ -1144,37 +1108,6 @@ const Modules = {
             cb.addEventListener('click', (e) => e.stopPropagation());
         });
 
-        // Row actions (3-dot menu)
-        document.querySelectorAll('.row-actions-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const id = btn.dataset.rowId;
-                const item = this._currentApiData.find(d => d.id == id);
-                if (!item) return;
-                const rect = btn.getBoundingClientRect();
-                this._showRowContextMenu(rect.right, rect.bottom, item, type);
-            });
-        });
-
-        // Right-click context menu
-        document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
-            row.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                const id = row.dataset.id;
-                const item = this._currentApiData.find(d => d.id == id);
-                if (item) this._showRowContextMenu(e.clientX, e.clientY, item, type);
-            });
-        });
-    },
-
-    _showRowContextMenu(x, y, item, type) {
-        const name = item.name || item.empresa || '—';
-        ContextMenu.show(x, y, [
-            { label: 'Ver detalle', icon: '👁', action: () => this._openFichaByType(item, type) },
-            { label: 'Editar', icon: '✏️', action: () => Toast.info('Editar — próximamente (Fase 4)') },
-            { divider: true },
-            { label: 'Eliminar', icon: '🗑️', danger: true, action: () => Toast.info('Eliminar — próximamente (Fase 4)') },
-        ]);
     },
 
     _openFichaByType(item, type) {
@@ -1312,17 +1245,15 @@ const Modules = {
             }).join('');
 
             const cb = this._isLocked ? '' : this._renderRowCheckbox(e.id);
-            const act = this._isLocked ? '' : this._renderRowActions(e.id);
-            return `<tr class="api-table-row ${this._selectedRows.has(e.id) ? 'selected' : ''}" data-id="${e.id}">${cb}${cells}${act}</tr>`;
+            return `<tr class="api-table-row ${this._selectedRows.has(e.id) ? 'selected' : ''}" data-id="${e.id}">${cb}${cells}</tr>`;
         }).join('');
 
         const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
-        const headerAct = this._isLocked ? '' : '<th class="td-actions"></th>';
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${headerCb}${thHtml}${headerAct}</tr></thead>
+                    <thead><tr>${headerCb}${thHtml}</tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -1356,7 +1287,7 @@ const Modules = {
         // Row click → open ficha
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
             row.addEventListener('click', (ev) => {
-                if (ev.target.closest('a') || ev.target.closest('.td-checkbox') || ev.target.closest('.td-actions')) return;
+                if (ev.target.closest('a') || ev.target.closest('.td-checkbox')) return;
                 const id = row.dataset.id;
                 const item = this._currentApiData.find(e => e.id == id);
                 if (item) this._openFichaByType(item, 'events');
@@ -1460,17 +1391,15 @@ const Modules = {
             }).join('');
 
             const cb = this._isLocked ? '' : this._renderRowCheckbox(p.id);
-            const act = this._isLocked ? '' : this._renderRowActions(p.id);
-            return `<tr class="api-table-row ${this._selectedRows.has(p.id) ? 'selected' : ''}" data-id="${p.id}">${cb}${cells}${act}</tr>`;
+            return `<tr class="api-table-row ${this._selectedRows.has(p.id) ? 'selected' : ''}" data-id="${p.id}">${cb}${cells}</tr>`;
         }).join('');
 
         const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
-        const headerAct = this._isLocked ? '' : '<th class="td-actions"></th>';
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${headerCb}${thHtml}${headerAct}</tr></thead>
+                    <thead><tr>${headerCb}${thHtml}</tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -1514,7 +1443,7 @@ const Modules = {
         // Row click → open ficha panel
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
             row.addEventListener('click', (ev) => {
-                if (ev.target.closest('.td-checkbox') || ev.target.closest('.td-actions')) return;
+                if (ev.target.closest('.td-checkbox')) return;
                 const id = row.dataset.id;
                 const proyecto = this._currentApiData.find(p => p.id == id);
                 if (proyecto) this._openFichaProyecto(proyecto);
@@ -1609,17 +1538,15 @@ const Modules = {
             }).join('');
 
             const cb = this._isLocked ? '' : this._renderRowCheckbox(c.id);
-            const act = this._isLocked ? '' : this._renderRowActions(c.id);
-            return `<tr class="api-table-row ${this._selectedRows.has(c.id) ? 'selected' : ''}" data-id="${c.id}">${cb}${cells}${act}</tr>`;
+            return `<tr class="api-table-row ${this._selectedRows.has(c.id) ? 'selected' : ''}" data-id="${c.id}">${cb}${cells}</tr>`;
         }).join('');
 
         const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
-        const headerAct = this._isLocked ? '' : '<th class="td-actions"></th>';
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${headerCb}${thHtml}${headerAct}</tr></thead>
+                    <thead><tr>${headerCb}${thHtml}</tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -1654,7 +1581,7 @@ const Modules = {
         // Row click → open ficha
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
             row.addEventListener('click', (ev) => {
-                if (ev.target.closest('.td-checkbox') || ev.target.closest('.td-actions')) return;
+                if (ev.target.closest('.td-checkbox')) return;
                 const id = row.dataset.id;
                 const item = this._currentApiData.find(c => c.id == id);
                 if (item) this._openFichaByType(item, 'clients');
@@ -1752,9 +1679,9 @@ const Modules = {
     },
 
     _attachEvents(mod) {
-        document.querySelectorAll('.section-link').forEach(link => {
-            link.addEventListener('click', () => {
-                const sectionId = link.dataset.section;
+        document.querySelectorAll('.section-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const sectionId = tab.dataset.section;
                 const section = mod.sections.find(s => s.id === sectionId);
 
                 if (section && section.isExternal) {
@@ -1764,8 +1691,8 @@ const Modules = {
 
                 this.currentSection = sectionId;
 
-                document.querySelectorAll('.section-link').forEach(l => l.classList.remove('active'));
-                link.classList.add('active');
+                document.querySelectorAll('.section-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
 
                 const contentEl = document.getElementById('moduleContent');
                 contentEl.innerHTML = this._renderSectionContent(mod, sectionId);
