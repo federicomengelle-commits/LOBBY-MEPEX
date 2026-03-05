@@ -2391,13 +2391,25 @@ body {
     text-overflow: ellipsis;
 }
 
+.api-table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.012);
+}
+
 .api-table-row {
     transition: background 0.15s;
     cursor: pointer;
 }
 
 .api-table-row:hover {
-    background: rgba(var(--primary-rgb), 0.04);
+    background: rgba(var(--primary-rgb), 0.06);
+}
+
+.api-table-row.selected {
+    background: rgba(var(--primary-rgb), 0.1);
+}
+
+.api-table-row.selected td:first-child {
+    box-shadow: inset 3px 0 0 var(--primary);
 }
 
 .td-primary {
@@ -2409,6 +2421,105 @@ body {
     font-family: var(--font-mono);
     color: var(--text-muted) !important;
     font-size: 0.8rem;
+}
+
+/* ─── Table Checkbox Column ─── */
+.td-checkbox {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    text-align: center;
+    padding: 0 8px !important;
+}
+
+.td-checkbox input[type="checkbox"] {
+    accent-color: var(--primary);
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+}
+
+/* ─── Table Actions Column ─── */
+.td-actions {
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+    text-align: center;
+    padding: 0 6px !important;
+}
+
+th.td-actions {
+    width: 44px;
+}
+
+.row-actions-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    transition: all 0.15s;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.row-actions-btn:hover {
+    background: rgba(var(--primary-rgb), 0.1);
+    color: var(--text-primary);
+}
+
+/* ─── Bulk Actions Bar ─── */
+.bulk-actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--bg-card-2);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-md);
+    margin-top: 12px;
+    animation: slideUp 0.2s var(--ease);
+}
+
+.bulk-actions-count {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--primary);
+    letter-spacing: 0.05em;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* ─── Empty State ─── */
+.api-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 64px 24px;
+    text-align: center;
+}
+
+.api-empty-icon {
+    font-size: 3rem;
+    opacity: 0.4;
+}
+
+.api-empty-title {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.api-empty-hint {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin: 0 0 8px;
 }
 
 /* ─── API Loading ─── */
@@ -2482,6 +2593,23 @@ body {
     .api-table th,
     .api-table td {
         padding: 8px 10px;
+    }
+
+    .td-actions {
+        display: none;
+    }
+
+    th.td-actions {
+        display: none;
+    }
+
+    .bulk-actions-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border-radius: 0;
+        z-index: 100;
     }
 
     .connection-badge {

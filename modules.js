@@ -20,6 +20,9 @@ const Modules = {
     _activeTypeFilter: null,
     _activeRubroFilter: null,
 
+    // ─── Selection state ───
+    _selectedRows: new Set(),
+
     render(moduleId) {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
@@ -150,11 +153,16 @@ const Modules = {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                             <input type="text" class="api-search-input" id="apiSectionSearch" placeholder="Filtrar ${section.name.toLowerCase()}…" autocomplete="off">
                         </div>
-                        <div class="api-toolbar-filters" id="apiToolbarFilters">
-                            <!-- Inyectado por cada _render*Table según el tipo -->
-                        </div>
+                        <div class="api-toolbar-filters" id="apiToolbarFilters"></div>
                         <div class="api-toolbar-actions">
-                            <button class="btn btn-ghost btn-sm" id="btnToggleCols" title="Columnas visibles">⊞ Columnas</button>
+                            <button class="btn btn-primary btn-sm" id="btnNewRecord">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Nuevo
+                            </button>
+                            <button class="btn btn-ghost btn-sm" id="btnToggleCols" title="Columnas visibles">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                                Columnas
+                            </button>
                         </div>
                         <span class="api-record-count" id="apiRecordCount">Cargando…</span>
                     </div>
@@ -219,6 +227,7 @@ const Modules = {
         this._activeRubroFilter = null;
         this._sortCol = null;
         this._sortDir = 'asc';
+        this._selectedRows = new Set();
 
         let data = null;
         try {
@@ -336,7 +345,19 @@ const Modules = {
         if (countEl) countEl.textContent = `${data.length} registro${data.length !== 1 ? 's' : ''}`;
 
         if (data.length === 0) {
-            container.innerHTML = '<div class="api-empty">No se encontraron registros</div>';
+            const labels = { clients: 'clientes', events: 'eventos', projects: 'proyectos' };
+            const icons = { clients: '👤', events: '📅', projects: '📋' };
+            container.innerHTML = `
+                <div class="api-empty-state">
+                    <span class="api-empty-icon">${icons[type] || '📂'}</span>
+                    <p class="api-empty-title">No se encontraron ${labels[type] || 'registros'}</p>
+                    <p class="api-empty-hint">Probá cambiando los filtros o creá uno nuevo</p>
+                    <button class="btn btn-secondary btn-sm" id="btnEmptyCreate">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Crear ${labels[type] ? labels[type].slice(0, -1) : 'registro'}
+                    </button>
+                </div>
+            `;
             return;
         }
 
@@ -719,7 +740,148 @@ const Modules = {
 
     _sortIndicator(colId) {
         if (this._sortCol !== colId) return '';
-        return `<span class="mepex-sort-indicator">${this._sortDir === 'asc' ? '▲' : '▼'}</span>`;
+        const arrow = this._sortDir === 'asc'
+            ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5l7 9H5z"/></svg>'
+            : '<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 19l-7-9h14z"/></svg>';
+        return `<span class="mepex-sort-indicator">${arrow}</span>`;
+    },
+
+    // ─── CHECKBOX / SELECTION HELPERS ───
+    _renderHeaderCheckbox(data) {
+        const allSelected = data.length > 0 && data.every(d => this._selectedRows.has(d.id));
+        return `<th class="td-checkbox"><input type="checkbox" class="row-select-all" ${allSelected ? 'checked' : ''}></th>`;
+    },
+
+    _renderRowCheckbox(id) {
+        return `<td class="td-checkbox"><input type="checkbox" class="row-select-cb" data-row-id="${id}" ${this._selectedRows.has(id) ? 'checked' : ''}></td>`;
+    },
+
+    _renderRowActions(id) {
+        return `<td class="td-actions"><button class="row-actions-btn" data-row-id="${id}" title="Acciones">&#8942;</button></td>`;
+    },
+
+    _attachSelectionListeners(data, type) {
+        // Select all checkbox
+        const selectAll = document.querySelector('.row-select-all');
+        if (selectAll) {
+            selectAll.addEventListener('change', () => {
+                if (selectAll.checked) {
+                    data.forEach(d => this._selectedRows.add(d.id));
+                } else {
+                    this._selectedRows.clear();
+                }
+                document.querySelectorAll('.row-select-cb').forEach(cb => {
+                    cb.checked = selectAll.checked;
+                });
+                document.querySelectorAll('.api-table-row').forEach(row => {
+                    row.classList.toggle('selected', selectAll.checked);
+                });
+                this._updateBulkBar(type);
+            });
+        }
+
+        // Individual checkboxes
+        document.querySelectorAll('.row-select-cb').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const id = cb.dataset.rowId;
+                if (cb.checked) {
+                    this._selectedRows.add(id);
+                } else {
+                    this._selectedRows.delete(id);
+                }
+                cb.closest('.api-table-row')?.classList.toggle('selected', cb.checked);
+                // Update select-all state
+                const allCbs = document.querySelectorAll('.row-select-cb');
+                const allChecked = [...allCbs].every(c => c.checked);
+                if (selectAll) selectAll.checked = allChecked;
+                this._updateBulkBar(type);
+            });
+            // Prevent row click when clicking checkbox
+            cb.addEventListener('click', (e) => e.stopPropagation());
+        });
+
+        // Row actions (3-dot menu)
+        document.querySelectorAll('.row-actions-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.rowId;
+                const item = this._currentApiData.find(d => d.id == id);
+                if (!item) return;
+                const rect = btn.getBoundingClientRect();
+                this._showRowContextMenu(rect.right, rect.bottom, item, type);
+            });
+        });
+
+        // Right-click context menu
+        document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
+            row.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const id = row.dataset.id;
+                const item = this._currentApiData.find(d => d.id == id);
+                if (item) this._showRowContextMenu(e.clientX, e.clientY, item, type);
+            });
+        });
+    },
+
+    _showRowContextMenu(x, y, item, type) {
+        const name = item.name || item.empresa || '—';
+        ContextMenu.show(x, y, [
+            { label: 'Ver detalle', icon: '👁', action: () => this._openFichaByType(item, type) },
+            { label: 'Editar', icon: '✏️', action: () => Toast.info('Editar — próximamente (Fase 4)') },
+            { divider: true },
+            { label: 'Eliminar', icon: '🗑️', danger: true, action: () => Toast.info('Eliminar — próximamente (Fase 4)') },
+        ]);
+    },
+
+    _openFichaByType(item, type) {
+        if (type === 'projects') {
+            this._openFichaProyecto(item);
+        } else {
+            Toast.info('Ficha de detalle — próximamente (Fase 5)');
+        }
+    },
+
+    _updateBulkBar(type) {
+        const count = this._selectedRows.size;
+        let bar = document.getElementById('bulkActionsBar');
+
+        if (count === 0) {
+            if (bar) bar.remove();
+            return;
+        }
+
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'bulkActionsBar';
+            bar.className = 'bulk-actions-bar';
+            document.querySelector('.api-data-container')?.appendChild(bar);
+        }
+
+        bar.innerHTML = `
+            <span class="bulk-actions-count">${count} seleccionado${count > 1 ? 's' : ''}</span>
+            <button class="btn btn-ghost btn-sm" id="bulkDeselect">Deseleccionar</button>
+            <div style="flex:1"></div>
+            <button class="btn btn-ghost btn-sm" id="bulkExport">Exportar</button>
+            <button class="btn btn-danger btn-sm" id="bulkDelete">Eliminar</button>
+        `;
+
+        document.getElementById('bulkDeselect')?.addEventListener('click', () => {
+            this._selectedRows.clear();
+            document.querySelectorAll('.row-select-cb').forEach(cb => cb.checked = false);
+            document.querySelectorAll('.api-table-row').forEach(r => r.classList.remove('selected'));
+            const sa = document.querySelector('.row-select-all');
+            if (sa) sa.checked = false;
+            this._updateBulkBar(type);
+        });
+
+        document.getElementById('bulkDelete')?.addEventListener('click', () => {
+            Toast.info(`Eliminar ${count} registros — próximamente (Fase 4)`);
+        });
+
+        document.getElementById('bulkExport')?.addEventListener('click', () => {
+            Toast.info('Exportar — próximamente');
+        });
     },
 
     // ═══════════════════════════════════════════
@@ -804,13 +966,13 @@ const Modules = {
                 }
             }).join('');
 
-            return `<tr class="api-table-row" data-id="${e.id}">${cells}</tr>`;
+            return `<tr class="api-table-row ${this._selectedRows.has(e.id) ? 'selected' : ''}" data-id="${e.id}">${this._renderRowCheckbox(e.id)}${cells}${this._renderRowActions(e.id)}</tr>`;
         }).join('');
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${thHtml}</tr></thead>
+                    <thead><tr>${this._renderHeaderCheckbox(sorted)}${thHtml}<th class="td-actions"></th></tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -841,13 +1003,18 @@ const Modules = {
             });
         });
 
-        // Row click
+        // Row click → open ficha
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
             row.addEventListener('click', (ev) => {
-                if (ev.target.closest('a')) return; // Don't trigger on file link clicks
-                console.log('Abrir ficha evento:', row.dataset.id);
+                if (ev.target.closest('a') || ev.target.closest('.td-checkbox') || ev.target.closest('.td-actions')) return;
+                const id = row.dataset.id;
+                const item = this._currentApiData.find(e => e.id == id);
+                if (item) this._openFichaByType(item, 'events');
             });
         });
+
+        // Selection + context menu
+        this._attachSelectionListeners(data, 'events');
     },
 
     // ═══════════════════════════════════════════
@@ -935,13 +1102,13 @@ const Modules = {
                 }
             }).join('');
 
-            return `<tr class="api-table-row" data-id="${p.id}">${cells}</tr>`;
+            return `<tr class="api-table-row ${this._selectedRows.has(p.id) ? 'selected' : ''}" data-id="${p.id}">${this._renderRowCheckbox(p.id)}${cells}${this._renderRowActions(p.id)}</tr>`;
         }).join('');
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${thHtml}</tr></thead>
+                    <thead><tr>${this._renderHeaderCheckbox(sorted)}${thHtml}<th class="td-actions"></th></tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -984,12 +1151,16 @@ const Modules = {
 
         // Row click → open ficha panel
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
-            row.addEventListener('click', () => {
+            row.addEventListener('click', (ev) => {
+                if (ev.target.closest('.td-checkbox') || ev.target.closest('.td-actions')) return;
                 const id = row.dataset.id;
                 const proyecto = this._currentApiData.find(p => p.id == id);
                 if (proyecto) this._openFichaProyecto(proyecto);
             });
         });
+
+        // Selection + context menu
+        this._attachSelectionListeners(data, 'projects');
     },
 
     // ═══════════════════════════════════════════
@@ -1072,13 +1243,13 @@ const Modules = {
                 }
             }).join('');
 
-            return `<tr class="api-table-row" data-id="${c.id}">${cells}</tr>`;
+            return `<tr class="api-table-row ${this._selectedRows.has(c.id) ? 'selected' : ''}" data-id="${c.id}">${this._renderRowCheckbox(c.id)}${cells}${this._renderRowActions(c.id)}</tr>`;
         }).join('');
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${thHtml}</tr></thead>
+                    <thead><tr>${this._renderHeaderCheckbox(sorted)}${thHtml}<th class="td-actions"></th></tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -1110,12 +1281,18 @@ const Modules = {
             });
         });
 
-        // Row click
+        // Row click → open ficha
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
-            row.addEventListener('click', () => {
-                console.log('Abrir ficha cliente:', row.dataset.id);
+            row.addEventListener('click', (ev) => {
+                if (ev.target.closest('.td-checkbox') || ev.target.closest('.td-actions')) return;
+                const id = row.dataset.id;
+                const item = this._currentApiData.find(c => c.id == id);
+                if (item) this._openFichaByType(item, 'clients');
             });
         });
+
+        // Selection + context menu
+        this._attachSelectionListeners(data, 'clients');
     },
 
     // ─── STATUS BADGE HELPERS ───
