@@ -2292,6 +2292,98 @@ body {
     font-size: 0.85rem;
 }
 
+/* ─── Views Tabs (Notion-like) ─── */
+.views-tabs-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.views-tabs-bar::-webkit-scrollbar {
+    display: none;
+}
+
+.views-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    font-size: 0.8rem;
+    font-family: var(--font-main);
+    font-weight: 500;
+    color: var(--text-dim);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    position: relative;
+    margin-bottom: -1px;
+}
+
+.views-tab:hover {
+    color: var(--text-muted);
+    background: rgba(var(--primary-rgb), 0.04);
+}
+
+.views-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
+
+.views-tab-close {
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0;
+    color: var(--text-dim);
+    transition: opacity 0.15s, color 0.15s;
+    margin-left: 2px;
+}
+
+.views-tab:hover .views-tab-close {
+    opacity: 0.6;
+}
+
+.views-tab-close:hover {
+    opacity: 1 !important;
+    color: var(--color-error);
+}
+
+.views-tab-add {
+    padding: 8px 10px;
+    color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+}
+
+.views-tab-add:hover {
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.06);
+}
+
+.views-tab-add svg {
+    display: block;
+}
+
+.views-tab-rename-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--primary);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    font-family: var(--font-main);
+    font-weight: 500;
+    outline: none;
+    padding: 0 2px 2px;
+    width: 100px;
+}
+
 /* ─── API Section Toolbar ─── */
 .api-section-toolbar {
     display: flex;
@@ -2478,8 +2570,11 @@ th.td-actions {
     background: var(--bg-card-2);
     border: 1px solid var(--primary);
     border-radius: var(--radius-md);
-    margin-top: 12px;
-    animation: slideUp 0.2s var(--ease);
+    margin-bottom: 12px;
+    animation: slideDown 0.2s var(--ease);
+    position: sticky;
+    top: 0;
+    z-index: 3;
 }
 
 .bulk-actions-count {
@@ -2489,8 +2584,8 @@ th.td-actions {
     letter-spacing: 0.05em;
 }
 
-@keyframes slideUp {
-    from { transform: translateY(8px); opacity: 0; }
+@keyframes slideDown {
+    from { transform: translateY(-8px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
 
@@ -2605,11 +2700,20 @@ th.td-actions {
 
     .bulk-actions-bar {
         position: fixed;
-        bottom: 0;
+        top: 0;
         left: 0;
         right: 0;
         border-radius: 0;
         z-index: 100;
+    }
+
+    .views-tabs-bar {
+        gap: 0;
+    }
+
+    .views-tab {
+        padding: 6px 10px;
+        font-size: 0.75rem;
     }
 
     .connection-badge {

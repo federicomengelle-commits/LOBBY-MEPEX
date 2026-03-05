@@ -23,6 +23,60 @@ const Modules = {
     // ─── Selection state ───
     _selectedRows: new Set(),
 
+    // ─── Views (Notion-like) ───
+    _activeViewId: null,
+
+    _getViews(storageKey) {
+        try {
+            const saved = localStorage.getItem('mepex_views_' + storageKey);
+            if (saved) return JSON.parse(saved);
+        } catch (e) { /* ignore */ }
+        return [{ id: 'all', name: 'Todos', filters: {}, isDefault: true }];
+    },
+
+    _saveViews(storageKey, views) {
+        try {
+            localStorage.setItem('mepex_views_' + storageKey, JSON.stringify(views));
+        } catch (e) { /* ignore */ }
+    },
+
+    _getActiveView(storageKey) {
+        const views = this._getViews(storageKey);
+        if (this._activeViewId) {
+            const found = views.find(v => v.id === this._activeViewId);
+            if (found) return found;
+        }
+        return views[0];
+    },
+
+    _applyViewFilters(view) {
+        if (!view || !view.filters) return;
+        this._activeStatusFilter = view.filters.status || null;
+        this._activeTypeFilter = view.filters.type || null;
+        this._activeRubroFilter = view.filters.rubro || null;
+        this._sortCol = view.filters.sortCol || null;
+        this._sortDir = view.filters.sortDir || 'asc';
+    },
+
+    _saveCurrentFiltersToView(storageKey) {
+        const views = this._getViews(storageKey);
+        const active = views.find(v => v.id === this._activeViewId);
+        if (active && !active.isDefault) {
+            active.filters = {
+                status: this._activeStatusFilter,
+                type: this._activeTypeFilter,
+                rubro: this._activeRubroFilter,
+                sortCol: this._sortCol,
+                sortDir: this._sortDir,
+            };
+            this._saveViews(storageKey, views);
+        }
+    },
+
+    _getViewsStorageKey() {
+        return this._currentApiType || 'default';
+    },
+
     render(moduleId) {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
@@ -141,6 +195,9 @@ const Modules = {
         // Check if this is an API-powered section
         const apiSection = this._getApiSectionType(mod.id, sectionId);
         if (apiSection) {
+            const views = this._getViews(apiSection);
+            const activeView = this._getActiveView(apiSection);
+
             return `
                 <div class="section-content">
                     <div class="section-header">
@@ -148,6 +205,17 @@ const Modules = {
                         <h2 class="title-3">${section.name}</h2>
                     </div>
                     <p class="section-description">${section.description}</p>
+                    <div class="views-tabs-bar" id="viewsTabsBar">
+                        ${views.map(v => `
+                            <button class="views-tab ${v.id === activeView.id ? 'active' : ''}" data-view-id="${v.id}" title="${v.name}">
+                                <span class="views-tab-name">${v.name}</span>
+                                ${!v.isDefault ? `<span class="views-tab-close" data-view-close="${v.id}">&times;</span>` : ''}
+                            </button>
+                        `).join('')}
+                        <button class="views-tab views-tab-add" id="btnAddView" title="Crear vista">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </button>
+                    </div>
                     <div class="api-section-toolbar">
                         <div class="api-search-box">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -172,7 +240,7 @@ const Modules = {
                     <div class="api-data-container" id="apiDataContainer">
                         <div class="api-loading">
                             <div class="api-spinner"></div>
-                            <span>Conectando con Notion…</span>
+                            <span>Conectando con Supabase…</span>
                         </div>
                     </div>
                 </div>
@@ -221,13 +289,13 @@ const Modules = {
         const container = document.getElementById('apiDataContainer');
         if (!container) return;
 
-        // Reset filters on section change
-        this._activeStatusFilter = null;
-        this._activeTypeFilter = null;
-        this._activeRubroFilter = null;
-        this._sortCol = null;
-        this._sortDir = 'asc';
+        // Reset selection on section change
         this._selectedRows = new Set();
+
+        // Apply active view filters (or reset to defaults)
+        const activeView = this._getActiveView(apiType);
+        this._activeViewId = activeView.id;
+        this._applyViewFilters(activeView);
 
         let data = null;
         try {
@@ -282,6 +350,136 @@ const Modules = {
                 colsPanel.style.display = colsPanel.style.display === 'none' ? 'flex' : 'none';
             });
         }
+
+        // Attach views tab listeners
+        this._attachViewsListeners(apiType, mod, sectionId);
+    },
+
+    // ─── VIEWS TABS EVENT LISTENERS ───
+    _attachViewsListeners(apiType, mod, sectionId) {
+        // Click on a view tab
+        document.querySelectorAll('.views-tab[data-view-id]').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                if (e.target.closest('.views-tab-close')) return;
+                const viewId = tab.dataset.viewId;
+                this._activeViewId = viewId;
+                const view = this._getActiveView(apiType);
+                this._applyViewFilters(view);
+                // Re-render the entire section to update tabs + data
+                const contentEl = document.getElementById('moduleContent');
+                if (contentEl) {
+                    contentEl.innerHTML = this._renderSectionContent(mod, sectionId);
+                    this._loadSectionData(mod, sectionId);
+                }
+            });
+
+            // Double-click to rename (non-default views only)
+            const nameSpan = tab.querySelector('.views-tab-name');
+            if (nameSpan && !tab.querySelector('.views-tab-close') === false) {
+                tab.addEventListener('dblclick', () => {
+                    const viewId = tab.dataset.viewId;
+                    const views = this._getViews(apiType);
+                    const view = views.find(v => v.id === viewId);
+                    if (!view || view.isDefault) return;
+                    this._renameView(apiType, viewId, mod, sectionId);
+                });
+            }
+        });
+
+        // Close (delete) a view tab
+        document.querySelectorAll('.views-tab-close').forEach(closeBtn => {
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const viewId = closeBtn.dataset.viewClose;
+                const views = this._getViews(apiType);
+                const updated = views.filter(v => v.id !== viewId);
+                this._saveViews(apiType, updated);
+                // Switch to first view
+                this._activeViewId = updated[0]?.id || 'all';
+                const view = this._getActiveView(apiType);
+                this._applyViewFilters(view);
+                const contentEl = document.getElementById('moduleContent');
+                if (contentEl) {
+                    contentEl.innerHTML = this._renderSectionContent(mod, sectionId);
+                    this._loadSectionData(mod, sectionId);
+                }
+            });
+        });
+
+        // Add new view
+        const btnAdd = document.getElementById('btnAddView');
+        if (btnAdd) {
+            btnAdd.addEventListener('click', () => {
+                this._createNewView(apiType, mod, sectionId);
+            });
+        }
+    },
+
+    _createNewView(apiType, mod, sectionId) {
+        const views = this._getViews(apiType);
+        const id = 'view_' + Date.now();
+        const name = 'Vista ' + views.length;
+        const newView = {
+            id,
+            name,
+            filters: {
+                status: this._activeStatusFilter,
+                type: this._activeTypeFilter,
+                rubro: this._activeRubroFilter,
+                sortCol: this._sortCol,
+                sortDir: this._sortDir,
+            },
+        };
+        views.push(newView);
+        this._saveViews(apiType, views);
+        this._activeViewId = id;
+
+        // Re-render
+        const contentEl = document.getElementById('moduleContent');
+        if (contentEl) {
+            contentEl.innerHTML = this._renderSectionContent(mod, sectionId);
+            this._loadSectionData(mod, sectionId);
+        }
+
+        // Auto-trigger rename on the new view
+        setTimeout(() => this._renameView(apiType, id, mod, sectionId), 100);
+    },
+
+    _renameView(apiType, viewId, mod, sectionId) {
+        const tab = document.querySelector(`.views-tab[data-view-id="${viewId}"]`);
+        if (!tab) return;
+        const nameSpan = tab.querySelector('.views-tab-name');
+        if (!nameSpan) return;
+
+        const views = this._getViews(apiType);
+        const view = views.find(v => v.id === viewId);
+        if (!view || view.isDefault) return;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'views-tab-rename-input';
+        input.value = view.name;
+        input.maxLength = 30;
+
+        nameSpan.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const finishRename = () => {
+            const newName = input.value.trim() || view.name;
+            view.name = newName;
+            this._saveViews(apiType, views);
+            const span = document.createElement('span');
+            span.className = 'views-tab-name';
+            span.textContent = newName;
+            input.replaceWith(span);
+        };
+
+        input.addEventListener('blur', finishRename);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { input.value = view.name; input.blur(); }
+        });
     },
 
     // ─── APPLY ALL FILTERS AND SEARCH ───
@@ -290,6 +488,9 @@ const Modules = {
         if (!data) return;
 
         const type = this._currentApiType;
+
+        // Auto-save filters to active view
+        this._saveCurrentFiltersToView(this._getViewsStorageKey());
 
         // Text search
         const searchInput = document.getElementById('apiSectionSearch');
@@ -719,8 +920,9 @@ const Modules = {
             case 'tipo': return (p.type || '').toLowerCase();
             case 'estado': return (p.status || '').toLowerCase();
             case 'evento': return (p.eventId || '');
-            case 'cliente': return (p.clientId || '');
-            case 'fecha': return p.requestDate ? new Date(p.requestDate).getTime() : null;
+            case 'cliente': return (p.clientName || p.clientId || '').toLowerCase();
+            case 'responsable': return (p.responsible || '').toLowerCase();
+            case 'empresa': return (p.empresa || '').toLowerCase();
             case 'area': return p.area ? parseFloat(p.area) : null;
             default: return null;
         }
@@ -855,7 +1057,8 @@ const Modules = {
             bar = document.createElement('div');
             bar.id = 'bulkActionsBar';
             bar.className = 'bulk-actions-bar';
-            document.querySelector('.api-data-container')?.appendChild(bar);
+            const container = document.querySelector('.api-data-container');
+            if (container) container.insertBefore(bar, container.firstChild);
         }
 
         bar.innerHTML = `
@@ -890,18 +1093,18 @@ const Modules = {
     _eventsColumns: [
         { id: 'nombre', header: 'Evento', defaultVisible: true },
         { id: 'venue', header: 'Lugar', defaultVisible: true },
-        { id: 'armado', header: 'F. Armado', defaultVisible: true },
         { id: 'evento', header: 'F. Evento', defaultVisible: true },
-        { id: 'desarme', header: 'F. Desarme', defaultVisible: true },
-        { id: 'prioridad', header: 'Prioridad', defaultVisible: true },
+        { id: 'armado', header: 'F. Armado', defaultVisible: true },
+        { id: 'desarme', header: 'F. Desarme', defaultVisible: false },
         { id: 'estado', header: 'Estado', defaultVisible: true },
+        { id: 'prioridad', header: 'Prioridad', defaultVisible: true },
         { id: 'stands', header: 'Stands', defaultVisible: false },
-        { id: 'archivos', header: 'Archivos', defaultVisible: true },
+        { id: 'archivos', header: 'Archivos', defaultVisible: false },
     ],
 
     _renderEventsTable(events) {
         this._injectStyles();
-        const visCols = this._getVisibleCols('mepex_events_cols', this._eventsColumns);
+        const visCols = this._getVisibleCols('mepex_events_cols_v2', this._eventsColumns);
 
         // Inject filter chips
         const filtersEl = document.getElementById('apiToolbarFilters');
@@ -917,7 +1120,7 @@ const Modules = {
         }
 
         // Inject column panel
-        this._renderColsPanel('mepex_events_cols', this._eventsColumns, visCols);
+        this._renderColsPanel('mepex_events_cols_v2', this._eventsColumns, visCols);
 
         // Sort
         let sorted = events;
@@ -1023,11 +1226,12 @@ const Modules = {
     _projectsColumns: [
         { id: 'numero', header: '#', defaultVisible: true },
         { id: 'nombre', header: 'Proyecto', defaultVisible: true },
+        { id: 'cliente', header: 'Cliente', defaultVisible: true },
+        { id: 'evento', header: 'Evento', defaultVisible: true },
         { id: 'tipo', header: 'Tipo', defaultVisible: true },
         { id: 'estado', header: 'Estado', defaultVisible: true },
-        { id: 'evento', header: 'Evento', defaultVisible: true },
-        { id: 'cliente', header: 'Cliente', defaultVisible: true },
-        { id: 'fecha', header: 'F. Solicitud', defaultVisible: true },
+        { id: 'responsable', header: 'Responsable', defaultVisible: true },
+        { id: 'empresa', header: 'Empresa', defaultVisible: false },
         { id: 'area', header: 'Área m²', defaultVisible: false },
     ],
 
@@ -1044,7 +1248,7 @@ const Modules = {
 
     _renderProjectsTable(projects) {
         this._injectStyles();
-        const visCols = this._getVisibleCols('mepex_projects_cols', this._projectsColumns);
+        const visCols = this._getVisibleCols('mepex_projects_cols_v2', this._projectsColumns);
 
         // Inject filter chips + type dropdown
         const filtersEl = document.getElementById('apiToolbarFilters');
@@ -1064,7 +1268,7 @@ const Modules = {
         }
 
         // Inject column panel
-        this._renderColsPanel('mepex_projects_cols', this._projectsColumns, visCols);
+        this._renderColsPanel('mepex_projects_cols_v2', this._projectsColumns, visCols);
 
         // Sort
         let sorted = projects;
@@ -1092,9 +1296,11 @@ const Modules = {
                     case 'evento':
                         return `<td>${p.eventId || '—'}</td>`;
                     case 'cliente':
-                        return `<td>${p.clientId || '—'}</td>`;
-                    case 'fecha':
-                        return `<td>${API.formatDate(p.requestDate)}</td>`;
+                        return `<td>${p.clientName || p.clientId || '—'}</td>`;
+                    case 'responsable':
+                        return `<td>${p.responsible || '—'}</td>`;
+                    case 'empresa':
+                        return `<td>${p.empresa || '—'}</td>`;
                     case 'area':
                         return `<td class="td-number">${p.area || '—'}</td>`;
                     default:
@@ -1168,16 +1374,16 @@ const Modules = {
     // ═══════════════════════════════════════════
     _clientsColumns: [
         { id: 'empresa', header: 'Empresa', defaultVisible: true },
+        { id: 'rubro', header: 'Rubro', defaultVisible: true },
         { id: 'contacto', header: 'Contacto', defaultVisible: true },
-        { id: 'cuit', header: 'CUIT', defaultVisible: true },
         { id: 'email', header: 'Email', defaultVisible: true },
         { id: 'telefono', header: 'Teléfono', defaultVisible: true },
-        { id: 'rubro', header: 'Rubro', defaultVisible: true },
+        { id: 'cuit', header: 'CUIT', defaultVisible: false },
     ],
 
     _renderClientsTable(clients) {
         this._injectStyles();
-        const visCols = this._getVisibleCols('mepex_clients_cols', this._clientsColumns);
+        const visCols = this._getVisibleCols('mepex_clients_cols_v2', this._clientsColumns);
 
         // Build unique rubros for filter
         const rubrosSet = new Set();
@@ -1206,7 +1412,7 @@ const Modules = {
         }
 
         // Inject column panel
-        this._renderColsPanel('mepex_clients_cols', this._clientsColumns, visCols);
+        this._renderColsPanel('mepex_clients_cols_v2', this._clientsColumns, visCols);
 
         // Sort
         let sorted = clients;
