@@ -77,6 +77,47 @@ const Modules = {
         return this._currentApiType || 'default';
     },
 
+    // ─── Lock state ───
+    _isLocked: false,
+
+    _getLockState() {
+        try {
+            return localStorage.getItem('mepex_table_locked') === 'true';
+        } catch (e) { return false; }
+    },
+
+    _setLockState(locked) {
+        this._isLocked = locked;
+        try { localStorage.setItem('mepex_table_locked', locked ? 'true' : 'false'); } catch (e) { /* */ }
+    },
+
+    // ─── Column order persistence ───
+    _getColOrder(storageKey, allCols) {
+        try {
+            const saved = localStorage.getItem(storageKey + '_order');
+            if (saved) {
+                const order = JSON.parse(saved);
+                // Validate: only keep IDs that exist in allCols
+                const validIds = allCols.map(c => c.id);
+                const filtered = order.filter(id => validIds.includes(id));
+                // Append any new cols not in saved order
+                validIds.forEach(id => { if (!filtered.includes(id)) filtered.push(id); });
+                return filtered;
+            }
+        } catch (e) { /* ignore */ }
+        return allCols.map(c => c.id);
+    },
+
+    _saveColOrder(storageKey, orderIds) {
+        try { localStorage.setItem(storageKey + '_order', JSON.stringify(orderIds)); } catch (e) { /* */ }
+    },
+
+    _getOrderedVisibleCols(storageKey, allCols) {
+        const visCols = this._getVisibleCols(storageKey, allCols);
+        const order = this._getColOrder(storageKey, allCols);
+        return order.filter(id => visCols.includes(id));
+    },
+
     render(moduleId) {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
@@ -231,6 +272,10 @@ const Modules = {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                                 Columnas
                             </button>
+                            <button class="btn btn-ghost btn-sm btn-lock ${this._isLocked ? 'is-locked' : ''}" id="btnToggleLock" title="${this._isLocked ? 'Desbloquear edición' : 'Bloquear edición'}">
+                                <svg class="lock-icon-locked" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                <svg class="lock-icon-unlocked" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                            </button>
                         </div>
                         <span class="api-record-count" id="apiRecordCount">Cargando…</span>
                     </div>
@@ -351,8 +396,48 @@ const Modules = {
             });
         }
 
+        // Initialize lock state
+        this._isLocked = this._getLockState();
+        this._applyLockUI();
+
+        // Attach lock button
+        const btnLock = document.getElementById('btnToggleLock');
+        if (btnLock) {
+            btnLock.addEventListener('click', () => {
+                this._isLocked = !this._isLocked;
+                this._setLockState(this._isLocked);
+                this._applyLockUI();
+                Toast.info(this._isLocked ? 'Tabla bloqueada' : 'Tabla desbloqueada');
+            });
+        }
+
         // Attach views tab listeners
         this._attachViewsListeners(apiType, mod, sectionId);
+    },
+
+    // ─── LOCK UI APPLICATION ───
+    _applyLockUI() {
+        const container = document.querySelector('.section-content');
+        if (!container) return;
+
+        const lockBtn = document.getElementById('btnToggleLock');
+        if (lockBtn) {
+            lockBtn.classList.toggle('is-locked', this._isLocked);
+            lockBtn.title = this._isLocked ? 'Desbloquear edición' : 'Bloquear edición';
+        }
+
+        // Toggle locked class on the table container for CSS-based hiding
+        const dataContainer = document.getElementById('apiDataContainer');
+        if (dataContainer) dataContainer.classList.toggle('table-locked', this._isLocked);
+
+        // Hide/show "Nuevo" button
+        const btnNew = document.getElementById('btnNewRecord');
+        if (btnNew) btnNew.style.display = this._isLocked ? 'none' : '';
+
+        // Disable/enable draggable on headers
+        document.querySelectorAll('th.sortable[draggable]').forEach(th => {
+            th.draggable = !this._isLocked;
+        });
     },
 
     // ─── VIEWS TABS EVENT LISTENERS ───
@@ -867,6 +952,62 @@ const Modules = {
         });
     },
 
+    // ─── COLUMN DRAG & DROP ───
+    _attachColDragListeners(storageKey, allCols) {
+        if (this._isLocked) return;
+
+        let dragColId = null;
+
+        document.querySelectorAll('th.sortable[data-sort-col]').forEach(th => {
+            th.draggable = true;
+
+            th.addEventListener('dragstart', (e) => {
+                if (this._isLocked) { e.preventDefault(); return; }
+                dragColId = th.dataset.sortCol;
+                th.classList.add('th-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', dragColId);
+            });
+
+            th.addEventListener('dragend', () => {
+                th.classList.remove('th-dragging');
+                document.querySelectorAll('th.drag-over').forEach(el => el.classList.remove('drag-over'));
+                dragColId = null;
+            });
+
+            th.addEventListener('dragover', (e) => {
+                if (!dragColId || dragColId === th.dataset.sortCol || this._isLocked) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                th.classList.add('drag-over');
+            });
+
+            th.addEventListener('dragleave', () => {
+                th.classList.remove('drag-over');
+            });
+
+            th.addEventListener('drop', (e) => {
+                e.preventDefault();
+                th.classList.remove('drag-over');
+                const targetColId = th.dataset.sortCol;
+                if (!dragColId || dragColId === targetColId) return;
+
+                // Swap in the order array
+                const order = this._getColOrder(storageKey, allCols);
+                const fromIdx = order.indexOf(dragColId);
+                const toIdx = order.indexOf(targetColId);
+                if (fromIdx === -1 || toIdx === -1) return;
+
+                order.splice(fromIdx, 1);
+                order.splice(toIdx, 0, dragColId);
+                this._saveColOrder(storageKey, order);
+
+                // Re-render table
+                this._applyAllFilters();
+            });
+        });
+    },
+
     // ═══════════════════════════════════════════
     //  SORTING HELPER
     // ═══════════════════════════════════════════
@@ -1104,7 +1245,7 @@ const Modules = {
 
     _renderEventsTable(events) {
         this._injectStyles();
-        const visCols = this._getVisibleCols('mepex_events_cols_v2', this._eventsColumns);
+        const visCols = this._getOrderedVisibleCols('mepex_events_cols_v2', this._eventsColumns);
 
         // Inject filter chips
         const filtersEl = document.getElementById('apiToolbarFilters');
@@ -1128,14 +1269,15 @@ const Modules = {
             sorted = this._sortData(events, this._sortCol, this._sortDir, 'events');
         }
 
-        const thHtml = this._eventsColumns
-            .filter(c => visCols.includes(c.id))
-            .map(c => `<th class="sortable" data-sort-col="${c.id}">${c.header}${this._sortIndicator(c.id)}</th>`)
+        const orderedCols = visCols.map(id => this._eventsColumns.find(c => c.id === id)).filter(Boolean);
+
+        const thHtml = orderedCols
+            .map(c => `<th class="sortable" data-sort-col="${c.id}" draggable="${!this._isLocked}">${c.header}${this._sortIndicator(c.id)}</th>`)
             .join('');
 
         const rowsHtml = sorted.map(e => {
             const pri = this._calcPriority(e.eventStartDate);
-            const cells = this._eventsColumns.filter(c => visCols.includes(c.id)).map(c => {
+            const cells = orderedCols.map(c => {
                 switch (c.id) {
                     case 'nombre':
                         return `<td class="td-primary">${e.name || '—'}</td>`;
@@ -1169,13 +1311,18 @@ const Modules = {
                 }
             }).join('');
 
-            return `<tr class="api-table-row ${this._selectedRows.has(e.id) ? 'selected' : ''}" data-id="${e.id}">${this._renderRowCheckbox(e.id)}${cells}${this._renderRowActions(e.id)}</tr>`;
+            const cb = this._isLocked ? '' : this._renderRowCheckbox(e.id);
+            const act = this._isLocked ? '' : this._renderRowActions(e.id);
+            return `<tr class="api-table-row ${this._selectedRows.has(e.id) ? 'selected' : ''}" data-id="${e.id}">${cb}${cells}${act}</tr>`;
         }).join('');
+
+        const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
+        const headerAct = this._isLocked ? '' : '<th class="td-actions"></th>';
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${this._renderHeaderCheckbox(sorted)}${thHtml}<th class="td-actions"></th></tr></thead>
+                    <thead><tr>${headerCb}${thHtml}${headerAct}</tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -1217,7 +1364,10 @@ const Modules = {
         });
 
         // Selection + context menu
-        this._attachSelectionListeners(data, 'events');
+        if (!this._isLocked) this._attachSelectionListeners(data, 'events');
+
+        // Column drag & drop
+        this._attachColDragListeners('mepex_events_cols_v2', this._eventsColumns);
     },
 
     // ═══════════════════════════════════════════
@@ -1248,7 +1398,7 @@ const Modules = {
 
     _renderProjectsTable(projects) {
         this._injectStyles();
-        const visCols = this._getVisibleCols('mepex_projects_cols_v2', this._projectsColumns);
+        const visCols = this._getOrderedVisibleCols('mepex_projects_cols_v2', this._projectsColumns);
 
         // Inject filter chips + type dropdown
         const filtersEl = document.getElementById('apiToolbarFilters');
@@ -1276,14 +1426,15 @@ const Modules = {
             sorted = this._sortData(projects, this._sortCol, this._sortDir, 'projects');
         }
 
-        const thHtml = this._projectsColumns
-            .filter(c => visCols.includes(c.id))
-            .map(c => `<th class="sortable" data-sort-col="${c.id}">${c.header}${this._sortIndicator(c.id)}</th>`)
+        const orderedCols = visCols.map(id => this._projectsColumns.find(c => c.id === id)).filter(Boolean);
+
+        const thHtml = orderedCols
+            .map(c => `<th class="sortable" data-sort-col="${c.id}" draggable="${!this._isLocked}">${c.header}${this._sortIndicator(c.id)}</th>`)
             .join('');
 
         const rowsHtml = sorted.map(p => {
             const statusClass = this._projectStatusMap[p.status] || this._projectStatusClass(p.status);
-            const cells = this._projectsColumns.filter(c => visCols.includes(c.id)).map(c => {
+            const cells = orderedCols.map(c => {
                 switch (c.id) {
                     case 'numero':
                         return `<td class="td-number">${p.number || '—'}</td>`;
@@ -1294,7 +1445,7 @@ const Modules = {
                     case 'estado':
                         return `<td><span class="badge ${statusClass}">${p.status || '—'}</span></td>`;
                     case 'evento':
-                        return `<td>${p.eventId || '—'}</td>`;
+                        return `<td>${p.eventName || p.eventId || '—'}</td>`;
                     case 'cliente':
                         return `<td>${p.clientName || p.clientId || '—'}</td>`;
                     case 'responsable':
@@ -1308,13 +1459,18 @@ const Modules = {
                 }
             }).join('');
 
-            return `<tr class="api-table-row ${this._selectedRows.has(p.id) ? 'selected' : ''}" data-id="${p.id}">${this._renderRowCheckbox(p.id)}${cells}${this._renderRowActions(p.id)}</tr>`;
+            const cb = this._isLocked ? '' : this._renderRowCheckbox(p.id);
+            const act = this._isLocked ? '' : this._renderRowActions(p.id);
+            return `<tr class="api-table-row ${this._selectedRows.has(p.id) ? 'selected' : ''}" data-id="${p.id}">${cb}${cells}${act}</tr>`;
         }).join('');
+
+        const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
+        const headerAct = this._isLocked ? '' : '<th class="td-actions"></th>';
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${this._renderHeaderCheckbox(sorted)}${thHtml}<th class="td-actions"></th></tr></thead>
+                    <thead><tr>${headerCb}${thHtml}${headerAct}</tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -1366,7 +1522,10 @@ const Modules = {
         });
 
         // Selection + context menu
-        this._attachSelectionListeners(data, 'projects');
+        if (!this._isLocked) this._attachSelectionListeners(data, 'projects');
+
+        // Column drag & drop
+        this._attachColDragListeners('mepex_projects_cols_v2', this._projectsColumns);
     },
 
     // ═══════════════════════════════════════════
@@ -1383,7 +1542,7 @@ const Modules = {
 
     _renderClientsTable(clients) {
         this._injectStyles();
-        const visCols = this._getVisibleCols('mepex_clients_cols_v2', this._clientsColumns);
+        const visCols = this._getOrderedVisibleCols('mepex_clients_cols_v2', this._clientsColumns);
 
         // Build unique rubros for filter
         const rubrosSet = new Set();
@@ -1391,7 +1550,6 @@ const Modules = {
             const rubros = Array.isArray(c.rubro) ? c.rubro : [c.rubro || ''];
             rubros.forEach(r => { if (r) rubrosSet.add(r); });
         });
-        // Also check full dataset for rubros
         if (this._currentApiData && this._currentApiType === 'clients') {
             this._currentApiData.forEach(c => {
                 const rubros = Array.isArray(c.rubro) ? c.rubro : [c.rubro || ''];
@@ -1420,13 +1578,14 @@ const Modules = {
             sorted = this._sortData(clients, this._sortCol, this._sortDir, 'clients');
         }
 
-        const thHtml = this._clientsColumns
-            .filter(c => visCols.includes(c.id))
-            .map(c => `<th class="sortable" data-sort-col="${c.id}">${c.header}${this._sortIndicator(c.id)}</th>`)
+        const orderedCols = visCols.map(id => this._clientsColumns.find(c => c.id === id)).filter(Boolean);
+
+        const thHtml = orderedCols
+            .map(c => `<th class="sortable" data-sort-col="${c.id}" draggable="${!this._isLocked}">${c.header}${this._sortIndicator(c.id)}</th>`)
             .join('');
 
         const rowsHtml = sorted.map(c => {
-            const cells = this._clientsColumns.filter(col => visCols.includes(col.id)).map(col => {
+            const cells = orderedCols.map(col => {
                 switch (col.id) {
                     case 'empresa':
                         return `<td class="td-primary">${c.name || c.razonSocial || '—'}</td>`;
@@ -1449,13 +1608,18 @@ const Modules = {
                 }
             }).join('');
 
-            return `<tr class="api-table-row ${this._selectedRows.has(c.id) ? 'selected' : ''}" data-id="${c.id}">${this._renderRowCheckbox(c.id)}${cells}${this._renderRowActions(c.id)}</tr>`;
+            const cb = this._isLocked ? '' : this._renderRowCheckbox(c.id);
+            const act = this._isLocked ? '' : this._renderRowActions(c.id);
+            return `<tr class="api-table-row ${this._selectedRows.has(c.id) ? 'selected' : ''}" data-id="${c.id}">${cb}${cells}${act}</tr>`;
         }).join('');
+
+        const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
+        const headerAct = this._isLocked ? '' : '<th class="td-actions"></th>';
 
         return `
             <div class="api-table-wrap">
                 <table class="api-table">
-                    <thead><tr>${this._renderHeaderCheckbox(sorted)}${thHtml}<th class="td-actions"></th></tr></thead>
+                    <thead><tr>${headerCb}${thHtml}${headerAct}</tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
             </div>
@@ -1498,7 +1662,10 @@ const Modules = {
         });
 
         // Selection + context menu
-        this._attachSelectionListeners(data, 'clients');
+        if (!this._isLocked) this._attachSelectionListeners(data, 'clients');
+
+        // Column drag & drop
+        this._attachColDragListeners('mepex_clients_cols_v2', this._clientsColumns);
     },
 
     // ─── STATUS BADGE HELPERS ───

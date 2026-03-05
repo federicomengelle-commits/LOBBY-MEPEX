@@ -2471,6 +2471,45 @@ body {
     text-align: left;
     white-space: nowrap;
     border-bottom: 1px solid var(--border);
+    transition: background 0.15s, box-shadow 0.15s;
+}
+
+/* Column drag & drop */
+.api-table th[draggable="true"] {
+    cursor: grab;
+}
+
+.api-table th[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.api-table th.th-dragging {
+    opacity: 0.4;
+    background: rgba(var(--primary-rgb), 0.08);
+}
+
+.api-table th.drag-over {
+    background: rgba(var(--primary-rgb), 0.12);
+    box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+/* Lock button */
+.btn-lock {
+    position: relative;
+    padding: 6px 8px !important;
+    min-width: unset;
+}
+
+.btn-lock .lock-icon-locked { display: none; }
+.btn-lock .lock-icon-unlocked { display: block; }
+
+.btn-lock.is-locked .lock-icon-locked { display: block; }
+.btn-lock.is-locked .lock-icon-unlocked { display: none; }
+
+.btn-lock.is-locked {
+    color: var(--color-warning) !important;
+    border-color: rgba(242, 141, 21, 0.3);
+    background: rgba(242, 141, 21, 0.08);
 }
 
 .api-table td {
