@@ -7,7 +7,7 @@
    ============================================= */
 
 const App = {
-    sidebarOpen: true,
+    sidebarState: 'open', // 'open' | 'collapsed' | 'hidden'
     userDropdownOpen: false,
     searchOpen: false,
     _searchDebounce: null,
@@ -130,39 +130,63 @@ const App = {
         const actions = Data.getQuickActionsForRole(user.role);
         const categories = Data.getCategoriesForRole(user.role);
         const currentHash = Router.getHash();
-        const collapsed = this._getSidebarCollapsed();
+        const catCollapsed = this._getSidebarCollapsed();
 
         return `
-            <aside class="app-sidebar ${this.sidebarOpen ? 'open' : ''}" id="appSidebar">
-                <div class="sidebar-section">
-                    <div class="sidebar-section-label">ACCIONES RÁPIDAS</div>
-                    <div class="sidebar-quick-actions">
-                        ${actions.map(a => `
-                            <button class="sidebar-action-btn" data-action-type="${a.action}" data-action-url="${a.url || ''}" data-action-msg="${a.message || ''}" data-action-entity="${a.entity || ''}" title="${a.label}">
-                                <span class="sidebar-action-icon">${a.icon}</span>
-                                <span class="sidebar-action-text">${a.label}</span>
-                            </button>
-                        `).join('')}
+            <aside class="app-sidebar ${this.sidebarState}" id="appSidebar">
+                <!-- Full sidebar content -->
+                <div class="sidebar-full">
+                    <div class="sidebar-section">
+                        <div class="sidebar-section-label">ACCIONES RÁPIDAS</div>
+                        <div class="sidebar-quick-actions">
+                            ${actions.map(a => `
+                                <button class="sidebar-action-btn" data-action-type="${a.action}" data-action-url="${a.url || ''}" data-action-msg="${a.message || ''}" data-action-entity="${a.entity || ''}" title="${a.label}">
+                                    <span class="sidebar-action-icon">${a.icon}</span>
+                                    <span class="sidebar-action-text">${a.label}</span>
+                                </button>
+                            `).join('')}
+                        </div>
                     </div>
+
+                    <div class="sidebar-divider"></div>
+
+                    <nav class="sidebar-categories" id="sidebarCategories">
+                        ${categories.map(cat => {
+                            const isOpen = !catCollapsed.includes(cat.id);
+                            const catModules = this._getCategoryModules(cat);
+                            const hasActive = catModules.some(m => m.id === currentHash);
+                            return `
+                            <div class="sidebar-cat" data-cat-id="${cat.id}">
+                                <button class="sidebar-cat-header${isOpen || hasActive ? ' open' : ''}" data-cat-id="${cat.id}" style="--cat-color: ${cat.color}">
+                                    <span class="sidebar-cat-icon">${cat.icon}</span>
+                                    <span class="sidebar-cat-name">${cat.name}</span>
+                                    <svg class="sidebar-cat-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                </button>
+                                <div class="sidebar-cat-modules${isOpen || hasActive ? ' open' : ''}">
+                                    ${catModules.map(m => `
+                                        <a href="#${m.id}" class="sidebar-nav-link${currentHash === m.id ? ' active' : ''}" data-route="${m.id}" style="--cat-color: ${cat.color}">
+                                            <span class="sidebar-nav-icon">${m.icon}</span>
+                                            <span>${m.shortName}</span>
+                                        </a>
+                                    `).join('')}
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </nav>
                 </div>
 
-                <div class="sidebar-divider"></div>
-
-                <nav class="sidebar-categories" id="sidebarCategories">
+                <!-- Collapsed icon strip -->
+                <div class="sidebar-strip">
                     ${categories.map(cat => {
-                        const isOpen = !collapsed.includes(cat.id);
                         const catModules = this._getCategoryModules(cat);
                         const hasActive = catModules.some(m => m.id === currentHash);
                         return `
-                        <div class="sidebar-cat" data-cat-id="${cat.id}">
-                            <button class="sidebar-cat-header${isOpen || hasActive ? ' open' : ''}" data-cat-id="${cat.id}" style="--cat-color: ${cat.color}">
-                                <span class="sidebar-cat-icon">${cat.icon}</span>
-                                <span class="sidebar-cat-name">${cat.name}</span>
-                                <svg class="sidebar-cat-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                            </button>
-                            <div class="sidebar-cat-modules${isOpen || hasActive ? ' open' : ''}">
+                        <div class="sidebar-strip-item${hasActive ? ' active' : ''}" style="--cat-color: ${cat.color}" title="${cat.name}">
+                            <span class="sidebar-strip-icon">${cat.icon}</span>
+                            <div class="sidebar-strip-flyout">
+                                <div class="sidebar-strip-flyout-label">${cat.name}</div>
                                 ${catModules.map(m => `
-                                    <a href="#${m.id}" class="sidebar-nav-link${currentHash === m.id ? ' active' : ''}" data-route="${m.id}" style="--cat-color: ${cat.color}">
+                                    <a href="#${m.id}" class="sidebar-strip-flyout-link${currentHash === m.id ? ' active' : ''}" data-route="${m.id}">
                                         <span class="sidebar-nav-icon">${m.icon}</span>
                                         <span>${m.shortName}</span>
                                     </a>
@@ -170,7 +194,7 @@ const App = {
                             </div>
                         </div>`;
                     }).join('')}
-                </nav>
+                </div>
             </aside>
         `;
     },
@@ -289,11 +313,13 @@ const App = {
         }
     },
 
-    // ─── SIDEBAR TOGGLE ───
+    // ─── SIDEBAR TOGGLE (cycles: open → collapsed → hidden → open) ───
     toggleSidebar() {
-        this.sidebarOpen = !this.sidebarOpen;
         const sidebar = document.getElementById('appSidebar');
-        if (sidebar) sidebar.classList.toggle('open', this.sidebarOpen);
+        if (!sidebar) return;
+        const cycle = { open: 'collapsed', collapsed: 'hidden', hidden: 'open' };
+        this.sidebarState = cycle[this.sidebarState] || 'open';
+        sidebar.className = 'app-sidebar ' + this.sidebarState;
     },
 
     // ─── USER DROPDOWN ───
