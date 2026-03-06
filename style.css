@@ -2778,6 +2778,14 @@ body {
         padding: 8px 12px;
         font-size: 0.78rem;
     }
+
+    .module-content {
+        padding: 12px;
+    }
+
+    .section-content {
+        padding: 0;
+    }
 }
 
 @media (max-width: 1024px) {

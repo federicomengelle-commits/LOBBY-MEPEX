@@ -924,7 +924,8 @@ const Modules = {
                 display: none;
                 position: fixed;
                 inset: 0;
-                background: rgba(0,0,0,0.4);
+                background: rgba(0,0,0,0.5);
+                backdrop-filter: blur(2px);
                 z-index: 200;
             }
             .ficha-overlay.active { display: block; }
@@ -932,7 +933,7 @@ const Modules = {
                 position: fixed;
                 top: 0;
                 right: 0;
-                width: 480px;
+                width: 500px;
                 max-width: 100vw;
                 height: 100vh;
                 background: var(--bg-card, #1a1d23);
@@ -943,33 +944,82 @@ const Modules = {
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
+                box-shadow: -8px 0 32px rgba(0,0,0,0.4);
             }
             .ficha-panel.open { transform: translateX(0); }
             .ficha-panel-header {
                 display: flex;
                 align-items: flex-start;
                 justify-content: space-between;
-                padding: 24px 20px 16px;
-                border-bottom: 1px solid var(--border, #2a2d35);
+                padding: 20px 20px 16px;
                 flex-shrink: 0;
             }
             .ficha-panel-title {
                 display: flex;
+                align-items: flex-start;
+                gap: 12px;
+            }
+            .ficha-panel-icon-badge {
+                width: 40px;
+                height: 40px;
+                border-radius: 10px;
+                display: flex;
                 align-items: center;
-                gap: 10px;
+                justify-content: center;
+                font-size: 1.2rem;
+                flex-shrink: 0;
+            }
+            .ficha-panel-title-text {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
             }
             .ficha-panel-name {
-                font-size: 1.2rem;
+                font-size: 1.15rem;
                 font-weight: 700;
                 color: var(--text-primary, #fff);
                 margin: 0;
+                line-height: 1.3;
             }
+            .ficha-panel-status { display: flex; align-items: center; gap: 6px; }
             .ficha-panel-header-actions {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 4px;
                 flex-shrink: 0;
             }
+            /* ─── Ficha Tabs ─── */
+            .ficha-tabs {
+                display: flex;
+                align-items: center;
+                gap: 0;
+                padding: 0 20px;
+                border-bottom: 1px solid var(--border, #2a2d35);
+                flex-shrink: 0;
+            }
+            .ficha-tab {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 10px 14px;
+                font-size: 0.8rem;
+                font-family: inherit;
+                font-weight: 500;
+                color: var(--text-muted, #888);
+                background: transparent;
+                border: none;
+                border-bottom: 2px solid transparent;
+                cursor: pointer;
+                transition: all 0.15s;
+                margin-bottom: -1px;
+            }
+            .ficha-tab:hover { color: var(--text-primary, #fff); }
+            .ficha-tab.active {
+                color: var(--primary, #00A9C1);
+                border-bottom-color: var(--primary, #00A9C1);
+                font-weight: 600;
+            }
+            .ficha-tab-icon { font-size: 0.85rem; }
             .ficha-panel-body {
                 flex: 1;
                 overflow-y: auto;
@@ -1003,7 +1053,7 @@ const Modules = {
             .ficha-row-label {
                 font-size: 0.78rem;
                 color: var(--text-muted, #888);
-                min-width: 140px;
+                min-width: 130px;
                 flex-shrink: 0;
             }
             .ficha-row-value {
@@ -1021,8 +1071,9 @@ const Modules = {
                 font-size: 0.8rem;
                 color: var(--text-primary, #fff);
                 cursor: pointer;
+                transition: background 0.15s;
             }
-            .ficha-chip:hover { background: var(--primary, #FF7200); color: #fff; }
+            .ficha-chip:hover { background: var(--primary, #00A9C1); color: #fff; }
             .ficha-notes {
                 width: 100%;
                 min-height: 80px;
@@ -1035,8 +1086,63 @@ const Modules = {
                 resize: none;
                 font-family: inherit;
             }
+            .ficha-empty-links {
+                padding: 12px;
+                text-align: center;
+                color: var(--text-muted, #666);
+                font-size: 0.8rem;
+                font-style: italic;
+                background: var(--bg-hover, #22252c);
+                border-radius: 8px;
+            }
+            /* ─── Ficha Timeline (events dates) ─── */
+            .ficha-timeline {
+                display: flex;
+                flex-direction: column;
+                gap: 0;
+                position: relative;
+                padding-left: 20px;
+            }
+            .ficha-timeline::before {
+                content: '';
+                position: absolute;
+                left: 5px;
+                top: 8px;
+                bottom: 8px;
+                width: 2px;
+                background: var(--border, #2a2d35);
+                border-radius: 1px;
+            }
+            .ficha-timeline-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 0;
+                position: relative;
+            }
+            .ficha-timeline-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                flex-shrink: 0;
+                position: absolute;
+                left: -20px;
+                border: 2px solid var(--bg-card, #1a1d23);
+            }
+            .ficha-timeline-label {
+                font-size: 0.78rem;
+                color: var(--text-muted, #888);
+                min-width: 110px;
+            }
+            .ficha-timeline-value {
+                font-size: 0.85rem;
+                color: var(--text-primary, #fff);
+                font-weight: 500;
+            }
             @media (max-width: 600px) {
                 .ficha-panel { width: 100vw; }
+                .ficha-tabs { padding: 0 12px; }
+                .ficha-panel-body { padding: 16px; }
             }
         `;
         document.head.appendChild(style);
@@ -1896,12 +2002,153 @@ const Modules = {
     },
 
     // ═══════════════════════════════════════════
-    //  FICHA PANEL — PROJECT DETAIL SLIDE-IN
+    //  FICHA PANEL — UNIFIED DETAIL SLIDE-IN
     // ═══════════════════════════════════════════
-    _openFichaProyecto(p) {
-        this._injectStyles();
 
-        // Ensure overlay + panel exist in #app
+    _fichaConfigs: {
+        projects: {
+            icon: '🏗️',
+            color: '#FF7200',
+            getStatus: (p) => ({ label: p.status || '—', class: '' }),
+            tabs: [
+                { id: 'info', label: 'Información', icon: '📋' },
+                { id: 'links', label: 'Vínculos', icon: '🔗' },
+                { id: 'notes', label: 'Notas', icon: '📝' },
+            ],
+            renderTab(item, tabId, v) {
+                if (tabId === 'info') {
+                    const formatArea = (a) => { if (!a) return '—'; const n = parseFloat(a); return isNaN(n) ? v(a) : n.toLocaleString('es-AR', {maximumFractionDigits:1}) + 'm²'; };
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Proyecto</div>
+                            <div class="ficha-row"><span class="ficha-row-label">N° Proyecto</span><span class="ficha-row-value">${item.number ? '#' + item.number : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Tipo</span><span class="ficha-row-value">${v(item.type)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">N° Lote</span><span class="ficha-row-value">${v(item.lote)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Área</span><span class="ficha-row-value">${formatArea(item.area)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Dimensiones</span><span class="ficha-row-value">${v(item.dimensions)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Responsable</span><span class="ficha-row-value">${item.responsible ? '<span class="ficha-chip">' + item.responsible + '</span>' : '—'}</span></div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Fechas</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Solicitud</span><span class="ficha-row-value">${item.requestDate ? API.formatDate(item.requestDate) : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Último mov.</span><span class="ficha-row-value">${(item.updatedAt || item.lastModified) ? API.formatDate(item.updatedAt || item.lastModified) : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Teléfono</span><span class="ficha-row-value">${v(item.phone)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Modificaciones</span><span class="ficha-row-value">${v(item.modifications)}</span></div>
+                        </div>`;
+                }
+                if (tabId === 'links') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Entidades relacionadas</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Cliente</span><span class="ficha-row-value">${(item.clientName || item.clientId) ? '<span class="ficha-chip" data-link-type="cliente" data-link-id="' + (item.clientId||'') + '">👤 ' + (item.clientName||item.clientId) + '</span>' : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Evento</span><span class="ficha-row-value">${(item.eventName || item.eventId) ? '<span class="ficha-chip" data-link-type="evento" data-link-id="' + (item.eventId||'') + '">🎪 ' + (item.eventName||item.eventId) + '</span>' : '—'}</span></div>
+                        </div>`;
+                }
+                if (tabId === 'notes') {
+                    return `<div class="ficha-section"><div class="ficha-section-title">Notas / Comentarios</div><textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea></div>`;
+                }
+                return '';
+            }
+        },
+        clients: {
+            icon: '🏢',
+            color: '#00A9C1',
+            getStatus: () => null,
+            tabs: [
+                { id: 'info', label: 'Información', icon: '📋' },
+                { id: 'links', label: 'Vínculos', icon: '🔗' },
+                { id: 'notes', label: 'Notas', icon: '📝' },
+            ],
+            renderTab(item, tabId, v) {
+                if (tabId === 'info') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Empresa</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.name)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Razón Social</span><span class="ficha-row-value">${v(item.razonSocial)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">CUIT</span><span class="ficha-row-value">${item.cuit ? API.formatCUIT(item.cuit) : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Rubro</span><span class="ficha-row-value">${v(item.rubro)}</span></div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Contacto principal</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.contactName)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Cargo</span><span class="ficha-row-value">${v(item.contactRole)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Teléfono</span><span class="ficha-row-value">${item.phone ? '<a href="tel:' + item.phone + '" class="ficha-link">' + item.phone + '</a>' : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Email</span><span class="ficha-row-value">${item.email ? '<a href="mailto:' + item.email + '" class="ficha-link">' + item.email + '</a>' : '—'}</span></div>
+                        </div>`;
+                }
+                if (tabId === 'links') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Proyectos asociados</div>
+                            <div class="ficha-empty-links">Los proyectos vinculados a este cliente aparecerán aquí.</div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Eventos asociados</div>
+                            <div class="ficha-empty-links">Los eventos vinculados a este cliente aparecerán aquí.</div>
+                        </div>`;
+                }
+                if (tabId === 'notes') {
+                    return `<div class="ficha-section"><div class="ficha-section-title">Notas / Comentarios</div><textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea></div>`;
+                }
+                return '';
+            }
+        },
+        events: {
+            icon: '📅',
+            color: '#00CC88',
+            getStatus: (e) => {
+                if (!e.status) return null;
+                const cls = e.status === 'Finalizado' ? 'badge-success' : e.status === 'En proceso' ? 'badge-accent' : 'badge-ghost';
+                return { label: e.status, class: cls };
+            },
+            tabs: [
+                { id: 'info', label: 'Información', icon: '📋' },
+                { id: 'dates', label: 'Fechas', icon: '📅' },
+                { id: 'notes', label: 'Notas', icon: '📝' },
+            ],
+            renderTab(item, tabId, v) {
+                if (tabId === 'info') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Evento</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.name)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Lugar / Venue</span><span class="ficha-row-value">${v(item.venue)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Prioridad</span><span class="ficha-row-value">${v(item.priority)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Stands</span><span class="ficha-row-value">${v(item.stands)}</span></div>
+                        </div>`;
+                }
+                if (tabId === 'dates') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Cronograma</div>
+                            <div class="ficha-timeline">
+                                <div class="ficha-timeline-item"><span class="ficha-timeline-dot" style="background:#F28D15"></span><span class="ficha-timeline-label">Inicio armado</span><span class="ficha-timeline-value">${API.formatDate(item.setupDate)}</span></div>
+                                <div class="ficha-timeline-item"><span class="ficha-timeline-dot" style="background:#F28D15"></span><span class="ficha-timeline-label">Fin armado</span><span class="ficha-timeline-value">${API.formatDate(item.setupEndDate)}</span></div>
+                                <div class="ficha-timeline-item"><span class="ficha-timeline-dot" style="background:#00A9C1"></span><span class="ficha-timeline-label">Inicio evento</span><span class="ficha-timeline-value">${API.formatDate(item.eventStartDate)}</span></div>
+                                <div class="ficha-timeline-item"><span class="ficha-timeline-dot" style="background:#00A9C1"></span><span class="ficha-timeline-label">Fin evento</span><span class="ficha-timeline-value">${API.formatDate(item.eventEndDate)}</span></div>
+                                <div class="ficha-timeline-item"><span class="ficha-timeline-dot" style="background:#888"></span><span class="ficha-timeline-label">Desarme</span><span class="ficha-timeline-value">${API.formatDate(item.teardownDate)}</span></div>
+                            </div>
+                        </div>`;
+                }
+                if (tabId === 'notes') {
+                    return `<div class="ficha-section"><div class="ficha-section-title">Notas / Comentarios</div><textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea></div>`;
+                }
+                return '';
+            }
+        }
+    },
+
+    _openFichaByType(item, type) {
+        this._openFicha(item, type);
+    },
+
+    _openFicha(item, type) {
+        this._injectStyles();
+        const config = this._fichaConfigs[type];
+        if (!config) return;
+
+        // Ensure overlay + panel exist
         let overlay = document.getElementById('fichaOverlay');
         let panel = document.getElementById('fichaPanel');
         const app = document.getElementById('app');
@@ -1919,32 +2166,21 @@ const Modules = {
             app.appendChild(panel);
         }
 
-        // Safe value helper
         const v = (val) => (val != null && val !== '') ? val : '—';
-        const statusClass = this._projectStatusMap[p.status] || this._projectStatusClass(p.status);
-
-        // Format area: "40,5m²"
-        const formatArea = (area) => {
-            if (!area) return '—';
-            const num = parseFloat(area);
-            if (isNaN(num)) return v(area);
-            return num.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + 'm²';
-        };
-
-        // Format dimensions: "9,00 × 4,50m"
-        const formatDims = (dims) => {
-            if (!dims) return '—';
-            return dims;
-        };
+        const status = config.getStatus(item);
+        const statusBadge = status ? `<span class="badge ${status.class || this._projectStatusClass(status.label)}">${v(status.label)}</span>` : '';
+        const firstTab = config.tabs[0].id;
 
         panel.innerHTML = `
             <div class="ficha-panel-header">
                 <div class="ficha-panel-title">
-                    <span class="ficha-panel-icon">🏗️</span>
-                    <h2 class="ficha-panel-name">${v(p.name)}</h2>
+                    <span class="ficha-panel-icon-badge" style="background:${config.color}20; color:${config.color}">${config.icon}</span>
+                    <div class="ficha-panel-title-text">
+                        <h2 class="ficha-panel-name">${v(item.name)}</h2>
+                        ${statusBadge ? `<div class="ficha-panel-status">${statusBadge}</div>` : ''}
+                    </div>
                 </div>
                 <div class="ficha-panel-header-actions">
-                    <span class="badge ${statusClass}">${v(p.status)}</span>
                     <button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                     </button>
@@ -1954,310 +2190,48 @@ const Modules = {
                     <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
                 </div>
             </div>
-            <div class="ficha-panel-body">
-                <!-- Sección: Información -->
-                <div class="ficha-section">
-                    <div class="ficha-section-title">Información</div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">N° Proyecto</span>
-                        <span class="ficha-row-value">${p.number ? '#' + p.number : '—'}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Estado</span>
-                        <span class="ficha-row-value"><span class="badge ${statusClass}">${v(p.status)}</span></span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Tipo</span>
-                        <span class="ficha-row-value">${v(p.type)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Fecha de solicitud</span>
-                        <span class="ficha-row-value">${p.requestDate ? API.formatDate(p.requestDate) : '—'}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Fecha último mov.</span>
-                        <span class="ficha-row-value">${(p.updatedAt || p.lastModified) ? API.formatDate(p.updatedAt || p.lastModified) : '—'}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">N° Lote</span>
-                        <span class="ficha-row-value">${v(p.lote)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Área</span>
-                        <span class="ficha-row-value">${formatArea(p.area)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Dimensiones</span>
-                        <span class="ficha-row-value">${formatDims(p.dimensions)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Responsable</span>
-                        <span class="ficha-row-value">${p.responsible ? '<span class="ficha-chip">' + p.responsible + '</span>' : '—'}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Teléfono contacto</span>
-                        <span class="ficha-row-value">${v(p.phone)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">N° modificaciones</span>
-                        <span class="ficha-row-value">${v(p.modifications)}</span>
-                    </div>
-                </div>
-
-                <!-- Sección: Vínculos -->
-                <div class="ficha-section">
-                    <div class="ficha-section-title">Vínculos</div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Cliente</span>
-                        <span class="ficha-row-value">${(p.clientName || p.clientId) ? '<span class="ficha-chip" data-link-type="cliente" data-link-id="' + (p.clientId || '') + '">👤 ' + (p.clientName || p.clientId) + '</span>' : '—'}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Evento</span>
-                        <span class="ficha-row-value">${(p.eventName || p.eventId) ? '<span class="ficha-chip" data-link-type="evento" data-link-id="' + (p.eventId || '') + '">🎪 ' + (p.eventName || p.eventId) + '</span>' : '—'}</span>
-                    </div>
-                </div>
-
-                <!-- Sección: Notas -->
-                <div class="ficha-section">
-                    <div class="ficha-section-title">Notas / Comentarios</div>
-                    <textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea>
-                </div>
+            <div class="ficha-tabs">
+                ${config.tabs.map((tab, i) => `
+                    <button class="ficha-tab ${i === 0 ? 'active' : ''}" data-ficha-tab="${tab.id}">
+                        <span class="ficha-tab-icon">${tab.icon}</span>
+                        <span>${tab.label}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <div class="ficha-panel-body" id="fichaTabContent">
+                ${config.renderTab(item, firstTab, v)}
             </div>
         `;
 
-        // Open with animation (rAF to ensure DOM is ready)
+        // Open animation
         requestAnimationFrame(() => {
             overlay.classList.add('active');
             panel.classList.add('open');
         });
 
-        // Close listeners
-        const cerrarBtn = document.getElementById('fichaCerrar');
-        if (cerrarBtn) cerrarBtn.addEventListener('click', () => this._closeFicha());
-        overlay.addEventListener('click', () => this._closeFicha());
-
-        // Escape key
-        this._fichaEscHandler = (e) => {
-            if (e.key === 'Escape') this._closeFicha();
-        };
-        document.addEventListener('keydown', this._fichaEscHandler);
-
-        // Edit/Delete buttons
-        panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
-            this._closeFicha();
-            this._openEditModal(p, 'projects');
-        });
-        panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
-            this._deleteSingle(p, 'projects');
-        });
-
-        // Chip console.log (future navigation)
-        panel.querySelectorAll('.ficha-chip[data-link-type]').forEach(chip => {
-            chip.addEventListener('click', () => {
-                console.log(`Navegar a ${chip.dataset.linkType}:`, chip.dataset.linkId);
+        // Tab switching
+        panel.querySelectorAll('.ficha-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                panel.querySelectorAll('.ficha-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                const content = document.getElementById('fichaTabContent');
+                if (content) content.innerHTML = config.renderTab(item, tab.dataset.fichaTab, v);
             });
         });
-    },
 
-    _openFichaCliente(c) {
-        this._injectStyles();
-        let overlay = document.getElementById('fichaOverlay');
-        let panel = document.getElementById('fichaPanel');
-        const app = document.getElementById('app');
-
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.className = 'ficha-overlay';
-            overlay.id = 'fichaOverlay';
-            app.appendChild(overlay);
-        }
-        if (!panel) {
-            panel = document.createElement('div');
-            panel.className = 'ficha-panel';
-            panel.id = 'fichaPanel';
-            app.appendChild(panel);
-        }
-
-        const v = (val) => (val != null && val !== '') ? val : '—';
-
-        panel.innerHTML = `
-            <div class="ficha-panel-header">
-                <div class="ficha-panel-title">
-                    <span class="ficha-panel-icon">🏢</span>
-                    <h2 class="ficha-panel-name">${v(c.name)}</h2>
-                </div>
-                <div class="ficha-panel-header-actions">
-                    <button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                    </button>
-                    <button class="btn btn-ghost btn-sm ficha-delete-btn" id="fichaDelete" title="Eliminar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                    <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
-                </div>
-            </div>
-            <div class="ficha-panel-body">
-                <div class="ficha-section">
-                    <div class="ficha-section-title">Empresa</div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Nombre</span>
-                        <span class="ficha-row-value">${v(c.name)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Razón Social</span>
-                        <span class="ficha-row-value">${v(c.razonSocial)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">CUIT</span>
-                        <span class="ficha-row-value">${c.cuit ? API.formatCUIT(c.cuit) : '—'}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Rubro</span>
-                        <span class="ficha-row-value">${v(c.rubro)}</span>
-                    </div>
-                </div>
-                <div class="ficha-section">
-                    <div class="ficha-section-title">Contacto</div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Nombre</span>
-                        <span class="ficha-row-value">${v(c.contactName)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Cargo</span>
-                        <span class="ficha-row-value">${v(c.contactRole)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Teléfono</span>
-                        <span class="ficha-row-value">${c.phone ? '<a href="tel:' + c.phone + '" class="ficha-link">' + c.phone + '</a>' : '—'}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Email</span>
-                        <span class="ficha-row-value">${c.email ? '<a href="mailto:' + c.email + '" class="ficha-link">' + c.email + '</a>' : '—'}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        requestAnimationFrame(() => {
-            overlay.classList.add('active');
-            panel.classList.add('open');
-        });
-
+        // Close
         document.getElementById('fichaCerrar')?.addEventListener('click', () => this._closeFicha());
         overlay.addEventListener('click', () => this._closeFicha());
-        this._fichaEscHandler = (e) => { if (e.key === 'Escape') this._closeFicha(); };
+        this._fichaEscHandler = (ev) => { if (ev.key === 'Escape') this._closeFicha(); };
         document.addEventListener('keydown', this._fichaEscHandler);
 
+        // Edit/Delete
         panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
             this._closeFicha();
-            this._openEditModal(c, 'clients');
+            this._openEditModal(item, type);
         });
         panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
-            this._deleteSingle(c, 'clients');
-        });
-    },
-
-    _openFichaEvento(e) {
-        this._injectStyles();
-        let overlay = document.getElementById('fichaOverlay');
-        let panel = document.getElementById('fichaPanel');
-        const app = document.getElementById('app');
-
-        if (!overlay) {
-            overlay = document.createElement('div');
-            overlay.className = 'ficha-overlay';
-            overlay.id = 'fichaOverlay';
-            app.appendChild(overlay);
-        }
-        if (!panel) {
-            panel = document.createElement('div');
-            panel.className = 'ficha-panel';
-            panel.id = 'fichaPanel';
-            app.appendChild(panel);
-        }
-
-        const v = (val) => (val != null && val !== '') ? val : '—';
-        const statusClass = e.status === 'Finalizado' ? 'badge-success' : e.status === 'En proceso' ? 'badge-accent' : 'badge-ghost';
-
-        panel.innerHTML = `
-            <div class="ficha-panel-header">
-                <div class="ficha-panel-title">
-                    <span class="ficha-panel-icon">📅</span>
-                    <h2 class="ficha-panel-name">${v(e.name)}</h2>
-                </div>
-                <div class="ficha-panel-header-actions">
-                    <span class="badge ${statusClass}">${v(e.status)}</span>
-                    <button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                    </button>
-                    <button class="btn btn-ghost btn-sm ficha-delete-btn" id="fichaDelete" title="Eliminar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
-                    <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
-                </div>
-            </div>
-            <div class="ficha-panel-body">
-                <div class="ficha-section">
-                    <div class="ficha-section-title">Información</div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Evento</span>
-                        <span class="ficha-row-value">${v(e.name)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Lugar / Venue</span>
-                        <span class="ficha-row-value">${v(e.venue)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Estado</span>
-                        <span class="ficha-row-value"><span class="badge ${statusClass}">${v(e.status)}</span></span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Prioridad</span>
-                        <span class="ficha-row-value">${v(e.priority)}</span>
-                    </div>
-                </div>
-                <div class="ficha-section">
-                    <div class="ficha-section-title">Fechas</div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Inicio armado</span>
-                        <span class="ficha-row-value">${API.formatDate(e.setupDate)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Fin armado</span>
-                        <span class="ficha-row-value">${API.formatDate(e.setupEndDate)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Inicio evento</span>
-                        <span class="ficha-row-value">${API.formatDate(e.eventStartDate)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Fin evento</span>
-                        <span class="ficha-row-value">${API.formatDate(e.eventEndDate)}</span>
-                    </div>
-                    <div class="ficha-row">
-                        <span class="ficha-row-label">Desarme</span>
-                        <span class="ficha-row-value">${API.formatDate(e.teardownDate)}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        requestAnimationFrame(() => {
-            overlay.classList.add('active');
-            panel.classList.add('open');
-        });
-
-        document.getElementById('fichaCerrar')?.addEventListener('click', () => this._closeFicha());
-        overlay.addEventListener('click', () => this._closeFicha());
-        this._fichaEscHandler = (e2) => { if (e2.key === 'Escape') this._closeFicha(); };
-        document.addEventListener('keydown', this._fichaEscHandler);
-
-        panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
-            this._closeFicha();
-            this._openEditModal(e, 'events');
-        });
-        panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
-            this._deleteSingle(e, 'events');
+            this._deleteSingle(item, type);
         });
     },
 

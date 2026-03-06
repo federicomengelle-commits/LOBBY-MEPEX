@@ -136,7 +136,7 @@ const App = {
                     <div class="sidebar-section-label">ACCIONES RÁPIDAS</div>
                     <div class="sidebar-quick-actions">
                         ${actions.map(a => `
-                            <button class="sidebar-action-btn" data-action-type="${a.action}" data-action-url="${a.url || ''}" data-action-msg="${a.message || ''}" title="${a.label}">
+                            <button class="sidebar-action-btn" data-action-type="${a.action}" data-action-url="${a.url || ''}" data-action-msg="${a.message || ''}" data-action-entity="${a.entity || ''}" title="${a.label}">
                                 <span class="sidebar-action-icon">${a.icon}</span>
                                 <span class="sidebar-action-text">${a.label}</span>
                             </button>
@@ -199,6 +199,11 @@ const App = {
                 const type = btn.dataset.actionType;
                 if (type === 'external') {
                     window.open(btn.dataset.actionUrl, '_blank', 'noopener');
+                } else if (type === 'create') {
+                    const entity = btn.dataset.actionEntity;
+                    if (entity && typeof Modules._openCreateModal === 'function') {
+                        Modules._openCreateModal(entity);
+                    }
                 } else if (type === 'alert') {
                     this._showToast(btn.dataset.actionMsg);
                 }

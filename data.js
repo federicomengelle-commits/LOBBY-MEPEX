@@ -44,13 +44,13 @@ const Data = {
         admin: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
-            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'alert', message: 'Alta de cliente — próximamente' },
-            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'alert', message: 'Alta de proyecto — próximamente' },
+            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
+            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
         ],
         ventas: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
-            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'alert', message: 'Alta de cliente — próximamente' },
+            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
         ],
         operaciones: [
             { id: 'mis-montajes', icon: '📋', label: 'Mis montajes hoy', action: 'alert', message: 'Montajes de hoy — próximamente' },
