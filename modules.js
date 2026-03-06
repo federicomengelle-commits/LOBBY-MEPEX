@@ -44,13 +44,10 @@ const Modules = {
 
     _projectFormFields: [
         { key: 'name', label: 'Nombre del proyecto', type: 'text', required: true, placeholder: 'Ej: Stand Arcor' },
-        { key: 'lote', label: 'N° Lote', type: 'text', required: false, placeholder: 'Ej: 42' },
         { key: 'clientName', label: 'Cliente', type: 'text', required: false, placeholder: 'Nombre del cliente' },
         { key: 'eventName', label: 'Evento', type: 'text', required: false, placeholder: 'Nombre del evento' },
-        { key: 'type', label: 'Tipo', type: 'select', required: false, options: ['', 'Stand personalizado', 'Stand prediseñado', 'Alquiler', 'Congreso', 'Estructura', 'Exposición', 'Camarín'] },
-        { key: 'status', label: 'Estado', type: 'select', required: false, options: ['Ingreso', 'Para presupuestar', 'Aguarda respuesta', 'Aprobado', 'En proceso', 'Entregado a taller', 'Finalizado', 'Rechazado'] },
-        { key: 'responsible', label: 'Responsable', type: 'text', required: false, placeholder: 'Ej: Federico' },
-        { key: 'empresa', label: 'Empresa', type: 'text', required: false, placeholder: 'Ej: MEPEX' },
+        { key: 'status', label: 'Estado', type: 'select', required: false, options: ['Pendiente', 'Aguarda respuesta', 'Aprobado', 'En proceso', 'Entregado a taller', 'Finalizado', 'Rechazado'] },
+        { key: 'responsible', label: 'Responsable', type: 'text', required: false, placeholder: 'Ej: Melissa, Lelean' },
     ],
 
     _eventFormFields: [
@@ -1957,20 +1954,15 @@ const Modules = {
     //  PROJECTS TABLE — COMPLETE REPLACEMENT
     // ═══════════════════════════════════════════
     _projectsColumns: [
-        { id: 'numero', header: '#', defaultVisible: true },
         { id: 'nombre', header: 'Proyecto', defaultVisible: true },
         { id: 'cliente', header: 'Cliente', defaultVisible: true },
         { id: 'evento', header: 'Evento', defaultVisible: true },
-        { id: 'tipo', header: 'Tipo', defaultVisible: true },
         { id: 'estado', header: 'Estado', defaultVisible: true },
         { id: 'responsable', header: 'Responsable', defaultVisible: true },
-        { id: 'empresa', header: 'Empresa', defaultVisible: false },
-        { id: 'area', header: 'Área m²', defaultVisible: false },
     ],
 
     _projectStatusMap: {
-        'Ingreso': 'badge-ghost',
-        'Para presupuestar': 'badge-ghost',
+        'Pendiente': 'badge-ghost',
         'Aguarda respuesta': 'badge-accent',
         'Aprobado': 'badge-success',
         'En proceso': 'badge-accent',
@@ -1981,27 +1973,23 @@ const Modules = {
 
     _renderProjectsTable(projects) {
         this._injectStyles();
-        const visCols = this._getOrderedVisibleCols('mepex_projects_cols_v2', this._projectsColumns);
+        const visCols = this._getOrderedVisibleCols('mepex_projects_cols_v3', this._projectsColumns);
 
-        // Inject filter chips + type dropdown
+        // Inject filter chips
         const filtersEl = document.getElementById('apiToolbarFilters');
         if (filtersEl) {
-            const statuses = ['Todos', 'Ingreso', 'En proceso', 'Aprobado', 'Finalizado', 'Rechazado'];
-            const types = ['Todos', 'Stand personalizado', 'Stand prediseñado', 'Alquiler', 'Congreso', 'Estructura', 'Exposición', 'Camarín'];
+            const statuses = ['Todos', 'Pendiente', 'Aguarda respuesta', 'Aprobado', 'En proceso', 'Finalizado', 'Rechazado'];
             filtersEl.innerHTML = `
                 <div class="mepex-filter-chips">
                     ${statuses.map(s => `
                         <button class="mepex-filter-chip ${(!this._activeStatusFilter && s === 'Todos') || this._activeStatusFilter === s ? 'active' : ''}" data-status-filter="${s}">${s}</button>
                     `).join('')}
                 </div>
-                <select class="mepex-type-select" id="projectTypeFilter">
-                    ${types.map(t => `<option value="${t}" ${this._activeTypeFilter === t ? 'selected' : ''}>${t}</option>`).join('')}
-                </select>
             `;
         }
 
         // Inject column panel
-        this._renderColsPanel('mepex_projects_cols_v2', this._projectsColumns, visCols);
+        this._renderColsPanel('mepex_projects_cols_v3', this._projectsColumns, visCols);
 
         // Sort
         let sorted = projects;
@@ -2019,24 +2007,16 @@ const Modules = {
             const statusClass = this._projectStatusMap[p.status] || this._projectStatusClass(p.status);
             const cells = orderedCols.map(c => {
                 switch (c.id) {
-                    case 'numero':
-                        return `<td class="td-number">${p.number || '—'}</td>`;
                     case 'nombre':
                         return `<td class="td-primary">${p.name || '—'}</td>`;
-                    case 'tipo':
-                        return `<td>${p.type || '—'}</td>`;
                     case 'estado':
                         return `<td><span class="badge ${statusClass}">${p.status || '—'}</span></td>`;
                     case 'evento':
-                        return `<td>${p.eventName || p.eventId || '—'}</td>`;
+                        return `<td>${p.eventName || '—'}</td>`;
                     case 'cliente':
-                        return `<td>${p.clientName || p.clientId || '—'}</td>`;
+                        return `<td>${p.clientName || '—'}</td>`;
                     case 'responsable':
                         return `<td>${p.responsible || '—'}</td>`;
-                    case 'empresa':
-                        return `<td>${p.empresa || '—'}</td>`;
-                    case 'area':
-                        return `<td class="td-number">${p.area || '—'}</td>`;
                     default:
                         return `<td>—</td>`;
                 }
@@ -2106,7 +2086,7 @@ const Modules = {
         if (!this._isLocked) this._attachSelectionListeners(data, 'projects');
 
         // Column drag & drop
-        this._attachColDragListeners('mepex_projects_cols_v2', this._projectsColumns);
+        this._attachColDragListeners('mepex_projects_cols_v3', this._projectsColumns);
     },
 
     // ═══════════════════════════════════════════

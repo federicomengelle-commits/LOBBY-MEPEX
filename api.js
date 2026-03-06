@@ -96,19 +96,23 @@ const API = {
             this.isConnected = true;
 
             // Mapeo Supabase → formato interno
+            // NOTA: columnas rotadas en Supabase —
+            //   'estado' tiene nombre de cliente,
+            //   'responsable' tiene estado del proyecto,
+            //   'empresa' tiene nombre de evento,
+            //   'n_lote' tiene nombre del responsable.
             const mapped = (data || []).map(p => ({
                 id: p.id,
                 name: p.nombre || '',
-                number: p.n_lote || '',
-                lote: p.n_lote || '',
-                clientId: p.cliente_nombre || '',
-                clientName: p.cliente_nombre || '',
-                eventId: p.evento_nombre || '',
-                eventName: p.evento_nombre || '',
-                status: p.estado || '',
+                clientName: p.estado || '',
+                status: p.responsable || '',
+                eventName: p.empresa || '',
+                responsible: p.n_lote || '',
                 type: p.tipo || '',
-                responsible: p.responsable || '',
-                empresa: p.empresa || '',
+                // Campos originales mayormente vacíos en la DB
+                lote: '',
+                number: '',
+                empresa: '',
             }));
 
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -237,10 +241,11 @@ const API = {
 
             const [projects, clients, proveedores, events] = await Promise.all([
                 // Proyectos activos (excluyendo finalizado y rechazado)
+                // 'responsable' column has status (rotated columns)
                 supabaseClient
                     .from('proyectos_2026')
                     .select('*')
-                    .not('estado', 'in', '("finalizado","rechazado")'),
+                    .not('responsable', 'in', '("Finalizado","Rechazado")'),
                 // Clientes totales
                 supabaseClient
                     .from('clientes')
@@ -392,15 +397,15 @@ const API = {
     // ─── Projects CRUD ───────────────────────
     async createProject(data) {
         try {
+            // NOTA: columnas rotadas en Supabase
+            // estado→clientName, responsable→status, empresa→eventName, n_lote→responsible
             const payload = {
                 nombre: data.name || '',
-                n_lote: data.lote || '',
-                cliente_nombre: data.clientName || '',
-                evento_nombre: data.eventName || '',
-                estado: data.status || 'Ingreso',
+                estado: data.clientName || '',
+                responsable: data.status || 'Ingreso',
+                empresa: data.eventName || '',
+                n_lote: data.responsible || '',
                 tipo: data.type || '',
-                responsable: data.responsible || '',
-                empresa: data.empresa || '',
             };
             const { data: result, error } = await supabaseClient
                 .from('proyectos_2026').insert([payload]).select();
@@ -415,15 +420,14 @@ const API = {
 
     async updateProject(id, data) {
         try {
+            // NOTA: columnas rotadas en Supabase
             const payload = {};
             if (data.name !== undefined) payload.nombre = data.name;
-            if (data.lote !== undefined) payload.n_lote = data.lote;
-            if (data.clientName !== undefined) payload.cliente_nombre = data.clientName;
-            if (data.eventName !== undefined) payload.evento_nombre = data.eventName;
-            if (data.status !== undefined) payload.estado = data.status;
+            if (data.clientName !== undefined) payload.estado = data.clientName;
+            if (data.status !== undefined) payload.responsable = data.status;
+            if (data.eventName !== undefined) payload.empresa = data.eventName;
+            if (data.responsible !== undefined) payload.n_lote = data.responsible;
             if (data.type !== undefined) payload.tipo = data.type;
-            if (data.responsible !== undefined) payload.responsable = data.responsible;
-            if (data.empresa !== undefined) payload.empresa = data.empresa;
             const { data: result, error } = await supabaseClient
                 .from('proyectos_2026').update(payload).eq('id', id).select();
             if (error) throw error;
@@ -572,28 +576,27 @@ const API = {
     async getProjectsByClient(clientName) {
         if (!clientName) return [];
         try {
+            // 'estado' column has client names (rotated columns)
             const { data, error } = await supabaseClient
                 .from('proyectos_2026')
                 .select('*')
-                .ilike('cliente_nombre', `%${clientName}%`)
+                .ilike('estado', `%${clientName}%`)
                 .order('nombre', { ascending: true });
 
             if (error) throw error;
 
+            // Same rotated mapping as getProjects
             return (data || []).map(p => ({
                 id: p.id,
                 name: p.nombre || '',
-                number: p.n_lote || '',
-                lote: p.n_lote || '',
-                clientName: p.cliente_nombre || '',
-                eventName: p.evento_nombre || '',
-                status: p.estado || '',
+                clientName: p.estado || '',
+                status: p.responsable || '',
+                eventName: p.empresa || '',
+                responsible: p.n_lote || '',
                 type: p.tipo || '',
-                responsible: p.responsable || '',
-                empresa: p.empresa || '',
-                area: p.area || '',
-                dimensions: p.dimensiones || '',
-                requestDate: p.fecha_solicitud || null,
+                lote: '',
+                number: '',
+                empresa: '',
             }));
         } catch (e) {
             console.warn('[API] Error fetching projects by client:', e.message);
