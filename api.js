@@ -41,6 +41,10 @@ const API = {
             this.isConnected = true;
 
             // Mapeo Supabase → formato interno
+            // NOTA: en Supabase las columnas están rotadas —
+            //   columna 'rubro' tiene teléfonos,
+            //   columna 'correo_electronico' tiene rubros,
+            //   columna 'telefono' tiene emails.
             const mapped = (data || []).map(c => ({
                 id: c.id,
                 name: c.nombre_empresa || '',
@@ -48,9 +52,9 @@ const API = {
                 cuit: c.cuit || '',
                 contactName: c.contacto_empresa || '',
                 contactRole: c.cargo || '',
-                phone: c.telefono || '',
-                email: c.correo_electronico || '',
-                rubro: c.rubro || '',
+                phone: c.rubro || '',
+                email: c.telefono || '',
+                rubro: c.correo_electronico || '',
             }));
 
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -327,15 +331,17 @@ const API = {
     // ─── Clients CRUD ────────────────────────
     async createClient(data) {
         try {
+            // NOTA: columnas rotadas en Supabase
+            // rubro → phone, correo_electronico → rubro, telefono → email
             const payload = {
                 nombre_empresa: data.name || '',
                 razon_social: data.razonSocial || '',
                 cuit: data.cuit || '',
                 contacto_empresa: data.contactName || '',
                 cargo: data.contactRole || '',
-                telefono: data.phone || '',
-                correo_electronico: data.email || '',
-                rubro: data.rubro || '',
+                rubro: data.phone || '',
+                telefono: data.email || '',
+                correo_electronico: data.rubro || '',
             };
             const { data: result, error } = await supabaseClient
                 .from('clientes').insert([payload]).select();
@@ -350,15 +356,16 @@ const API = {
 
     async updateClient(id, data) {
         try {
+            // NOTA: columnas rotadas en Supabase
             const payload = {};
             if (data.name !== undefined) payload.nombre_empresa = data.name;
             if (data.razonSocial !== undefined) payload.razon_social = data.razonSocial;
             if (data.cuit !== undefined) payload.cuit = data.cuit;
             if (data.contactName !== undefined) payload.contacto_empresa = data.contactName;
             if (data.contactRole !== undefined) payload.cargo = data.contactRole;
-            if (data.phone !== undefined) payload.telefono = data.phone;
-            if (data.email !== undefined) payload.correo_electronico = data.email;
-            if (data.rubro !== undefined) payload.rubro = data.rubro;
+            if (data.phone !== undefined) payload.rubro = data.phone;
+            if (data.email !== undefined) payload.telefono = data.email;
+            if (data.rubro !== undefined) payload.correo_electronico = data.rubro;
             const { data: result, error } = await supabaseClient
                 .from('clientes').update(payload).eq('id', id).select();
             if (error) throw error;

@@ -2114,8 +2114,8 @@ const Modules = {
     // ═══════════════════════════════════════════
     _clientsColumns: [
         { id: 'empresa', header: 'Empresa', defaultVisible: true },
-        { id: 'rubro', header: 'Rubro', defaultVisible: true },
         { id: 'contacto', header: 'Contacto', defaultVisible: true },
+        { id: 'rubro', header: 'Rubro', defaultVisible: true },
         { id: 'email', header: 'Email', defaultVisible: true },
         { id: 'telefono', header: 'Teléfono', defaultVisible: true },
         { id: 'cuit', header: 'CUIT', defaultVisible: false },
@@ -2123,7 +2123,8 @@ const Modules = {
 
     _renderClientsTable(clients) {
         this._injectStyles();
-        const visCols = this._getOrderedVisibleCols('mepex_clients_cols_v2', this._clientsColumns);
+        // Reset saved column order to pick up new default (v3 key change)
+        const visCols = this._getOrderedVisibleCols('mepex_clients_cols_v3', this._clientsColumns);
 
         // Build unique rubros for filter
         const rubrosSet = new Set();
@@ -2151,7 +2152,7 @@ const Modules = {
         }
 
         // Inject column panel
-        this._renderColsPanel('mepex_clients_cols_v2', this._clientsColumns, visCols);
+        this._renderColsPanel('mepex_clients_cols_v3', this._clientsColumns, visCols);
 
         // Sort
         let sorted = clients;
@@ -2244,7 +2245,7 @@ const Modules = {
         if (!this._isLocked) this._attachSelectionListeners(data, 'clients');
 
         // Column drag & drop
-        this._attachColDragListeners('mepex_clients_cols_v2', this._clientsColumns);
+        this._attachColDragListeners('mepex_clients_cols_v3', this._clientsColumns);
     },
 
     // ─── STATUS BADGE HELPERS ───
