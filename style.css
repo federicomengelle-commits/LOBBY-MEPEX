@@ -2517,6 +2517,10 @@ body {
     height: 15px;
 }
 
+.table-locked .td-checkbox {
+    display: none;
+}
+
 /* ─── Table Layout (table + side actions) ─── */
 .api-table-layout {
     display: flex;
