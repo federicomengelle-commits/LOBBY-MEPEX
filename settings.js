@@ -169,6 +169,15 @@ const Settings = {
     //  USUARIOS Y ROLES (#admin-usuarios)
     // ═══════════════════════════════════════════
     _selectedUserId: null,
+    _usersCache: null,
+
+    _roleColors: {
+        admin: '#00A9C1',
+        ventas: '#F28D15',
+        pm: '#00CC88',
+        taller: '#9B7DFF',
+        finanzas: '#4A90D9',
+    },
 
     async renderAdminUsers() {
         const user = Auth.getUser();
@@ -178,17 +187,18 @@ const Settings = {
         if (!content) return;
 
         content.innerHTML = `
-            <div class="settings-page">
+            <div class="settings-page settings-page--wide">
                 <div class="settings-page-header">
                     <a href="#lobby" class="settings-back">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                     </a>
                     <h1 class="title-1">Usuarios y Roles</h1>
+                    <span class="settings-user-count" id="userCount"></span>
                 </div>
 
                 <div class="settings-info-banner">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    Para crear o eliminar usuarios, usá el <strong>panel de Supabase</strong>. Desde acá podés editar nombres, iniciales y roles.
+                    Para crear o eliminar usuarios, usá el <strong>panel de Supabase</strong>. Desde acá podés editar nombres, iniciales, roles y permisos personalizados.
                 </div>
 
                 <div class="settings-users-layout">
@@ -206,6 +216,7 @@ const Settings = {
 
     async _loadUsers() {
         const users = await API.getUsers();
+        this._usersCache = users;
         const container = document.getElementById('usersListContainer');
         if (!container) return;
 
@@ -214,13 +225,9 @@ const Settings = {
             return;
         }
 
-        const roleColors = {
-            admin: '#00A9C1',
-            ventas: '#F28D15',
-            pm: '#00CC88',
-            taller: '#9B7DFF',
-            finanzas: '#4A90D9',
-        };
+        // Update count
+        const countEl = document.getElementById('userCount');
+        if (countEl) countEl.textContent = `${users.length} usuarios`;
 
         container.innerHTML = `
             <table class="settings-user-table">
@@ -230,17 +237,25 @@ const Settings = {
                         <th>Nombre</th>
                         <th>Usuario</th>
                         <th>Rol</th>
+                        <th>Permisos</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${users.map(u => `
+                    ${users.map(u => {
+                        const rc = this._roleColors[u.role] || '#888';
+                        const hasCustom = u.customPermissions && u.customPermissions.length > 0;
+                        return `
                         <tr class="settings-user-row${this._selectedUserId === u.uid ? ' selected' : ''}" data-uid="${u.uid}">
-                            <td><div class="settings-user-avatar" style="background: ${roleColors[u.role] || '#555'}20; color: ${roleColors[u.role] || '#888'}">${u.initials}</div></td>
+                            <td><div class="settings-user-avatar" style="background: ${rc}20; color: ${rc}">${u.initials}</div></td>
                             <td><strong>${u.name}</strong></td>
                             <td class="text-muted">@${u.username}</td>
-                            <td><span class="settings-role-badge" style="color: ${roleColors[u.role] || '#888'}; border-color: ${roleColors[u.role] || '#888'}30">${Data.getRoleLabel(u.role)}</span></td>
-                        </tr>
-                    `).join('')}
+                            <td><span class="settings-role-badge" style="color: ${rc}; border-color: ${rc}30">${Data.getRoleLabel(u.role)}</span></td>
+                            <td>${hasCustom
+                                ? '<span class="settings-perm-badge settings-perm-badge--custom">Personalizado</span>'
+                                : '<span class="settings-perm-badge">Rol</span>'
+                            }</td>
+                        </tr>`;
+                    }).join('')}
                 </tbody>
             </table>
         `;
@@ -250,12 +265,12 @@ const Settings = {
             row.addEventListener('click', () => {
                 const uid = row.dataset.uid;
                 const target = users.find(u => u.uid === uid);
-                if (target) this._openUserDetail(target, users);
+                if (target) this._openUserDetail(target);
             });
         });
     },
 
-    _openUserDetail(target, allUsers) {
+    _openUserDetail(target) {
         this._selectedUserId = target.uid;
         const panel = document.getElementById('userDetailPanel');
         if (!panel) return;
@@ -265,13 +280,15 @@ const Settings = {
             r.classList.toggle('selected', r.dataset.uid === target.uid));
 
         const roles = Object.keys(Data.roleLabels);
-        const permissions = Data.rolePermissions[target.role] || [];
         const allModules = Data.getModuleList();
+        const hasCustom = target.customPermissions && target.customPermissions.length > 0;
+        const activePerms = hasCustom ? target.customPermissions : (Data.rolePermissions[target.role] || []);
+        const rc = this._roleColors[target.role] || '#888';
 
         panel.style.display = 'block';
         panel.innerHTML = `
             <div class="settings-detail-header">
-                <div class="settings-avatar-large" id="detailAvatar">${target.initials}</div>
+                <div class="settings-avatar-large" style="background: ${rc}15; color: ${rc}" id="detailAvatar">${target.initials}</div>
                 <div>
                     <div class="settings-detail-name">${target.name}</div>
                     <div class="settings-detail-username">@${target.username}</div>
@@ -296,15 +313,27 @@ const Settings = {
                 </div>
 
                 <div class="settings-perm-section">
-                    <div class="form-label">PERMISOS (según rol)</div>
+                    <div class="settings-perm-header">
+                        <span class="form-label" style="margin:0">PERMISOS</span>
+                        <label class="settings-perm-toggle">
+                            <span class="settings-perm-toggle-label" id="permToggleLabel">${hasCustom ? 'Personalizados' : 'Seg\u00fan rol'}</span>
+                            <label class="settings-switch settings-switch--sm">
+                                <input type="checkbox" id="permCustomToggle" ${hasCustom ? 'checked' : ''}>
+                                <span class="settings-switch-slider"></span>
+                            </label>
+                        </label>
+                    </div>
                     <div class="settings-perm-matrix" id="permMatrix">
-                        ${allModules.map(m => `
-                            <div class="settings-perm-item${permissions.includes(m.id) ? ' granted' : ''}">
+                        ${allModules.map(m => {
+                            const granted = activePerms.includes(m.id);
+                            return `
+                            <label class="settings-perm-item${granted ? ' granted' : ''}${hasCustom ? ' editable' : ''}" data-mod="${m.id}">
+                                <input type="checkbox" class="settings-perm-cb" data-mod="${m.id}" ${granted ? 'checked' : ''} ${!hasCustom ? 'disabled' : ''} style="display:none">
                                 <span class="settings-perm-icon">${m.icon}</span>
                                 <span class="settings-perm-name">${m.shortName}</span>
-                                <span class="settings-perm-check">${permissions.includes(m.id) ? '✓' : '—'}</span>
-                            </div>
-                        `).join('')}
+                                <span class="settings-perm-check">${granted ? '\u2713' : '\u2014'}</span>
+                            </label>`;
+                        }).join('')}
                     </div>
                 </div>
 
@@ -315,15 +344,69 @@ const Settings = {
             </form>
         `;
 
-        // Update permission matrix when role changes
+        const permMatrix = document.getElementById('permMatrix');
+        const permToggle = document.getElementById('permCustomToggle');
+        const permToggleLabel = document.getElementById('permToggleLabel');
+
+        // Toggle custom/role permissions
+        permToggle?.addEventListener('change', () => {
+            const isCustom = permToggle.checked;
+            permToggleLabel.textContent = isCustom ? 'Personalizados' : 'Seg\u00fan rol';
+
+            if (isCustom) {
+                // Copy current role perms as starting point
+                const currentRole = document.getElementById('editUserRole').value;
+                const rolePerms = Data.rolePermissions[currentRole] || [];
+                permMatrix.querySelectorAll('.settings-perm-item').forEach(item => {
+                    const cb = item.querySelector('.settings-perm-cb');
+                    const modId = cb.dataset.mod;
+                    const granted = rolePerms.includes(modId);
+                    cb.disabled = false;
+                    cb.checked = granted;
+                    item.classList.toggle('granted', granted);
+                    item.classList.add('editable');
+                    item.querySelector('.settings-perm-check').textContent = granted ? '\u2713' : '\u2014';
+                });
+            } else {
+                // Revert to role-based
+                const currentRole = document.getElementById('editUserRole').value;
+                const rolePerms = Data.rolePermissions[currentRole] || [];
+                permMatrix.querySelectorAll('.settings-perm-item').forEach(item => {
+                    const cb = item.querySelector('.settings-perm-cb');
+                    const modId = cb.dataset.mod;
+                    const granted = rolePerms.includes(modId);
+                    cb.disabled = true;
+                    cb.checked = granted;
+                    item.classList.toggle('granted', granted);
+                    item.classList.remove('editable');
+                    item.querySelector('.settings-perm-check').textContent = granted ? '\u2713' : '\u2014';
+                });
+            }
+        });
+
+        // Clicking permission items toggles checkboxes (when custom)
+        permMatrix.querySelectorAll('.settings-perm-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (e.target.tagName === 'INPUT') return; // Let checkbox handle itself
+                const cb = item.querySelector('.settings-perm-cb');
+                if (cb.disabled) return;
+                cb.checked = !cb.checked;
+                item.classList.toggle('granted', cb.checked);
+                item.querySelector('.settings-perm-check').textContent = cb.checked ? '\u2713' : '\u2014';
+            });
+        });
+
+        // Update permission matrix when role changes (only if in role mode)
         document.getElementById('editUserRole')?.addEventListener('change', (e) => {
+            if (permToggle.checked) return; // Custom mode, don't auto-update
             const newRole = e.target.value;
             const newPerms = Data.rolePermissions[newRole] || [];
-            document.querySelectorAll('.settings-perm-item').forEach(item => {
-                const modId = allModules.find(m => m.shortName === item.querySelector('.settings-perm-name').textContent)?.id;
-                const granted = modId && newPerms.includes(modId);
+            permMatrix.querySelectorAll('.settings-perm-item').forEach(item => {
+                const modId = item.querySelector('.settings-perm-cb').dataset.mod;
+                const granted = newPerms.includes(modId);
                 item.classList.toggle('granted', granted);
-                item.querySelector('.settings-perm-check').textContent = granted ? '✓' : '—';
+                item.querySelector('.settings-perm-cb').checked = granted;
+                item.querySelector('.settings-perm-check').textContent = granted ? '\u2713' : '\u2014';
             });
         });
 
@@ -345,36 +428,44 @@ const Settings = {
 
             if (!name || !initials) return;
 
-            btn.disabled = true;
-            btn.textContent = 'Guardando…';
+            // Build custom_permissions
+            const isCustom = permToggle.checked;
+            let custom_permissions = null;
+            if (isCustom) {
+                custom_permissions = [];
+                permMatrix.querySelectorAll('.settings-perm-cb:checked').forEach(cb => {
+                    custom_permissions.push(cb.dataset.mod);
+                });
+            }
 
-            const result = await API.updateProfile(target.uid, { name, initials, role });
+            btn.disabled = true;
+            btn.textContent = 'Guardando\u2026';
+
+            const result = await API.updateProfile(target.uid, { name, initials, role, custom_permissions });
 
             if (result.success) {
-                status.textContent = '✓ Guardado';
+                status.textContent = '\u2713 Guardado';
                 status.style.color = '#00CC88';
-                // If editing self, update header
+                // If editing self, update header + cached profile
                 const self = Auth.getUser();
                 if (self && self.uid === target.uid) {
-                    Auth.updateCachedProfile({ name, initials, role });
+                    Auth.updateCachedProfile({ name, initials, role, customPermissions: custom_permissions });
                     document.querySelectorAll('.global-user-avatar').forEach(el => el.textContent = initials);
                     document.querySelector('.global-user-name').textContent = name;
                     document.querySelector('.dropdown-user-name').textContent = name;
                 }
-                // Refresh table
+                // Refresh table and re-open detail
                 await this._loadUsers();
-                // Re-select
-                const users = await API.getUsers();
-                const updated = users?.find(u => u.uid === target.uid);
-                if (updated) this._openUserDetail(updated, users);
+                const updated = this._usersCache?.find(u => u.uid === target.uid);
+                if (updated) this._openUserDetail(updated);
             } else {
-                status.textContent = 'Error al guardar';
+                status.textContent = result.error || 'Error al guardar';
                 status.style.color = '#ff4444';
             }
 
             btn.disabled = false;
             btn.textContent = 'Guardar';
-            setTimeout(() => { status.textContent = ''; }, 3000);
+            setTimeout(() => { status.textContent = ''; }, 4000);
         });
     },
 

@@ -3440,6 +3440,10 @@ body {
     animation: fadeIn 0.25s ease;
 }
 
+.settings-page--wide {
+    max-width: 1100px;
+}
+
 .settings-page-header {
     display: flex;
     align-items: center;
@@ -3763,6 +3767,80 @@ body {
 
 .settings-perm-item.granted .settings-perm-check {
     color: #00CC88;
+}
+
+/* ─── Editable permission items ─── */
+.settings-perm-item.editable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.settings-perm-item.editable:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* ─── Permission header with toggle ─── */
+.settings-perm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.settings-perm-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.settings-perm-toggle-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ─── Small switch variant ─── */
+.settings-switch--sm {
+    width: 36px;
+    height: 20px;
+}
+
+.settings-switch--sm .settings-switch-slider::before {
+    width: 14px;
+    height: 14px;
+}
+
+.settings-switch--sm input:checked + .settings-switch-slider::before {
+    transform: translateX(16px);
+}
+
+/* ─── Permission badge in table ─── */
+.settings-perm-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-perm-badge--custom {
+    color: #F28D15;
+    background: rgba(242, 141, 21, 0.1);
+}
+
+/* ─── User count badge ─── */
+.settings-user-count {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 500;
 }
 
 /* ─── Notification toggles ─── */

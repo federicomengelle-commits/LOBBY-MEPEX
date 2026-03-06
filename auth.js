@@ -52,7 +52,7 @@ const Auth = {
     hasAccess(moduleId) {
         const user = this.getUser();
         if (!user) return false;
-        const allowed = Data.rolePermissions[user.role] || [];
+        const allowed = user.customPermissions || Data.rolePermissions[user.role] || [];
         return allowed.includes(moduleId);
     },
 
@@ -88,6 +88,7 @@ const Auth = {
                 role: data.role,
                 initials: data.initials,
                 uid: data.id,
+                customPermissions: data.custom_permissions || null,
             };
         } catch (e) {
             console.error('[Auth] Fetch profile error:', e);

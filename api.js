@@ -527,6 +527,7 @@ const API = {
                 name: p.name,
                 role: p.role,
                 initials: p.initials,
+                customPermissions: p.custom_permissions || null,
             }));
         } catch (e) {
             console.warn('[API] Error fetching users:', e.message);
@@ -540,13 +541,17 @@ const API = {
             if (updates.name !== undefined) payload.name = updates.name;
             if (updates.initials !== undefined) payload.initials = updates.initials;
             if (updates.role !== undefined) payload.role = updates.role;
+            if (updates.custom_permissions !== undefined) payload.custom_permissions = updates.custom_permissions;
             const { data, error } = await supabaseClient
                 .from('profiles')
                 .update(payload)
                 .eq('id', userId)
                 .select()
                 .single();
-            if (error) throw error;
+            if (error) {
+                console.error('[API] Supabase updateProfile error:', error.code, error.message, error.details, error.hint);
+                throw error;
+            }
             return { success: true, data };
         } catch (e) {
             console.warn('[API] Error updating profile:', e.message);
