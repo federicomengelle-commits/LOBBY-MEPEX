@@ -16,6 +16,7 @@ const Router = {
         this.routes = {
             'login': { render: () => Auth.renderLogin(), requiresAuth: false },
             'lobby': { render: () => Lobby.render(), requiresAuth: true },
+            'calendario': { render: () => Calendar.render(), requiresAuth: true },
             'ventas': { render: () => Modules.render('ventas'), requiresAuth: true, module: 'ventas' },
             'clientes': { render: () => Modules.render('clientes'), requiresAuth: true, module: 'clientes' },
             'proyectos': { render: () => Modules.render('proyectos'), requiresAuth: true, module: 'proyectos' },
