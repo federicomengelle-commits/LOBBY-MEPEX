@@ -4033,3 +4033,325 @@ body {
         -webkit-overflow-scrolling: touch;
     }
 }
+
+/* ═══════════════════════════════════════════
+   INVENTARIO — Simulador Section
+   ═══════════════════════════════════════════ */
+
+.simulador-container {
+    padding: 8px 0;
+}
+
+.simulador-header {
+    margin-bottom: 24px;
+}
+
+.simulador-header .title-3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.simulador-header .subtitle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.simulador-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.simulador-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    transition: border-color 0.2s ease;
+}
+
+.simulador-card:hover {
+    border-color: var(--border-active);
+}
+
+.simulador-card-icon {
+    font-size: 1.8rem;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(155, 125, 255, 0.08);
+    border-radius: var(--radius-md);
+}
+
+.simulador-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.simulador-card-info .title-3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.simulador-card-info .subtitle {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+.simulador-card .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.simulador-log {
+    min-height: 0;
+}
+
+.simulador-log-entry {
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.simulador-log-success {
+    border-color: rgba(0, 204, 136, 0.25);
+    color: var(--color-success);
+}
+
+.simulador-log-error {
+    border-color: rgba(255, 68, 68, 0.25);
+    color: var(--color-error);
+}
+
+/* ═══════════════════════════════════════════
+   INVENTARIO — Receta / Composición
+   ═══════════════════════════════════════════ */
+
+.receta-module {
+    padding: 4px 0;
+}
+
+.receta-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.receta-total {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.receta-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.receta-table th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+}
+
+.receta-table th.text-right,
+.receta-table td.text-right {
+    text-align: right;
+}
+
+.receta-table td {
+    padding: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    vertical-align: middle;
+}
+
+.receta-row:hover {
+    background: var(--bg-hover);
+}
+
+.receta-type-badge {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+}
+
+.receta-cant {
+    display: inline-block;
+    min-width: 28px;
+    padding: 2px 6px;
+    border-radius: var(--radius);
+    text-align: right;
+    cursor: text;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.receta-cant:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.receta-cant:focus {
+    background: rgba(0, 169, 193, 0.1);
+    outline: 1px solid var(--primary);
+    outline-offset: 1px;
+}
+
+.receta-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+    transition: all 0.15s ease;
+    opacity: 0;
+}
+
+.receta-row:hover .receta-delete-btn {
+    opacity: 1;
+}
+
+.receta-delete-btn:hover {
+    background: rgba(255, 68, 68, 0.12);
+    color: #ff4444;
+}
+
+.receta-add {
+    margin-top: 12px;
+}
+
+/* Receta search box (inline component picker) */
+.receta-search-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.receta-search-input {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-card-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: var(--font-main);
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.receta-search-input:focus {
+    border-color: var(--primary);
+}
+
+.receta-search-results {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+}
+
+.receta-search-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.receta-search-item:last-child {
+    border-bottom: none;
+}
+
+.receta-search-item:hover {
+    background: var(--bg-hover);
+}
+
+.receta-search-item-label {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.receta-search-item-code {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.receta-no-results {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+/* ═══════════════════════════════════════════
+   Cost value styling (shared)
+   ═══════════════════════════════════════════ */
+
+.cost-value {
+    font-weight: 600;
+    color: var(--color-success);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+}
+
+.cost-unit {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 0.82em;
+    margin-left: 2px;
+}
+
+/* ─── Responsive for simulador ─── */
+@media (max-width: 768px) {
+    .simulador-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .simulador-card .btn {
+        align-self: stretch;
+        text-align: center;
+    }
+
+    .receta-table {
+        font-size: 0.76rem;
+    }
+
+    .receta-table th,
+    .receta-table td {
+        padding: 8px 6px;
+    }
+
+    .receta-delete-btn {
+        opacity: 1;
+    }
+}

@@ -28,6 +28,8 @@ const Modules = {
         clients:  { label: 'cliente',  labelPlural: 'clientes',  supabaseTable: 'clientes' },
         projects: { label: 'proyecto', labelPlural: 'proyectos', supabaseTable: 'proyectos_2026' },
         events:   { label: 'evento',   labelPlural: 'eventos',   supabaseTable: 'eventos_2026' },
+        insumos:  { label: 'insumo',   labelPlural: 'insumos',   supabaseTable: 'insumos' },
+        catalogo: { label: 'item',     labelPlural: 'items',     supabaseTable: 'catalogo_items' },
     },
 
     // ─── Form field definitions ───
@@ -62,10 +64,33 @@ const Modules = {
         { key: 'status', label: 'Estado', type: 'select', required: false, options: ['Sin empezar', 'En proceso', 'Finalizado'] },
     ],
 
+    _insumoFormFields: [
+        { key: 'nombre', label: 'Nombre', type: 'text', required: true, placeholder: 'Ej: Aluminio perfil' },
+        { key: 'codigo', label: 'Código', type: 'text', required: false, placeholder: 'Ej: INS-ALU-01' },
+        { key: 'unidadBase', label: 'Unidad base', type: 'select', required: true, options: ['kg', 'm²', 'metro', 'unidad', 'hora', 'día', 'litro'] },
+        { key: 'costoUnitario', label: 'Costo unitario ($)', type: 'number', required: true, placeholder: '0.00' },
+        { key: 'categoria', label: 'Categoría', type: 'select', required: false, options: ['Material', 'Mano de obra', 'Subalquiler', 'Consumible', 'Servicio'] },
+        { key: 'unidadAlternativa', label: 'Unidad alternativa', type: 'text', required: false, placeholder: 'Ej: metro (si la base es kg)' },
+        { key: 'factorConversion', label: 'Factor conversión', type: 'number', required: false, placeholder: 'Ej: 0.8 (kg por metro)' },
+        { key: 'notas', label: 'Notas', type: 'text', required: false, placeholder: 'Observaciones' },
+    ],
+
+    _catalogoFormFields: [
+        { key: 'nombre', label: 'Nombre del item', type: 'text', required: true, placeholder: 'Ej: Cerrojo de perfil' },
+        { key: 'codigo', label: 'Código', type: 'text', required: false, placeholder: 'Ej: CRJ-001' },
+        { key: 'rubro', label: 'Rubro', type: 'select', required: false, options: ['Equipamiento', 'Iluminación', 'Infraestructura', 'Más servicios'] },
+        { key: 'categoria', label: 'Categoría', type: 'text', required: false, placeholder: 'Ej: Mobiliario, Tableros, Sistema OCTEXA' },
+        { key: 'descripcion', label: 'Descripción', type: 'text', required: false, placeholder: 'Descripción del item' },
+        { key: 'origen', label: 'Origen', type: 'select', required: false, options: ['Fabricación propia', 'Compra', 'Sub Alquiler'] },
+        { key: 'unidad', label: 'Unidad', type: 'select', required: false, options: ['Unidad', 'Metro', 'm²', 'Kit', 'Juego'] },
+    ],
+
     _getFormFields(type) {
         if (type === 'clients') return this._clientFormFields;
         if (type === 'projects') return this._projectFormFields;
         if (type === 'events') return this._eventFormFields;
+        if (type === 'insumos') return this._insumoFormFields;
+        if (type === 'catalogo') return this._catalogoFormFields;
         return [];
     },
 
@@ -261,6 +286,11 @@ const Modules = {
             `;
         }
 
+        // Check if this is a custom section (simulador)
+        if (this._isCustomSection(mod.id, sectionId)) {
+            return this._renderSimuladorSection();
+        }
+
         // Check if this is an API-powered section
         const apiSection = this._getApiSectionType(mod.id, sectionId);
         if (apiSection) {
@@ -345,12 +375,25 @@ const Modules = {
             'eventos:evento': 'events',
             'eventos:proyecto': 'projects',
             'proyectos:lista': 'projects',
+            'inventario:insumos': 'insumos',
+            'inventario:catalogo': 'catalogo',
         };
         return map[`${moduleId}:${sectionId}`] || null;
     },
 
+    // ─── DETECT CUSTOM (non-table) SECTIONS ───
+    _isCustomSection(moduleId, sectionId) {
+        return moduleId === 'inventario' && sectionId === 'simulador';
+    },
+
     // ─── LOAD SECTION DATA FROM API ───
     async _loadSectionData(mod, sectionId) {
+        // Handle custom sections (simulador)
+        if (this._isCustomSection(mod.id, sectionId)) {
+            this._initSimulador();
+            return;
+        }
+
         const apiType = this._getApiSectionType(mod.id, sectionId);
         if (!apiType) return;
 
@@ -376,6 +419,12 @@ const Modules = {
                     break;
                 case 'projects':
                     data = await API.getProjects();
+                    break;
+                case 'insumos':
+                    data = await API.getInsumos();
+                    break;
+                case 'catalogo':
+                    data = await API.getCatalogoItems();
                     break;
             }
         } catch (e) {
@@ -507,6 +556,8 @@ const Modules = {
             if (type === 'clients') result = await API.createClient(values);
             else if (type === 'projects') result = await API.createProject(values);
             else if (type === 'events') result = await API.createEvent(values);
+            else if (type === 'insumos') result = await API.createInsumo(values);
+            else if (type === 'catalogo') result = await API.createCatalogoItem(values);
 
             if (result) {
                 Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} creado exitosamente`);
@@ -553,6 +604,8 @@ const Modules = {
             if (type === 'clients') result = await API.updateClient(item.id, values);
             else if (type === 'projects') result = await API.updateProject(item.id, values);
             else if (type === 'events') result = await API.updateEvent(item.id, values);
+            else if (type === 'insumos') result = await API.updateInsumo(item.id, values);
+            else if (type === 'catalogo') result = await API.updateCatalogoItem(item.id, values);
 
             if (result) {
                 Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} actualizado`);
@@ -579,6 +632,8 @@ const Modules = {
         if (type === 'clients') result = await API.deleteClient(item.id);
         else if (type === 'projects') result = await API.deleteProject(item.id);
         else if (type === 'events') result = await API.deleteEvent(item.id);
+        else if (type === 'insumos') result = await API.deleteInsumo(item.id);
+        else if (type === 'catalogo') result = await API.deleteCatalogoItem(item.id);
 
         if (result) {
             Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} eliminado`);
@@ -768,6 +823,16 @@ const Modules = {
             });
         }
 
+        // Rubro filter (catalogo)
+        if (this._activeRubroFilter && type === 'catalogo') {
+            data = data.filter(i => (i.rubro || '') === this._activeRubroFilter);
+        }
+
+        // Categoria filter (insumos)
+        if (this._activeTypeFilter && type === 'insumos') {
+            data = data.filter(i => (i.categoria || '') === this._activeTypeFilter);
+        }
+
         this._renderApiTable(data, type);
     },
 
@@ -780,8 +845,8 @@ const Modules = {
         if (countEl) countEl.textContent = `${data.length} registro${data.length !== 1 ? 's' : ''}`;
 
         if (data.length === 0) {
-            const labels = { clients: 'clientes', events: 'eventos', projects: 'proyectos' };
-            const icons = { clients: '👤', events: '📅', projects: '📋' };
+            const labels = { clients: 'clientes', events: 'eventos', projects: 'proyectos', insumos: 'insumos', catalogo: 'items' };
+            const icons = { clients: '👤', events: '📅', projects: '📋', insumos: '🧱', catalogo: '🔩' };
             container.innerHTML = `
                 <div class="api-empty-state">
                     <span class="api-empty-icon">${icons[type] || '📂'}</span>
@@ -808,6 +873,14 @@ const Modules = {
             case 'projects':
                 container.innerHTML = this._renderProjectsTable(data);
                 this._attachProjectsListeners(data);
+                break;
+            case 'insumos':
+                container.innerHTML = this._renderInsumosTable(data);
+                this._attachInsumosListeners(data);
+                break;
+            case 'catalogo':
+                container.innerHTML = this._renderCatalogoTable(data);
+                this._attachCatalogoListeners(data);
                 break;
         }
     },
@@ -1629,6 +1702,12 @@ const Modules = {
             } else if (type === 'projects') {
                 va = this._getProjectSortValue(a, colId);
                 vb = this._getProjectSortValue(b, colId);
+            } else if (type === 'insumos') {
+                va = this._getInsumoSortValue(a, colId);
+                vb = this._getInsumoSortValue(b, colId);
+            } else if (type === 'catalogo') {
+                va = this._getCatalogoSortValue(a, colId);
+                vb = this._getCatalogoSortValue(b, colId);
             } else {
                 va = this._getClientSortValue(a, colId);
                 vb = this._getClientSortValue(b, colId);
@@ -2533,7 +2612,91 @@ const Modules = {
                 }
                 return '';
             }
-        }
+        },
+        insumos: {
+            icon: '🧱',
+            color: '#9B7DFF',
+            getStatus: (item) => item.categoria ? { label: item.categoria, class: 'badge-ghost' } : null,
+            tabs: [
+                { id: 'info', label: 'Información', icon: '📋' },
+            ],
+            renderTab(item, tabId, v) {
+                if (tabId === 'info') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Insumo</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.nombre)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value">${v(item.codigo)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${v(item.categoria)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Unidad base</span><span class="ficha-row-value">${v(item.unidadBase)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value cost-value">${API.formatCurrency(item.costoUnitario)} / ${item.unidadBase}</span></div>
+                        </div>
+                        ${item.factorConversion ? `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Conversión</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Unidad alt.</span><span class="ficha-row-value">${v(item.unidadAlternativa)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Factor</span><span class="ficha-row-value">${item.factorConversion} ${item.unidadBase} por ${item.unidadAlternativa}</span></div>
+                        </div>` : ''}
+                        ${item.notas ? `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Notas</div>
+                            <p class="ficha-row-value">${item.notas}</p>
+                        </div>` : ''}`;
+                }
+                return '';
+            }
+        },
+        catalogo: {
+            icon: '🔩',
+            color: '#9B7DFF',
+            getStatus: (item) => item.rubro ? { label: item.rubro, class: 'badge-ghost' } : null,
+            tabs: [
+                { id: 'info', label: 'Información', icon: '📋' },
+                { id: 'receta', label: 'Receta', icon: '🧪' },
+            ],
+            renderTab(item, tabId, v) {
+                if (tabId === 'info') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Item del catálogo</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.nombre)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value">${v(item.codigo)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Rubro</span><span class="ficha-row-value">${v(item.rubro)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${v(item.categoria)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Descripción</span><span class="ficha-row-value">${v(item.descripcion)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Origen</span><span class="ficha-row-value">${v(item.origen)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Unidad</span><span class="ficha-row-value">${v(item.unidad)}</span></div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Costos</div>
+                            <div class="ficha-kpi-row">
+                                <div class="ficha-kpi"><span class="ficha-kpi-value cost-value">${API.formatCurrency(item.costoProduccion)}</span><span class="ficha-kpi-label">Costo producción</span></div>
+                                <div class="ficha-kpi"><span class="ficha-kpi-value">${API.formatCurrency(item.precioCliente)}</span><span class="ficha-kpi-label">Precio cliente</span></div>
+                                <div class="ficha-kpi"><span class="ficha-kpi-value">${item.precioCliente > 0 ? Math.round(((item.precioCliente - item.costoProduccion) / item.precioCliente) * 100) + '%' : '—'}</span><span class="ficha-kpi-label">Margen</span></div>
+                            </div>
+                        </div>`;
+                }
+                if (tabId === 'receta') {
+                    return `
+                        <div class="receta-module">
+                            <div class="receta-header">
+                                <span class="ficha-section-title">COMPOSICIÓN / RECETA</span>
+                                <span class="receta-total" id="recetaTotalCost">Cargando…</span>
+                            </div>
+                            <div class="receta-list" id="recetaList">
+                                <div class="ficha-loading-small">Cargando receta…</div>
+                            </div>
+                            <div class="receta-add" id="recetaAddSection">
+                                <button class="btn btn-secondary btn-sm" id="btnAddComponente">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    Agregar componente
+                                </button>
+                            </div>
+                        </div>`;
+                }
+                return '';
+            }
+        },
     },
 
     _openFichaByType(item, type) {
@@ -2573,7 +2736,7 @@ const Modules = {
                 <div class="ficha-panel-title">
                     <span class="ficha-panel-icon-badge" style="background:${config.color}20; color:${config.color}">${config.icon}</span>
                     <div class="ficha-panel-title-text">
-                        <h2 class="ficha-panel-name">${v(item.name)}</h2>
+                        <h2 class="ficha-panel-name">${v(item.name || item.nombre)}</h2>
                         ${statusBadge ? `<div class="ficha-panel-status">${statusBadge}</div>` : ''}
                     </div>
                 </div>
@@ -2613,8 +2776,9 @@ const Modules = {
             const content = document.getElementById('fichaTabContent');
             if (content) {
                 content.innerHTML = config.renderTab(item, tabId, v);
-                // Trigger async loading for client CRM tabs
+                // Trigger async loading for tabs that need data
                 if (type === 'clients') this._loadClientTabData(item, tabId);
+                if (type === 'catalogo') this._loadCatalogoTabData(item, tabId);
             }
         };
 
@@ -2637,8 +2801,9 @@ const Modules = {
             this._deleteSingle(item, type);
         });
 
-        // Auto-load data for first tab (clients CRM)
+        // Auto-load data for first tab
         if (type === 'clients') this._loadClientTabData(item, firstTab);
+        if (type === 'catalogo') this._loadCatalogoTabData(item, firstTab);
     },
 
     // ═══════════════════════════════════════════
@@ -2893,6 +3058,532 @@ const Modules = {
         if (this._fichaEscHandler) {
             document.removeEventListener('keydown', this._fichaEscHandler);
             this._fichaEscHandler = null;
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  INVENTARIO — INSUMOS TABLE
+    // ═══════════════════════════════════════════
+
+    _renderInsumosTable(data) {
+        const storageKey = 'mepex_insumos_cols_v1';
+        const allCols = [
+            { id: 'nombre', header: 'NOMBRE', defaultVisible: true },
+            { id: 'codigo', header: 'CÓDIGO', defaultVisible: true },
+            { id: 'categoria', header: 'CATEGORÍA', defaultVisible: true },
+            { id: 'unidad', header: 'UNIDAD', defaultVisible: true },
+            { id: 'costo', header: 'COSTO UNIT.', defaultVisible: true },
+            { id: 'conversion', header: 'CONVERSIÓN', defaultVisible: false },
+        ];
+
+        const visCols = this._getOrderedVisibleCols(storageKey, allCols);
+        this._renderColsPanel(storageKey, allCols, visCols);
+
+        // Filters
+        const categorias = [...new Set(data.map(i => i.categoria).filter(Boolean))].sort();
+        const filtersEl = document.getElementById('apiToolbarFilters');
+        if (filtersEl) {
+            filtersEl.innerHTML = `<div class="mepex-filter-chips">
+                <button class="mepex-filter-chip ${!this._activeTypeFilter ? 'active' : ''}" data-filter-cat="">Todos</button>
+                ${categorias.map(c => `<button class="mepex-filter-chip ${this._activeTypeFilter === c ? 'active' : ''}" data-filter-cat="${c}">${c}</button>`).join('')}
+            </div>`;
+            filtersEl.querySelectorAll('[data-filter-cat]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    this._activeTypeFilter = btn.dataset.filterCat || null;
+                    this._applyAllFilters();
+                });
+            });
+        }
+
+        // Sort
+        let sorted = data;
+        if (this._sortCol) sorted = this._sortData(data, this._sortCol, this._sortDir, 'insumos');
+
+        const cellVal = (item, colId) => {
+            switch (colId) {
+                case 'nombre': return `<span class="td-primary">${item.nombre}</span>`;
+                case 'codigo': return `<span class="td-number">${item.codigo || '—'}</span>`;
+                case 'categoria': return `<span class="badge badge-ghost">${item.categoria || '—'}</span>`;
+                case 'unidad': return item.unidadBase || '—';
+                case 'costo': return `<span class="td-number cost-value">${API.formatCurrency(item.costoUnitario)}<span class="cost-unit">/${item.unidadBase}</span></span>`;
+                case 'conversion': return item.factorConversion ? `${item.factorConversion} ${item.unidadBase}/${item.unidadAlternativa}` : '—';
+                default: return '—';
+            }
+        };
+
+        const headerHtml = visCols.map(colId => {
+            const col = allCols.find(c => c.id === colId);
+            return `<th class="sortable" data-sort-col="${colId}">${col.header}${this._sortIndicator(colId)}</th>`;
+        }).join('');
+
+        const rowsHtml = sorted.map(item => `
+            <tr class="api-table-row" data-id="${item.id}">
+                ${visCols.map(colId => `<td>${cellVal(item, colId)}</td>`).join('')}
+            </tr>
+        `).join('');
+
+        return `<table class="api-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+    },
+
+    _attachInsumosListeners(data) {
+        // Sort headers
+        document.querySelectorAll('th.sortable[data-sort-col]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sortCol;
+                if (this._sortCol === col) this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
+                else { this._sortCol = col; this._sortDir = 'asc'; }
+                this._applyAllFilters();
+            });
+        });
+        this._attachColDragListeners('mepex_insumos_cols_v1', [
+            { id: 'nombre' }, { id: 'codigo' }, { id: 'categoria' }, { id: 'unidad' }, { id: 'costo' }, { id: 'conversion' },
+        ]);
+        // Row click → open ficha
+        document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
+            row.addEventListener('click', () => {
+                const item = data.find(i => String(i.id) === row.dataset.id);
+                if (item) this._openFichaByType(item, 'insumos');
+            });
+        });
+    },
+
+    _getInsumoSortValue(item, colId) {
+        switch (colId) {
+            case 'nombre': return (item.nombre || '').toLowerCase();
+            case 'codigo': return (item.codigo || '').toLowerCase();
+            case 'categoria': return (item.categoria || '').toLowerCase();
+            case 'unidad': return (item.unidadBase || '').toLowerCase();
+            case 'costo': return item.costoUnitario || 0;
+            default: return null;
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  INVENTARIO — CATÁLOGO TABLE
+    // ═══════════════════════════════════════════
+
+    _renderCatalogoTable(data) {
+        const storageKey = 'mepex_catalogo_cols_v1';
+        const allCols = [
+            { id: 'codigo', header: 'CÓDIGO', defaultVisible: true },
+            { id: 'nombre', header: 'NOMBRE', defaultVisible: true },
+            { id: 'rubro', header: 'RUBRO', defaultVisible: true },
+            { id: 'categoria', header: 'CATEGORÍA', defaultVisible: true },
+            { id: 'origen', header: 'ORIGEN', defaultVisible: false },
+            { id: 'costo', header: 'COSTO PROD.', defaultVisible: true },
+            { id: 'precio', header: 'PRECIO CLIENTE', defaultVisible: true },
+            { id: 'unidad', header: 'UNIDAD', defaultVisible: false },
+        ];
+
+        const visCols = this._getOrderedVisibleCols(storageKey, allCols);
+        this._renderColsPanel(storageKey, allCols, visCols);
+
+        // Filters by rubro
+        const rubros = [...new Set(data.map(i => i.rubro).filter(Boolean))].sort();
+        const filtersEl = document.getElementById('apiToolbarFilters');
+        if (filtersEl) {
+            filtersEl.innerHTML = `<div class="mepex-filter-chips">
+                <button class="mepex-filter-chip ${!this._activeRubroFilter ? 'active' : ''}" data-filter-rubro="">Todos</button>
+                ${rubros.map(r => `<button class="mepex-filter-chip ${this._activeRubroFilter === r ? 'active' : ''}" data-filter-rubro="${r}">${r}</button>`).join('')}
+            </div>`;
+            filtersEl.querySelectorAll('[data-filter-rubro]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    this._activeRubroFilter = btn.dataset.filterRubro || null;
+                    this._applyAllFilters();
+                });
+            });
+        }
+
+        let sorted = data;
+        if (this._sortCol) sorted = this._sortData(data, this._sortCol, this._sortDir, 'catalogo');
+
+        const cellVal = (item, colId) => {
+            switch (colId) {
+                case 'codigo': return `<span class="td-number">${item.codigo || '—'}</span>`;
+                case 'nombre': return `<span class="td-primary">${item.nombre}</span>`;
+                case 'rubro': return `<span class="badge badge-ghost">${item.rubro || '—'}</span>`;
+                case 'categoria': return item.categoria || '—';
+                case 'origen': return item.origen || '—';
+                case 'costo': return `<span class="td-number cost-value">${API.formatCurrency(item.costoProduccion)}</span>`;
+                case 'precio': return `<span class="td-number">${API.formatCurrency(item.precioCliente)}</span>`;
+                case 'unidad': return item.unidad || '—';
+                default: return '—';
+            }
+        };
+
+        const headerHtml = visCols.map(colId => {
+            const col = allCols.find(c => c.id === colId);
+            return `<th class="sortable" data-sort-col="${colId}">${col.header}${this._sortIndicator(colId)}</th>`;
+        }).join('');
+
+        const rowsHtml = sorted.map(item => `
+            <tr class="api-table-row" data-id="${item.id}">
+                ${visCols.map(colId => `<td>${cellVal(item, colId)}</td>`).join('')}
+            </tr>
+        `).join('');
+
+        return `<table class="api-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+    },
+
+    _attachCatalogoListeners(data) {
+        document.querySelectorAll('th.sortable[data-sort-col]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sortCol;
+                if (this._sortCol === col) this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
+                else { this._sortCol = col; this._sortDir = 'asc'; }
+                this._applyAllFilters();
+            });
+        });
+        this._attachColDragListeners('mepex_catalogo_cols_v1', [
+            { id: 'codigo' }, { id: 'nombre' }, { id: 'rubro' }, { id: 'categoria' }, { id: 'origen' }, { id: 'costo' }, { id: 'precio' }, { id: 'unidad' },
+        ]);
+        document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
+            row.addEventListener('click', () => {
+                const item = data.find(i => String(i.id) === row.dataset.id);
+                if (item) this._openFichaByType(item, 'catalogo');
+            });
+        });
+    },
+
+    _getCatalogoSortValue(item, colId) {
+        switch (colId) {
+            case 'codigo': return (item.codigo || '').toLowerCase();
+            case 'nombre': return (item.nombre || '').toLowerCase();
+            case 'rubro': return (item.rubro || '').toLowerCase();
+            case 'categoria': return (item.categoria || '').toLowerCase();
+            case 'origen': return (item.origen || '').toLowerCase();
+            case 'costo': return item.costoProduccion || 0;
+            case 'precio': return item.precioCliente || 0;
+            default: return null;
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  INVENTARIO — SIMULADOR SECTION
+    // ═══════════════════════════════════════════
+
+    _renderSimuladorSection() {
+        return `
+            <div class="section-content">
+                <div class="simulador-container">
+                    <div class="simulador-header">
+                        <div>
+                            <h2 class="title-3">📊 Simulador de Costos</h2>
+                            <p class="subtitle">Recalculá la cascada completa o simulá impacto de cambios de precio</p>
+                        </div>
+                    </div>
+
+                    <div class="simulador-cards">
+                        <div class="simulador-card">
+                            <div class="simulador-card-icon">🔄</div>
+                            <div class="simulador-card-info">
+                                <h3 class="title-3">Recalcular todo</h3>
+                                <p class="subtitle">Recorre todos los items del catálogo y actualiza los costos de producción según las recetas e insumos actuales.</p>
+                            </div>
+                            <button class="btn btn-primary" id="btnRecalcularTodo">
+                                Recalcular cascada
+                            </button>
+                        </div>
+
+                        <div class="simulador-card">
+                            <div class="simulador-card-icon">📈</div>
+                            <div class="simulador-card-info">
+                                <h3 class="title-3">Resumen del catálogo</h3>
+                                <p class="subtitle" id="simuladorResumen">Cargando…</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="simulador-log" id="simuladorLog"></div>
+                </div>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  INVENTARIO — FICHA CONFIGS
+    // ═══════════════════════════════════════════
+
+    // Sort override for insumos/catalogo
+    _getSortValueForType(item, colId, type) {
+        if (type === 'insumos') return this._getInsumoSortValue(item, colId);
+        if (type === 'catalogo') return this._getCatalogoSortValue(item, colId);
+        return null;
+    },
+
+    // ═══════════════════════════════════════════
+    //  CATÁLOGO — Async Tab Data Loaders
+    // ═══════════════════════════════════════════
+
+    async _loadCatalogoTabData(item, tabId) {
+        if (tabId === 'receta') await this._loadCatalogoReceta(item);
+    },
+
+    async _loadCatalogoReceta(item) {
+        const listEl = document.getElementById('recetaList');
+        const totalEl = document.getElementById('recetaTotalCost');
+        if (!listEl) return;
+
+        try {
+            const [componentes, insumos, items] = await Promise.all([
+                API.getRecetaComponentes(item.id),
+                API.getInsumos(),
+                API.getCatalogoItems(),
+            ]);
+
+            if (componentes.length === 0) {
+                listEl.innerHTML = `
+                    <div class="ficha-timeline-empty">
+                        <div class="ficha-timeline-empty-icon">🧪</div>
+                        <p>Sin componentes en la receta</p>
+                        <p class="text-muted">Agregá insumos u otros items para componer este producto</p>
+                    </div>`;
+                if (totalEl) totalEl.textContent = 'Sin receta';
+                this._attachRecetaAddHandler(item, insumos, items);
+                return;
+            }
+
+            // Resolve names and calculate costs
+            let totalCost = 0;
+            const rows = componentes.map(comp => {
+                let nombre = '?', costo = 0, unidad = '';
+                if (comp.componenteType === 'insumo') {
+                    const ins = (insumos || []).find(i => String(i.id) === String(comp.componenteId));
+                    if (ins) {
+                        nombre = ins.nombre;
+                        costo = ins.costoUnitario;
+                        unidad = ins.unidadBase;
+                    }
+                } else if (comp.componenteType === 'item') {
+                    const sub = (items || []).find(i => String(i.id) === String(comp.componenteId));
+                    if (sub) {
+                        nombre = sub.nombre;
+                        costo = sub.costoProduccion;
+                        unidad = sub.unidad;
+                    }
+                }
+                const subtotal = comp.cantidad * costo;
+                totalCost += subtotal;
+                return { ...comp, nombre, costoUnit: costo, unidad, subtotal };
+            });
+
+            listEl.innerHTML = `
+                <table class="receta-table">
+                    <thead>
+                        <tr>
+                            <th>TIPO</th>
+                            <th>COMPONENTE</th>
+                            <th class="text-right">CANT.</th>
+                            <th class="text-right">COSTO UNIT.</th>
+                            <th class="text-right">SUBTOTAL</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(r => `
+                            <tr class="receta-row" data-comp-id="${r.id}">
+                                <td><span class="badge badge-ghost receta-type-badge">${r.componenteType === 'insumo' ? '🧱 Insumo' : '🔩 Item'}</span></td>
+                                <td class="td-primary">${r.nombre}</td>
+                                <td class="text-right"><span class="receta-cant" data-comp-id="${r.id}" contenteditable="true">${r.cantidad}</span> <span class="cost-unit">${r.unidadUso || r.unidad}</span></td>
+                                <td class="text-right cost-value">${API.formatCurrency(r.costoUnit)}</td>
+                                <td class="text-right cost-value">${API.formatCurrency(r.subtotal)}</td>
+                                <td><button class="receta-delete-btn" data-delete-comp="${r.id}" title="Quitar">✕</button></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+
+            if (totalEl) totalEl.innerHTML = `<span class="cost-value">${API.formatCurrency(totalCost)}</span>`;
+
+            // Attach inline edit for quantity
+            listEl.querySelectorAll('.receta-cant[contenteditable]').forEach(el => {
+                el.addEventListener('blur', async () => {
+                    const compId = el.dataset.compId;
+                    const newCant = parseFloat(el.textContent);
+                    if (isNaN(newCant) || newCant <= 0) {
+                        el.textContent = '1';
+                        return;
+                    }
+                    await API.updateRecetaComponente(compId, { cantidad: newCant });
+                    // Recalculate item cost
+                    await API.recalcularCostoItem(item.id);
+                    Toast.success('Cantidad actualizada');
+                    // Refresh receta view
+                    this._loadCatalogoReceta(item);
+                });
+                el.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+                });
+            });
+
+            // Attach delete handlers
+            listEl.querySelectorAll('[data-delete-comp]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const compId = btn.dataset.deleteComp;
+                    const row = btn.closest('.receta-row');
+                    if (row) row.style.opacity = '0.4';
+                    const result = await API.deleteRecetaComponente(compId);
+                    if (result) {
+                        await API.recalcularCostoItem(item.id);
+                        Toast.success('Componente eliminado');
+                        this._loadCatalogoReceta(item);
+                    } else {
+                        if (row) row.style.opacity = '1';
+                        Toast.error('Error al eliminar');
+                    }
+                });
+            });
+
+            this._attachRecetaAddHandler(item, insumos, items);
+
+        } catch (e) {
+            console.warn('[Modules] Error loading receta:', e.message);
+            listEl.innerHTML = '<div class="ficha-empty-msg">Error cargando receta</div>';
+        }
+    },
+
+    _attachRecetaAddHandler(item, insumos, items) {
+        const btn = document.getElementById('btnAddComponente');
+        if (!btn) return;
+
+        btn.addEventListener('click', () => {
+            // Build list of addable components
+            const options = [];
+            (insumos || []).forEach(i => {
+                options.push({ type: 'insumo', id: i.id, label: `🧱 ${i.nombre}`, unidad: i.unidadBase, codigo: i.codigo });
+            });
+            (items || []).filter(i => String(i.id) !== String(item.id)).forEach(i => {
+                options.push({ type: 'item', id: i.id, label: `🔩 ${i.nombre}`, unidad: i.unidad, codigo: i.codigo });
+            });
+
+            // Create search modal inline
+            const addSection = document.getElementById('recetaAddSection');
+            if (!addSection) return;
+
+            addSection.innerHTML = `
+                <div class="receta-search-box">
+                    <input type="text" class="receta-search-input" id="recetaSearchInput" placeholder="Buscar insumo o item…" autocomplete="off">
+                    <div class="receta-search-results" id="recetaSearchResults"></div>
+                    <button class="btn btn-ghost btn-sm" id="recetaCancelSearch">Cancelar</button>
+                </div>`;
+
+            const input = document.getElementById('recetaSearchInput');
+            const results = document.getElementById('recetaSearchResults');
+            const cancelBtn = document.getElementById('recetaCancelSearch');
+
+            input?.focus();
+
+            const renderResults = (q) => {
+                const filtered = q
+                    ? options.filter(o => o.label.toLowerCase().includes(q.toLowerCase()) || (o.codigo || '').toLowerCase().includes(q.toLowerCase()))
+                    : options.slice(0, 15);
+
+                results.innerHTML = filtered.length === 0
+                    ? '<div class="receta-no-results">Sin resultados</div>'
+                    : filtered.map(o => `
+                        <div class="receta-search-item" data-add-type="${o.type}" data-add-id="${o.id}" data-add-unidad="${o.unidad}">
+                            <span class="receta-search-item-label">${o.label}</span>
+                            ${o.codigo ? `<span class="receta-search-item-code">${o.codigo}</span>` : ''}
+                        </div>
+                    `).join('');
+
+                results.querySelectorAll('.receta-search-item').forEach(el => {
+                    el.addEventListener('click', async () => {
+                        const compType = el.dataset.addType;
+                        const compId = el.dataset.addId;
+                        const compUnidad = el.dataset.addUnidad;
+                        el.style.opacity = '0.4';
+                        const result = await API.addRecetaComponente({
+                            itemId: item.id,
+                            componenteType: compType,
+                            componenteId: String(compId),
+                            cantidad: 1,
+                            unidadUso: compUnidad,
+                        });
+                        if (result) {
+                            await API.recalcularCostoItem(item.id);
+                            Toast.success('Componente agregado');
+                            this._loadCatalogoReceta(item);
+                        } else {
+                            Toast.error('Error al agregar componente');
+                            el.style.opacity = '1';
+                        }
+                    });
+                });
+            };
+
+            renderResults('');
+            input?.addEventListener('input', () => renderResults(input.value));
+            cancelBtn?.addEventListener('click', () => {
+                addSection.innerHTML = `
+                    <button class="btn btn-secondary btn-sm" id="btnAddComponente">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Agregar componente
+                    </button>`;
+                this._attachRecetaAddHandler(item, insumos, items);
+            });
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  SIMULADOR — Init & Event Handlers
+    // ═══════════════════════════════════════════
+
+    async _initSimulador() {
+        // Load summary data
+        const resumenEl = document.getElementById('simuladorResumen');
+        const logEl = document.getElementById('simuladorLog');
+
+        try {
+            const [insumos, items] = await Promise.all([
+                API.getInsumos(),
+                API.getCatalogoItems(),
+            ]);
+
+            const totalInsumos = insumos ? insumos.length : 0;
+            const totalItems = items ? items.length : 0;
+            const itemsConCosto = items ? items.filter(i => i.costoProduccion > 0).length : 0;
+            const itemsSinCosto = totalItems - itemsConCosto;
+
+            if (resumenEl) {
+                resumenEl.innerHTML = `
+                    <strong>${totalInsumos}</strong> insumos · <strong>${totalItems}</strong> items en catálogo ·
+                    <strong>${itemsConCosto}</strong> con costo · <span style="color:var(--color-warning)">${itemsSinCosto} sin costo</span>`;
+            }
+        } catch (e) {
+            if (resumenEl) resumenEl.textContent = 'Error cargando resumen';
+        }
+
+        // Attach recalculate button
+        const btn = document.getElementById('btnRecalcularTodo');
+        if (btn) {
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                btn.textContent = 'Recalculando…';
+                if (logEl) logEl.innerHTML = '<div class="simulador-log-entry">🔄 Iniciando recálculo de cascada…</div>';
+
+                try {
+                    const result = await API.recalcularTodo();
+                    btn.disabled = false;
+                    btn.textContent = 'Recalcular cascada';
+
+                    if (result.ok) {
+                        const msg = `✅ Cascada completa: ${result.total} items procesados, ${result.updated} actualizados.`;
+                        if (logEl) logEl.innerHTML = `<div class="simulador-log-entry simulador-log-success">${msg}</div>`;
+                        Toast.success(`${result.updated} items actualizados`);
+                        // Refresh summary
+                        this._initSimulador();
+                    } else {
+                        if (logEl) logEl.innerHTML = '<div class="simulador-log-entry simulador-log-error">❌ Error en la recalculación</div>';
+                        Toast.error('Error al recalcular');
+                    }
+                } catch (e) {
+                    btn.disabled = false;
+                    btn.textContent = 'Recalcular cascada';
+                    if (logEl) logEl.innerHTML = `<div class="simulador-log-entry simulador-log-error">❌ ${e.message}</div>`;
+                    Toast.error('Error al recalcular');
+                }
+            });
         }
     },
 };

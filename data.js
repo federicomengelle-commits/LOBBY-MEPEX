@@ -406,17 +406,18 @@ const Data = {
 
         inventario: {
             id: 'inventario',
-            name: 'Inventario & Recursos',
+            name: 'Inventario & Costos',
             shortName: 'Inventario',
-            icon: '⬜',
-            description: 'Stock de equipamiento, compras, tercerización.',
-            status: 'upcoming',
-            color: '#B0B0B0',
+            icon: '📦',
+            description: 'Insumos, catálogo de items, cascada de costos, stock.',
+            status: 'active',
+            color: '#9B7DFF',
             order: 7,
             sections: [
-                { id: 'stock', name: 'Stock de Equipamiento', icon: '📦', description: 'Panelería, iluminación, mobiliario, alfombras, estructura, herramientas', fields: [{ label: 'Categoría', type: 'select', options: ['Panelería', 'Iluminación', 'Mobiliario', 'Alfombras', 'Estructura', 'Carros', 'Escaleras', 'Herramientas'] }, { label: 'Estado', type: 'select', options: ['Disponible', 'Asignado', 'En reparación', 'Baja'] }, { label: 'Cantidad', type: 'number' }] },
-                { id: 'compras', name: 'Compras', icon: '🛒', description: 'Stock general, compras por proyecto, comparación de precios', fields: [{ label: 'Tipo', type: 'select', options: ['Reposición', 'Por proyecto'] }, { label: 'Proveedor', type: 'relation' }, { label: 'Precio', type: 'number' }] },
-                { id: 'tercerizacion', name: 'Tercerización', icon: '🤝', description: 'Gráfica (siempre tercerizada), servicios puntuales', fields: [{ label: 'Proveedor', type: 'relation' }, { label: 'Servicio', type: 'text' }] },
+                { id: 'insumos', name: 'Insumos', icon: '🧱', description: 'Materias primas: aluminio, placas, vidrio, tornillería, mano de obra, subalquileres', fields: [] },
+                { id: 'catalogo', name: 'Catálogo de Items', icon: '🔩', description: 'Componentes fabricados con receta de costos: cerrojos, dinteles, paneles', fields: [] },
+                { id: 'simulador', name: 'Simulador', icon: '📊', description: 'Recálculo en cascada, simulación de impacto de precios', fields: [] },
+                { id: 'stock', name: 'Stock', icon: '📦', description: 'Panelería, iluminación, mobiliario, alfombras, estructura, herramientas', fields: [{ label: 'Categoría', type: 'select', options: ['Panelería', 'Iluminación', 'Mobiliario', 'Alfombras', 'Estructura', 'Carros', 'Escaleras', 'Herramientas'] }, { label: 'Estado', type: 'select', options: ['Disponible', 'Asignado', 'En reparación', 'Baja'] }, { label: 'Cantidad', type: 'number' }] },
             ],
             connections: [
                 { to: 'eventos', label: 'Ver Proyectos', context: 'Proyectos que reservan materiales' },
