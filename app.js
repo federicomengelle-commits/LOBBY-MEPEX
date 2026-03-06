@@ -125,10 +125,12 @@ const App = {
         `;
     },
 
-    // ─── SIDEBAR (Quick Actions) ───
+    // ─── SIDEBAR (Quick Actions + Category Nav) ───
     _renderSidebar(user) {
         const actions = Data.getQuickActionsForRole(user.role);
-        const modules = Data.getModulesForRole(user.role);
+        const categories = Data.getCategoriesForRole(user.role);
+        const currentHash = Router.getHash();
+        const collapsed = this._getSidebarCollapsed();
 
         return `
             <aside class="app-sidebar ${this.sidebarOpen ? 'open' : ''}" id="appSidebar">
@@ -146,32 +148,69 @@ const App = {
 
                 <div class="sidebar-divider"></div>
 
-                <div class="sidebar-section">
-                    <div class="sidebar-section-label">NAVEGACIÓN</div>
-                    <nav class="sidebar-nav-links">
-                        <a href="#lobby" class="sidebar-nav-link ${Router.getHash() === 'lobby' ? 'active' : ''}" data-route="lobby">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                            <span>Lobby</span>
-                        </a>
-                        ${modules.map(mod => `
-                            <a href="#${mod.id}" class="sidebar-nav-link ${Router.getHash() === mod.id ? 'active' : ''}" data-route="${mod.id}">
-                                <span class="sidebar-nav-icon">${mod.icon}</span>
-                                <span>${mod.shortName}</span>
-                            </a>
-                        `).join('')}
-                    </nav>
-                </div>
+                <nav class="sidebar-categories" id="sidebarCategories">
+                    ${categories.map(cat => {
+                        const isOpen = !collapsed.includes(cat.id);
+                        const catModules = this._getCategoryModules(cat);
+                        const hasActive = catModules.some(m => m.id === currentHash);
+                        return `
+                        <div class="sidebar-cat" data-cat-id="${cat.id}">
+                            <button class="sidebar-cat-header${isOpen || hasActive ? ' open' : ''}" data-cat-id="${cat.id}" style="--cat-color: ${cat.color}">
+                                <span class="sidebar-cat-icon">${cat.icon}</span>
+                                <span class="sidebar-cat-name">${cat.name}</span>
+                                <svg class="sidebar-cat-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="sidebar-cat-modules${isOpen || hasActive ? ' open' : ''}">
+                                ${catModules.map(m => `
+                                    <a href="#${m.id}" class="sidebar-nav-link${currentHash === m.id ? ' active' : ''}" data-route="${m.id}" style="--cat-color: ${cat.color}">
+                                        <span class="sidebar-nav-icon">${m.icon}</span>
+                                        <span>${m.shortName}</span>
+                                    </a>
+                                `).join('')}
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </nav>
             </aside>
         `;
+    },
+
+    // ─── Get modules for a category (resolves both formats) ───
+    _getCategoryModules(cat) {
+        if (cat.modules) return cat.modules;
+        return (cat.moduleIds || []).map(id => {
+            const mod = Data.getModuleById(id);
+            return mod ? { id: mod.id, shortName: mod.shortName, icon: mod.icon } : null;
+        }).filter(Boolean);
+    },
+
+    // ─── Sidebar collapsed state (localStorage) ───
+    _getSidebarCollapsed() {
+        try {
+            return JSON.parse(localStorage.getItem('sidebar_collapsed_v2') || '[]');
+        } catch { return []; }
+    },
+    _setSidebarCollapsed(arr) {
+        localStorage.setItem('sidebar_collapsed_v2', JSON.stringify(arr));
     },
 
     // ─── UPDATE SIDEBAR ACTIVE STATE ───
     updateSidebarActive() {
         const hash = Router.getHash();
+        // Update active link
         document.querySelectorAll('.sidebar-nav-link').forEach(link => {
             const route = link.dataset.route;
             link.classList.toggle('active', route === hash);
         });
+        // Auto-expand category containing active module
+        const activeCat = Data.getCategoryForModule(hash);
+        if (activeCat) {
+            const catEl = document.querySelector(`.sidebar-cat[data-cat-id="${activeCat.id}"]`);
+            if (catEl) {
+                catEl.querySelector('.sidebar-cat-header')?.classList.add('open');
+                catEl.querySelector('.sidebar-cat-modules')?.classList.add('open');
+            }
+        }
     },
 
     // ─── ATTACH SHELL EVENTS ───
@@ -191,6 +230,23 @@ const App = {
         // Logout
         document.getElementById('logoutBtn')?.addEventListener('click', async () => {
             await Auth.logout();
+        });
+
+        // Category accordion toggle
+        document.querySelectorAll('.sidebar-cat-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const catId = header.dataset.catId;
+                const isOpen = header.classList.toggle('open');
+                header.nextElementSibling?.classList.toggle('open', isOpen);
+                // Persist state
+                let collapsed = this._getSidebarCollapsed();
+                if (isOpen) {
+                    collapsed = collapsed.filter(id => id !== catId);
+                } else {
+                    if (!collapsed.includes(catId)) collapsed.push(catId);
+                }
+                this._setSidebarCollapsed(collapsed);
+            });
         });
 
         // Quick actions
