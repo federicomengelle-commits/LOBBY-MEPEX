@@ -1146,10 +1146,363 @@ const Modules = {
                 color: var(--text-primary, #fff);
                 font-weight: 500;
             }
+            /* ═══════════════════════════════════════
+               CLIENT CRM — Ficha Expandida
+               ═══════════════════════════════════════ */
+
+            /* ─── KPI Row ─── */
+            .ficha-kpi-row {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+                margin-bottom: 8px;
+            }
+            .ficha-kpi {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 14px 8px;
+                background: var(--bg-hover, #22252c);
+                border-radius: 10px;
+                border: 1px solid var(--border-subtle, #22252c);
+            }
+            .ficha-kpi-value {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: var(--text-primary, #fff);
+                font-family: var(--font-mono, 'Space Mono', monospace);
+                line-height: 1;
+            }
+            .ficha-kpi-label {
+                font-size: 0.65rem;
+                color: var(--text-muted, #888);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                margin-top: 4px;
+            }
+
+            /* ─── Contact Card ─── */
+            .ficha-contact-card {
+                background: var(--bg-hover, #22252c);
+                border-radius: 10px;
+                padding: 14px;
+                border: 1px solid var(--border-subtle, #22252c);
+            }
+            .ficha-contact-name {
+                font-size: 0.9rem;
+                font-weight: 600;
+                color: var(--text-primary, #fff);
+                margin-bottom: 8px;
+            }
+            .ficha-contact-role {
+                font-weight: 400;
+                color: var(--text-muted, #888);
+                font-size: 0.82rem;
+            }
+            .ficha-contact-channels {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            .ficha-channel-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 10px;
+                border-radius: 6px;
+                background: rgba(0,169,193,0.08);
+                color: var(--primary, #00A9C1);
+                font-size: 0.78rem;
+                text-decoration: none;
+                transition: background 0.15s;
+                width: fit-content;
+            }
+            .ficha-channel-btn:hover {
+                background: rgba(0,169,193,0.18);
+            }
+
+            /* ─── Mini Timeline (resumen tab) ─── */
+            .ficha-mini-timeline {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+            .ficha-mini-tl-item {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 10px;
+                background: var(--bg-hover, #22252c);
+                border-radius: 8px;
+                font-size: 0.78rem;
+            }
+            .ficha-mini-tl-icon { font-size: 0.85rem; flex-shrink: 0; }
+            .ficha-mini-tl-time { color: var(--text-muted, #888); min-width: 70px; flex-shrink: 0; font-size: 0.72rem; }
+            .ficha-mini-tl-who { color: var(--primary, #00A9C1); font-weight: 600; flex-shrink: 0; }
+            .ficha-mini-tl-text { color: var(--text-primary, #fff); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+            /* ─── Mini Projects (resumen tab) ─── */
+            .ficha-mini-projects { display: flex; flex-direction: column; gap: 6px; }
+            .ficha-mini-proj-item {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 10px;
+                background: var(--bg-hover, #22252c);
+                border-radius: 8px;
+                font-size: 0.78rem;
+            }
+            .ficha-mini-proj-name { color: var(--text-primary, #fff); font-weight: 500; flex: 1; }
+            .ficha-mini-proj-event { color: var(--text-muted, #888); font-size: 0.72rem; }
+
+            /* ─── Empty / Loading states ─── */
+            .ficha-empty-msg {
+                padding: 16px;
+                text-align: center;
+                color: var(--text-muted, #666);
+                font-size: 0.8rem;
+                font-style: italic;
+            }
+            .ficha-loading-small {
+                padding: 16px;
+                text-align: center;
+                color: var(--text-muted, #666);
+                font-size: 0.8rem;
+            }
+
+            /* ═══ TIMELINE FULL TAB ═══ */
+            .ficha-timeline-module {
+                display: flex;
+                flex-direction: column;
+                gap: 0;
+                height: 100%;
+            }
+
+            /* ─── Quick Add Form ─── */
+            .ficha-timeline-add {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 14px;
+                background: var(--bg-hover, #22252c);
+                border-radius: 10px;
+                border: 1px solid var(--border-subtle, #22252c);
+                margin-bottom: 16px;
+            }
+            .ficha-timeline-add-row {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            .ficha-tl-select {
+                padding: 7px 10px;
+                border-radius: 6px;
+                font-size: 0.78rem;
+                background: var(--bg-card, #1a1d23);
+                color: var(--text-primary, #fff);
+                border: 1px solid var(--border, #2a2d35);
+                cursor: pointer;
+                font-family: inherit;
+                flex-shrink: 0;
+            }
+            .ficha-tl-select:focus {
+                border-color: var(--primary, #00A9C1);
+                outline: none;
+            }
+            .ficha-tl-input {
+                flex: 1;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: 0.85rem;
+                background: var(--bg-card, #1a1d23);
+                color: var(--text-primary, #fff);
+                border: 1px solid var(--border, #2a2d35);
+                font-family: inherit;
+            }
+            .ficha-tl-input:focus {
+                border-color: var(--primary, #00A9C1);
+                outline: none;
+                box-shadow: 0 0 0 2px rgba(0,169,193,0.12);
+            }
+            .ficha-tl-input::placeholder { color: var(--text-dim, #555); }
+            .ficha-tl-btn {
+                width: 36px;
+                height: 36px;
+                border-radius: 8px;
+                background: var(--primary, #00A9C1);
+                color: #000;
+                border: none;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                transition: opacity 0.15s;
+            }
+            .ficha-tl-btn:hover { opacity: 0.85; }
+            .ficha-tl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+            /* ─── Timeline List ─── */
+            .ficha-timeline-list {
+                display: flex;
+                flex-direction: column;
+                gap: 0;
+                flex: 1;
+                overflow-y: auto;
+            }
+            .ficha-tl-date-header {
+                font-size: 0.68rem;
+                font-weight: 600;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--text-muted, #888);
+                padding: 12px 0 6px;
+                border-bottom: 1px solid var(--border-subtle, #22252c);
+                margin-bottom: 4px;
+            }
+            .ficha-tl-date-header:first-child { padding-top: 0; }
+            .ficha-tl-entry {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 10px 4px;
+                border-radius: 6px;
+                transition: background 0.1s;
+                position: relative;
+            }
+            .ficha-tl-entry:hover { background: rgba(255,255,255,0.02); }
+            .ficha-tl-entry-icon {
+                font-size: 1rem;
+                flex-shrink: 0;
+                margin-top: 2px;
+            }
+            .ficha-tl-entry-body { flex: 1; min-width: 0; }
+            .ficha-tl-entry-meta {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 3px;
+                flex-wrap: wrap;
+            }
+            .ficha-tl-entry-time {
+                font-size: 0.7rem;
+                color: var(--text-muted, #888);
+                font-family: var(--font-mono, 'Space Mono', monospace);
+            }
+            .ficha-tl-entry-who {
+                font-size: 0.75rem;
+                font-weight: 600;
+                color: var(--primary, #00A9C1);
+            }
+            .ficha-tl-entry-canal {
+                font-size: 0.68rem;
+                color: var(--text-dim, #555);
+                padding: 1px 6px;
+                background: rgba(255,255,255,0.04);
+                border-radius: 4px;
+            }
+            .ficha-tl-auto-badge {
+                font-size: 0.6rem;
+                color: var(--text-dim, #555);
+                padding: 1px 5px;
+                background: rgba(0,169,193,0.1);
+                border-radius: 3px;
+                font-style: italic;
+            }
+            .ficha-tl-entry-text {
+                font-size: 0.82rem;
+                color: var(--text-primary, #fff);
+                line-height: 1.4;
+            }
+            .ficha-tl-entry-delete {
+                position: absolute;
+                top: 10px;
+                right: 4px;
+                width: 22px;
+                height: 22px;
+                border-radius: 4px;
+                background: transparent;
+                border: none;
+                color: var(--text-dim, #555);
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                transition: opacity 0.15s, color 0.15s;
+            }
+            .ficha-tl-entry:hover .ficha-tl-entry-delete { opacity: 1; }
+            .ficha-tl-entry-delete:hover { color: #ff4444; background: rgba(255,60,60,0.1); }
+
+            .ficha-timeline-empty {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 40px 20px;
+                text-align: center;
+                color: var(--text-muted, #888);
+            }
+            .ficha-timeline-empty-icon {
+                font-size: 2rem;
+                margin-bottom: 8px;
+                opacity: 0.5;
+            }
+            .ficha-timeline-empty p {
+                margin: 2px 0;
+                font-size: 0.85rem;
+            }
+
+            /* ═══ PROYECTOS TAB ═══ */
+            .ficha-projects-module { display: flex; flex-direction: column; gap: 0; }
+            .ficha-proj-card {
+                padding: 12px 14px;
+                border-radius: 8px;
+                background: var(--bg-hover, #22252c);
+                border: 1px solid var(--border-subtle, #22252c);
+                margin-bottom: 8px;
+                cursor: pointer;
+                transition: border-color 0.15s, background 0.15s;
+            }
+            .ficha-proj-card:hover {
+                border-color: var(--primary, #00A9C1);
+                background: rgba(0,169,193,0.04);
+            }
+            .ficha-proj-card-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 6px;
+            }
+            .ficha-proj-card-name {
+                font-size: 0.88rem;
+                font-weight: 600;
+                color: var(--text-primary, #fff);
+            }
+            .ficha-proj-card-meta {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+                font-size: 0.72rem;
+                color: var(--text-muted, #888);
+            }
+            .ficha-proj-card-event { color: var(--text-muted, #888); }
+            .ficha-proj-card-type { color: var(--accent, #F28D15); }
+            .ficha-proj-card-resp { color: var(--text-muted, #888); }
+            .ficha-proj-card-lote {
+                font-family: var(--font-mono, 'Space Mono', monospace);
+                font-size: 0.68rem;
+                color: var(--text-dim, #555);
+            }
+
             @media (max-width: 600px) {
                 .ficha-panel { width: 100vw; }
-                .ficha-tabs { padding: 0 12px; }
+                .ficha-tabs { padding: 0 12px; overflow-x: auto; }
                 .ficha-panel-body { padding: 16px; }
+                .ficha-kpi-row { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+                .ficha-timeline-add-row { flex-wrap: wrap; }
+                .ficha-tl-select { flex: 1; min-width: 100px; }
             }
         `;
         document.head.appendChild(style);
@@ -1400,12 +1753,6 @@ const Modules = {
             cb.addEventListener('click', (e) => e.stopPropagation());
         });
 
-    },
-
-    _openFichaByType(item, type) {
-        if (type === 'projects') this._openFichaProyecto(item);
-        else if (type === 'clients') this._openFichaCliente(item);
-        else if (type === 'events') this._openFichaEvento(item);
     },
 
     _updateBulkBar(type) {
@@ -1751,7 +2098,7 @@ const Modules = {
                 if (ev.target.closest('.td-checkbox')) return;
                 const id = row.dataset.id;
                 const proyecto = this._currentApiData.find(p => p.id == id);
-                if (proyecto) this._openFichaProyecto(proyecto);
+                if (proyecto) this._openFichaByType(proyecto, 'projects');
             });
         });
 
@@ -2060,13 +2407,89 @@ const Modules = {
         clients: {
             icon: '🏢',
             color: '#00A9C1',
-            getStatus: () => null,
+            getStatus: (item) => item.rubro ? { label: item.rubro, class: 'badge-ghost' } : null,
             tabs: [
-                { id: 'info', label: 'Información', icon: '📋' },
-                { id: 'links', label: 'Vínculos', icon: '🔗' },
-                { id: 'notes', label: 'Notas', icon: '📝' },
+                { id: 'resumen', label: 'Resumen', icon: '📊' },
+                { id: 'timeline', label: 'Timeline', icon: '💬' },
+                { id: 'proyectos', label: 'Proyectos', icon: '📋' },
+                { id: 'info', label: 'Datos', icon: '🏢' },
             ],
             renderTab(item, tabId, v) {
+                if (tabId === 'resumen') {
+                    return `
+                        <div class="ficha-crm-summary">
+                            <div class="ficha-kpi-row" id="fichaKpiRow">
+                                <div class="ficha-kpi"><span class="ficha-kpi-value" id="fkpiProyectos">…</span><span class="ficha-kpi-label">Proyectos</span></div>
+                                <div class="ficha-kpi"><span class="ficha-kpi-value" id="fkpiActivos">…</span><span class="ficha-kpi-label">Activos</span></div>
+                                <div class="ficha-kpi"><span class="ficha-kpi-value" id="fkpiInteracciones">…</span><span class="ficha-kpi-label">Interacciones</span></div>
+                            </div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Contacto principal</div>
+                            <div class="ficha-contact-card">
+                                <div class="ficha-contact-name">${v(item.contactName)}${item.contactRole ? ' <span class="ficha-contact-role">· ' + item.contactRole + '</span>' : ''}</div>
+                                <div class="ficha-contact-channels">
+                                    ${item.phone ? '<a href="tel:' + item.phone + '" class="ficha-channel-btn" title="Llamar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> ' + item.phone + '</a>' : ''}
+                                    ${item.email ? '<a href="mailto:' + item.email + '" class="ficha-channel-btn" title="Email"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg> ' + item.email + '</a>' : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Última actividad</div>
+                            <div class="ficha-mini-timeline" id="fichaMiniTimeline">
+                                <div class="ficha-loading-small">Cargando…</div>
+                            </div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Proyectos recientes</div>
+                            <div class="ficha-mini-projects" id="fichaMiniProjects">
+                                <div class="ficha-loading-small">Cargando…</div>
+                            </div>
+                        </div>`;
+                }
+                if (tabId === 'timeline') {
+                    const user = Auth.getUser();
+                    const userName = user ? user.name : '';
+                    return `
+                        <div class="ficha-timeline-module">
+                            <div class="ficha-timeline-add" id="fichaTimelineAdd">
+                                <div class="ficha-timeline-add-row">
+                                    <select class="ficha-tl-select" id="fichaTimeCanal">
+                                        <option value="WA MEPEX">📱 WA MEPEX</option>
+                                        <option value="WA Lelean">📱 WA Lelean</option>
+                                        <option value="WA Fede">📱 WA Fede</option>
+                                        <option value="Mail">📧 Mail</option>
+                                        <option value="Instagram">📷 Instagram</option>
+                                        <option value="Teléfono">📞 Teléfono</option>
+                                        <option value="Presencial">🤝 Presencial</option>
+                                    </select>
+                                    <select class="ficha-tl-select" id="fichaTimeQuien">
+                                        <option value="Fede">Fede</option>
+                                        <option value="Lelean">Lelean</option>
+                                        <option value="Noe">Noe</option>
+                                        <option value="${userName}" ${userName && !['Fede','Lelean','Noe'].includes(userName) ? '' : 'style="display:none"'}>${userName}</option>
+                                    </select>
+                                </div>
+                                <div class="ficha-timeline-add-row">
+                                    <input type="text" class="ficha-tl-input" id="fichaTimeResumen" placeholder="¿Qué pasó? (enter para guardar)" autocomplete="off">
+                                    <button class="ficha-tl-btn" id="fichaTimeSave" title="Guardar">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="ficha-timeline-list" id="fichaTimelineList">
+                                <div class="ficha-loading-small">Cargando timeline…</div>
+                            </div>
+                        </div>`;
+                }
+                if (tabId === 'proyectos') {
+                    return `
+                        <div class="ficha-projects-module">
+                            <div class="ficha-projects-list" id="fichaProjectsList">
+                                <div class="ficha-loading-small">Cargando proyectos…</div>
+                            </div>
+                        </div>`;
+                }
                 if (tabId === 'info') {
                     return `
                         <div class="ficha-section">
@@ -2083,20 +2506,6 @@ const Modules = {
                             <div class="ficha-row"><span class="ficha-row-label">Teléfono</span><span class="ficha-row-value">${item.phone ? '<a href="tel:' + item.phone + '" class="ficha-link">' + item.phone + '</a>' : '—'}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Email</span><span class="ficha-row-value">${item.email ? '<a href="mailto:' + item.email + '" class="ficha-link">' + item.email + '</a>' : '—'}</span></div>
                         </div>`;
-                }
-                if (tabId === 'links') {
-                    return `
-                        <div class="ficha-section">
-                            <div class="ficha-section-title">Proyectos asociados</div>
-                            <div class="ficha-empty-links">Los proyectos vinculados a este cliente aparecerán aquí.</div>
-                        </div>
-                        <div class="ficha-section">
-                            <div class="ficha-section-title">Eventos asociados</div>
-                            <div class="ficha-empty-links">Los eventos vinculados a este cliente aparecerán aquí.</div>
-                        </div>`;
-                }
-                if (tabId === 'notes') {
-                    return `<div class="ficha-section"><div class="ficha-section-title">Notas / Comentarios</div><textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea></div>`;
                 }
                 return '';
             }
@@ -2216,14 +2625,20 @@ const Modules = {
             panel.classList.add('open');
         });
 
-        // Tab switching
+        // Tab switching with async data loading
+        const switchTab = (tabId) => {
+            panel.querySelectorAll('.ficha-tab').forEach(t => t.classList.remove('active'));
+            panel.querySelector(`[data-ficha-tab="${tabId}"]`)?.classList.add('active');
+            const content = document.getElementById('fichaTabContent');
+            if (content) {
+                content.innerHTML = config.renderTab(item, tabId, v);
+                // Trigger async loading for client CRM tabs
+                if (type === 'clients') this._loadClientTabData(item, tabId);
+            }
+        };
+
         panel.querySelectorAll('.ficha-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                panel.querySelectorAll('.ficha-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                const content = document.getElementById('fichaTabContent');
-                if (content) content.innerHTML = config.renderTab(item, tab.dataset.fichaTab, v);
-            });
+            tab.addEventListener('click', () => switchTab(tab.dataset.fichaTab));
         });
 
         // Close
@@ -2240,6 +2655,255 @@ const Modules = {
         panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
             this._deleteSingle(item, type);
         });
+
+        // Auto-load data for first tab (clients CRM)
+        if (type === 'clients') this._loadClientTabData(item, firstTab);
+    },
+
+    // ═══════════════════════════════════════════
+    //  CLIENT CRM — Async Data Loaders
+    // ═══════════════════════════════════════════
+
+    async _loadClientTabData(item, tabId) {
+        if (tabId === 'resumen') await this._loadClientResumen(item);
+        else if (tabId === 'timeline') await this._loadClientTimeline(item);
+        else if (tabId === 'proyectos') await this._loadClientProjects(item);
+    },
+
+    // ─── RESUMEN TAB ─────────────────────────
+    async _loadClientResumen(item) {
+        // Load KPIs, mini timeline, mini projects in parallel
+        const [projects, interacciones] = await Promise.all([
+            API.getProjectsByClient(item.name),
+            API.getInteracciones(item.id),
+        ]);
+
+        // KPIs
+        const kpiProyectos = document.getElementById('fkpiProyectos');
+        const kpiActivos = document.getElementById('fkpiActivos');
+        const kpiInteracciones = document.getElementById('fkpiInteracciones');
+
+        const activeStatuses = ['Ingreso', 'Para presupuestar', 'Aguarda respuesta', 'Aprobado', 'En proceso', 'Entregado a taller'];
+        const activos = projects.filter(p => activeStatuses.includes(p.status)).length;
+
+        if (kpiProyectos) kpiProyectos.textContent = projects.length;
+        if (kpiActivos) kpiActivos.textContent = activos;
+        if (kpiInteracciones) kpiInteracciones.textContent = interacciones.length;
+
+        // Mini timeline (last 3)
+        const miniTL = document.getElementById('fichaMiniTimeline');
+        if (miniTL) {
+            const recent = interacciones.slice(0, 3);
+            if (recent.length === 0) {
+                miniTL.innerHTML = '<div class="ficha-empty-msg">Sin interacciones registradas</div>';
+            } else {
+                miniTL.innerHTML = recent.map(i => `
+                    <div class="ficha-mini-tl-item">
+                        <span class="ficha-mini-tl-icon">${this._canalIcon(i.canal)}</span>
+                        <span class="ficha-mini-tl-time">${API.formatDateTime(i.fecha)}</span>
+                        <span class="ficha-mini-tl-who">${i.quien}</span>
+                        <span class="ficha-mini-tl-text">${i.resumen}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // Mini projects (last 3)
+        const miniProj = document.getElementById('fichaMiniProjects');
+        if (miniProj) {
+            const recent = projects.slice(0, 3);
+            if (recent.length === 0) {
+                miniProj.innerHTML = '<div class="ficha-empty-msg">Sin proyectos vinculados</div>';
+            } else {
+                miniProj.innerHTML = recent.map(p => `
+                    <div class="ficha-mini-proj-item">
+                        <span class="ficha-mini-proj-name">${p.name}</span>
+                        <span class="ficha-mini-proj-event">${p.eventName || '—'}</span>
+                        <span class="badge ${this._projectStatusClass(p.status)}">${p.status || '—'}</span>
+                    </div>
+                `).join('');
+            }
+        }
+    },
+
+    // ─── TIMELINE TAB ────────────────────────
+    async _loadClientTimeline(item) {
+        const interacciones = await API.getInteracciones(item.id);
+        this._renderTimelineList(interacciones);
+        this._attachTimelineEvents(item);
+    },
+
+    _renderTimelineList(interacciones) {
+        const list = document.getElementById('fichaTimelineList');
+        if (!list) return;
+
+        if (interacciones.length === 0) {
+            list.innerHTML = `
+                <div class="ficha-timeline-empty">
+                    <div class="ficha-timeline-empty-icon">💬</div>
+                    <p>No hay interacciones registradas</p>
+                    <p class="text-muted">Usá el formulario de arriba para registrar la primera</p>
+                </div>`;
+            return;
+        }
+
+        // Group by date
+        const groups = {};
+        interacciones.forEach(i => {
+            const d = new Date(i.fecha);
+            const key = d.toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(i);
+        });
+
+        let html = '';
+        for (const [date, items] of Object.entries(groups)) {
+            html += `<div class="ficha-tl-date-header">${date}</div>`;
+            html += items.map(i => `
+                <div class="ficha-tl-entry" data-interaccion-id="${i.id}">
+                    <div class="ficha-tl-entry-icon">${this._canalIcon(i.canal)}</div>
+                    <div class="ficha-tl-entry-body">
+                        <div class="ficha-tl-entry-meta">
+                            <span class="ficha-tl-entry-time">${new Date(i.fecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span class="ficha-tl-entry-who">${i.quien}</span>
+                            <span class="ficha-tl-entry-canal">${i.canal}</span>
+                            ${i.esAutomatica ? '<span class="ficha-tl-auto-badge">auto</span>' : ''}
+                        </div>
+                        <div class="ficha-tl-entry-text">${i.resumen}</div>
+                    </div>
+                    <button class="ficha-tl-entry-delete" data-delete-id="${i.id}" title="Eliminar">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        list.innerHTML = html;
+
+        // Attach delete buttons
+        list.querySelectorAll('[data-delete-id]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.deleteId;
+                const entry = btn.closest('.ficha-tl-entry');
+                if (entry) entry.style.opacity = '0.4';
+                const result = await API.deleteInteraccion(id);
+                if (result) {
+                    if (entry) entry.remove();
+                    Toast.success('Interacción eliminada');
+                } else {
+                    if (entry) entry.style.opacity = '1';
+                    Toast.error('Error al eliminar');
+                }
+            });
+        });
+    },
+
+    _attachTimelineEvents(item) {
+        const input = document.getElementById('fichaTimeResumen');
+        const saveBtn = document.getElementById('fichaTimeSave');
+        if (!input || !saveBtn) return;
+
+        const doSave = async () => {
+            const resumen = input.value.trim();
+            if (!resumen) return;
+
+            const canal = document.getElementById('fichaTimeCanal')?.value || 'Presencial';
+            const quien = document.getElementById('fichaTimeQuien')?.value || '';
+
+            saveBtn.disabled = true;
+            input.disabled = true;
+
+            const result = await API.createInteraccion({
+                clienteId: item.id,
+                canal,
+                quien,
+                resumen,
+            });
+
+            if (result) {
+                input.value = '';
+                Toast.success('Interacción registrada');
+                // Reload timeline
+                const interacciones = await API.getInteracciones(item.id);
+                this._renderTimelineList(interacciones);
+            } else {
+                Toast.error('Error al guardar');
+            }
+
+            saveBtn.disabled = false;
+            input.disabled = false;
+            input.focus();
+        };
+
+        saveBtn.addEventListener('click', doSave);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                doSave();
+            }
+        });
+    },
+
+    // ─── PROYECTOS TAB ───────────────────────
+    async _loadClientProjects(item) {
+        const projects = await API.getProjectsByClient(item.name);
+        const container = document.getElementById('fichaProjectsList');
+        if (!container) return;
+
+        if (projects.length === 0) {
+            container.innerHTML = `
+                <div class="ficha-timeline-empty">
+                    <div class="ficha-timeline-empty-icon">📋</div>
+                    <p>Sin proyectos vinculados</p>
+                    <p class="text-muted">Los proyectos con este cliente aparecerán automáticamente</p>
+                </div>`;
+            return;
+        }
+
+        // Group by status
+        const statusOrder = ['En proceso', 'Entregado a taller', 'Aprobado', 'Aguarda respuesta', 'Para presupuestar', 'Ingreso', 'Finalizado', 'Rechazado'];
+
+        const sorted = [...projects].sort((a, b) => {
+            const ia = statusOrder.indexOf(a.status);
+            const ib = statusOrder.indexOf(b.status);
+            return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+        });
+
+        container.innerHTML = sorted.map(p => `
+            <div class="ficha-proj-card" data-project-id="${p.id}">
+                <div class="ficha-proj-card-header">
+                    <span class="ficha-proj-card-name">${p.name}</span>
+                    <span class="badge ${this._projectStatusClass(p.status)}">${p.status || '—'}</span>
+                </div>
+                <div class="ficha-proj-card-meta">
+                    ${p.eventName ? `<span class="ficha-proj-card-event">📅 ${p.eventName}</span>` : ''}
+                    ${p.type ? `<span class="ficha-proj-card-type">${p.type}</span>` : ''}
+                    ${p.responsible ? `<span class="ficha-proj-card-resp">👤 ${p.responsible}</span>` : ''}
+                    ${p.lote ? `<span class="ficha-proj-card-lote">Lote ${p.lote}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+
+        // Click project card → open project ficha
+        container.querySelectorAll('[data-project-id]').forEach(card => {
+            card.addEventListener('click', () => {
+                const proj = projects.find(p => p.id === card.dataset.projectId);
+                if (proj) {
+                    this._closeFicha();
+                    setTimeout(() => this._openFicha(proj, 'projects'), 300);
+                }
+            });
+        });
+    },
+
+    // ─── HELPERS ─────────────────────────────
+    _canalIcon(canal) {
+        const icons = {
+            'WA MEPEX': '📱', 'WA Lelean': '📱', 'WA Fede': '📱',
+            'Mail': '📧', 'Instagram': '📷', 'Teléfono': '📞', 'Presencial': '🤝',
+        };
+        return icons[canal] || '💬';
     },
 
     _closeFicha() {

@@ -500,6 +500,146 @@ const API = {
         }
     },
 
+    // ─── Interacciones (Timeline CRM) ────────
+    async getInteracciones(clienteId) {
+        if (!clienteId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('interacciones')
+                .select('*')
+                .eq('cliente_id', clienteId)
+                .order('fecha', { ascending: false });
+
+            if (error) throw error;
+
+            return (data || []).map(i => ({
+                id: i.id,
+                clienteId: i.cliente_id,
+                canal: i.canal || '',
+                quien: i.quien || '',
+                resumen: i.resumen || '',
+                fecha: i.fecha || '',
+                esAutomatica: i.es_automatica || false,
+                createdAt: i.created_at || '',
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching interacciones:', e.message);
+            return [];
+        }
+    },
+
+    async createInteraccion(data) {
+        try {
+            const payload = {
+                cliente_id: data.clienteId,
+                canal: data.canal || 'Presencial',
+                quien: data.quien || '',
+                resumen: data.resumen || '',
+                fecha: data.fecha || new Date().toISOString(),
+                es_automatica: data.esAutomatica || false,
+            };
+            const { data: result, error } = await supabaseClient
+                .from('interacciones')
+                .insert([payload])
+                .select();
+            if (error) throw error;
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error creating interaccion:', e.message);
+            return null;
+        }
+    },
+
+    async deleteInteraccion(id) {
+        try {
+            const { error } = await supabaseClient.from('interacciones').delete().eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting interaccion:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Projects by Client ──────────────────
+    async getProjectsByClient(clientName) {
+        if (!clientName) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('proyectos_2026')
+                .select('*')
+                .ilike('cliente_nombre', `%${clientName}%`)
+                .order('nombre', { ascending: true });
+
+            if (error) throw error;
+
+            return (data || []).map(p => ({
+                id: p.id,
+                name: p.nombre || '',
+                number: p.n_lote || '',
+                lote: p.n_lote || '',
+                clientName: p.cliente_nombre || '',
+                eventName: p.evento_nombre || '',
+                status: p.estado || '',
+                type: p.tipo || '',
+                responsible: p.responsable || '',
+                empresa: p.empresa || '',
+                area: p.area || '',
+                dimensions: p.dimensiones || '',
+                requestDate: p.fecha_solicitud || null,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching projects by client:', e.message);
+            return [];
+        }
+    },
+
+    // ─── Events by name (for cross-reference) ─
+    async getEventsByNames(names) {
+        if (!names || !names.length) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('eventos_2026')
+                .select('*')
+                .in('nombre', names);
+
+            if (error) throw error;
+
+            return (data || []).map(e => ({
+                id: e.id,
+                name: e.nombre || '',
+                venue: e.lugar || '',
+                eventStartDate: e.fecha_evento_inicio || null,
+                eventEndDate: e.fecha_evento_fin || null,
+                status: e.estado || '',
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching events by names:', e.message);
+            return [];
+        }
+    },
+
+    // ─── Format datetime for timeline ─────────
+    formatDateTime(isoStr) {
+        if (!isoStr) return '—';
+        const d = new Date(isoStr);
+        const now = new Date();
+        const diffMs = now - d;
+        const diffMin = Math.floor(diffMs / 60000);
+        const diffHrs = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        let timeStr;
+        if (diffMin < 1) timeStr = 'Ahora';
+        else if (diffMin < 60) timeStr = `Hace ${diffMin} min`;
+        else if (diffHrs < 24 && d.getDate() === now.getDate()) timeStr = `Hoy ${d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`;
+        else if (diffDays < 2) timeStr = `Ayer ${d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`;
+        else if (diffDays < 7) timeStr = `Hace ${diffDays} días`;
+        else timeStr = d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+
+        return timeStr;
+    },
+
     // ─── Bulk Delete ─────────────────────────
     async deleteMultiple(table, ids) {
         try {
