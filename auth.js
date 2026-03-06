@@ -95,6 +95,24 @@ const Auth = {
         }
     },
 
+    // ─── CHANGE PASSWORD ───
+    async changePassword(newPassword) {
+        try {
+            const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+            if (error) return { success: false, error: error.message };
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: 'Error al cambiar contraseña' };
+        }
+    },
+
+    // ─── UPDATE CACHED PROFILE ───
+    updateCachedProfile(updates) {
+        if (this._profile) {
+            Object.assign(this._profile, updates);
+        }
+    },
+
     // ─── RENDER LOGIN SCREEN ───
     renderLogin() {
         const app = document.getElementById('app');

@@ -513,6 +513,47 @@ const API = {
         }
     },
 
+    // ─── Users / Profiles ──────────────────────
+    async getUsers() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .order('name', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(p => ({
+                uid: p.id,
+                username: p.username,
+                name: p.name,
+                role: p.role,
+                initials: p.initials,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching users:', e.message);
+            return null;
+        }
+    },
+
+    async updateProfile(userId, updates) {
+        try {
+            const payload = {};
+            if (updates.name !== undefined) payload.name = updates.name;
+            if (updates.initials !== undefined) payload.initials = updates.initials;
+            if (updates.role !== undefined) payload.role = updates.role;
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .update(payload)
+                .eq('id', userId)
+                .select()
+                .single();
+            if (error) throw error;
+            return { success: true, data };
+        } catch (e) {
+            console.warn('[API] Error updating profile:', e.message);
+            return { success: false, error: e.message };
+        }
+    },
+
     // ─── Helpers ──────────────────────────────
     clearCache() {
         this._cache = {};

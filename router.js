@@ -17,6 +17,9 @@ const Router = {
             'login': { render: () => Auth.renderLogin(), requiresAuth: false },
             'lobby': { render: () => Lobby.render(), requiresAuth: true },
             'calendario': { render: () => Calendar.render(), requiresAuth: true },
+            'perfil': { render: () => Settings.renderProfile(), requiresAuth: true },
+            'admin-usuarios': { render: () => Settings.renderAdminUsers(), requiresAuth: true, adminOnly: true },
+            'notificaciones': { render: () => Settings.renderNotifications(), requiresAuth: true },
             'ventas': { render: () => Modules.render('ventas'), requiresAuth: true, module: 'ventas' },
             'clientes': { render: () => Modules.render('clientes'), requiresAuth: true, module: 'clientes' },
             'proyectos': { render: () => Modules.render('proyectos'), requiresAuth: true, module: 'proyectos' },
@@ -65,6 +68,12 @@ const Router = {
 
         // Role guard for modules
         if (route.module && !Auth.hasAccess(route.module)) {
+            this.navigate('lobby');
+            return;
+        }
+
+        // Admin-only guard
+        if (route.adminOnly && Auth.getUser()?.role !== 'admin') {
             this.navigate('lobby');
             return;
         }
