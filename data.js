@@ -8,21 +8,11 @@
 
 const Data = {
 
-    // ─── USUARIOS MOCK ───
-    users: [
-        { id: 'fede', password: 'mepex2026', name: 'Federico', role: 'admin', initials: 'FM' },
-        { id: 'lelean', password: 'mepex2026', name: 'Lelean', role: 'admin', initials: 'LM' },
-        { id: 'noe', password: 'ventas2026', name: 'Noelia', role: 'ventas', initials: 'NR' },
-        { id: 'leo', password: 'taller2026', name: 'Leonardo', role: 'operaciones', initials: 'LO' },
-        { id: 'taller1', password: 'taller2026', name: 'Carlos', role: 'taller', initials: 'CG' },
-        { id: 'admin2', password: 'finanzas2026', name: 'Laura', role: 'finanzas', initials: 'LA' },
-    ],
-
     // ─── PERMISOS POR ROL ───
     rolePermissions: {
         admin: ['ventas', 'clientes', 'proyectos', 'eventos', 'finanzas', 'produccion', 'inventario', 'rrhh', 'proveedores'],
         ventas: ['ventas', 'clientes', 'proyectos', 'eventos'],
-        operaciones: ['produccion', 'inventario', 'proyectos', 'eventos', 'proveedores'],
+        pm: ['clientes', 'proyectos', 'eventos', 'produccion', 'inventario', 'proveedores'],
         taller: ['produccion', 'inventario'],
         finanzas: ['finanzas', 'clientes', 'proveedores'],
     },
@@ -31,13 +21,13 @@ const Data = {
     roleLabels: {
         admin: 'Administrador',
         ventas: 'Ventas',
-        operaciones: 'Operaciones',
+        pm: 'Project Manager',
         taller: 'Taller',
         finanzas: 'Finanzas',
     },
 
     // ─── ROLES QUE VEN EL BUSCADOR GLOBAL ───
-    searchRoles: ['admin', 'ventas', 'operaciones', 'finanzas'],
+    searchRoles: ['admin', 'ventas', 'pm', 'finanzas'],
 
     // ─── ACCIONES RÁPIDAS POR ROL ───
     quickActions: {
@@ -52,10 +42,10 @@ const Data = {
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
         ],
-        operaciones: [
-            { id: 'mis-montajes', icon: '📋', label: 'Mis montajes hoy', action: 'alert', message: 'Montajes de hoy — próximamente' },
-            { id: 'cargar-entr', icon: '📸', label: 'Cargar entrega', action: 'alert', message: 'Carga de entrega — próximamente' },
-            { id: 'ver-vehic', icon: '🚛', label: 'Ver vehículos', action: 'alert', message: 'Vehículos — próximamente' },
+        pm: [
+            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
+            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
+            { id: 'nuevo-evento', icon: '📅', label: 'Nuevo evento', action: 'create', entity: 'events' },
         ],
         taller: [
             { id: 'orden-compra', icon: '📝', label: 'Orden de compra', action: 'alert', message: 'Orden de compra — próximamente' },

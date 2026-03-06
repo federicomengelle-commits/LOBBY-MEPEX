@@ -189,8 +189,8 @@ const App = {
         });
 
         // Logout
-        document.getElementById('logoutBtn')?.addEventListener('click', () => {
-            Auth.logout();
+        document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+            await Auth.logout();
         });
 
         // Quick actions

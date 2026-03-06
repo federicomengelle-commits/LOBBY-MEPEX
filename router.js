@@ -3,13 +3,15 @@
    =============================================
    Hash-based SPA routing con guard de auth
    y permisos por rol. Integrado con App shell.
+   Soporta sesión async (Supabase Auth).
    ============================================= */
 
 const Router = {
     routes: {},
     shellRendered: false,
+    _ready: false, // session restored?
 
-    init() {
+    async init() {
         // Register routes
         this.routes = {
             'login': { render: () => Auth.renderLogin(), requiresAuth: false },
@@ -28,11 +30,17 @@ const Router = {
         // Listen for hash changes
         window.addEventListener('hashchange', () => this.handleRoute());
 
+        // Restore session before first route
+        await Auth.restoreSession();
+        this._ready = true;
+
         // Initial route
         this.handleRoute();
     },
 
     handleRoute() {
+        if (!this._ready) return; // wait for session restore
+
         const hash = this.getHash();
         const route = this.routes[hash];
 
