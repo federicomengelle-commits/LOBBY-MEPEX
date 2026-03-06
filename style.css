@@ -1697,6 +1697,13 @@ body {
     color: var(--text-dim);
 }
 
+.breadcrumb-cat {
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.6rem;
+}
+
 .breadcrumb-current {
     color: var(--text-primary);
     font-weight: 600;
