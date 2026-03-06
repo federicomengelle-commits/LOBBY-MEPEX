@@ -324,6 +324,195 @@ const API = {
         }
     },
 
+    // ─── Clients CRUD ────────────────────────
+    async createClient(data) {
+        try {
+            const payload = {
+                nombre_empresa: data.name || '',
+                razon_social: data.razonSocial || '',
+                cuit: data.cuit || '',
+                contacto_empresa: data.contactName || '',
+                cargo: data.contactRole || '',
+                telefono: data.phone || '',
+                correo_electronico: data.email || '',
+                rubro: data.rubro || '',
+            };
+            const { data: result, error } = await supabaseClient
+                .from('clientes').insert([payload]).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error creating client:', e.message);
+            return null;
+        }
+    },
+
+    async updateClient(id, data) {
+        try {
+            const payload = {};
+            if (data.name !== undefined) payload.nombre_empresa = data.name;
+            if (data.razonSocial !== undefined) payload.razon_social = data.razonSocial;
+            if (data.cuit !== undefined) payload.cuit = data.cuit;
+            if (data.contactName !== undefined) payload.contacto_empresa = data.contactName;
+            if (data.contactRole !== undefined) payload.cargo = data.contactRole;
+            if (data.phone !== undefined) payload.telefono = data.phone;
+            if (data.email !== undefined) payload.correo_electronico = data.email;
+            if (data.rubro !== undefined) payload.rubro = data.rubro;
+            const { data: result, error } = await supabaseClient
+                .from('clientes').update(payload).eq('id', id).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error updating client:', e.message);
+            return null;
+        }
+    },
+
+    async deleteClient(id) {
+        try {
+            const { error } = await supabaseClient.from('clientes').delete().eq('id', id);
+            if (error) throw error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting client:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Projects CRUD ───────────────────────
+    async createProject(data) {
+        try {
+            const payload = {
+                nombre: data.name || '',
+                n_lote: data.lote || '',
+                cliente_nombre: data.clientName || '',
+                evento_nombre: data.eventName || '',
+                estado: data.status || 'Ingreso',
+                tipo: data.type || '',
+                responsable: data.responsible || '',
+                empresa: data.empresa || '',
+            };
+            const { data: result, error } = await supabaseClient
+                .from('proyectos_2026').insert([payload]).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error creating project:', e.message);
+            return null;
+        }
+    },
+
+    async updateProject(id, data) {
+        try {
+            const payload = {};
+            if (data.name !== undefined) payload.nombre = data.name;
+            if (data.lote !== undefined) payload.n_lote = data.lote;
+            if (data.clientName !== undefined) payload.cliente_nombre = data.clientName;
+            if (data.eventName !== undefined) payload.evento_nombre = data.eventName;
+            if (data.status !== undefined) payload.estado = data.status;
+            if (data.type !== undefined) payload.tipo = data.type;
+            if (data.responsible !== undefined) payload.responsable = data.responsible;
+            if (data.empresa !== undefined) payload.empresa = data.empresa;
+            const { data: result, error } = await supabaseClient
+                .from('proyectos_2026').update(payload).eq('id', id).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error updating project:', e.message);
+            return null;
+        }
+    },
+
+    async deleteProject(id) {
+        try {
+            const { error } = await supabaseClient.from('proyectos_2026').delete().eq('id', id);
+            if (error) throw error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting project:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Events CRUD ─────────────────────────
+    async createEvent(data) {
+        try {
+            const payload = {
+                nombre: data.name || '',
+                lugar: data.venue || '',
+                fecha_armado_inicio: data.setupDate || null,
+                fecha_armado_fin: data.setupEndDate || null,
+                fecha_evento_inicio: data.eventStartDate || null,
+                fecha_evento_fin: data.eventEndDate || null,
+                fecha_desarme: data.teardownDate || null,
+                prioridad: data.priority || '',
+                estado: data.status || 'Sin empezar',
+            };
+            const { data: result, error } = await supabaseClient
+                .from('eventos_2026').insert([payload]).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error creating event:', e.message);
+            return null;
+        }
+    },
+
+    async updateEvent(id, data) {
+        try {
+            const payload = {};
+            if (data.name !== undefined) payload.nombre = data.name;
+            if (data.venue !== undefined) payload.lugar = data.venue;
+            if (data.setupDate !== undefined) payload.fecha_armado_inicio = data.setupDate || null;
+            if (data.setupEndDate !== undefined) payload.fecha_armado_fin = data.setupEndDate || null;
+            if (data.eventStartDate !== undefined) payload.fecha_evento_inicio = data.eventStartDate || null;
+            if (data.eventEndDate !== undefined) payload.fecha_evento_fin = data.eventEndDate || null;
+            if (data.teardownDate !== undefined) payload.fecha_desarme = data.teardownDate || null;
+            if (data.priority !== undefined) payload.prioridad = data.priority;
+            if (data.status !== undefined) payload.estado = data.status;
+            const { data: result, error } = await supabaseClient
+                .from('eventos_2026').update(payload).eq('id', id).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error updating event:', e.message);
+            return null;
+        }
+    },
+
+    async deleteEvent(id) {
+        try {
+            const { error } = await supabaseClient.from('eventos_2026').delete().eq('id', id);
+            if (error) throw error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting event:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Bulk Delete ─────────────────────────
+    async deleteMultiple(table, ids) {
+        try {
+            const { error } = await supabaseClient.from(table).delete().in('id', ids);
+            if (error) throw error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn(`[API] Error bulk deleting from ${table}:`, e.message);
+            return null;
+        }
+    },
+
     // ─── Helpers ──────────────────────────────
     clearCache() {
         this._cache = {};

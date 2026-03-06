@@ -23,6 +23,55 @@ const Modules = {
     // ─── Selection state ───
     _selectedRows: new Set(),
 
+    // ─── Entity config ───
+    _entityConfig: {
+        clients:  { label: 'cliente',  labelPlural: 'clientes',  supabaseTable: 'clientes' },
+        projects: { label: 'proyecto', labelPlural: 'proyectos', supabaseTable: 'proyectos_2026' },
+        events:   { label: 'evento',   labelPlural: 'eventos',   supabaseTable: 'eventos_2026' },
+    },
+
+    // ─── Form field definitions ───
+    _clientFormFields: [
+        { key: 'name', label: 'Nombre de empresa', type: 'text', required: true, placeholder: 'Ej: Arcor S.A.' },
+        { key: 'razonSocial', label: 'Razón Social', type: 'text', required: false, placeholder: 'Razón social legal' },
+        { key: 'cuit', label: 'CUIT', type: 'text', required: false, placeholder: 'XX-XXXXXXXX-X' },
+        { key: 'contactName', label: 'Contacto principal', type: 'text', required: true, placeholder: 'Nombre y apellido' },
+        { key: 'contactRole', label: 'Cargo', type: 'text', required: false, placeholder: 'Ej: Gerente de Marketing' },
+        { key: 'phone', label: 'Teléfono', type: 'tel', required: false, placeholder: '+54 11 ...' },
+        { key: 'email', label: 'Email', type: 'email', required: false, placeholder: 'contacto@empresa.com' },
+        { key: 'rubro', label: 'Rubro', type: 'text', required: false, placeholder: 'Ej: Alimentos, Tecnología...' },
+    ],
+
+    _projectFormFields: [
+        { key: 'name', label: 'Nombre del proyecto', type: 'text', required: true, placeholder: 'Ej: Stand Arcor' },
+        { key: 'lote', label: 'N° Lote', type: 'text', required: false, placeholder: 'Ej: 42' },
+        { key: 'clientName', label: 'Cliente', type: 'text', required: false, placeholder: 'Nombre del cliente' },
+        { key: 'eventName', label: 'Evento', type: 'text', required: false, placeholder: 'Nombre del evento' },
+        { key: 'type', label: 'Tipo', type: 'select', required: false, options: ['', 'Stand personalizado', 'Stand prediseñado', 'Alquiler', 'Congreso', 'Estructura', 'Exposición', 'Camarín'] },
+        { key: 'status', label: 'Estado', type: 'select', required: false, options: ['Ingreso', 'Para presupuestar', 'Aguarda respuesta', 'Aprobado', 'En proceso', 'Entregado a taller', 'Finalizado', 'Rechazado'] },
+        { key: 'responsible', label: 'Responsable', type: 'text', required: false, placeholder: 'Ej: Federico' },
+        { key: 'empresa', label: 'Empresa', type: 'text', required: false, placeholder: 'Ej: MEPEX' },
+    ],
+
+    _eventFormFields: [
+        { key: 'name', label: 'Nombre del evento', type: 'text', required: true, placeholder: 'Ej: Expo Alimentek 2026' },
+        { key: 'venue', label: 'Lugar', type: 'text', required: false, placeholder: 'Ej: La Rural, Buenos Aires' },
+        { key: 'setupDate', label: 'Inicio armado', type: 'date', required: false },
+        { key: 'setupEndDate', label: 'Fin armado', type: 'date', required: false },
+        { key: 'eventStartDate', label: 'Inicio evento', type: 'date', required: false },
+        { key: 'eventEndDate', label: 'Fin evento', type: 'date', required: false },
+        { key: 'teardownDate', label: 'Desarme', type: 'date', required: false },
+        { key: 'priority', label: 'Prioridad', type: 'select', required: false, options: ['', 'Alta', 'Media', 'Baja'] },
+        { key: 'status', label: 'Estado', type: 'select', required: false, options: ['Sin empezar', 'En proceso', 'Finalizado'] },
+    ],
+
+    _getFormFields(type) {
+        if (type === 'clients') return this._clientFormFields;
+        if (type === 'projects') return this._projectFormFields;
+        if (type === 'events') return this._eventFormFields;
+        return [];
+    },
+
     // ─── Views (Notion-like) ───
     _activeViewId: null,
 
@@ -381,6 +430,14 @@ const Modules = {
             });
         }
 
+        // Attach "Nuevo" button
+        const btnNew = document.getElementById('btnNewRecord');
+        if (btnNew) {
+            btnNew.addEventListener('click', () => {
+                this._openCreateModal(apiType);
+            });
+        }
+
         // Attach views tab listeners
         this._attachViewsListeners(apiType, mod, sectionId);
     },
@@ -404,6 +461,128 @@ const Modules = {
         document.querySelectorAll('th.sortable[draggable]').forEach(th => {
             th.draggable = !this._isLocked;
         });
+    },
+
+    // ─── REFRESH TABLE ───
+    async _refreshCurrentTable() {
+        if (!this.currentModule || !this.currentSection) return;
+        API.clearCache();
+        await this._loadSectionData(this.currentModule, this.currentSection);
+    },
+
+    // ─── CREATE MODAL ───
+    _openCreateModal(type) {
+        const config = this._entityConfig[type];
+        const fields = this._getFormFields(type);
+        if (!fields.length || !config) return;
+
+        const formHtml = FormBuilder.render(fields);
+        const instance = Modal.open({
+            title: `Nuevo ${config.label}`,
+            body: formHtml,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="btnCreateSubmit">Crear ${config.label}</button>
+            `,
+        });
+
+        const overlay = instance.overlay;
+        const form = overlay.querySelector('.mepex-form');
+
+        overlay.querySelector('#btnCreateSubmit').addEventListener('click', async () => {
+            const { valid } = FormBuilder.validate(form, fields);
+            if (!valid) return;
+
+            const values = FormBuilder.getValues(form);
+            const submitBtn = overlay.querySelector('#btnCreateSubmit');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creando…';
+
+            let result;
+            if (type === 'clients') result = await API.createClient(values);
+            else if (type === 'projects') result = await API.createProject(values);
+            else if (type === 'events') result = await API.createEvent(values);
+
+            if (result) {
+                Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} creado exitosamente`);
+                Modal.close(instance.id);
+                this._refreshCurrentTable();
+            } else {
+                Toast.error('Error al crear el registro');
+                submitBtn.disabled = false;
+                submitBtn.textContent = `Crear ${config.label}`;
+            }
+        });
+    },
+
+    // ─── EDIT MODAL ───
+    _openEditModal(item, type) {
+        const config = this._entityConfig[type];
+        const fields = this._getFormFields(type);
+        if (!fields.length || !config) return;
+
+        const formHtml = FormBuilder.render(fields, item);
+        const instance = Modal.open({
+            title: `Editar ${config.label}`,
+            body: formHtml,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="btnEditSubmit">Guardar cambios</button>
+            `,
+        });
+
+        const overlay = instance.overlay;
+        const form = overlay.querySelector('.mepex-form');
+
+        overlay.querySelector('#btnEditSubmit').addEventListener('click', async () => {
+            const { valid } = FormBuilder.validate(form, fields);
+            if (!valid) return;
+
+            const values = FormBuilder.getValues(form);
+            const submitBtn = overlay.querySelector('#btnEditSubmit');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Guardando…';
+
+            let result;
+            if (type === 'clients') result = await API.updateClient(item.id, values);
+            else if (type === 'projects') result = await API.updateProject(item.id, values);
+            else if (type === 'events') result = await API.updateEvent(item.id, values);
+
+            if (result) {
+                Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} actualizado`);
+                Modal.close(instance.id);
+                this._refreshCurrentTable();
+            } else {
+                Toast.error('Error al guardar cambios');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Guardar cambios';
+            }
+        });
+    },
+
+    // ─── DELETE SINGLE ───
+    async _deleteSingle(item, type) {
+        const config = this._entityConfig[type];
+        if (!config) return;
+
+        const entityName = item.name || 'este registro';
+        const confirmed = await Confirm.delete(entityName);
+        if (!confirmed) return;
+
+        let result;
+        if (type === 'clients') result = await API.deleteClient(item.id);
+        else if (type === 'projects') result = await API.deleteProject(item.id);
+        else if (type === 'events') result = await API.deleteEvent(item.id);
+
+        if (result) {
+            Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} eliminado`);
+            this._closeFicha();
+            this._refreshCurrentTable();
+        } else {
+            Toast.error('Error al eliminar');
+        }
     },
 
     // ─── VIEWS TABS EVENT LISTENERS ───
@@ -1111,11 +1290,9 @@ const Modules = {
     },
 
     _openFichaByType(item, type) {
-        if (type === 'projects') {
-            this._openFichaProyecto(item);
-        } else {
-            Toast.info('Ficha de detalle — próximamente (Fase 5)');
-        }
+        if (type === 'projects') this._openFichaProyecto(item);
+        else if (type === 'clients') this._openFichaCliente(item);
+        else if (type === 'events') this._openFichaEvento(item);
     },
 
     _updateBulkBar(type) {
@@ -1152,8 +1329,23 @@ const Modules = {
             this._updateBulkBar(type);
         });
 
-        document.getElementById('bulkDelete')?.addEventListener('click', () => {
-            Toast.info(`Eliminar ${count} registros — próximamente (Fase 4)`);
+        document.getElementById('bulkDelete')?.addEventListener('click', async () => {
+            const config = this._entityConfig[type];
+            if (!config) return;
+
+            const confirmed = await Confirm.delete(`${count} ${count > 1 ? config.labelPlural : config.label}`);
+            if (!confirmed) return;
+
+            const ids = [...this._selectedRows];
+            const result = await API.deleteMultiple(config.supabaseTable, ids);
+
+            if (result) {
+                Toast.success(`${count} ${count > 1 ? config.labelPlural : config.label} eliminado${count > 1 ? 's' : ''}`);
+                this._selectedRows.clear();
+                this._refreshCurrentTable();
+            } else {
+                Toast.error('Error al eliminar registros');
+            }
         });
 
         document.getElementById('bulkExport')?.addEventListener('click', () => {
@@ -1753,6 +1945,12 @@ const Modules = {
                 </div>
                 <div class="ficha-panel-header-actions">
                     <span class="badge ${statusClass}">${v(p.status)}</span>
+                    <button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-sm ficha-delete-btn" id="fichaDelete" title="Eliminar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
                     <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
                 </div>
             </div>
@@ -1844,11 +2042,222 @@ const Modules = {
         };
         document.addEventListener('keydown', this._fichaEscHandler);
 
+        // Edit/Delete buttons
+        panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
+            this._closeFicha();
+            this._openEditModal(p, 'projects');
+        });
+        panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
+            this._deleteSingle(p, 'projects');
+        });
+
         // Chip console.log (future navigation)
         panel.querySelectorAll('.ficha-chip[data-link-type]').forEach(chip => {
             chip.addEventListener('click', () => {
                 console.log(`Navegar a ${chip.dataset.linkType}:`, chip.dataset.linkId);
             });
+        });
+    },
+
+    _openFichaCliente(c) {
+        this._injectStyles();
+        let overlay = document.getElementById('fichaOverlay');
+        let panel = document.getElementById('fichaPanel');
+        const app = document.getElementById('app');
+
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'ficha-overlay';
+            overlay.id = 'fichaOverlay';
+            app.appendChild(overlay);
+        }
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'ficha-panel';
+            panel.id = 'fichaPanel';
+            app.appendChild(panel);
+        }
+
+        const v = (val) => (val != null && val !== '') ? val : '—';
+
+        panel.innerHTML = `
+            <div class="ficha-panel-header">
+                <div class="ficha-panel-title">
+                    <span class="ficha-panel-icon">🏢</span>
+                    <h2 class="ficha-panel-name">${v(c.name)}</h2>
+                </div>
+                <div class="ficha-panel-header-actions">
+                    <button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-sm ficha-delete-btn" id="fichaDelete" title="Eliminar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
+                </div>
+            </div>
+            <div class="ficha-panel-body">
+                <div class="ficha-section">
+                    <div class="ficha-section-title">Empresa</div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Nombre</span>
+                        <span class="ficha-row-value">${v(c.name)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Razón Social</span>
+                        <span class="ficha-row-value">${v(c.razonSocial)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">CUIT</span>
+                        <span class="ficha-row-value">${c.cuit ? API.formatCUIT(c.cuit) : '—'}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Rubro</span>
+                        <span class="ficha-row-value">${v(c.rubro)}</span>
+                    </div>
+                </div>
+                <div class="ficha-section">
+                    <div class="ficha-section-title">Contacto</div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Nombre</span>
+                        <span class="ficha-row-value">${v(c.contactName)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Cargo</span>
+                        <span class="ficha-row-value">${v(c.contactRole)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Teléfono</span>
+                        <span class="ficha-row-value">${c.phone ? '<a href="tel:' + c.phone + '" class="ficha-link">' + c.phone + '</a>' : '—'}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Email</span>
+                        <span class="ficha-row-value">${c.email ? '<a href="mailto:' + c.email + '" class="ficha-link">' + c.email + '</a>' : '—'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        requestAnimationFrame(() => {
+            overlay.classList.add('active');
+            panel.classList.add('open');
+        });
+
+        document.getElementById('fichaCerrar')?.addEventListener('click', () => this._closeFicha());
+        overlay.addEventListener('click', () => this._closeFicha());
+        this._fichaEscHandler = (e) => { if (e.key === 'Escape') this._closeFicha(); };
+        document.addEventListener('keydown', this._fichaEscHandler);
+
+        panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
+            this._closeFicha();
+            this._openEditModal(c, 'clients');
+        });
+        panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
+            this._deleteSingle(c, 'clients');
+        });
+    },
+
+    _openFichaEvento(e) {
+        this._injectStyles();
+        let overlay = document.getElementById('fichaOverlay');
+        let panel = document.getElementById('fichaPanel');
+        const app = document.getElementById('app');
+
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'ficha-overlay';
+            overlay.id = 'fichaOverlay';
+            app.appendChild(overlay);
+        }
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'ficha-panel';
+            panel.id = 'fichaPanel';
+            app.appendChild(panel);
+        }
+
+        const v = (val) => (val != null && val !== '') ? val : '—';
+        const statusClass = e.status === 'Finalizado' ? 'badge-success' : e.status === 'En proceso' ? 'badge-accent' : 'badge-ghost';
+
+        panel.innerHTML = `
+            <div class="ficha-panel-header">
+                <div class="ficha-panel-title">
+                    <span class="ficha-panel-icon">📅</span>
+                    <h2 class="ficha-panel-name">${v(e.name)}</h2>
+                </div>
+                <div class="ficha-panel-header-actions">
+                    <span class="badge ${statusClass}">${v(e.status)}</span>
+                    <button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-sm ficha-delete-btn" id="fichaDelete" title="Eliminar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
+                </div>
+            </div>
+            <div class="ficha-panel-body">
+                <div class="ficha-section">
+                    <div class="ficha-section-title">Información</div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Evento</span>
+                        <span class="ficha-row-value">${v(e.name)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Lugar / Venue</span>
+                        <span class="ficha-row-value">${v(e.venue)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Estado</span>
+                        <span class="ficha-row-value"><span class="badge ${statusClass}">${v(e.status)}</span></span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Prioridad</span>
+                        <span class="ficha-row-value">${v(e.priority)}</span>
+                    </div>
+                </div>
+                <div class="ficha-section">
+                    <div class="ficha-section-title">Fechas</div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Inicio armado</span>
+                        <span class="ficha-row-value">${API.formatDate(e.setupDate)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Fin armado</span>
+                        <span class="ficha-row-value">${API.formatDate(e.setupEndDate)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Inicio evento</span>
+                        <span class="ficha-row-value">${API.formatDate(e.eventStartDate)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Fin evento</span>
+                        <span class="ficha-row-value">${API.formatDate(e.eventEndDate)}</span>
+                    </div>
+                    <div class="ficha-row">
+                        <span class="ficha-row-label">Desarme</span>
+                        <span class="ficha-row-value">${API.formatDate(e.teardownDate)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        requestAnimationFrame(() => {
+            overlay.classList.add('active');
+            panel.classList.add('open');
+        });
+
+        document.getElementById('fichaCerrar')?.addEventListener('click', () => this._closeFicha());
+        overlay.addEventListener('click', () => this._closeFicha());
+        this._fichaEscHandler = (e2) => { if (e2.key === 'Escape') this._closeFicha(); };
+        document.addEventListener('keydown', this._fichaEscHandler);
+
+        panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
+            this._closeFicha();
+            this._openEditModal(e, 'events');
+        });
+        panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
+            this._deleteSingle(e, 'events');
         });
     },
 

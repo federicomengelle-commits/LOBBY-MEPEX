@@ -2590,6 +2590,22 @@ body {
 .side-action-btn.is-locked .lock-icon-locked { display: block; line-height: 0; }
 .side-action-btn.is-locked .lock-icon-unlocked { display: none; }
 
+/* ─── Ficha CRUD Actions ─── */
+.ficha-edit-btn,
+.ficha-delete-btn {
+    padding: 4px 8px !important;
+    opacity: 0.6;
+    transition: all 0.2s;
+}
+.ficha-edit-btn:hover { opacity: 1; color: var(--primary) !important; }
+.ficha-delete-btn:hover { opacity: 1; color: #ff4444 !important; }
+.ficha-link {
+    color: var(--primary);
+    text-decoration: none;
+    transition: opacity 0.15s;
+}
+.ficha-link:hover { opacity: 0.8; }
+
 /* ─── Bulk Actions Bar ─── */
 .bulk-actions-bar {
     display: flex;
