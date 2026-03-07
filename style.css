@@ -4138,6 +4138,180 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   PROYECTOS POR EVENTO — Collapsible Groups
+   ═══════════════════════════════════════════ */
+
+.pxe-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pxe-event-group {
+    background: var(--color-card, #1E1E1E);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.pxe-event-group:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.pxe-event-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.pxe-event-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.pxe-event-toggle {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.pxe-chevron {
+    transition: transform 0.2s;
+    color: var(--color-text-muted, #888);
+}
+
+.pxe-event-group.collapsed .pxe-chevron {
+    transform: rotate(-90deg);
+}
+
+.pxe-event-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.pxe-event-name {
+    font-family: var(--font-heading, 'DIN 1451 Std', sans-serif);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-turquesa, #00ACC9);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pxe-event-venue {
+    font-size: 12px;
+    color: var(--color-text-muted, #888);
+}
+
+.pxe-event-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.pxe-event-date {
+    font-size: 12px;
+    color: var(--color-text-muted, #888);
+    font-variant-numeric: tabular-nums;
+}
+
+.pxe-event-count {
+    font-size: 11px;
+    color: var(--color-text-muted, #888);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+.pxe-event-body {
+    padding: 0 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: max-height 0.25s ease;
+}
+
+.pxe-event-group.collapsed .pxe-event-body {
+    display: none;
+}
+
+.pxe-project-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.pxe-project-card:hover {
+    background: rgba(0, 172, 201, 0.06);
+    border-color: rgba(0, 172, 201, 0.2);
+}
+
+.pxe-project-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.pxe-project-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text, #E0E0E0);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pxe-project-client {
+    font-size: 11px;
+    color: var(--color-text-muted, #888);
+}
+
+.pxe-project-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.pxe-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.pxe-project-status {
+    font-size: 11px;
+    color: var(--color-text-muted, #888);
+    white-space: nowrap;
+}
+
+.pxe-no-event {
+    border-style: dashed;
+    opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════
    INVENTARIO — Receta / Composición
    ═══════════════════════════════════════════ */
 

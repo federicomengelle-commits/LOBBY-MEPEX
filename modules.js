@@ -28,7 +28,7 @@ const Modules = {
         clients:  { label: 'cliente',  labelPlural: 'clientes',  supabaseTable: 'clientes' },
         projects: { label: 'proyecto', labelPlural: 'proyectos', supabaseTable: 'proyectos_2026' },
         events:   { label: 'evento',   labelPlural: 'eventos',   supabaseTable: 'eventos_2026' },
-        insumos:  { label: 'insumo',   labelPlural: 'insumos',   supabaseTable: 'insumos' },
+        insumos:  { label: 'insumo',   labelPlural: 'insumos',   supabaseTable: 'insumos_base' },
         catalogo: { label: 'item',     labelPlural: 'items',     supabaseTable: 'catalogo_items' },
     },
 
@@ -65,13 +65,14 @@ const Modules = {
     ],
 
     _insumoFormFields: [
-        { key: 'nombre', label: 'Nombre', type: 'text', required: true, placeholder: 'Ej: Aluminio perfil' },
-        { key: 'codigo', label: 'Código', type: 'text', required: false, placeholder: 'Ej: INS-ALU-01' },
-        { key: 'unidadBase', label: 'Unidad base', type: 'select', required: true, options: ['kg', 'm²', 'metro', 'unidad', 'hora', 'día', 'litro'] },
-        { key: 'costoUnitario', label: 'Costo unitario ($)', type: 'number', required: true, placeholder: '0.00' },
-        { key: 'categoria', label: 'Categoría', type: 'select', required: false, options: ['Material', 'Mano de obra', 'Subalquiler', 'Consumible', 'Servicio'] },
-        { key: 'unidadAlternativa', label: 'Unidad alternativa', type: 'text', required: false, placeholder: 'Ej: metro (si la base es kg)' },
-        { key: 'factorConversion', label: 'Factor conversión', type: 'number', required: false, placeholder: 'Ej: 0.8 (kg por metro)' },
+        { key: 'nombre', label: 'Nombre', type: 'text', required: true, placeholder: 'Ej: Aluminio pintado (blanco perfil)' },
+        { key: 'codigo', label: 'Código', type: 'text', required: false, placeholder: 'Ej: MAT-ALB' },
+        { key: 'clasificacion', label: 'Clasificación', type: 'select', required: false, options: ['Materiales', 'Mano de obra', 'Servicios', 'Sub-alquiler', 'Consumibles'] },
+        { key: 'categoria', label: 'Categoría', type: 'select', required: false, options: ['Materia prima', 'Ferretería', 'Eléctrica', 'Gráfica', 'Pintura', 'Varios'] },
+        { key: 'costoUnitario', label: 'Costo unitario', type: 'number', required: true, placeholder: '0.00' },
+        { key: 'moneda', label: 'Moneda', type: 'select', required: false, options: ['USD', 'ARS'] },
+        { key: 'unidadBase', label: 'Unidad', type: 'select', required: true, options: ['Kg', 'm²', 'metro', 'unidad', 'hora', 'día', 'litro', 'rollo', 'bolsa'] },
+        { key: 'proveedor', label: 'Proveedor', type: 'text', required: false, placeholder: 'Ej: Alpros S.A' },
         { key: 'notas', label: 'Notas', type: 'text', required: false, placeholder: 'Observaciones' },
     ],
 
@@ -286,9 +287,10 @@ const Modules = {
             `;
         }
 
-        // Check if this is a custom section (simulador)
+        // Check if this is a custom section
         if (this._isCustomSection(mod.id, sectionId)) {
-            return this._renderSimuladorSection();
+            if (mod.id === 'inventario' && sectionId === 'simulador') return this._renderSimuladorSection();
+            if (mod.id === 'proyectos' && sectionId === 'por_evento') return this._renderProyectosPorEventoSection();
         }
 
         // Check if this is an API-powered section
@@ -383,14 +385,17 @@ const Modules = {
 
     // ─── DETECT CUSTOM (non-table) SECTIONS ───
     _isCustomSection(moduleId, sectionId) {
-        return moduleId === 'inventario' && sectionId === 'simulador';
+        if (moduleId === 'inventario' && sectionId === 'simulador') return true;
+        if (moduleId === 'proyectos' && sectionId === 'por_evento') return true;
+        return false;
     },
 
     // ─── LOAD SECTION DATA FROM API ───
     async _loadSectionData(mod, sectionId) {
-        // Handle custom sections (simulador)
+        // Handle custom sections
         if (this._isCustomSection(mod.id, sectionId)) {
-            this._initSimulador();
+            if (mod.id === 'inventario' && sectionId === 'simulador') { this._initSimulador(); return; }
+            if (mod.id === 'proyectos' && sectionId === 'por_evento') { this._initProyectosPorEvento(); return; }
             return;
         }
 
@@ -828,9 +833,9 @@ const Modules = {
             data = data.filter(i => (i.rubro || '') === this._activeRubroFilter);
         }
 
-        // Categoria filter (insumos)
+        // Clasificacion filter (insumos)
         if (this._activeTypeFilter && type === 'insumos') {
-            data = data.filter(i => (i.categoria || '') === this._activeTypeFilter);
+            data = data.filter(i => (i.clasificacion || '') === this._activeTypeFilter);
         }
 
         this._renderApiTable(data, type);
@@ -2581,6 +2586,7 @@ const Modules = {
             tabs: [
                 { id: 'info', label: 'Información', icon: '📋' },
                 { id: 'dates', label: 'Fechas', icon: '📅' },
+                { id: 'proyectos', label: 'Proyectos', icon: '🏗️' },
                 { id: 'notes', label: 'Notas', icon: '📝' },
             ],
             renderTab(item, tabId, v) {
@@ -2607,6 +2613,15 @@ const Modules = {
                             </div>
                         </div>`;
                 }
+                if (tabId === 'proyectos') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Proyectos del evento</div>
+                            <div class="ficha-event-projects" id="fichaEventProjects">
+                                <div class="ficha-loading-small">Cargando proyectos…</div>
+                            </div>
+                        </div>`;
+                }
                 if (tabId === 'notes') {
                     return `<div class="ficha-section"><div class="ficha-section-title">Notas / Comentarios</div><textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea></div>`;
                 }
@@ -2616,27 +2631,29 @@ const Modules = {
         insumos: {
             icon: '🧱',
             color: '#9B7DFF',
-            getStatus: (item) => item.categoria ? { label: item.categoria, class: 'badge-ghost' } : null,
+            getStatus: (item) => item.clasificacion ? { label: item.clasificacion, class: 'badge-ghost' } : null,
             tabs: [
                 { id: 'info', label: 'Información', icon: '📋' },
             ],
             renderTab(item, tabId, v) {
                 if (tabId === 'info') {
+                    const moneyPrefix = item.moneda === 'USD' ? 'US$' : '$';
                     return `
                         <div class="ficha-section">
                             <div class="ficha-section-title">Insumo</div>
                             <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.nombre)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value">${v(item.codigo)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Clasificación</span><span class="ficha-row-value">${v(item.clasificacion)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${v(item.categoria)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Unidad base</span><span class="ficha-row-value">${v(item.unidadBase)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value cost-value">${API.formatCurrency(item.costoUnitario)} / ${item.unidadBase}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Unidad</span><span class="ficha-row-value">${v(item.unidadBase)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value cost-value">${moneyPrefix}${API.formatCurrency(item.costoUnitario).replace('$','')} / ${item.unidadBase}</span></div>
                         </div>
-                        ${item.factorConversion ? `
                         <div class="ficha-section">
-                            <div class="ficha-section-title">Conversión</div>
-                            <div class="ficha-row"><span class="ficha-row-label">Unidad alt.</span><span class="ficha-row-value">${v(item.unidadAlternativa)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Factor</span><span class="ficha-row-value">${item.factorConversion} ${item.unidadBase} por ${item.unidadAlternativa}</span></div>
-                        </div>` : ''}
+                            <div class="ficha-section-title">Proveedor</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Proveedor</span><span class="ficha-row-value">${v(item.proveedor)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Moneda</span><span class="ficha-row-value">${v(item.moneda)}</span></div>
+                            ${item.fechaUltimoPrecio ? `<div class="ficha-row"><span class="ficha-row-label">Último precio</span><span class="ficha-row-value">${API.formatDate(item.fechaUltimoPrecio)}</span></div>` : ''}
+                        </div>
                         ${item.notas ? `
                         <div class="ficha-section">
                             <div class="ficha-section-title">Notas</div>
@@ -2779,6 +2796,7 @@ const Modules = {
                 // Trigger async loading for tabs that need data
                 if (type === 'clients') this._loadClientTabData(item, tabId);
                 if (type === 'catalogo') this._loadCatalogoTabData(item, tabId);
+                if (type === 'events') this._loadEventTabData(item, tabId);
             }
         };
 
@@ -2804,6 +2822,7 @@ const Modules = {
         // Auto-load data for first tab
         if (type === 'clients') this._loadClientTabData(item, firstTab);
         if (type === 'catalogo') this._loadCatalogoTabData(item, firstTab);
+        if (type === 'events') this._loadEventTabData(item, firstTab);
     },
 
     // ═══════════════════════════════════════════
@@ -3070,22 +3089,24 @@ const Modules = {
         const allCols = [
             { id: 'nombre', header: 'NOMBRE', defaultVisible: true },
             { id: 'codigo', header: 'CÓDIGO', defaultVisible: true },
+            { id: 'clasificacion', header: 'CLASIFICACIÓN', defaultVisible: true },
             { id: 'categoria', header: 'CATEGORÍA', defaultVisible: true },
             { id: 'unidad', header: 'UNIDAD', defaultVisible: true },
             { id: 'costo', header: 'COSTO UNIT.', defaultVisible: true },
-            { id: 'conversion', header: 'CONVERSIÓN', defaultVisible: false },
+            { id: 'moneda', header: 'MONEDA', defaultVisible: false },
+            { id: 'proveedor', header: 'PROVEEDOR', defaultVisible: true },
         ];
 
         const visCols = this._getOrderedVisibleCols(storageKey, allCols);
         this._renderColsPanel(storageKey, allCols, visCols);
 
-        // Filters
-        const categorias = [...new Set(data.map(i => i.categoria).filter(Boolean))].sort();
+        // Filters — by clasificacion
+        const clasificaciones = [...new Set(data.map(i => i.clasificacion).filter(Boolean))].sort();
         const filtersEl = document.getElementById('apiToolbarFilters');
         if (filtersEl) {
             filtersEl.innerHTML = `<div class="mepex-filter-chips">
                 <button class="mepex-filter-chip ${!this._activeTypeFilter ? 'active' : ''}" data-filter-cat="">Todos</button>
-                ${categorias.map(c => `<button class="mepex-filter-chip ${this._activeTypeFilter === c ? 'active' : ''}" data-filter-cat="${c}">${c}</button>`).join('')}
+                ${clasificaciones.map(c => `<button class="mepex-filter-chip ${this._activeTypeFilter === c ? 'active' : ''}" data-filter-cat="${c}">${c}</button>`).join('')}
             </div>`;
             filtersEl.querySelectorAll('[data-filter-cat]').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -3103,10 +3124,12 @@ const Modules = {
             switch (colId) {
                 case 'nombre': return `<span class="td-primary">${item.nombre}</span>`;
                 case 'codigo': return `<span class="td-number">${item.codigo || '—'}</span>`;
+                case 'clasificacion': return `<span class="badge badge-ghost">${item.clasificacion || '—'}</span>`;
                 case 'categoria': return `<span class="badge badge-ghost">${item.categoria || '—'}</span>`;
                 case 'unidad': return item.unidadBase || '—';
-                case 'costo': return `<span class="td-number cost-value">${API.formatCurrency(item.costoUnitario)}<span class="cost-unit">/${item.unidadBase}</span></span>`;
-                case 'conversion': return item.factorConversion ? `${item.factorConversion} ${item.unidadBase}/${item.unidadAlternativa}` : '—';
+                case 'costo': return `<span class="td-number cost-value">${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$','')}<span class="cost-unit">/${item.unidadBase}</span></span>`;
+                case 'moneda': return item.moneda || '—';
+                case 'proveedor': return item.proveedor || '—';
                 default: return '—';
             }
         };
@@ -3136,7 +3159,7 @@ const Modules = {
             });
         });
         this._attachColDragListeners('mepex_insumos_cols_v1', [
-            { id: 'nombre' }, { id: 'codigo' }, { id: 'categoria' }, { id: 'unidad' }, { id: 'costo' }, { id: 'conversion' },
+            { id: 'nombre' }, { id: 'codigo' }, { id: 'clasificacion' }, { id: 'categoria' }, { id: 'unidad' }, { id: 'costo' }, { id: 'moneda' }, { id: 'proveedor' },
         ]);
         // Row click → open ficha
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
@@ -3151,9 +3174,11 @@ const Modules = {
         switch (colId) {
             case 'nombre': return (item.nombre || '').toLowerCase();
             case 'codigo': return (item.codigo || '').toLowerCase();
+            case 'clasificacion': return (item.clasificacion || '').toLowerCase();
             case 'categoria': return (item.categoria || '').toLowerCase();
             case 'unidad': return (item.unidadBase || '').toLowerCase();
             case 'costo': return item.costoUnitario || 0;
+            case 'proveedor': return (item.proveedor || '').toLowerCase();
             default: return null;
         }
     },
@@ -3298,6 +3323,260 @@ const Modules = {
                 </div>
             </div>
         `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  EVENTS — Async Tab Data Loaders
+    // ═══════════════════════════════════════════
+
+    async _loadEventTabData(item, tabId) {
+        if (tabId === 'proyectos') await this._loadEventProjects(item);
+    },
+
+    async _loadEventProjects(item) {
+        const listEl = document.getElementById('fichaEventProjects');
+        if (!listEl) return;
+
+        try {
+            const projects = await API.getProjects();
+            if (!projects) {
+                listEl.innerHTML = '<p class="text-muted" style="font-size:12px;">Error al cargar proyectos</p>';
+                return;
+            }
+
+            const eventName = (item.name || '').trim().toLowerCase();
+            const matching = projects.filter(p =>
+                (p.eventName || '').trim().toLowerCase() === eventName
+            );
+
+            if (!matching.length) {
+                listEl.innerHTML = '<p class="text-muted" style="font-size:12px;">No hay proyectos vinculados a este evento</p>';
+                return;
+            }
+
+            const statusColor = (s) => {
+                const sl = (s || '').toLowerCase();
+                if (sl.includes('aprobado') || sl.includes('finalizado')) return '#00CC88';
+                if (sl.includes('proceso') || sl.includes('taller')) return '#00A9C1';
+                if (sl.includes('pendiente') || sl.includes('aguarda')) return '#F28D15';
+                if (sl.includes('rechazado')) return '#FF4444';
+                return '#666';
+            };
+
+            listEl.innerHTML = matching.map(p => `
+                <div class="ficha-event-project-item" data-project-id="${p.id}" style="
+                    display:flex; align-items:center; gap:10px; padding:10px 12px;
+                    background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04);
+                    border-radius:6px; cursor:pointer; margin-bottom:4px;
+                    transition: background 0.15s, border-color 0.15s;
+                ">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:13px; font-weight:500; color:#E0E0E0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.name || 'Sin nombre'}</div>
+                        <div style="font-size:11px; color:#888;">${p.clientName || ''} ${p.type ? '· ' + p.type : ''}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                        <span style="width:8px; height:8px; border-radius:50%; background:${statusColor(p.status)};"></span>
+                        <span style="font-size:11px; color:#888;">${p.status || '—'}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            // Click to open project ficha
+            listEl.querySelectorAll('.ficha-event-project-item[data-project-id]').forEach(card => {
+                card.addEventListener('mouseenter', () => {
+                    card.style.background = 'rgba(0,172,201,0.06)';
+                    card.style.borderColor = 'rgba(0,172,201,0.2)';
+                });
+                card.addEventListener('mouseleave', () => {
+                    card.style.background = 'rgba(255,255,255,0.02)';
+                    card.style.borderColor = 'rgba(255,255,255,0.04)';
+                });
+                card.addEventListener('click', () => {
+                    const pid = card.dataset.projectId;
+                    const project = matching.find(p => String(p.id) === String(pid));
+                    if (project) {
+                        this._closeFicha();
+                        setTimeout(() => this._openFichaByType(project, 'projects'), 200);
+                    }
+                });
+            });
+
+        } catch (e) {
+            console.warn('[Modules] Error loading event projects:', e);
+            listEl.innerHTML = '<p class="text-muted" style="font-size:12px;">Error al cargar proyectos</p>';
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  PROYECTOS POR EVENTO — Custom Section
+    // ═══════════════════════════════════════════
+
+    _renderProyectosPorEventoSection() {
+        return `
+            <div class="section-content">
+                <div class="section-header" style="margin-bottom:16px;">
+                    <span class="section-icon">📅</span>
+                    <h2 class="title-3">Proyectos por evento</h2>
+                </div>
+                <div class="pxe-container" id="pxeContainer">
+                    <div class="api-loading">
+                        <div class="api-spinner"></div>
+                        <span>Cargando proyectos y eventos…</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _initProyectosPorEvento() {
+        const container = document.getElementById('pxeContainer');
+        if (!container) return;
+
+        try {
+            const [projects, events] = await Promise.all([
+                API.getProjects(),
+                API.getEvents(),
+            ]);
+
+            if (!projects || !events) {
+                container.innerHTML = `
+                    <div class="api-offline-msg">
+                        <span class="api-offline-icon">⚠️</span>
+                        <p>No se pudo conectar con la API</p>
+                    </div>`;
+                return;
+            }
+
+            // Group projects by eventName
+            const eventMap = {};
+            const sinEvento = [];
+
+            for (const p of projects) {
+                const evName = (p.eventName || '').trim();
+                if (!evName) { sinEvento.push(p); continue; }
+                if (!eventMap[evName]) eventMap[evName] = { event: null, projects: [] };
+                eventMap[evName].projects.push(p);
+            }
+
+            // Match with event data for dates
+            for (const ev of events) {
+                const name = (ev.name || '').trim();
+                if (eventMap[name]) eventMap[name].event = ev;
+            }
+
+            // Sort events by eventStartDate
+            const sortedEventNames = Object.keys(eventMap).sort((a, b) => {
+                const ea = eventMap[a].event;
+                const eb = eventMap[b].event;
+                const da = ea?.eventStartDate || '9999';
+                const db = eb?.eventStartDate || '9999';
+                return da < db ? -1 : da > db ? 1 : 0;
+            });
+
+            const statusColor = (s) => {
+                const sl = (s || '').toLowerCase();
+                if (sl.includes('aprobado') || sl.includes('finalizado')) return '#00CC88';
+                if (sl.includes('proceso') || sl.includes('taller')) return '#00A9C1';
+                if (sl.includes('pendiente') || sl.includes('aguarda')) return '#F28D15';
+                if (sl.includes('rechazado')) return '#FF4444';
+                return '#666';
+            };
+
+            const renderProjectCard = (p) => `
+                <div class="pxe-project-card" data-project-id="${p.id}">
+                    <div class="pxe-project-main">
+                        <span class="pxe-project-name">${p.name || 'Sin nombre'}</span>
+                        <span class="pxe-project-client">${p.clientName || ''}</span>
+                    </div>
+                    <div class="pxe-project-meta">
+                        ${p.type ? `<span class="badge badge-ghost">${p.type}</span>` : ''}
+                        <span class="pxe-status-dot" style="background:${statusColor(p.status)}"></span>
+                        <span class="pxe-project-status">${p.status || '—'}</span>
+                    </div>
+                </div>
+            `;
+
+            let html = '';
+
+            for (const evName of sortedEventNames) {
+                const group = eventMap[evName];
+                const ev = group.event;
+                const count = group.projects.length;
+                const dateStr = ev?.eventStartDate ? API.formatDate(ev.eventStartDate) : '';
+                const venueStr = ev?.venue || '';
+                const evStatus = ev?.status || '';
+
+                html += `
+                    <div class="pxe-event-group" data-event-name="${evName}">
+                        <div class="pxe-event-header" data-pxe-toggle>
+                            <div class="pxe-event-toggle">
+                                <svg class="pxe-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <div class="pxe-event-info">
+                                <span class="pxe-event-name">${evName}</span>
+                                ${venueStr ? `<span class="pxe-event-venue">${venueStr}</span>` : ''}
+                            </div>
+                            <div class="pxe-event-badges">
+                                ${dateStr ? `<span class="pxe-event-date">${dateStr}</span>` : ''}
+                                <span class="pxe-event-count">${count} proyecto${count !== 1 ? 's' : ''}</span>
+                                ${evStatus ? `<span class="badge badge-ghost">${evStatus}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="pxe-event-body">
+                            ${group.projects.map(renderProjectCard).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (sinEvento.length) {
+                html += `
+                    <div class="pxe-event-group pxe-no-event" data-event-name="__sin_evento__">
+                        <div class="pxe-event-header" data-pxe-toggle>
+                            <div class="pxe-event-toggle">
+                                <svg class="pxe-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <div class="pxe-event-info">
+                                <span class="pxe-event-name" style="opacity:0.5;">Sin evento asignado</span>
+                            </div>
+                            <div class="pxe-event-badges">
+                                <span class="pxe-event-count">${sinEvento.length} proyecto${sinEvento.length !== 1 ? 's' : ''}</span>
+                            </div>
+                        </div>
+                        <div class="pxe-event-body">
+                            ${sinEvento.map(renderProjectCard).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (!sortedEventNames.length && !sinEvento.length) {
+                html = `<div class="section-placeholder"><div class="placeholder-icon">📋</div><p class="placeholder-text">No hay proyectos cargados</p></div>`;
+            }
+
+            container.innerHTML = html;
+
+            // Toggle collapsibles
+            container.querySelectorAll('[data-pxe-toggle]').forEach(header => {
+                header.addEventListener('click', () => {
+                    const group = header.closest('.pxe-event-group');
+                    group.classList.toggle('collapsed');
+                });
+            });
+
+            // Click project card → open ficha
+            container.querySelectorAll('.pxe-project-card[data-project-id]').forEach(card => {
+                card.addEventListener('click', () => {
+                    const pid = card.dataset.projectId;
+                    const project = projects.find(p => String(p.id) === String(pid));
+                    if (project) this._openFichaByType(project, 'projects');
+                });
+            });
+
+        } catch (e) {
+            console.warn('[Modules] Error loading proyectos por evento:', e);
+            container.innerHTML = `<div class="api-offline-msg"><span class="api-offline-icon">⚠️</span><p>Error al cargar datos</p></div>`;
+        }
     },
 
     // ═══════════════════════════════════════════

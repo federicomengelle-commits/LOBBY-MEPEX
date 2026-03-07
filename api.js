@@ -714,20 +714,30 @@ const API = {
     // ═══════════════════════════════════════════
 
     // ─── Insumos CRUD ───────────────────────────
+    // NOTA: tabla real en Supabase = 'insumos_base'
+    // Columnas: id, codigo, nombre, clasificacion, categoria, costo_unitario,
+    //           moneda, unidad, proveedor, notas, fecha_ultimo_precio, activo,
+    //           created_at, updated_at
     async getInsumos() {
         const cacheKey = 'insumos';
         const cached = this._cache[cacheKey];
         if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
         try {
             const { data, error } = await supabaseClient
-                .from('insumos').select('*').order('nombre', { ascending: true });
+                .from('insumos_base').select('*').order('nombre', { ascending: true });
             if (error) throw error;
             const mapped = (data || []).map(i => ({
                 id: i.id, nombre: i.nombre || '', codigo: i.codigo || '',
-                unidadBase: i.unidad_base || 'unidad', costoUnitario: parseFloat(i.costo_unitario) || 0,
-                categoria: i.categoria || '', unidadAlternativa: i.unidad_alternativa || '',
-                factorConversion: i.factor_conversion ? parseFloat(i.factor_conversion) : null,
-                notas: i.notas || '', updatedAt: i.updated_at,
+                clasificacion: i.clasificacion || '',
+                categoria: i.categoria || '',
+                costoUnitario: parseFloat(i.costo_unitario) || 0,
+                moneda: i.moneda || 'ARS',
+                unidadBase: i.unidad || 'unidad',
+                proveedor: i.proveedor || '',
+                notas: i.notas || '',
+                fechaUltimoPrecio: i.fecha_ultimo_precio || null,
+                activo: i.activo !== false,
+                updatedAt: i.updated_at,
             }));
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
@@ -741,14 +751,15 @@ const API = {
         try {
             const payload = {
                 nombre: data.nombre || '', codigo: data.codigo || null,
-                unidad_base: data.unidadBase || 'unidad',
-                costo_unitario: data.costoUnitario || 0,
+                clasificacion: data.clasificacion || '',
                 categoria: data.categoria || '',
-                unidad_alternativa: data.unidadAlternativa || null,
-                factor_conversion: data.factorConversion || null,
+                costo_unitario: data.costoUnitario || 0,
+                moneda: data.moneda || 'USD',
+                unidad: data.unidadBase || 'unidad',
+                proveedor: data.proveedor || '',
                 notas: data.notas || '',
             };
-            const { data: result, error } = await supabaseClient.from('insumos').insert([payload]).select();
+            const { data: result, error } = await supabaseClient.from('insumos_base').insert([payload]).select();
             if (error) throw error;
             this.clearCache();
             return result?.[0] || true;
@@ -763,14 +774,15 @@ const API = {
             const payload = {};
             if (data.nombre !== undefined) payload.nombre = data.nombre;
             if (data.codigo !== undefined) payload.codigo = data.codigo || null;
-            if (data.unidadBase !== undefined) payload.unidad_base = data.unidadBase;
-            if (data.costoUnitario !== undefined) payload.costo_unitario = data.costoUnitario;
+            if (data.clasificacion !== undefined) payload.clasificacion = data.clasificacion;
             if (data.categoria !== undefined) payload.categoria = data.categoria;
-            if (data.unidadAlternativa !== undefined) payload.unidad_alternativa = data.unidadAlternativa || null;
-            if (data.factorConversion !== undefined) payload.factor_conversion = data.factorConversion || null;
+            if (data.costoUnitario !== undefined) payload.costo_unitario = data.costoUnitario;
+            if (data.moneda !== undefined) payload.moneda = data.moneda;
+            if (data.unidadBase !== undefined) payload.unidad = data.unidadBase;
+            if (data.proveedor !== undefined) payload.proveedor = data.proveedor;
             if (data.notas !== undefined) payload.notas = data.notas;
             payload.updated_at = new Date().toISOString();
-            const { data: result, error } = await supabaseClient.from('insumos').update(payload).eq('id', id).select();
+            const { data: result, error } = await supabaseClient.from('insumos_base').update(payload).eq('id', id).select();
             if (error) throw error;
             this.clearCache();
             return result?.[0] || true;
@@ -782,7 +794,7 @@ const API = {
 
     async deleteInsumo(id) {
         try {
-            const { error } = await supabaseClient.from('insumos').delete().eq('id', id);
+            const { error } = await supabaseClient.from('insumos_base').delete().eq('id', id);
             if (error) throw error;
             this.clearCache();
             return true;

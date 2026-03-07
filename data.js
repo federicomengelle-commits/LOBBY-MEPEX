@@ -253,15 +253,11 @@ const Data = {
                     fields: []
                 },
                 {
-                    id: 'diseno',
-                    name: 'Diseño',
-                    icon: '🎨',
-                    description: 'Renders, planos, aprobación de diseño, versionado',
-                    fields: [
-                        { label: 'Archivos de diseño', type: 'file' },
-                        { label: 'Estado aprobación', type: 'select', options: ['Pendiente', 'Aprobado', 'Con cambios'] },
-                        { label: 'Historial de versiones', type: 'list' },
-                    ]
+                    id: 'por_evento',
+                    name: 'Proyectos por evento',
+                    icon: '📅',
+                    description: 'Vista agrupada de proyectos organizados por evento',
+                    fields: []
                 },
             ],
             connections: [
@@ -299,15 +295,11 @@ const Data = {
                     ]
                 },
                 {
-                    id: 'diseno',
-                    name: 'Diseño',
-                    icon: '🎨',
-                    description: 'Renders, planos, aprobación de diseño, versionado',
-                    fields: [
-                        { label: 'Archivos de diseño', type: 'file' },
-                        { label: 'Estado aprobación', type: 'select', options: ['Pendiente', 'Aprobado', 'Con cambios'] },
-                        { label: 'Historial de versiones', type: 'list' },
-                    ]
+                    id: 'proyecto',
+                    name: 'Proyecto',
+                    icon: '🏗️',
+                    description: 'Proyectos / stands vinculados a un evento',
+                    fields: []
                 },
             ],
             connections: [
