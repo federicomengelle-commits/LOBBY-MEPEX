@@ -291,6 +291,7 @@ const Modules = {
         if (this._isCustomSection(mod.id, sectionId)) {
             if (mod.id === 'inventario' && sectionId === 'simulador') return this._renderSimuladorSection();
             if (mod.id === 'proyectos' && sectionId === 'por_evento') return this._renderProyectosPorEventoSection();
+            if (mod.id === 'ventas' && sectionId === 'pipeline') return this._renderPipelineSection();
         }
 
         // Check if this is an API-powered section
@@ -387,6 +388,7 @@ const Modules = {
     _isCustomSection(moduleId, sectionId) {
         if (moduleId === 'inventario' && sectionId === 'simulador') return true;
         if (moduleId === 'proyectos' && sectionId === 'por_evento') return true;
+        if (moduleId === 'ventas' && sectionId === 'pipeline') return true;
         return false;
     },
 
@@ -396,6 +398,7 @@ const Modules = {
         if (this._isCustomSection(mod.id, sectionId)) {
             if (mod.id === 'inventario' && sectionId === 'simulador') { this._initSimulador(); return; }
             if (mod.id === 'proyectos' && sectionId === 'por_evento') { this._initProyectosPorEvento(); return; }
+            if (mod.id === 'ventas' && sectionId === 'pipeline') { this._initPipeline(); return; }
             return;
         }
 
@@ -3864,5 +3867,380 @@ const Modules = {
                 }
             });
         }
+    },
+
+    // ═══════════════════════════════════════════
+    //  PIPELINE COMERCIAL — Kanban Board
+    // ═══════════════════════════════════════════
+
+    _pipelineStates: [
+        { id: 'borrador',         label: 'Borrador',         color: '#666',    progress: 10 },
+        { id: 'enviada',          label: 'Enviada',          color: '#3B82F6', progress: 30 },
+        { id: 'vista',            label: 'Vista',            color: '#8B5CF6', progress: 50 },
+        { id: 'en_negociacion',   label: 'En Negociación',   color: '#F59E0B', progress: 70 },
+        { id: 'aprobada',         label: 'Aprobada',         color: '#10B981', progress: 90 },
+        { id: 'cerrada_ganada',   label: 'Cerrada Ganada',   color: '#00d4aa', progress: 100 },
+        { id: 'cerrada_perdida',  label: 'Cerrada Perdida',  color: '#EF4444', progress: 100 },
+    ],
+
+    _pipelineData: null,
+    _pipelineFilters: { q: '', tipoEvento: null, montoMin: null, montoMax: null },
+
+    _renderPipelineSection() {
+        return `
+            <div class="section-content pk-root">
+                <div class="pk-metrics" id="pkMetrics"></div>
+                <div class="pk-filters" id="pkFilters">
+                    <div class="pk-search-box">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="pk-search-input" id="pkSearch" placeholder="Buscar evento, cliente…" autocomplete="off">
+                    </div>
+                    <select class="pk-select" id="pkTipoEvento">
+                        <option value="">Tipo de evento</option>
+                        <option value="feria">Feria</option>
+                        <option value="congreso">Congreso</option>
+                        <option value="corporativo">Corporativo</option>
+                        <option value="social">Social</option>
+                        <option value="festival">Festival</option>
+                        <option value="boda">Boda</option>
+                    </select>
+                    <input type="number" class="pk-monto-input" id="pkMontoMin" placeholder="Monto mín.">
+                    <input type="number" class="pk-monto-input" id="pkMontoMax" placeholder="Monto máx.">
+                    <button class="pk-clear-btn" id="pkClearFilters" title="Limpiar filtros">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="pk-board" id="pkBoard">
+                    <div class="api-loading"><div class="api-spinner"></div><span>Cargando pipeline…</span></div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _initPipeline() {
+        const board = document.getElementById('pkBoard');
+        if (!board) return;
+
+        try {
+            const data = await API.getCotizaciones();
+            if (!data) {
+                board.innerHTML = '<div class="api-offline-msg"><span class="api-offline-icon">⚠️</span><p>No se pudo conectar con la API</p></div>';
+                return;
+            }
+            this._pipelineData = data;
+            this._renderPipelineMetrics(data);
+            this._renderPipelineBoard(data);
+            this._attachPipelineFilters();
+        } catch (e) {
+            console.warn('[Pipeline] Init error:', e);
+            board.innerHTML = '<div class="api-offline-msg"><span class="api-offline-icon">⚠️</span><p>Error al cargar pipeline</p></div>';
+        }
+    },
+
+    // ─── Metrics ───
+    _renderPipelineMetrics(data) {
+        const el = document.getElementById('pkMetrics');
+        if (!el) return;
+
+        const activas = data.filter(c => !c.estado.startsWith('cerrada_'));
+        const ganadas = data.filter(c => c.estado === 'cerrada_ganada');
+        const cerradas = data.filter(c => c.estado.startsWith('cerrada_'));
+        const totalPipeline = activas.reduce((s, c) => s + c.montoTotal, 0);
+        const tasaConversion = cerradas.length > 0 ? Math.round((ganadas.length / cerradas.length) * 100) : 0;
+
+        // Avg close time
+        let avgDays = 0;
+        if (ganadas.length) {
+            const totalDays = ganadas.reduce((s, c) => {
+                const created = new Date(c.createdAt);
+                const updated = new Date(c.updatedAt);
+                return s + Math.max(1, Math.round((updated - created) / 86400000));
+            }, 0);
+            avgDays = Math.round(totalDays / ganadas.length);
+        }
+
+        const now = new Date();
+        const hotLeads = data.filter(c => {
+            if (c.estado !== 'enviada' && c.estado !== 'vista') return false;
+            const age = (now - new Date(c.updatedAt)) / 86400000;
+            return age < 3;
+        }).length;
+
+        const nextWeek = new Date(now.getTime() + 7 * 86400000);
+        const porVencer = activas.filter(c => {
+            if (!c.fechaEvento) return false;
+            const fe = new Date(c.fechaEvento + 'T00:00:00');
+            return fe >= now && fe <= nextWeek;
+        }).length;
+
+        const metrics = [
+            { value: API.formatCurrency(totalPipeline), label: 'Total en pipeline', accent: '#00d4aa' },
+            { value: tasaConversion + '%', label: 'Tasa conversión', accent: '#10B981' },
+            { value: avgDays + 'd', label: 'Tiempo promedio cierre', accent: '#3B82F6' },
+            { value: activas.length, label: 'Cotizaciones activas', accent: '#F59E0B' },
+            { value: hotLeads, label: 'Hot leads', accent: '#EF4444' },
+            { value: porVencer, label: 'Por vencer (7d)', accent: '#8B5CF6' },
+        ];
+
+        el.innerHTML = metrics.map(m => `
+            <div class="pk-metric-card">
+                <span class="pk-metric-value" style="color:${m.accent}">${m.value}</span>
+                <span class="pk-metric-label">${m.label}</span>
+            </div>
+        `).join('');
+    },
+
+    // ─── Board ───
+    _renderPipelineBoard(data) {
+        const board = document.getElementById('pkBoard');
+        if (!board) return;
+
+        const filtered = this._applyPipelineFilters(data);
+        const now = new Date();
+
+        const getHeat = (c) => {
+            const age = (now - new Date(c.updatedAt)) / 86400000;
+            if (c.estado === 'vista' && age < 1) return { emoji: '🔥', label: 'HOT', cls: 'pk-heat-hot' };
+            if (age < 3) return { emoji: '🟠', label: 'WARM', cls: 'pk-heat-warm' };
+            return { emoji: '🧊', label: 'COLD', cls: 'pk-heat-cold' };
+        };
+
+        const getTimerClass = (c) => {
+            if (!c.createdAt) return 'pk-timer-green';
+            const days = (now - new Date(c.createdAt)) / 86400000;
+            if (days < 3) return 'pk-timer-green';
+            if (days <= 7) return 'pk-timer-yellow';
+            return 'pk-timer-red';
+        };
+
+        const getDaysSince = (dateStr) => {
+            if (!dateStr) return 0;
+            return Math.max(0, Math.floor((now - new Date(dateStr)) / 86400000));
+        };
+
+        const stateForId = (id) => this._pipelineStates.find(s => s.id === id);
+
+        board.innerHTML = this._pipelineStates.map(state => {
+            const items = filtered.filter(c => c.estado === state.id);
+            const colTotal = items.reduce((s, c) => s + c.montoTotal, 0);
+
+            return `
+                <div class="pk-column" data-state="${state.id}">
+                    <div class="pk-column-header" style="border-top: 3px solid ${state.color}">
+                        <div class="pk-column-title">
+                            <span class="pk-column-name">${state.label}</span>
+                            <span class="pk-column-count">${items.length}</span>
+                        </div>
+                        <span class="pk-column-total">${API.formatCurrency(colTotal)}</span>
+                    </div>
+                    <div class="pk-column-body" data-state="${state.id}">
+                        ${items.map(c => {
+                            const heat = getHeat(c);
+                            const timerCls = getTimerClass(c);
+                            const daysSinceCreation = getDaysSince(c.createdAt);
+                            const progress = stateForId(c.estado)?.progress || 0;
+                            return `
+                                <div class="pk-card" draggable="true" data-id="${c.id}" data-state="${c.estado}">
+                                    <div class="pk-card-top">
+                                        <span class="pk-heat ${heat.cls}" title="${heat.label}">${heat.emoji}</span>
+                                        <span class="pk-card-numero">${c.numero}</span>
+                                        <span class="pk-card-monto">${API.formatCurrency(c.montoTotal)}</span>
+                                    </div>
+                                    <div class="pk-card-evento">${c.nombreEvento || 'Sin evento'}</div>
+                                    <div class="pk-card-cliente">${c.clienteNombre || 'Sin cliente'}</div>
+                                    ${c.fechaEvento ? `<div class="pk-card-fecha">📅 ${API.formatDate(c.fechaEvento)}</div>` : ''}
+                                    <div class="pk-card-timer ${timerCls}">⏱ ${daysSinceCreation}d desde creación</div>
+                                    <div class="pk-progress-bar"><div class="pk-progress-fill" style="width:${progress}%; background:${state.color}"></div></div>
+                                    <div class="pk-card-actions">
+                                        ${c.clienteTelefono ? `<a href="https://wa.me/${(c.clienteTelefono || '').replace(/[^0-9]/g, '')}" target="_blank" class="pk-action-btn pk-wa" title="WhatsApp">💬</a>` : ''}
+                                        ${c.clienteEmail ? `<a href="mailto:${c.clienteEmail}" class="pk-action-btn pk-mail" title="Email">✉️</a>` : ''}
+                                        <button class="pk-action-btn pk-detail" data-id="${c.id}" title="Ver detalle">📋</button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('') || '<div class="pk-empty">Sin cotizaciones</div>'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Attach drag & drop + detail click
+        this._attachPipelineDnD();
+        this._attachPipelineCardActions();
+    },
+
+    // ─── Filters ───
+    _applyPipelineFilters(data) {
+        let filtered = data;
+        const f = this._pipelineFilters;
+
+        if (f.q && f.q.length >= 2) {
+            const q = f.q.toLowerCase();
+            filtered = filtered.filter(c =>
+                (c.nombreEvento || '').toLowerCase().includes(q) ||
+                (c.clienteNombre || '').toLowerCase().includes(q) ||
+                (c.numero || '').toLowerCase().includes(q)
+            );
+        }
+        if (f.tipoEvento) {
+            filtered = filtered.filter(c => (c.tipoEvento || '').toLowerCase() === f.tipoEvento);
+        }
+        if (f.montoMin != null) {
+            filtered = filtered.filter(c => c.montoTotal >= f.montoMin);
+        }
+        if (f.montoMax != null) {
+            filtered = filtered.filter(c => c.montoTotal <= f.montoMax);
+        }
+        return filtered;
+    },
+
+    _attachPipelineFilters() {
+        const search = document.getElementById('pkSearch');
+        const tipo = document.getElementById('pkTipoEvento');
+        const montoMin = document.getElementById('pkMontoMin');
+        const montoMax = document.getElementById('pkMontoMax');
+        const clearBtn = document.getElementById('pkClearFilters');
+
+        const refresh = () => {
+            this._pipelineFilters.q = search?.value || '';
+            this._pipelineFilters.tipoEvento = tipo?.value || null;
+            this._pipelineFilters.montoMin = montoMin?.value ? parseFloat(montoMin.value) : null;
+            this._pipelineFilters.montoMax = montoMax?.value ? parseFloat(montoMax.value) : null;
+            if (this._pipelineData) {
+                this._renderPipelineBoard(this._pipelineData);
+            }
+        };
+
+        if (search) search.addEventListener('input', refresh);
+        if (tipo) tipo.addEventListener('change', refresh);
+        if (montoMin) montoMin.addEventListener('input', refresh);
+        if (montoMax) montoMax.addEventListener('input', refresh);
+        if (clearBtn) clearBtn.addEventListener('click', () => {
+            if (search) search.value = '';
+            if (tipo) tipo.value = '';
+            if (montoMin) montoMin.value = '';
+            if (montoMax) montoMax.value = '';
+            this._pipelineFilters = { q: '', tipoEvento: null, montoMin: null, montoMax: null };
+            if (this._pipelineData) {
+                this._renderPipelineBoard(this._pipelineData);
+            }
+        });
+    },
+
+    // ─── Drag & Drop ───
+    _attachPipelineDnD() {
+        const cards = document.querySelectorAll('.pk-card[draggable]');
+        const bodies = document.querySelectorAll('.pk-column-body');
+
+        cards.forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', card.dataset.id);
+                e.dataTransfer.effectAllowed = 'move';
+                card.classList.add('pk-dragging');
+                setTimeout(() => card.style.opacity = '0.4', 0);
+            });
+            card.addEventListener('dragend', () => {
+                card.classList.remove('pk-dragging');
+                card.style.opacity = '';
+                bodies.forEach(b => b.classList.remove('pk-drop-target'));
+            });
+        });
+
+        bodies.forEach(body => {
+            body.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                body.classList.add('pk-drop-target');
+            });
+            body.addEventListener('dragleave', () => {
+                body.classList.remove('pk-drop-target');
+            });
+            body.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                body.classList.remove('pk-drop-target');
+                const cardId = e.dataTransfer.getData('text/plain');
+                const newState = body.dataset.state;
+                if (!cardId || !newState) return;
+
+                const cot = this._pipelineData?.find(c => c.id === cardId);
+                if (!cot || cot.estado === newState) return;
+
+                const oldState = cot.estado;
+                const stateLabel = (id) => this._pipelineStates.find(s => s.id === id)?.label || id;
+
+                // Optimistic update
+                cot.estado = newState;
+                this._renderPipelineBoard(this._pipelineData);
+                this._renderPipelineMetrics(this._pipelineData);
+
+                // Persist to Supabase
+                const result = await API.updateCotizacionEstado(cardId, newState);
+                if (result) {
+                    Toast.success(`${cot.numero}: ${stateLabel(oldState)} → ${stateLabel(newState)}`);
+                } else {
+                    // Rollback
+                    cot.estado = oldState;
+                    this._renderPipelineBoard(this._pipelineData);
+                    this._renderPipelineMetrics(this._pipelineData);
+                    Toast.error('Error al mover cotización');
+                }
+            });
+        });
+    },
+
+    // ─── Card actions ───
+    _attachPipelineCardActions() {
+        document.querySelectorAll('.pk-detail[data-id]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const cot = this._pipelineData?.find(c => c.id === btn.dataset.id);
+                if (cot) this._openPipelineDetail(cot);
+            });
+        });
+    },
+
+    // ─── Detail modal ───
+    async _openPipelineDetail(cot) {
+        const stateObj = this._pipelineStates.find(s => s.id === cot.estado);
+        const timeline = await API.getCotizacionTimeline(cot.id);
+
+        const tlHtml = timeline.length ? timeline.map(t => {
+            const d = new Date(t.createdAt);
+            const dateStr = d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+            const timeStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            const icon = t.tipo === 'estado_cambio' ? '🔄' : t.tipo === 'envio_email' ? '📧' : t.tipo === 'envio_whatsapp' ? '💬' : t.tipo === 'nota' ? '📝' : t.tipo === 'vista_cliente' ? '👁️' : '✏️';
+            return `<div class="pk-tl-item"><span class="pk-tl-icon">${icon}</span><div class="pk-tl-content"><span class="pk-tl-desc">${t.descripcion}</span><span class="pk-tl-date">${dateStr} ${timeStr}</span></div></div>`;
+        }).join('') : '<p class="text-muted" style="font-size:12px;">Sin actividad registrada</p>';
+
+        const body = `
+            <div class="pk-detail-grid">
+                <div class="pk-detail-section">
+                    <div class="pk-detail-title">Cotización</div>
+                    <div class="ficha-row"><span class="ficha-row-label">Número</span><span class="ficha-row-value">${cot.numero}</span></div>
+                    <div class="ficha-row"><span class="ficha-row-label">Estado</span><span class="ficha-row-value"><span class="badge" style="background:${stateObj?.color || '#666'}; color:#fff;">${stateObj?.label || cot.estado}</span></span></div>
+                    <div class="ficha-row"><span class="ficha-row-label">Monto</span><span class="ficha-row-value cost-value">${API.formatCurrency(cot.montoTotal)}</span></div>
+                    <div class="ficha-row"><span class="ficha-row-label">Tipo evento</span><span class="ficha-row-value">${cot.tipoEvento || '—'}</span></div>
+                </div>
+                <div class="pk-detail-section">
+                    <div class="pk-detail-title">Cliente & Evento</div>
+                    <div class="ficha-row"><span class="ficha-row-label">Empresa</span><span class="ficha-row-value">${cot.clienteNombre || '—'}</span></div>
+                    <div class="ficha-row"><span class="ficha-row-label">Contacto</span><span class="ficha-row-value">${cot.clienteContacto || '—'}</span></div>
+                    <div class="ficha-row"><span class="ficha-row-label">Evento</span><span class="ficha-row-value">${cot.nombreEvento || '—'}</span></div>
+                    <div class="ficha-row"><span class="ficha-row-label">Fecha evento</span><span class="ficha-row-value">${cot.fechaEvento ? API.formatDate(cot.fechaEvento) : '—'}</span></div>
+                </div>
+                ${cot.notasInternas ? `<div class="pk-detail-section pk-detail-full"><div class="pk-detail-title">Notas internas</div><p style="font-size:13px; color:#ccc; line-height:1.5;">${cot.notasInternas}</p></div>` : ''}
+                <div class="pk-detail-section pk-detail-full">
+                    <div class="pk-detail-title">Timeline de actividad</div>
+                    <div class="pk-tl-list">${tlHtml}</div>
+                </div>
+            </div>
+        `;
+
+        Modal.open({
+            title: `${cot.numero} — ${cot.nombreEvento || 'Detalle'}`,
+            body: body,
+            size: 'lg',
+            footer: '<button class="btn btn-ghost" data-modal-close>Cerrar</button>',
+        });
     },
 };

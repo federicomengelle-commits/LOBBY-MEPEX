@@ -1051,6 +1051,104 @@ const API = {
         return { ok: true, total: items.length, updated };
     },
 
+    // ═══════════════════════════════════════════
+    // PIPELINE COMERCIAL — Cotizaciones
+    // ═══════════════════════════════════════════
+
+    async getCotizaciones() {
+        const cacheKey = 'cotizaciones';
+        const cached = this._cache[cacheKey];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        try {
+            const { data, error } = await supabaseClient
+                .from('cotizaciones')
+                .select('*, clientes(id, nombre_empresa, contacto_empresa, correo_electronico, telefono)')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            const mapped = (data || []).map(c => ({
+                id: c.id,
+                numero: c.numero || '',
+                clienteId: c.cliente_id,
+                clienteNombre: c.clientes?.nombre_empresa || '',
+                clienteContacto: c.clientes?.contacto_empresa || '',
+                clienteEmail: c.clientes?.correo_electronico || '',
+                clienteTelefono: c.clientes?.telefono || '',
+                nombreEvento: c.nombre_evento || '',
+                tipoEvento: c.tipo_evento || '',
+                fechaEvento: c.fecha_evento,
+                montoTotal: parseFloat(c.monto_total) || 0,
+                estado: c.estado || 'borrador',
+                vendedorId: c.vendedor_id,
+                notasInternas: c.notas_internas || '',
+                createdAt: c.created_at,
+                updatedAt: c.updated_at,
+            }));
+            this._cache[cacheKey] = { data: mapped, ts: Date.now() };
+            return mapped;
+        } catch (e) {
+            console.warn('[API] Error fetching cotizaciones:', e.message);
+            return null;
+        }
+    },
+
+    async updateCotizacionEstado(id, nuevoEstado) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('cotizaciones')
+                .update({ estado: nuevoEstado })
+                .eq('id', id)
+                .select();
+            if (error) throw error;
+            this.clearCache();
+            return data?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error updating cotizacion estado:', e.message);
+            return null;
+        }
+    },
+
+    async addCotizacionTimeline(cotizacionId, tipo, descripcion, metadata) {
+        try {
+            const payload = {
+                cotizacion_id: cotizacionId,
+                tipo: tipo,
+                descripcion: descripcion,
+                metadata: metadata || null,
+            };
+            const { data, error } = await supabaseClient
+                .from('cotizacion_timeline')
+                .insert([payload])
+                .select();
+            if (error) throw error;
+            return data?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error adding timeline entry:', e.message);
+            return null;
+        }
+    },
+
+    async getCotizacionTimeline(cotizacionId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('cotizacion_timeline')
+                .select('*')
+                .eq('cotizacion_id', cotizacionId)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return (data || []).map(t => ({
+                id: t.id,
+                cotizacionId: t.cotizacion_id,
+                tipo: t.tipo,
+                descripcion: t.descripcion,
+                metadata: t.metadata,
+                createdAt: t.created_at,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching timeline:', e.message);
+            return [];
+        }
+    },
+
     // ─── Format currency ────────────────────────
     formatCurrency(amount) {
         if (amount == null || isNaN(amount)) return '$0';
