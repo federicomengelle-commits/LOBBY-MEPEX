@@ -5047,7 +5047,6 @@ const Modules = {
         const allData = this._currentApiData || cotizaciones;
         const activas = allData.filter(c => !['cerrada_ganada', 'cerrada_perdida'].includes(c.estado)).length;
         const envPend = allData.filter(c => c.estado === 'enviada').length;
-        const now = new Date();
         const d30 = new Date(now.getTime() - 30 * 86400000);
         const cerr30 = allData.filter(c => c.estado.startsWith('cerrada_') && c.updatedAt && new Date(c.updatedAt) >= d30);
         const conv30 = cerr30.length ? Math.round((cerr30.filter(c => c.estado === 'cerrada_ganada').length / cerr30.length) * 100) : 0;
