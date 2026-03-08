@@ -30,6 +30,7 @@ const Modules = {
         events:   { label: 'evento',   labelPlural: 'eventos',   supabaseTable: 'eventos_2026' },
         insumos:  { label: 'insumo',   labelPlural: 'insumos',   supabaseTable: 'insumos_base' },
         catalogo: { label: 'item',     labelPlural: 'items',     supabaseTable: 'catalogo_items' },
+        cotizaciones: { label: 'cotización', labelPlural: 'cotizaciones', supabaseTable: 'cotizaciones' },
     },
 
     // ─── Form field definitions ───
@@ -380,6 +381,7 @@ const Modules = {
             'proyectos:lista': 'projects',
             'inventario:insumos': 'insumos',
             'inventario:catalogo': 'catalogo',
+            'ventas:tabla': 'cotizaciones',
         };
         return map[`${moduleId}:${sectionId}`] || null;
     },
@@ -433,6 +435,9 @@ const Modules = {
                     break;
                 case 'catalogo':
                     data = await API.getCatalogoItems();
+                    break;
+                case 'cotizaciones':
+                    data = await API.getCotizaciones();
                     break;
             }
         } catch (e) {
@@ -815,6 +820,13 @@ const Modules = {
                     const f = this._activeStatusFilter.toLowerCase();
                     return s.includes(f);
                 });
+            } else if (type === 'cotizaciones') {
+                data = data.filter(c => {
+                    const estadoObj = this._cotizacionEstadoMap[c.estado];
+                    const label = estadoObj ? estadoObj.label.toLowerCase() : (c.estado || '').toLowerCase();
+                    const f = this._activeStatusFilter.toLowerCase();
+                    return label.includes(f) || (c.estado || '').toLowerCase().includes(f);
+                });
             }
         }
 
@@ -853,8 +865,8 @@ const Modules = {
         if (countEl) countEl.textContent = `${data.length} registro${data.length !== 1 ? 's' : ''}`;
 
         if (data.length === 0) {
-            const labels = { clients: 'clientes', events: 'eventos', projects: 'proyectos', insumos: 'insumos', catalogo: 'items' };
-            const icons = { clients: '👤', events: '📅', projects: '📋', insumos: '🧱', catalogo: '🔩' };
+            const labels = { clients: 'clientes', events: 'eventos', projects: 'proyectos', insumos: 'insumos', catalogo: 'items', cotizaciones: 'cotizaciones' };
+            const icons = { clients: '👤', events: '📅', projects: '📋', insumos: '🧱', catalogo: '🔩', cotizaciones: '📊' };
             container.innerHTML = `
                 <div class="api-empty-state">
                     <span class="api-empty-icon">${icons[type] || '📂'}</span>
@@ -889,6 +901,10 @@ const Modules = {
             case 'catalogo':
                 container.innerHTML = this._renderCatalogoTable(data);
                 this._attachCatalogoListeners(data);
+                break;
+            case 'cotizaciones':
+                container.innerHTML = this._renderCotizacionesTable(data);
+                this._attachCotizacionesListeners(data);
                 break;
         }
     },
@@ -1716,6 +1732,9 @@ const Modules = {
             } else if (type === 'catalogo') {
                 va = this._getCatalogoSortValue(a, colId);
                 vb = this._getCatalogoSortValue(b, colId);
+            } else if (type === 'cotizaciones') {
+                va = this._getCotizacionSortValue(a, colId);
+                vb = this._getCotizacionSortValue(b, colId);
             } else {
                 va = this._getClientSortValue(a, colId);
                 vb = this._getClientSortValue(b, colId);
@@ -4409,13 +4428,200 @@ const Modules = {
     },
 
     // ═══════════════════════════════════════════
+    //  COTIZACIONES TABLE
+    // ═══════════════════════════════════════════
+
+    _cotizacionesColumns: [
+        { id: 'numero',      header: 'Código',     defaultVisible: true },
+        { id: 'cliente',     header: 'Cliente',    defaultVisible: true },
+        { id: 'evento',      header: 'Evento',     defaultVisible: true },
+        { id: 'tipoEvento',  header: 'Tipo',       defaultVisible: true },
+        { id: 'monto',       header: 'Monto',      defaultVisible: true },
+        { id: 'estado',      header: 'Estado',     defaultVisible: true },
+        { id: 'diasEstado',  header: 'Días',       defaultVisible: true },
+        { id: 'urgencia',    header: 'Urg.',       defaultVisible: true },
+        { id: 'vendedor',    header: 'Vendedor',   defaultVisible: false },
+        { id: 'fechaEvento', header: 'F. Evento',  defaultVisible: false },
+        { id: 'creado',      header: 'Creado',     defaultVisible: false },
+    ],
+
+    _cotizacionEstadoMap: {
+        'borrador':        { label: 'Borrador',         color: '#666' },
+        'enviada':         { label: 'Enviada',           color: '#3B82F6' },
+        'en_negociacion':  { label: 'En Negociación',    color: '#F59E0B' },
+        'aprobada':        { label: 'Aprobada',          color: '#10B981' },
+        'cerrada_ganada':  { label: 'Cerrada Ganada',    color: '#00d4aa' },
+        'cerrada_perdida': { label: 'Cerrada Perdida',   color: '#EF4444' },
+    },
+
+    _calcUrgencia(daysSinceUpdate, estado) {
+        if (['aprobada', 'cerrada_ganada', 'cerrada_perdida'].includes(estado)) {
+            return { dot: '\u2B24', cls: 'urg-neutral', label: 'Cerrada' };
+        }
+        if (estado === 'borrador') {
+            return { dot: '\u2B24', cls: 'urg-neutral', label: 'Borrador' };
+        }
+        if (daysSinceUpdate <= 3)  return { dot: '\u2B24', cls: 'urg-green',  label: 'Reciente' };
+        if (daysSinceUpdate <= 7)  return { dot: '\u2B24', cls: 'urg-yellow', label: 'Seguimiento' };
+        return { dot: '\u2B24', cls: 'urg-red', label: 'Urgente' };
+    },
+
+    _vendedorInitials(vendedorId) {
+        if (!vendedorId) return '—';
+        const id = String(vendedorId).toLowerCase();
+        const map = { 'fede': 'FG', 'lelean': 'LL', 'noe': 'NB' };
+        return `<span class="td-vendedor-badge">${map[id] || id.substring(0, 2).toUpperCase()}</span>`;
+    },
+
+    _getCotizacionSortValue(c, colId) {
+        const now = new Date();
+        switch (colId) {
+            case 'numero':      return (c.numero || '').toLowerCase();
+            case 'cliente':     return (c.clienteNombre || '').toLowerCase();
+            case 'evento':      return (c.nombreEvento || '').toLowerCase();
+            case 'tipoEvento':  return (c.tipoEvento || '').toLowerCase();
+            case 'monto':       return c.montoTotal || 0;
+            case 'estado':      return (c.estado || '').toLowerCase();
+            case 'diasEstado':  return c.updatedAt ? Math.floor((now - new Date(c.updatedAt)) / 86400000) : 0;
+            case 'urgencia':    return c.updatedAt ? Math.floor((now - new Date(c.updatedAt)) / 86400000) : 0;
+            case 'vendedor':    return (c.vendedorId || '').toLowerCase();
+            case 'fechaEvento': return c.fechaEvento ? new Date(c.fechaEvento + 'T00:00:00').getTime() : 0;
+            case 'creado':      return c.createdAt ? new Date(c.createdAt).getTime() : 0;
+            default: return null;
+        }
+    },
+
+    _renderCotizacionesTable(cotizaciones) {
+        this._injectStyles();
+        const visCols = this._getOrderedVisibleCols('mepex_cotizaciones_cols_v1', this._cotizacionesColumns);
+
+        // Filter chips
+        const filtersEl = document.getElementById('apiToolbarFilters');
+        if (filtersEl) {
+            const statuses = ['Todos', 'Borrador', 'Enviada', 'En Negociación', 'Aprobada', 'Cerrada Ganada', 'Cerrada Perdida'];
+            filtersEl.innerHTML = `
+                <div class="mepex-filter-chips">
+                    ${statuses.map(s => `
+                        <button class="mepex-filter-chip ${(!this._activeStatusFilter && s === 'Todos') || this._activeStatusFilter === s ? 'active' : ''}" data-status-filter="${s}">${s}</button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Column panel
+        this._renderColsPanel('mepex_cotizaciones_cols_v1', this._cotizacionesColumns, visCols);
+
+        // Sort
+        let sorted = cotizaciones;
+        if (this._sortCol) {
+            sorted = this._sortData(cotizaciones, this._sortCol, this._sortDir, 'cotizaciones');
+        }
+
+        const now = new Date();
+        const orderedCols = visCols.map(id => this._cotizacionesColumns.find(c => c.id === id)).filter(Boolean);
+
+        const thHtml = orderedCols
+            .map(c => `<th class="sortable" data-sort-col="${c.id}" draggable="${!this._isLocked}">${c.header}${this._sortIndicator(c.id)}</th>`)
+            .join('');
+
+        const rowsHtml = sorted.map(c => {
+            const estadoObj = this._cotizacionEstadoMap[c.estado] || { label: c.estado, color: '#666' };
+            const daysSinceUpdate = c.updatedAt ? Math.max(0, Math.floor((now - new Date(c.updatedAt)) / 86400000)) : 0;
+            const urgencia = this._calcUrgencia(daysSinceUpdate, c.estado);
+
+            const cells = orderedCols.map(col => {
+                switch (col.id) {
+                    case 'numero':
+                        return `<td class="td-cot-code">${c.numero || '—'}</td>`;
+                    case 'cliente':
+                        return `<td class="td-primary">${c.clienteNombre || '—'}</td>`;
+                    case 'evento':
+                        return `<td>${c.nombreEvento || '—'}</td>`;
+                    case 'tipoEvento':
+                        return `<td class="td-capitalize">${c.tipoEvento || '—'}</td>`;
+                    case 'monto':
+                        return `<td class="td-number cost-value">${API.formatCurrency(c.montoTotal)}</td>`;
+                    case 'estado':
+                        return `<td><span class="badge cot-estado-badge" style="background:${estadoObj.color}18; color:${estadoObj.color}; border:1px solid ${estadoObj.color}30;">${estadoObj.label}</span></td>`;
+                    case 'diasEstado':
+                        return `<td class="td-number td-dias">${daysSinceUpdate}d</td>`;
+                    case 'urgencia':
+                        return `<td><span class="cot-urgencia ${urgencia.cls}" title="${urgencia.label}">${urgencia.dot}</span></td>`;
+                    case 'vendedor':
+                        return `<td>${this._vendedorInitials(c.vendedorId)}</td>`;
+                    case 'fechaEvento':
+                        return `<td>${c.fechaEvento ? API.formatDate(c.fechaEvento) : '—'}</td>`;
+                    case 'creado':
+                        return `<td>${c.createdAt ? API.formatDate(c.createdAt.split('T')[0]) : '—'}</td>`;
+                    default:
+                        return `<td>—</td>`;
+                }
+            }).join('');
+
+            const cb = this._isLocked ? '' : this._renderRowCheckbox(c.id);
+            return `<tr class="api-table-row ${this._selectedRows.has(c.id) ? 'selected' : ''}" data-id="${c.id}">${cb}${cells}</tr>`;
+        }).join('');
+
+        const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
+
+        return `
+            <div class="api-table-wrap cot-table-compact">
+                <table class="api-table">
+                    <thead><tr>${headerCb}${thHtml}</tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        `;
+    },
+
+    _attachCotizacionesListeners(data) {
+        // Status filter chips
+        document.querySelectorAll('[data-status-filter]').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const val = chip.dataset.statusFilter;
+                this._activeStatusFilter = (val === 'Todos') ? null : val;
+                this._applyAllFilters();
+            });
+        });
+
+        // Sort headers
+        document.querySelectorAll('th.sortable[data-sort-col]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sortCol;
+                if (this._sortCol === col) {
+                    this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._sortCol = col;
+                    this._sortDir = 'asc';
+                }
+                this._applyAllFilters();
+            });
+        });
+
+        // Row click → open pipeline detail modal
+        document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
+            row.addEventListener('click', (ev) => {
+                if (ev.target.closest('a') || ev.target.closest('.td-checkbox')) return;
+                const id = row.dataset.id;
+                const item = this._currentApiData.find(c => c.id == id);
+                if (item) this._openPipelineDetail(item);
+            });
+        });
+
+        // Selection + context menu
+        if (!this._isLocked) this._attachSelectionListeners(data, 'cotizaciones');
+
+        // Column drag & drop
+        this._attachColDragListeners('mepex_cotizaciones_cols_v1', this._cotizacionesColumns);
+    },
+
+    // ═══════════════════════════════════════════
     //  PIPELINE COMERCIAL — Kanban Board
     // ═══════════════════════════════════════════
 
     _pipelineStates: [
         { id: 'borrador',         label: 'Borrador',         color: '#666',    progress: 10 },
-        { id: 'enviada',          label: 'Enviada',          color: '#3B82F6', progress: 30 },
-        { id: 'vista',            label: 'Vista',            color: '#8B5CF6', progress: 50 },
+        { id: 'enviada',          label: 'Enviada',          color: '#3B82F6', progress: 40 },
         { id: 'en_negociacion',   label: 'En Negociación',   color: '#F59E0B', progress: 70 },
         { id: 'aprobada',         label: 'Aprobada',         color: '#10B981', progress: 90 },
         { id: 'cerrada_ganada',   label: 'Cerrada Ganada',   color: '#00d4aa', progress: 100 },
@@ -4500,7 +4706,7 @@ const Modules = {
 
         const now = new Date();
         const hotLeads = data.filter(c => {
-            if (c.estado !== 'enviada' && c.estado !== 'vista') return false;
+            if (c.estado !== 'enviada' && c.estado !== 'en_negociacion') return false;
             const age = (now - new Date(c.updatedAt)) / 86400000;
             return age < 3;
         }).length;
@@ -4539,7 +4745,7 @@ const Modules = {
 
         const getHeat = (c) => {
             const age = (now - new Date(c.updatedAt)) / 86400000;
-            if (c.estado === 'vista' && age < 1) return { emoji: '🔥', label: 'HOT', cls: 'pk-heat-hot' };
+            if (c.estado === 'en_negociacion' && age < 1) return { emoji: '🔥', label: 'HOT', cls: 'pk-heat-hot' };
             if (age < 3) return { emoji: '🟠', label: 'WARM', cls: 'pk-heat-warm' };
             return { emoji: '🧊', label: 'COLD', cls: 'pk-heat-cold' };
         };

@@ -7,7 +7,7 @@
    ============================================= */
 
 @import url('MEPEX_COMPONENTS.css');
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /* ─── DESIGN TOKENS OVERRIDE ─── */
 :root {
@@ -5326,4 +5326,85 @@ body {
     text-align: center;
     margin: 0;
     padding-top: 4px;
+}
+
+/* ═══════════════════════════════════════════
+   COTIZACIONES TABLE — Compact
+   ═══════════════════════════════════════════ */
+
+.cot-table-compact .api-table {
+    font-size: 12px;
+}
+.cot-table-compact .api-table th {
+    padding: 6px 10px;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #888;
+    font-weight: 500;
+}
+.cot-table-compact .api-table td {
+    padding: 6px 10px;
+    font-size: 11px;
+    white-space: nowrap;
+}
+.cot-table-compact .api-table-row:hover {
+    background: rgba(var(--primary-rgb), 0.04);
+}
+
+/* Code column — monospace */
+.td-cot-code {
+    font-family: 'JetBrains Mono', 'Space Mono', var(--font-mono, monospace), monospace;
+    font-size: 10px !important;
+    color: var(--text-muted, #888) !important;
+    letter-spacing: 0.3px;
+}
+
+/* Capitalize type */
+.td-capitalize {
+    text-transform: capitalize;
+}
+
+/* Days column */
+.td-dias {
+    font-size: 10px !important;
+    font-family: 'JetBrains Mono', 'Space Mono', monospace;
+    color: #aaa;
+}
+
+/* Urgency dots */
+.cot-urgencia {
+    font-size: 8px;
+    display: inline-block;
+    line-height: 1;
+}
+.urg-green  { color: #10B981; }
+.urg-yellow { color: #F59E0B; }
+.urg-red    { color: #EF4444; }
+.urg-neutral { color: #444; }
+
+/* Vendedor badge */
+.td-vendedor-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(var(--primary-rgb, 0,169,193), 0.12);
+    color: var(--primary, #00A9C1);
+    font-size: 9px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', 'Space Mono', monospace;
+    letter-spacing: -0.3px;
+}
+
+/* Estado badge (inline styles handle colors, this adds base shape) */
+.cot-estado-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
 }

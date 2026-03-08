@@ -134,12 +134,19 @@ const Data = {
                     fields: []
                 },
                 {
+                    id: 'tabla',
+                    name: 'Cotizaciones',
+                    icon: '📋',
+                    description: 'Tabla de cotizaciones con filtros y columnas personalizables',
+                    fields: []
+                },
+                {
                     id: 'pipeline',
                     name: 'Pipeline Comercial',
                     icon: '📊',
                     description: 'Ciclo de vida de cada cotización con estados y alertas',
                     fields: [
-                        { label: 'Estado', type: 'select', options: ['Enviada', 'Vista', 'En negociación', 'Aprobada', 'Rechazada', 'Vencida'] },
+                        { label: 'Estado', type: 'select', options: ['Enviada', 'En negociación', 'Aprobada', 'Cerrada Ganada', 'Cerrada Perdida'] },
                         { label: 'Timer desde envío', type: 'indicator' },
                         { label: 'Alerta de seguimiento', type: 'indicator' },
                         { label: 'Acción rápida', type: 'actions', options: ['WhatsApp', 'Mail'] },
