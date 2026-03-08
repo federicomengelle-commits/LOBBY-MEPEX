@@ -830,6 +830,7 @@ const API = {
                 disponiblePublico: i.disponible_publico || false,
                 stock: i.stock || 0,
                 familia: i.familia || '',
+                margenOverride: i.margen_override != null ? parseFloat(i.margen_override) : null,
             }));
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
@@ -878,6 +879,7 @@ const API = {
             if (data.precioCliente !== undefined) payload.precio_cliente = data.precioCliente;
             if (data.nivel !== undefined) payload.nivel = data.nivel;
             if (data.familia !== undefined) payload.familia = data.familia;
+            if (data.margenOverride !== undefined) payload.margen_override = data.margenOverride;
             const { data: result, error } = await supabaseClient.from('catalogo_items').update(payload).eq('id', id).select();
             if (error) throw error;
             this.clearCache();
@@ -991,8 +993,15 @@ const API = {
             }
         }
 
-        // Guardar costo recalculado en costo_produccion
-        await this.updateCatalogoItem(itemId, { costoProduccion: Math.round(total * 100) / 100 });
+        // Guardar costo recalculado + precio cliente con margen
+        const newCost = Math.round(total * 100) / 100;
+        const currentItem = (items || []).find(i => String(i.id) === String(itemId));
+        const margen = currentItem ? await this.getEffectiveMargin(currentItem) : 0;
+        const nuevoPrecio = this.calcPrecioCliente(newCost, margen);
+        await this.updateCatalogoItem(itemId, {
+            costoProduccion: newCost,
+            precioCliente: nuevoPrecio,
+        });
         return total;
     },
 
@@ -1037,12 +1046,23 @@ const API = {
             calcular(item.id);
         }
 
-        // Guardar todos los costos actualizados
+        // Guardar todos los costos + precios actualizados (con margen)
+        const categoriasConfig = await this.getCategoriasConfig();
         let updated = 0;
         for (const item of items) {
             const newCost = costos[item.id] || 0;
-            if (Math.abs(newCost - item.costoProduccion) > 0.01) {
-                await this.updateCatalogoItem(item.id, { costoProduccion: newCost });
+            // Determinar margen efectivo: override del item > default de categoría > 0
+            let margen = 0;
+            if (item.margenOverride != null) {
+                margen = item.margenOverride;
+            } else if (categoriasConfig) {
+                const cc = categoriasConfig.find(c => c.nombre === item.categoria);
+                if (cc) margen = cc.margenDefault;
+            }
+            const newPrecio = this.calcPrecioCliente(newCost, margen);
+            if (Math.abs(newCost - item.costoProduccion) > 0.01 ||
+                Math.abs(newPrecio - item.precioCliente) > 0.01) {
+                await this.updateCatalogoItem(item.id, { costoProduccion: newCost, precioCliente: newPrecio });
                 updated++;
             }
         }
@@ -1149,10 +1169,161 @@ const API = {
         }
     },
 
-    // ─── Format currency ────────────────────────
+    // ─── Categorías Config (margen default por categoría) ──
+    async getCategoriasConfig() {
+        const cacheKey = 'categorias_config';
+        const cached = this._cache[cacheKey];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        try {
+            const { data, error } = await supabaseClient
+                .from('categorias_config').select('*').order('nombre', { ascending: true });
+            if (error) throw error;
+            const mapped = (data || []).map(r => ({
+                id: r.id,
+                nombre: r.nombre,
+                margenDefault: parseFloat(r.margen_default) || 0,
+            }));
+            this._cache[cacheKey] = { data: mapped, ts: Date.now() };
+            return mapped;
+        } catch (e) {
+            console.warn('[API] Error fetching categorias config:', e.message);
+            return [];
+        }
+    },
+
+    async updateCategoriaConfig(id, data) {
+        try {
+            const payload = {};
+            if (data.margenDefault !== undefined) payload.margen_default = data.margenDefault;
+            payload.updated_at = new Date().toISOString();
+            const { data: result, error } = await supabaseClient
+                .from('categorias_config').update(payload).eq('id', id).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error updating categoria config:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Margin helpers ──────────────────────────
+    async getEffectiveMargin(item) {
+        if (item.margenOverride != null) return item.margenOverride;
+        const config = await this.getCategoriasConfig();
+        const cat = config.find(c => c.nombre === item.categoria);
+        return cat ? cat.margenDefault : 0;
+    },
+
+    calcPrecioCliente(costoProduccion, margen) {
+        return Math.round(costoProduccion * (1 + margen / 100) * 100) / 100;
+    },
+
+    // ─── Insumo Precio Historial ─────────────────
+    async logPrecioChange(insumoId, precioAnterior, precioNuevo, motivo = '') {
+        try {
+            const variacion = precioAnterior > 0
+                ? Math.round(((precioNuevo - precioAnterior) / precioAnterior) * 10000) / 100
+                : null;
+            const payload = {
+                insumo_id: insumoId,
+                precio_anterior: precioAnterior,
+                precio_nuevo: precioNuevo,
+                variacion_porcentual: variacion,
+                usuario: 'Sistema',
+                motivo: motivo || null,
+            };
+            const { error } = await supabaseClient
+                .from('insumo_precio_historial').insert([payload]);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error logging precio change:', e.message);
+            return false;
+        }
+    },
+
+    async getPrecioHistorial(insumoId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('insumo_precio_historial')
+                .select('*')
+                .eq('insumo_id', insumoId)
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (error) throw error;
+            return (data || []).map(h => ({
+                id: h.id,
+                insumoId: h.insumo_id,
+                precioAnterior: parseFloat(h.precio_anterior),
+                precioNuevo: parseFloat(h.precio_nuevo),
+                variacion: h.variacion_porcentual != null ? parseFloat(h.variacion_porcentual) : null,
+                usuario: h.usuario || '',
+                motivo: h.motivo || '',
+                createdAt: h.created_at,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching precio historial:', e.message);
+            return [];
+        }
+    },
+
+    // ─── Recalcular por insumo (cascada dirigida) ──
+    async recalcularPorInsumo(insumoId) {
+        try {
+            // 1. Cargar todas las recetas de una vez
+            const { data: allComps, error } = await supabaseClient
+                .from('receta_componentes').select('item_id, componente_type, componente_id');
+            if (error) throw error;
+
+            // 2. Grafo inverso: componenteKey → [itemIds que lo usan]
+            const usedBy = {};
+            for (const comp of (allComps || [])) {
+                const key = `${comp.componente_type}:${comp.componente_id}`;
+                if (!usedBy[key]) usedBy[key] = new Set();
+                usedBy[key].add(String(comp.item_id));
+            }
+
+            // 3. BFS: encontrar todos los items afectados (directos + transitivos)
+            const affected = new Set();
+            const queue = [...(usedBy[`insumo:${insumoId}`] || [])];
+            while (queue.length > 0) {
+                const itemId = queue.shift();
+                if (affected.has(itemId)) continue;
+                affected.add(itemId);
+                const downstream = usedBy[`item:${itemId}`];
+                if (downstream) {
+                    for (const depId of downstream) {
+                        if (!affected.has(depId)) queue.push(depId);
+                    }
+                }
+            }
+
+            if (affected.size === 0) return { ok: true, affected: 0, updated: 0 };
+
+            // 4. Recalcular cada item afectado
+            this.clearCache();
+            let updated = 0;
+            for (const itemId of affected) {
+                await this.recalcularCostoItem(parseInt(itemId));
+                updated++;
+            }
+
+            this.clearCache();
+            return { ok: true, affected: affected.size, updated };
+        } catch (e) {
+            console.warn('[API] Error en recalcularPorInsumo:', e.message);
+            return { ok: false, error: e.message };
+        }
+    },
+
+    // ─── Format currency (2 decimales, pesos AR) ──
     formatCurrency(amount) {
-        if (amount == null || isNaN(amount)) return '$0';
-        return '$' + Math.round(amount).toLocaleString('es-AR');
+        if (amount == null || isNaN(amount)) return '$0,00';
+        return '$' + new Intl.NumberFormat('es-AR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(amount);
     },
 
     // ─── Helpers ──────────────────────────────

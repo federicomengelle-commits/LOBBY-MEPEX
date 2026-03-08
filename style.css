@@ -4982,3 +4982,348 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ═══════════════════════════════════════════════════════
+   INVENTARIO & COSTOS — Nuevos estilos
+   ═══════════════════════════════════════════════════════ */
+
+/* ─── Ficha: KPI Margen Editable ───────────────────── */
+
+.ficha-kpi-editable {
+    cursor: pointer;
+    border: 1px dashed rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 12px 10px;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+}
+
+.ficha-kpi-editable:hover {
+    border-color: #00d4aa;
+    background: rgba(0,212,170,0.04);
+}
+
+.ficha-kpi-hint {
+    display: block;
+    font-size: 0.58rem;
+    color: #888;
+    margin-top: 3px;
+    text-align: center;
+}
+
+.ficha-kpi-input {
+    width: 60px;
+    text-align: center;
+    font-size: 1.3rem;
+    font-weight: 700;
+    background: transparent;
+    border: 1px solid #00d4aa;
+    border-radius: 6px;
+    color: #fff;
+    padding: 4px 2px;
+    outline: none;
+}
+
+.ficha-kpi-input:focus {
+    box-shadow: 0 0 0 2px rgba(0,212,170,0.2);
+}
+
+.ficha-margen-reset {
+    display: inline-block;
+    font-size: 0.6rem;
+    color: #00d4aa;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-top: 4px;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+}
+
+.ficha-margen-reset:hover {
+    opacity: 1;
+}
+
+/* ─── Inline Price Edit (Insumos table) ────────────── */
+
+.insumo-price-cell {
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 4px;
+    padding: 2px 4px;
+    margin: -2px -4px;
+}
+
+.insumo-price-cell:hover {
+    background: rgba(0,212,170,0.08);
+    text-decoration: underline dashed rgba(0,212,170,0.5);
+    text-underline-offset: 3px;
+}
+
+.inline-price-input {
+    width: 100px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    background: #1a1a2e;
+    border: 1px solid #00d4aa;
+    border-radius: 6px;
+    color: #fff;
+    text-align: right;
+    outline: none;
+    font-family: inherit;
+}
+
+.inline-price-input:focus {
+    box-shadow: 0 0 0 2px rgba(0,212,170,0.2);
+}
+
+/* ─── Historial de Precios (Ficha Insumo) ──────────── */
+
+.precio-hist-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    align-items: flex-start;
+}
+
+.precio-hist-item:last-child {
+    border-bottom: none;
+}
+
+.precio-hist-arrow {
+    font-size: 1.2rem;
+    font-weight: 700;
+    min-width: 22px;
+    text-align: center;
+    line-height: 1;
+    padding-top: 2px;
+}
+
+.precio-hist-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.precio-hist-values {
+    font-size: 0.85rem;
+    color: #e0e0e0;
+    line-height: 1.4;
+}
+
+.precio-hist-var {
+    font-size: 0.75rem;
+    margin-left: 6px;
+    font-weight: 600;
+}
+
+.precio-hist-meta {
+    font-size: 0.7rem;
+    color: #888;
+    margin-top: 3px;
+}
+
+/* ─── Bulk Price Update Modal ──────────────────────── */
+
+.bulk-price-controls {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.bulk-price-controls .form-group {
+    flex: 1;
+    min-width: 140px;
+}
+
+.bulk-price-controls label {
+    display: block;
+    font-size: 0.72rem;
+    color: #888;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.bulk-price-controls select,
+.bulk-price-controls input[type="number"] {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: #fff;
+    outline: none;
+}
+
+.bulk-price-controls select:focus,
+.bulk-price-controls input:focus {
+    border-color: #00d4aa;
+}
+
+.bulk-preview-table {
+    width: 100%;
+    font-size: 0.82rem;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+.bulk-preview-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.bulk-preview-table td {
+    padding: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+}
+
+.bulk-preview-table tr:hover td {
+    background: rgba(255,255,255,0.02);
+}
+
+.bulk-preview-table input[type="checkbox"] {
+    accent-color: #00d4aa;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.bulk-price-new {
+    color: #00d4aa;
+    font-weight: 600;
+}
+
+.bulk-price-var {
+    font-size: 0.75rem;
+    color: #888;
+    margin-left: 4px;
+}
+
+.bulk-preview-wrapper {
+    max-height: 340px;
+    overflow-y: auto;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.bulk-select-all {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    cursor: pointer;
+}
+
+.bulk-select-all:hover {
+    color: #fff;
+}
+
+.bulk-summary {
+    margin-top: 12px;
+    font-size: 0.8rem;
+    color: #aaa;
+    text-align: right;
+}
+
+.bulk-summary strong {
+    color: #00d4aa;
+}
+
+/* ─── Copy Receta Modal ────────────────────────────── */
+
+.copy-receta-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.copy-receta-search {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 0.9rem;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    color: #fff;
+    outline: none;
+}
+
+.copy-receta-search:focus {
+    border-color: #00d4aa;
+}
+
+.copy-receta-list {
+    max-height: 350px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.copy-receta-item {
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border: 1px solid transparent;
+}
+
+.copy-receta-item:hover {
+    background: rgba(0,212,170,0.06);
+    border-color: rgba(0,212,170,0.15);
+}
+
+.copy-receta-item-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.copy-receta-item-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #e0e0e0;
+}
+
+.copy-receta-item-code {
+    font-size: 0.72rem;
+    color: #888;
+    font-family: monospace;
+    background: rgba(255,255,255,0.05);
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.copy-receta-item-meta {
+    font-size: 0.72rem;
+    color: #777;
+    margin-top: 2px;
+}
+
+.copy-receta-empty {
+    text-align: center;
+    padding: 24px;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+.copy-receta-hint {
+    font-size: 0.72rem;
+    color: #666;
+    text-align: center;
+    margin: 0;
+    padding-top: 4px;
+}

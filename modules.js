@@ -2637,8 +2637,18 @@ const Modules = {
             getStatus: (item) => item.clasificacion ? { label: item.clasificacion, class: 'badge-ghost' } : null,
             tabs: [
                 { id: 'info', label: 'Información', icon: '📋' },
+                { id: 'historial', label: 'Historial', icon: '📈' },
             ],
             renderTab(item, tabId, v) {
+                if (tabId === 'historial') {
+                    return `
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">HISTORIAL DE PRECIOS</div>
+                            <div id="precioHistorialList">
+                                <div class="ficha-loading-small">Cargando historial…</div>
+                            </div>
+                        </div>`;
+                }
                 if (tabId === 'info') {
                     const moneyPrefix = item.moneda === 'USD' ? 'US$' : '$';
                     return `
@@ -2689,10 +2699,14 @@ const Modules = {
                         </div>
                         <div class="ficha-section">
                             <div class="ficha-section-title">Costos</div>
-                            <div class="ficha-kpi-row">
+                            <div class="ficha-kpi-row" id="fichaCostosRow">
                                 <div class="ficha-kpi"><span class="ficha-kpi-value cost-value">${API.formatCurrency(item.costoProduccion)}</span><span class="ficha-kpi-label">Costo producción</span></div>
-                                <div class="ficha-kpi"><span class="ficha-kpi-value">${API.formatCurrency(item.precioCliente)}</span><span class="ficha-kpi-label">Precio cliente</span></div>
-                                <div class="ficha-kpi"><span class="ficha-kpi-value">${item.precioCliente > 0 ? Math.round(((item.precioCliente - item.costoProduccion) / item.precioCliente) * 100) + '%' : '—'}</span><span class="ficha-kpi-label">Margen</span></div>
+                                <div class="ficha-kpi ficha-kpi-editable" id="fichaMargenKpi" data-item-id="${item.id}">
+                                    <span class="ficha-kpi-value" id="fichaMargenValue">…</span>
+                                    <span class="ficha-kpi-label">Margen</span>
+                                    <span class="ficha-kpi-hint" id="fichaMargenHint"></span>
+                                </div>
+                                <div class="ficha-kpi"><span class="ficha-kpi-value" id="fichaPrecioValue">${API.formatCurrency(item.precioCliente)}</span><span class="ficha-kpi-label">Precio cliente</span></div>
                             </div>
                         </div>`;
                 }
@@ -2711,6 +2725,7 @@ const Modules = {
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                     Agregar componente
                                 </button>
+                                <button class="btn btn-ghost btn-sm" id="btnCopyReceta" data-item-id="${item.id}">📋 Copiar receta de…</button>
                             </div>
                         </div>`;
                 }
@@ -2800,6 +2815,7 @@ const Modules = {
                 if (type === 'clients') this._loadClientTabData(item, tabId);
                 if (type === 'catalogo') this._loadCatalogoTabData(item, tabId);
                 if (type === 'events') this._loadEventTabData(item, tabId);
+                if (type === 'insumos') this._loadInsumoTabData(item, tabId);
             }
         };
 
@@ -2826,6 +2842,7 @@ const Modules = {
         if (type === 'clients') this._loadClientTabData(item, firstTab);
         if (type === 'catalogo') this._loadCatalogoTabData(item, firstTab);
         if (type === 'events') this._loadEventTabData(item, firstTab);
+        if (type === 'insumos') this._loadInsumoTabData(item, firstTab);
     },
 
     // ═══════════════════════════════════════════
@@ -3130,9 +3147,10 @@ const Modules = {
                 case 'clasificacion': return `<span class="badge badge-ghost">${item.clasificacion || '—'}</span>`;
                 case 'categoria': return `<span class="badge badge-ghost">${item.categoria || '—'}</span>`;
                 case 'unidad': return item.unidadBase || '—';
-                case 'costo': return `<span class="td-number cost-value">${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$','')}<span class="cost-unit">/${item.unidadBase}</span></span>`;
+                case 'costo': return `<span class="td-number cost-value insumo-price-cell" data-insumo-id="${item.id}" data-current-price="${item.costoUnitario}" data-unidad="${item.unidadBase}">${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$','')}<span class="cost-unit">/${item.unidadBase}</span></span>`;
                 case 'moneda': return item.moneda || '—';
                 case 'proveedor': return item.proveedor || '—';
+                case 'conversion': return item.factorConversion ? `${item.factorConversion} ${item.unidadBase}/${item.unidadAlternativa}` : '—';
                 default: return '—';
             }
         };
@@ -3164,6 +3182,63 @@ const Modules = {
         this._attachColDragListeners('mepex_insumos_cols_v1', [
             { id: 'nombre' }, { id: 'codigo' }, { id: 'clasificacion' }, { id: 'categoria' }, { id: 'unidad' }, { id: 'costo' }, { id: 'moneda' }, { id: 'proveedor' },
         ]);
+        // Inyectar botón "Actualizar precios" en toolbar
+        const sideActions = document.getElementById('apiSideActions');
+        if (sideActions && !document.getElementById('btnBulkPrice')) {
+            const btn = document.createElement('button');
+            btn.id = 'btnBulkPrice';
+            btn.className = 'side-action-btn';
+            btn.title = 'Actualizar precios en lote';
+            btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
+            btn.addEventListener('click', () => this._openBulkPriceModal(data));
+            sideActions.appendChild(btn);
+        }
+        // Inline price editing
+        document.querySelectorAll('.insumo-price-cell').forEach(cell => {
+            cell.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (cell.querySelector('.inline-price-input')) return; // ya editando
+                const insumoId = cell.dataset.insumoId;
+                const currentPrice = parseFloat(cell.dataset.currentPrice);
+                const unidad = cell.dataset.unidad;
+                const originalHtml = cell.innerHTML;
+
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.step = '0.01';
+                input.value = currentPrice;
+                input.className = 'inline-price-input';
+                cell.innerHTML = '';
+                cell.appendChild(input);
+                input.focus();
+                input.select();
+
+                const save = async () => {
+                    const newPrice = parseFloat(input.value);
+                    if (isNaN(newPrice) || newPrice < 0 || Math.abs(newPrice - currentPrice) < 0.001) {
+                        cell.innerHTML = originalHtml;
+                        return;
+                    }
+                    cell.innerHTML = `<span style="opacity:0.5">${API.formatCurrency(newPrice)}</span>`;
+                    await API.logPrecioChange(parseInt(insumoId), currentPrice, newPrice, 'Edición inline');
+                    await API.updateInsumo(parseInt(insumoId), { costoUnitario: newPrice });
+                    Toast.success(`Precio actualizado: ${API.formatCurrency(newPrice)}`);
+                    // Cascada
+                    const result = await API.recalcularPorInsumo(parseInt(insumoId));
+                    if (result.ok && result.updated > 0) {
+                        Toast.info(`${result.updated} items recalculados`);
+                    }
+                    this._refreshCurrentTable();
+                };
+
+                input.addEventListener('blur', save);
+                input.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+                    if (ev.key === 'Escape') { cell.innerHTML = originalHtml; }
+                });
+            });
+        });
+
         // Row click → open ficha
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
             row.addEventListener('click', () => {
@@ -3171,6 +3246,134 @@ const Modules = {
                 if (item) this._openFichaByType(item, 'insumos');
             });
         });
+    },
+
+    // ═══════════════════════════════════════════
+    //  BULK PRICE UPDATE MODAL
+    // ═══════════════════════════════════════════
+    _openBulkPriceModal(insumos) {
+        const categorias = [...new Set(insumos.map(i => i.categoria).filter(Boolean))].sort();
+
+        const instance = Modal.open({
+            title: '📊 Actualización masiva de precios',
+            size: 'lg',
+            body: `
+                <div class="bulk-price-form">
+                    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px">
+                        <div style="flex:1">
+                            <label class="form-label">Categoría</label>
+                            <select class="form-input" id="bulkCatFilter">
+                                <option value="">Todas</option>
+                                ${categorias.map(c => `<option value="${c}">${c}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div style="flex:1">
+                            <label class="form-label">Ajuste %</label>
+                            <input type="number" class="form-input" id="bulkPercent" step="0.1" placeholder="Ej: 10 = +10%, -5 = -5%">
+                        </div>
+                        <button class="btn btn-secondary" id="bulkPreviewBtn">Vista previa</button>
+                    </div>
+                    <div id="bulkPreviewArea"></div>
+                </div>`,
+            footer: `
+                <button class="btn btn-ghost" id="bulkCancelBtn">Cancelar</button>
+                <button class="btn btn-primary" id="bulkApplyBtn" disabled>Aplicar cambios</button>`,
+        });
+
+        const overlay = instance.overlay;
+        const previewArea = overlay.querySelector('#bulkPreviewArea');
+        const applyBtn = overlay.querySelector('#bulkApplyBtn');
+        let selectedInsumos = [];
+
+        // Preview
+        overlay.querySelector('#bulkPreviewBtn').addEventListener('click', () => {
+            const catFilter = overlay.querySelector('#bulkCatFilter').value;
+            const percent = parseFloat(overlay.querySelector('#bulkPercent').value);
+            if (isNaN(percent) || percent === 0) {
+                Toast.warning('Ingresá un porcentaje de ajuste');
+                return;
+            }
+
+            const filtered = catFilter
+                ? insumos.filter(i => i.categoria === catFilter)
+                : [...insumos];
+
+            selectedInsumos = filtered.map(i => ({
+                ...i,
+                precioNuevo: Math.round(i.costoUnitario * (1 + percent / 100) * 100) / 100,
+                variacion: percent,
+            }));
+
+            previewArea.innerHTML = `
+                <div style="margin-bottom:8px;font-size:0.8rem;color:#888">
+                    <label><input type="checkbox" id="bulkSelectAll" checked> Seleccionar todos (${selectedInsumos.length})</label>
+                </div>
+                <table class="bulk-preview-table">
+                    <thead><tr><th></th><th>NOMBRE</th><th style="text-align:right">ACTUAL</th><th style="text-align:right">NUEVO</th><th style="text-align:right">VAR.</th></tr></thead>
+                    <tbody>
+                        ${selectedInsumos.map((s, idx) => `
+                            <tr>
+                                <td><input type="checkbox" class="bulk-check" data-idx="${idx}" checked></td>
+                                <td>${s.nombre}</td>
+                                <td style="text-align:right">${API.formatCurrency(s.costoUnitario)}</td>
+                                <td style="text-align:right" class="bulk-price-new">${API.formatCurrency(s.precioNuevo)}</td>
+                                <td style="text-align:right" class="bulk-price-var">${percent > 0 ? '+' : ''}${percent}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+
+            applyBtn.disabled = false;
+            applyBtn.textContent = `Aplicar cambios (${selectedInsumos.length})`;
+
+            // Select all handler
+            overlay.querySelector('#bulkSelectAll')?.addEventListener('change', (e) => {
+                overlay.querySelectorAll('.bulk-check').forEach(cb => cb.checked = e.target.checked);
+                const count = overlay.querySelectorAll('.bulk-check:checked').length;
+                applyBtn.textContent = `Aplicar cambios (${count})`;
+                applyBtn.disabled = count === 0;
+            });
+
+            overlay.querySelectorAll('.bulk-check').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const count = overlay.querySelectorAll('.bulk-check:checked').length;
+                    applyBtn.textContent = `Aplicar cambios (${count})`;
+                    applyBtn.disabled = count === 0;
+                });
+            });
+        });
+
+        // Apply
+        applyBtn.addEventListener('click', async () => {
+            const checked = overlay.querySelectorAll('.bulk-check:checked');
+            if (checked.length === 0) return;
+
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Aplicando…';
+            const percent = parseFloat(overlay.querySelector('#bulkPercent').value);
+            const motivo = `Actualización masiva ${percent > 0 ? '+' : ''}${percent}%`;
+
+            let updated = 0;
+            for (const cb of checked) {
+                const idx = parseInt(cb.dataset.idx);
+                const s = selectedInsumos[idx];
+                if (!s) continue;
+                await API.logPrecioChange(s.id, s.costoUnitario, s.precioNuevo, motivo);
+                await API.updateInsumo(s.id, { costoUnitario: s.precioNuevo });
+                updated++;
+            }
+
+            Toast.success(`${updated} precios actualizados`);
+            Toast.info('Recalculando cascada completa…');
+            const result = await API.recalcularTodo();
+            if (result.ok) Toast.success(`${result.updated} items recalculados`);
+
+            Modal.close(instance.id);
+            this._refreshCurrentTable();
+        });
+
+        // Cancel
+        overlay.querySelector('#bulkCancelBtn')?.addEventListener('click', () => Modal.close(instance.id));
     },
 
     _getInsumoSortValue(item, colId) {
@@ -3598,7 +3801,134 @@ const Modules = {
     // ═══════════════════════════════════════════
 
     async _loadCatalogoTabData(item, tabId) {
+        if (tabId === 'info') await this._loadCatalogoMargen(item);
         if (tabId === 'receta') await this._loadCatalogoReceta(item);
+    },
+
+    async _loadCatalogoMargen(item) {
+        const margenKpi = document.getElementById('fichaMargenKpi');
+        const margenValue = document.getElementById('fichaMargenValue');
+        const margenHint = document.getElementById('fichaMargenHint');
+        if (!margenKpi || !margenValue) return;
+
+        // Determinar margen efectivo
+        const categoriasConfig = await API.getCategoriasConfig();
+        const catConfig = categoriasConfig.find(c => c.nombre === item.categoria);
+        const catDefault = catConfig ? catConfig.margenDefault : 0;
+        const isOverride = item.margenOverride != null;
+        const effectiveMargin = isOverride ? item.margenOverride : catDefault;
+
+        // Mostrar valor y hint
+        margenValue.textContent = effectiveMargin + '%';
+        if (isOverride) {
+            margenHint.innerHTML = `(personalizado) <span class="ficha-margen-reset" id="fichaMargenReset">Resetear</span>`;
+        } else {
+            margenHint.textContent = catDefault > 0 ? `(cat: ${catDefault}%)` : '(sin default)';
+        }
+
+        // Click para editar margen inline
+        margenKpi.addEventListener('click', (e) => {
+            if (e.target.id === 'fichaMargenReset') {
+                e.stopPropagation();
+                this._resetMargen(item, catDefault);
+                return;
+            }
+            if (margenKpi.querySelector('.ficha-kpi-input')) return; // ya editando
+            this._editMargenInline(item, effectiveMargin, catDefault);
+        });
+
+        // Reset handler
+        const resetBtn = document.getElementById('fichaMargenReset');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._resetMargen(item, catDefault);
+            });
+        }
+    },
+
+    async _editMargenInline(item, currentMargin, catDefault) {
+        const margenValue = document.getElementById('fichaMargenValue');
+        const margenHint = document.getElementById('fichaMargenHint');
+        if (!margenValue) return;
+
+        // Reemplazar con input
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = '0.1';
+        input.value = currentMargin;
+        input.className = 'ficha-kpi-input';
+        margenValue.replaceWith(input);
+        margenHint.textContent = 'Enter para guardar';
+        input.focus();
+        input.select();
+
+        const save = async () => {
+            const newMargin = parseFloat(input.value);
+            if (isNaN(newMargin) || newMargin < 0) {
+                Toast.error('Margen inválido');
+                this._restoreMargenDisplay(input, currentMargin);
+                return;
+            }
+
+            // Guardar override
+            await API.updateCatalogoItem(item.id, { margenOverride: newMargin });
+            item.margenOverride = newMargin;
+
+            // Recalcular precio
+            const nuevoPrecio = API.calcPrecioCliente(item.costoProduccion, newMargin);
+            await API.updateCatalogoItem(item.id, { precioCliente: nuevoPrecio });
+            item.precioCliente = nuevoPrecio;
+
+            // Actualizar display
+            const span = document.createElement('span');
+            span.className = 'ficha-kpi-value';
+            span.id = 'fichaMargenValue';
+            span.textContent = newMargin + '%';
+            input.replaceWith(span);
+
+            const hint = document.getElementById('fichaMargenHint');
+            if (hint) hint.innerHTML = `(personalizado) <span class="ficha-margen-reset" id="fichaMargenReset">Resetear</span>`;
+
+            const precioEl = document.getElementById('fichaPrecioValue');
+            if (precioEl) precioEl.textContent = API.formatCurrency(nuevoPrecio);
+
+            Toast.success(`Margen: ${newMargin}% → Precio: ${API.formatCurrency(nuevoPrecio)}`);
+        };
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { this._restoreMargenDisplay(input, currentMargin); }
+        });
+    },
+
+    _restoreMargenDisplay(input, margin) {
+        const span = document.createElement('span');
+        span.className = 'ficha-kpi-value';
+        span.id = 'fichaMargenValue';
+        span.textContent = margin + '%';
+        input.replaceWith(span);
+    },
+
+    async _resetMargen(item, catDefault) {
+        await API.updateCatalogoItem(item.id, { margenOverride: null });
+        item.margenOverride = null;
+
+        const nuevoPrecio = API.calcPrecioCliente(item.costoProduccion, catDefault);
+        await API.updateCatalogoItem(item.id, { precioCliente: nuevoPrecio });
+        item.precioCliente = nuevoPrecio;
+
+        // Actualizar display
+        const margenValue = document.getElementById('fichaMargenValue');
+        const margenHint = document.getElementById('fichaMargenHint');
+        const precioEl = document.getElementById('fichaPrecioValue');
+
+        if (margenValue) margenValue.textContent = catDefault + '%';
+        if (margenHint) margenHint.textContent = catDefault > 0 ? `(cat: ${catDefault}%)` : '(sin default)';
+        if (precioEl) precioEl.textContent = API.formatCurrency(nuevoPrecio);
+
+        Toast.success(`Margen reseteado a default: ${catDefault}%`);
     },
 
     async _loadCatalogoReceta(item) {
@@ -3622,6 +3952,7 @@ const Modules = {
                     </div>`;
                 if (totalEl) totalEl.textContent = 'Sin receta';
                 this._attachRecetaAddHandler(item, insumos, items);
+                this._attachRecetaCopyHandler(item);
                 return;
             }
 
@@ -3666,7 +3997,7 @@ const Modules = {
                             <tr class="receta-row" data-comp-id="${r.id}">
                                 <td><span class="badge badge-ghost receta-type-badge">${r.componenteType === 'insumo' ? '🧱 Insumo' : '🔩 Item'}</span></td>
                                 <td class="td-primary">${r.nombre}</td>
-                                <td class="text-right"><span class="receta-cant" data-comp-id="${r.id}" contenteditable="true">${r.cantidad}</span> <span class="cost-unit">${r.unidadUso || r.unidad}</span></td>
+                                <td class="text-right"><span class="receta-cant" data-comp-id="${r.id}" contenteditable="true">${parseFloat(r.cantidad.toFixed(4))}</span> <span class="cost-unit">${r.unidadUso || r.unidad}</span></td>
                                 <td class="text-right cost-value">${API.formatCurrency(r.costoUnit)}</td>
                                 <td class="text-right cost-value">${API.formatCurrency(r.subtotal)}</td>
                                 <td><button class="receta-delete-btn" data-delete-comp="${r.id}" title="Quitar">✕</button></td>
@@ -3717,11 +4048,152 @@ const Modules = {
             });
 
             this._attachRecetaAddHandler(item, insumos, items);
+            this._attachRecetaCopyHandler(item);
 
         } catch (e) {
             console.warn('[Modules] Error loading receta:', e.message);
             listEl.innerHTML = '<div class="ficha-empty-msg">Error cargando receta</div>';
         }
+    },
+
+    _attachRecetaCopyHandler(item) {
+        const btn = document.getElementById('btnCopyReceta');
+        if (!btn) return;
+
+        btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = 'Cargando items…';
+
+            try {
+                const allItems = await API.getCatalogoItems();
+                // Filtrar el item actual, ordenar mismo rubro primero
+                const filtered = allItems
+                    .filter(i => String(i.id) !== String(item.id))
+                    .sort((a, b) => {
+                        if (a.rubro === item.rubro && b.rubro !== item.rubro) return -1;
+                        if (b.rubro === item.rubro && a.rubro !== item.rubro) return 1;
+                        return (a.nombre || '').localeCompare(b.nombre || '');
+                    });
+
+                if (filtered.length === 0) {
+                    Toast.info('No hay otros items en el catálogo');
+                    btn.disabled = false;
+                    btn.textContent = '📋 Copiar receta de…';
+                    return;
+                }
+
+                // Build modal with search
+                const instance = Modal.open({
+                    title: 'Copiar receta de otro item',
+                    size: 'md',
+                    body: `
+                        <div class="copy-receta-modal">
+                            <input type="text" class="form-input copy-receta-search" id="copyRecetaSearch" placeholder="Buscar item por nombre o código…" autocomplete="off">
+                            <div class="copy-receta-list" id="copyRecetaList">
+                                ${this._renderCopyRecetaItems(filtered, '')}
+                            </div>
+                            <p class="copy-receta-hint">Se copiarán todos los componentes de la receta seleccionada</p>
+                        </div>`,
+                    footer: '<button class="btn btn-ghost" data-modal-close>Cancelar</button>',
+                });
+
+                // Search filter
+                const searchInput = document.getElementById('copyRecetaSearch');
+                const listContainer = document.getElementById('copyRecetaList');
+
+                searchInput?.focus();
+                searchInput?.addEventListener('input', () => {
+                    const q = searchInput.value.toLowerCase();
+                    if (listContainer) {
+                        listContainer.innerHTML = this._renderCopyRecetaItems(filtered, q);
+                        this._attachCopyRecetaItemListeners(listContainer, item, instance);
+                    }
+                });
+
+                this._attachCopyRecetaItemListeners(listContainer, item, instance);
+
+            } catch (e) {
+                console.error('❌ Error cargando items para copiar receta:', e);
+                Toast.error('Error al cargar catálogo');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📋 Copiar receta de…';
+            }
+        });
+    },
+
+    _renderCopyRecetaItems(items, query) {
+        const filtered = query
+            ? items.filter(i =>
+                (i.nombre || '').toLowerCase().includes(query) ||
+                (i.codigo || '').toLowerCase().includes(query) ||
+                (i.categoria || '').toLowerCase().includes(query))
+            : items;
+
+        if (filtered.length === 0) {
+            return '<div class="copy-receta-empty">Sin resultados</div>';
+        }
+
+        return filtered.slice(0, 30).map(i => `
+            <div class="copy-receta-item" data-source-id="${i.id}">
+                <div class="copy-receta-item-main">
+                    <span class="copy-receta-item-name">${i.nombre}</span>
+                    ${i.codigo ? `<span class="copy-receta-item-code">${i.codigo}</span>` : ''}
+                </div>
+                <div class="copy-receta-item-meta">
+                    ${i.rubro || ''} ${i.categoria ? '· ' + i.categoria : ''} · Costo: ${API.formatCurrency(i.costoProduccion)}
+                </div>
+            </div>
+        `).join('');
+    },
+
+    _attachCopyRecetaItemListeners(container, targetItem, modalInstance) {
+        if (!container) return;
+        container.querySelectorAll('.copy-receta-item').forEach(el => {
+            el.addEventListener('click', async () => {
+                const sourceId = el.dataset.sourceId;
+                el.style.opacity = '0.4';
+                el.style.pointerEvents = 'none';
+
+                try {
+                    // Cargar receta del item fuente
+                    const sourceReceta = await API.getRecetaComponentes(sourceId);
+                    if (!sourceReceta || sourceReceta.length === 0) {
+                        Toast.warning('El item seleccionado no tiene receta');
+                        el.style.opacity = '1';
+                        el.style.pointerEvents = '';
+                        return;
+                    }
+
+                    // Copiar cada componente
+                    let copied = 0;
+                    for (const comp of sourceReceta) {
+                        const result = await API.addRecetaComponente({
+                            itemId: targetItem.id,
+                            componenteType: comp.componenteType,
+                            componenteId: String(comp.componenteId),
+                            cantidad: comp.cantidad,
+                            unidadUso: comp.unidadUso,
+                        });
+                        if (result) copied++;
+                    }
+
+                    // Recalcular costo
+                    await API.recalcularCostoItem(targetItem.id);
+
+                    // Cerrar modal y refresh
+                    if (modalInstance?.overlay) modalInstance.overlay.remove();
+                    Toast.success(`Receta copiada: ${copied} componentes`);
+                    this._loadCatalogoReceta(targetItem);
+
+                } catch (e) {
+                    console.error('❌ Error copiando receta:', e);
+                    Toast.error('Error al copiar receta');
+                    el.style.opacity = '1';
+                    el.style.pointerEvents = '';
+                }
+            });
+        });
     },
 
     _attachRecetaAddHandler(item, insumos, items) {
@@ -3805,6 +4277,73 @@ const Modules = {
                 this._attachRecetaAddHandler(item, insumos, items);
             });
         });
+    },
+
+    // ═══════════════════════════════════════════
+    //  INSUMOS — Async Tab Data Loaders
+    // ═══════════════════════════════════════════
+
+    async _loadInsumoTabData(item, tabId) {
+        if (tabId === 'historial') await this._loadInsumoHistorial(item);
+    },
+
+    async _loadInsumoHistorial(item) {
+        const listEl = document.getElementById('precioHistorialList');
+        if (!listEl) return;
+
+        listEl.innerHTML = '<div class="ficha-timeline-loading">Cargando historial…</div>';
+
+        try {
+            const historial = await API.getPrecioHistorial(item.id);
+
+            if (!historial || historial.length === 0) {
+                listEl.innerHTML = `
+                    <div class="ficha-timeline-empty">
+                        <div class="ficha-timeline-empty-icon">📈</div>
+                        <p>Sin historial de precios</p>
+                        <p class="text-muted">Los cambios de precio se registrarán aquí automáticamente</p>
+                    </div>`;
+                return;
+            }
+
+            const rows = historial.map(h => {
+                const isUp = h.precioNuevo > h.precioAnterior;
+                const arrow = isUp ? '↑' : '↓';
+                const arrowColor = isUp ? '#ff5252' : '#00d4aa';
+                const varText = h.variacionPorcentual != null
+                    ? `${h.variacionPorcentual > 0 ? '+' : ''}${h.variacionPorcentual.toFixed(1)}%`
+                    : '';
+                const dateStr = h.createdAt
+                    ? new Date(h.createdAt).toLocaleDateString('es-AR', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                    })
+                    : '—';
+                const motivo = h.motivo || '';
+                const usuario = h.usuario || '';
+
+                return `
+                    <div class="precio-hist-item">
+                        <div class="precio-hist-arrow" style="color:${arrowColor}">${arrow}</div>
+                        <div class="precio-hist-content">
+                            <div class="precio-hist-values">
+                                ${API.formatCurrency(h.precioAnterior)}
+                                <span style="color:#888;margin:0 4px">→</span>
+                                <strong>${API.formatCurrency(h.precioNuevo)}</strong>
+                                <span class="precio-hist-var" style="color:${arrowColor}">${varText}</span>
+                            </div>
+                            <div class="precio-hist-meta">
+                                ${dateStr}${usuario ? ` · ${usuario}` : ''}${motivo ? ` · ${motivo}` : ''}
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            listEl.innerHTML = rows;
+        } catch (e) {
+            console.error('❌ Error cargando historial:', e);
+            listEl.innerHTML = '<div class="ficha-timeline-empty">Error al cargar historial</div>';
+        }
     },
 
     // ═══════════════════════════════════════════
