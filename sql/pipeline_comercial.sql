@@ -128,7 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_notas_cotizacion ON public.cotizacion_notas(cotiz
 
 
 -- ═══════════════════════════════════════════════════════════════
---  RLS POLICIES — allow all para anon (fase desarrollo)
+--  RLS POLICIES — allow all para anon + authenticated (fase dev)
 -- ═══════════════════════════════════════════════════════════════
 
 ALTER TABLE public.cotizaciones ENABLE ROW LEVEL SECURITY;
@@ -137,35 +137,65 @@ ALTER TABLE public.cotizacion_envios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cotizacion_notas ENABLE ROW LEVEL SECURITY;
 
--- Cotizaciones
+-- Cotizaciones (anon)
 CREATE POLICY "cotizaciones_anon_select" ON public.cotizaciones FOR SELECT TO anon USING (true);
 CREATE POLICY "cotizaciones_anon_insert" ON public.cotizaciones FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "cotizaciones_anon_update" ON public.cotizaciones FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "cotizaciones_anon_delete" ON public.cotizaciones FOR DELETE TO anon USING (true);
 
--- Timeline
+-- Cotizaciones (authenticated)
+CREATE POLICY "cotizaciones_auth_select" ON public.cotizaciones FOR SELECT TO authenticated USING (true);
+CREATE POLICY "cotizaciones_auth_insert" ON public.cotizaciones FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "cotizaciones_auth_update" ON public.cotizaciones FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "cotizaciones_auth_delete" ON public.cotizaciones FOR DELETE TO authenticated USING (true);
+
+-- Timeline (anon)
 CREATE POLICY "timeline_anon_select" ON public.cotizacion_timeline FOR SELECT TO anon USING (true);
 CREATE POLICY "timeline_anon_insert" ON public.cotizacion_timeline FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "timeline_anon_update" ON public.cotizacion_timeline FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "timeline_anon_delete" ON public.cotizacion_timeline FOR DELETE TO anon USING (true);
 
--- Envíos
+-- Timeline (authenticated)
+CREATE POLICY "timeline_auth_select" ON public.cotizacion_timeline FOR SELECT TO authenticated USING (true);
+CREATE POLICY "timeline_auth_insert" ON public.cotizacion_timeline FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "timeline_auth_update" ON public.cotizacion_timeline FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "timeline_auth_delete" ON public.cotizacion_timeline FOR DELETE TO authenticated USING (true);
+
+-- Envíos (anon)
 CREATE POLICY "envios_anon_select" ON public.cotizacion_envios FOR SELECT TO anon USING (true);
 CREATE POLICY "envios_anon_insert" ON public.cotizacion_envios FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "envios_anon_update" ON public.cotizacion_envios FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "envios_anon_delete" ON public.cotizacion_envios FOR DELETE TO anon USING (true);
 
--- Email Templates
+-- Envíos (authenticated)
+CREATE POLICY "envios_auth_select" ON public.cotizacion_envios FOR SELECT TO authenticated USING (true);
+CREATE POLICY "envios_auth_insert" ON public.cotizacion_envios FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "envios_auth_update" ON public.cotizacion_envios FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "envios_auth_delete" ON public.cotizacion_envios FOR DELETE TO authenticated USING (true);
+
+-- Email Templates (anon)
 CREATE POLICY "templates_anon_select" ON public.email_templates FOR SELECT TO anon USING (true);
 CREATE POLICY "templates_anon_insert" ON public.email_templates FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "templates_anon_update" ON public.email_templates FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "templates_anon_delete" ON public.email_templates FOR DELETE TO anon USING (true);
 
--- Notas
+-- Email Templates (authenticated)
+CREATE POLICY "templates_auth_select" ON public.email_templates FOR SELECT TO authenticated USING (true);
+CREATE POLICY "templates_auth_insert" ON public.email_templates FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "templates_auth_update" ON public.email_templates FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "templates_auth_delete" ON public.email_templates FOR DELETE TO authenticated USING (true);
+
+-- Notas (anon)
 CREATE POLICY "notas_anon_select" ON public.cotizacion_notas FOR SELECT TO anon USING (true);
 CREATE POLICY "notas_anon_insert" ON public.cotizacion_notas FOR INSERT TO anon WITH CHECK (true);
 CREATE POLICY "notas_anon_update" ON public.cotizacion_notas FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "notas_anon_delete" ON public.cotizacion_notas FOR DELETE TO anon USING (true);
+
+-- Notas (authenticated)
+CREATE POLICY "notas_auth_select" ON public.cotizacion_notas FOR SELECT TO authenticated USING (true);
+CREATE POLICY "notas_auth_insert" ON public.cotizacion_notas FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "notas_auth_update" ON public.cotizacion_notas FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "notas_auth_delete" ON public.cotizacion_notas FOR DELETE TO authenticated USING (true);
 
 
 -- ═══════════════════════════════════════════════════════════════

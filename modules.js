@@ -885,19 +885,7 @@ const Modules = {
         if (countEl) countEl.textContent = `${data.length} registro${data.length !== 1 ? 's' : ''}`;
 
         if (data.length === 0) {
-            const labels = { clients: 'clientes', events: 'eventos', projects: 'proyectos', insumos: 'insumos', catalogo: 'items', cotizaciones: 'cotizaciones' };
-            const icons = { clients: '👤', events: '📅', projects: '📋', insumos: '🧱', catalogo: '🔩', cotizaciones: '📊' };
-            container.innerHTML = `
-                <div class="api-empty-state">
-                    <span class="api-empty-icon">${icons[type] || '📂'}</span>
-                    <p class="api-empty-title">No se encontraron ${labels[type] || 'registros'}</p>
-                    <p class="api-empty-hint">Probá cambiando los filtros o creá uno nuevo</p>
-                    <button class="btn btn-secondary btn-sm" id="btnEmptyCreate">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Crear ${labels[type] ? labels[type].slice(0, -1) : 'registro'}
-                    </button>
-                </div>
-            `;
+            container.innerHTML = `<p class="api-empty-inline">Sin resultados</p>`;
             return;
         }
 
