@@ -87,12 +87,21 @@ const Modules = {
         { key: 'unidad', label: 'Unidad', type: 'select', required: false, options: ['Unidad', 'Metro', 'm²', 'Kit', 'Juego'] },
     ],
 
+    _cotizacionFormFields: [
+        { key: 'nombreEvento', label: 'Evento', type: 'text', required: true, placeholder: 'Ej: Expo Alimentek 2026' },
+        { key: 'tipoEvento', label: 'Tipo de evento', type: 'select', required: false, options: ['', 'feria', 'congreso', 'corporativo', 'social', 'festival', 'boda'] },
+        { key: 'fechaEvento', label: 'Fecha del evento', type: 'date', required: false },
+        { key: 'montoTotal', label: 'Monto total', type: 'number', required: false, placeholder: '0' },
+        { key: 'notasInternas', label: 'Notas internas', type: 'text', required: false, placeholder: 'Observaciones...' },
+    ],
+
     _getFormFields(type) {
         if (type === 'clients') return this._clientFormFields;
         if (type === 'projects') return this._projectFormFields;
         if (type === 'events') return this._eventFormFields;
         if (type === 'insumos') return this._insumoFormFields;
         if (type === 'catalogo') return this._catalogoFormFields;
+        if (type === 'cotizaciones') return this._cotizacionFormFields;
         return [];
     },
 
@@ -571,6 +580,7 @@ const Modules = {
             else if (type === 'events') result = await API.createEvent(values);
             else if (type === 'insumos') result = await API.createInsumo(values);
             else if (type === 'catalogo') result = await API.createCatalogoItem(values);
+            else if (type === 'cotizaciones') result = await API.createCotizacion(values);
 
             if (result) {
                 Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} creado exitosamente`);

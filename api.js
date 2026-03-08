@@ -1080,33 +1080,99 @@ const API = {
         const cached = this._cache[cacheKey];
         if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
         try {
+            // Query cotizaciones sin join (las columnas de clientes están rotadas)
             const { data, error } = await supabaseClient
                 .from('cotizaciones')
-                .select('*, clientes(id, nombre_empresa, contacto_empresa, correo_electronico, telefono)')
+                .select('*')
                 .order('created_at', { ascending: false });
             if (error) throw error;
-            const mapped = (data || []).map(c => ({
-                id: c.id,
-                numero: c.numero || '',
-                clienteId: c.cliente_id,
-                clienteNombre: c.clientes?.nombre_empresa || '',
-                clienteContacto: c.clientes?.contacto_empresa || '',
-                clienteEmail: c.clientes?.correo_electronico || '',
-                clienteTelefono: c.clientes?.telefono || '',
-                nombreEvento: c.nombre_evento || '',
-                tipoEvento: c.tipo_evento || '',
-                fechaEvento: c.fecha_evento,
-                montoTotal: parseFloat(c.monto_total) || 0,
-                estado: c.estado || 'borrador',
-                vendedorId: c.vendedor_id,
-                notasInternas: c.notas_internas || '',
-                createdAt: c.created_at,
-                updatedAt: c.updated_at,
-            }));
+
+            // Buscar nombres de clientes por separado
+            const clientIds = [...new Set((data || []).map(c => c.cliente_id).filter(Boolean))];
+            let clientMap = {};
+            if (clientIds.length > 0) {
+                const { data: clientes } = await supabaseClient
+                    .from('clientes')
+                    .select('id, nombre_empresa, contacto_empresa, rubro, telefono, correo_electronico')
+                    .in('id', clientIds);
+                if (clientes) {
+                    // NOTA: columnas rotadas — rubro=phone, telefono=email, correo_electronico=rubro
+                    clientes.forEach(cl => {
+                        clientMap[cl.id] = {
+                            nombre: cl.nombre_empresa || '',
+                            contacto: cl.contacto_empresa || '',
+                            email: cl.telefono || '',
+                            telefono: cl.rubro || '',
+                        };
+                    });
+                }
+            }
+
+            const mapped = (data || []).map(c => {
+                const cli = clientMap[c.cliente_id] || {};
+                return {
+                    id: c.id,
+                    numero: c.numero || '',
+                    clienteId: c.cliente_id,
+                    clienteNombre: cli.nombre || '',
+                    clienteContacto: cli.contacto || '',
+                    clienteEmail: cli.email || '',
+                    clienteTelefono: cli.telefono || '',
+                    nombreEvento: c.nombre_evento || '',
+                    tipoEvento: c.tipo_evento || '',
+                    fechaEvento: c.fecha_evento,
+                    montoTotal: parseFloat(c.monto_total) || 0,
+                    estado: c.estado || 'borrador',
+                    vendedorId: c.vendedor_id,
+                    notasInternas: c.notas_internas || '',
+                    createdAt: c.created_at,
+                    updatedAt: c.updated_at,
+                };
+            });
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
         } catch (e) {
             console.warn('[API] Error fetching cotizaciones:', e.message);
+            return null;
+        }
+    },
+
+    async createCotizacion(data) {
+        try {
+            // Generar número auto-incremental
+            const { data: last } = await supabaseClient
+                .from('cotizaciones')
+                .select('numero')
+                .order('created_at', { ascending: false })
+                .limit(1);
+            let nextNum = 1;
+            if (last && last[0] && last[0].numero) {
+                const match = last[0].numero.match(/(\d+)$/);
+                if (match) nextNum = parseInt(match[1], 10) + 1;
+            }
+            const year = new Date().getFullYear();
+            const numero = `COT-${year}-${String(nextNum).padStart(4, '0')}`;
+
+            const payload = {
+                numero,
+                cliente_id: data.clienteId || null,
+                nombre_evento: data.nombreEvento || '',
+                tipo_evento: data.tipoEvento || '',
+                fecha_evento: data.fechaEvento || null,
+                monto_total: parseFloat(data.montoTotal) || 0,
+                estado: 'borrador',
+                vendedor_id: data.vendedorId || null,
+                notas_internas: data.notasInternas || '',
+            };
+            const { data: result, error } = await supabaseClient
+                .from('cotizaciones')
+                .insert([payload])
+                .select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error creating cotizacion:', e.message);
             return null;
         }
     },
