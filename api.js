@@ -1248,6 +1248,45 @@ const API = {
         }
     },
 
+    // ─── Cotizacion CRUD ───────────────────────
+    async updateCotizacion(id, data) {
+        try {
+            const payload = {};
+            if (data.nombreEvento !== undefined) payload.nombre_evento = data.nombreEvento;
+            if (data.tipoEvento !== undefined) payload.tipo_evento = data.tipoEvento;
+            if (data.fechaEvento !== undefined) payload.fecha_evento = data.fechaEvento;
+            if (data.montoTotal !== undefined) payload.monto_total = parseFloat(data.montoTotal) || 0;
+            if (data.notasInternas !== undefined) payload.notas_internas = data.notasInternas;
+            if (data.clienteId !== undefined) payload.cliente_id = data.clienteId;
+            if (data.vendedorId !== undefined) payload.vendedor_id = data.vendedorId;
+            if (data.tipoStand !== undefined) payload.tipo_stand = data.tipoStand;
+            if (data.superficie !== undefined) payload.superficie = parseFloat(data.superficie) || 0;
+            if (data.pdfUrl !== undefined) payload.pdf_url = data.pdfUrl;
+            if (data.subtotal !== undefined) payload.subtotal = parseFloat(data.subtotal) || 0;
+            if (data.iva !== undefined) payload.iva = parseFloat(data.iva) || 0;
+            const { data: result, error } = await supabaseClient
+                .from('cotizaciones').update(payload).eq('id', id).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error updating cotizacion:', e.message);
+            return null;
+        }
+    },
+
+    async deleteCotizacion(id) {
+        try {
+            const { error } = await supabaseClient.from('cotizaciones').delete().eq('id', id);
+            if (error) throw error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting cotizacion:', e.message);
+            return null;
+        }
+    },
+
     // ─── Categorías Config (margen default por categoría) ──
     async getCategoriasConfig() {
         const cacheKey = 'categorias_config';

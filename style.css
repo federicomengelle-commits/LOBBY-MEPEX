@@ -5388,8 +5388,9 @@ body {
 }
 .urg-green  { color: #10B981; }
 .urg-yellow { color: #F59E0B; }
-.urg-red    { color: #EF4444; }
+.urg-red    { color: #EF4444; animation: urg-pulse 1.5s ease-in-out infinite; }
 .urg-neutral { color: #444; }
+@keyframes urg-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.3); } }
 
 /* Vendedor badge */
 .td-vendedor-badge {

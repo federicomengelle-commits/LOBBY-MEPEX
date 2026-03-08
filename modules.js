@@ -639,6 +639,7 @@ const Modules = {
             else if (type === 'events') result = await API.updateEvent(item.id, values);
             else if (type === 'insumos') result = await API.updateInsumo(item.id, values);
             else if (type === 'catalogo') result = await API.updateCatalogoItem(item.id, values);
+            else if (type === 'cotizaciones') result = await API.updateCotizacion(item.id, values);
 
             if (result) {
                 Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} actualizado`);
@@ -667,6 +668,7 @@ const Modules = {
         else if (type === 'events') result = await API.deleteEvent(item.id);
         else if (type === 'insumos') result = await API.deleteInsumo(item.id);
         else if (type === 'catalogo') result = await API.deleteCatalogoItem(item.id);
+        else if (type === 'cotizaciones') result = await API.deleteCotizacion(item.id);
 
         if (result) {
             Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} eliminado`);
@@ -1598,6 +1600,67 @@ const Modules = {
                 color: var(--text-dim, #555);
             }
 
+            /* ═══ COTIZACION FICHA ═══ */
+            .ficha-seguimiento-module { display: flex; flex-direction: column; gap: 20px; }
+            .ficha-estado-select { width: 100%; padding: 10px 12px; font-size: 0.85rem; }
+            .ficha-seg-template-card {
+                display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+                background: var(--bg-hover, #22252c); border: 1px solid var(--border-subtle, #22252c);
+                border-radius: 8px; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+            }
+            .ficha-seg-template-card:hover { border-color: var(--primary, #00A9C1); background: rgba(0,169,193,0.04); }
+            .ficha-seg-template-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 2px; }
+            .ficha-seg-template-body { flex: 1; min-width: 0; }
+            .ficha-seg-template-label { font-size: 0.85rem; font-weight: 600; color: var(--text-primary, #fff); margin-bottom: 2px; }
+            .ficha-seg-template-desc { font-size: 0.72rem; color: var(--text-muted, #888); }
+            .ficha-seguimiento-draft {
+                padding: 14px; background: var(--bg-hover, #22252c); border-radius: 10px;
+                border: 1px solid var(--border-subtle, #22252c); flex-direction: column; gap: 10px;
+            }
+            .ficha-urgency-banner {
+                padding: 10px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 500;
+                display: flex; align-items: center; gap: 8px;
+            }
+            .ficha-urgency-yellow { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); color: #F59E0B; }
+            .ficha-urgency-red { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); color: #EF4444; }
+            .cot-kpi-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+            .cot-kpi-card {
+                display: flex; flex-direction: column; align-items: center; padding: 14px 8px;
+                background: var(--bg-hover, #1e1e1e); border-radius: 10px;
+                border: 1px solid var(--border-subtle, rgba(0,169,193,0.08));
+            }
+            .cot-kpi-card-value {
+                font-size: 1.4rem; font-weight: 700; color: var(--text-primary, #fff);
+                font-family: var(--font-mono, 'Space Mono', monospace); line-height: 1;
+            }
+            .cot-kpi-card-label {
+                font-size: 0.62rem; color: var(--text-muted, #888);
+                text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;
+            }
+            .ficha-dias-counter {
+                display: inline-flex; align-items: center; gap: 6px;
+                padding: 4px 10px; border-radius: 6px; font-weight: 600;
+                font-family: var(--font-mono, 'Space Mono', monospace);
+            }
+            .ficha-dias-green { background: rgba(16,185,129,0.1); color: #10B981; }
+            .ficha-dias-yellow { background: rgba(245,158,11,0.1); color: #F59E0B; }
+            .ficha-dias-red { background: rgba(239,68,68,0.1); color: #EF4444; }
+            .ficha-mini-cot-item {
+                display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+                background: var(--bg-hover, #22252c); border-radius: 8px; font-size: 0.78rem;
+                cursor: pointer; transition: border-color 0.15s; border: 1px solid transparent; margin-bottom: 4px;
+            }
+            .ficha-mini-cot-item:hover { border-color: var(--primary, #00A9C1); background: rgba(0,169,193,0.04); }
+            .ficha-mini-cot-numero { font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.7rem; color: var(--text-muted, #888); }
+            .ficha-mini-cot-evento { flex: 1; color: var(--text-primary, #fff); }
+            .ficha-mini-cot-monto { color: var(--primary, #00A9C1); font-weight: 600; }
+            .cot-inline-estado {
+                background: var(--bg-card, #111); color: var(--text-primary, #E8E8E8);
+                border: 1px solid var(--primary, #00A9C1); border-radius: 4px;
+                font-family: inherit; cursor: pointer; outline: none; font-size: 11px; padding: 2px 6px;
+            }
+            .cot-inline-estado:focus { box-shadow: 0 0 0 2px rgba(0,169,193,0.2); }
+
             @media (max-width: 600px) {
                 .ficha-panel { width: 100vw; }
                 .ficha-tabs { padding: 0 12px; overflow-x: auto; }
@@ -1605,6 +1668,7 @@ const Modules = {
                 .ficha-kpi-row { grid-template-columns: repeat(3, 1fr); gap: 6px; }
                 .ficha-timeline-add-row { flex-wrap: wrap; }
                 .ficha-tl-select { flex: 1; min-width: 100px; }
+                .cot-kpi-bar { grid-template-columns: repeat(2, 1fr); }
             }
         `;
         document.head.appendChild(style);
@@ -2507,6 +2571,7 @@ const Modules = {
                 { id: 'resumen', label: 'Resumen', icon: '📊' },
                 { id: 'timeline', label: 'Timeline', icon: '💬' },
                 { id: 'proyectos', label: 'Proyectos', icon: '📋' },
+                { id: 'cotizaciones', label: 'Cotizaciones', icon: '💰' },
                 { id: 'info', label: 'Datos', icon: '🏢' },
             ],
             renderTab(item, tabId, v) {
@@ -2602,6 +2667,9 @@ const Modules = {
                             <div class="ficha-row"><span class="ficha-row-label">Email</span><span class="ficha-row-value">${item.email ? '<a href="mailto:' + item.email + '" class="ficha-link">' + item.email + '</a>' : '—'}</span></div>
                         </div>`;
                 }
+                if (tabId === 'cotizaciones') {
+                    return `<div class="ficha-section"><div class="ficha-section-title">Cotizaciones del cliente</div><div id="fichaClientCotizaciones"><div class="ficha-loading-small">Cargando…</div></div></div>`;
+                }
                 return '';
             }
         },
@@ -2617,6 +2685,7 @@ const Modules = {
                 { id: 'info', label: 'Información', icon: '📋' },
                 { id: 'dates', label: 'Fechas', icon: '📅' },
                 { id: 'proyectos', label: 'Proyectos', icon: '🏗️' },
+                { id: 'cotizaciones', label: 'Cotizaciones', icon: '💰' },
                 { id: 'notes', label: 'Notas', icon: '📝' },
             ],
             renderTab(item, tabId, v) {
@@ -2651,6 +2720,9 @@ const Modules = {
                                 <div class="ficha-loading-small">Cargando proyectos…</div>
                             </div>
                         </div>`;
+                }
+                if (tabId === 'cotizaciones') {
+                    return `<div class="ficha-section"><div class="ficha-section-title">Cotizaciones del evento</div><div id="fichaEventCotizaciones"><div class="ficha-loading-small">Cargando…</div></div></div>`;
                 }
                 if (tabId === 'notes') {
                     return `<div class="ficha-section"><div class="ficha-section-title">Notas / Comentarios</div><textarea class="ficha-notes" placeholder="Sin notas registradas" disabled></textarea></div>`;
@@ -2759,6 +2831,130 @@ const Modules = {
                 return '';
             }
         },
+        cotizaciones: {
+            icon: '💰',
+            color: '#00ACC9',
+            getStatus: (item) => {
+                const e = (Modules._cotizacionEstadoMap || {})[item.estado];
+                return e ? { label: e.label, class: '' } : { label: item.estado || '—', class: '' };
+            },
+            tabs: [
+                { id: 'resumen', label: 'Resumen', icon: '📊' },
+                { id: 'timeline', label: 'Timeline', icon: '💬' },
+                { id: 'seguimiento', label: 'Seguimiento', icon: '⚡' },
+            ],
+            renderTab(item, tabId, v) {
+                if (tabId === 'resumen') {
+                    const estadoObj = (Modules._cotizacionEstadoMap || {})[item.estado] || { label: item.estado, color: '#666' };
+                    const days = item.updatedAt ? Math.max(0, Math.floor((new Date() - new Date(item.updatedAt)) / 86400000)) : 0;
+                    const daysCls = days > 7 ? 'ficha-dias-red' : days > 3 ? 'ficha-dias-yellow' : 'ficha-dias-green';
+                    const fmt = (n) => n ? '$' + Math.round(n).toLocaleString('es-AR') : '—';
+                    return `
+                        <div class="ficha-kpi-row">
+                            <div class="ficha-kpi"><span class="ficha-kpi-value ficha-dias-counter ${daysCls}">${days}d</span><span class="ficha-kpi-label">En estado</span></div>
+                            <div class="ficha-kpi"><span class="ficha-kpi-value">${item.superficie ? item.superficie + ' m²' : '—'}</span><span class="ficha-kpi-label">Superficie</span></div>
+                            <div class="ficha-kpi"><span class="ficha-kpi-value" style="color:#00ACC9">${fmt(item.montoTotal)}</span><span class="ficha-kpi-label">Monto total</span></div>
+                        </div>
+                        <div id="fichaUrgencyBanner"></div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Cotización</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value td-cot-code">${v(item.numero)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Estado</span><span class="ficha-row-value"><span class="badge" style="background:${estadoObj.color}18; color:${estadoObj.color}; border:1px solid ${estadoObj.color}30;">${estadoObj.label}</span></span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Tipo Stand</span><span class="ficha-row-value">${v(item.tipoStand)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Vendedor</span><span class="ficha-row-value">${v(item.vendedorId)}</span></div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Cliente</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Empresa</span><span class="ficha-row-value">${item.clienteNombre ? `<span class="ficha-chip" data-link-type="cliente" data-link-id="${item.clienteId}" style="cursor:pointer; color:var(--primary)">${item.clienteNombre}</span>` : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Contacto</span><span class="ficha-row-value">${v(item.clienteContacto)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Teléfono</span><span class="ficha-row-value">${item.clienteTelefono ? `<a href="tel:${item.clienteTelefono}" style="color:var(--text-primary)">${item.clienteTelefono}</a> · <a href="https://wa.me/${item.clienteTelefono.replace(/\D/g,'')}" target="_blank" style="color:#25D366">WA</a>` : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Email</span><span class="ficha-row-value">${item.clienteEmail ? `<a href="mailto:${item.clienteEmail}" style="color:var(--primary)">${item.clienteEmail}</a>` : '—'}</span></div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Evento</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Evento</span><span class="ficha-row-value">${item.nombreEvento ? `<span class="ficha-chip" data-link-type="evento" style="cursor:pointer; color:var(--primary)">${item.nombreEvento}</span>` : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Tipo</span><span class="ficha-row-value">${v(item.tipoEvento)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Fecha</span><span class="ficha-row-value">${item.fechaEvento ? new Date(item.fechaEvento + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</span></div>
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Presupuesto</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Subtotal</span><span class="ficha-row-value">${fmt(item.subtotal)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">IVA (21%)</span><span class="ficha-row-value">${fmt(item.iva)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Total</span><span class="ficha-row-value" style="font-weight:700; color:#00ACC9; font-size:1rem;">${fmt(item.montoTotal)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Emisión</span><span class="ficha-row-value">${item.fechaEmision ? new Date(item.fechaEmision + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</span></div>
+                            ${item.pdfUrl ? `<div class="ficha-row"><span class="ficha-row-label">PDF</span><span class="ficha-row-value"><a href="${item.pdfUrl}" target="_blank" class="cot-pdf-link" style="color:#3B82F6">📄 Ver PDF</a></span></div>` : ''}
+                        </div>
+                        <div class="ficha-section">
+                            <div class="ficha-section-title">Notas internas</div>
+                            <p style="font-size:0.82rem; color:${item.notasInternas ? 'var(--text-primary)' : 'var(--text-dim)'}; margin:0;">${item.notasInternas || 'Sin notas'}</p>
+                        </div>`;
+                }
+                if (tabId === 'timeline') {
+                    return `
+                        <div class="ficha-timeline-module">
+                            <div class="ficha-timeline-add">
+                                <div class="ficha-timeline-add-row">
+                                    <select class="ficha-tl-select" id="fichaCotTlTipo">
+                                        <option value="nota">📝 Nota</option>
+                                        <option value="envio_email">📧 Email</option>
+                                        <option value="envio_whatsapp">💬 WhatsApp</option>
+                                        <option value="vista_cliente">👁️ Vista</option>
+                                    </select>
+                                    <input type="text" class="ficha-tl-input" id="fichaCotTlDesc" placeholder="Descripción (enter para guardar)" autocomplete="off">
+                                    <button class="ficha-tl-btn" id="fichaCotTlSave" title="Guardar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="ficha-timeline-list" id="fichaCotTlList">
+                                <div class="ficha-loading-small">Cargando timeline…</div>
+                            </div>
+                        </div>`;
+                }
+                if (tabId === 'seguimiento') {
+                    const estadoOptions = (Modules._pipelineStates || []).map(s =>
+                        `<option value="${s.id}" ${item.estado === s.id ? 'selected' : ''}>${s.label}</option>`
+                    ).join('');
+                    return `
+                        <div class="ficha-seguimiento-module">
+                            <div class="ficha-section">
+                                <div class="ficha-section-title">Cambiar estado</div>
+                                <select class="ficha-tl-select ficha-estado-select" id="fichaCotEstadoSelect">${estadoOptions}</select>
+                            </div>
+                            <div id="fichaSeguimientoBanner"></div>
+                            <div class="ficha-section">
+                                <div class="ficha-section-title">Plantillas de seguimiento</div>
+                                <div id="fichaSeguimientoTemplates"></div>
+                            </div>
+                            <div class="ficha-seguimiento-draft" id="fichaSeguimientoDraft" style="display:none;">
+                                <div class="ficha-section-title">Mensaje</div>
+                                <div class="ficha-timeline-add-row">
+                                    <select class="ficha-tl-select" id="fichaDraftMedio">
+                                        <option value="whatsapp">💬 WhatsApp</option>
+                                        <option value="email">📧 Mail</option>
+                                        <option value="telefono">📞 Teléfono</option>
+                                    </select>
+                                </div>
+                                <textarea class="ficha-tl-input" id="fichaDraftText" rows="4" style="height:auto; min-height:80px; resize:vertical;"></textarea>
+                                <div class="ficha-timeline-add-row" style="justify-content:flex-end;">
+                                    <button class="btn btn-ghost btn-sm" id="fichaDraftCancel">Cancelar</button>
+                                    <button class="btn btn-primary btn-sm" id="fichaDraftSend">Registrar</button>
+                                </div>
+                            </div>
+                            <div class="ficha-section">
+                                <div class="ficha-section-title">Nota rápida</div>
+                                <div class="ficha-timeline-add-row">
+                                    <input type="text" class="ficha-tl-input" id="fichaCotQuickNote" placeholder="Agregar nota… (enter)" autocomplete="off">
+                                    <button class="ficha-tl-btn" id="fichaCotQuickNoteSave" title="Guardar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>`;
+                }
+                return '';
+            }
+        },
     },
 
     _openFichaByType(item, type) {
@@ -2798,7 +2994,7 @@ const Modules = {
                 <div class="ficha-panel-title">
                     <span class="ficha-panel-icon-badge" style="background:${config.color}20; color:${config.color}">${config.icon}</span>
                     <div class="ficha-panel-title-text">
-                        <h2 class="ficha-panel-name">${v(item.name || item.nombre)}</h2>
+                        <h2 class="ficha-panel-name">${v(item.name || item.nombre || item.numero)}</h2>
                         ${statusBadge ? `<div class="ficha-panel-status">${statusBadge}</div>` : ''}
                     </div>
                 </div>
@@ -2843,6 +3039,7 @@ const Modules = {
                 if (type === 'catalogo') this._loadCatalogoTabData(item, tabId);
                 if (type === 'events') this._loadEventTabData(item, tabId);
                 if (type === 'insumos') this._loadInsumoTabData(item, tabId);
+                if (type === 'cotizaciones') this._loadCotizacionTabData(item, tabId);
             }
         };
 
@@ -2870,6 +3067,7 @@ const Modules = {
         if (type === 'catalogo') this._loadCatalogoTabData(item, firstTab);
         if (type === 'events') this._loadEventTabData(item, firstTab);
         if (type === 'insumos') this._loadInsumoTabData(item, firstTab);
+        if (type === 'cotizaciones') this._loadCotizacionTabData(item, firstTab);
     },
 
     // ═══════════════════════════════════════════
@@ -2880,6 +3078,7 @@ const Modules = {
         if (tabId === 'resumen') await this._loadClientResumen(item);
         else if (tabId === 'timeline') await this._loadClientTimeline(item);
         else if (tabId === 'proyectos') await this._loadClientProjects(item);
+        else if (tabId === 'cotizaciones') await this._loadClientCotizaciones(item);
     },
 
     // ─── RESUMEN TAB ─────────────────────────
@@ -3125,6 +3324,212 @@ const Modules = {
             document.removeEventListener('keydown', this._fichaEscHandler);
             this._fichaEscHandler = null;
         }
+    },
+
+    // ═══════════════════════════════════════════
+    //  COTIZACIONES FICHA — Async Data Loaders
+    // ═══════════════════════════════════════════
+
+    async _loadCotizacionTabData(item, tabId) {
+        if (tabId === 'resumen') this._attachCotizacionResumenLinks(item);
+        else if (tabId === 'timeline') await this._loadCotizacionTimeline(item);
+        else if (tabId === 'seguimiento') this._attachCotizacionSeguimiento(item);
+    },
+
+    async _loadCotizacionTimeline(item) {
+        const timeline = await API.getCotizacionTimeline(item.id);
+        const list = document.getElementById('fichaCotTlList');
+        if (!list) return;
+
+        const iconMap = { estado_cambio: '🔄', envio_email: '📧', envio_whatsapp: '💬', nota: '📝', vista_cliente: '👁️', edicion: '✏️', respondido: '💬' };
+
+        if (!timeline.length) {
+            list.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-dim); font-size:0.8rem;">Sin actividad registrada</div>`;
+        } else {
+            const groups = {};
+            timeline.forEach(t => {
+                const key = new Date(t.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' });
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(t);
+            });
+            let html = '';
+            for (const [date, items] of Object.entries(groups)) {
+                html += `<div class="ficha-tl-date-header">${date}</div>`;
+                html += items.map(t => `
+                    <div class="ficha-tl-entry">
+                        <div class="ficha-tl-entry-icon">${iconMap[t.tipo] || '📝'}</div>
+                        <div class="ficha-tl-entry-body">
+                            <div class="ficha-tl-entry-meta">
+                                <span class="ficha-tl-entry-time">${new Date(t.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span class="ficha-tl-entry-canal">${t.tipo.replace(/_/g, ' ')}</span>
+                            </div>
+                            <div class="ficha-tl-entry-text">${t.descripcion}</div>
+                        </div>
+                    </div>`).join('');
+            }
+            list.innerHTML = html;
+        }
+
+        // Attach save handler
+        const input = document.getElementById('fichaCotTlDesc');
+        const saveBtn = document.getElementById('fichaCotTlSave');
+        if (!input || !saveBtn) return;
+        const doSave = async () => {
+            const desc = input.value.trim();
+            if (!desc) return;
+            const tipo = document.getElementById('fichaCotTlTipo')?.value || 'nota';
+            saveBtn.disabled = true; input.disabled = true;
+            const result = await API.addCotizacionTimeline(item.id, tipo, desc);
+            if (result) { input.value = ''; Toast.success('Entrada registrada'); await this._loadCotizacionTimeline(item); }
+            else Toast.error('Error al guardar');
+            saveBtn.disabled = false; input.disabled = false; input.focus();
+        };
+        saveBtn.addEventListener('click', doSave);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSave(); } });
+    },
+
+    _attachCotizacionSeguimiento(item) {
+        // Estado change
+        const estadoSelect = document.getElementById('fichaCotEstadoSelect');
+        if (estadoSelect) {
+            estadoSelect.addEventListener('change', async () => {
+                const newState = estadoSelect.value;
+                const oldState = item.estado;
+                if (newState === oldState) return;
+                const result = await API.updateCotizacionEstado(item.id, newState);
+                if (result) {
+                    const oldLabel = (this._cotizacionEstadoMap[oldState] || {}).label || oldState;
+                    const newLabel = (this._cotizacionEstadoMap[newState] || {}).label || newState;
+                    await API.addCotizacionTimeline(item.id, 'estado_cambio', `Estado cambiado: ${oldLabel} → ${newLabel}`);
+                    item.estado = newState;
+                    // Update badge in ficha header
+                    const statusDiv = document.querySelector('.ficha-panel-status');
+                    if (statusDiv) {
+                        const e = this._cotizacionEstadoMap[newState];
+                        if (e) statusDiv.innerHTML = `<span class="badge" style="background:${e.color}18; color:${e.color}; border:1px solid ${e.color}30;">${e.label}</span>`;
+                    }
+                    Toast.success(`Estado: ${newLabel}`);
+                    this._refreshCurrentTable();
+                } else {
+                    estadoSelect.value = oldState;
+                    Toast.error('Error al cambiar estado');
+                }
+            });
+        }
+
+        // Urgency banner (V2)
+        this._renderSeguimientoBanner(item);
+
+        // Template cards
+        const tplContainer = document.getElementById('fichaSeguimientoTemplates');
+        if (tplContainer) {
+            tplContainer.innerHTML = this._seguimientoTemplates.map(tpl => `
+                <div class="ficha-seg-template-card" data-tpl-id="${tpl.id}">
+                    <span class="ficha-seg-template-icon">${tpl.icon}</span>
+                    <div class="ficha-seg-template-body">
+                        <div class="ficha-seg-template-label">${tpl.label}</div>
+                        <div class="ficha-seg-template-desc">${tpl.description}</div>
+                    </div>
+                </div>`).join('');
+
+            tplContainer.querySelectorAll('[data-tpl-id]').forEach(card => {
+                card.addEventListener('click', () => {
+                    const tpl = this._seguimientoTemplates.find(t => t.id === card.dataset.tplId);
+                    if (!tpl) return;
+                    const text = this._interpolateTemplate(tpl.template, item);
+                    const draft = document.getElementById('fichaSeguimientoDraft');
+                    const textarea = document.getElementById('fichaDraftText');
+                    if (draft) draft.style.display = 'flex';
+                    if (textarea) textarea.value = text;
+                });
+            });
+        }
+
+        // Draft send/cancel
+        document.getElementById('fichaDraftCancel')?.addEventListener('click', () => {
+            const draft = document.getElementById('fichaSeguimientoDraft');
+            if (draft) draft.style.display = 'none';
+        });
+        document.getElementById('fichaDraftSend')?.addEventListener('click', async () => {
+            const medio = document.getElementById('fichaDraftMedio')?.value || 'whatsapp';
+            const text = document.getElementById('fichaDraftText')?.value?.trim();
+            if (!text) return;
+            const tipoMap = { whatsapp: 'envio_whatsapp', email: 'envio_email', telefono: 'nota' };
+            const result = await API.addCotizacionTimeline(item.id, tipoMap[medio] || 'nota', text);
+            if (result) {
+                Toast.success('Seguimiento registrado');
+                document.getElementById('fichaSeguimientoDraft').style.display = 'none';
+            } else Toast.error('Error al registrar');
+        });
+
+        // Quick note
+        const noteInput = document.getElementById('fichaCotQuickNote');
+        const noteSave = document.getElementById('fichaCotQuickNoteSave');
+        if (noteInput && noteSave) {
+            const saveNote = async () => {
+                const text = noteInput.value.trim();
+                if (!text) return;
+                noteSave.disabled = true; noteInput.disabled = true;
+                const result = await API.addCotizacionTimeline(item.id, 'nota', text);
+                if (result) { noteInput.value = ''; Toast.success('Nota guardada'); }
+                else Toast.error('Error al guardar');
+                noteSave.disabled = false; noteInput.disabled = false; noteInput.focus();
+            };
+            noteSave.addEventListener('click', saveNote);
+            noteInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNote(); } });
+        }
+    },
+
+    _attachCotizacionResumenLinks(item) {
+        const panel = document.getElementById('fichaPanel');
+        if (!panel) return;
+
+        // Cross-links to client/event fichas
+        panel.querySelectorAll('.ficha-chip[data-link-type]').forEach(chip => {
+            chip.addEventListener('click', async () => {
+                const linkType = chip.dataset.linkType;
+                if (linkType === 'cliente' && item.clienteId) {
+                    const clients = await API.getClients();
+                    const client = clients?.find(c => c.id === item.clienteId);
+                    if (client) { this._closeFicha(); setTimeout(() => this._openFicha(client, 'clients'), 300); }
+                }
+                if (linkType === 'evento' && item.nombreEvento) {
+                    const events = await API.getEvents();
+                    const evName = item.nombreEvento.trim().toLowerCase();
+                    const event = events?.find(e => (e.name || '').trim().toLowerCase() === evName);
+                    if (event) { this._closeFicha(); setTimeout(() => this._openFicha(event, 'events'), 300); }
+                }
+            });
+        });
+
+        // V2: Urgency indicator
+        this._renderResumenUrgency(item);
+    },
+
+    _interpolateTemplate(template, item) {
+        return template
+            .replace(/\{numero\}/g, item.numero || '')
+            .replace(/\{evento\}/g, item.nombreEvento || '')
+            .replace(/\{cliente\}/g, item.clienteNombre || '')
+            .replace(/\{monto\}/g, item.montoTotal ? '$' + Math.round(item.montoTotal).toLocaleString('es-AR') : '')
+            .replace(/\{fecha\}/g, item.fechaEvento ? new Date(item.fechaEvento + 'T00:00:00').toLocaleDateString('es-AR') : '');
+    },
+
+    // V2: Urgency helpers
+    _renderResumenUrgency(item) {
+        const banner = document.getElementById('fichaUrgencyBanner');
+        if (!banner || !['enviada', 'en_negociacion'].includes(item.estado)) return;
+        const days = item.updatedAt ? Math.max(0, Math.floor((new Date() - new Date(item.updatedAt)) / 86400000)) : 0;
+        if (days > 7) banner.innerHTML = `<div class="ficha-urgency-banner ficha-urgency-red">⚠️ URGENTE: Sin respuesta hace ${days} días</div>`;
+        else if (days > 3) banner.innerHTML = `<div class="ficha-urgency-banner ficha-urgency-yellow">⏰ Seguimiento recomendado — ${days} días sin respuesta</div>`;
+    },
+
+    _renderSeguimientoBanner(item) {
+        const banner = document.getElementById('fichaSeguimientoBanner');
+        if (!banner || !['enviada', 'en_negociacion'].includes(item.estado)) return;
+        const days = item.updatedAt ? Math.max(0, Math.floor((new Date() - new Date(item.updatedAt)) / 86400000)) : 0;
+        if (days > 7) banner.innerHTML = `<div class="ficha-urgency-banner ficha-urgency-red">⚠️ URGENTE: Sin respuesta hace ${days} días</div>`;
+        else if (days > 3) banner.innerHTML = `<div class="ficha-urgency-banner ficha-urgency-yellow">⏰ Seguimiento recomendado — ${days} días sin respuesta</div>`;
     },
 
     // ═══════════════════════════════════════════
@@ -3564,6 +3969,7 @@ const Modules = {
 
     async _loadEventTabData(item, tabId) {
         if (tabId === 'proyectos') await this._loadEventProjects(item);
+        else if (tabId === 'cotizaciones') await this._loadEventCotizaciones(item);
     },
 
     async _loadEventProjects(item) {
@@ -3638,6 +4044,56 @@ const Modules = {
             console.warn('[Modules] Error loading event projects:', e);
             listEl.innerHTML = '<p class="text-muted" style="font-size:12px;">Error al cargar proyectos</p>';
         }
+    },
+
+    // ─── V2: Bidirectional cotizaciones loaders ───
+    async _loadClientCotizaciones(item) {
+        const el = document.getElementById('fichaClientCotizaciones');
+        if (!el) return;
+        const allCots = await API.getCotizaciones();
+        if (!allCots) { el.innerHTML = '<p class="text-muted" style="font-size:12px;">Error al cargar</p>'; return; }
+        const matching = allCots.filter(c => c.clienteId === item.id);
+        if (!matching.length) { el.innerHTML = '<p class="text-muted" style="font-size:12px;">Sin cotizaciones vinculadas</p>'; return; }
+        el.innerHTML = matching.map(c => {
+            const e = (this._cotizacionEstadoMap || {})[c.estado] || { label: c.estado, color: '#666' };
+            return `<div class="ficha-mini-cot-item" data-cot-id="${c.id}">
+                <span class="ficha-mini-cot-numero">${c.numero}</span>
+                <span class="ficha-mini-cot-evento">${c.nombreEvento || '—'}</span>
+                <span class="ficha-mini-cot-monto">${c.montoTotal ? '$' + Math.round(c.montoTotal).toLocaleString('es-AR') : '—'}</span>
+                <span class="badge" style="background:${e.color}18; color:${e.color}; border:1px solid ${e.color}30; font-size:10px; padding:2px 6px;">${e.label}</span>
+            </div>`;
+        }).join('');
+        el.querySelectorAll('[data-cot-id]').forEach(card => {
+            card.addEventListener('click', () => {
+                const cot = matching.find(c => String(c.id) === String(card.dataset.cotId));
+                if (cot) { this._closeFicha(); setTimeout(() => this._openFichaByType(cot, 'cotizaciones'), 300); }
+            });
+        });
+    },
+
+    async _loadEventCotizaciones(item) {
+        const el = document.getElementById('fichaEventCotizaciones');
+        if (!el) return;
+        const allCots = await API.getCotizaciones();
+        if (!allCots) { el.innerHTML = '<p class="text-muted" style="font-size:12px;">Error al cargar</p>'; return; }
+        const evName = (item.name || '').trim().toLowerCase();
+        const matching = allCots.filter(c => (c.nombreEvento || '').trim().toLowerCase() === evName);
+        if (!matching.length) { el.innerHTML = '<p class="text-muted" style="font-size:12px;">Sin cotizaciones vinculadas</p>'; return; }
+        el.innerHTML = matching.map(c => {
+            const e = (this._cotizacionEstadoMap || {})[c.estado] || { label: c.estado, color: '#666' };
+            return `<div class="ficha-mini-cot-item" data-cot-id="${c.id}">
+                <span class="ficha-mini-cot-numero">${c.numero}</span>
+                <span class="ficha-mini-cot-evento">${c.clienteNombre || '—'}</span>
+                <span class="ficha-mini-cot-monto">${c.montoTotal ? '$' + Math.round(c.montoTotal).toLocaleString('es-AR') : '—'}</span>
+                <span class="badge" style="background:${e.color}18; color:${e.color}; border:1px solid ${e.color}30; font-size:10px; padding:2px 6px;">${e.label}</span>
+            </div>`;
+        }).join('');
+        el.querySelectorAll('[data-cot-id]').forEach(card => {
+            card.addEventListener('click', () => {
+                const cot = matching.find(c => String(c.id) === String(card.dataset.cotId));
+                if (cot) { this._closeFicha(); setTimeout(() => this._openFichaByType(cot, 'cotizaciones'), 300); }
+            });
+        });
     },
 
     // ═══════════════════════════════════════════
@@ -4463,6 +4919,15 @@ const Modules = {
         'cerrada_perdida': { label: 'Cerrada Perdida',   color: '#EF4444' },
     },
 
+    _seguimientoTemplates: [
+        { id: 'primer', label: 'Primer seguimiento', icon: '👋', description: 'Recordatorio amable post-envío',
+          template: 'Hola, te escribo desde MEPEX en relación a la cotización {numero} para {evento}. Queríamos saber si pudiste revisar la propuesta y si tenés alguna consulta. Quedamos a disposición. Saludos.' },
+        { id: 'segundo', label: 'Segundo contacto', icon: '🔄', description: 'Refuerzo tras falta de respuesta',
+          template: 'Hola, seguimos en contacto por la cotización {numero} para {evento}. Si necesitás ajustar algo en la propuesta o tenés alguna duda, podemos coordinar una llamada. Esperamos tu respuesta. Saludos, equipo MEPEX.' },
+        { id: 'ultimo', label: 'Última oportunidad', icon: '⏰', description: 'Mensaje de cierre con urgencia',
+          template: 'Hola, te contactamos por última vez respecto a la cotización {numero} para {evento}. La oferta tiene vigencia limitada. Si seguís interesado, respondenos así avanzamos. Saludos, equipo MEPEX.' },
+    ],
+
     _calcUrgencia(daysSinceUpdate, estado) {
         if (['aprobada', 'cerrada_ganada', 'cerrada_perdida'].includes(estado)) {
             return { dot: '\u2B24', cls: 'urg-neutral', label: 'Cerrada' };
@@ -4578,7 +5043,24 @@ const Modules = {
 
         const headerCb = this._isLocked ? '' : this._renderHeaderCheckbox(sorted);
 
+        // KPI bar
+        const allData = this._currentApiData || cotizaciones;
+        const activas = allData.filter(c => !['cerrada_ganada', 'cerrada_perdida'].includes(c.estado)).length;
+        const envPend = allData.filter(c => c.estado === 'enviada').length;
+        const now = new Date();
+        const d30 = new Date(now.getTime() - 30 * 86400000);
+        const cerr30 = allData.filter(c => c.estado.startsWith('cerrada_') && c.updatedAt && new Date(c.updatedAt) >= d30);
+        const conv30 = cerr30.length ? Math.round((cerr30.filter(c => c.estado === 'cerrada_ganada').length / cerr30.length) * 100) : 0;
+        const ganadas = allData.filter(c => c.estado === 'cerrada_ganada');
+        const avgCierre = ganadas.length ? Math.round(ganadas.reduce((s, c) => s + Math.max(1, Math.round((new Date(c.updatedAt) - new Date(c.createdAt)) / 86400000)), 0) / ganadas.length) : 0;
+
         return `
+            <div class="cot-kpi-bar">
+                <div class="cot-kpi-card"><span class="cot-kpi-card-value" style="color:#F59E0B">${activas}</span><span class="cot-kpi-card-label">Activas</span></div>
+                <div class="cot-kpi-card"><span class="cot-kpi-card-value" style="color:#3B82F6">${envPend}</span><span class="cot-kpi-card-label">Env. pendientes</span></div>
+                <div class="cot-kpi-card"><span class="cot-kpi-card-value" style="color:#10B981">${conv30}%</span><span class="cot-kpi-card-label">Conversión 30d</span></div>
+                <div class="cot-kpi-card"><span class="cot-kpi-card-value" style="color:#3B82F6">${avgCierre}d</span><span class="cot-kpi-card-label">Prom. cierre</span></div>
+            </div>
             <div class="api-table-wrap cot-table-compact">
                 <table class="api-table">
                     <thead><tr>${headerCb}${thHtml}</tr></thead>
@@ -4612,13 +5094,13 @@ const Modules = {
             });
         });
 
-        // Row click → open pipeline detail modal
+        // Row click → open ficha side panel
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
             row.addEventListener('click', (ev) => {
-                if (ev.target.closest('a') || ev.target.closest('.td-checkbox')) return;
+                if (ev.target.closest('a') || ev.target.closest('.td-checkbox') || ev.target.closest('select')) return;
                 const id = row.dataset.id;
                 const item = this._currentApiData.find(c => c.id == id);
-                if (item) this._openPipelineDetail(item);
+                if (item) this._openFichaByType(item, 'cotizaciones');
             });
         });
 
@@ -4627,6 +5109,41 @@ const Modules = {
 
         // Column drag & drop
         this._attachColDragListeners('mepex_cotizaciones_cols_v1', this._cotizacionesColumns);
+
+        // V2: Double-click on estado badge → inline select
+        document.querySelectorAll('.cot-estado-badge').forEach(badge => {
+            badge.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                const row = badge.closest('.api-table-row');
+                if (!row) return;
+                const id = row.dataset.id;
+                const item = data.find(c => c.id == id);
+                if (!item) return;
+                const td = badge.closest('td');
+                const origHtml = td.innerHTML;
+                td.innerHTML = `<select class="cot-inline-estado">${this._pipelineStates.map(s =>
+                    `<option value="${s.id}" ${item.estado === s.id ? 'selected' : ''}>${s.label}</option>`
+                ).join('')}</select>`;
+                const select = td.querySelector('select');
+                select.focus();
+                const close = () => { td.innerHTML = origHtml; };
+                select.addEventListener('change', async () => {
+                    const ns = select.value;
+                    if (ns !== item.estado) {
+                        const result = await API.updateCotizacionEstado(item.id, ns);
+                        if (result) {
+                            const ol = (this._cotizacionEstadoMap[item.estado] || {}).label || item.estado;
+                            const nl = (this._cotizacionEstadoMap[ns] || {}).label || ns;
+                            await API.addCotizacionTimeline(item.id, 'estado_cambio', `Estado: ${ol} → ${nl}`);
+                            Toast.success(`Estado: ${nl}`);
+                            this._refreshCurrentTable();
+                        } else { Toast.error('Error'); close(); }
+                    } else close();
+                });
+                select.addEventListener('blur', close);
+                select.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') close(); });
+            });
+        });
     },
 
     // ═══════════════════════════════════════════
@@ -4953,7 +5470,7 @@ const Modules = {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const cot = this._pipelineData?.find(c => c.id === btn.dataset.id);
-                if (cot) this._openPipelineDetail(cot);
+                if (cot) this._openFichaByType(cot, 'cotizaciones');
             });
         });
     },
