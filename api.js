@@ -1078,13 +1078,18 @@ const API = {
     async getCotizaciones() {
         const cacheKey = 'cotizaciones';
         const cached = this._cache[cacheKey];
-        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) {
+            console.log('[API] getCotizaciones — cache:', cached.data.length, 'registros');
+            return cached.data;
+        }
         try {
+            console.log('[API] getCotizaciones — fetching...');
             // Query cotizaciones sin join (las columnas de clientes están rotadas)
             const { data, error } = await supabaseClient
                 .from('cotizaciones')
                 .select('*')
                 .order('created_at', { ascending: false });
+            console.log('[API] getCotizaciones — result:', data?.length || 0, 'rows, error:', error);
             if (error) throw error;
 
             // Buscar nombres de clientes por separado

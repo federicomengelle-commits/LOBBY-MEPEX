@@ -125,19 +125,19 @@ const Data = {
             order: 1,
             sections: [
                 {
+                    id: 'tabla',
+                    name: 'Cotizaciones',
+                    icon: '📋',
+                    description: 'Tabla de cotizaciones con filtros y columnas personalizables',
+                    fields: []
+                },
+                {
                     id: 'cotizador',
                     name: 'Cotizador',
                     icon: '📄',
                     description: 'Armar cotización → PDF con marca → guardado en Notion',
                     isExternal: true,
                     externalUrl: 'https://cotizador-mepex.vercel.app',
-                    fields: []
-                },
-                {
-                    id: 'tabla',
-                    name: 'Cotizaciones',
-                    icon: '📋',
-                    description: 'Tabla de cotizaciones con filtros y columnas personalizables',
                     fields: []
                 },
                 {

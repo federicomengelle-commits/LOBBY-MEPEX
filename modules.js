@@ -414,10 +414,11 @@ const Modules = {
         }
 
         const apiType = this._getApiSectionType(mod.id, sectionId);
+        console.log('[Modules] _loadSectionData:', mod.id, sectionId, '→ apiType:', apiType);
         if (!apiType) return;
 
         const container = document.getElementById('apiDataContainer');
-        if (!container) return;
+        if (!container) { console.warn('[Modules] apiDataContainer not found!'); return; }
 
         // Reset selection on section change
         this._selectedRows = new Set();
