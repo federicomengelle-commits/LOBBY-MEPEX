@@ -5408,3 +5408,17 @@ body {
     white-space: nowrap;
     letter-spacing: 0.2px;
 }
+
+/* PDF link */
+.cot-pdf-link {
+    text-decoration: none;
+    font-size: 14px;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+}
+.cot-pdf-link:hover {
+    opacity: 1;
+}
+.td-muted {
+    color: #444;
+}

@@ -1132,6 +1132,14 @@ const API = {
                     notasInternas: c.notas_internas || '',
                     createdAt: c.created_at,
                     updatedAt: c.updated_at,
+                    // Campos del cotizador
+                    tipoCotizacion: c.tipo_cotizacion || '',
+                    tipoStand: c.tipo_stand || '',
+                    superficie: parseFloat(c.superficie) || 0,
+                    pdfUrl: c.pdf_url || '',
+                    fechaEmision: c.fecha_emision,
+                    subtotal: parseFloat(c.subtotal) || 0,
+                    iva: parseFloat(c.iva) || 0,
                 };
             });
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };

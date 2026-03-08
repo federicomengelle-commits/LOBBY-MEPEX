@@ -201,6 +201,7 @@ const Modules = {
     },
 
     render(moduleId) {
+        console.log('[Modules] render:', moduleId);
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
@@ -509,9 +510,17 @@ const Modules = {
         // Attach "Nuevo" button
         const btnNew = document.getElementById('btnNewRecord');
         if (btnNew) {
-            btnNew.addEventListener('click', () => {
-                this._openCreateModal(apiType);
-            });
+            if (apiType === 'cotizaciones') {
+                // Cotizaciones se crean desde el Cotizador externo
+                btnNew.title = 'Abrir Cotizador';
+                btnNew.addEventListener('click', () => {
+                    window.open('https://cotizador-mepex.vercel.app', '_blank', 'noopener');
+                });
+            } else {
+                btnNew.addEventListener('click', () => {
+                    this._openCreateModal(apiType);
+                });
+            }
         }
 
         // Attach views tab listeners
@@ -4446,13 +4455,14 @@ const Modules = {
         { id: 'numero',      header: 'Código',     defaultVisible: true },
         { id: 'cliente',     header: 'Cliente',    defaultVisible: true },
         { id: 'evento',      header: 'Evento',     defaultVisible: true },
-        { id: 'tipoEvento',  header: 'Tipo',       defaultVisible: true },
+        { id: 'tipoStand',   header: 'Tipo',       defaultVisible: true },
         { id: 'monto',       header: 'Monto',      defaultVisible: true },
         { id: 'estado',      header: 'Estado',     defaultVisible: true },
+        { id: 'pdf',         header: 'PDF',        defaultVisible: true },
         { id: 'diasEstado',  header: 'Días',       defaultVisible: true },
         { id: 'urgencia',    header: 'Urg.',       defaultVisible: true },
-        { id: 'vendedor',    header: 'Vendedor',   defaultVisible: false },
-        { id: 'fechaEvento', header: 'F. Evento',  defaultVisible: false },
+        { id: 'superficie',  header: 'm²',         defaultVisible: false },
+        { id: 'fechaEmision',header: 'Emisión',    defaultVisible: false },
         { id: 'creado',      header: 'Creado',     defaultVisible: false },
     ],
 
@@ -4487,17 +4497,18 @@ const Modules = {
     _getCotizacionSortValue(c, colId) {
         const now = new Date();
         switch (colId) {
-            case 'numero':      return (c.numero || '').toLowerCase();
-            case 'cliente':     return (c.clienteNombre || '').toLowerCase();
-            case 'evento':      return (c.nombreEvento || '').toLowerCase();
-            case 'tipoEvento':  return (c.tipoEvento || '').toLowerCase();
-            case 'monto':       return c.montoTotal || 0;
-            case 'estado':      return (c.estado || '').toLowerCase();
-            case 'diasEstado':  return c.updatedAt ? Math.floor((now - new Date(c.updatedAt)) / 86400000) : 0;
-            case 'urgencia':    return c.updatedAt ? Math.floor((now - new Date(c.updatedAt)) / 86400000) : 0;
-            case 'vendedor':    return (c.vendedorId || '').toLowerCase();
-            case 'fechaEvento': return c.fechaEvento ? new Date(c.fechaEvento + 'T00:00:00').getTime() : 0;
-            case 'creado':      return c.createdAt ? new Date(c.createdAt).getTime() : 0;
+            case 'numero':       return (c.numero || '').toLowerCase();
+            case 'cliente':      return (c.clienteNombre || '').toLowerCase();
+            case 'evento':       return (c.nombreEvento || '').toLowerCase();
+            case 'tipoStand':    return (c.tipoStand || c.tipoCotizacion || '').toLowerCase();
+            case 'monto':        return c.montoTotal || 0;
+            case 'estado':       return (c.estado || '').toLowerCase();
+            case 'pdf':          return c.pdfUrl ? 1 : 0;
+            case 'diasEstado':   return c.updatedAt ? Math.floor((now - new Date(c.updatedAt)) / 86400000) : 0;
+            case 'urgencia':     return c.updatedAt ? Math.floor((now - new Date(c.updatedAt)) / 86400000) : 0;
+            case 'superficie':   return c.superficie || 0;
+            case 'fechaEmision': return c.fechaEmision ? new Date(c.fechaEmision + 'T00:00:00').getTime() : 0;
+            case 'creado':       return c.createdAt ? new Date(c.createdAt).getTime() : 0;
             default: return null;
         }
     },
@@ -4548,20 +4559,24 @@ const Modules = {
                         return `<td class="td-primary">${c.clienteNombre || '—'}</td>`;
                     case 'evento':
                         return `<td>${c.nombreEvento || '—'}</td>`;
-                    case 'tipoEvento':
-                        return `<td class="td-capitalize">${c.tipoEvento || '—'}</td>`;
+                    case 'tipoStand':
+                        return `<td class="td-capitalize">${c.tipoStand || c.tipoCotizacion || '—'}</td>`;
                     case 'monto':
                         return `<td class="td-number cost-value">${API.formatCurrency(c.montoTotal)}</td>`;
                     case 'estado':
                         return `<td><span class="badge cot-estado-badge" style="background:${estadoObj.color}18; color:${estadoObj.color}; border:1px solid ${estadoObj.color}30;">${estadoObj.label}</span></td>`;
+                    case 'pdf':
+                        return c.pdfUrl
+                            ? `<td><a href="${c.pdfUrl}" target="_blank" rel="noopener" class="cot-pdf-link" title="Ver PDF">📄</a></td>`
+                            : `<td class="td-muted">—</td>`;
                     case 'diasEstado':
                         return `<td class="td-number td-dias">${daysSinceUpdate}d</td>`;
                     case 'urgencia':
                         return `<td><span class="cot-urgencia ${urgencia.cls}" title="${urgencia.label}">${urgencia.dot}</span></td>`;
-                    case 'vendedor':
-                        return `<td>${this._vendedorInitials(c.vendedorId)}</td>`;
-                    case 'fechaEvento':
-                        return `<td>${c.fechaEvento ? API.formatDate(c.fechaEvento) : '—'}</td>`;
+                    case 'superficie':
+                        return `<td class="td-number">${c.superficie ? c.superficie + ' m²' : '—'}</td>`;
+                    case 'fechaEmision':
+                        return `<td>${c.fechaEmision ? API.formatDate(c.fechaEmision) : '—'}</td>`;
                     case 'creado':
                         return `<td>${c.createdAt ? API.formatDate(c.createdAt.split('T')[0]) : '—'}</td>`;
                     default:
