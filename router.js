@@ -18,6 +18,7 @@ const Router = {
             'lobby': { render: () => Lobby.render(), requiresAuth: true },
             'calendario': { render: () => CalendarioOperativo.render(), requiresAuth: true },
             'perfil': { render: () => Settings.renderProfile(), requiresAuth: true },
+            'admin-panel': { render: () => AdminPanel.render(), requiresAuth: true, adminOnly: true },
             'admin-usuarios': { render: () => Settings.renderAdminUsers(), requiresAuth: true, adminOnly: true },
             'notificaciones': { render: () => Settings.renderNotifications(), requiresAuth: true },
             'ventas': { render: () => Modules.render('ventas'), requiresAuth: true, module: 'ventas' },

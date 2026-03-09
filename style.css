@@ -6212,3 +6212,474 @@ body {
     border-radius: 2px;
     border: 1px solid rgba(255,255,255,0.1);
 }
+
+
+/* =============================================
+   ADMIN PANEL — Panel de Control
+   =============================================
+   Dark theme MEPEX. Compacto: 12px cuerpo, 11px datos.
+   Fondo #0a0a0f, elevated #1a1a2e.
+   ============================================= */
+
+.admpanel {
+    padding: 20px 24px 40px;
+    max-width: 1400px;
+    color: #d0d0d0;
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+}
+
+/* ─── Header ─── */
+.admpanel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.admpanel-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.admpanel-title {
+    font-family: 'Cabin', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #e8e8e8;
+    text-transform: uppercase;
+    margin: 0;
+}
+.admpanel-subtitle {
+    font-size: 11px;
+    color: #666;
+    margin: 2px 0 0;
+    text-transform: capitalize;
+}
+
+/* ─── Métricas rápidas (barra superior) ─── */
+.admpanel-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.admpanel-metric-card {
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+}
+.admpanel-metric-card--alert {
+    border-color: rgba(255, 71, 87, 0.2);
+    background: linear-gradient(135deg, #1a1a2e 0%, rgba(255,71,87,0.05) 100%);
+}
+.admpanel-metric-icon {
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+.admpanel-metric-data {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.admpanel-metric-value {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e8e8e8;
+    line-height: 1.1;
+    font-family: 'Space Mono', 'Cabin', monospace;
+}
+.admpanel-metric-value--sm {
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Cabin', sans-serif;
+}
+.admpanel-metric-label {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #666;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+.admpanel-metric-dot {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+.admpanel-metric-dot.online {
+    background: #00CC88;
+    box-shadow: 0 0 6px rgba(0, 204, 136, 0.5);
+    animation: admpanel-pulse 2s ease-in-out infinite;
+}
+@keyframes admpanel-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* ─── Secciones ─── */
+.admpanel-section {
+    background: #0f0f1a;
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+.admpanel-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 12px;
+}
+.admpanel-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #c0c0c0;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+/* ─── Search box (usuarios) ─── */
+.admpanel-search-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: #666;
+}
+.admpanel-search-box:focus-within {
+    border-color: rgba(0, 169, 193, 0.3);
+}
+.admpanel-search-input {
+    background: none;
+    border: none;
+    outline: none;
+    color: #d0d0d0;
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    width: 160px;
+}
+.admpanel-search-input::placeholder {
+    color: #555;
+}
+
+/* ─── Tabla de usuarios ─── */
+.admpanel-table-wrap {
+    overflow-x: auto;
+}
+.admpanel-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+.admpanel-table thead th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    color: #555;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s;
+}
+.admpanel-table thead th:hover {
+    color: #00A9C1;
+}
+.admpanel-sort-icon {
+    opacity: 0.3;
+    margin-left: 3px;
+    vertical-align: middle;
+}
+.admpanel-sort-icon.active {
+    opacity: 1;
+    color: #00A9C1;
+}
+.admpanel-user-row {
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 0.15s;
+}
+.admpanel-user-row:hover {
+    background: rgba(255,255,255,0.02);
+}
+.admpanel-user-row td {
+    padding: 7px 10px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.admpanel-user-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.admpanel-user-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+}
+.admpanel-user-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e0e0e0;
+}
+.admpanel-role-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+.admpanel-cell-muted {
+    color: #777;
+    font-size: 11px;
+}
+.admpanel-cell-mono {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: #aaa;
+    letter-spacing: 0.5px;
+}
+
+/* Session badge */
+.admpanel-session-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'Space Mono', monospace;
+}
+.admpanel-session-badge.online {
+    background: rgba(0, 204, 136, 0.1);
+    color: #00CC88;
+}
+.admpanel-session-badge.offline {
+    background: rgba(122, 133, 153, 0.1);
+    color: #555;
+}
+.admpanel-session-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+.admpanel-session-badge.online .admpanel-session-dot {
+    background: #00CC88;
+    box-shadow: 0 0 4px rgba(0, 204, 136, 0.5);
+}
+.admpanel-session-badge.offline .admpanel-session-dot {
+    background: #444;
+}
+
+/* ─── Log filters ─── */
+.admpanel-log-filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.admpanel-filter-select,
+.admpanel-filter-date {
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #aaa;
+    font-family: 'Cabin', sans-serif;
+    font-size: 11px;
+    outline: none;
+    cursor: pointer;
+    min-width: 0;
+}
+.admpanel-filter-select:focus,
+.admpanel-filter-date:focus {
+    border-color: rgba(0, 169, 193, 0.3);
+}
+.admpanel-filter-select option {
+    background: #1a1a2e;
+    color: #ccc;
+}
+.admpanel-filter-date {
+    width: 130px;
+}
+.admpanel-filter-date::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+}
+
+/* ─── Log feed ─── */
+.admpanel-log-feed {
+    display: flex;
+    flex-direction: column;
+}
+.admpanel-log-date-sep {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #555;
+    text-transform: uppercase;
+    padding: 12px 0 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    margin-bottom: 2px;
+}
+.admpanel-log-date-sep:first-child {
+    padding-top: 0;
+}
+.admpanel-log-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.025);
+    transition: background 0.15s;
+}
+.admpanel-log-entry:hover {
+    background: rgba(255,255,255,0.015);
+}
+.admpanel-log-entry--error {
+    background: rgba(255, 71, 87, 0.03);
+    border-left: 2px solid rgba(255, 71, 87, 0.3);
+}
+.admpanel-log-time {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: #555;
+    flex-shrink: 0;
+    width: 40px;
+    padding-top: 2px;
+}
+.admpanel-log-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+    letter-spacing: 0.3px;
+}
+.admpanel-log-body {
+    flex: 1;
+    min-width: 0;
+}
+.admpanel-log-text {
+    font-size: 12px;
+    color: #c0c0c0;
+    line-height: 1.4;
+    display: block;
+}
+.admpanel-log-text strong {
+    color: #e0e0e0;
+    font-weight: 600;
+}
+.admpanel-log-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 3px;
+}
+.admpanel-log-module {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+.admpanel-log-device {
+    font-size: 10px;
+    color: #555;
+}
+.admpanel-log-action-icon {
+    flex-shrink: 0;
+    padding-top: 3px;
+    opacity: 0.7;
+}
+.admpanel-log-empty {
+    text-align: center;
+    padding: 30px;
+    color: #555;
+    font-size: 12px;
+}
+
+/* ─── Log loader / end ─── */
+.admpanel-log-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    color: #555;
+    font-size: 11px;
+}
+.spinner-sm {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.1);
+    border-top-color: #00A9C1;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.admpanel-log-end {
+    text-align: center;
+    padding: 14px;
+    color: #444;
+    font-size: 11px;
+    border-top: 1px solid rgba(255,255,255,0.03);
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 1024px) {
+    .admpanel-metrics {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 768px) {
+    .admpanel {
+        padding: 14px 12px 30px;
+    }
+    .admpanel-metrics {
+        grid-template-columns: 1fr;
+    }
+    .admpanel-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .admpanel-log-filters {
+        flex-direction: column;
+    }
+    .admpanel-filter-select,
+    .admpanel-filter-date {
+        width: 100%;
+    }
+}
