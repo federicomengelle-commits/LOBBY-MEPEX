@@ -5431,3 +5431,784 @@ body {
 .td-muted {
     color: #444;
 }
+
+/* =============================================
+   CALENDARIO OPERATIVO
+   ============================================= */
+
+.co-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 56px);
+    background: #0a0a0f;
+    overflow: hidden;
+}
+
+/* ─── Toolbar ─── */
+.co-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: #111118;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    gap: 10px;
+    flex-shrink: 0;
+    z-index: 30;
+    flex-wrap: wrap;
+}
+.co-toolbar-left,
+.co-toolbar-center,
+.co-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.co-title {
+    font-family: 'Cabin', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    color: #E8E8E8;
+    letter-spacing: 0.02em;
+    margin: 0;
+    white-space: nowrap;
+}
+.co-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.co-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border-color: rgba(255,255,255,0.15);
+}
+.co-btn-today {
+    color: #00BCD4;
+    border-color: rgba(0,188,212,0.25);
+}
+.co-btn-today:hover {
+    background: rgba(0,188,212,0.1);
+    border-color: rgba(0,188,212,0.4);
+}
+.co-select {
+    padding: 6px 28px 6px 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+}
+.co-select:hover {
+    border-color: rgba(255,255,255,0.15);
+}
+.co-zoom {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.co-zoom-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: #888;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.co-zoom-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: #ccc;
+}
+.co-zoom-label {
+    font-family: 'Cabin', monospace;
+    font-size: 11px;
+    color: #666;
+    min-width: 32px;
+    text-align: center;
+}
+
+/* ─── Viewport (scroll container) ─── */
+.co-viewport {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    position: relative;
+}
+.co-viewport::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.co-viewport::-webkit-scrollbar-track {
+    background: transparent;
+}
+.co-viewport::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+}
+
+.co-sentinel {
+    height: 1px;
+    width: 100%;
+}
+
+/* ─── Timeline container ─── */
+.co-timeline {
+    display: flex;
+    position: relative;
+    min-width: 100%;
+}
+
+/* ─── Date column (left, sticky) ─── */
+.co-date-col {
+    position: sticky;
+    left: 0;
+    z-index: 15;
+    width: 88px;
+    min-width: 88px;
+    background: #0a0a0f;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    flex-shrink: 0;
+}
+.co-date-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    position: relative;
+    box-sizing: border-box;
+}
+.co-date-row.co-weekend {
+    background: rgba(255,255,255,0.015);
+}
+.co-date-row.co-today-row {
+    background: rgba(0,188,212,0.06);
+}
+.co-date-month {
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    padding: 2px 10px;
+    font-family: 'Cabin', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #00BCD4;
+    background: rgba(0,188,212,0.08);
+    border-bottom: 1px solid rgba(0,188,212,0.15);
+    z-index: 2;
+}
+.co-date-num {
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: #bbb;
+    min-width: 20px;
+}
+.co-date-num.co-today-num {
+    color: #00BCD4;
+    font-weight: 700;
+}
+.co-date-day {
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    color: #555;
+    letter-spacing: 0.03em;
+}
+
+/* ─── Lanes area ─── */
+.co-lanes-area {
+    flex: 1;
+    position: relative;
+    min-width: 200px;
+}
+
+.co-lanes-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+.co-weekend-bg {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: rgba(255,255,255,0.015);
+}
+.co-week-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255,255,255,0.04);
+}
+
+.co-lanes-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    gap: 6px;
+    padding: 0 8px;
+    z-index: 5;
+}
+
+.co-lane {
+    flex: 1;
+    min-width: 160px;
+    max-width: 280px;
+    position: relative;
+}
+
+/* ─── Event blocks ─── */
+.co-event-block {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: transform 0.15s, box-shadow 0.15s;
+    z-index: 6;
+}
+.co-event-block:hover {
+    transform: scale(1.015);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    z-index: 10;
+    border-color: rgba(255,255,255,0.15);
+}
+
+/* ─── Phase textures ─── */
+.co-phase {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4px 10px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Armado: diagonal stripes */
+.co-phase-armado {
+    background: repeating-linear-gradient(
+        -45deg,
+        var(--event-color),
+        var(--event-color) 4px,
+        rgba(0,0,0,0.25) 4px,
+        rgba(0,0,0,0.25) 8px
+    );
+}
+
+/* Funcionamiento: solid */
+.co-phase-funcionamiento {
+    background: var(--event-color);
+}
+
+/* Desarme: dotted */
+.co-phase-desarme {
+    background-color: var(--event-color);
+    background-image: radial-gradient(
+        circle,
+        rgba(0,0,0,0.35) 1.5px,
+        transparent 1.5px
+    );
+    background-size: 8px 8px;
+}
+
+/* Phase labels */
+.co-phase-label {
+    font-family: 'Cabin', sans-serif;
+    font-size: 9px;
+    font-weight: 600;
+    color: rgba(0,0,0,0.55);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Event info (in funcionamiento phase) */
+.co-event-name {
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(0,0,0,0.8);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.co-event-venue {
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    color: rgba(0,0,0,0.55);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.co-event-count {
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(0,0,0,0.6);
+}
+
+/* ─── Today line ─── */
+.co-today-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #00BCD4;
+    box-shadow: 0 0 10px rgba(0,188,212,0.5), 0 0 20px rgba(0,188,212,0.2);
+    z-index: 20;
+    pointer-events: none;
+}
+.co-today-label {
+    position: absolute;
+    right: 12px;
+    top: -9px;
+    font-family: 'Cabin', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #00BCD4;
+    background: #0a0a0f;
+    padding: 0 6px;
+    border-radius: 2px;
+}
+
+/* ─── Conflict badge ─── */
+.co-conflict-badge {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    font-size: 13px;
+    z-index: 8;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+    line-height: 1;
+}
+.co-has-conflict {
+    border-color: rgba(255,100,50,0.4);
+}
+
+/* ─── Filter selects ─── */
+.co-filter {
+    max-width: 180px;
+}
+
+/* ─── Side Panel ─── */
+.co-side-panel {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    width: 420px;
+    height: calc(100vh - 56px);
+    background: #111118;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    z-index: 100;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.co-side-panel.open {
+    transform: translateX(0);
+}
+.co-side-panel::-webkit-scrollbar {
+    width: 4px;
+}
+.co-side-panel::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+}
+
+/* SP Header */
+.co-sp-header {
+    position: relative;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.co-sp-color-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--event-color);
+}
+.co-sp-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: #888;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+.co-sp-close:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+.co-sp-name {
+    font-family: 'Cabin', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--event-color);
+    margin: 8px 0 4px;
+}
+.co-sp-venue {
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 10px;
+}
+.co-sp-dates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 0;
+    font-family: 'Cabin', sans-serif;
+    font-size: 11px;
+    color: #aaa;
+}
+.co-sp-dates-sep {
+    margin: 0 6px;
+    color: #444;
+}
+
+/* SP Sections */
+.co-sp-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.co-sp-section-title {
+    font-family: 'Cabin', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #00BCD4;
+    margin: 0 0 12px;
+}
+
+/* SP Table */
+.co-sp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+}
+.co-sp-table th {
+    text-align: left;
+    color: #666;
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 4px 8px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.co-sp-table td {
+    padding: 6px 8px;
+    color: #ccc;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+.co-sp-status {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+.co-sp-status-ok {
+    background: rgba(76,175,80,0.15);
+    color: #66BB6A;
+}
+.co-sp-status-wip {
+    background: rgba(255,152,0,0.15);
+    color: #FFB74D;
+}
+
+/* SP Logistics */
+.co-sp-logistics {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.co-sp-log-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.co-sp-log-group label {
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #666;
+}
+.co-sp-log-group span {
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    color: #ccc;
+}
+.co-sp-log-row {
+    display: flex;
+    gap: 16px;
+}
+.co-sp-log-row > .co-sp-log-group {
+    flex: 1;
+}
+.co-sp-team-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.co-sp-team-name {
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    color: #ccc;
+}
+.co-sp-team-role {
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    color: #666;
+    background: rgba(255,255,255,0.04);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+.co-sp-notes {
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    color: #999;
+    background: rgba(255,255,255,0.03);
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.04);
+    line-height: 1.4;
+}
+.co-sp-empty {
+    font-size: 12px;
+    color: #555;
+    font-style: italic;
+}
+
+/* SP Documents */
+.co-sp-docs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.co-sp-doc-link {
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    color: #00BCD4;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: rgba(0,188,212,0.06);
+    border: 1px solid rgba(0,188,212,0.1);
+    transition: all 0.15s;
+}
+.co-sp-doc-link:hover {
+    background: rgba(0,188,212,0.12);
+    border-color: rgba(0,188,212,0.2);
+}
+.co-sp-insurance {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.co-sp-insurance label {
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #666;
+}
+.co-sp-insurance-badge {
+    font-family: 'Cabin', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    text-transform: capitalize;
+}
+.co-sp-insurance-ok {
+    background: rgba(76,175,80,0.15);
+    color: #66BB6A;
+}
+.co-sp-insurance-warn {
+    background: rgba(255,152,0,0.15);
+    color: #FFB74D;
+}
+.co-sp-insurance-bad {
+    background: rgba(244,67,54,0.15);
+    color: #EF5350;
+}
+.co-sp-accreds {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.co-sp-accreds label {
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #666;
+    margin-bottom: 4px;
+}
+.co-sp-accred {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    color: #aaa;
+}
+.co-sp-accred-icon {
+    font-size: 11px;
+    width: 16px;
+    text-align: center;
+}
+
+/* SP Conflicts */
+.co-sp-conflicts {
+    background: rgba(244,67,54,0.05);
+    border-bottom-color: rgba(244,67,54,0.15);
+}
+.co-sp-conflict-title {
+    color: #EF5350 !important;
+}
+.co-sp-conflict-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(244,67,54,0.08);
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+}
+.co-sp-conflict-item strong {
+    color: #EF5350;
+    font-size: 12px;
+}
+.co-sp-conflict-item span {
+    color: #999;
+    font-size: 11px;
+}
+
+/* ─── Tooltip ─── */
+.co-tooltip {
+    display: none;
+    position: fixed;
+    z-index: 50;
+    pointer-events: none;
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 10px 14px;
+    max-width: 280px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+.co-tt-name {
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+.co-tt-venue {
+    font-family: 'Cabin', sans-serif;
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 6px;
+}
+.co-tt-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-family: 'Cabin', sans-serif;
+    font-size: 10px;
+    color: #aaa;
+    margin-bottom: 6px;
+}
+.co-tt-count {
+    font-family: 'Cabin', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: #00BCD4;
+}
+
+/* ─── Legend ─── */
+.co-legend {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    gap: 12px;
+    background: rgba(17,17,24,0.9);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 8px 14px;
+    z-index: 25;
+    backdrop-filter: blur(8px);
+}
+.co-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Cabin', sans-serif;
+    font-size: 11px;
+    color: #888;
+}
+.co-legend-swatch {
+    width: 20px;
+    height: 14px;
+    border-radius: 2px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
