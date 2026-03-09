@@ -258,7 +258,7 @@ const Modules = {
                     </div>
                 </div>
                 <div class="module-section-tabs">
-                    ${mod.sections.map(sec => `
+                    ${mod.sections.filter(sec => !sec.adminOnly || (Auth.getUser()?.role === 'admin')).map(sec => `
                         <button class="section-tab ${sec.id === this.currentSection ? 'active' : ''}" data-section="${sec.id}">
                             <span class="section-tab-icon">${sec.icon}</span>
                             <span class="section-tab-text">${sec.name}</span>
@@ -303,6 +303,8 @@ const Modules = {
             if (mod.id === 'inventario' && sectionId === 'simulador') return this._renderSimuladorSection();
             if (mod.id === 'proyectos' && sectionId === 'por_evento') return this._renderProyectosPorEventoSection();
             if (mod.id === 'ventas' && sectionId === 'pipeline') return this._renderPipelineSection();
+            if (mod.id === 'ventas' && sectionId === 'dashboard') return this._renderDashboardSection();
+            if (mod.id === 'ventas' && sectionId === 'marketing') return this._renderMarketingSection();
         }
 
         // Check if this is an API-powered section
@@ -401,6 +403,8 @@ const Modules = {
         if (moduleId === 'inventario' && sectionId === 'simulador') return true;
         if (moduleId === 'proyectos' && sectionId === 'por_evento') return true;
         if (moduleId === 'ventas' && sectionId === 'pipeline') return true;
+        if (moduleId === 'ventas' && sectionId === 'dashboard') return true;
+        if (moduleId === 'ventas' && sectionId === 'marketing') return true;
         return false;
     },
 
@@ -411,6 +415,8 @@ const Modules = {
             if (mod.id === 'inventario' && sectionId === 'simulador') { this._initSimulador(); return; }
             if (mod.id === 'proyectos' && sectionId === 'por_evento') { this._initProyectosPorEvento(); return; }
             if (mod.id === 'ventas' && sectionId === 'pipeline') { this._initPipeline(); return; }
+            if (mod.id === 'ventas' && sectionId === 'dashboard') { this._initDashboard(); return; }
+            if (mod.id === 'ventas' && sectionId === 'marketing') { this._initMarketing(); return; }
             return;
         }
 
@@ -1669,7 +1675,104 @@ const Modules = {
                 .ficha-timeline-add-row { flex-wrap: wrap; }
                 .ficha-tl-select { flex: 1; min-width: 100px; }
                 .cot-kpi-bar { grid-template-columns: repeat(2, 1fr); }
+                .dash-kpi-row { grid-template-columns: repeat(2, 1fr) !important; }
+                .dash-charts-row { flex-direction: column !important; }
+                .dash-panel-40, .dash-panel-50, .dash-panel-60 { flex: 1 1 100% !important; }
             }
+
+            /* ═══ DASHBOARD V3 ═══ */
+            .dash-root { display: flex; flex-direction: column; gap: 16px; padding: 0; }
+            .dash-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+            .dash-kpi-card {
+                display: flex; flex-direction: column; align-items: center; padding: 16px 8px;
+                background: #111; border-radius: 10px; border: 1px solid #2a2a2a;
+            }
+            .dash-kpi-value {
+                font-size: 1.35rem; font-weight: 700; line-height: 1;
+                font-family: var(--font-mono, 'Space Mono', monospace);
+            }
+            .dash-kpi-label {
+                font-size: 0.6rem; color: #888; text-transform: uppercase;
+                letter-spacing: 0.05em; margin-top: 5px;
+            }
+            .dash-period-bar { display: flex; gap: 6px; }
+            .dash-period-btn {
+                padding: 5px 14px; border-radius: 20px; font-size: 12px; cursor: pointer;
+                border: 1px solid #2a2a2a; background: transparent; color: #888; transition: all 0.2s;
+            }
+            .dash-period-btn:hover { border-color: #555; color: #ccc; }
+            .dash-period-btn.active { background: #00ACC9; border-color: #00ACC9; color: #000; font-weight: 600; }
+            .dash-charts-row { display: flex; gap: 16px; }
+            .dash-panel-40 { flex: 0 0 40%; }
+            .dash-panel-50 { flex: 0 0 calc(50% - 8px); }
+            .dash-panel-60 { flex: 1 1 60%; }
+            .dash-panel-full { width: 100%; }
+            .dash-chart-panel {
+                background: #111; border: 1px solid #2a2a2a; border-radius: 10px;
+                padding: 16px; overflow: hidden;
+            }
+            .dash-chart-title {
+                font-size: 0.72rem; color: #888; text-transform: uppercase;
+                letter-spacing: 0.05em; margin-bottom: 12px; font-weight: 600;
+            }
+            .dash-chart-body { position: relative; }
+            .dash-chart-body canvas { display: block; width: 100%; }
+            .dash-top-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            .dash-top-table th {
+                text-align: left; padding: 6px 10px; color: #888; font-size: 10px;
+                text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #2a2a2a;
+            }
+            .dash-top-table td { padding: 8px 10px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+            .dash-top-table tr:hover td { background: rgba(0,172,201,0.04); }
+            @media (max-width: 900px) {
+                .dash-kpi-row { grid-template-columns: repeat(3, 1fr); }
+            }
+
+            /* ═══ MARKETING V3 ═══ */
+            .mkt-root { display: flex; flex-direction: column; gap: 16px; }
+            .mkt-header { display: flex; align-items: center; justify-content: space-between; }
+            .mkt-template-list { display: flex; flex-direction: column; gap: 8px; }
+            .mkt-template-card {
+                display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;
+                background: #111; border: 1px solid #2a2a2a; border-radius: 8px;
+                transition: border-color 0.15s;
+            }
+            .mkt-template-card:hover { border-color: #555; }
+            .mkt-template-card-name { font-size: 0.85rem; font-weight: 600; color: #e8e8e8; }
+            .mkt-template-card-subject { font-size: 0.72rem; color: #888; margin-top: 2px; }
+            .mkt-template-card-actions { display: flex; gap: 4px; }
+            .mkt-editor {
+                background: #111; border: 1px solid #2a2a2a; border-radius: 10px; padding: 20px;
+            }
+            .mkt-editor-title { font-size: 0.9rem; color: #e8e8e8; margin-bottom: 16px; }
+            .mkt-form-group { margin-bottom: 14px; }
+            .mkt-label { display: block; font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+            .mkt-input, .mkt-textarea, .mkt-select {
+                width: 100%; padding: 8px 12px; font-size: 13px; background: #0d0d0d;
+                border: 1px solid #2a2a2a; border-radius: 6px; color: #e8e8e8;
+                font-family: inherit;
+            }
+            .mkt-input:focus, .mkt-textarea:focus, .mkt-select:focus { border-color: #00ACC9; outline: none; }
+            .mkt-textarea { resize: vertical; min-height: 120px; }
+            .mkt-var-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+            .mkt-var-chip {
+                padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;
+                background: rgba(0,172,201,0.1); border: 1px solid rgba(0,172,201,0.2); color: #00ACC9;
+                transition: background 0.15s;
+            }
+            .mkt-var-chip:hover { background: rgba(0,172,201,0.2); }
+            .mkt-editor-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+            .mkt-divider { border: none; border-top: 1px solid #2a2a2a; margin: 8px 0; }
+            .mkt-bulk { display: flex; flex-direction: column; gap: 12px; }
+            .mkt-bulk-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+            .mkt-bulk-results { display: flex; flex-direction: column; gap: 8px; }
+            .mkt-bulk-count { font-size: 0.75rem; color: #888; padding: 4px 0; }
+            .mkt-bulk-preview-card {
+                padding: 12px 16px; background: #111; border: 1px solid #2a2a2a; border-radius: 8px;
+            }
+            .mkt-bulk-preview-to { font-size: 0.8rem; font-weight: 600; color: #00ACC9; margin-bottom: 4px; }
+            .mkt-bulk-preview-subject { font-size: 0.75rem; color: #e8e8e8; margin-bottom: 6px; }
+            .mkt-bulk-preview-body { font-size: 0.72rem; color: #888; line-height: 1.4; }
         `;
         document.head.appendChild(style);
     },
@@ -5516,6 +5619,676 @@ const Modules = {
             body: body,
             size: 'lg',
             footer: '<button class="btn btn-ghost" data-modal-close>Cerrar</button>',
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  V3 — DASHBOARD ADMIN (Charts + Analytics)
+    // ═══════════════════════════════════════════
+
+    _dashPeriod: 'all',
+    _dashData: null,
+
+    _renderDashboardSection() {
+        return `
+            <div class="section-content dash-root">
+                <div class="dash-kpi-row" id="dashKpis"></div>
+                <div class="dash-period-bar">
+                    <button class="dash-period-btn ${this._dashPeriod === '30' ? 'active' : ''}" data-period="30">30 días</button>
+                    <button class="dash-period-btn ${this._dashPeriod === '90' ? 'active' : ''}" data-period="90">90 días</button>
+                    <button class="dash-period-btn ${this._dashPeriod === 'ytd' ? 'active' : ''}" data-period="ytd">YTD</button>
+                    <button class="dash-period-btn ${this._dashPeriod === 'all' ? 'active' : ''}" data-period="all">Todo</button>
+                </div>
+                <div class="dash-charts-row">
+                    <div class="dash-chart-panel dash-panel-40">
+                        <div class="dash-chart-title">Embudo de conversión</div>
+                        <div id="dashFunnel" class="dash-chart-body"></div>
+                    </div>
+                    <div class="dash-chart-panel dash-panel-60">
+                        <div class="dash-chart-title">Revenue mensual</div>
+                        <div class="dash-chart-body"><canvas id="dashRevenue"></canvas></div>
+                    </div>
+                </div>
+                <div class="dash-chart-panel dash-panel-full">
+                    <div class="dash-chart-title">Cotizaciones por mes</div>
+                    <div class="dash-chart-body"><canvas id="dashMonthly"></canvas></div>
+                </div>
+                <div class="dash-charts-row">
+                    <div class="dash-chart-panel dash-panel-50">
+                        <div class="dash-chart-title">Por vendedor</div>
+                        <div class="dash-chart-body"><canvas id="dashVendedor"></canvas></div>
+                    </div>
+                    <div class="dash-chart-panel dash-panel-50">
+                        <div class="dash-chart-title">Por tipo de evento</div>
+                        <div class="dash-chart-body"><canvas id="dashTipoEvento"></canvas></div>
+                    </div>
+                </div>
+                <div class="dash-chart-panel dash-panel-full">
+                    <div class="dash-chart-title">Top 10 clientes por revenue</div>
+                    <div id="dashTopClientes" class="dash-chart-body"></div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _initDashboard() {
+        try {
+            const data = await API.getCotizaciones();
+            if (!data || !data.length) {
+                const el = document.getElementById('dashKpis');
+                if (el) el.innerHTML = '<p class="api-empty-inline">Sin datos de cotizaciones</p>';
+                return;
+            }
+            this._dashData = data;
+            this._renderDashboardAll();
+            this._attachDashboardListeners();
+        } catch (e) {
+            console.warn('[Dashboard] Init error:', e);
+        }
+    },
+
+    _filterByPeriod(data) {
+        if (this._dashPeriod === 'all') return data;
+        const now = new Date();
+        let since;
+        if (this._dashPeriod === '30') since = new Date(now.getTime() - 30 * 86400000);
+        else if (this._dashPeriod === '90') since = new Date(now.getTime() - 90 * 86400000);
+        else if (this._dashPeriod === 'ytd') since = new Date(now.getFullYear(), 0, 1);
+        else return data;
+        return data.filter(c => new Date(c.createdAt) >= since);
+    },
+
+    _renderDashboardAll() {
+        const data = this._filterByPeriod(this._dashData || []);
+        this._renderDashKpis(data);
+        this._renderDashFunnel(data);
+        this._drawDashRevenue(data);
+        this._drawDashMonthly(data);
+        this._drawDashVendedor(data);
+        this._drawDashTipoEvento(data);
+        this._renderDashTopClientes(data);
+    },
+
+    _attachDashboardListeners() {
+        document.querySelectorAll('.dash-period-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._dashPeriod = btn.dataset.period;
+                document.querySelectorAll('.dash-period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === this._dashPeriod));
+                this._renderDashboardAll();
+            });
+        });
+    },
+
+    // ─── Dashboard KPIs ───
+    _renderDashKpis(data) {
+        const el = document.getElementById('dashKpis');
+        if (!el) return;
+        const activas = data.filter(c => !c.estado.startsWith('cerrada_'));
+        const ganadas = data.filter(c => c.estado === 'cerrada_ganada');
+        const cerradas = data.filter(c => c.estado.startsWith('cerrada_'));
+        const totalPipeline = activas.reduce((s, c) => s + (c.montoTotal || 0), 0);
+        const totalGanadas = ganadas.reduce((s, c) => s + (c.montoTotal || 0), 0);
+        const ticketProm = ganadas.length ? Math.round(totalGanadas / ganadas.length) : 0;
+        const now = new Date();
+        const mesActual = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        const facturaMes = ganadas.filter(c => c.updatedAt && c.updatedAt.substring(0, 7) === mesActual).reduce((s, c) => s + (c.montoTotal || 0), 0);
+        const convRate = cerradas.length ? Math.round((ganadas.length / cerradas.length) * 100) : 0;
+        let avgCierre = 0;
+        if (ganadas.length) {
+            avgCierre = Math.round(ganadas.reduce((s, c) => s + Math.max(1, Math.round((new Date(c.updatedAt) - new Date(c.createdAt)) / 86400000)), 0) / ganadas.length);
+        }
+        const kpis = [
+            { value: API.formatCurrency(totalPipeline), label: 'Total pipeline', color: '#00d4aa' },
+            { value: API.formatCurrency(totalGanadas), label: 'Cerradas ganadas', color: '#10B981' },
+            { value: API.formatCurrency(ticketProm), label: 'Ticket promedio', color: '#3B82F6' },
+            { value: API.formatCurrency(facturaMes), label: 'Facturación mes', color: '#F59E0B' },
+            { value: convRate + '%', label: 'Tasa conversión', color: '#8B5CF6' },
+            { value: avgCierre + 'd', label: 'Prom. cierre', color: '#00ACC9' },
+        ];
+        el.innerHTML = kpis.map(k => `
+            <div class="dash-kpi-card">
+                <span class="dash-kpi-value" style="color:${k.color}">${k.value}</span>
+                <span class="dash-kpi-label">${k.label}</span>
+            </div>
+        `).join('');
+    },
+
+    // ─── Funnel SVG ───
+    _renderDashFunnel(data) {
+        const el = document.getElementById('dashFunnel');
+        if (!el) return;
+        const stages = [
+            { id: 'borrador', label: 'Borrador', color: '#666' },
+            { id: 'enviada', label: 'Enviada', color: '#3B82F6' },
+            { id: 'en_negociacion', label: 'En Negociación', color: '#F59E0B' },
+            { id: 'aprobada', label: 'Aprobada', color: '#10B981' },
+            { id: 'cerrada_ganada', label: 'Cerrada Ganada', color: '#00d4aa' },
+        ];
+        // Count cumulative: each stage includes all that passed through it
+        const counts = stages.map(s => {
+            const idx = stages.findIndex(st => st.id === s.id);
+            return data.filter(c => {
+                const cIdx = stages.findIndex(st => st.id === c.estado);
+                return cIdx >= idx || (c.estado === 'cerrada_perdida' && idx <= 2);
+            }).length;
+        });
+        // Fallback: simple count by current estado
+        const simpleCounts = stages.map(s => data.filter(c => c.estado === s.id).length);
+        const total = data.length || 1;
+        const W = 320, H = stages.length * 56;
+        const rows = stages.map((s, i) => {
+            const cnt = simpleCounts[i];
+            const pct = Math.round((cnt / total) * 100);
+            const wRatio = Math.max(0.25, 1 - (i * 0.15));
+            const nextRatio = Math.max(0.25, 1 - ((i + 1) * 0.15));
+            const y = i * 56;
+            const x1 = (W - W * wRatio) / 2;
+            const x2 = (W + W * wRatio) / 2;
+            const x3 = (W + W * nextRatio) / 2;
+            const x4 = (W - W * nextRatio) / 2;
+            const convPct = i < stages.length - 1 ? (simpleCounts[i + 1] && cnt ? Math.round((simpleCounts[i + 1] / cnt) * 100) + '%' : '—') : '';
+            return `<polygon points="${x1},${y} ${x2},${y} ${x3},${y + 50} ${x4},${y + 50}" fill="${s.color}" opacity="0.85"/>
+                <text x="${W / 2}" y="${y + 22}" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">${s.label}</text>
+                <text x="${W / 2}" y="${y + 38}" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="11">${cnt} (${pct}%)</text>
+                ${convPct ? `<text x="${W - 8}" y="${y + 48}" text-anchor="end" fill="#888" font-size="9">→${convPct}</text>` : ''}`;
+        }).join('');
+        el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">${rows}</svg>`;
+    },
+
+    // ─── Chart Engine ───
+    _getCanvasCtx(id, h) {
+        const canvas = document.getElementById(id);
+        if (!canvas) return null;
+        const parent = canvas.parentElement;
+        const w = parent.clientWidth || 500;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = w * dpr;
+        canvas.height = (h || 220) * dpr;
+        canvas.style.width = w + 'px';
+        canvas.style.height = (h || 220) + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        ctx.W = w;
+        ctx.H = h || 220;
+        return ctx;
+    },
+
+    _drawLineChart(ctx, series, labels) {
+        if (!ctx || !labels.length) return;
+        const W = ctx.W, H = ctx.H;
+        const pad = { t: 20, r: 16, b: 40, l: 60 };
+        const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+        // Grid
+        ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.t + (cH / 4) * i;
+            ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+        }
+        // Find max across all series
+        let maxVal = 0;
+        series.forEach(s => s.data.forEach(v => { if (v > maxVal) maxVal = v; }));
+        if (maxVal === 0) maxVal = 1;
+        // Labels
+        ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+        for (let i = 0; i <= 4; i++) {
+            const val = Math.round(maxVal - (maxVal / 4) * i);
+            ctx.fillText(this._shortNum(val), pad.l - 6, pad.t + (cH / 4) * i + 4);
+        }
+        ctx.textAlign = 'center';
+        const step = cW / Math.max(1, labels.length - 1);
+        labels.forEach((l, i) => {
+            if (labels.length > 12 && i % 2 !== 0) return;
+            ctx.fillText(l, pad.l + step * i, H - pad.b + 16);
+        });
+        // Lines
+        series.forEach(s => {
+            ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath();
+            s.data.forEach((v, i) => {
+                const x = pad.l + step * i;
+                const y = pad.t + cH - (v / maxVal) * cH;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            // Dots
+            ctx.fillStyle = s.color;
+            s.data.forEach((v, i) => {
+                const x = pad.l + step * i;
+                const y = pad.t + cH - (v / maxVal) * cH;
+                ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+            });
+        });
+    },
+
+    _drawBarChart(ctx, groups, labels, colors, horizontal) {
+        if (!ctx || !labels.length) return;
+        const W = ctx.W, H = ctx.H;
+        if (horizontal) {
+            const pad = { t: 10, r: 16, b: 20, l: 80 };
+            const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+            let maxVal = 0;
+            groups.forEach(g => g.forEach(v => { if (v > maxVal) maxVal = v; }));
+            if (maxVal === 0) maxVal = 1;
+            const barH = Math.min(20, (cH / labels.length) * 0.7);
+            const gap = (cH / labels.length);
+            ctx.font = '10px sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#888';
+            labels.forEach((l, i) => {
+                const y = pad.t + gap * i + gap / 2;
+                ctx.fillText(l, pad.l - 6, y + 4);
+                groups.forEach((g, gi) => {
+                    const bW = (g[i] / maxVal) * cW;
+                    const bY = y - (groups.length * barH / 2) + gi * barH;
+                    ctx.fillStyle = colors[gi];
+                    ctx.beginPath();
+                    ctx.roundRect(pad.l, bY, Math.max(2, bW), barH - 2, 3);
+                    ctx.fill();
+                    if (g[i] > 0) {
+                        ctx.fillStyle = '#ccc'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+                        ctx.fillText(this._shortNum(g[i]), pad.l + bW + 4, bY + barH / 2 + 3);
+                    }
+                });
+                ctx.fillStyle = '#888'; ctx.textAlign = 'right'; ctx.font = '10px sans-serif';
+            });
+            return;
+        }
+        // Vertical bars
+        const pad = { t: 20, r: 16, b: 40, l: 50 };
+        const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+        let maxVal = 0;
+        groups.forEach(g => g.forEach(v => { if (v > maxVal) maxVal = v; }));
+        if (maxVal === 0) maxVal = 1;
+        // Grid
+        ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.t + (cH / 4) * i;
+            ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+        }
+        ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+        for (let i = 0; i <= 4; i++) {
+            ctx.fillText(Math.round(maxVal - (maxVal / 4) * i), pad.l - 6, pad.t + (cH / 4) * i + 4);
+        }
+        const groupW = cW / labels.length;
+        const barW = Math.min(16, (groupW / groups.length) * 0.7);
+        labels.forEach((l, i) => {
+            const gx = pad.l + groupW * i + groupW / 2;
+            ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.font = '10px sans-serif';
+            ctx.fillText(l, gx, H - pad.b + 16);
+            groups.forEach((g, gi) => {
+                const bH = (g[i] / maxVal) * cH;
+                const bx = gx - (groups.length * barW / 2) + gi * barW;
+                ctx.fillStyle = colors[gi];
+                ctx.beginPath();
+                ctx.roundRect(bx, pad.t + cH - bH, barW, bH, [3, 3, 0, 0]);
+                ctx.fill();
+            });
+        });
+    },
+
+    _drawDonutChart(ctx, segments) {
+        if (!ctx || !segments.length) return;
+        const W = ctx.W, H = ctx.H;
+        const cx = W * 0.35, cy = H / 2;
+        const R = Math.min(cx - 10, cy - 10, 80);
+        const r = R * 0.55;
+        const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+        let angle = -Math.PI / 2;
+        segments.forEach(seg => {
+            const slice = (seg.value / total) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, angle, angle + slice);
+            ctx.arc(cx, cy, r, angle + slice, angle, true);
+            ctx.closePath();
+            ctx.fillStyle = seg.color;
+            ctx.fill();
+            angle += slice;
+        });
+        // Center text
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(total, cx, cy + 6);
+        ctx.fillStyle = '#888'; ctx.font = '9px sans-serif';
+        ctx.fillText('total', cx, cy + 20);
+        // Legend
+        const lx = W * 0.65;
+        let ly = 16;
+        ctx.textAlign = 'left'; ctx.font = '11px sans-serif';
+        segments.forEach(seg => {
+            ctx.fillStyle = seg.color;
+            ctx.fillRect(lx, ly, 10, 10);
+            ctx.fillStyle = '#ccc';
+            ctx.fillText(`${seg.label} (${seg.value})`, lx + 16, ly + 9);
+            ly += 18;
+        });
+    },
+
+    _shortNum(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+        return String(n);
+    },
+
+    // ─── Revenue Line Chart ───
+    _drawDashRevenue(data) {
+        const ctx = this._getCanvasCtx('dashRevenue', 200);
+        if (!ctx) return;
+        const byMonth = {};
+        data.forEach(c => {
+            const m = (c.createdAt || '').substring(0, 7);
+            if (!m) return;
+            if (!byMonth[m]) byMonth[m] = { revenue: 0, pipeline: 0 };
+            if (c.estado === 'cerrada_ganada') byMonth[m].revenue += c.montoTotal || 0;
+            if (!c.estado.startsWith('cerrada_')) byMonth[m].pipeline += c.montoTotal || 0;
+        });
+        const months = Object.keys(byMonth).sort();
+        if (!months.length) return;
+        this._drawLineChart(ctx, [
+            { data: months.map(m => byMonth[m].revenue), color: '#00ACC9', label: 'Revenue' },
+            { data: months.map(m => byMonth[m].pipeline), color: '#FF7200', label: 'Pipeline' },
+        ], months.map(m => m.substring(5)));
+    },
+
+    // ─── Monthly Bar Chart ───
+    _drawDashMonthly(data) {
+        const ctx = this._getCanvasCtx('dashMonthly', 200);
+        if (!ctx) return;
+        const byMonth = {};
+        data.forEach(c => {
+            const m = (c.createdAt || '').substring(0, 7);
+            if (!m) return;
+            if (!byMonth[m]) byMonth[m] = { creadas: 0, ganadas: 0, perdidas: 0 };
+            byMonth[m].creadas++;
+            if (c.estado === 'cerrada_ganada') byMonth[m].ganadas++;
+            if (c.estado === 'cerrada_perdida') byMonth[m].perdidas++;
+        });
+        const months = Object.keys(byMonth).sort();
+        if (!months.length) return;
+        this._drawBarChart(ctx,
+            [months.map(m => byMonth[m].creadas), months.map(m => byMonth[m].ganadas), months.map(m => byMonth[m].perdidas)],
+            months.map(m => m.substring(5)),
+            ['#3B82F6', '#10B981', '#EF4444']
+        );
+    },
+
+    // ─── Per-Vendedor Horizontal Bars ───
+    _drawDashVendedor(data) {
+        const ctx = this._getCanvasCtx('dashVendedor', 180);
+        if (!ctx) return;
+        const byVend = {};
+        data.forEach(c => {
+            const v = c.vendedorId || 'sin asignar';
+            if (!byVend[v]) byVend[v] = { total: 0, ganadas: 0, revenue: 0 };
+            byVend[v].total++;
+            if (c.estado === 'cerrada_ganada') { byVend[v].ganadas++; byVend[v].revenue += c.montoTotal || 0; }
+        });
+        const vends = Object.keys(byVend).sort((a, b) => byVend[b].total - byVend[a].total);
+        if (!vends.length) return;
+        const labels = vends.map(v => {
+            const map = { 'fede': 'Federico', 'lelean': 'Lelean', 'noe': 'Noelia' };
+            return map[v.toLowerCase()] || v;
+        });
+        this._drawBarChart(ctx,
+            [vends.map(v => byVend[v].total), vends.map(v => byVend[v].ganadas)],
+            labels, ['#3B82F6', '#10B981'], true
+        );
+    },
+
+    // ─── Per-Tipo Evento Donut ───
+    _drawDashTipoEvento(data) {
+        const ctx = this._getCanvasCtx('dashTipoEvento', 180);
+        if (!ctx) return;
+        const byTipo = {};
+        const tipoColors = { feria: '#3B82F6', congreso: '#F59E0B', corporativo: '#10B981', social: '#8B5CF6', festival: '#EF4444', boda: '#EC4899' };
+        data.forEach(c => {
+            const t = c.tipoEvento || 'otro';
+            byTipo[t] = (byTipo[t] || 0) + 1;
+        });
+        const segments = Object.entries(byTipo).map(([label, value]) => ({
+            label: label.charAt(0).toUpperCase() + label.slice(1),
+            value,
+            color: tipoColors[label] || '#888',
+        })).sort((a, b) => b.value - a.value);
+        if (!segments.length) return;
+        this._drawDonutChart(ctx, segments);
+    },
+
+    // ─── Top 10 Clientes Table ───
+    _renderDashTopClientes(data) {
+        const el = document.getElementById('dashTopClientes');
+        if (!el) return;
+        const byCli = {};
+        data.forEach(c => {
+            const cli = c.clienteNombre || 'Sin cliente';
+            if (!byCli[cli]) byCli[cli] = { total: 0, ganadas: 0, revenue: 0 };
+            byCli[cli].total++;
+            if (c.estado === 'cerrada_ganada') { byCli[cli].ganadas++; byCli[cli].revenue += c.montoTotal || 0; }
+        });
+        const sorted = Object.entries(byCli).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 10);
+        if (!sorted.length) { el.innerHTML = '<p class="api-empty-inline">Sin datos</p>'; return; }
+        el.innerHTML = `
+            <table class="dash-top-table">
+                <thead><tr><th>Cliente</th><th>Cotizaciones</th><th>Ganadas</th><th>Revenue</th></tr></thead>
+                <tbody>${sorted.map(([cli, d]) => `
+                    <tr>
+                        <td>${cli}</td>
+                        <td style="text-align:center">${d.total}</td>
+                        <td style="text-align:center;color:#10B981">${d.ganadas}</td>
+                        <td style="text-align:right;color:#00ACC9;font-weight:600">${API.formatCurrency(d.revenue)}</td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  V3 — MARKETING (Template CRUD + Compositor)
+    // ═══════════════════════════════════════════
+
+    _mktTemplates: null,
+    _mktEditingId: null,
+
+    _renderMarketingSection() {
+        return `
+            <div class="section-content mkt-root">
+                <div class="mkt-header">
+                    <h3 class="title-3">Plantillas de comunicación</h3>
+                    <button class="btn btn-primary btn-sm" id="mktNewTemplate">+ Nueva plantilla</button>
+                </div>
+                <div id="mktTemplateList" class="mkt-template-list">
+                    <div class="api-loading"><div class="api-spinner"></div><span>Cargando plantillas…</span></div>
+                </div>
+                <div id="mktEditor" class="mkt-editor" style="display:none">
+                    <h4 class="mkt-editor-title" id="mktEditorTitle">Nueva plantilla</h4>
+                    <div class="mkt-form-group">
+                        <label class="mkt-label">Nombre</label>
+                        <input type="text" class="mkt-input" id="mktEdNombre" placeholder="Ej: Primer seguimiento">
+                    </div>
+                    <div class="mkt-form-group">
+                        <label class="mkt-label">Asunto</label>
+                        <input type="text" class="mkt-input" id="mktEdAsunto" placeholder="Ej: MEPEX — Propuesta para {{nombre_evento}}">
+                    </div>
+                    <div class="mkt-form-group">
+                        <label class="mkt-label">Cuerpo</label>
+                        <textarea class="mkt-textarea" id="mktEdCuerpo" rows="8" placeholder="Texto del email. Usá {{variable}} para datos dinámicos."></textarea>
+                    </div>
+                    <div class="mkt-form-group">
+                        <label class="mkt-label">Variables disponibles</label>
+                        <div class="mkt-var-chips">
+                            <span class="mkt-var-chip" data-var="nombre_cliente">nombre_cliente</span>
+                            <span class="mkt-var-chip" data-var="nombre_evento">nombre_evento</span>
+                            <span class="mkt-var-chip" data-var="fecha_evento">fecha_evento</span>
+                            <span class="mkt-var-chip" data-var="tipo_stand">tipo_stand</span>
+                            <span class="mkt-var-chip" data-var="monto_total">monto_total</span>
+                            <span class="mkt-var-chip" data-var="numero_cotizacion">numero_cotizacion</span>
+                        </div>
+                    </div>
+                    <div class="mkt-editor-actions">
+                        <button class="btn btn-ghost btn-sm" id="mktEdCancel">Cancelar</button>
+                        <button class="btn btn-primary btn-sm" id="mktEdSave">Guardar</button>
+                    </div>
+                </div>
+                <hr class="mkt-divider">
+                <div class="mkt-header">
+                    <h3 class="title-3">Composición masiva</h3>
+                </div>
+                <div class="mkt-bulk">
+                    <div class="mkt-bulk-filters">
+                        <select class="mkt-select" id="mktBulkEstado">
+                            <option value="">Filtrar por estado</option>
+                            <option value="enviada">Enviada</option>
+                            <option value="en_negociacion">En Negociación</option>
+                            <option value="aprobada">Aprobada</option>
+                            <option value="borrador">Borrador</option>
+                        </select>
+                        <select class="mkt-select" id="mktBulkTemplate">
+                            <option value="">Elegir plantilla</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" id="mktBulkPreview">Vista previa</button>
+                    </div>
+                    <div id="mktBulkResults" class="mkt-bulk-results"></div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _initMarketing() {
+        await this._loadMktTemplates();
+        this._attachMktListeners();
+    },
+
+    async _loadMktTemplates() {
+        const list = document.getElementById('mktTemplateList');
+        if (!list) return;
+        try {
+            const data = await API.getEmailTemplates();
+            this._mktTemplates = data || [];
+            if (!this._mktTemplates.length) {
+                list.innerHTML = '<p class="api-empty-inline">Sin plantillas. Creá la primera.</p>';
+                return;
+            }
+            list.innerHTML = this._mktTemplates.map(t => `
+                <div class="mkt-template-card" data-id="${t.id}">
+                    <div class="mkt-template-card-body">
+                        <div class="mkt-template-card-name">${t.nombre}</div>
+                        <div class="mkt-template-card-subject">${t.asunto}</div>
+                    </div>
+                    <div class="mkt-template-card-actions">
+                        <button class="btn btn-ghost btn-xs mkt-edit-btn" data-id="${t.id}" title="Editar">✏️</button>
+                        <button class="btn btn-ghost btn-xs mkt-delete-btn" data-id="${t.id}" title="Eliminar">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+            // Update bulk template selector
+            const sel = document.getElementById('mktBulkTemplate');
+            if (sel) {
+                sel.innerHTML = '<option value="">Elegir plantilla</option>' + this._mktTemplates.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+            }
+        } catch (e) {
+            list.innerHTML = '<p class="api-empty-inline">Error al cargar plantillas</p>';
+        }
+    },
+
+    _attachMktListeners() {
+        // New template
+        document.getElementById('mktNewTemplate')?.addEventListener('click', () => {
+            this._mktEditingId = null;
+            document.getElementById('mktEditorTitle').textContent = 'Nueva plantilla';
+            document.getElementById('mktEdNombre').value = '';
+            document.getElementById('mktEdAsunto').value = '';
+            document.getElementById('mktEdCuerpo').value = '';
+            document.getElementById('mktEditor').style.display = 'block';
+        });
+        // Cancel
+        document.getElementById('mktEdCancel')?.addEventListener('click', () => {
+            document.getElementById('mktEditor').style.display = 'none';
+            this._mktEditingId = null;
+        });
+        // Save
+        document.getElementById('mktEdSave')?.addEventListener('click', async () => {
+            const nombre = document.getElementById('mktEdNombre').value.trim();
+            const asunto = document.getElementById('mktEdAsunto').value.trim();
+            const cuerpo = document.getElementById('mktEdCuerpo').value.trim();
+            if (!nombre || !asunto || !cuerpo) { Toast?.show?.('Completá todos los campos', 'warning'); return; }
+            const payload = { nombre, asunto, cuerpo };
+            let ok;
+            if (this._mktEditingId) {
+                ok = await API.updateEmailTemplate(this._mktEditingId, payload);
+            } else {
+                ok = await API.createEmailTemplate(payload);
+            }
+            if (ok) {
+                Toast?.show?.(this._mktEditingId ? 'Plantilla actualizada' : 'Plantilla creada', 'success');
+                document.getElementById('mktEditor').style.display = 'none';
+                this._mktEditingId = null;
+                await this._loadMktTemplates();
+            } else {
+                Toast?.show?.('Error al guardar', 'error');
+            }
+        });
+        // Variable chips
+        document.querySelectorAll('.mkt-var-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const ta = document.getElementById('mktEdCuerpo');
+                if (ta) { ta.value += `{{${chip.dataset.var}}}`; ta.focus(); }
+            });
+        });
+        // Edit / Delete via delegation
+        document.getElementById('mktTemplateList')?.addEventListener('click', async (e) => {
+            const editBtn = e.target.closest('.mkt-edit-btn');
+            const delBtn = e.target.closest('.mkt-delete-btn');
+            if (editBtn) {
+                const tpl = this._mktTemplates?.find(t => t.id === editBtn.dataset.id);
+                if (!tpl) return;
+                this._mktEditingId = tpl.id;
+                document.getElementById('mktEditorTitle').textContent = 'Editar plantilla';
+                document.getElementById('mktEdNombre').value = tpl.nombre;
+                document.getElementById('mktEdAsunto').value = tpl.asunto;
+                document.getElementById('mktEdCuerpo').value = tpl.cuerpo;
+                document.getElementById('mktEditor').style.display = 'block';
+            }
+            if (delBtn) {
+                if (!confirm('Eliminar esta plantilla?')) return;
+                const ok = await API.deleteEmailTemplate(delBtn.dataset.id);
+                if (ok) { Toast?.show?.('Plantilla eliminada', 'success'); await this._loadMktTemplates(); }
+                else Toast?.show?.('Error al eliminar', 'error');
+            }
+        });
+        // Bulk preview
+        document.getElementById('mktBulkPreview')?.addEventListener('click', async () => {
+            const estado = document.getElementById('mktBulkEstado')?.value;
+            const templateId = document.getElementById('mktBulkTemplate')?.value;
+            const results = document.getElementById('mktBulkResults');
+            if (!templateId) { Toast?.show?.('Elegí una plantilla', 'warning'); return; }
+            const tpl = this._mktTemplates?.find(t => t.id === templateId);
+            if (!tpl) return;
+            let cots = await API.getCotizaciones();
+            if (!cots) { results.innerHTML = '<p class="api-empty-inline">Error al cargar cotizaciones</p>'; return; }
+            if (estado) cots = cots.filter(c => c.estado === estado);
+            if (!cots.length) { results.innerHTML = '<p class="api-empty-inline">Sin cotizaciones con ese filtro</p>'; return; }
+            results.innerHTML = `
+                <div class="mkt-bulk-count">${cots.length} destinatario${cots.length > 1 ? 's' : ''}</div>
+                ${cots.slice(0, 20).map(c => {
+                    const body = tpl.cuerpo
+                        .replace(/\{\{nombre_cliente\}\}/g, c.clienteNombre || '—')
+                        .replace(/\{\{nombre_evento\}\}/g, c.nombreEvento || '—')
+                        .replace(/\{\{fecha_evento\}\}/g, c.fechaEvento ? API.formatDate(c.fechaEvento) : '—')
+                        .replace(/\{\{tipo_stand\}\}/g, c.tipoStand || c.tipoCotizacion || '—')
+                        .replace(/\{\{monto_total\}\}/g, API.formatCurrency(c.montoTotal || 0))
+                        .replace(/\{\{numero_cotizacion\}\}/g, c.numero || '—');
+                    const subject = tpl.asunto
+                        .replace(/\{\{nombre_cliente\}\}/g, c.clienteNombre || '—')
+                        .replace(/\{\{nombre_evento\}\}/g, c.nombreEvento || '—');
+                    return `
+                        <div class="mkt-bulk-preview-card">
+                            <div class="mkt-bulk-preview-to">${c.clienteNombre || '—'} — ${c.numero}</div>
+                            <div class="mkt-bulk-preview-subject">${subject}</div>
+                            <div class="mkt-bulk-preview-body">${body.substring(0, 200)}${body.length > 200 ? '…' : ''}</div>
+                        </div>
+                    `;
+                }).join('')}
+                ${cots.length > 20 ? `<p class="api-empty-inline">… y ${cots.length - 20} más</p>` : ''}
+                <button class="btn btn-primary btn-sm mkt-bulk-send" style="margin-top:12px">Registrar borradores (${cots.length})</button>
+            `;
+            results.querySelector('.mkt-bulk-send')?.addEventListener('click', () => {
+                Toast?.show?.(`${cots.length} borradores registrados (envío real no implementado)`, 'info');
+            });
         });
     },
 };

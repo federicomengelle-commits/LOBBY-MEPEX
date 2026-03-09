@@ -1287,6 +1287,71 @@ const API = {
         }
     },
 
+    // ─── Email Templates CRUD ───
+    async getEmailTemplates() {
+        const cacheKey = 'email_templates';
+        const cached = this._cache[cacheKey];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        try {
+            const { data, error } = await supabaseClient
+                .from('email_templates').select('*').eq('activo', true).order('created_at', { ascending: false });
+            if (error) throw error;
+            const mapped = (data || []).map(t => ({
+                id: t.id, nombre: t.nombre, asunto: t.asunto,
+                cuerpo: t.cuerpo, variables: t.variables || [], activo: t.activo,
+            }));
+            this._cache[cacheKey] = { data: mapped, ts: Date.now() };
+            return mapped;
+        } catch (e) {
+            console.warn('[API] Error fetching email templates:', e.message);
+            return null;
+        }
+    },
+
+    async createEmailTemplate(data) {
+        try {
+            const { error } = await supabaseClient.from('email_templates').insert({
+                nombre: data.nombre, asunto: data.asunto, cuerpo: data.cuerpo,
+                variables: data.variables || [],
+            });
+            if (error) throw error;
+            delete this._cache['email_templates'];
+            return true;
+        } catch (e) {
+            console.warn('[API] Error creating email template:', e.message);
+            return null;
+        }
+    },
+
+    async updateEmailTemplate(id, data) {
+        try {
+            const payload = {};
+            if (data.nombre !== undefined) payload.nombre = data.nombre;
+            if (data.asunto !== undefined) payload.asunto = data.asunto;
+            if (data.cuerpo !== undefined) payload.cuerpo = data.cuerpo;
+            if (data.variables !== undefined) payload.variables = data.variables;
+            const { error } = await supabaseClient.from('email_templates').update(payload).eq('id', id);
+            if (error) throw error;
+            delete this._cache['email_templates'];
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updating email template:', e.message);
+            return null;
+        }
+    },
+
+    async deleteEmailTemplate(id) {
+        try {
+            const { error } = await supabaseClient.from('email_templates').update({ activo: false }).eq('id', id);
+            if (error) throw error;
+            delete this._cache['email_templates'];
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting email template:', e.message);
+            return null;
+        }
+    },
+
     // ─── Categorías Config (margen default por categoría) ──
     async getCategoriasConfig() {
         const cacheKey = 'categorias_config';

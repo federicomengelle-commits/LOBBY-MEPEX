@@ -165,15 +165,19 @@ const Data = {
                     ]
                 },
                 {
+                    id: 'dashboard',
+                    name: 'Dashboard',
+                    icon: '📈',
+                    description: 'Analytics financieros, embudo de conversión y evolución',
+                    adminOnly: true,
+                    fields: []
+                },
+                {
                     id: 'marketing',
                     name: 'Marketing',
                     icon: '📢',
-                    description: 'Campañas, mailing segmentado y métricas básicas',
-                    fields: [
-                        { label: 'Campañas activas', type: 'list' },
-                        { label: 'Mailing', type: 'action' },
-                        { label: 'Métricas', type: 'indicator', options: ['Enviados', 'Abiertos', 'Respondidos'] },
-                    ]
+                    description: 'Plantillas de comunicación y composición masiva',
+                    fields: []
                 },
             ],
             connections: [
