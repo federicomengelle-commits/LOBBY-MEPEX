@@ -1140,6 +1140,14 @@ const API = {
                     fechaEmision: c.fecha_emision,
                     subtotal: parseFloat(c.subtotal) || 0,
                     iva: parseFloat(c.iva) || 0,
+                    // Campos La PyME
+                    pymeVentaId: c.pyme_venta_id || null,
+                    pymeFacturaNumero: c.pyme_factura_numero || '',
+                    pymeFacturaFecha: c.pyme_factura_fecha || null,
+                    pymeTotal: parseFloat(c.pyme_total) || 0,
+                    pymeBalance: parseFloat(c.pyme_balance) || 0,
+                    pymeEstadoCobro: c.pyme_estado_cobro || null,
+                    pymeLastSync: c.pyme_last_sync || null,
                 };
             });
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -1350,6 +1358,171 @@ const API = {
             console.warn('[API] Error deleting email template:', e.message);
             return null;
         }
+    },
+
+    // ─── La PyME API Integration ───
+    _pymeBaseUrl: 'https://api.lapyme.com.ar',
+    _pymeApiKey: 'lpk_live_bc727a724666293a7916d01b5eaf77598ec31cc296fde067f7e17d1026a8cb9e',
+
+    async _pymeFetch(path, params = {}) {
+        const url = new URL(this._pymeBaseUrl + path);
+        Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v); });
+        try {
+            const res = await fetch(url.toString(), {
+                headers: { 'Authorization': `Bearer ${this._pymeApiKey}`, 'Content-Type': 'application/json' },
+            });
+            if (!res.ok) throw new Error(`PyME API ${res.status}: ${res.statusText}`);
+            const json = await res.json();
+            return json.success ? json : null;
+        } catch (e) {
+            console.warn('[PyME API] Error:', path, e.message);
+            return null;
+        }
+    },
+
+    async getPyMESales(search, dateFrom, dateTo, page = 1, limit = 100) {
+        return this._pymeFetch('/sales', { search, dateFrom, dateTo, page, limit });
+    },
+
+    async getPyMESaleById(id) {
+        const result = await this._pymeFetch(`/sales/${id}`);
+        return result?.data || null;
+    },
+
+    async getPyMECustomers(search, page = 1, limit = 100) {
+        return this._pymeFetch('/customers', { search, page, limit });
+    },
+
+    async syncFromPyME(cotizaciones) {
+        const syncStart = Date.now();
+        let synced = 0;
+        const errores = [];
+
+        try {
+            if (!cotizaciones || !cotizaciones.length) return { synced: 0, total: 0, errores: [] };
+
+            // Fetch all PyME sales (paginated)
+            let allSales = [];
+            let page = 1;
+            let hasMore = true;
+            while (hasMore) {
+                const result = await this.getPyMESales(null, null, null, page, 100);
+                if (!result?.data?.length) break;
+                allSales = allSales.concat(result.data);
+                hasMore = result.pagination && page < result.pagination.totalPages;
+                page++;
+                if (page > 10) break; // safety cap
+            }
+
+            if (!allSales.length) {
+                console.log('[PyME Sync] No sales found in La PyME');
+                return { synced: 0, total: allSales.length, errores: [] };
+            }
+
+            // Build name → sales map (lowercase for matching)
+            const salesByClient = {};
+            allSales.forEach(sale => {
+                const name = (sale.customer?.name || '').toLowerCase().trim();
+                if (!name) return;
+                if (!salesByClient[name]) salesByClient[name] = [];
+                salesByClient[name].push(sale);
+            });
+
+            // Match cotizaciones with PyME sales
+            for (const cot of cotizaciones) {
+                if (!cot.clienteNombre) continue;
+                const clientKey = cot.clienteNombre.toLowerCase().trim();
+                const clientSales = salesByClient[clientKey];
+                if (!clientSales?.length) continue;
+
+                // Find best match: closest amount or most recent
+                let bestSale = null;
+                if (cot.montoTotal > 0) {
+                    // Match by closest total amount
+                    bestSale = clientSales.reduce((best, sale) => {
+                        const diff = Math.abs(sale.total - cot.montoTotal);
+                        const bestDiff = best ? Math.abs(best.total - cot.montoTotal) : Infinity;
+                        return diff < bestDiff ? sale : best;
+                    }, null);
+                } else {
+                    // Just take most recent
+                    bestSale = clientSales.sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate))[0];
+                }
+
+                if (!bestSale) continue;
+
+                // Determine cobro status from balance
+                let estadoCobro = 'pendiente';
+                if (bestSale.balance === 0 || bestSale.balance === null) estadoCobro = 'cobrada';
+                else if (bestSale.balance > 0 && bestSale.balance < bestSale.total) estadoCobro = 'parcial';
+
+                // Check if anything changed
+                const changed = cot.pymeVentaId !== bestSale.id ||
+                    cot.pymeEstadoCobro !== estadoCobro ||
+                    cot.pymeBalance !== (bestSale.balance || 0);
+
+                if (!changed && cot.pymeVentaId) { synced++; continue; } // already synced, no changes
+
+                // Update in Supabase
+                try {
+                    const updatePayload = {
+                        pyme_venta_id: bestSale.id,
+                        pyme_factura_numero: bestSale.formattedInvoiceNumber || String(bestSale.invoiceNumber || ''),
+                        pyme_factura_fecha: bestSale.invoiceDate,
+                        pyme_total: bestSale.total,
+                        pyme_balance: bestSale.balance || 0,
+                        pyme_estado_cobro: estadoCobro,
+                        pyme_last_sync: new Date().toISOString(),
+                    };
+
+                    // If cotización is cerrada_ganada and now has invoice, move to facturada
+                    if (cot.estado === 'cerrada_ganada' || cot.estado === 'aprobada') {
+                        updatePayload.estado = 'facturada';
+                    }
+
+                    const { error } = await supabaseClient
+                        .from('cotizaciones').update(updatePayload).eq('id', cot.id);
+                    if (error) throw error;
+
+                    // Add timeline entry if first sync or status changed
+                    if (!cot.pymeVentaId || cot.pymeEstadoCobro !== estadoCobro) {
+                        const desc = !cot.pymeVentaId
+                            ? `Factura ${updatePayload.pyme_factura_numero} vinculada desde La PyME — ${API.formatCurrency(bestSale.total)}`
+                            : `Estado cobro actualizado: ${estadoCobro} (balance: ${API.formatCurrency(bestSale.balance || 0)})`;
+                        await this.addCotizacionTimeline(cot.id, !cot.pymeVentaId ? 'facturacion' : 'cobro', desc, {
+                            source: 'pyme', pyme_venta_id: bestSale.id,
+                            factura: updatePayload.pyme_factura_numero, monto: bestSale.total, balance: bestSale.balance,
+                        });
+                    }
+                    synced++;
+                } catch (e) {
+                    errores.push({ cotId: cot.id, error: e.message });
+                }
+            }
+
+            // Log sync
+            await supabaseClient.from('pyme_sync_log').insert({
+                tipo: 'manual', ventas_synced: synced, ventas_total: allSales.length, errores,
+            });
+
+            // Clear cache
+            this.clearCache();
+
+            console.log(`[PyME Sync] Done: ${synced} synced from ${allSales.length} PyME sales in ${Date.now() - syncStart}ms`);
+            return { synced, total: allSales.length, errores };
+        } catch (e) {
+            console.warn('[PyME Sync] Fatal error:', e.message);
+            return { synced, total: 0, errores: [{ error: e.message }] };
+        }
+    },
+
+    async getLastPyMESync() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('pyme_sync_log').select('*').order('created_at', { ascending: false }).limit(1);
+            if (error) throw error;
+            return data?.[0] || null;
+        } catch (e) { return null; }
     },
 
     // ─── Categorías Config (margen default por categoría) ──

@@ -1773,6 +1773,35 @@ const Modules = {
             .mkt-bulk-preview-to { font-size: 0.8rem; font-weight: 600; color: #00ACC9; margin-bottom: 4px; }
             .mkt-bulk-preview-subject { font-size: 0.75rem; color: #e8e8e8; margin-bottom: 6px; }
             .mkt-bulk-preview-body { font-size: 0.72rem; color: #888; line-height: 1.4; }
+
+            /* ── V4: PyME Integration ── */
+            .pk-column-readonly { opacity: 0.85; }
+            .pk-column-readonly .pk-column-header { border-bottom: 2px solid #8B5CF6; }
+            .pk-card-readonly { cursor: default !important; opacity: 0.9; border-left: 3px solid #8B5CF6; }
+            .pk-card-readonly:hover { transform: none !important; }
+            .pyme-sync-btn {
+                font-size: 11px; padding: 4px 10px; border: 1px solid rgba(139,92,246,0.4);
+                color: #8B5CF6; border-radius: 6px; cursor: pointer; background: transparent;
+                transition: all 0.2s ease; white-space: nowrap;
+            }
+            .pyme-sync-btn:hover { background: rgba(139,92,246,0.12); border-color: #8B5CF6; }
+            .pyme-sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+            .pyme-sync-status { font-size: 10px; color: #666; margin-left: 6px; white-space: nowrap; }
+            .pyme-factura-badge {
+                font-size: 11px; padding: 2px 8px; background: rgba(139,92,246,0.12);
+                color: #8B5CF6; border-radius: 4px; white-space: nowrap;
+            }
+            .pyme-cobro-badge {
+                font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; white-space: nowrap;
+            }
+            .pyme-cobro-green { background: rgba(34,197,94,0.15); color: #22c55e; }
+            .pyme-cobro-yellow { background: rgba(234,179,8,0.15); color: #eab308; }
+            .pyme-cobro-red { background: rgba(239,68,68,0.15); color: #ef4444; }
+            .pyme-ficha-section {
+                border: 1px solid rgba(139,92,246,0.25); border-radius: 8px;
+                padding: 12px; margin-top: 8px; background: rgba(139,92,246,0.04);
+            }
+            .pyme-ficha-section .ficha-section-title { color: #8B5CF6; }
         `;
         document.head.appendChild(style);
     },
@@ -2987,6 +3016,15 @@ const Modules = {
                             <div class="ficha-row"><span class="ficha-row-label">Emisión</span><span class="ficha-row-value">${item.fechaEmision ? new Date(item.fechaEmision + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</span></div>
                             ${item.pdfUrl ? `<div class="ficha-row"><span class="ficha-row-label">PDF</span><span class="ficha-row-value"><a href="${item.pdfUrl}" target="_blank" class="cot-pdf-link" style="color:#3B82F6">📄 Ver PDF</a></span></div>` : ''}
                         </div>
+                        ${item.pymeVentaId ? `<div class="ficha-section pyme-ficha-section">
+                            <div class="ficha-section-title">🧾 Facturación (La PyME)</div>
+                            <div class="ficha-row"><span class="ficha-row-label">N° Factura</span><span class="ficha-row-value">${item.pymeFacturaNumero || '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Fecha</span><span class="ficha-row-value">${item.pymeFacturaFecha ? new Date(item.pymeFacturaFecha + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Total factura</span><span class="ficha-row-value" style="color:#8B5CF6; font-weight:600">${fmt(item.pymeTotal)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Estado cobro</span><span class="ficha-row-value"><span class="pyme-cobro-badge ${item.pymeEstadoCobro === 'cobrada' ? 'pyme-cobro-green' : item.pymeEstadoCobro === 'parcial' ? 'pyme-cobro-yellow' : 'pyme-cobro-red'}">${(item.pymeEstadoCobro || 'pendiente').charAt(0).toUpperCase() + (item.pymeEstadoCobro || 'pendiente').slice(1)}</span></span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Balance</span><span class="ficha-row-value">${fmt(item.pymeBalance)}</span></div>
+                            ${item.pymeLastSync ? `<div class="ficha-row"><span class="ficha-row-label">Último sync</span><span class="ficha-row-value" style="font-size:0.7rem; color:#888">${new Date(item.pymeLastSync).toLocaleString('es-AR')}</span></div>` : ''}
+                        </div>` : ''}
                         <div class="ficha-section">
                             <div class="ficha-section-title">Notas internas</div>
                             <p style="font-size:0.82rem; color:${item.notasInternas ? 'var(--text-primary)' : 'var(--text-dim)'}; margin:0;">${item.notasInternas || 'Sin notas'}</p>
@@ -3015,7 +3053,7 @@ const Modules = {
                         </div>`;
                 }
                 if (tabId === 'seguimiento') {
-                    const estadoOptions = (Modules._pipelineStates || []).map(s =>
+                    const estadoOptions = (Modules._pipelineStates || []).filter(s => !s.readOnly).map(s =>
                         `<option value="${s.id}" ${item.estado === s.id ? 'selected' : ''}>${s.label}</option>`
                     ).join('');
                     return `
@@ -3444,7 +3482,7 @@ const Modules = {
         const list = document.getElementById('fichaCotTlList');
         if (!list) return;
 
-        const iconMap = { estado_cambio: '🔄', envio_email: '📧', envio_whatsapp: '💬', nota: '📝', vista_cliente: '👁️', edicion: '✏️', respondido: '💬' };
+        const iconMap = { estado_cambio: '🔄', envio_email: '📧', envio_whatsapp: '💬', nota: '📝', vista_cliente: '👁️', edicion: '✏️', respondido: '💬', facturacion: '🧾', cobro: '💰' };
 
         if (!timeline.length) {
             list.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-dim); font-size:0.8rem;">Sin actividad registrada</div>`;
@@ -5011,6 +5049,8 @@ const Modules = {
         { id: 'superficie',  header: 'm²',         defaultVisible: false },
         { id: 'fechaEmision',header: 'Emisión',    defaultVisible: false },
         { id: 'creado',      header: 'Creado',     defaultVisible: false },
+        { id: 'factura',     header: 'Factura',    defaultVisible: false },
+        { id: 'cobro',       header: 'Cobro',      defaultVisible: false },
     ],
 
     _cotizacionEstadoMap: {
@@ -5020,6 +5060,7 @@ const Modules = {
         'aprobada':        { label: 'Aprobada',          color: '#10B981' },
         'cerrada_ganada':  { label: 'Cerrada Ganada',    color: '#00d4aa' },
         'cerrada_perdida': { label: 'Cerrada Perdida',   color: '#EF4444' },
+        'facturada':       { label: 'Facturada',          color: '#8B5CF6' },
     },
 
     _seguimientoTemplates: [
@@ -5065,6 +5106,8 @@ const Modules = {
             case 'superficie':   return c.superficie || 0;
             case 'fechaEmision': return c.fechaEmision ? new Date(c.fechaEmision + 'T00:00:00').getTime() : 0;
             case 'creado':       return c.createdAt ? new Date(c.createdAt).getTime() : 0;
+            case 'factura':      return c.pymeFacturaNumero || '';
+            case 'cobro':        return c.pymeEstadoCobro || '';
             default: return null;
         }
     },
@@ -5135,6 +5178,13 @@ const Modules = {
                         return `<td>${c.fechaEmision ? API.formatDate(c.fechaEmision) : '—'}</td>`;
                     case 'creado':
                         return `<td>${c.createdAt ? API.formatDate(c.createdAt.split('T')[0]) : '—'}</td>`;
+                    case 'factura':
+                        return `<td>${c.pymeFacturaNumero ? `<span class="pyme-factura-badge">🧾 ${c.pymeFacturaNumero}</span>` : '—'}</td>`;
+                    case 'cobro': {
+                        const cobroMap = { cobrada: { label: 'Cobrada', cls: 'pyme-cobro-green' }, parcial: { label: 'Parcial', cls: 'pyme-cobro-yellow' }, pendiente: { label: 'Pendiente', cls: 'pyme-cobro-red' } };
+                        const cb = cobroMap[c.pymeEstadoCobro];
+                        return `<td>${cb ? `<span class="pyme-cobro-badge ${cb.cls}">${cb.label}</span>` : '—'}</td>`;
+                    }
                     default:
                         return `<td>—</td>`;
                 }
@@ -5223,7 +5273,7 @@ const Modules = {
                 if (!item) return;
                 const td = badge.closest('td');
                 const origHtml = td.innerHTML;
-                td.innerHTML = `<select class="cot-inline-estado">${this._pipelineStates.map(s =>
+                td.innerHTML = `<select class="cot-inline-estado">${this._pipelineStates.filter(s => !s.readOnly).map(s =>
                     `<option value="${s.id}" ${item.estado === s.id ? 'selected' : ''}>${s.label}</option>`
                 ).join('')}</select>`;
                 const select = td.querySelector('select');
@@ -5259,6 +5309,7 @@ const Modules = {
         { id: 'aprobada',         label: 'Aprobada',         color: '#10B981', progress: 90 },
         { id: 'cerrada_ganada',   label: 'Cerrada Ganada',   color: '#00d4aa', progress: 100 },
         { id: 'cerrada_perdida',  label: 'Cerrada Perdida',  color: '#EF4444', progress: 100 },
+        { id: 'facturada',        label: 'Facturada',         color: '#8B5CF6', progress: 100, readOnly: true },
     ],
 
     _pipelineData: null,
@@ -5287,6 +5338,10 @@ const Modules = {
                     <button class="pk-clear-btn" id="pkClearFilters" title="Limpiar filtros">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
+                    <div class="pk-sync-group">
+                        <button class="btn btn-ghost btn-sm pyme-sync-btn" id="pymeSyncBtn" title="Sincronizar con La PyME">🔄 Sync PyME</button>
+                        <span class="pyme-sync-status" id="pymeSyncStatus"></span>
+                    </div>
                 </div>
                 <div class="pk-board" id="pkBoard">
                     <div class="api-loading"><div class="api-spinner"></div><span>Cargando pipeline…</span></div>
@@ -5309,10 +5364,49 @@ const Modules = {
             this._renderPipelineMetrics(data);
             this._renderPipelineBoard(data);
             this._attachPipelineFilters();
+            this._attachPyMESync(data);
+            this._showPyMESyncStatus();
         } catch (e) {
             console.warn('[Pipeline] Init error:', e);
             board.innerHTML = '<div class="api-offline-msg"><span class="api-offline-icon">⚠️</span><p>Error al cargar pipeline</p></div>';
         }
+    },
+
+    _attachPyMESync(data) {
+        const btn = document.getElementById('pymeSyncBtn');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = '⏳ Sincronizando…';
+            try {
+                const result = await API.syncFromPyME(data);
+                Toast.success(`PyME sync: ${result.synced} vinculadas de ${result.total} ventas`);
+                // Refresh data
+                const fresh = await API.getCotizaciones();
+                if (fresh) {
+                    this._pipelineData = fresh;
+                    this._renderPipelineMetrics(fresh);
+                    this._renderPipelineBoard(fresh);
+                }
+                this._showPyMESyncStatus();
+            } catch (e) {
+                Toast.error('Error al sincronizar con La PyME');
+            }
+            btn.disabled = false;
+            btn.textContent = '🔄 Sync PyME';
+        });
+    },
+
+    async _showPyMESyncStatus() {
+        const el = document.getElementById('pymeSyncStatus');
+        if (!el) return;
+        const last = await API.getLastPyMESync();
+        if (!last) { el.textContent = 'Sin sync previo'; return; }
+        const ago = Math.round((Date.now() - new Date(last.created_at).getTime()) / 60000);
+        if (ago < 1) el.textContent = 'Sync: ahora';
+        else if (ago < 60) el.textContent = `Sync: hace ${ago}m`;
+        else if (ago < 1440) el.textContent = `Sync: hace ${Math.round(ago / 60)}h`;
+        else el.textContent = `Sync: hace ${Math.round(ago / 1440)}d`;
     },
 
     // ─── Metrics ───
@@ -5401,12 +5495,13 @@ const Modules = {
         board.innerHTML = this._pipelineStates.map(state => {
             const items = filtered.filter(c => c.estado === state.id);
             const colTotal = items.reduce((s, c) => s + c.montoTotal, 0);
+            const isRO = !!state.readOnly;
 
             return `
-                <div class="pk-column" data-state="${state.id}">
+                <div class="pk-column ${isRO ? 'pk-column-readonly' : ''}" data-state="${state.id}">
                     <div class="pk-column-header" style="border-top: 3px solid ${state.color}">
                         <div class="pk-column-title">
-                            <span class="pk-column-name">${state.label}</span>
+                            <span class="pk-column-name">${isRO ? '🔒 ' : ''}${state.label}</span>
                             <span class="pk-column-count">${items.length}</span>
                         </div>
                         <span class="pk-column-total">${API.formatCurrency(colTotal)}</span>
@@ -5418,7 +5513,7 @@ const Modules = {
                             const daysSinceCreation = getDaysSince(c.createdAt);
                             const progress = stateForId(c.estado)?.progress || 0;
                             return `
-                                <div class="pk-card" draggable="true" data-id="${c.id}" data-state="${c.estado}">
+                                <div class="pk-card ${isRO ? 'pk-card-readonly' : ''}" draggable="${!isRO}" data-id="${c.id}" data-state="${c.estado}">
                                     <div class="pk-card-top">
                                         <span class="pk-heat ${heat.cls}" title="${heat.label}">${heat.emoji}</span>
                                         <span class="pk-card-numero">${c.numero}</span>
@@ -5542,6 +5637,10 @@ const Modules = {
 
                 const cot = this._pipelineData?.find(c => c.id === cardId);
                 if (!cot || cot.estado === newState) return;
+                // Block drag to/from facturada (read-only, managed by La PyME)
+                const targetState = this._pipelineStates.find(s => s.id === newState);
+                if (targetState?.readOnly) { Toast.warning('Estado gestionado por La PyME'); return; }
+                if (cot.estado === 'facturada') { Toast.warning('No se puede mover desde Facturada'); return; }
 
                 const oldState = cot.estado;
                 const stateLabel = (id) => this._pipelineStates.find(s => s.id === id)?.label || id;
