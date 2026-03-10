@@ -22,6 +22,9 @@ const CalendarioOperativo = {
     _rendered: false,
     _filters: { venue: null, pm: null },
     _activePanel: null,
+    _viewMode: 'timeline',    // 'timeline' | 'cards'
+    _activePanelTab: 'info',  // 'info' | 'logistica' | 'historial'
+    _loading: false,
 
     // ─── Color palette ───
     _palette: [
@@ -91,6 +94,14 @@ const CalendarioOperativo = {
                         <select class="co-select co-filter" id="coFilterPM">
                             <option value="">Todos los PM</option>
                         </select>
+                        <div class="co-view-toggle">
+                            <button class="co-view-btn active" id="coViewTimeline" title="Timeline">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                            </button>
+                            <button class="co-view-btn" id="coViewCards" title="Tarjetas">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                            </button>
+                        </div>
                         <div class="co-zoom">
                             <button class="co-zoom-btn" id="coZoomOut" title="Alejar">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -110,6 +121,19 @@ const CalendarioOperativo = {
                         <div class="co-lanes-area" id="coLanesArea"></div>
                     </div>
                     <div class="co-sentinel" id="coSentinelBottom"></div>
+                </div>
+
+                <div class="co-cards-container" id="coCardsContainer" style="display:none"></div>
+
+                <div class="co-loading" id="coLoading" style="display:none">
+                    <div class="co-loading-spinner"></div>
+                    <span>Cargando eventos...</span>
+                </div>
+
+                <div class="co-empty" id="coEmpty" style="display:none">
+                    <div class="co-empty-icon">📅</div>
+                    <p>No hay eventos con fechas asignadas</p>
+                    <span class="co-empty-hint">Creá eventos en el módulo Eventos y asignales fechas de armado, evento y desarme.</span>
                 </div>
 
                 <div class="co-side-panel" id="coSidePanel"></div>
@@ -135,11 +159,16 @@ const CalendarioOperativo = {
     },
 
     async _init() {
-        // Generate dummy events
-        this._events = this._generateDummyEvents();
-        this._assignColors();
+        // Load events from API (or fallback to localStorage cache)
+        await this._loadEvents();
 
-        // Detect conflicts
+        if (this._events.length === 0) {
+            this._showEmpty();
+            this._attachEvents();
+            return;
+        }
+
+        // Detect conflicts (uses logistics from localStorage for now)
         this._detectConflicts();
 
         // Compute lanes
@@ -167,304 +196,213 @@ const CalendarioOperativo = {
     },
 
     // ═══════════════════════════════════════════
-    //  DUMMY DATA
+    //  DATA LOADING
     // ═══════════════════════════════════════════
 
-    _generateDummyEvents() {
-        return [
-            {
-                id: 'ev1',
-                name: 'Expo Alimentek 2026',
-                venue: 'La Rural — Buenos Aires',
-                setupDate: '2026-03-16',
-                setupEndDate: '2026-03-18',
-                eventStartDate: '2026-03-19',
-                eventEndDate: '2026-03-22',
-                teardownDate: '2026-03-23',
-                teardownEndDate: '2026-03-24',
-                projectCount: 3,
-                pm: 'Leonardo',
-                projects: [
-                    { client: 'Arcor', type: 'Stand isla', pm: 'Leonardo', status: 'En producción' },
-                    { client: 'Molinos', type: 'Stand península', pm: 'Leonardo', status: 'Confirmado' },
-                    { client: 'Mastellone', type: 'Stand esquina', pm: 'Federico', status: 'Confirmado' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Carlos Pérez', role: 'Supervisor' },
-                        { name: 'Martín Ruiz', role: 'Montajista' },
-                        { name: 'Diego Sánchez', role: 'Montajista' },
-                        { name: 'Pablo Fernández', role: 'Electricista' },
-                    ],
-                    truck: 'Mercedes 1620 #01',
-                    driver: 'Jorge Méndez',
-                    loadDate: '2026-03-15 08:00',
-                    departureDate: '2026-03-16 06:00',
-                    returnDate: '2026-03-25 14:00',
-                    notes: 'Requiere grúa para módulos altos. Coordinar ingreso con La Rural.',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'vigente',
-                    accreditations: { electrica: true, bomberos: true, habilitacion: true },
-                },
-            },
-            {
-                id: 'ev2',
-                name: 'ArquiExpo Internacional',
-                venue: 'Centro Costa Salguero',
-                setupDate: '2026-03-20',
-                setupEndDate: '2026-03-22',
-                eventStartDate: '2026-03-23',
-                eventEndDate: '2026-03-27',
-                teardownDate: '2026-03-28',
-                teardownEndDate: '2026-03-29',
-                projectCount: 2,
-                pm: 'Federico',
-                projects: [
-                    { client: 'Techint', type: 'Stand isla', pm: 'Federico', status: 'Confirmado' },
-                    { client: 'ESET', type: 'Stand centro', pm: 'Leonardo', status: 'En producción' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Carlos Pérez', role: 'Supervisor' },  // CONFLICTO con ev1
-                        { name: 'Raúl Gómez', role: 'Montajista' },
-                        { name: 'Lucas Torres', role: 'Electricista' },
-                    ],
-                    truck: 'Mercedes 1620 #01',  // CONFLICTO con ev1
-                    driver: 'Jorge Méndez',
-                    loadDate: '2026-03-19 14:00',
-                    departureDate: '2026-03-20 06:00',
-                    returnDate: '2026-03-30 10:00',
-                    notes: 'Ingreso por Av. Costanera. Acreditaciones hasta 48hs antes.',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'vigente',
-                    accreditations: { electrica: true, bomberos: true, habilitacion: false },
-                },
-            },
-            {
-                id: 'ev3',
-                name: 'Expoagro 2026',
-                venue: 'Predio Expoagro — San Nicolás',
-                setupDate: '2026-04-01',
-                setupEndDate: '2026-04-04',
-                eventStartDate: '2026-04-05',
-                eventEndDate: '2026-04-09',
-                teardownDate: '2026-04-10',
-                teardownEndDate: '2026-04-11',
-                projectCount: 4,
-                pm: 'Leonardo',
-                projects: [
-                    { client: 'John Deere', type: 'Stand isla', pm: 'Leonardo', status: 'Confirmado' },
-                    { client: 'Bayer Crop', type: 'Stand península', pm: 'Federico', status: 'En producción' },
-                    { client: 'YPF Agro', type: 'Stand esquina', pm: 'Leonardo', status: 'Confirmado' },
-                    { client: 'Syngenta', type: 'Stand centro', pm: 'Lelean', status: 'Confirmado' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Carlos Pérez', role: 'Supervisor' },
-                        { name: 'Martín Ruiz', role: 'Montajista' },
-                        { name: 'Diego Sánchez', role: 'Montajista' },
-                        { name: 'Raúl Gómez', role: 'Montajista' },
-                        { name: 'Pablo Fernández', role: 'Electricista' },
-                        { name: 'Lucas Torres', role: 'Electricista' },
-                    ],
-                    truck: 'Iveco Daily #03',
-                    driver: 'Roberto Díaz',
-                    loadDate: '2026-03-31 07:00',
-                    departureDate: '2026-04-01 05:00',
-                    returnDate: '2026-04-12 18:00',
-                    notes: 'Viaje largo a San Nicolás. Llevar generador de respaldo. 2 camiones necesarios.',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'vigente',
-                    accreditations: { electrica: true, bomberos: true, habilitacion: true },
-                },
-            },
-            {
-                id: 'ev4',
-                name: 'BIEL Light + Building',
-                venue: 'La Rural — Buenos Aires',
-                setupDate: '2026-04-06',
-                setupEndDate: '2026-04-08',
-                eventStartDate: '2026-04-09',
-                eventEndDate: '2026-04-12',
-                teardownDate: '2026-04-13',
-                teardownEndDate: '2026-04-13',
-                projectCount: 2,
-                pm: 'Lelean',
-                projects: [
-                    { client: 'Schneider Electric', type: 'Stand isla', pm: 'Lelean', status: 'Confirmado' },
-                    { client: 'Philips', type: 'Stand península', pm: 'Lelean', status: 'En producción' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Diego Sánchez', role: 'Supervisor' },  // CONFLICTO con ev3
-                        { name: 'Raúl Gómez', role: 'Montajista' },    // CONFLICTO con ev3
-                        { name: 'Andrés López', role: 'Electricista' },
-                    ],
-                    truck: 'Iveco Daily #03',  // CONFLICTO con ev3
-                    driver: 'Roberto Díaz',
-                    loadDate: '2026-04-05 09:00',
-                    departureDate: '2026-04-06 07:00',
-                    returnDate: '2026-04-14 12:00',
-                    notes: 'Stand con mucha iluminación especial. Coordinar con electricista extra.',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'pendiente',
-                    accreditations: { electrica: true, bomberos: false, habilitacion: false },
-                },
-            },
-            {
-                id: 'ev5',
-                name: 'Automechanika Buenos Aires',
-                venue: 'Centro Costa Salguero',
-                setupDate: '2026-04-20',
-                setupEndDate: '2026-04-22',
-                eventStartDate: '2026-04-23',
-                eventEndDate: '2026-04-26',
-                teardownDate: '2026-04-27',
-                teardownEndDate: '2026-04-28',
-                projectCount: 3,
-                pm: 'Federico',
-                projects: [
-                    { client: 'Fate', type: 'Stand isla', pm: 'Federico', status: 'Confirmado' },
-                    { client: 'NGK', type: 'Stand esquina', pm: 'Leonardo', status: 'Confirmado' },
-                    { client: 'Shell Lubricantes', type: 'Stand centro', pm: 'Federico', status: 'En producción' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Carlos Pérez', role: 'Supervisor' },
-                        { name: 'Martín Ruiz', role: 'Montajista' },
-                        { name: 'Andrés López', role: 'Electricista' },
-                    ],
-                    truck: 'Mercedes 1620 #01',
-                    driver: 'Jorge Méndez',
-                    loadDate: '2026-04-19 08:00',
-                    departureDate: '2026-04-20 06:00',
-                    returnDate: '2026-04-29 14:00',
-                    notes: 'Stand Fate requiere piso elevado. Llevar niveladores.',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'vigente',
-                    accreditations: { electrica: true, bomberos: true, habilitacion: true },
-                },
-            },
-            {
-                id: 'ev6',
-                name: 'Expo Ferretera Argentina',
-                venue: 'Tecnópolis — Villa Martelli',
-                setupDate: '2026-04-23',
-                setupEndDate: '2026-04-24',
-                eventStartDate: '2026-04-25',
-                eventEndDate: '2026-04-28',
-                teardownDate: '2026-04-29',
-                teardownEndDate: '2026-04-30',
-                projectCount: 1,
-                pm: 'Lelean',
-                projects: [
-                    { client: 'Stanley', type: 'Stand península', pm: 'Lelean', status: 'Confirmado' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Martín Ruiz', role: 'Supervisor' },  // CONFLICTO con ev5
-                        { name: 'Lucas Torres', role: 'Montajista' },
-                    ],
-                    truck: 'Ford Cargo #02',
-                    driver: 'Hernán Vega',
-                    loadDate: '2026-04-22 14:00',
-                    departureDate: '2026-04-23 07:00',
-                    returnDate: '2026-05-01 10:00',
-                    notes: 'Stand chico, 1 solo módulo OCTEXA.',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'vigente',
-                    accreditations: { electrica: true, bomberos: true, habilitacion: true },
-                },
-            },
-            {
-                id: 'ev7',
-                name: 'CAPER 2026',
-                venue: 'Centro Costa Salguero',
-                setupDate: '2026-05-05',
-                setupEndDate: '2026-05-07',
-                eventStartDate: '2026-05-08',
-                eventEndDate: '2026-05-11',
-                teardownDate: '2026-05-12',
-                teardownEndDate: '2026-05-13',
-                projectCount: 2,
-                pm: 'Leonardo',
-                projects: [
-                    { client: 'Flow / Telecom', type: 'Stand isla', pm: 'Leonardo', status: 'Confirmado' },
-                    { client: 'DirecTV', type: 'Stand centro', pm: 'Federico', status: 'Confirmado' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Carlos Pérez', role: 'Supervisor' },
-                        { name: 'Diego Sánchez', role: 'Montajista' },
-                        { name: 'Pablo Fernández', role: 'Electricista' },
-                    ],
-                    truck: 'Mercedes 1620 #01',
-                    driver: 'Jorge Méndez',
-                    loadDate: '2026-05-04 08:00',
-                    departureDate: '2026-05-05 06:00',
-                    returnDate: '2026-05-14 14:00',
-                    notes: '',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'vigente',
-                    accreditations: { electrica: true, bomberos: true, habilitacion: true },
-                },
-            },
-            {
-                id: 'ev8',
-                name: 'Expo Construir',
-                venue: 'La Rural — Buenos Aires',
-                setupDate: '2026-05-10',
-                setupEndDate: '2026-05-12',
-                eventStartDate: '2026-05-13',
-                eventEndDate: '2026-05-16',
-                teardownDate: '2026-05-17',
-                teardownEndDate: '2026-05-18',
-                projectCount: 2,
-                pm: 'Lelean',
-                projects: [
-                    { client: 'Cementos Avellaneda', type: 'Stand isla', pm: 'Lelean', status: 'Confirmado' },
-                    { client: 'FV Griferías', type: 'Stand esquina', pm: 'Leonardo', status: 'En producción' },
-                ],
-                logistics: {
-                    team: [
-                        { name: 'Diego Sánchez', role: 'Supervisor' },  // CONFLICTO con ev7
-                        { name: 'Raúl Gómez', role: 'Montajista' },
-                        { name: 'Andrés López', role: 'Electricista' },
-                    ],
-                    truck: 'Ford Cargo #02',
-                    driver: 'Hernán Vega',
-                    loadDate: '2026-05-09 09:00',
-                    departureDate: '2026-05-10 07:00',
-                    returnDate: '2026-05-19 12:00',
-                    notes: 'Stands grandes, posible necesidad de 2do viaje.',
-                },
-                documents: {
-                    venuePlan: '#', regulations: '#', exhibitorManual: '#',
-                    insuranceStatus: 'pendiente',
-                    accreditations: { electrica: true, bomberos: false, habilitacion: false },
-                },
-            },
-        ];
+    async _loadEvents() {
+        this._showLoading();
+        try {
+            const events = await API.getEvents();
+            if (!events) throw new Error('offline');
+
+            // Filter: only events with all 3 phase dates
+            const valid = events.filter(e =>
+                e.setupDate && e.eventStartDate && e.teardownDate
+            );
+
+            // Enrich with projectCount + projects from localStorage
+            valid.forEach(e => {
+                try {
+                    const proy = JSON.parse(localStorage.getItem(`ev_proyectos_${e.id}`) || '[]');
+                    e.projectCount = proy.length;
+                    e.projects = proy;
+                } catch { e.projectCount = 0; e.projects = []; }
+
+                // Enrich with logistics from localStorage (until Supabase tables populated)
+                try {
+                    const eq = JSON.parse(localStorage.getItem(`ev_equipo_${e.id}`) || '[]');
+                    const tr = JSON.parse(localStorage.getItem(`ev_transporte_${e.id}`) || 'null');
+                    const notas = localStorage.getItem(`ev_notas_${e.id}`) || '';
+                    e.logistics = {
+                        team: eq.map(t => ({ name: t.nombre || t.name, role: t.rol || t.role })),
+                        truck: tr?.camion || tr?.truck || null,
+                        driver: tr?.chofer_nombre || tr?.driver || null,
+                        loadDate: tr?.fecha_carga || tr?.loadDate || null,
+                        departureDate: tr?.fecha_salida || tr?.departureDate || null,
+                        returnDate: tr?.fecha_retorno || tr?.returnDate || null,
+                        notes: notas,
+                    };
+                } catch { e.logistics = { team: [], truck: null, driver: null, notes: '' }; }
+
+                // Enrich with documents from localStorage
+                try {
+                    const docs = JSON.parse(localStorage.getItem(`ev_docs_${e.id}`) || '[]');
+                    e.documents = { items: docs };
+                } catch { e.documents = { items: [] }; }
+
+                // Infer PM from first project's pm, or empty
+                if (!e.pm && e.projects.length > 0) {
+                    e.pm = e.projects[0].pm || '';
+                }
+                if (!e.pm) e.pm = '';
+
+                // teardownEndDate fallback
+                if (!e.teardownEndDate) e.teardownEndDate = e.teardownDate;
+            });
+
+            // Assign colors: use event.color if set, else palette rotation
+            valid.forEach((ev, i) => {
+                if (!ev.color) ev.color = this._palette[i % this._palette.length];
+            });
+
+            this._events = valid;
+
+            // Cache for offline
+            try {
+                localStorage.setItem('co_events_cache', JSON.stringify(valid.map(e => ({
+                    id: e.id, name: e.name, venue: e.venue,
+                    setupDate: e.setupDate, setupEndDate: e.setupEndDate,
+                    eventStartDate: e.eventStartDate, eventEndDate: e.eventEndDate,
+                    teardownDate: e.teardownDate, teardownEndDate: e.teardownEndDate,
+                    color: e.color, pm: e.pm, projectCount: e.projectCount, status: e.status,
+                }))));
+            } catch { /* */ }
+
+        } catch (err) {
+            console.warn('[CalOp] Offline, loading from cache:', err.message);
+            try {
+                const cached = JSON.parse(localStorage.getItem('co_events_cache') || '[]');
+                cached.forEach((e, i) => {
+                    if (!e.color) e.color = this._palette[i % this._palette.length];
+                    if (!e.teardownEndDate) e.teardownEndDate = e.teardownDate;
+                    e.logistics = e.logistics || { team: [], truck: null, driver: null, notes: '' };
+                    e.documents = e.documents || { items: [] };
+                    e.projects = e.projects || [];
+                });
+                this._events = cached;
+            } catch { this._events = []; }
+        }
+        this._hideLoading();
     },
 
-    _assignColors() {
-        this._events.forEach((ev, i) => {
-            ev.color = this._palette[i % this._palette.length];
+    _showLoading() {
+        this._loading = true;
+        const el = document.getElementById('coLoading');
+        const vp = document.getElementById('coViewport');
+        if (el) el.style.display = 'flex';
+        if (vp) vp.style.display = 'none';
+    },
+
+    _hideLoading() {
+        this._loading = false;
+        const el = document.getElementById('coLoading');
+        const vp = document.getElementById('coViewport');
+        if (el) el.style.display = 'none';
+        if (vp && this._viewMode === 'timeline') vp.style.display = '';
+    },
+
+    _showEmpty() {
+        const el = document.getElementById('coEmpty');
+        const vp = document.getElementById('coViewport');
+        if (el) el.style.display = 'flex';
+        if (vp) vp.style.display = 'none';
+    },
+
+    // ═══════════════════════════════════════════
+    //  CARD VIEW
+    // ═══════════════════════════════════════════
+
+    _renderCardsView() {
+        const container = document.getElementById('coCardsContainer');
+        if (!container) return;
+
+        const filtered = this._getFilteredEvents();
+        const sorted = [...filtered].sort((a, b) =>
+            new Date(a.eventStartDate) - new Date(b.eventStartDate)
+        );
+
+        if (sorted.length === 0) {
+            container.innerHTML = '<div class="co-cards-empty">No hay eventos que coincidan con los filtros</div>';
+            return;
+        }
+
+        const today = new Date();
+        const fmtRange = (start, end) => {
+            if (!start) return '—';
+            const s = this._parseDate(start);
+            const e = this._parseDate(end || start);
+            return `${s.getDate()}/${s.getMonth() + 1}–${e.getDate()}/${e.getMonth() + 1}`;
+        };
+
+        container.innerHTML = sorted.map(ev => {
+            const phase = this._getCurrentPhase(ev, today);
+            const hasConflict = ev._conflicts && ev._conflicts.length > 0;
+            return `
+                <div class="co-card" data-event-id="${ev.id}">
+                    <div class="co-card-color" style="background:${ev.color}"></div>
+                    <div class="co-card-body">
+                        <div class="co-card-header">
+                            <h3 class="co-card-name">${ev.name}</h3>
+                            <span class="co-card-phase co-card-phase-${phase.key}">${phase.label}</span>
+                        </div>
+                        <div class="co-card-venue">${ev.venue}</div>
+                        <div class="co-card-dates">
+                            <span>🔧 ${fmtRange(ev.setupDate, ev.setupEndDate)}</span>
+                            <span>📅 ${fmtRange(ev.eventStartDate, ev.eventEndDate)}</span>
+                            <span>🔽 ${fmtRange(ev.teardownDate, ev.teardownEndDate)}</span>
+                        </div>
+                        <div class="co-card-footer">
+                            <span class="co-card-projects">${ev.projectCount} proy.</span>
+                            ${ev.pm ? `<span class="co-card-pm">${ev.pm}</span>` : ''}
+                            ${hasConflict ? '<span class="co-card-conflict">⚠ Conflicto</span>' : ''}
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+    },
+
+    _getCurrentPhase(event, today) {
+        const setup = this._parseDate(event.setupDate);
+        const setupEnd = this._parseDate(event.setupEndDate || event.setupDate);
+        const evStart = this._parseDate(event.eventStartDate);
+        const evEnd = this._parseDate(event.eventEndDate);
+        const teardown = this._parseDate(event.teardownDate);
+        const teardownEnd = this._parseDate(event.teardownEndDate || event.teardownDate);
+
+        if (today < setup) return { key: 'pendiente', label: 'Pendiente' };
+        if (today >= setup && today <= setupEnd) return { key: 'armado', label: 'En armado' };
+        if (today >= evStart && today <= evEnd) return { key: 'evento', label: 'En curso' };
+        if (today >= teardown && today <= teardownEnd) return { key: 'desarme', label: 'En desarme' };
+        return { key: 'finalizado', label: 'Finalizado' };
+    },
+
+    _getFilteredEvents() {
+        return this._events.filter(ev => {
+            if (this._filters.venue && ev.venue !== this._filters.venue) return false;
+            if (this._filters.pm && ev.pm !== this._filters.pm) return false;
+            return true;
         });
+    },
+
+    _switchView(mode) {
+        this._viewMode = mode;
+        const vp = document.getElementById('coViewport');
+        const cards = document.getElementById('coCardsContainer');
+        const btnTimeline = document.getElementById('coViewTimeline');
+        const btnCards = document.getElementById('coViewCards');
+
+        if (mode === 'timeline') {
+            if (vp) vp.style.display = '';
+            if (cards) cards.style.display = 'none';
+            btnTimeline?.classList.add('active');
+            btnCards?.classList.remove('active');
+        } else {
+            if (vp) vp.style.display = 'none';
+            if (cards) cards.style.display = '';
+            btnTimeline?.classList.remove('active');
+            btnCards?.classList.add('active');
+            this._renderCardsView();
+        }
     },
 
     // ═══════════════════════════════════════════
@@ -715,6 +653,16 @@ const CalendarioOperativo = {
             });
         }
 
+        // View toggle
+        document.getElementById('coViewTimeline')?.addEventListener('click', () => this._switchView('timeline'));
+        document.getElementById('coViewCards')?.addEventListener('click', () => this._switchView('cards'));
+
+        // Card view: click on card → open side panel
+        document.getElementById('coCardsContainer')?.addEventListener('click', (e) => {
+            const card = e.target.closest('.co-card');
+            if (card) this._openSidePanel(card.dataset.eventId);
+        });
+
         // Side panel close
         document.getElementById('coSidePanel')?.addEventListener('click', (e) => {
             if (e.target.closest('.co-sp-close')) {
@@ -859,7 +807,10 @@ const CalendarioOperativo = {
     // ═══════════════════════════════════════════
 
     _parseDate(str) {
-        const [y, m, d] = str.split('-').map(Number);
+        if (!str) return new Date();
+        // Handle ISO timestamps (2026-03-08T00:00:00+00:00) and YYYY-MM-DD
+        const clean = String(str).split('T')[0];
+        const [y, m, d] = clean.split('-').map(Number);
         return new Date(y, m - 1, d);
     },
 
@@ -892,72 +843,41 @@ const CalendarioOperativo = {
     //  SIDE PANEL
     // ═══════════════════════════════════════════
 
-    _openSidePanel(eventId) {
+    async _openSidePanel(eventId) {
         const event = this._events.find(e => e.id === eventId);
         if (!event) return;
         this._activePanel = eventId;
+        this._activePanelTab = 'info';
         this._hideTooltip();
 
         const panel = document.getElementById('coSidePanel');
         if (!panel) return;
 
+        panel.innerHTML = this._buildPanelHTML(event);
+        panel.classList.add('open');
+
+        // Tab click handlers
+        panel.querySelectorAll('.co-sp-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._activePanelTab = btn.dataset.tab;
+                panel.querySelectorAll('.co-sp-tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._renderPanelTabContent(event);
+            });
+        });
+
+        // Lazy-load logistics/docs/history from API
+        this._loadPanelData(event);
+    },
+
+    _buildPanelHTML(event) {
         const fmtDate = (str) => {
+            if (!str) return '—';
             const d = this._parseDate(str);
             return `${d.getDate()}/${d.getMonth() + 1}`;
         };
 
-        // Projects table rows
-        const projectRows = (event.projects || []).map(p => `
-            <tr>
-                <td>${p.client}</td>
-                <td>${p.type}</td>
-                <td>${p.pm}</td>
-                <td><span class="co-sp-status co-sp-status-${p.status === 'Confirmado' ? 'ok' : 'wip'}">${p.status}</span></td>
-            </tr>
-        `).join('');
-
-        // Logistics
-        const log = event.logistics || {};
-        const teamRows = (log.team || []).map(t => `
-            <div class="co-sp-team-row">
-                <span class="co-sp-team-name">${t.name}</span>
-                <span class="co-sp-team-role">${t.role}</span>
-            </div>
-        `).join('');
-
-        // Documents
-        const doc = event.documents || {};
-        const accItems = Object.entries(doc.accreditations || {}).map(([k, v]) => `
-            <div class="co-sp-accred">
-                <span class="co-sp-accred-icon">${v ? '✓' : '○'}</span>
-                <span>${k.charAt(0).toUpperCase() + k.slice(1)}</span>
-            </div>
-        `).join('');
-
-        const insuranceCls = doc.insuranceStatus === 'vigente' ? 'ok' : doc.insuranceStatus === 'pendiente' ? 'warn' : 'bad';
-
-        // Conflicts
-        let conflictsHTML = '';
-        if (event._conflicts && event._conflicts.length > 0) {
-            const items = event._conflicts.map(c => {
-                const other = this._events.find(e => e.id === c.otherEventId);
-                const parts = [];
-                if (c.sharedTeam.length) parts.push(`Personas: ${c.sharedTeam.join(', ')}`);
-                if (c.sharedTruck) parts.push(`Camión: ${log.truck}`);
-                return `<div class="co-sp-conflict-item">
-                    <strong>${other?.name || c.otherEventId}</strong>
-                    <span>${parts.join(' · ')}</span>
-                </div>`;
-            }).join('');
-            conflictsHTML = `
-                <div class="co-sp-section co-sp-conflicts">
-                    <h3 class="co-sp-section-title co-sp-conflict-title">⚠ Conflictos detectados</h3>
-                    ${items}
-                </div>
-            `;
-        }
-
-        panel.innerHTML = `
+        return `
             <div class="co-sp-header" style="--event-color: ${event.color}">
                 <button class="co-sp-close">✕</button>
                 <div class="co-sp-color-bar"></div>
@@ -971,71 +891,252 @@ const CalendarioOperativo = {
                     <span>Desarme: ${fmtDate(event.teardownDate)}–${fmtDate(event.teardownEndDate)}</span>
                 </div>
             </div>
+            <div class="co-sp-tabs">
+                <button class="co-sp-tab active" data-tab="info">Info</button>
+                <button class="co-sp-tab" data-tab="logistica">Logística</button>
+                <button class="co-sp-tab" data-tab="historial">Historial</button>
+            </div>
+            <div class="co-sp-tab-content" id="coSpTabContent">
+                ${this._renderInfoTab(event)}
+            </div>
+        `;
+    },
 
+    async _loadPanelData(event) {
+        try {
+            const [equipo, transporte, docs, historial] = await Promise.all([
+                API.getEventEquipo(event.id).catch(() => null),
+                API.getEventTransporte(event.id).catch(() => null),
+                API.getEventDocumentos(event.id).catch(() => null),
+                API.getEventHistorial(event.id).catch(() => null),
+            ]);
+
+            // Merge API data if available, otherwise keep localStorage enrichment
+            if (equipo && equipo.length > 0) {
+                event._equipo = equipo;
+            } else {
+                event._equipo = (event.logistics?.team || []).map((t, i) => ({
+                    id: `local-${i}`, name: t.name, role: t.role
+                }));
+            }
+            event._transporte = transporte || {
+                truck: event.logistics?.truck || null,
+                driver: event.logistics?.driver || null,
+                loadDate: event.logistics?.loadDate || null,
+                departureDate: event.logistics?.departureDate || null,
+                returnDate: event.logistics?.returnDate || null,
+                notes: event.logistics?.notes || '',
+            };
+            event._documentos = docs || (event.documents?.items || []);
+            event._historial = historial || [];
+        } catch {
+            event._equipo = (event.logistics?.team || []).map((t, i) => ({
+                id: `local-${i}`, name: t.name, role: t.role
+            }));
+            event._transporte = {
+                truck: event.logistics?.truck || null,
+                driver: event.logistics?.driver || null,
+                notes: event.logistics?.notes || '',
+            };
+            event._documentos = event.documents?.items || [];
+            event._historial = [];
+        }
+
+        // Re-render if panel still open for this event
+        if (this._activePanel === event.id) {
+            this._renderPanelTabContent(event);
+        }
+    },
+
+    _renderPanelTabContent(event) {
+        const container = document.getElementById('coSpTabContent');
+        if (!container) return;
+
+        switch (this._activePanelTab) {
+            case 'info':      container.innerHTML = this._renderInfoTab(event); break;
+            case 'logistica': container.innerHTML = this._renderLogisticaTab(event); break;
+            case 'historial': container.innerHTML = this._renderHistorialTab(event); break;
+        }
+    },
+
+    _renderInfoTab(event) {
+        // Conflicts
+        let conflictsHTML = '';
+        if (event._conflicts && event._conflicts.length > 0) {
+            const items = event._conflicts.map(c => {
+                const other = this._events.find(e => e.id === c.otherEventId);
+                const parts = [];
+                if (c.sharedTeam.length) parts.push(`Personas: ${c.sharedTeam.join(', ')}`);
+                if (c.sharedTruck) parts.push(`Camión compartido`);
+                return `<div class="co-sp-conflict-item">
+                    <strong>${other?.name || c.otherEventId}</strong>
+                    <span>${parts.join(' · ')}</span>
+                </div>`;
+            }).join('');
+            conflictsHTML = `
+                <div class="co-sp-section co-sp-conflicts">
+                    <h3 class="co-sp-section-title co-sp-conflict-title">⚠ Conflictos detectados</h3>
+                    ${items}
+                </div>`;
+        }
+
+        // Projects
+        const projectRows = (event.projects || []).map(p => `
+            <tr>
+                <td>${p.client || '—'}</td>
+                <td>${p.type || '—'}</td>
+                <td>${p.pm || '—'}</td>
+                <td><span class="co-sp-status co-sp-status-${p.status === 'Confirmado' ? 'ok' : 'wip'}">${p.status || '—'}</span></td>
+            </tr>
+        `).join('');
+
+        const notasHTML = event.notasOperativas
+            ? `<div class="co-sp-section">
+                <h3 class="co-sp-section-title">Notas operativas</h3>
+                <div class="co-sp-notes">${event.notasOperativas}</div>
+               </div>`
+            : '';
+
+        return `
             ${conflictsHTML}
-
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Proyectos MEPEX (${event.projectCount})</h3>
-                <table class="co-sp-table">
-                    <thead><tr><th>Cliente</th><th>Tipo</th><th>PM</th><th>Estado</th></tr></thead>
-                    <tbody>${projectRows}</tbody>
-                </table>
+                ${projectRows
+                    ? `<table class="co-sp-table">
+                        <thead><tr><th>Cliente</th><th>Tipo</th><th>PM</th><th>Estado</th></tr></thead>
+                        <tbody>${projectRows}</tbody>
+                       </table>`
+                    : '<span class="co-sp-empty">Sin proyectos vinculados</span>'}
             </div>
+            ${notasHTML}
+        `;
+    },
 
+    _renderLogisticaTab(event) {
+        const equipo = event._equipo || (event.logistics?.team || []).map((t, i) => ({
+            id: `local-${i}`, name: t.name, role: t.role
+        }));
+        const teamRows = equipo.map(t => `
+            <div class="co-sp-team-row">
+                <span class="co-sp-team-name">${t.name}</span>
+                <span class="co-sp-team-role">${t.role}</span>
+            </div>
+        `).join('');
+
+        const tr = event._transporte || event.logistics || {};
+        const docs = event._documentos || event.documents?.items || [];
+        const docsHTML = docs.length > 0
+            ? docs.map(d => `
+                <div class="co-sp-doc-item">
+                    <span class="co-sp-doc-icon">${this._docIcon(d.tipo)}</span>
+                    <span class="co-sp-doc-name">${d.nombre || d.nombre_archivo || '—'}</span>
+                </div>
+            `).join('')
+            : '<span class="co-sp-empty">Sin documentos</span>';
+
+        return `
             <div class="co-sp-section">
-                <h3 class="co-sp-section-title">Logística</h3>
+                <h3 class="co-sp-section-title">Equipo asignado</h3>
+                <div class="co-sp-team">${teamRows || '<span class="co-sp-empty">Sin asignar</span>'}</div>
+            </div>
+            <div class="co-sp-section">
+                <h3 class="co-sp-section-title">Transporte</h3>
                 <div class="co-sp-logistics">
-                    <div class="co-sp-log-group">
-                        <label>Equipo asignado</label>
-                        <div class="co-sp-team">${teamRows || '<span class="co-sp-empty">Sin asignar</span>'}</div>
-                    </div>
                     <div class="co-sp-log-row">
                         <div class="co-sp-log-group">
                             <label>Camión</label>
-                            <span>${log.truck || '—'}</span>
+                            <span>${tr.truck || '—'}</span>
                         </div>
                         <div class="co-sp-log-group">
                             <label>Chofer</label>
-                            <span>${log.driver || '—'}</span>
+                            <span>${tr.driver || '—'}</span>
                         </div>
                     </div>
                     <div class="co-sp-log-row co-sp-times">
                         <div class="co-sp-log-group">
                             <label>Carga</label>
-                            <span>${log.loadDate || '—'}</span>
+                            <span>${tr.loadDate || '—'}</span>
                         </div>
                         <div class="co-sp-log-group">
                             <label>Salida</label>
-                            <span>${log.departureDate || '—'}</span>
+                            <span>${tr.departureDate || '—'}</span>
                         </div>
                         <div class="co-sp-log-group">
                             <label>Retorno</label>
-                            <span>${log.returnDate || '—'}</span>
+                            <span>${tr.returnDate || '—'}</span>
                         </div>
                     </div>
-                    ${log.notes ? `<div class="co-sp-log-group"><label>Notas</label><div class="co-sp-notes">${log.notes}</div></div>` : ''}
+                    ${tr.notes ? `<div class="co-sp-log-group"><label>Notas</label><div class="co-sp-notes">${tr.notes}</div></div>` : ''}
                 </div>
             </div>
-
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Documentos</h3>
-                <div class="co-sp-docs">
-                    <a href="${doc.venuePlan || '#'}" class="co-sp-doc-link" target="_blank">📐 Plano del predio</a>
-                    <a href="${doc.regulations || '#'}" class="co-sp-doc-link" target="_blank">📋 Reglamento</a>
-                    <a href="${doc.exhibitorManual || '#'}" class="co-sp-doc-link" target="_blank">📖 Manual del expositor</a>
-                </div>
-                <div class="co-sp-insurance">
-                    <label>Seguros</label>
-                    <span class="co-sp-insurance-badge co-sp-insurance-${insuranceCls}">${doc.insuranceStatus || '—'}</span>
-                </div>
-                <div class="co-sp-accreds">
-                    <label>Acreditaciones</label>
-                    ${accItems}
-                </div>
+                <div class="co-sp-docs-list">${docsHTML}</div>
             </div>
         `;
+    },
 
-        panel.classList.add('open');
+    _docIcon(tipo) {
+        const icons = { plano: '📐', reglamento: '📋', manual: '📖', seguro_acreditacion: '🛡', otro: '📄' };
+        return icons[tipo] || '📄';
+    },
+
+    _renderHistorialTab(event) {
+        const historial = event._historial || [];
+
+        if (historial.length === 0) {
+            return `
+                <div class="co-sp-section">
+                    <div class="co-sp-hist-empty">
+                        <span class="co-sp-hist-empty-icon">📋</span>
+                        <p>Sin cambios registrados</p>
+                        <span class="co-sp-hist-empty-hint">Los cambios en el evento se registrarán aquí automáticamente.</span>
+                    </div>
+                </div>`;
+        }
+
+        const icons = {
+            campo_editado: '✏', estado_cambio: '🔄', equipo_cambio: '👥',
+            transporte_cambio: '🚛', documento: '📄', nota: '📝'
+        };
+
+        const entries = historial.map(h => {
+            const icon = icons[h.tipo] || '•';
+            const timeAgo = this._timeAgo(h.createdAt);
+            let metaHTML = '';
+            if (h.metadata) {
+                if (h.metadata.anterior !== undefined && h.metadata.nuevo !== undefined) {
+                    metaHTML = `<div class="co-sp-hist-meta">"${h.metadata.anterior || '—'}" → "${h.metadata.nuevo || '—'}"</div>`;
+                }
+            }
+
+            return `
+                <div class="co-sp-hist-entry">
+                    <div class="co-sp-hist-icon">${icon}</div>
+                    <div class="co-sp-hist-content">
+                        <div class="co-sp-hist-desc">${h.descripcion}</div>
+                        ${metaHTML}
+                        <div class="co-sp-hist-footer">
+                            ${h.usuario ? `<span class="co-sp-hist-user">${h.usuario}</span>` : ''}
+                            <span class="co-sp-hist-time">${timeAgo}</span>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+
+        return `<div class="co-sp-section co-sp-hist-section">${entries}</div>`;
+    },
+
+    _timeAgo(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const diff = Math.floor((now - d) / 1000);
+        if (diff < 60) return 'hace un momento';
+        if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
+        if (diff < 86400) return `hace ${Math.floor(diff / 3600)} hs`;
+        if (diff < 604800) return `hace ${Math.floor(diff / 86400)} días`;
+        return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
     },
 
     _closeSidePanel() {
@@ -1122,14 +1223,14 @@ const CalendarioOperativo = {
     },
 
     _applyFilters() {
-        const filtered = this._events.filter(ev => {
-            if (this._filters.venue && ev.venue !== this._filters.venue) return false;
-            if (this._filters.pm && ev.pm !== this._filters.pm) return false;
-            return true;
-        });
+        const filtered = this._getFilteredEvents();
 
-        this._lanes = this._computeLanes(filtered);
-        this._renderTimeline();
+        if (this._viewMode === 'cards') {
+            this._renderCardsView();
+        } else {
+            this._lanes = this._computeLanes(filtered);
+            this._renderTimeline();
+        }
         this._closeSidePanel();
     },
 

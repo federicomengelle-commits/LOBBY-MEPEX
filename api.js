@@ -170,6 +170,9 @@ const API = {
                 eventStartDate: e.fecha_evento_inicio || null,
                 eventEndDate: e.fecha_evento_fin || null,
                 teardownDate: e.fecha_desarme || null,
+                teardownEndDate: e.fecha_desarme_fin || e.fecha_desarme || null,
+                color: e.color || null,
+                notasOperativas: e.notas_operativas || '',
                 priority: e.prioridad || '',
                 status: e.estado || '',
             }));
@@ -462,6 +465,9 @@ const API = {
                 fecha_evento_inicio: data.eventStartDate || null,
                 fecha_evento_fin: data.eventEndDate || null,
                 fecha_desarme: data.teardownDate || null,
+                fecha_desarme_fin: data.teardownEndDate || null,
+                color: data.color || null,
+                notas_operativas: data.notasOperativas || null,
                 prioridad: data.priority || '',
                 estado: data.status || 'Sin empezar',
             };
@@ -486,6 +492,9 @@ const API = {
             if (data.eventStartDate !== undefined) payload.fecha_evento_inicio = data.eventStartDate || null;
             if (data.eventEndDate !== undefined) payload.fecha_evento_fin = data.eventEndDate || null;
             if (data.teardownDate !== undefined) payload.fecha_desarme = data.teardownDate || null;
+            if (data.teardownEndDate !== undefined) payload.fecha_desarme_fin = data.teardownEndDate || null;
+            if (data.color !== undefined) payload.color = data.color;
+            if (data.notasOperativas !== undefined) payload.notas_operativas = data.notasOperativas;
             if (data.priority !== undefined) payload.prioridad = data.priority;
             if (data.status !== undefined) payload.estado = data.status;
             const { data: result, error } = await supabaseClient
@@ -507,6 +516,210 @@ const API = {
             return true;
         } catch (e) {
             console.warn('[API] Error deleting event:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Evento Equipo ────────────────────────
+    async getEventEquipo(eventoId) {
+        if (!eventoId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_equipo')
+                .select('*')
+                .eq('evento_id', eventoId)
+                .order('orden', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(e => ({
+                id: e.id,
+                name: e.nombre_manual,
+                role: e.rol_operativo,
+                personaId: e.persona_id,
+                orden: e.orden,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching event equipo:', e.message);
+            return [];
+        }
+    },
+
+    async saveEventEquipo(eventoId, team) {
+        if (!eventoId) return null;
+        try {
+            // Delete existing
+            await supabaseClient.from('evento_equipo').delete().eq('evento_id', eventoId);
+            // Insert new
+            if (team && team.length > 0) {
+                const rows = team.map((t, i) => ({
+                    evento_id: eventoId,
+                    nombre_manual: t.name || t.nombre || '',
+                    rol_operativo: t.role || t.rol || 'auxiliar',
+                    persona_id: t.personaId || null,
+                    orden: i,
+                }));
+                const { error } = await supabaseClient.from('evento_equipo').insert(rows);
+                if (error) throw error;
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error saving event equipo:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Evento Transporte ──────────────────────
+    async getEventTransporte(eventoId) {
+        if (!eventoId) return null;
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_transporte')
+                .select('*')
+                .eq('evento_id', eventoId)
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) return null;
+            return {
+                id: data.id,
+                truck: data.camion,
+                driver: data.chofer_nombre,
+                driverId: data.chofer_id,
+                loadDate: data.fecha_carga,
+                departureDate: data.fecha_salida,
+                returnDate: data.fecha_retorno,
+                notes: data.notas,
+            };
+        } catch (e) {
+            console.warn('[API] Error fetching event transporte:', e.message);
+            return null;
+        }
+    },
+
+    async saveEventTransporte(eventoId, data) {
+        if (!eventoId) return null;
+        try {
+            // Delete existing
+            await supabaseClient.from('evento_transporte').delete().eq('evento_id', eventoId);
+            // Insert new if data provided
+            if (data && (data.truck || data.driver || data.camion || data.chofer_nombre)) {
+                const row = {
+                    evento_id: eventoId,
+                    camion: data.truck || data.camion || null,
+                    chofer_nombre: data.driver || data.chofer_nombre || null,
+                    chofer_id: data.driverId || data.chofer_id || null,
+                    fecha_carga: data.loadDate || data.fecha_carga || null,
+                    fecha_salida: data.departureDate || data.fecha_salida || null,
+                    fecha_retorno: data.returnDate || data.fecha_retorno || null,
+                    notas: data.notes || data.notas || null,
+                };
+                const { error } = await supabaseClient.from('evento_transporte').insert([row]);
+                if (error) throw error;
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error saving event transporte:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Evento Documentos ──────────────────────
+    async getEventDocumentos(eventoId) {
+        if (!eventoId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_documentos')
+                .select('*')
+                .eq('evento_id', eventoId)
+                .order('uploaded_at', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(d => ({
+                id: d.id,
+                tipo: d.tipo,
+                nombre: d.nombre_archivo,
+                storagePath: d.storage_path,
+                uploadedAt: d.uploaded_at,
+                uploadedBy: d.uploaded_by,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching event documentos:', e.message);
+            return [];
+        }
+    },
+
+    async addEventDocumento(eventoId, doc) {
+        if (!eventoId) return null;
+        try {
+            const row = {
+                evento_id: eventoId,
+                tipo: doc.tipo || 'otro',
+                nombre_archivo: doc.nombre || doc.nombre_archivo || '',
+                storage_path: doc.storagePath || doc.storage_path || null,
+                uploaded_by: doc.uploadedBy || doc.uploaded_by || null,
+            };
+            const { data, error } = await supabaseClient
+                .from('evento_documentos').insert([row]).select();
+            if (error) throw error;
+            return data?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error adding event documento:', e.message);
+            return null;
+        }
+    },
+
+    async deleteEventDocumento(docId) {
+        if (!docId) return null;
+        try {
+            const { error } = await supabaseClient
+                .from('evento_documentos').delete().eq('id', docId);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting event documento:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Evento Historial ───────────────────────
+    async getEventHistorial(eventoId) {
+        if (!eventoId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_historial')
+                .select('*')
+                .eq('evento_id', eventoId)
+                .order('created_at', { ascending: false })
+                .limit(50);
+            if (error) throw error;
+            return (data || []).map(h => ({
+                id: h.id,
+                tipo: h.tipo,
+                descripcion: h.descripcion,
+                metadata: h.metadata,
+                usuario: h.usuario,
+                createdAt: h.created_at,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching event historial:', e.message);
+            return [];
+        }
+    },
+
+    async logEventChange(eventoId, tipo, descripcion, metadata, usuario) {
+        if (!eventoId) return null;
+        try {
+            const row = {
+                evento_id: eventoId,
+                tipo: tipo || 'campo_editado',
+                descripcion: descripcion || '',
+                metadata: metadata || null,
+                usuario: usuario || null,
+            };
+            const { error } = await supabaseClient
+                .from('evento_historial').insert([row]);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error logging event change:', e.message);
             return null;
         }
     },
