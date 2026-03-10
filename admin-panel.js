@@ -24,10 +24,10 @@ const AdminPanel = {
     _generateData() {
         const now = new Date('2026-03-09T16:45:00');
 
-        // ── Users ──
+        // ── Users (10 personas reales) ──
         this._users = [
             {
-                id: 'fede', name: 'Federico Méndez', role: 'admin', email: 'fede@mepex.com.ar',
+                id: 'fede', name: 'Federico Méndez', role: 'superadmin', email: 'fede@mepex.com.ar',
                 initials: 'FM', lastLogin: new Date('2026-03-09T08:12:00'), device: 'MacBook Pro — Chrome',
                 usageToday: 512, usageWeek: 2340, sessionsNow: 1, actionsToday: 47, online: true,
             },
@@ -37,24 +37,44 @@ const AdminPanel = {
                 usageToday: 398, usageWeek: 1870, sessionsNow: 1, actionsToday: 32, online: true,
             },
             {
-                id: 'noe', name: 'Noelia Ruiz', role: 'comercial', email: 'noe@mepex.com.ar',
+                id: 'sofi', name: 'Sofía Méndez', role: 'admin', email: 'sofi@mepex.com.ar',
+                initials: 'SM', lastLogin: new Date('2026-03-09T09:00:00'), device: 'Notebook HP — Chrome',
+                usageToday: 285, usageWeek: 1520, sessionsNow: 1, actionsToday: 22, online: true,
+            },
+            {
+                id: 'noe', name: 'Noelia Ruiz', role: 'venta', email: 'noe@mepex.com.ar',
                 initials: 'NR', lastLogin: new Date('2026-03-09T08:45:00'), device: 'Notebook Lenovo — Chrome',
                 usageToday: 445, usageWeek: 2100, sessionsNow: 1, actionsToday: 38, online: true,
             },
             {
-                id: 'pm1', name: 'Martín Calvetti', role: 'pm', email: 'martin@mepex.com.ar',
-                initials: 'MC', lastLogin: new Date('2026-03-09T10:15:00'), device: 'iPad Pro — Safari',
+                id: 'meli', name: 'Melina Torres', role: 'pm', email: 'meli@mepex.com.ar',
+                initials: 'MT', lastLogin: new Date('2026-03-09T08:30:00'), device: 'Notebook Dell — Chrome',
+                usageToday: 380, usageWeek: 1900, sessionsNow: 1, actionsToday: 28, online: true,
+            },
+            {
+                id: 'leo', name: 'Leonardo Quiroga', role: 'pm', email: 'leo@mepex.com.ar',
+                initials: 'LQ', lastLogin: new Date('2026-03-09T10:15:00'), device: 'iPad Pro — Safari',
                 usageToday: 210, usageWeek: 1450, sessionsNow: 0, actionsToday: 18, online: false,
             },
             {
-                id: 'prod1', name: 'Carlos Herrera', role: 'produccion', email: 'carlos@mepex.com.ar',
-                initials: 'CH', lastLogin: new Date('2026-03-09T07:00:00'), device: 'Tablet Taller — Chrome',
-                usageToday: 320, usageWeek: 1680, sessionsNow: 1, actionsToday: 24, online: true,
+                id: 'diego', name: 'Diego Fernández', role: 'taller', email: 'diego@mepex.com.ar',
+                initials: 'DF', lastLogin: new Date('2026-03-09T07:00:00'), device: 'Tablet Taller 1 — Chrome',
+                usageToday: 340, usageWeek: 1750, sessionsNow: 1, actionsToday: 26, online: true,
             },
             {
-                id: 'ext1', name: 'Valentina Sosa', role: 'externo', email: 'vsosa@externo.com',
-                initials: 'VS', lastLogin: new Date('2026-03-08T14:20:00'), device: 'PC Personal — Firefox',
-                usageToday: 0, usageWeek: 340, sessionsNow: 0, actionsToday: 0, online: false,
+                id: 'juan', name: 'Juan Labajian', role: 'taller', email: 'juan@mepex.com.ar',
+                initials: 'JL', lastLogin: new Date('2026-03-09T07:10:00'), device: 'Tablet Taller 2 — Chrome',
+                usageToday: 310, usageWeek: 1600, sessionsNow: 1, actionsToday: 22, online: true,
+            },
+            {
+                id: 'carlos', name: 'Carlos Herrera', role: 'taller', email: 'carlos@mepex.com.ar',
+                initials: 'CH', lastLogin: new Date('2026-03-09T07:05:00'), device: 'Tablet Taller 3 — Chrome',
+                usageToday: 320, usageWeek: 1680, sessionsNow: 0, actionsToday: 20, online: false,
+            },
+            {
+                id: 'willy', name: 'Guillermo Paz', role: 'taller', email: 'willy@mepex.com.ar',
+                initials: 'GP', lastLogin: new Date('2026-03-08T07:00:00'), device: 'Tablet Taller 4 — Chrome',
+                usageToday: 0, usageWeek: 1280, sessionsNow: 0, actionsToday: 0, online: false,
             },
         ];
 
@@ -63,78 +83,79 @@ const AdminPanel = {
             // ─ Hoy 09 marzo ─
             { ts: new Date('2026-03-09T16:40:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0052 para YPF', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-09T16:32:00'), user: 'fede', action: 'edit', module: 'Proyectos', detail: 'Cambió estado proyecto #134 a "En producción"', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T16:18:00'), user: 'prod1', action: 'edit', module: 'Producción', detail: 'Completó tarea "Corte paneles Stand Samsung"', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-09T16:18:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Completó tarea "Corte paneles Stand Samsung"', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-09T16:05:00'), user: 'lelean', action: 'view', module: 'Finanzas', detail: 'Consultó dashboard financiero mensual', device: 'PC Oficina' },
             { ts: new Date('2026-03-09T15:50:00'), user: 'noe', action: 'edit', module: 'Clientes', detail: 'Actualizó datos de contacto de Coca-Cola', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T15:42:00'), user: 'pm1', action: 'create', module: 'Proyectos', detail: 'Creó hito "Montaje día 1" en proyecto #132', device: 'iPad Pro' },
+            { ts: new Date('2026-03-09T15:42:00'), user: 'meli', action: 'create', module: 'Proyectos', detail: 'Creó hito "Montaje día 1" en proyecto #132', device: 'iPad Pro' },
             { ts: new Date('2026-03-09T15:30:00'), user: 'fede', action: 'edit', module: 'Ventas', detail: 'Aprobó cotización COT-2026-0048 de Arcor', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T15:15:00'), user: 'prod1', action: 'edit', module: 'Inventario', detail: 'Descontó 8 paneles OCTEXA del stock', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-09T15:15:00'), user: 'diego', action: 'edit', module: 'Inventario', detail: 'Descontó 8 paneles OCTEXA del stock', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-09T14:58:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0051 para Quilmes', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-09T14:45:00'), user: 'lelean', action: 'edit', module: 'Proyectos', detail: 'Asignó PM Martín a proyecto Stand Toyota', device: 'PC Oficina' },
-            { ts: new Date('2026-03-09T14:30:00'), user: 'pm1', action: 'edit', module: 'Eventos', detail: 'Actualizó fecha de montaje ExpoAgro 2026', device: 'iPad Pro' },
+            { ts: new Date('2026-03-09T14:30:00'), user: 'meli', action: 'edit', module: 'Eventos', detail: 'Actualizó fecha de montaje ExpoAgro 2026', device: 'iPad Pro' },
             { ts: new Date('2026-03-09T14:12:00'), user: 'fede', action: 'create', module: 'Clientes', detail: 'Registró nuevo cliente: Toyota Argentina', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T13:55:00'), user: 'prod1', action: 'edit', module: 'Producción', detail: 'Inició tarea "Pintura estructura Stand Arcor"', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-09T13:55:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Inició tarea "Pintura estructura Stand Arcor"', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-09T13:40:00'), user: 'noe', action: 'create', module: 'Marketing', detail: 'Generó template de propuesta para Quilmes', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-09T13:25:00'), user: 'lelean', action: 'view', module: 'Ventas', detail: 'Revisó pipeline comercial completo', device: 'PC Oficina' },
-            { ts: new Date('2026-03-09T13:10:00'), user: 'pm1', action: 'edit', module: 'Proyectos', detail: 'Actualizó checklist de Stand Unilever', device: 'iPad Pro' },
+            { ts: new Date('2026-03-09T13:10:00'), user: 'meli', action: 'edit', module: 'Proyectos', detail: 'Actualizó checklist de Stand Unilever', device: 'iPad Pro' },
             { ts: new Date('2026-03-09T12:45:00'), user: 'fede', action: 'edit', module: 'Finanzas', detail: 'Registró cobro parcial de Coca-Cola ($1.200.000)', device: 'MacBook Pro' },
             { ts: new Date('2026-03-09T12:30:00'), user: 'noe', action: 'edit', module: 'Ventas', detail: 'Envió seguimiento a cotización COT-2026-0045', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T12:15:00'), user: 'prod1', action: 'create', module: 'Producción', detail: 'Cargó fotos de avance Stand Samsung', device: 'Tablet Taller' },
-            { ts: new Date('2026-03-09T11:50:00'), user: 'ext1', action: 'view', module: 'Proyectos', detail: 'Consultó ficha proyecto Stand Pepsico', device: 'PC Personal' },
+            { ts: new Date('2026-03-09T12:15:00'), user: 'diego', action: 'create', module: 'Producción', detail: 'Cargó fotos de avance Stand Samsung', device: 'Tablet Taller 1' },
+            { ts: new Date('2026-03-09T11:50:00'), user: 'sofi', action: 'edit', module: 'Finanzas', detail: 'Registró factura de proveedor IlumiTech', device: 'Notebook HP' },
             { ts: new Date('2026-03-09T11:30:00'), user: 'lelean', action: 'edit', module: 'RRHH', detail: 'Actualizó horarios del equipo de taller', device: 'PC Oficina' },
             { ts: new Date('2026-03-09T11:15:00'), user: 'fede', action: 'edit', module: 'Proveedores', detail: 'Aprobó orden de compra OC-2026-018 a MaderaPlus', device: 'MacBook Pro' },
             { ts: new Date('2026-03-09T11:00:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0050 para Nestlé', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T10:45:00'), user: 'pm1', action: 'view', module: 'Clientes', detail: 'Consultó ficha cliente Arcor para reunión', device: 'iPad Pro' },
-            { ts: new Date('2026-03-09T10:30:00'), user: 'prod1', action: 'edit', module: 'Producción', detail: 'Marcó como completa "Soldadura base Stand Arcor"', device: 'Tablet Taller' },
-            { ts: new Date('2026-03-09T10:15:00'), user: 'pm1', action: 'login', module: 'Sistema', detail: 'Inició sesión desde iPad Pro', device: 'iPad Pro' },
+            { ts: new Date('2026-03-09T10:45:00'), user: 'meli', action: 'view', module: 'Clientes', detail: 'Consultó ficha cliente Arcor para reunión', device: 'iPad Pro' },
+            { ts: new Date('2026-03-09T10:30:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Marcó como completa "Soldadura base Stand Arcor"', device: 'Tablet Taller 1' },
+            { ts: new Date('2026-03-09T10:15:00'), user: 'meli', action: 'login', module: 'Sistema', detail: 'Inició sesión desde iPad Pro', device: 'iPad Pro' },
             { ts: new Date('2026-03-09T10:00:00'), user: 'fede', action: 'edit', module: 'Ventas', detail: 'Cambió prioridad de COT-2026-0047 a urgente', device: 'MacBook Pro' },
             { ts: new Date('2026-03-09T09:45:00'), user: 'noe', action: 'edit', module: 'Clientes', detail: 'Agregó contacto secundario a Quilmes', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-09T09:30:00'), user: 'lelean', action: 'login', module: 'Sistema', detail: 'Inició sesión desde PC Oficina', device: 'PC Oficina' },
             { ts: new Date('2026-03-09T09:15:00'), user: 'fede', action: 'edit', module: 'Proyectos', detail: 'Actualizó presupuesto proyecto Stand Samsung', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T09:00:00'), user: 'prod1', action: 'edit', module: 'Producción', detail: 'Asignó tarea "Electricidad" a equipo 2', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-09T09:00:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Asignó tarea "Electricidad" a equipo 2', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-09T08:45:00'), user: 'noe', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Notebook Lenovo', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-09T08:30:00'), user: 'fede', action: 'view', module: 'Finanzas', detail: 'Revisó cash flow proyectado del mes', device: 'MacBook Pro' },
             { ts: new Date('2026-03-09T08:12:00'), user: 'fede', action: 'login', module: 'Sistema', detail: 'Inició sesión desde MacBook Pro', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T07:00:00'), user: 'prod1', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Tablet Taller', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-09T07:00:00'), user: 'diego', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Tablet Taller', device: 'Tablet Taller 1' },
 
             // ─ Ayer 08 marzo ─
             { ts: new Date('2026-03-08T18:30:00'), user: 'fede', action: 'edit', module: 'Proyectos', detail: 'Cerró proyecto #128 Stand Pepsico como entregado', device: 'MacBook Pro' },
             { ts: new Date('2026-03-08T18:00:00'), user: 'noe', action: 'edit', module: 'Ventas', detail: 'Marcó COT-2026-0044 como ganada', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-08T17:30:00'), user: 'lelean', action: 'edit', module: 'Finanzas', detail: 'Concilió pagos del mes de febrero', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T17:00:00'), user: 'pm1', action: 'edit', module: 'Proyectos', detail: 'Generó informe de avance Stand Unilever', device: 'iPad Pro' },
-            { ts: new Date('2026-03-08T16:45:00'), user: 'prod1', action: 'edit', module: 'Inventario', detail: 'Registró ingreso 20 perfiles aluminio', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-08T17:00:00'), user: 'meli', action: 'edit', module: 'Proyectos', detail: 'Generó informe de avance Stand Unilever', device: 'iPad Pro' },
+            { ts: new Date('2026-03-08T16:45:00'), user: 'diego', action: 'edit', module: 'Inventario', detail: 'Registró ingreso 20 perfiles aluminio', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-08T16:20:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0049 para Banco Galicia', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-08T16:00:00'), user: 'fede', action: 'create', module: 'Eventos', detail: 'Registró evento ExpoAgro 2026 (15-18 marzo)', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T15:40:00'), user: 'pm1', action: 'edit', module: 'Producción', detail: 'Reasignó tareas de Stand Arcor por prioridad', device: 'iPad Pro' },
+            { ts: new Date('2026-03-08T15:40:00'), user: 'meli', action: 'edit', module: 'Producción', detail: 'Reasignó tareas de Stand Arcor por prioridad', device: 'iPad Pro' },
             { ts: new Date('2026-03-08T15:20:00'), user: 'lelean', action: 'view', module: 'Ventas', detail: 'Revisó métricas comerciales del trimestre', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T15:00:00'), user: 'prod1', action: 'edit', module: 'Producción', detail: 'Completó tarea "Armado estructura Stand Pepsico"', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-08T15:00:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Completó tarea "Armado estructura Stand Pepsico"', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-08T14:40:00'), user: 'noe', action: 'edit', module: 'Marketing', detail: 'Actualizó plantilla de propuesta comercial', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T14:20:00'), user: 'ext1', action: 'login', module: 'Sistema', detail: 'Inició sesión desde PC Personal', device: 'PC Personal' },
-            { ts: new Date('2026-03-08T14:10:00'), user: 'ext1', action: 'view', module: 'Proyectos', detail: 'Consultó estado Stand Pepsico (proyecto asignado)', device: 'PC Personal' },
+            { ts: new Date('2026-03-08T14:20:00'), user: 'juan', action: 'edit', module: 'Producción', detail: 'Completó tarea "Pintura paneles Stand Quilmes"', device: 'Tablet Taller 2' },
+            { ts: new Date('2026-03-08T14:10:00'), user: 'leo', action: 'edit', module: 'Proyectos', detail: 'Actualizó timeline de Stand Pepsico', device: 'iPad Pro' },
             { ts: new Date('2026-03-08T13:50:00'), user: 'fede', action: 'edit', module: 'Clientes', detail: 'Actualizó categoría de cliente Arcor a Premium', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T13:30:00'), user: 'pm1', action: 'create', module: 'Proyectos', detail: 'Creó proyecto #134 Stand Toyota — ExpoAgro', device: 'iPad Pro' },
+            { ts: new Date('2026-03-08T13:30:00'), user: 'meli', action: 'create', module: 'Proyectos', detail: 'Creó proyecto #134 Stand Toyota — ExpoAgro', device: 'iPad Pro' },
             { ts: new Date('2026-03-08T13:10:00'), user: 'lelean', action: 'edit', module: 'RRHH', detail: 'Registró vacaciones de Carlos (semana 12)', device: 'PC Oficina' },
             { ts: new Date('2026-03-08T12:50:00'), user: 'noe', action: 'edit', module: 'Ventas', detail: 'Envió propuesta revisada a Banco Galicia', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T12:30:00'), user: 'prod1', action: 'edit', module: 'Producción', detail: 'Reportó retraso en corte de vinilo Stand Samsung', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-08T12:30:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Reportó retraso en corte de vinilo Stand Samsung', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-08T12:00:00'), user: 'fede', action: 'error', module: 'Sistema', detail: 'Error de conexión con La PyME API (timeout)', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T11:40:00'), user: 'pm1', action: 'view', module: 'Eventos', detail: 'Consultó calendario de eventos marzo 2026', device: 'iPad Pro' },
+            { ts: new Date('2026-03-08T11:40:00'), user: 'meli', action: 'view', module: 'Eventos', detail: 'Consultó calendario de eventos marzo 2026', device: 'iPad Pro' },
             { ts: new Date('2026-03-08T11:20:00'), user: 'noe', action: 'create', module: 'Clientes', detail: 'Registró nuevo contacto en Nestlé Argentina', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-08T11:00:00'), user: 'lelean', action: 'edit', module: 'Proveedores', detail: 'Actualizó condiciones comerciales de IlumiTech', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T10:40:00'), user: 'prod1', action: 'edit', module: 'Producción', detail: 'Confirmó recepción de materiales para Stand Arcor', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-08T10:40:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Confirmó recepción de materiales para Stand Arcor', device: 'Tablet Taller 1' },
             { ts: new Date('2026-03-08T10:20:00'), user: 'fede', action: 'edit', module: 'Ventas', detail: 'Ajustó descuento en COT-2026-0046 para Unilever', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T10:00:00'), user: 'pm1', action: 'login', module: 'Sistema', detail: 'Inició sesión desde iPad Pro', device: 'iPad Pro' },
+            { ts: new Date('2026-03-08T10:00:00'), user: 'meli', action: 'login', module: 'Sistema', detail: 'Inició sesión desde iPad Pro', device: 'iPad Pro' },
             { ts: new Date('2026-03-08T09:45:00'), user: 'noe', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Notebook Lenovo', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-08T09:30:00'), user: 'lelean', action: 'login', module: 'Sistema', detail: 'Inició sesión desde PC Oficina', device: 'PC Oficina' },
             { ts: new Date('2026-03-08T09:15:00'), user: 'fede', action: 'login', module: 'Sistema', detail: 'Inició sesión desde MacBook Pro', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T09:00:00'), user: 'prod1', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Tablet Taller', device: 'Tablet Taller' },
+            { ts: new Date('2026-03-08T09:00:00'), user: 'diego', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Tablet Taller', device: 'Tablet Taller 1' },
 
             // ─ Antier 07 marzo ─
             { ts: new Date('2026-03-07T18:15:00'), user: 'fede', action: 'edit', module: 'Finanzas', detail: 'Actualizó proyección de cash flow Q1 2026', device: 'MacBook Pro' },
             { ts: new Date('2026-03-07T17:45:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0048 para Coca-Cola', device: 'Notebook Lenovo' },
             { ts: new Date('2026-03-07T17:20:00'), user: 'lelean', action: 'edit', module: 'Proyectos', detail: 'Cerró sprint 4 del proyecto Stand Samsung', device: 'PC Oficina' },
-            { ts: new Date('2026-03-07T16:50:00'), user: 'pm1', action: 'edit', module: 'Producción', detail: 'Aprobó planilla de horas del equipo taller', device: 'iPad Pro' },
-            { ts: new Date('2026-03-07T16:30:00'), user: 'prod1', action: 'edit', module: 'Inventario', detail: 'Realizó conteo de stock de iluminación LED', device: 'Tablet Taller' },
-            { ts: new Date('2026-03-07T15:00:00'), user: 'fede', action: 'denied', module: 'Sistema', detail: 'Acceso denegado: ext1 intentó acceder a Finanzas', device: 'Sistema' },
+            { ts: new Date('2026-03-07T16:50:00'), user: 'meli', action: 'edit', module: 'Producción', detail: 'Aprobó planilla de horas del equipo taller', device: 'iPad Pro' },
+            { ts: new Date('2026-03-07T16:30:00'), user: 'carlos', action: 'edit', module: 'Inventario', detail: 'Realizó conteo de stock de iluminación LED', device: 'Tablet Taller 3' },
+            { ts: new Date('2026-03-07T15:30:00'), user: 'sofi', action: 'edit', module: 'RRHH', detail: 'Actualizó legajo de personal eventual', device: 'Notebook HP' },
+            { ts: new Date('2026-03-07T15:00:00'), user: 'fede', action: 'denied', module: 'Sistema', detail: 'Acceso denegado: willy intentó acceder a Finanzas', device: 'Sistema' },
         ];
 
         // Sort logs descending by timestamp
@@ -147,12 +168,12 @@ const AdminPanel = {
     },
 
     _getRoleColor(role) {
-        const map = { admin: '#00A9C1', comercial: '#F28D15', pm: '#00CC88', produccion: '#9B7DFF', externo: '#7A8599' };
+        const map = { superadmin: '#FF4757', admin: '#00A9C1', venta: '#F28D15', pm: '#00CC88', taller: '#9B7DFF' };
         return map[role] || '#7A8599';
     },
 
     _getRoleLabel(role) {
-        const map = { admin: 'Admin', comercial: 'Comercial', pm: 'Project Manager', produccion: 'Producción', externo: 'Externo' };
+        const map = { superadmin: 'Super Admin', admin: 'Admin', venta: 'Ventas', pm: 'PM', taller: 'Taller' };
         return map[role] || role;
     },
 

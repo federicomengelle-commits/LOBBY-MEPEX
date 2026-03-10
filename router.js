@@ -18,13 +18,13 @@ const Router = {
             'lobby': { render: () => Lobby.render(), requiresAuth: true },
             'calendario': { render: () => CalendarioOperativo.render(), requiresAuth: true },
             'perfil': { render: () => Settings.renderProfile(), requiresAuth: true },
-            'admin-panel': { render: () => AdminPanel.render(), requiresAuth: true, adminOnly: true },
+            'admin-panel': { render: () => AdminPanel.render(), requiresAuth: true, superadminOnly: true },
             'admin-usuarios': { render: () => Settings.renderAdminUsers(), requiresAuth: true, adminOnly: true },
             'notificaciones': { render: () => Settings.renderNotifications(), requiresAuth: true },
             'ventas': { render: () => Modules.render('ventas'), requiresAuth: true, module: 'ventas' },
             'clientes': { render: () => Modules.render('clientes'), requiresAuth: true, module: 'clientes' },
             'proyectos': { render: () => Modules.render('proyectos'), requiresAuth: true, module: 'proyectos' },
-            'eventos': { render: () => Modules.render('eventos'), requiresAuth: true, module: 'eventos' },
+            'eventos': { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos' },
             'finanzas': { render: () => Modules.render('finanzas'), requiresAuth: true, module: 'finanzas' },
             'produccion': { render: () => Modules.render('produccion'), requiresAuth: true, module: 'produccion' },
             'inventario': { render: () => Modules.render('inventario'), requiresAuth: true, module: 'inventario' },
@@ -73,8 +73,14 @@ const Router = {
             return;
         }
 
-        // Admin-only guard
-        if (route.adminOnly && Auth.getUser()?.role !== 'admin') {
+        // Super admin-only guard (solo Fede)
+        if (route.superadminOnly && !Auth.isSuperAdmin()) {
+            this.navigate('lobby');
+            return;
+        }
+
+        // Admin-level guard (superadmin + admin)
+        if (route.adminOnly && !Auth.isAdminLevel()) {
             this.navigate('lobby');
             return;
         }

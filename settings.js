@@ -57,11 +57,31 @@ const Settings = {
                                 <label class="form-label">USUARIO</label>
                                 <div class="settings-field-readonly">@${user.id}</div>
                             </div>
+                            <div class="form-field">
+                                <label class="form-label">TELÉFONO / WHATSAPP</label>
+                                <input type="tel" class="form-input" id="profileTelefono" value="${user.telefono || ''}" placeholder="+54 11 1234-5678">
+                            </div>
                             <div class="settings-form-actions">
                                 <button type="submit" class="btn btn-primary" id="profileSaveBtn">Guardar cambios</button>
                                 <span class="settings-save-status" id="profileSaveStatus"></span>
                             </div>
                         </form>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-section-title">Preferencias</div>
+                        <div class="settings-form">
+                            <div class="form-field">
+                                <label class="form-label">MÓDULO DE INICIO</label>
+                                <select class="form-input form-select" id="profileStartModule">
+                                    <option value="lobby">Lobby (por defecto)</option>
+                                    ${this._getAccessibleModules(user).map(m =>
+                                        `<option value="${m.id}" ${Auth.getStartModule() === m.id ? 'selected' : ''}>${m.shortName}</option>`
+                                    ).join('')}
+                                </select>
+                                <div class="form-hint">A qué sección ir al iniciar sesión</div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="settings-section">
@@ -89,7 +109,27 @@ const Settings = {
         this._attachProfileEvents(user);
     },
 
+    // Helper: get modules the user can access (for start module selector)
+    _getAccessibleModules(user) {
+        const allModules = Data.getModuleList();
+        const perms = user.customPermissions || Data.rolePermissions[user.role] || [];
+        return allModules.filter(m => perms.includes(m.id));
+    },
+
     _attachProfileEvents(user) {
+        // Start module selector — save immediately on change
+        document.getElementById('profileStartModule')?.addEventListener('change', (e) => {
+            Auth.setStartModule(e.target.value);
+            // Quick visual feedback
+            const hint = e.target.closest('.form-field')?.querySelector('.form-hint');
+            if (hint) {
+                const original = hint.textContent;
+                hint.textContent = '✓ Guardado';
+                hint.style.color = '#00CC88';
+                setTimeout(() => { hint.textContent = original; hint.style.color = ''; }, 2000);
+            }
+        });
+
         // Save profile
         document.getElementById('profileForm')?.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -97,16 +137,17 @@ const Settings = {
             const status = document.getElementById('profileSaveStatus');
             const name = document.getElementById('profileName').value.trim();
             const initials = document.getElementById('profileInitials').value.trim().toUpperCase();
+            const telefono = document.getElementById('profileTelefono')?.value.trim() || '';
 
             if (!name || !initials) return;
 
             btn.disabled = true;
             btn.textContent = 'Guardando…';
 
-            const result = await API.updateProfile(user.uid, { name, initials });
+            const result = await API.updateProfile(user.uid, { name, initials, telefono });
 
             if (result.success) {
-                Auth.updateCachedProfile({ name, initials });
+                Auth.updateCachedProfile({ name, initials, telefono });
                 // Update header avatar & name
                 document.querySelectorAll('.global-user-avatar').forEach(el => el.textContent = initials);
                 document.querySelector('.global-user-name').textContent = name;
@@ -172,16 +213,16 @@ const Settings = {
     _usersCache: null,
 
     _roleColors: {
+        superadmin: '#FF4757',
         admin: '#00A9C1',
-        ventas: '#F28D15',
+        venta: '#F28D15',
         pm: '#00CC88',
         taller: '#9B7DFF',
-        finanzas: '#4A90D9',
     },
 
     async renderAdminUsers() {
         const user = Auth.getUser();
-        if (!user || user.role !== 'admin') return Router.navigate('lobby');
+        if (!user || !Auth.isAdminLevel()) return Router.navigate('lobby');
 
         const content = document.getElementById('mainContent');
         if (!content) return;
@@ -196,9 +237,16 @@ const Settings = {
                     <span class="settings-user-count" id="userCount"></span>
                 </div>
 
-                <div class="settings-info-banner">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    Para crear o eliminar usuarios, usá el <strong>panel de Supabase</strong>. Desde acá podés editar nombres, iniciales, roles y permisos personalizados.
+                <div class="settings-toolbar">
+                    ${Auth.isSuperAdmin() ? `
+                    <button class="btn btn-primary btn-sm" id="btnCreateUser">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                        Nuevo usuario
+                    </button>` : ''}
+                    <label class="settings-filter-toggle">
+                        <input type="checkbox" id="showInactiveToggle">
+                        <span>Mostrar inactivos</span>
+                    </label>
                 </div>
 
                 <div class="settings-users-layout">
@@ -212,11 +260,27 @@ const Settings = {
         `;
 
         await this._loadUsers();
+
+        // Create user button
+        document.getElementById('btnCreateUser')?.addEventListener('click', () => this._openCreateUserModal());
+
+        // Toggle inactive users visibility
+        document.getElementById('showInactiveToggle')?.addEventListener('change', (e) => {
+            this._showInactive = e.target.checked;
+            this._renderUserTable();
+        });
     },
+
+    _showInactive: false,
 
     async _loadUsers() {
         const users = await API.getUsers();
         this._usersCache = users;
+        this._renderUserTable();
+    },
+
+    _renderUserTable() {
+        const users = this._usersCache;
         const container = document.getElementById('usersListContainer');
         if (!container) return;
 
@@ -225,9 +289,18 @@ const Settings = {
             return;
         }
 
+        // Filter by active status
+        const filtered = this._showInactive ? users : users.filter(u => u.active);
+        const activeCount = users.filter(u => u.active).length;
+        const inactiveCount = users.length - activeCount;
+
         // Update count
         const countEl = document.getElementById('userCount');
-        if (countEl) countEl.textContent = `${users.length} usuarios`;
+        if (countEl) {
+            countEl.textContent = inactiveCount > 0
+                ? `${activeCount} activos · ${inactiveCount} inactivos`
+                : `${users.length} usuarios`;
+        }
 
         container.innerHTML = `
             <table class="settings-user-table">
@@ -237,19 +310,25 @@ const Settings = {
                         <th>Nombre</th>
                         <th>Usuario</th>
                         <th>Rol</th>
+                        <th>Estado</th>
                         <th>Permisos</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${users.map(u => {
+                    ${filtered.map(u => {
                         const rc = this._roleColors[u.role] || '#888';
                         const hasCustom = u.customPermissions && u.customPermissions.length > 0;
+                        const inactive = !u.active;
                         return `
-                        <tr class="settings-user-row${this._selectedUserId === u.uid ? ' selected' : ''}" data-uid="${u.uid}">
-                            <td><div class="settings-user-avatar" style="background: ${rc}20; color: ${rc}">${u.initials}</div></td>
+                        <tr class="settings-user-row${this._selectedUserId === u.uid ? ' selected' : ''}${inactive ? ' settings-user-row--inactive' : ''}" data-uid="${u.uid}">
+                            <td><div class="settings-user-avatar${inactive ? ' settings-user-avatar--inactive' : ''}" style="background: ${inactive ? '#333' : rc + '20'}; color: ${inactive ? '#666' : rc}">${u.initials}</div></td>
                             <td><strong>${u.name}</strong></td>
                             <td class="text-muted">@${u.username}</td>
-                            <td><span class="settings-role-badge" style="color: ${rc}; border-color: ${rc}30">${Data.getRoleLabel(u.role)}</span></td>
+                            <td><span class="settings-role-badge" style="color: ${inactive ? '#555' : rc}; border-color: ${inactive ? '#333' : rc + '30'}">${Data.getRoleLabel(u.role)}</span></td>
+                            <td>${inactive
+                                ? '<span class="settings-status-badge settings-status-badge--inactive">Inactivo</span>'
+                                : '<span class="settings-status-badge settings-status-badge--active">Activo</span>'
+                            }</td>
                             <td>${hasCustom
                                 ? '<span class="settings-perm-badge settings-perm-badge--custom">Personalizado</span>'
                                 : '<span class="settings-perm-badge">Rol</span>'
@@ -270,6 +349,116 @@ const Settings = {
         });
     },
 
+    // ─── CREATE USER MODAL ─────────────────────
+    _openCreateUserModal() {
+        const roles = Object.keys(Data.roleLabels);
+
+        const instance = Modal.open({
+            title: 'Nuevo usuario',
+            body: `
+                <form class="settings-form" id="createUserForm">
+                    <div class="form-field">
+                        <label class="form-label">USUARIO (login)</label>
+                        <input type="text" class="form-input" id="newUsername" placeholder="ej: juan" pattern="[a-z0-9_]+" required>
+                        <div class="form-hint">Minúsculas, sin espacios ni caracteres especiales</div>
+                    </div>
+                    <div class="form-row" style="display:flex;gap:12px">
+                        <div class="form-field" style="flex:1">
+                            <label class="form-label">NOMBRE COMPLETO</label>
+                            <input type="text" class="form-input" id="newName" placeholder="Juan Pérez" required>
+                        </div>
+                        <div class="form-field" style="width:100px">
+                            <label class="form-label">INICIALES</label>
+                            <input type="text" class="form-input" id="newInitials" placeholder="JP" maxlength="3" required>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">ROL</label>
+                        <select class="form-input form-select" id="newRole">
+                            ${roles.filter(r => r !== 'superadmin').map(r =>
+                                `<option value="${r}">${Data.getRoleLabel(r)}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">CONTRASEÑA TEMPORAL</label>
+                        <input type="text" class="form-input" id="newPassword" value="mepex123" minlength="6" required>
+                        <div class="form-hint">El usuario podrá cambiarla desde su perfil</div>
+                    </div>
+                    <div id="createUserError" class="form-error" style="min-height:0"></div>
+                </form>
+            `,
+            size: 'sm',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="btnSubmitCreateUser">Crear usuario</button>
+            `,
+        });
+
+        const overlay = instance.overlay;
+
+        // Auto-generate initials from name
+        overlay.querySelector('#newName')?.addEventListener('input', (e) => {
+            const initialsInput = overlay.querySelector('#newInitials');
+            if (initialsInput && !initialsInput._manuallyEdited) {
+                const words = e.target.value.trim().split(/\s+/);
+                initialsInput.value = words.map(w => w.charAt(0).toUpperCase()).join('').substring(0, 3);
+            }
+        });
+        overlay.querySelector('#newInitials')?.addEventListener('input', (e) => {
+            e.target._manuallyEdited = true;
+        });
+
+        // Submit
+        overlay.querySelector('#btnSubmitCreateUser')?.addEventListener('click', async () => {
+            const errorEl = overlay.querySelector('#createUserError');
+            const submitBtn = overlay.querySelector('#btnSubmitCreateUser');
+            const username = overlay.querySelector('#newUsername').value.trim().toLowerCase();
+            const name = overlay.querySelector('#newName').value.trim();
+            const initials = overlay.querySelector('#newInitials').value.trim().toUpperCase();
+            const role = overlay.querySelector('#newRole').value;
+            const password = overlay.querySelector('#newPassword').value;
+
+            errorEl.textContent = '';
+
+            // Validation
+            if (!username || !name || !initials || !password) {
+                errorEl.textContent = 'Completá todos los campos';
+                return;
+            }
+            if (!/^[a-z0-9_]+$/.test(username)) {
+                errorEl.textContent = 'El usuario solo puede tener letras minúsculas, números y guión bajo';
+                return;
+            }
+            if (password.length < 6) {
+                errorEl.textContent = 'La contraseña debe tener al menos 6 caracteres';
+                return;
+            }
+
+            // Check duplicates
+            if (this._usersCache?.some(u => u.username === username)) {
+                errorEl.textContent = 'Ya existe un usuario con ese nombre';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creando…';
+
+            const result = await API.createUser(username, password, { name, initials, role });
+
+            if (result.success) {
+                Modal.close(instance.id);
+                Toast.success(`Usuario @${username} creado exitosamente`);
+                await this._loadUsers();
+            } else {
+                errorEl.textContent = result.error || 'Error al crear el usuario';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Crear usuario';
+            }
+        });
+    },
+
+    // ─── USER DETAIL PANEL ───────────────────────
     _openUserDetail(target) {
         this._selectedUserId = target.uid;
         const panel = document.getElementById('userDetailPanel');
@@ -292,6 +481,10 @@ const Settings = {
                 <div>
                     <div class="settings-detail-name">${target.name}</div>
                     <div class="settings-detail-username">@${target.username}</div>
+                    ${target.telefono ? `<div class="settings-detail-phone">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        ${target.telefono}
+                    </div>` : ''}
                 </div>
                 <button class="settings-detail-close" id="detailCloseBtn">&times;</button>
             </div>
@@ -342,6 +535,23 @@ const Settings = {
                     <span class="settings-save-status" id="userSaveStatus"></span>
                 </div>
             </form>
+
+            ${Auth.isSuperAdmin() && target.role !== 'superadmin' ? `
+            <div class="settings-danger-zone">
+                <div class="settings-danger-title">Acciones de cuenta</div>
+                <div class="settings-danger-actions">
+                    <button class="btn btn-sm ${target.active ? 'btn-danger-outline' : 'btn-success-outline'}" id="btnToggleActive">
+                        ${target.active
+                            ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Desactivar cuenta'
+                            : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Reactivar cuenta'
+                        }
+                    </button>
+                    <button class="btn btn-sm btn-ghost" id="btnResetPassword">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Resetear contraseña
+                    </button>
+                </div>
+            </div>` : ''}
         `;
 
         const permMatrix = document.getElementById('permMatrix');
@@ -417,6 +627,34 @@ const Settings = {
             document.querySelectorAll('.settings-user-row').forEach(r => r.classList.remove('selected'));
         });
 
+        // Toggle active/inactive
+        document.getElementById('btnToggleActive')?.addEventListener('click', async () => {
+            const newState = !target.active;
+            const action = newState ? 'reactivar' : 'desactivar';
+            const confirmed = await Modal.confirm({
+                title: `${newState ? 'Reactivar' : 'Desactivar'} cuenta`,
+                message: `¿Seguro que querés ${action} la cuenta de <strong>${target.name}</strong>?${!newState ? '<br><span style="color:#999;font-size:12px">El usuario no podrá iniciar sesión hasta que se reactive.</span>' : ''}`,
+                confirmText: newState ? 'Reactivar' : 'Desactivar',
+                danger: !newState,
+            });
+            if (!confirmed) return;
+
+            const result = await API.toggleUserActive(target.uid, newState);
+            if (result.success) {
+                Toast.success(`Cuenta ${newState ? 'reactivada' : 'desactivada'} exitosamente`);
+                await this._loadUsers();
+                const updated = this._usersCache?.find(u => u.uid === target.uid);
+                if (updated) this._openUserDetail(updated);
+            } else {
+                Toast.error(result.error || `Error al ${action} la cuenta`);
+            }
+        });
+
+        // Reset password
+        document.getElementById('btnResetPassword')?.addEventListener('click', () => {
+            this._openResetPasswordModal(target);
+        });
+
         // Save
         document.getElementById('userEditForm')?.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -466,6 +704,73 @@ const Settings = {
             btn.disabled = false;
             btn.textContent = 'Guardar';
             setTimeout(() => { status.textContent = ''; }, 4000);
+        });
+    },
+
+    // ─── RESET PASSWORD MODAL ──────────────────
+    _openResetPasswordModal(target) {
+        const instance = Modal.open({
+            title: `Resetear contraseña — ${target.name}`,
+            body: `
+                <div class="settings-info-banner" style="margin-bottom:16px">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    Se establecerá una contraseña temporal. El usuario deberá cambiarla desde su perfil.
+                </div>
+                <div class="form-field">
+                    <label class="form-label">NUEVA CONTRASEÑA</label>
+                    <input type="text" class="form-input" id="resetNewPassword" value="mepex123" minlength="6">
+                </div>
+                <div id="resetPasswordError" class="form-error" style="min-height:0"></div>
+            `,
+            size: 'sm',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="btnSubmitResetPassword">Resetear</button>
+            `,
+        });
+
+        const overlay = instance.overlay;
+
+        overlay.querySelector('#btnSubmitResetPassword')?.addEventListener('click', async () => {
+            const errorEl = overlay.querySelector('#resetPasswordError');
+            const submitBtn = overlay.querySelector('#btnSubmitResetPassword');
+            const newPassword = overlay.querySelector('#resetNewPassword').value;
+
+            errorEl.textContent = '';
+
+            if (!newPassword || newPassword.length < 6) {
+                errorEl.textContent = 'La contraseña debe tener al menos 6 caracteres';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Reseteando…';
+
+            // Note: Supabase client-side can only change the current user's password.
+            // For other users, we need to use a workaround:
+            // Sign in as the target user with a temp session, change password, then restore admin.
+            // Since we can't know the user's current password, this requires Supabase Admin API.
+            // For now, we'll show a helpful message about doing it from Supabase dashboard.
+            try {
+                // Try using Supabase admin.updateUserById if available
+                const { data, error } = await supabaseClient.auth.admin.updateUserById(target.uid, {
+                    password: newPassword,
+                });
+                if (error) throw error;
+
+                Modal.close(instance.id);
+                Toast.success(`Contraseña de @${target.username} reseteada exitosamente`);
+            } catch (e) {
+                // Admin API not available with anon key — show instructions
+                errorEl.innerHTML = `
+                    <span style="color:#F28D15">El reseteo de contraseña requiere acceso al panel de Supabase.</span>
+                    <br><span style="color:#999;font-size:11px;line-height:1.4;display:block;margin-top:6px">
+                    Abrí <strong>Supabase → Authentication → Users</strong>, buscá a <strong>${target.name}</strong> (${target.username}@mepex.local) y usá "Send password recovery" o editá el usuario directamente.
+                    </span>
+                `;
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Resetear';
+            }
         });
     },
 

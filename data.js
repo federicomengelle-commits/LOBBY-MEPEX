@@ -9,25 +9,30 @@
 const Data = {
 
     // ─── PERMISOS POR ROL ───
+    // superadmin: Fede — todo + métricas exclusivas + panel de control
+    // admin: Lelean, Sofi — todo salvo métricas de rendimiento
+    // venta: Noe — comercial + operaciones + recursos
+    // pm: Meli, Leo — proyectos, eventos, clientes, producción, inventario
+    // taller: Diego, Juan, Carlos, Willy — operaciones
     rolePermissions: {
+        superadmin: ['ventas', 'clientes', 'proyectos', 'eventos', 'finanzas', 'produccion', 'inventario', 'rrhh', 'proveedores'],
         admin: ['ventas', 'clientes', 'proyectos', 'eventos', 'finanzas', 'produccion', 'inventario', 'rrhh', 'proveedores'],
-        ventas: ['ventas', 'clientes', 'proyectos', 'eventos'],
-        pm: ['clientes', 'proyectos', 'eventos', 'produccion', 'inventario', 'proveedores'],
-        taller: ['produccion', 'inventario'],
-        finanzas: ['finanzas', 'clientes', 'proveedores'],
+        venta: ['ventas', 'clientes', 'proyectos', 'eventos', 'produccion', 'inventario'],
+        pm: ['proyectos', 'eventos', 'clientes', 'produccion', 'inventario'],
+        taller: ['proyectos', 'eventos', 'produccion'],
     },
 
     // ─── LABELS DE ROL ───
     roleLabels: {
+        superadmin: 'Super Admin',
         admin: 'Administrador',
-        ventas: 'Ventas',
+        venta: 'Ventas',
         pm: 'Project Manager',
         taller: 'Taller',
-        finanzas: 'Finanzas',
     },
 
     // ─── ROLES QUE VEN EL BUSCADOR GLOBAL ───
-    searchRoles: ['admin', 'ventas', 'pm', 'finanzas'],
+    searchRoles: ['superadmin', 'admin', 'venta', 'pm'],
 
     // ─── CATEGORÍAS DE NAVEGACIÓN ───
     categories: [
@@ -74,13 +79,19 @@ const Data = {
 
     // ─── ACCIONES RÁPIDAS POR ROL ───
     quickActions: {
+        superadmin: [
+            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
+            { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
+            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
+            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
+        ],
         admin: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
             { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
         ],
-        ventas: [
+        venta: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
@@ -91,25 +102,20 @@ const Data = {
             { id: 'nuevo-evento', icon: '📅', label: 'Nuevo evento', action: 'create', entity: 'events' },
         ],
         taller: [
-            { id: 'orden-compra', icon: '📝', label: 'Orden de compra', action: 'alert', message: 'Orden de compra — próximamente' },
-            { id: 'descontar-mat', icon: '📦', label: 'Descontar material', action: 'alert', message: 'Descuento de material — próximamente' },
             { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'alert', message: 'Mis tareas — próximamente' },
-        ],
-        finanzas: [
-            { id: 'registrar-cobro', icon: '💰', label: 'Registrar cobro', action: 'alert', message: 'Registro de cobro — próximamente' },
-            { id: 'nueva-factura', icon: '📄', label: 'Nueva factura', action: 'alert', message: 'Nueva factura — próximamente' },
-            { id: 'ver-pendientes', icon: '📊', label: 'Ver pendientes', action: 'alert', message: 'Pendientes — próximamente' },
+            { id: 'descontar-mat', icon: '📦', label: 'Descontar material', action: 'alert', message: 'Descuento de material — próximamente' },
+            { id: 'orden-compra', icon: '📝', label: 'Orden de compra', action: 'alert', message: 'Orden de compra — próximamente' },
         ],
     },
 
     // ─── ACTIVIDAD RECIENTE MOCK ───
     recentActivity: [
-        { time: 'Hace 12 min', user: 'Noelia', action: 'envió cotización', detail: 'COT-2026-0015 — Stand Arcor', icon: '📤', color: '#FF7200' },
+        { time: 'Hace 12 min', user: 'Noe', action: 'envió cotización', detail: 'COT-2026-0015 — Stand Arcor', icon: '📤', color: '#FF7200' },
         { time: 'Hace 1 hora', user: 'Sistema', action: 'proyecto aprobado', detail: 'Stand Arcor — Expo Alimentek', icon: '✅', color: '#00CC88' },
-        { time: 'Hace 2 horas', user: 'Leonardo', action: 'entrega con OK', detail: 'Stand Unilever — La Rural', icon: '📸', color: '#00ACC9' },
-        { time: 'Hace 3 horas', user: 'Federico', action: 'nuevo proyecto creado', detail: 'Stand Samsung — CES 2026', icon: '📋', color: '#FF7200' },
-        { time: 'Ayer', user: 'Noelia', action: 'cliente actualizado', detail: 'Coca-Cola Company — datos CRM', icon: '👤', color: '#00ACC9' },
-        { time: 'Ayer', user: 'Carlos', action: 'material descontado', detail: '12 paneles → Stand Samsung', icon: '📦', color: '#B0B0B0' },
+        { time: 'Hace 2 horas', user: 'Meli', action: 'entrega con OK', detail: 'Stand Unilever — La Rural', icon: '📸', color: '#00ACC9' },
+        { time: 'Hace 3 horas', user: 'Fede', action: 'nuevo proyecto creado', detail: 'Stand Samsung — CES 2026', icon: '📋', color: '#FF7200' },
+        { time: 'Ayer', user: 'Noe', action: 'cliente actualizado', detail: 'Coca-Cola Company — datos CRM', icon: '👤', color: '#00ACC9' },
+        { time: 'Ayer', user: 'Diego', action: 'material descontado', detail: '12 paneles → Stand Samsung', icon: '📦', color: '#B0B0B0' },
     ],
 
     // ─── MÓDULOS ───
@@ -476,19 +482,25 @@ const Data = {
 
     // ─── INDICADORES MOCK POR ROL ───
     dashboardIndicators: {
+        superadmin: [
+            { label: 'Cotizaciones abiertas', value: '12', icon: '📄', trend: '+3 esta semana' },
+            { label: 'Proyectos activos', value: '5', icon: '🏗️', trend: '2 en montaje' },
+            { label: 'Cobros pendientes', value: '$1.240.000', icon: '💰', trend: '3 vencidos' },
+            { label: 'Eventos próximos', value: '3', icon: '🎪', trend: 'Próximo: 15 Mar' },
+        ],
         admin: [
             { label: 'Cotizaciones abiertas', value: '12', icon: '📄', trend: '+3 esta semana' },
             { label: 'Proyectos activos', value: '5', icon: '🏗️', trend: '2 en montaje' },
             { label: 'Cobros pendientes', value: '$1.240.000', icon: '💰', trend: '3 vencidos' },
             { label: 'Eventos próximos', value: '3', icon: '🎪', trend: 'Próximo: 15 Mar' },
         ],
-        ventas: [
+        venta: [
             { label: 'Cotizaciones enviadas', value: '8', icon: '📤', trend: 'Última: hace 2hs' },
             { label: 'En negociación', value: '4', icon: '🤝', trend: '1 por vencer' },
             { label: 'Aprobadas este mes', value: '6', icon: '✅', trend: '+2 vs mes anterior' },
             { label: 'Clientes nuevos', value: '2', icon: '👤', trend: 'Este mes' },
         ],
-        operaciones: [
+        pm: [
             { label: 'En producción', value: '3', icon: '🔨', trend: '1 por entregar' },
             { label: 'Entregas esta semana', value: '2', icon: '🚛', trend: 'Lun y Jue' },
             { label: 'Items reservados', value: '47', icon: '📦', trend: '12 paneles asignados' },
@@ -497,11 +509,6 @@ const Data = {
         taller: [
             { label: 'Mis tareas hoy', value: '6', icon: '🔨', trend: '2 urgentes' },
             { label: 'Tareas pendientes', value: '12', icon: '📋', trend: '3 del lunes' },
-        ],
-        finanzas: [
-            { label: 'Cobros pendientes', value: '$2.180.000', icon: '💰', trend: '5 por vencer' },
-            { label: 'Facturas este mes', value: '18', icon: '🧾', trend: '+4 esta semana' },
-            { label: 'Pagos programados', value: '7', icon: '📅', trend: 'Próximo: Lun' },
         ],
     },
 
@@ -520,11 +527,11 @@ const Data = {
     },
 
     getIndicatorsForRole(role) {
-        return this.dashboardIndicators[role] || this.dashboardIndicators.admin;
+        return this.dashboardIndicators[role] || this.dashboardIndicators.superadmin;
     },
 
     getQuickActionsForRole(role) {
-        return this.quickActions[role] || this.quickActions.admin;
+        return this.quickActions[role] || this.quickActions.superadmin;
     },
 
     canSearch(role) {

@@ -23,6 +23,12 @@ const Auth = {
             const profile = await this._fetchProfile(data.user.id);
             if (!profile) return { success: false, error: 'Perfil no encontrado. Contactá al administrador.' };
 
+            // Check if user is active
+            if (!profile.active) {
+                await supabaseClient.auth.signOut();
+                return { success: false, error: 'Tu cuenta está desactivada. Contactá al administrador.' };
+            }
+
             this._profile = profile;
             return { success: true, user: profile };
         } catch (e) {
@@ -54,6 +60,17 @@ const Auth = {
         if (!user) return false;
         const allowed = user.customPermissions || Data.rolePermissions[user.role] || [];
         return allowed.includes(moduleId);
+    },
+
+    // ─── SUPER ADMIN CHECK (solo Fede) ───
+    isSuperAdmin() {
+        return this._profile?.role === 'superadmin';
+    },
+
+    // ─── ADMIN LEVEL CHECK (superadmin + admin) ───
+    isAdminLevel() {
+        const role = this._profile?.role;
+        return role === 'superadmin' || role === 'admin';
     },
 
     // ─── RESTORE SESSION ON PAGE LOAD ───
@@ -89,6 +106,8 @@ const Auth = {
                 initials: data.initials,
                 uid: data.id,
                 customPermissions: data.custom_permissions || null,
+                active: data.active !== false,
+                telefono: data.telefono || '',
             };
         } catch (e) {
             console.error('[Auth] Fetch profile error:', e);
@@ -104,6 +123,26 @@ const Auth = {
             return { success: true };
         } catch (e) {
             return { success: false, error: 'Error al cambiar contraseña' };
+        }
+    },
+
+    // ─── START MODULE PREFERENCE ───
+    getStartModule() {
+        const user = this.getUser();
+        if (!user) return null;
+        const mod = localStorage.getItem(`mepex_start_module_${user.uid}`);
+        // Validate the user still has access to that module
+        if (mod && mod !== 'lobby' && !this.hasAccess(mod)) return null;
+        return mod || null;
+    },
+
+    setStartModule(moduleId) {
+        const user = this.getUser();
+        if (!user) return;
+        if (moduleId && moduleId !== 'lobby') {
+            localStorage.setItem(`mepex_start_module_${user.uid}`, moduleId);
+        } else {
+            localStorage.setItem(`mepex_start_module_${user.uid}`, 'lobby');
         }
     },
 
@@ -165,7 +204,9 @@ const Auth = {
             const result = await Auth.login(userId, password);
 
             if (result.success) {
-                Router.navigate('lobby');
+                // Check for start module preference
+                const startModule = Auth.getStartModule();
+                Router.navigate(startModule || 'lobby');
             } else {
                 errorEl.textContent = result.error;
                 errorEl.style.display = 'block';

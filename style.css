@@ -3708,6 +3708,15 @@ body {
     color: var(--text-muted);
 }
 
+.settings-detail-phone {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    color: #00CC88;
+    margin-top: 3px;
+}
+
 .settings-detail-close {
     margin-left: auto;
     background: none;
@@ -3849,6 +3858,115 @@ body {
     font-size: 0.78rem;
     color: var(--text-muted);
     font-weight: 500;
+}
+
+/* ─── Settings toolbar (above user list) ─── */
+.settings-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.settings-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+.settings-filter-toggle input {
+    accent-color: #00A9C1;
+    cursor: pointer;
+}
+
+/* ─── Status badge (active/inactive) ─── */
+.settings-status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.settings-status-badge--active {
+    color: #00CC88;
+    background: rgba(0, 204, 136, 0.1);
+}
+
+.settings-status-badge--inactive {
+    color: #888;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Inactive user row ─── */
+.settings-user-row--inactive {
+    opacity: 0.5;
+}
+
+.settings-user-row--inactive:hover {
+    opacity: 0.75;
+}
+
+.settings-user-avatar--inactive {
+    filter: grayscale(1);
+}
+
+/* ─── Danger zone (deactivate, reset) ─── */
+.settings-danger-zone {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 70, 70, 0.1);
+}
+
+.settings-danger-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+.settings-danger-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* ─── Button variants for danger zone ─── */
+.btn-danger-outline {
+    color: #ff4444;
+    border: 1px solid rgba(255, 68, 68, 0.3);
+    background: transparent;
+}
+.btn-danger-outline:hover {
+    background: rgba(255, 68, 68, 0.1);
+    border-color: rgba(255, 68, 68, 0.5);
+}
+
+.btn-success-outline {
+    color: #00CC88;
+    border: 1px solid rgba(0, 204, 136, 0.3);
+    background: transparent;
+}
+.btn-success-outline:hover {
+    background: rgba(0, 204, 136, 0.1);
+    border-color: rgba(0, 204, 136, 0.5);
+}
+
+/* ─── Form hint text ─── */
+.form-hint {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.4;
 }
 
 /* ─── Notification toggles ─── */
@@ -5433,6 +5551,861 @@ body {
 }
 
 /* =============================================
+   MÓDULO EVENTOS
+   ============================================= */
+
+.ev-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: calc(100vh - 56px);
+    background: var(--bg, #050505);
+}
+
+/* ─── Toolbar ─── */
+.ev-toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.ev-toolbar-left {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.ev-title {
+    font-family: 'Cabin', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+.ev-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.ev-search-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 6px 10px;
+    transition: border-color 0.15s;
+}
+.ev-search-box:focus-within {
+    border-color: var(--primary, #00A9C1);
+}
+.ev-search-box svg {
+    color: #555;
+    flex-shrink: 0;
+}
+.ev-search-input {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    outline: none;
+    width: 160px;
+}
+.ev-search-input::placeholder { color: #555; }
+
+.ev-select {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    cursor: pointer;
+    max-width: 180px;
+}
+.ev-select:focus {
+    border-color: var(--primary, #00A9C1);
+}
+
+.ev-view-toggle {
+    display: flex;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.ev-view-btn {
+    background: rgba(255,255,255,0.03);
+    border: none;
+    color: #555;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+}
+.ev-view-btn:hover { color: #999; }
+.ev-view-btn.active {
+    background: rgba(0, 169, 193, 0.12);
+    color: var(--primary, #00A9C1);
+}
+
+.ev-btn-new {
+    font-size: 13px;
+    padding: 7px 14px;
+    gap: 5px;
+    display: flex;
+    align-items: center;
+}
+
+/* ─── Body layout ─── */
+.ev-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+.ev-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+}
+
+/* ─── Loading & empty ─── */
+.ev-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 80px 20px;
+    color: #666;
+    font-family: 'Cabin', sans-serif;
+    font-size: 14px;
+}
+.ev-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px;
+    color: #555;
+    font-family: 'Cabin', sans-serif;
+    text-align: center;
+}
+.ev-empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+
+/* ─── Table ─── */
+.ev-table-wrapper {
+    overflow-x: auto;
+}
+.ev-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+}
+.ev-th {
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    color: #666;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    white-space: nowrap;
+    user-select: none;
+}
+.ev-th.sortable {
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.ev-th.sortable:hover { color: #aaa; }
+.ev-th.sorted { color: var(--primary, #00A9C1); }
+.ev-sort-icon {
+    display: inline-flex;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.ev-row {
+    cursor: pointer;
+    transition: background 0.12s;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.ev-row:hover {
+    background: rgba(255,255,255,0.03);
+}
+.ev-row--en_curso {
+    border-left: 3px solid #4CAF50;
+}
+.ev-row--proximo {
+    border-left: 3px solid #00BCD4;
+}
+.ev-row--finalizado {
+    border-left: 3px solid #666;
+    opacity: 0.65;
+}
+.ev-row--cancelado {
+    border-left: 3px solid #ff4444;
+    opacity: 0.5;
+}
+
+.ev-td {
+    padding: 10px 14px;
+    color: #bbb;
+    white-space: nowrap;
+}
+.ev-td-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: #eee;
+}
+.ev-color-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.ev-td-muted { color: #444; }
+.ev-badge-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 169, 193, 0.15);
+    color: var(--primary, #00A9C1);
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    padding: 0 6px;
+}
+
+.ev-status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--status-color);
+    background: color-mix(in srgb, var(--status-color) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--status-color) 25%, transparent);
+    white-space: nowrap;
+}
+
+.ev-record-count {
+    padding: 10px 14px;
+    font-family: 'Cabin', sans-serif;
+    font-size: 12px;
+    color: #555;
+    border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* ─── Cards view ─── */
+.ev-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    padding: 16px 20px;
+}
+.ev-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+}
+.ev-card:hover {
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05);
+}
+.ev-card-color-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--card-color);
+}
+.ev-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.ev-card-name {
+    font-family: 'Cabin', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: #eee;
+    margin: 0;
+}
+.ev-card-venue {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 8px;
+}
+.ev-card-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 6px;
+}
+.ev-card-date {
+    font-size: 12px;
+    color: #777;
+}
+.ev-card-proyectos {
+    font-size: 12px;
+    color: var(--primary, #00A9C1);
+    margin-top: 6px;
+}
+
+/* ─── Side Panel ─── */
+.ev-side-panel {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    width: 460px;
+    height: calc(100vh - 56px);
+    background: #0d0d12;
+    border-left: 1px solid rgba(255,255,255,0.08);
+    transform: translateX(100%);
+    transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    z-index: 100;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.ev-side-panel.open {
+    transform: translateX(0);
+}
+.ev-side-panel::-webkit-scrollbar {
+    width: 4px;
+}
+.ev-side-panel::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+}
+
+.ev-panel-inner {
+    padding-bottom: 40px;
+}
+
+/* Panel header */
+.ev-panel-header {
+    position: relative;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ev-panel-color-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--event-color);
+}
+.ev-panel-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    color: #888;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+.ev-panel-close:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+.ev-panel-name {
+    font-family: 'Cabin', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--event-color);
+    margin: 8px 0 4px;
+    padding-right: 36px;
+}
+.ev-panel-venue {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 8px;
+}
+.ev-panel-status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ev-panel-color-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* Panel sections */
+.ev-panel-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ev-section-editing {
+    background: rgba(255,255,255,0.02);
+}
+.ev-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+.ev-section-title {
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.ev-edit-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 4px;
+    background: transparent;
+    color: #555;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.15s;
+}
+.ev-panel-section:hover .ev-edit-btn {
+    opacity: 1;
+}
+.ev-edit-btn:hover {
+    background: rgba(255,255,255,0.06);
+    color: var(--primary, #00A9C1);
+    border-color: rgba(0, 169, 193, 0.3);
+}
+
+.ev-section-empty {
+    color: #444;
+    font-size: 13px;
+    font-style: italic;
+    margin: 0;
+}
+.ev-section-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    justify-content: flex-end;
+}
+
+/* Dates grid */
+.ev-dates-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.ev-date-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+}
+.ev-date-label {
+    font-size: 13px;
+    color: #888;
+    font-weight: 500;
+}
+.ev-date-value {
+    font-size: 13px;
+    color: #ccc;
+    font-weight: 500;
+}
+.ev-date-group {
+    margin-bottom: 10px;
+}
+.ev-date-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ev-date-sep {
+    color: #555;
+    font-size: 14px;
+}
+
+/* Form elements */
+.ev-form-label {
+    display: block;
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+.ev-form-input {
+    width: 100%;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.ev-form-input:focus {
+    border-color: var(--primary, #00A9C1);
+}
+.ev-form-field {
+    margin-bottom: 10px;
+}
+.ev-input-sm {
+    padding: 5px 8px;
+    font-size: 12px;
+}
+.ev-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.ev-form-grid .form-field:first-child {
+    grid-column: 1 / -1;
+}
+
+/* Mini table */
+.ev-mini-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.ev-mini-table th {
+    text-align: left;
+    color: #666;
+    font-size: 11px;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ev-mini-table td {
+    padding: 6px 8px;
+    color: #bbb;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.ev-tag-eventual {
+    font-size: 10px;
+    color: #FF9800;
+    background: rgba(255, 152, 0, 0.12);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 4px;
+}
+
+/* Equipo editor */
+.ev-equipo-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.ev-equipo-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.ev-equipo-row input { flex: 1; }
+.ev-equipo-row select { width: 130px; flex-shrink: 0; }
+.ev-remove-row, .ev-unlink-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: rgba(255,60,60,0.08);
+    color: #ff4444;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.ev-remove-row:hover, .ev-unlink-btn:hover {
+    background: rgba(255,60,60,0.2);
+}
+.ev-equipo-add-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+/* Transport info */
+.ev-transport-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.ev-info-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 4px 0;
+    color: #bbb;
+}
+.ev-info-label {
+    color: #888;
+    font-weight: 500;
+}
+
+/* Conflicts */
+.ev-section-conflicts {
+    background: rgba(255, 152, 0, 0.04);
+    border-left: 3px solid #FF9800;
+}
+.ev-conflicts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.ev-conflict-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+    color: #FF9800;
+    padding: 4px 0;
+}
+.ev-conflict-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+/* Documents */
+.ev-docs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ev-doc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background 0.12s;
+}
+.ev-doc-row:hover {
+    background: rgba(255,255,255,0.03);
+}
+.ev-doc-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+.ev-doc-name {
+    flex: 1;
+    font-size: 13px;
+    color: #ccc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ev-doc-type {
+    flex-shrink: 0;
+}
+.ev-doc-remove {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: #555;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: all 0.12s;
+}
+.ev-doc-row:hover .ev-doc-remove { opacity: 1; }
+.ev-doc-remove:hover { color: #ff4444; background: rgba(255,60,60,0.1); }
+
+.ev-seguros-counter {
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+/* Notas */
+.ev-notas-textarea {
+    width: 100%;
+    min-height: 80px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    padding: 10px 12px;
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.15s;
+}
+.ev-notas-textarea:focus {
+    border-color: var(--primary, #00A9C1);
+}
+.ev-save-indicator {
+    font-size: 11px;
+    color: #4CAF50;
+    font-weight: 500;
+}
+
+/* Proyectos list */
+.ev-proyectos-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ev-proyecto-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: background 0.12s;
+}
+.ev-proyecto-row:hover {
+    background: rgba(255,255,255,0.03);
+}
+.ev-proyecto-name {
+    color: #ddd;
+    font-weight: 600;
+    flex: 1;
+}
+.ev-proyecto-client {
+    color: #777;
+    font-size: 12px;
+}
+
+/* Link proyecto modal */
+.ev-link-proyecto-search {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.ev-link-results {
+    max-height: 300px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ev-link-result-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.12s;
+    text-align: left;
+    color: inherit;
+    font-family: inherit;
+    font-size: 13px;
+    width: 100%;
+}
+.ev-link-result-item:hover {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+}
+.ev-link-result-item.linked {
+    opacity: 0.5;
+    cursor: default;
+}
+.ev-link-name {
+    color: #ddd;
+    font-weight: 600;
+    flex: 1;
+}
+.ev-link-client {
+    color: #777;
+    font-size: 12px;
+}
+
+/* Panel actions (bottom) */
+.ev-panel-actions {
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+    border-bottom: none;
+}
+.ev-btn-delete-event {
+    color: #ff4444 !important;
+    gap: 6px;
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+}
+.ev-btn-delete-event:hover {
+    background: rgba(255,60,60,0.1) !important;
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+    .ev-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .ev-toolbar-right {
+        flex-wrap: wrap;
+    }
+    .ev-side-panel {
+        width: 100%;
+    }
+    .ev-cards-grid {
+        grid-template-columns: 1fr;
+    }
+    .ev-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+
+/* =============================================
    CALENDARIO OPERATIVO
    ============================================= */
 
@@ -5483,7 +6456,7 @@ body {
     background: rgba(255,255,255,0.04);
     color: #ccc;
     font-family: 'Cabin', sans-serif;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
@@ -5508,7 +6481,7 @@ body {
     background: rgba(255,255,255,0.04);
     color: #ccc;
     font-family: 'Cabin', sans-serif;
-    font-size: 12px;
+    font-size: 14px;
     cursor: pointer;
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
@@ -5542,7 +6515,7 @@ body {
 }
 .co-zoom-label {
     font-family: 'Cabin', monospace;
-    font-size: 11px;
+    font-size: 12px;
     color: #666;
     min-width: 32px;
     text-align: center;
@@ -5612,7 +6585,7 @@ body {
     right: 0;
     padding: 2px 10px;
     font-family: 'Cabin', sans-serif;
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.1em;
     color: #00BCD4;
@@ -5633,7 +6606,7 @@ body {
 }
 .co-date-day {
     font-family: 'Cabin', sans-serif;
-    font-size: 10px;
+    font-size: 13px;
     color: #555;
     letter-spacing: 0.03em;
 }
@@ -5717,15 +6690,11 @@ body {
     min-height: 0;
 }
 
-/* Armado: diagonal stripes */
+/* Armado: gradient building up */
 .co-phase-armado {
-    background: repeating-linear-gradient(
-        -45deg,
-        var(--event-color),
-        var(--event-color) 4px,
-        rgba(0,0,0,0.25) 4px,
-        rgba(0,0,0,0.25) 8px
-    );
+    background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%),
+                var(--event-color);
+    border-left: 3px dashed rgba(0,0,0,0.3);
 }
 
 /* Funcionamiento: solid */
@@ -5733,23 +6702,20 @@ body {
     background: var(--event-color);
 }
 
-/* Desarme: dotted */
+/* Desarme: gradient fading down */
 .co-phase-desarme {
-    background-color: var(--event-color);
-    background-image: radial-gradient(
-        circle,
-        rgba(0,0,0,0.35) 1.5px,
-        transparent 1.5px
-    );
-    background-size: 8px 8px;
+    background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.55) 100%),
+                var(--event-color);
+    border-left: 3px dashed rgba(0,0,0,0.3);
 }
 
 /* Phase labels */
 .co-phase-label {
     font-family: 'Cabin', sans-serif;
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 600;
-    color: rgba(0,0,0,0.55);
+    color: rgba(255,255,255,0.5);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     white-space: nowrap;
@@ -5757,12 +6723,28 @@ body {
     text-overflow: ellipsis;
 }
 
-/* Event info (in funcionamiento phase) */
+/* Event info overlay (always visible over block) */
+.co-event-info {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 6px 10px;
+    padding-right: 50px;
+    pointer-events: none;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow: hidden;
+    max-height: 100%;
+}
 .co-event-name {
     font-family: 'Cabin', sans-serif;
-    font-size: 12px;
+    font-size: 15px;
     font-weight: 700;
-    color: rgba(0,0,0,0.8);
+    color: rgba(255,255,255,0.95);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
     line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
@@ -5770,17 +6752,28 @@ body {
 }
 .co-event-venue {
     font-family: 'Cabin', sans-serif;
-    font-size: 10px;
-    color: rgba(0,0,0,0.55);
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* Count badge (top-right corner) */
 .co-event-count {
+    position: absolute;
+    top: 5px;
+    right: 6px;
     font-family: 'Cabin', sans-serif;
     font-size: 10px;
-    font-weight: 600;
-    color: rgba(0,0,0,0.6);
+    font-weight: 700;
+    background: rgba(0,0,0,0.35);
+    color: rgba(255,255,255,0.85);
+    padding: 2px 6px;
+    border-radius: 8px;
+    z-index: 3;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 /* ─── Today line ─── */
@@ -5812,7 +6805,7 @@ body {
 .co-conflict-badge {
     position: absolute;
     top: 4px;
-    right: 6px;
+    right: 30px;
     font-size: 13px;
     z-index: 8;
     filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
@@ -6203,7 +7196,7 @@ body {
     align-items: center;
     gap: 6px;
     font-family: 'Cabin', sans-serif;
-    font-size: 11px;
+    font-size: 13px;
     color: #888;
 }
 .co-legend-swatch {

@@ -633,16 +633,17 @@ const CalendarioOperativo = {
             <div class="co-event-block ${hasConflict ? 'co-has-conflict' : ''}" data-event-id="${event.id}"
                  style="top:${blockTop}px;height:${blockHeight}px;${colorVar}">
                 ${conflictBadge}
+                <span class="co-event-count">${event.projectCount} proy.</span>
                 <div class="co-phase co-phase-armado" style="height:${armadoH}px">
                     <span class="co-phase-label">Armado</span>
                 </div>
-                <div class="co-phase co-phase-funcionamiento" style="height:${funcH}px">
-                    <span class="co-event-name">${event.name}</span>
-                    <span class="co-event-venue">${event.venue}</span>
-                    <span class="co-event-count">${event.projectCount} proy.</span>
-                </div>
+                <div class="co-phase co-phase-funcionamiento" style="height:${funcH}px"></div>
                 <div class="co-phase co-phase-desarme" style="height:${desarmeH}px">
                     <span class="co-phase-label">Desarme</span>
+                </div>
+                <div class="co-event-info">
+                    <span class="co-event-name">${event.name}</span>
+                    <span class="co-event-venue">${event.venue}</span>
                 </div>
             </div>
         `;

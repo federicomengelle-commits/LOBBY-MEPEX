@@ -678,10 +678,67 @@ const API = {
                 role: p.role,
                 initials: p.initials,
                 customPermissions: p.custom_permissions || null,
+                active: p.active !== false, // default true if column doesn't exist
+                telefono: p.telefono || '',
             }));
         } catch (e) {
             console.warn('[API] Error fetching users:', e.message);
             return null;
+        }
+    },
+
+    // ─── Create User (signUp + profile) ──────
+    async createUser(username, password, profileData) {
+        try {
+            // Save current admin session
+            const { data: { session: adminSession } } = await supabaseClient.auth.getSession();
+
+            // Create auth user via signUp
+            const { data: authData, error: authError } = await supabaseClient.auth.signUp({
+                email: username + '@mepex.local',
+                password: password,
+            });
+            if (authError) throw authError;
+            if (!authData?.user?.id) throw new Error('No se pudo crear el usuario de autenticación');
+
+            // Restore admin session (signUp may have changed the active session)
+            if (adminSession) {
+                await supabaseClient.auth.setSession({
+                    access_token: adminSession.access_token,
+                    refresh_token: adminSession.refresh_token,
+                });
+            }
+
+            // Create profile row
+            const { error: profileError } = await supabaseClient.from('profiles').insert({
+                id: authData.user.id,
+                username: username,
+                name: profileData.name,
+                role: profileData.role,
+                initials: profileData.initials,
+                active: true,
+            });
+            if (profileError) throw profileError;
+
+            return { success: true, userId: authData.user.id };
+        } catch (e) {
+            console.warn('[API] Error creating user:', e.message);
+            return { success: false, error: e.message };
+        }
+    },
+
+    // ─── Toggle User Active Status ───────────
+    async toggleUserActive(userId, active) {
+        try {
+            const { error } = await supabaseClient
+                .from('profiles')
+                .update({ active })
+                .eq('id', userId);
+            if (error) throw error;
+            return { success: true };
+        } catch (e) {
+            console.warn('[API] Error toggling user active:', e.message);
+            return { success: false, error: e.message };
         }
     },
 
@@ -692,6 +749,7 @@ const API = {
             if (updates.initials !== undefined) payload.initials = updates.initials;
             if (updates.role !== undefined) payload.role = updates.role;
             if (updates.custom_permissions !== undefined) payload.custom_permissions = updates.custom_permissions;
+            if (updates.telefono !== undefined) payload.telefono = updates.telefono;
             const { data, error } = await supabaseClient
                 .from('profiles')
                 .update(payload)
