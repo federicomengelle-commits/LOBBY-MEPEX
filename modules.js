@@ -1756,6 +1756,86 @@ const Modules = {
                 transition: opacity 0.3s;
             }
 
+            /* ─── Editable Select (clasificacion/categoria) ─── */
+            .ficha-editable-select { position: relative; width: 100%; }
+            .ficha-es-trigger {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 6px 10px; background: var(--bg-hover, #22252c);
+                border: 1px solid var(--border, #2a2d35); border-radius: 6px;
+                color: var(--text-primary, #fff); font-size: 0.82rem;
+                cursor: pointer; transition: border-color 0.15s;
+            }
+            .ficha-es-trigger:hover { border-color: var(--primary, #00A9C1); }
+            .ficha-es-dropdown {
+                display: none; position: absolute; top: calc(100% + 4px); left: 0;
+                width: 100%; min-width: 200px; max-height: 260px;
+                background: #1a1a2e; border: 1px solid #2a2d35; border-radius: 8px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 160;
+                overflow: hidden; flex-direction: column;
+            }
+            .ficha-es-dropdown.open { display: flex; }
+            .ficha-es-options { overflow-y: auto; max-height: 200px; padding: 4px; }
+            .ficha-es-option {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 7px 10px; border-radius: 4px; font-size: 0.8rem;
+                color: #ccc; cursor: pointer; transition: background 0.12s;
+            }
+            .ficha-es-option:hover { background: #22252c; }
+            .ficha-es-option.selected { background: rgba(0,188,212,0.1); color: #00BCD4; }
+            .ficha-es-option-x {
+                display: none; font-size: 0.7rem; color: #666; cursor: pointer;
+                padding: 2px 4px; border-radius: 3px; transition: all 0.12s;
+            }
+            .ficha-es-option:hover .ficha-es-option-x { display: inline; }
+            .ficha-es-option-x:hover { color: #EF5350; background: rgba(239,83,80,0.1); }
+            .ficha-es-add-row {
+                padding: 6px 8px; border-top: 1px solid #2a2d35;
+            }
+            .ficha-es-add-btn {
+                display: block; width: 100%; padding: 6px 10px; background: transparent;
+                border: 1px dashed #333; border-radius: 4px; color: #888;
+                font-size: 0.78rem; cursor: pointer; text-align: center;
+                transition: all 0.12s;
+            }
+            .ficha-es-add-btn:hover { border-color: #00BCD4; color: #00BCD4; }
+            .ficha-es-add-form {
+                display: flex; gap: 6px; align-items: center;
+            }
+            .ficha-es-add-form input { flex: 1; padding: 5px 8px; font-size: 0.78rem; }
+            .ficha-es-confirm-btn, .ficha-es-cancel-btn {
+                padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer;
+                font-size: 0.8rem; background: transparent; transition: all 0.12s;
+            }
+            .ficha-es-confirm-btn { color: #66BB6A; }
+            .ficha-es-confirm-btn:hover { background: rgba(102,187,106,0.15); }
+            .ficha-es-cancel-btn { color: #888; }
+            .ficha-es-cancel-btn:hover { color: #EF5350; }
+
+            /* ─── Proveedor Search Dropdown ─── */
+            .ficha-prov-search { position: relative; width: 100%; }
+            .ficha-prov-dropdown {
+                display: none; position: absolute; top: calc(100% + 4px); left: 0;
+                width: 100%; max-height: 260px; background: #1a1a2e;
+                border: 1px solid #2a2d35; border-radius: 8px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 160;
+                overflow: hidden; flex-direction: column;
+            }
+            .ficha-prov-dropdown.open { display: flex; }
+            .ficha-prov-list { overflow-y: auto; max-height: 180px; padding: 4px; }
+            .ficha-prov-item {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 7px 10px; border-radius: 4px; font-size: 0.8rem;
+                color: #ccc; cursor: pointer; transition: background 0.12s;
+            }
+            .ficha-prov-item:hover { background: #22252c; }
+            .ficha-prov-item.selected { background: rgba(0,188,212,0.1); color: #00BCD4; }
+            .ficha-prov-cuit { font-size: 0.68rem; color: #666; font-family: var(--font-mono, monospace); }
+            .ficha-prov-empty { padding: 12px; text-align: center; color: #666; font-size: 0.78rem; }
+            .ficha-prov-add { padding: 6px 8px; border-top: 1px solid #2a2d35; }
+            .ficha-prov-new-form { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; }
+            .ficha-prov-new-form input { padding: 5px 8px; font-size: 0.78rem; }
+            .ficha-prov-new-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
             /* ─── Multi-Select Filter Dropdowns ─── */
             .mepex-multifilter-bar {
                 display: flex;
@@ -3084,25 +3164,54 @@ const Modules = {
                     const mkSelect = (key, opts, val) => `<select class="ficha-edit-input ficha-edit-select" data-field="${key}">${opts.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
                     const mkInput = (key, val, type='text', placeholder='') => `<input class="ficha-edit-input" data-field="${key}" type="${type}" value="${val != null ? val : ''}" placeholder="${placeholder}" ${type === 'number' ? 'step="0.01"' : ''}>`;
 
+                    // Editable select for clasificacion/categoria
+                    const mkEditableSelect = (campo, val) => `
+                        <div class="ficha-editable-select" data-campo="${campo}">
+                            <div class="ficha-es-trigger" data-es-toggle="${campo}">
+                                <span class="ficha-es-value" data-field="${campo}">${val || 'Seleccionar…'}</span>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <div class="ficha-es-dropdown" id="esDropdown_${campo}">
+                                <div class="ficha-es-options" id="esOptions_${campo}">
+                                    <div class="ficha-loading-small">Cargando…</div>
+                                </div>
+                                <div class="ficha-es-add-row" id="esAddRow_${campo}">
+                                    <button class="ficha-es-add-btn" id="esAddBtn_${campo}">+ Agregar opción</button>
+                                </div>
+                            </div>
+                        </div>`;
+
+                    // Proveedor search dropdown
+                    const mkProveedorSearch = (val) => `
+                        <div class="ficha-prov-search" data-field="proveedor">
+                            <input class="ficha-edit-input ficha-prov-input" id="fichaProvInput" type="text" value="${val || ''}" placeholder="Buscar proveedor…" autocomplete="off">
+                            <div class="ficha-prov-dropdown" id="fichaProvDropdown">
+                                <div class="ficha-prov-list" id="fichaProvList"></div>
+                                <div class="ficha-prov-add">
+                                    <button class="ficha-es-add-btn" id="btnNewProveedor">+ Nuevo proveedor</button>
+                                </div>
+                            </div>
+                        </div>`;
+
                     return `
                         <div class="ficha-section">
                             <div class="ficha-section-title">Insumo</div>
                             <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${mkInput('nombre', item.nombre, 'text', 'Nombre del insumo')}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value">${mkInput('codigo', item.codigo, 'text', 'Ej: MAT-ALB')}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Clasificación</span><span class="ficha-row-value">${mkSelect('clasificacion', ['', ...fields.find(f=>f.key==='clasificacion').options], item.clasificacion)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${mkSelect('categoria', ['', ...fields.find(f=>f.key==='categoria').options], item.categoria)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Clasificación</span><span class="ficha-row-value">${mkEditableSelect('clasificacion', item.clasificacion)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${mkEditableSelect('categoria', item.categoria)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Unidad</span><span class="ficha-row-value">${mkSelect('unidadBase', fields.find(f=>f.key==='unidadBase').options, item.unidadBase)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value">${mkInput('costoUnitario', item.costoUnitario, 'number', '0.00')}</span></div>
                         </div>
                         <div class="ficha-section">
                             <div class="ficha-section-title">Proveedor</div>
-                            <div class="ficha-row"><span class="ficha-row-label">Proveedor</span><span class="ficha-row-value">${mkInput('proveedor', item.proveedor, 'text', 'Ej: Alpros S.A')}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Proveedor</span><span class="ficha-row-value">${mkProveedorSearch(item.proveedor)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Moneda</span><span class="ficha-row-value">${mkSelect('moneda', ['USD', 'ARS'], item.moneda)}</span></div>
                             ${item.fechaUltimoPrecio ? `<div class="ficha-row"><span class="ficha-row-label">Último precio</span><span class="ficha-row-value">${API.formatDate(item.fechaUltimoPrecio)}</span></div>` : ''}
                         </div>
                         <div class="ficha-section">
                             <div class="ficha-section-title">Notas</div>
-                            <div class="ficha-row"><span class="ficha-row-label">Notas</span><span class="ficha-row-value"><textarea class="ficha-edit-input ficha-edit-textarea" data-field="notas" placeholder="Observaciones">${item.notas || ''}</textarea></span></div>
+                            <textarea class="ficha-edit-input ficha-edit-textarea" data-field="notas" placeholder="Observaciones…">${item.notas || ''}</textarea>
                         </div>
                         <div class="ficha-edit-footer">
                             <button class="btn btn-primary btn-sm" id="fichaInsumoSave">Guardar cambios</button>
@@ -5241,10 +5350,225 @@ const Modules = {
     async _loadInsumoTabData(item, tabId) {
         if (tabId === 'historial') await this._loadInsumoHistorial(item);
         if (tabId === 'info') {
-            // Re-attach save handler when switching back to info tab
             const panel = document.getElementById('fichaPanel');
-            if (panel) this._attachInsumoFichaSave(item, panel);
+            if (panel) {
+                this._attachInsumoFichaSave(item, panel);
+                this._initEditableSelects(panel, item);
+                this._initProveedorSearch(panel, item);
+            }
         }
+    },
+
+    // ─── Editable Select Dropdowns (clasificacion/categoria) ───
+    async _initEditableSelects(panel, item) {
+        const campos = ['clasificacion', 'categoria'];
+        for (const campo of campos) {
+            await this._loadEditableSelectOptions(panel, campo, item[campo]);
+        }
+    },
+
+    async _loadEditableSelectOptions(panel, campo, currentVal) {
+        const optionsEl = panel.querySelector(`#esOptions_${campo}`);
+        if (!optionsEl) return;
+
+        // Try DB first, fallback to hardcoded
+        let options = await API.getSelectOptions(campo);
+        if (!options || options.length === 0) {
+            // Fallback: use hardcoded options from form fields
+            const field = this._insumoFormFields.find(f => f.key === campo);
+            const fallbackOpts = field ? field.options : [];
+            options = fallbackOpts.map((v, i) => ({ id: null, campo, valor: v, orden: i }));
+        }
+
+        optionsEl.innerHTML = options.map(o => `
+            <div class="ficha-es-option ${o.valor === currentVal ? 'selected' : ''}" data-es-val="${o.valor}" data-es-id="${o.id || ''}">
+                <span>${o.valor}</span>
+                <span class="ficha-es-option-x" data-es-delete="${o.id || ''}" data-es-campo="${campo}" title="Eliminar opción">✕</span>
+            </div>
+        `).join('');
+
+        // Attach click on options
+        optionsEl.querySelectorAll('.ficha-es-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                if (e.target.closest('.ficha-es-option-x')) return;
+                e.stopPropagation();
+                const val = opt.dataset.esVal;
+                const valueEl = panel.querySelector(`.ficha-es-value[data-field="${campo}"]`);
+                if (valueEl) valueEl.textContent = val;
+                // Mark selected
+                optionsEl.querySelectorAll('.ficha-es-option').forEach(o => o.classList.remove('selected'));
+                opt.classList.add('selected');
+                // Close dropdown
+                panel.querySelector(`#esDropdown_${campo}`)?.classList.remove('open');
+            });
+        });
+
+        // Delete option
+        optionsEl.querySelectorAll('.ficha-es-option-x').forEach(x => {
+            x.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const optId = x.dataset.esDelete;
+                const optCampo = x.dataset.esCampo;
+                if (!optId) { Toast.error('No se puede eliminar (opción por defecto)'); return; }
+                const optName = x.closest('.ficha-es-option')?.dataset.esVal || '';
+                const confirmed = confirm(`¿Eliminar "${optName}"? Los insumos que la tengan asignada quedarán sin ${optCampo}.`);
+                if (!confirmed) return;
+                const result = await API.deleteSelectOption(parseInt(optId));
+                if (result) {
+                    Toast.success(`"${optName}" eliminada`);
+                    const currentValEl = panel.querySelector(`.ficha-es-value[data-field="${optCampo}"]`);
+                    const currentSelected = currentValEl?.textContent;
+                    await this._loadEditableSelectOptions(panel, optCampo, currentSelected === optName ? '' : currentSelected);
+                    if (currentSelected === optName && currentValEl) currentValEl.textContent = 'Seleccionar…';
+                } else {
+                    Toast.error('Error al eliminar');
+                }
+            });
+        });
+
+        // Toggle dropdown
+        const trigger = panel.querySelector(`[data-es-toggle="${campo}"]`);
+        if (trigger && !trigger._handlerAttached) {
+            trigger._handlerAttached = true;
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const dd = panel.querySelector(`#esDropdown_${campo}`);
+                // Close other dropdowns
+                panel.querySelectorAll('.ficha-es-dropdown.open').forEach(d => { if (d !== dd) d.classList.remove('open'); });
+                dd?.classList.toggle('open');
+            });
+        }
+
+        // Add option button
+        const addBtn = panel.querySelector(`#esAddBtn_${campo}`);
+        if (addBtn && !addBtn._handlerAttached) {
+            addBtn._handlerAttached = true;
+            addBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const addRow = panel.querySelector(`#esAddRow_${campo}`);
+                if (!addRow) return;
+                addRow.innerHTML = `
+                    <div class="ficha-es-add-form">
+                        <input class="ficha-edit-input" id="esNewInput_${campo}" type="text" placeholder="Nombre de la opción…" autocomplete="off">
+                        <button class="ficha-es-confirm-btn" id="esConfirmAdd_${campo}" title="Confirmar">✓</button>
+                        <button class="ficha-es-cancel-btn" id="esCancelAdd_${campo}" title="Cancelar">✕</button>
+                    </div>`;
+                const inp = addRow.querySelector(`#esNewInput_${campo}`);
+                inp?.focus();
+
+                const confirmAdd = async () => {
+                    const newVal = inp?.value?.trim();
+                    if (!newVal) return;
+                    const result = await API.createSelectOption(campo, newVal);
+                    if (result) {
+                        Toast.success(`"${newVal}" agregada`);
+                        const currentValEl = panel.querySelector(`.ficha-es-value[data-field="${campo}"]`);
+                        await this._loadEditableSelectOptions(panel, campo, currentValEl?.textContent);
+                        addRow.innerHTML = `<button class="ficha-es-add-btn" id="esAddBtn_${campo}">+ Agregar opción</button>`;
+                        // Re-attach add handler
+                        addRow.querySelector(`#esAddBtn_${campo}`)?.addEventListener('click', addBtn._savedHandler || (() => {}));
+                    } else {
+                        Toast.error('Error al agregar');
+                    }
+                };
+
+                addRow.querySelector(`#esConfirmAdd_${campo}`)?.addEventListener('click', (ev) => { ev.stopPropagation(); confirmAdd(); });
+                inp?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.stopPropagation(); confirmAdd(); } });
+                addRow.querySelector(`#esCancelAdd_${campo}`)?.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    addRow.innerHTML = `<button class="ficha-es-add-btn" id="esAddBtn_${campo}">+ Agregar opción</button>`;
+                });
+            });
+        }
+
+        // Close on click outside
+        if (!panel._esDocClickAttached) {
+            panel._esDocClickAttached = true;
+            document.addEventListener('click', () => {
+                panel.querySelectorAll('.ficha-es-dropdown.open').forEach(d => d.classList.remove('open'));
+            });
+        }
+    },
+
+    // ─── Proveedor Search Dropdown ───
+    async _initProveedorSearch(panel, item) {
+        const input = panel.querySelector('#fichaProvInput');
+        const dropdown = panel.querySelector('#fichaProvDropdown');
+        const listEl = panel.querySelector('#fichaProvList');
+        if (!input || !dropdown || !listEl) return;
+
+        let proveedores = await API.getProveedores() || [];
+
+        const renderList = (q) => {
+            const filtered = q ? proveedores.filter(p => p.name.toLowerCase().includes(q.toLowerCase())) : proveedores;
+            listEl.innerHTML = filtered.length === 0
+                ? `<div class="ficha-prov-empty">Sin resultados</div>`
+                : filtered.map(p => `
+                    <div class="ficha-prov-item ${p.name === input.value ? 'selected' : ''}" data-prov-name="${p.name}" data-prov-id="${p.id}">
+                        <span>${p.name}</span>
+                        ${p.cuit ? `<span class="ficha-prov-cuit">${p.cuit}</span>` : ''}
+                    </div>
+                `).join('');
+
+            // Attach click
+            listEl.querySelectorAll('.ficha-prov-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    input.value = item.dataset.provName;
+                    dropdown.classList.remove('open');
+                });
+            });
+        };
+
+        input.addEventListener('focus', () => { renderList(input.value); dropdown.classList.add('open'); });
+        input.addEventListener('input', () => { renderList(input.value); dropdown.classList.add('open'); });
+
+        // New proveedor button
+        const btnNew = panel.querySelector('#btnNewProveedor');
+        if (btnNew) {
+            btnNew.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const addArea = btnNew.parentElement;
+                addArea.innerHTML = `
+                    <div class="ficha-prov-new-form">
+                        <input class="ficha-edit-input" id="newProvNombre" type="text" placeholder="Nombre *" autocomplete="off">
+                        <input class="ficha-edit-input" id="newProvCuit" type="text" placeholder="CUIT (opcional)" autocomplete="off">
+                        <input class="ficha-edit-input" id="newProvContacto" type="text" placeholder="Contacto (opcional)" autocomplete="off">
+                        <div class="ficha-prov-new-actions">
+                            <button class="btn btn-primary btn-sm" id="btnSaveNewProv">Crear</button>
+                            <button class="btn btn-ghost btn-sm" id="btnCancelNewProv">Cancelar</button>
+                        </div>
+                    </div>`;
+                addArea.querySelector('#newProvNombre')?.focus();
+
+                addArea.querySelector('#btnSaveNewProv')?.addEventListener('click', async () => {
+                    const nombre = addArea.querySelector('#newProvNombre')?.value?.trim();
+                    if (!nombre) { Toast.error('Nombre requerido'); return; }
+                    const cuit = addArea.querySelector('#newProvCuit')?.value?.trim() || '';
+                    const contacto = addArea.querySelector('#newProvContacto')?.value?.trim() || '';
+                    const result = await API.createProveedor({ name: nombre, cuit, contacto });
+                    if (result) {
+                        Toast.success(`Proveedor "${nombre}" creado`);
+                        input.value = nombre;
+                        dropdown.classList.remove('open');
+                        // Refresh list
+                        API.clearCache();
+                        proveedores = await API.getProveedores() || [];
+                        addArea.innerHTML = `<button class="ficha-es-add-btn" id="btnNewProveedor">+ Nuevo proveedor</button>`;
+                    } else {
+                        Toast.error('Error al crear proveedor');
+                    }
+                });
+                addArea.querySelector('#btnCancelNewProv')?.addEventListener('click', () => {
+                    addArea.innerHTML = `<button class="ficha-es-add-btn" id="btnNewProveedor">+ Nuevo proveedor</button>`;
+                });
+            });
+        }
+
+        // Close on click outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.ficha-prov-search')) dropdown.classList.remove('open');
+        });
     },
 
     _attachInsumoFichaSave(item, panel) {
@@ -5253,6 +5577,7 @@ const Modules = {
         if (!saveBtn) return;
 
         saveBtn.addEventListener('click', async () => {
+            // Collect values from regular inputs
             const inputs = panel.querySelectorAll('.ficha-edit-input');
             const values = {};
             inputs.forEach(inp => {
@@ -5263,11 +5588,22 @@ const Modules = {
                 else values[key] = inp.value;
             });
 
+            // Collect values from editable selects
+            panel.querySelectorAll('.ficha-es-value').forEach(el => {
+                const key = el.dataset.field;
+                const val = el.textContent;
+                if (key && val !== 'Seleccionar…') values[key] = val;
+                else if (key) values[key] = '';
+            });
+
+            // Proveedor from search input
+            const provInput = panel.querySelector('#fichaProvInput');
+            if (provInput) values.proveedor = provInput.value;
+
             saveBtn.disabled = true;
             saveBtn.textContent = 'Guardando…';
             if (statusEl) statusEl.textContent = '';
 
-            // Check if price changed for logging
             const oldPrice = item.costoUnitario;
             const newPrice = values.costoUnitario;
             const priceChanged = newPrice != null && Math.abs(newPrice - oldPrice) > 0.001;
@@ -5280,12 +5616,9 @@ const Modules = {
             if (result) {
                 Toast.success('Insumo actualizado');
                 if (statusEl) { statusEl.textContent = 'Guardado ✓'; statusEl.style.color = '#66BB6A'; }
-                // Update item reference for current session
                 Object.assign(item, values);
-                // Update panel name
                 const nameEl = panel.querySelector('.ficha-panel-name');
                 if (nameEl && values.nombre) nameEl.textContent = values.nombre;
-                // Cascade if price changed
                 if (priceChanged) {
                     const cascade = await API.recalcularPorInsumo(item.id);
                     if (cascade.ok && cascade.updated > 0) Toast.info(`${cascade.updated} items recalculados`);

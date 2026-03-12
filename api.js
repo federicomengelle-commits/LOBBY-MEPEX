@@ -232,6 +232,74 @@ const API = {
         }
     },
 
+    async createProveedor(data) {
+        try {
+            const payload = {
+                nombre: data.name || data.nombre || '',
+                cuit: data.cuit || null,
+                detalle: data.contacto || data.detalle || '',
+            };
+            const { data: result, error } = await supabaseClient.from('proveedor').insert([payload]).select();
+            if (error) throw error;
+            this.clearCache();
+            return result?.[0] ? { id: result[0].id, name: result[0].nombre, cuit: result[0].cuit || '', detalle: result[0].detalle || '' } : null;
+        } catch (e) {
+            console.warn('[API] Error creating proveedor:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Select Options (clasificacion/categoria config) ───
+    async getSelectOptions(campo) {
+        const cacheKey = 'select_opts_' + campo;
+        const cached = this._cache[cacheKey];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        try {
+            const { data, error } = await supabaseClient
+                .from('opciones_select')
+                .select('*')
+                .eq('campo', campo)
+                .order('orden', { ascending: true });
+            if (error) throw error;
+            const mapped = (data || []).map(o => ({ id: o.id, campo: o.campo, valor: o.valor, color: o.color || null, orden: o.orden || 0 }));
+            this._cache[cacheKey] = { data: mapped, ts: Date.now() };
+            return mapped;
+        } catch (e) {
+            console.warn('[API] Error fetching select options:', e.message);
+            return null;
+        }
+    },
+
+    async createSelectOption(campo, valor) {
+        try {
+            // Get max orden for this campo
+            const existing = await this.getSelectOptions(campo);
+            const maxOrden = existing ? Math.max(0, ...existing.map(o => o.orden)) : 0;
+            const { data, error } = await supabaseClient
+                .from('opciones_select')
+                .insert([{ campo, valor, orden: maxOrden + 1 }])
+                .select();
+            if (error) throw error;
+            this.clearCache();
+            return data?.[0] || true;
+        } catch (e) {
+            console.warn('[API] Error creating select option:', e.message);
+            return null;
+        }
+    },
+
+    async deleteSelectOption(id) {
+        try {
+            const { error } = await supabaseClient.from('opciones_select').delete().eq('id', id);
+            if (error) throw error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting select option:', e.message);
+            return null;
+        }
+    },
+
     // ─── Catalog (legacy compat) ──────────────
     async getCatalog() {
         return null; // No se usa con Supabase por ahora
