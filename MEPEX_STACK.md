@@ -1,6 +1,6 @@
 # MEPEX — Stack Técnico y Convenciones
 
-> Referencia técnica para cualquier aplicación del ecosistema MEPEX. Define el stack, estructura de proyecto, convenciones de código y patrones reutilizables.
+> Referencia técnica para el Lobby MEPEX (Sistema de Gestión Integral). Define el stack, estructura de proyecto, convenciones de código y patrones reutilizables.
 
 ---
 
@@ -8,42 +8,112 @@
 
 | Capa | Tecnología | Notas |
 |------|-----------|-------|
-| **Frontend** | Vanilla JS (ES6+) | Sin frameworks pesados. Priorizar simplicidad y velocidad de carga |
-| **Backend** | Node.js + Express | Servidor ligero como proxy de APIs |
-| **Base de datos** | Notion API | Fuente de verdad para datos de negocio (catálogo, clientes, proyectos, eventos, cotizaciones) |
-| **Fallback offline** | localStorage | Toda app debe funcionar sin conexión con datos cacheados |
-| **PDF** | jsPDF | Generación client-side de presupuestos y documentos |
-| **Deploy frontend** | Vercel | Deploy automático desde GitHub |
-| **Deploy backend** | Railway | Node.js hosting con .env management |
-| **Versionado** | Git + GitHub | Un repo por aplicación |
+| **Frontend** | Vanilla JS (ES6+) | SPA sin frameworks. Hash-based routing. ~24k líneas de código |
+| **Base de datos** | Supabase (PostgreSQL) | Fuente de verdad. Client-side SDK via CDN |
+| **Auth** | Supabase Auth | Login con email virtual (`user@mepex.local`), perfil en tabla `profiles` |
+| **Fallback offline** | localStorage | Cache de sidebar state y preferencias. KPIs mock como fallback |
+| **Fonts** | Google Fonts | Outfit, Space Mono, JetBrains Mono, Cabin |
+| **Deploy** | Estático (sin build step) | HTML + JS + CSS servidos directamente |
+| **Versionado** | Git + GitHub | Branch main |
+
+### Cambios respecto al stack anterior
+- **Supabase reemplazó a Notion API** como fuente de verdad
+- **No hay servidor Express** — todo es client-side contra Supabase
+- **No se usa jsPDF** — el proyecto evolucionó de Stand Presenter a Sistema de Gestión
+- **No hay carpeta `server/`** — eliminada al migrar a Supabase
 
 ---
 
-## Estructura Estándar de Proyecto
+## Estructura del Proyecto
 
 ```
-proyecto-mepex/
-├── index.html              # Entrada principal
-├── style.css               # Estilos (tema oscuro MEPEX)
-├── script.js               # Lógica principal
-├── api.js                  # Wrapper de comunicación con backend
-├── database.js             # Datos locales / fallback offline
-├── [modulo]-storage.js     # Persistencia específica del módulo
-├── [modulo]-ui.js          # UI específica del módulo (modales, etc.)
-├── autocomplete.js         # Componente reutilizable de autocompletado
-├── .gitignore              # Proteger .env, node_modules, archivos sensibles
-├── README.md               # Documentación del proyecto
-├── CLAUDE.md               # Contexto para Claude Code
+LOBBY-MEPEX/
+├── index.html              # Entry point — SPA container, carga Supabase CDN + scripts
+├── style.css               # Estilos principales (~8000 líneas, importa MEPEX_COMPONENTS.css)
+├── MEPEX_COMPONENTS.css    # CSS base reutilizable (tokens legacy, reset, componentes base)
+│
+├── config.js               # Credenciales Supabase (URL + anon key), crea supabaseClient
+├── api.js                  # API client contra Supabase (~2000 líneas): CRUD clientes, proyectos, eventos, insumos, catálogo, cotizaciones, KPIs, search global, pipeline comercial, La PyME integration
+├── data.js                 # Definiciones estáticas: módulos, secciones, roles, permisos, categorías, acciones rápidas, indicadores mock, buscador local
+├── router.js               # SPA router hash-based con guards de auth y permisos por rol
+├── auth.js                 # Supabase Auth: login/logout/session restore, perfiles, RBAC
+│
+├── components.js           # Componentes UI reutilizables: Toast, Modal, ContextMenu, Confirm, FormBuilder
+├── app.js                  # App Shell: header global + sidebar + search global + connection badge
+├── lobby.js                # Vista Lobby: KPIs reales, mini calendario, bloques de categorías, actividad reciente
+├── calendar.js             # Calendario global: grilla mensual CSS, filtros por tipo, panel de detalle
+├── calendario-operativo.js # Timeline vertical operativo: carriles por evento, fases (armado/func/desarme), zoom, filtros
+├── eventos.js              # Módulo Eventos: tabla + vista cards + side panel ficha con secciones editables
+├── modules.js              # Renderer genérico de módulos (~7100 líneas): tablas, fichas, CRUD, filtros, sort, insumos, catálogo, pipeline comercial
+├── settings.js             # Pantallas: Mi Perfil, Usuarios y Roles (admin), Notificaciones
+├── admin-panel.js          # Panel de Control admin: métricas, tabla usuarios, audit log feed
+│
 ├── assets/
-│   ├── logo_full.png       # Logo MEPEX completo
-│   ├── logo_x.png          # Isotipo X
-│   └── icons/              # Iconos custom
-└── server/
-    ├── index.js            # Express server con endpoints Notion
-    ├── .env                # Variables de entorno (NOTION_TOKEN, DB_IDs)
-    ├── package.json        # Dependencias del servidor
-    └── node_modules/       # (ignorado por git)
+│   ├── logo_full.png       # Logo MEPEX completo horizontal
+│   ├── mepex_iso.png       # Isotipo X (favicon)
+│   └── COLORES MEPEX.png   # Paleta de referencia
+│
+├── sql/
+│   ├── calendario_operativo_v2.sql  # Schema para eventos con fases operativas
+│   ├── pipeline_comercial.sql       # Schema pipeline + seguimientos + KPIs
+│   ├── v4_pyme_integration.sql      # Integración La PyME API
+│   └── fix_rls_authenticated.sql    # Fix de RLS policies
+│
+├── CLAUDE.md               # Contexto principal para Claude Code
+├── MEPEX_BRAND.md          # Guía de marca visual (este ecosistema)
+├── MEPEX_STACK.md          # Este archivo
+├── MEPEX_CLAUDE.md         # Contexto adicional
+├── BRIEF_VISUAL_STYLES.md  # Brief de estilos visuales
+├── deploy.md               # Instrucciones de deploy
+└── *.md                    # Blueprints de módulos (eventos, ventas, calendario, admin, etc.)
 ```
+
+---
+
+## Orden de Carga de Scripts
+
+```html
+<!-- En index.html, el orden es crítico: -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>  <!-- Supabase SDK -->
+<script src="config.js"></script>       <!-- 1. Credenciales, crea supabaseClient -->
+<script src="api.js"></script>          <!-- 2. API wrapper (usa supabaseClient) -->
+<script src="data.js"></script>         <!-- 3. Datos estáticos, módulos, roles -->
+<script src="router.js"></script>       <!-- 4. Router (usa Auth, App) -->
+<script src="auth.js"></script>         <!-- 5. Auth (usa supabaseClient, Data) -->
+<script src="components.js"></script>   <!-- 6. UI components (Toast, Modal, etc.) -->
+<script src="lobby.js"></script>        <!-- 7. Vista Lobby -->
+<script src="calendar.js"></script>     <!-- 8. Calendario global -->
+<script src="calendario-operativo.js"></script>  <!-- 9. Timeline operativo -->
+<script src="eventos.js"></script>      <!-- 10. Módulo Eventos -->
+<script src="settings.js"></script>     <!-- 11. Perfil, Admin usuarios -->
+<script src="admin-panel.js"></script>  <!-- 12. Panel de Control -->
+<script src="modules.js"></script>      <!-- 13. Renderer genérico de módulos -->
+<script src="app.js"></script>          <!-- 14. App Shell + bootstrap -->
+```
+
+---
+
+## Tablas Supabase
+
+| Tabla | Uso |
+|-------|-----|
+| `profiles` | Usuarios del sistema: name, role, initials, active, custom_permissions |
+| `clientes` | Base de clientes (columnas rotadas: ver nota abajo) |
+| `proyectos_2026` | Proyectos por año |
+| `eventos_2026` | Eventos feriales: fechas, venue, equipo, transporte, docs |
+| `insumos_base` | Materias primas con costos, clasificación, categoría |
+| `catalogo_items` | Items fabricados con receta de insumos |
+| `cotizaciones` | Cotizaciones del pipeline comercial |
+| `pipeline_comercial` | Estados y seguimiento de cotizaciones |
+| `audit_logs` | Registro de auditoría del sistema |
+
+### Bug conocido: columnas rotadas en `clientes`
+```
+columna 'rubro'               → contiene teléfonos
+columna 'telefono'            → contiene emails
+columna 'correo_electronico'  → contiene rubros
+```
+El mapeo se maneja en `api.js` al hacer el fetch.
 
 ---
 
@@ -51,183 +121,191 @@ proyecto-mepex/
 
 ### JavaScript
 
-- **Variables globales mínimas.** Usar objetos contenedores: `State`, `Render`, `API`, `DB`
-- **Naming:** camelCase para variables y funciones, PascalCase para objetos/módulos globales
-- **Estado centralizado:** Un objeto `State` con `generalParams` y métodos `updateGeneralParam()`
-- **Renders separados:** Objeto `Render` con métodos para actualizar cada sección de UI
-- **Eventos:** addEventListener, nunca inline onclick en HTML
-- **Async/await** para todas las llamadas a API
-- **Fallback pattern:** Intentar API → si falla → usar datos locales
+- **Objetos globales como módulos.** Cada archivo exporta un objeto global: `API`, `Auth`, `Router`, `App`, `Data`, `Lobby`, `Modules`, `Settings`, `Calendar`, `CalendarioOperativo`, `EventosModule`, `AdminPanel`, `Toast`, `Modal`, `ContextMenu`, `Confirm`, `FormBuilder`
+- **Naming:** camelCase para funciones y variables, PascalCase para objetos globales/módulos
+- **Propiedades privadas:** prefijo `_` para estado interno (`_sortCol`, `_activePanel`, `_cache`, etc.)
+- **Lifecycle:** cada módulo tiene un método `render()` que recibe nada y renderiza en `#mainContent`
+- **Eventos:** `addEventListener`, nunca inline `onclick` en HTML
+- **Async/await** para todas las llamadas a Supabase
+- **Template literals** para generar HTML (no JSX, no template engines)
+- **Estado local por módulo:** cada módulo mantiene su propio state en propiedades del objeto
 
 ```javascript
-// Patrón estándar de fallback
-async function getData() {
-    if (API.isConnected) {
-        try {
-            return await API.getItems();
-        } catch (e) {
-            console.warn('⚠️ API falló, usando datos locales:', e.message);
-        }
-    }
-    return DB.getLocalItems();
-}
+// Patrón estándar de módulo
+const MiModulo = {
+    // State
+    _items: [],
+    _sortCol: 'name',
+    _sortDir: 'asc',
+    _searchQuery: '',
+
+    // Lifecycle
+    async render() {
+        const user = Auth.getUser();
+        if (!user) return Router.navigate('login');
+        const content = document.getElementById('mainContent');
+        if (!content) return;
+        content.innerHTML = this._buildHTML();
+        await this._loadData();
+        this._attachEvents();
+    },
+
+    // Private methods
+    _buildHTML() { return `<div>...</div>`; },
+    async _loadData() { this._items = await API.getItems(); },
+    _attachEvents() { /* addEventListener calls */ },
+};
+```
+
+### Patrón API (api.js)
+
+```javascript
+const API = {
+    isConnected: false,
+    _cache: {},
+    _cacheTimeout: 60000, // 1 min
+
+    async checkConnection() {
+        const { count, error } = await supabaseClient
+            .from('clientes')
+            .select('*', { count: 'exact', head: true });
+        this.isConnected = !error;
+        return this.isConnected;
+    },
+
+    async getClients() {
+        // Check cache
+        const cached = this._cache['clients'];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        // Fetch from Supabase
+        const { data, error } = await supabaseClient
+            .from('clientes').select('*').order('nombre_empresa');
+        if (error) throw error;
+        // Map columns + cache
+        const mapped = data.map(row => ({ /* mapeo */ }));
+        this._cache['clients'] = { data: mapped, ts: Date.now() };
+        return mapped;
+    },
+};
+```
+
+### Patrón Auth
+
+```javascript
+const Auth = {
+    _profile: null,
+
+    async login(username, password) {
+        const email = username + '@mepex.local';
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) return { success: false, error: 'Usuario o contraseña incorrectos' };
+        const profile = await this._fetchProfile(data.user.id);
+        this._profile = profile;
+        return { success: true, user: profile };
+    },
+
+    getUser() { return this._profile; },
+    isAuthenticated() { return this._profile !== null; },
+    hasAccess(moduleId) {
+        const allowed = this._profile?.customPermissions || Data.rolePermissions[this._profile?.role] || [];
+        return allowed.includes(moduleId);
+    },
+    isSuperAdmin() { return this._profile?.role === 'superadmin'; },
+    isAdminLevel() { return ['superadmin', 'admin'].includes(this._profile?.role); },
+};
+```
+
+### Patrón Router
+
+```javascript
+const Router = {
+    routes: {},
+    shellRendered: false,
+
+    async init() {
+        this.routes = {
+            'login': { render: () => Auth.renderLogin(), requiresAuth: false },
+            'lobby': { render: () => Lobby.render(), requiresAuth: true },
+            'ventas': { render: () => Modules.render('ventas'), requiresAuth: true, module: 'ventas' },
+            // ...
+        };
+        window.addEventListener('hashchange', () => this.handleRoute());
+        await Auth.restoreSession();
+        this.handleRoute();
+    },
+
+    handleRoute() {
+        // Auth guard → role guard → render shell → render route → update sidebar
+    },
+
+    navigate(hash) { window.location.hash = '#' + hash; },
+    getHash() { return window.location.hash.replace('#', ''); },
+};
 ```
 
 ### CSS
 
-- **Variables CSS** para todos los colores (ver MEPEX_BRAND.md)
+- **Variables CSS** para todos los colores y tokens (ver MEPEX_BRAND.md)
+- **Dos capas:** `MEPEX_COMPONENTS.css` (base) + `style.css` (override con nuevo sistema visual)
 - **Tema oscuro siempre.** No implementar modo claro
 - **Grid + Flexbox** para layouts
-- **Mobile-first NO.** Desktop-first (herramientas internas usadas en escritorio)
-- **Clases descriptivas:** `.params-row`, `.item-card`, `.summary-panel`
-- **Sin BEM estricto** pero mantener nomenclatura clara
+- **Desktop-first** (herramienta interna usada en escritorio)
+- **Clases descriptivas:** `.ev-wrapper`, `.co-toolbar`, `.lobby-cat-block`, `.sidebar-nav-link`
+- **Prefijos por módulo:** `ev-` (eventos), `co-` (calendario operativo), `cal-` (calendar)
+- **No BEM estricto** pero nombres claros y consistentes
 
 ### HTML
 
+- **SPA con un solo `#app`** que contiene todo
+- **App Shell:** header global + sidebar + `#mainContent`
 - **Scripts al final** del body, antes de `</body>`
-- **Orden de carga:** api.js → database.js → autocomplete.js → [módulos].js → script.js
-- **IDs para elementos únicos**, clases para estilos
-- **Labels siempre** en inputs de formulario
+- **SVG inline** para iconos funcionales
+- **Emojis** para iconos de módulos en data.js
 
 ---
 
-## Patrones Reutilizables
+## Componentes Reutilizables (components.js)
 
-### API Wrapper (api.js)
+| Componente | API | Uso |
+|------------|-----|-----|
+| `Toast` | `.success(msg)`, `.error(msg)`, `.warning(msg)`, `.info(msg)` | Notificaciones temporales con progress bar |
+| `Modal` | `.open({ title, body, size, footer })`, `.close(id)`, `.confirm({ title, message, danger })` | Modales con stack, ESC, click outside |
+| `ContextMenu` | `.show(x, y, items)`, `.close()` | Menú contextual posicional, mobile bottom sheet |
+| `Confirm` | `.delete(entityName)`, `.action(title, message)` | Confirmaciones con danger mode |
+| `FormBuilder` | `.render(fields, values)`, `.getValues(form)`, `.validate(form, fields)` | Forms dinámicos con validación |
 
-Toda aplicación MEPEX debe tener un `api.js` con esta estructura:
+---
 
-```javascript
-const API = {
-    BASE_URL: 'http://localhost:3001/api',
-    isConnected: false,
+## Roles y Permisos
 
-    async request(endpoint, options = {}) {
-        const response = await fetch(`${this.BASE_URL}${endpoint}`, {
-            headers: { 'Content-Type': 'application/json' },
-            ...options
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-    },
+| Rol | Módulos | Usuarios |
+|-----|---------|----------|
+| `superadmin` | Todos + Panel de Control | Fede |
+| `admin` | Todos + Usuarios y Roles | Lelean, Sofi |
+| `venta` | Ventas, Clientes, Proyectos, Eventos, Producción, Inventario | Noe |
+| `pm` | Proyectos, Eventos, Clientes, Producción, Inventario | Meli, Leo |
+| `taller` | Proyectos, Eventos, Producción | Diego, Juan, Carlos, Willy |
 
-    async checkConnection() {
-        try {
-            await this.request('/health');
-            this.isConnected = true;
-        } catch {
-            this.isConnected = false;
-        }
-        return this.isConnected;
-    },
+Los permisos se definen en `Data.rolePermissions` y se pueden personalizar por usuario via `customPermissions` en la tabla `profiles`.
 
-    // ... endpoints específicos del módulo
-};
-```
+---
 
-### Estado (State pattern)
+## Integraciones Externas
 
-```javascript
-const State = {
-    generalParams: { /* parámetros del módulo */ },
-    selectedItems: {},
-
-    updateGeneralParam(key, value) {
-        this.generalParams[key] = value;
-        Render.updateAll();
-    },
-
-    reset() {
-        // Limpiar todo al estado inicial
-    }
-};
-```
-
-### Almacenamiento con fallback
-
-```javascript
-const Storage = {
-    STORAGE_KEY: 'mepex_[modulo]',
-
-    async save(data) {
-        if (API.isConnected) {
-            try { return await API.saveData(data); }
-            catch (e) { console.warn('Fallback a localStorage'); }
-        }
-        this._saveLocal(data);
-    },
-
-    async getAll() {
-        if (API.isConnected) {
-            try { return await API.getData(); }
-            catch (e) { console.warn('Fallback a localStorage'); }
-        }
-        return this._getLocal();
-    },
-
-    _saveLocal(data) {
-        const items = this._getLocal();
-        items.push(data);
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(items));
-    },
-
-    _getLocal() {
-        try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY) || '[]'); }
-        catch { return []; }
-    }
-};
-```
-
-### Autocomplete con Notion
-
-```javascript
-// Patrón: Input → buscar en API → dropdown → seleccionar → guardar en State
-// Al seleccionar, guardar el objeto COMPLETO incluyendo el .id (page_id de Notion)
-// Esto es crítico para Relations en Notion
-```
-
-### Backend Express + Notion
-
-```javascript
-// server/index.js — patrón base
-const express = require('express');
-const { Client } = require('@notionhq/client');
-const cors = require('cors');
-require('dotenv').config();
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
-const DB_ID = process.env.NOTION_[MODULO]_DB_ID;
-
-// Helpers de parseo Notion
-const getTitle = (prop) => prop?.title?.[0]?.plain_text || '';
-const getRichText = (prop) => prop?.rich_text?.[0]?.plain_text || '';
-const getSelect = (prop) => prop?.select?.name || '';
-const getNumber = (prop) => prop?.number || 0;
-const getRelation = (prop) => (prop?.relation || []).map(r => r.id);
-const getDate = (prop) => prop?.date?.start || '';
-
-// Chunking para JSONs grandes en bloques de código Notion
-function createRichTextChunks(text, maxLen = 2000) {
-    const chunks = [];
-    for (let i = 0; i < text.length; i += maxLen) {
-        chunks.push({ type: 'text', text: { content: text.substring(i, i + maxLen) } });
-    }
-    return chunks;
-}
-```
+| Servicio | Estado | Detalle |
+|----------|--------|---------|
+| **La PyME API** | V4 (implementando) | `api.lapyme.com.ar` — facturación, ventas, clientes. Match by customer.name |
+| **Cotizador MEPEX** | Externo | `cotizador-mepex.vercel.app` — link externo desde acciones rápidas |
 
 ---
 
 ## Reglas Generales
 
-1. **Trabajo acertado a la movida.** Planificar antes de codear. Plan mode en Claude Code.
+1. **Trabajo acertado > velocidad.** Planificar antes de codear. Plan mode en Claude Code.
 2. **No romper lo que funciona.** Cambios quirúrgicos, testear antes y después.
-3. **Fallback siempre.** Toda funcionalidad debe tener alternativa offline.
-4. **Notion es la fuente de verdad.** localStorage es caché/fallback, nunca fuente primaria (excepto cotNumber sequence).
-5. **Guardar page_ids de Notion** en todo objeto que tenga Relations.
-6. **Simplicidad en producción.** El equipo de taller es de edad media/avanzada y poco tech. Sus interfaces deben ser extremadamente simples.
-7. **4 niveles de usuario:** Gerencia/Finanzas/Admin/Ventas (todo), Project Managers (cotización + producción), Taller/Producción (ejecución simple), PM/Vendedores externos (vista limitada).
+3. **Supabase es la fuente de verdad.** localStorage es para preferencias UI, no datos de negocio.
+4. **Simplicidad en la UI.** El equipo incluye personas de edad media/avanzada y poco tech. Interfaces extremadamente intuitivas.
+5. **Branding estricto.** Dark theme, turquesa `#00A9C1`, Outfit + Space Mono.
+6. **5 niveles de usuario:** superadmin (todo + panel de control), admin (todo + gestión usuarios), venta (comercial + operaciones), pm (proyectos + operaciones), taller (ejecución simple).
+7. **SQL migrations en `/sql/`.** Documentar cambios de schema.
+8. **Mapeo de columnas.** El bug de columnas rotadas en `clientes` se maneja en `api.js`, no se corrige en Supabase.

@@ -19,83 +19,172 @@
 
 ### Colores principales
 
-| Nombre | HEX | RGB | CMYK | Uso |
-|--------|-----|-----|------|-----|
-| **Turquesa MEPEX** | `#00ACC9` | rgb(0, 172, 201) | C83 M0 Y21 K0 | Color principal, logo, títulos destacados, botones primarios, links activos |
-| **Negro MEPEX** | `#000102` | rgb(0, 1, 2) | C91 M79 Y62 K97 | Fondo principal de toda interfaz y documento |
-| **Naranja MEPEX** | `#FF7200` | rgb(255, 114, 0) | C0 M55 Y100 K0 | Acentos sutiles, iconografía, badges, alertas. USO MODERADO |
+| Nombre | HEX | Uso |
+|--------|-----|-----|
+| **Turquesa MEPEX** | `#00A9C1` | Color principal: títulos destacados, botones primarios, links activos, bordes de foco, scrollbar, badges info |
+| **Negro MEPEX** | `#050505` | Fondo principal de toda interfaz (`--bg`) |
+| **Naranja/Accent** | `#F28D15` | Acentos sutiles: categoría comercial, badges de estado, alertas, warning. USO MODERADO |
 
 ### Colores de soporte
 
 | Nombre | HEX | Uso |
 |--------|-----|-----|
-| **Blanco** | `#FFFFFF` | Texto principal sobre fondos oscuros |
-| **Gris claro** | `#B0B0B0` | Texto secundario, subtítulos, leyendas |
-| **Gris oscuro** | `#2A2A2A` | Fondos de cards, paneles, separadores |
-| **Surface** | `#1A1A2E` | Fondo de componentes elevados (modales, dropdowns) |
-| **Fondo app** | `#0D0D0D` | Fondo base de aplicaciones (alternativa a #000102) |
+| **Texto principal** | `#E8E8E8` | Texto principal sobre fondos oscuros |
+| **Texto muted** | `#888888` | Texto secundario, subtítulos, labels |
+| **Texto dim** | `#555555` | Texto muy atenuado, placeholders |
+| **Card 1** | `#111111` | Fondo de cards y surfaces principales |
+| **Card 2** | `#1A1A1A` | Fondo de cards secundarias, items hover |
+| **Card 3** | `#222222` | Fondo de cards terciarias |
+| **Border** | `#2a2a2a` | Bordes generales, separadores |
+| **Success** | `#00CC88` | Estados exitosos, categoría operaciones |
+| **Error** | `#ff4444` | Errores, eliminación, danger |
+| **Info** | `#00A9C1` | Información (mismo que primary) |
 
-### Variables CSS base
+### Colores de categoría (navegación sidebar y lobby)
+
+| Categoría | Color | Módulos |
+|-----------|-------|---------|
+| Principal | `#00A9C1` | Lobby, Calendario |
+| Comercial | `#F28D15` | Ventas, Clientes |
+| Operaciones | `#00CC88` | Proyectos, Eventos, Producción |
+| Recursos | `#9B7DFF` | Inventario |
+| Admin & Finanzas | `#4A90D9` | RRHH, Finanzas, Proveedores |
+
+### Variables CSS reales (style.css :root)
 
 ```css
 :root {
-  --color-primary: #00ACC9;
-  --color-primary-hover: #00C8E8;
-  --color-primary-muted: rgba(0, 172, 201, 0.15);
-  --color-accent: #FF7200;
-  --color-accent-muted: rgba(255, 114, 0, 0.15);
-  --color-bg: #000102;
-  --color-bg-app: #0D0D0D;
-  --color-surface: #1A1A2E;
-  --color-surface-hover: #2A2A3E;
-  --color-card: #2A2A2A;
-  --color-text: #FFFFFF;
-  --color-text-secondary: #B0B0B0;
-  --color-text-muted: #666666;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-active: rgba(0, 172, 201, 0.4);
-  --color-success: #4CAF50;
-  --color-warning: #FF7200;
-  --color-error: #F44336;
+  /* Colores principales */
+  --primary:        #00A9C1;
+  --primary-rgb:    0, 169, 193;
+  --accent:         #F28D15;
+  --accent-rgb:     242, 141, 21;
+
+  /* Fondos */
+  --bg:             #050505;
+  --bg-card:        #111111;
+  --bg-card-2:      #1A1A1A;
+  --bg-card-3:      #222222;
+  --bg-hover:       #1e1e1e;
+
+  /* Bordes */
+  --border:         #2a2a2a;
+  --border-subtle:  rgba(0, 169, 193, 0.08);
+  --border-active:  rgba(0, 169, 193, 0.25);
+
+  /* Texto */
+  --text-primary:   #E8E8E8;
+  --text-muted:     #888888;
+  --text-dim:       #555555;
+
+  /* Estados */
+  --color-success: #00CC88;
+  --color-warning: #F28D15;
+  --color-error:   #ff4444;
+  --color-info:    #00A9C1;
+
+  /* Efectos */
+  --radius:         4px;
+  --radius-md:      6px;
+  --radius-lg:      10px;
+  --glow:           0 0 25px rgba(0, 169, 193, 0.3), 0 0 60px rgba(0, 169, 193, 0.08);
+  --glow-sm:        0 0 12px rgba(0, 169, 193, 0.2);
+  --shadow:         0 2px 12px rgba(0,0,0,0.4);
+  --ease:           cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+```
+
+### Variables legacy (MEPEX_COMPONENTS.css, remapeadas en style.css)
+
+El archivo `MEPEX_COMPONENTS.css` define tokens legacy (`--color-primary: #00ACC9`, `--color-bg: #000102`, etc.) que `style.css` sobreescribe con los valores actuales. Ambos sistemas coexisten:
+
+```css
+/* style.css remapea los legacy tokens a los valores actuales */
+--color-primary:        #00A9C1;   /* era #00ACC9 */
+--color-bg:             #050505;   /* era #000102 */
+--color-surface:        #111111;   /* era #1A1A2E */
+--color-text:           #E8E8E8;   /* era #FFFFFF */
+--color-border:         #2a2a2a;   /* era rgba(255,255,255,0.08) */
 ```
 
 ### Reglas de uso de color
 
-- El **turquesa** es el color dominante de la marca. Usarlo para elementos activos, títulos destacados, bordes de foco, botones principales.
-- El **naranja** es SOLO para acentos pequeños: iconos, badges de estado, alertas. Nunca debe dominar sobre el turquesa.
-- El **fondo siempre es oscuro**. MEPEX no tiene modo claro. Toda interfaz va sobre negro/gris muy oscuro.
-- Las líneas separadoras son gris oscuro o turquesa con opacidad baja (10-20%).
+- El **turquesa** (`#00A9C1`) es el color dominante. Usarlo para elementos activos, títulos `.title-2`, bordes de foco, botones primarios, scrollbar.
+- El **naranja** (`#F28D15`) es SOLO para acentos: categoría comercial, badges de estado, alertas. Nunca debe dominar sobre el turquesa.
+- El **fondo siempre es oscuro**. MEPEX no tiene modo claro. Toda interfaz va sobre `#050505`.
+- Botones primarios: fondo turquesa, texto oscuro (`--bg`). Al hover: `#00bdd8` + glow.
+- Las cards usan `#111111` como fondo, `#2a2a2a` como borde.
 
 ---
 
 ## Tipografías
 
-| Fuente | Uso | Fallback |
-|--------|-----|----------|
-| **DIN 1451 Std** | Títulos, encabezados, montos destacados, números grandes | 'DIN Alternate', 'Arial Black', sans-serif |
-| **Cabin Regular** | Cuerpo de texto, subtítulos, descripciones, leyendas, inputs | 'Cabin', 'Segoe UI', sans-serif |
+| Fuente | Uso | Carga |
+|--------|-----|-------|
+| **Outfit** | Títulos, cuerpo, botones, UI general (`--font-main`) | Google Fonts (wght 300–800) |
+| **Space Mono** | Labels, montos, datos numéricos, botones primarios (`--font-mono`) | Google Fonts (wght 400, 700) |
+| **JetBrains Mono** | Código, datos técnicos (alternativa mono) | Google Fonts (wght 400, 500) |
+| **Cabin** | Cargada como fallback en HTML; sobreescrita por Outfit en CSS | Google Fonts (wght 400–700) |
 
-### Jerarquía tipográfica
+### Jerarquía tipográfica real
 
 ```css
-/* Títulos principales */
-.title-1 { font-family: 'DIN 1451 Std'; font-size: 28px; font-weight: bold; color: #FFFFFF; letter-spacing: 2px; text-transform: uppercase; }
+/* Títulos principales — Outfit 800, sin uppercase */
+.title-1 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  font-family: var(--font-main); /* Outfit */
+  color: var(--text-primary);
+  text-transform: none;
+}
 
-/* Títulos de sección */
-.title-2 { font-family: 'DIN 1451 Std'; font-size: 20px; font-weight: bold; color: #00ACC9; letter-spacing: 1.5px; text-transform: uppercase; }
+/* Títulos de sección — Outfit 700, color primario */
+.title-2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-family: var(--font-main);
+  color: var(--primary);
+  text-transform: none;
+}
 
-/* Subtítulos */
-.subtitle { font-family: 'Cabin', sans-serif; font-size: 14px; color: #B0B0B0; }
+/* Títulos terciarios — Outfit 600 */
+.title-3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-family: var(--font-main);
+  color: var(--text-primary);
+}
 
-/* Cuerpo */
-.body { font-family: 'Cabin', sans-serif; font-size: 14px; color: #FFFFFF; line-height: 1.5; }
+/* Labels — Space Mono, uppercase, trackeo amplio */
+.label {
+  font-family: var(--font-mono); /* Space Mono */
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 
-/* Labels de formulario */
-.label { font-family: 'DIN 1451 Std'; font-size: 11px; font-weight: bold; color: #B0B0B0; letter-spacing: 1px; text-transform: uppercase; }
+/* Subtítulos — Outfit 300, muted */
+.subtitle {
+  font-size: 0.85rem;
+  font-weight: 300;
+  color: var(--text-muted);
+}
 
-/* Montos / números destacados */
-.amount { font-family: 'DIN 1451 Std'; font-size: 24px; font-weight: bold; color: #FFFFFF; }
+/* Montos / números destacados — Space Mono 700 */
+.amount { font-family: var(--font-mono); font-size: 24px; font-weight: 700; }
+.amount-sm { font-family: var(--font-mono); font-size: 16px; font-weight: 700; }
+
+/* Botón primario — Space Mono con trackeo */
+.btn-primary { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.1em; }
+```
+
+### Variables tipográficas
+
+```css
+--font-main: 'Outfit', sans-serif;     /* body + títulos + UI */
+--font-mono: 'Space Mono', monospace;   /* labels + montos + btn-primary */
 ```
 
 ---
@@ -103,23 +192,23 @@
 ## Logo
 
 ### Estructura
-- **Logotipo completo:** "M E P E X" en letras separadas con espaciado, color turquesa `#00ACC9`
-- **Isotipo:** La X estilizada (con cortes internos distintivos), usado como monograma
-- **Subtítulo:** "MONTAJE Y EQUIPAMIENTO PARA EXPOSICIONES" en DIN 1451, blanco o gris claro
+- **Logotipo completo:** "M E P E X" con espaciado, color turquesa `#00A9C1`
+- **Isotipo:** La X estilizada, usada como favicon
+- **Subtítulo:** "MONTAJE Y EQUIPAMIENTO PARA EXPOSICIONES"
 
-### Versiones
-1. **Logo completo (horizontal):** MEPEX + subtítulo — uso principal en headers
-2. **Monograma X:** Solo la X — para favicons, loading screens, bullet points decorativos
-3. **Logo blanco:** Para fondos oscuros no negros
+### Archivos disponibles
+- `assets/logo_full.png` — Logo completo horizontal (header global del Lobby)
+- `assets/mepex_iso.png` — Isotipo X (favicon)
+- `assets/COLORES MEPEX.png` — Referencia visual de paleta
 
 ### Reglas
-- ✅ Siempre sobre fondo negro `#000102` o muy oscuro
-- ✅ En turquesa `#00ACC9`
-- ✅ Respetar espaciado entre letras
-- ❌ No modificar la X distintiva
-- ❌ No cambiar el color turquesa por otros
-- ❌ No deformar proporciones
-- ❌ No aplicar sombras o efectos
+- Siempre sobre fondo oscuro `#050505` o similar
+- En turquesa `#00A9C1`
+- Respetar espaciado entre letras
+- No modificar la X distintiva
+- No cambiar el color turquesa
+- No deformar proporciones
+- No aplicar sombras o efectos
 
 ---
 
@@ -127,15 +216,17 @@
 
 | Propiedad | Valor |
 |-----------|-------|
-| Estilo | Outline / Line icons |
-| Color | Naranja `#FF7200` |
-| Grosor de línea | 0.7px |
-| Forma | Minimalista, geométrico, esquinas redondeadas |
+| Tipo | SVG inline en el HTML |
+| Estilo | Outline / line icons |
+| Color | `currentColor` (hereda del contexto) |
+| Grosor | `stroke-width="2"` |
+| Tamaños | 14×14, 15×15, 16×16, 18×18 px |
+| Atributos | `fill="none"` `stroke="currentColor"` `stroke-linecap="round"` `stroke-linejoin="round"` |
+| Emojis | Se usan para iconos de módulos en data.js (📋, 🏗️, 📦, etc.) |
 
-- Los iconos siempre en naranja sobre fondo oscuro
-- Mantener consistencia de grosor de trazo
-- No rellenar, mantener estilo outline
-- La X del logo puede usarse como bullet point decorativo
+- SVGs para UI funcional (flechas, chevrons, search, user, etc.)
+- Emojis para módulos y actividad (más legibles en cards y sidebar)
+- No se usan icon fonts ni sprites
 
 ---
 
@@ -145,8 +236,11 @@
 - **Sobrio y profesional.** Sin exceso de decoración.
 - **Información clara.** Priorizar legibilidad sobre estética.
 - **Espaciado generoso.** Dejar aire entre elementos.
-- **Turquesa para guiar la mirada.** Usar como acento de foco, no como relleno.
-- **Animaciones sutiles.** Transiciones suaves, sin efectos llamativos.
+- **Turquesa para guiar la mirada.** Acento de foco, bordes activos, scrollbar.
+- **Glow sutil.** Botones primarios al hover usan `--glow-sm`.
+- **Transiciones suaves.** `250ms ease` o `cubic-bezier(0.25, 0.46, 0.45, 0.94)`.
+- **Bordes redondeados mínimos.** `4px` general, `6px` medium, `10px` large.
+- **Scrollbar custom.** Thumb turquesa sobre track negro.
 
 ---
 
@@ -156,3 +250,17 @@
 - **Símbolo:** Solo `$` (nunca ARS, nunca USD)
 - **Formato:** `$68.000` / `$743.243` (punto como separador de miles, sin decimales salvo que corresponda)
 - **Locale:** `es-AR`
+
+---
+
+## Botones
+
+| Tipo | Fondo | Texto | Borde | Uso |
+|------|-------|-------|-------|-----|
+| `btn-primary` | `--primary` | `--bg` (oscuro) | primary | Acciones principales |
+| `btn-secondary` | transparente | `--primary` | `--border-active` | Acciones secundarias |
+| `btn-ghost` | transparente | `--text-muted` | ninguno | Acciones terciarias, cancelar |
+| `btn-accent` | `--color-accent` | blanco | accent | Alertas, badges naranja |
+| `btn-danger` | `--color-error` | blanco | error | Eliminar, acciones destructivas |
+| `btn-sm` | — | — | — | 12px font, 5px 10px padding |
+| `btn-lg` | — | — | — | 15px font, 12px 24px padding |

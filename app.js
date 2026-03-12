@@ -31,6 +31,9 @@ const App = {
         const user = Auth.getUser();
         if (!user) return;
 
+        // Initialize sidebar editor (loads from localStorage or builds default)
+        SidebarEditor.init();
+
         const app = document.getElementById('app');
         app.innerHTML = `
             ${this._renderGlobalHeader(user)}
@@ -146,17 +149,101 @@ const App = {
         `;
     },
 
-    // ─── SIDEBAR (Quick Actions + Category Nav) ───
+    // ─── SIDEBAR (Quick Actions + Category Nav + Editor) ───
     _renderSidebar(user) {
         const actions = Data.getQuickActionsForRole(user.role);
-        const categories = Data.getCategoriesForRole(user.role);
+        const isAdmin = user.role === 'superadmin' || user.role === 'admin';
+        const editMode = SidebarEditor.isEditMode();
         const currentHash = Router.getHash();
-        const catCollapsed = this._getSidebarCollapsed();
+        const allowed = Data.rolePermissions[user.role] || [];
+
+        // Sections from SidebarEditor config
+        const sections = SidebarEditor.getConfig();
+
+        // Build categories HTML
+        const categoriesHtml = sections.map(section => {
+            const visibleItems = editMode
+                ? section.items
+                : section.items.filter(item => {
+                    if (item.route === 'lobby' || item.route === 'calendario') return true;
+                    return allowed.includes(item.route);
+                });
+            if (!editMode && visibleItems.length === 0) return '';
+
+            const isOpen = !section.collapsed;
+            const hasActive = visibleItems.some(i => i.route === currentHash);
+            const iconSvg = CategoryIcons[section.icon] || CategoryIcons.default;
+
+            return `
+                <div class="se-section" data-section-id="${section.id}">
+                    <div class="se-section-header${isOpen || hasActive ? ' open' : ''}"
+                         data-section-id="${section.id}"
+                         style="--cat-color: ${section.color}"
+                         ${editMode ? 'draggable="true"' : ''}>
+                        ${editMode ? `<span class="se-drag-handle">${EditorIcons.drag}</span>` : ''}
+                        <span class="se-section-icon">${iconSvg}</span>
+                        <span class="se-section-label" data-section-id="${section.id}">${section.label}</span>
+                        ${editMode ? `
+                        <div class="se-section-actions">
+                            <button class="se-action-btn se-color-btn" data-section-id="${section.id}" title="Color">${EditorIcons.palette}</button>
+                            <button class="se-action-btn se-add-item-btn" data-section-id="${section.id}" title="Agregar">${EditorIcons.plus}</button>
+                            <button class="se-action-btn se-delete-section-btn" data-section-id="${section.id}" title="Eliminar">${EditorIcons.trash}</button>
+                        </div>
+                        ` : ''}
+                        <span class="se-section-chevron">${EditorIcons.chevron}</span>
+                    </div>
+                    <div class="se-items${isOpen || hasActive ? ' open' : ''}">
+                        ${visibleItems.map(item => `
+                        <div class="se-item${currentHash === item.route ? ' active' : ''}"
+                             data-item-id="${item.id}"
+                             data-section-id="${section.id}"
+                             data-route="${item.route}"
+                             ${editMode ? 'draggable="true"' : ''}
+                             style="--cat-color: ${section.color}">
+                            ${editMode ? `<span class="se-drag-handle">${EditorIcons.drag}</span>` : ''}
+                            <span class="se-item-emoji">${item.emoji}</span>
+                            <span class="se-item-label" data-item-id="${item.id}">${item.label}</span>
+                            ${editMode ? `
+                            <div class="se-item-actions">
+                                <button class="se-action-btn se-delete-item-btn" data-section-id="${section.id}" data-item-id="${item.id}" title="Eliminar">${EditorIcons.trash}</button>
+                            </div>
+                            ` : ''}
+                        </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+        }).join('');
+
+        // Build collapsed strip HTML
+        const stripHtml = sections.map(section => {
+            const visibleItems = section.items.filter(item => {
+                if (item.route === 'lobby' || item.route === 'calendario') return true;
+                return allowed.includes(item.route);
+            });
+            if (visibleItems.length === 0) return '';
+
+            const hasActive = visibleItems.some(i => i.route === currentHash);
+            const iconSvg = CategoryIcons[section.icon] || CategoryIcons.default;
+
+            return `
+                <div class="sidebar-strip-item${hasActive ? ' active' : ''}" style="--cat-color: ${section.color}" title="${section.label}">
+                    <span class="sidebar-strip-icon">${iconSvg}</span>
+                    <div class="sidebar-strip-flyout">
+                        <div class="sidebar-strip-flyout-label">${section.label}</div>
+                        ${visibleItems.map(item => `
+                            <a href="#${item.route}" class="sidebar-strip-flyout-link${currentHash === item.route ? ' active' : ''}" data-route="${item.route}">
+                                <span class="sidebar-nav-icon">${item.emoji}</span>
+                                <span>${item.label}</span>
+                            </a>
+                        `).join('')}
+                    </div>
+                </div>`;
+        }).join('');
 
         return `
-            <aside class="app-sidebar ${this.sidebarState}" id="appSidebar">
-                <!-- Full sidebar content -->
+            <aside class="app-sidebar ${this.sidebarState}${editMode ? ' edit-mode' : ''}" id="appSidebar">
                 <div class="sidebar-full">
+                    ${!editMode ? `
                     <div class="sidebar-section">
                         <div class="sidebar-section-label">ACCIONES RÁPIDAS</div>
                         <div class="sidebar-quick-actions">
@@ -168,94 +255,188 @@ const App = {
                             `).join('')}
                         </div>
                     </div>
-
                     <div class="sidebar-divider"></div>
+                    ` : ''}
 
                     <nav class="sidebar-categories" id="sidebarCategories">
-                        ${categories.map(cat => {
-                            const isOpen = !catCollapsed.includes(cat.id);
-                            const catModules = this._getCategoryModules(cat);
-                            const hasActive = catModules.some(m => m.id === currentHash);
-                            return `
-                            <div class="sidebar-cat" data-cat-id="${cat.id}">
-                                <button class="sidebar-cat-header${isOpen || hasActive ? ' open' : ''}" data-cat-id="${cat.id}" style="--cat-color: ${cat.color}">
-                                    <span class="sidebar-cat-icon">${cat.icon}</span>
-                                    <span class="sidebar-cat-name">${cat.name}</span>
-                                    <svg class="sidebar-cat-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                                </button>
-                                <div class="sidebar-cat-modules${isOpen || hasActive ? ' open' : ''}">
-                                    ${catModules.map(m => `
-                                        <a href="#${m.id}" class="sidebar-nav-link${currentHash === m.id ? ' active' : ''}" data-route="${m.id}" style="--cat-color: ${cat.color}">
-                                            <span class="sidebar-nav-icon">${m.icon}</span>
-                                            <span>${m.shortName}</span>
-                                        </a>
-                                    `).join('')}
-                                </div>
-                            </div>`;
-                        }).join('')}
+                        ${categoriesHtml}
                     </nav>
+
+                    ${editMode ? `
+                    <button class="se-add-section" id="seAddSection">
+                        ${EditorIcons.plus} Agregar sección
+                    </button>
+                    ` : ''}
+
+                    ${isAdmin ? `
+                    <div class="sidebar-footer" id="sidebarFooter">
+                        <button class="sidebar-edit-btn${editMode ? ' active' : ''}" id="sidebarEditBtn">
+                            ${EditorIcons.edit}
+                            <span>${editMode ? 'Listo' : 'Editar sidebar'}</span>
+                        </button>
+                        ${editMode && SidebarEditor.canUndo() ? `
+                        <button class="sidebar-undo-btn" id="sidebarUndoBtn">
+                            ${EditorIcons.undo}
+                            <span>Deshacer</span>
+                            <span class="undo-count">${SidebarEditor.undoCount()}</span>
+                        </button>
+                        ` : ''}
+                    </div>
+                    ` : ''}
                 </div>
 
-                <!-- Collapsed icon strip -->
                 <div class="sidebar-strip">
-                    ${categories.map(cat => {
-                        const catModules = this._getCategoryModules(cat);
-                        const hasActive = catModules.some(m => m.id === currentHash);
-                        return `
-                        <div class="sidebar-strip-item${hasActive ? ' active' : ''}" style="--cat-color: ${cat.color}" title="${cat.name}">
-                            <span class="sidebar-strip-icon">${cat.icon}</span>
-                            <div class="sidebar-strip-flyout">
-                                <div class="sidebar-strip-flyout-label">${cat.name}</div>
-                                ${catModules.map(m => `
-                                    <a href="#${m.id}" class="sidebar-strip-flyout-link${currentHash === m.id ? ' active' : ''}" data-route="${m.id}">
-                                        <span class="sidebar-nav-icon">${m.icon}</span>
-                                        <span>${m.shortName}</span>
-                                    </a>
-                                `).join('')}
-                            </div>
-                        </div>`;
-                    }).join('')}
+                    ${stripHtml}
                 </div>
             </aside>
         `;
     },
 
-    // ─── Get modules for a category (resolves both formats) ───
-    _getCategoryModules(cat) {
-        if (cat.modules) return cat.modules;
-        return (cat.moduleIds || []).map(id => {
-            const mod = Data.getModuleById(id);
-            return mod ? { id: mod.id, shortName: mod.shortName, icon: mod.icon } : null;
-        }).filter(Boolean);
+    // ─── REFRESH SIDEBAR (re-renders only sidebar, preserves header/main) ───
+    refreshSidebar() {
+        const user = Auth.getUser();
+        if (!user) return;
+        const sidebar = document.getElementById('appSidebar');
+        if (!sidebar) return;
+
+        const temp = document.createElement('div');
+        temp.innerHTML = this._renderSidebar(user);
+        const newSidebar = temp.querySelector('#appSidebar');
+        if (newSidebar) {
+            sidebar.replaceWith(newSidebar);
+        }
+        this._attachSidebarEvents(user);
     },
 
-    // ─── Sidebar collapsed state (localStorage) ───
-    _getSidebarCollapsed() {
-        try {
-            return JSON.parse(localStorage.getItem('sidebar_collapsed_v2') || '[]');
-        } catch { return []; }
-    },
-    _setSidebarCollapsed(arr) {
-        localStorage.setItem('sidebar_collapsed_v2', JSON.stringify(arr));
+    // ─── SIDEBAR EVENTS (called after every sidebar render) ───
+    _attachSidebarEvents(user) {
+        const editMode = SidebarEditor.isEditMode();
+        const isAdmin = user.role === 'superadmin' || user.role === 'admin';
+
+        // Section accordion toggle (not in edit mode)
+        document.querySelectorAll('.se-section-header').forEach(header => {
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('.se-action-btn') || e.target.closest('.se-drag-handle')) return;
+                if (editMode) return;
+
+                const sId = header.dataset.sectionId;
+                header.classList.toggle('open');
+                const itemsEl = header.nextElementSibling;
+                if (itemsEl) itemsEl.classList.toggle('open');
+                SidebarEditor.toggleSection(sId);
+            });
+        });
+
+        // Item click → navigate (not in edit mode)
+        if (!editMode) {
+            document.querySelectorAll('.se-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    Router.navigate(item.dataset.route);
+                });
+            });
+        }
+
+        // Quick actions
+        document.querySelectorAll('.sidebar-action-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const type = btn.dataset.actionType;
+                if (type === 'external') {
+                    window.open(btn.dataset.actionUrl, '_blank', 'noopener');
+                } else if (type === 'create') {
+                    const entity = btn.dataset.actionEntity;
+                    if (entity && typeof Modules._openCreateModal === 'function') {
+                        Modules._openCreateModal(entity);
+                    }
+                } else if (type === 'alert') {
+                    this._showToast(btn.dataset.actionMsg);
+                }
+            });
+        });
+
+        // ── Edit mode events ──
+        if (editMode && isAdmin) {
+            // Double-click to rename sections
+            document.querySelectorAll('.se-section-label').forEach(label => {
+                label.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    SidebarEditor.startInlineEdit(label, 'section');
+                });
+            });
+            // Double-click to rename items
+            document.querySelectorAll('.se-item-label').forEach(label => {
+                label.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    SidebarEditor.startInlineEdit(label, 'item');
+                });
+            });
+            // Color picker
+            document.querySelectorAll('.se-color-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    SidebarEditor.openColorPicker(btn, btn.dataset.sectionId);
+                });
+            });
+            // Add item
+            document.querySelectorAll('.se-add-item-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    SidebarEditor.addItem(btn.dataset.sectionId);
+                });
+            });
+            // Delete section
+            document.querySelectorAll('.se-delete-section-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    SidebarEditor.deleteSection(btn.dataset.sectionId);
+                });
+            });
+            // Delete item
+            document.querySelectorAll('.se-delete-item-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    SidebarEditor.deleteItem(btn.dataset.sectionId, btn.dataset.itemId);
+                });
+            });
+            // Add section
+            document.getElementById('seAddSection')?.addEventListener('click', () => {
+                SidebarEditor.addSection();
+            });
+            // Drag & drop
+            SidebarEditor.attachDragEvents();
+        }
+
+        // Edit toggle button (footer)
+        if (isAdmin) {
+            document.getElementById('sidebarEditBtn')?.addEventListener('click', () => {
+                SidebarEditor.toggleEditMode();
+            });
+            document.getElementById('sidebarUndoBtn')?.addEventListener('click', () => {
+                SidebarEditor.undo();
+            });
+        }
     },
 
     // ─── UPDATE SIDEBAR ACTIVE STATE ───
     updateSidebarActive() {
         const hash = Router.getHash();
-        // Update active link
-        document.querySelectorAll('.sidebar-nav-link').forEach(link => {
-            const route = link.dataset.route;
-            link.classList.toggle('active', route === hash);
+        // Update active items
+        document.querySelectorAll('.se-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.route === hash);
         });
-        // Auto-expand category containing active module
-        const activeCat = Data.getCategoryForModule(hash);
-        if (activeCat) {
-            const catEl = document.querySelector(`.sidebar-cat[data-cat-id="${activeCat.id}"]`);
-            if (catEl) {
-                catEl.querySelector('.sidebar-cat-header')?.classList.add('open');
-                catEl.querySelector('.sidebar-cat-modules')?.classList.add('open');
+        // Auto-expand section containing active module
+        document.querySelectorAll('.se-section').forEach(section => {
+            if (section.querySelector('.se-item.active')) {
+                section.querySelector('.se-section-header')?.classList.add('open');
+                section.querySelector('.se-items')?.classList.add('open');
             }
-        }
+        });
+        // Update collapsed strip
+        document.querySelectorAll('.sidebar-strip-flyout-link').forEach(link => {
+            link.classList.toggle('active', link.dataset.route === hash);
+        });
+        document.querySelectorAll('.sidebar-strip-item').forEach(stripItem => {
+            stripItem.classList.toggle('active', !!stripItem.querySelector('.sidebar-strip-flyout-link.active'));
+        });
     },
 
     // ─── ATTACH SHELL EVENTS ───
@@ -286,39 +467,8 @@ const App = {
             });
         });
 
-        // Category accordion toggle
-        document.querySelectorAll('.sidebar-cat-header').forEach(header => {
-            header.addEventListener('click', () => {
-                const catId = header.dataset.catId;
-                const isOpen = header.classList.toggle('open');
-                header.nextElementSibling?.classList.toggle('open', isOpen);
-                // Persist state
-                let collapsed = this._getSidebarCollapsed();
-                if (isOpen) {
-                    collapsed = collapsed.filter(id => id !== catId);
-                } else {
-                    if (!collapsed.includes(catId)) collapsed.push(catId);
-                }
-                this._setSidebarCollapsed(collapsed);
-            });
-        });
-
-        // Quick actions
-        document.querySelectorAll('.sidebar-action-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const type = btn.dataset.actionType;
-                if (type === 'external') {
-                    window.open(btn.dataset.actionUrl, '_blank', 'noopener');
-                } else if (type === 'create') {
-                    const entity = btn.dataset.actionEntity;
-                    if (entity && typeof Modules._openCreateModal === 'function') {
-                        Modules._openCreateModal(entity);
-                    }
-                } else if (type === 'alert') {
-                    this._showToast(btn.dataset.actionMsg);
-                }
-            });
-        });
+        // Sidebar events (accordion, items, edit controls)
+        this._attachSidebarEvents(user);
 
         // Search (if exists)
         const searchInput = document.getElementById('searchInput');
@@ -330,17 +480,27 @@ const App = {
                 this.searchOpen = true;
                 document.getElementById('searchWrapper')?.classList.add('focused');
             });
-            // Keyboard shortcut Ctrl+K
-            document.addEventListener('keydown', (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                    e.preventDefault();
-                    searchInput.focus();
-                }
-                if (e.key === 'Escape' && this.searchOpen) {
-                    this.closeSearch();
-                }
-            });
         }
+
+        // Global keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+K → focus search
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                if (searchInput) searchInput.focus();
+            }
+            // Escape → close search
+            if (e.key === 'Escape' && this.searchOpen) {
+                this.closeSearch();
+            }
+            // Ctrl+Z → undo sidebar edit
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                if (SidebarEditor.isEditMode() && SidebarEditor.canUndo()) {
+                    e.preventDefault();
+                    SidebarEditor.undo();
+                }
+            }
+        });
     },
 
     // ─── SIDEBAR TOGGLE (cycles: open → collapsed → hidden → open) ───
@@ -349,7 +509,7 @@ const App = {
         if (!sidebar) return;
         const cycle = { open: 'collapsed', collapsed: 'hidden', hidden: 'open' };
         this.sidebarState = cycle[this.sidebarState] || 'open';
-        sidebar.className = 'app-sidebar ' + this.sidebarState;
+        sidebar.className = 'app-sidebar ' + this.sidebarState + (SidebarEditor.isEditMode() ? ' edit-mode' : '');
     },
 
     // ─── USER DROPDOWN ───

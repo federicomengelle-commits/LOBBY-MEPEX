@@ -8036,3 +8036,453 @@ body {
         width: 100%;
     }
 }
+
+
+/* ═════════════════════════════════════════════════
+   SIDEBAR EDITOR — Editable sections & items
+   SE-prefixed classes for the configurable sidebar.
+   ═════════════════════════════════════════════════ */
+
+/* ── SE Sections ── */
+.se-section {
+    margin-bottom: 2px;
+    transition: background 200ms var(--ease);
+}
+
+.se-section.drag-over-section {
+    background: rgba(var(--primary-rgb), 0.04);
+}
+
+/* ── SE Section Header ── */
+.se-section-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+    border-radius: var(--radius);
+}
+
+.se-section-header:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.se-section-header.open {
+    border-left-color: var(--cat-color);
+}
+
+.se-section-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--cat-color);
+    opacity: 0.7;
+}
+
+.se-section-header.open .se-section-icon {
+    opacity: 1;
+}
+
+.se-section-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+}
+
+.se-section-header.open .se-section-label {
+    color: var(--text-muted);
+}
+
+.se-section-chevron {
+    flex-shrink: 0;
+    color: var(--text-dim);
+    opacity: 0.4;
+    transition: transform 0.2s var(--ease);
+    display: flex;
+    align-items: center;
+}
+
+.se-section-header.open .se-section-chevron {
+    transform: rotate(0deg);
+}
+
+.se-section-header:not(.open) .se-section-chevron {
+    transform: rotate(-90deg);
+}
+
+/* ── SE Section Actions (edit mode only) ── */
+.se-section-actions {
+    display: none;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.edit-mode .se-section-actions {
+    display: flex;
+}
+
+/* ── SE Generic Action Button ── */
+.se-action-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 3px;
+    border-radius: var(--radius);
+    transition: all 150ms;
+    display: flex;
+    align-items: center;
+}
+
+.se-action-btn:hover {
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.1);
+}
+
+.se-delete-section-btn:hover,
+.se-delete-item-btn:hover {
+    color: var(--color-error) !important;
+    background: rgba(255, 68, 68, 0.1) !important;
+}
+
+/* ── SE Items Container (collapse/expand) ── */
+.se-items {
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+    padding: 2px 0 6px 4px;
+}
+
+.se-items.open {
+    display: flex;
+}
+
+/* ── SE Item ── */
+.se-item {
+    display: flex;
+    align-items: center;
+    padding: 7px 10px 7px 18px;
+    gap: 9px;
+    cursor: pointer;
+    transition: all 150ms var(--ease);
+    position: relative;
+    user-select: none;
+    border-radius: var(--radius);
+}
+
+.se-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-primary);
+}
+
+.se-item.active {
+    background: rgba(var(--primary-rgb), 0.08);
+}
+
+.se-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    background: var(--cat-color, var(--primary));
+    border-radius: 0 3px 3px 0;
+}
+
+.se-item-emoji {
+    font-size: 14px;
+    flex-shrink: 0;
+    width: 18px;
+    text-align: center;
+}
+
+.se-item-label {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+.se-item:hover .se-item-label {
+    color: var(--text-primary);
+}
+
+.se-item.active .se-item-label {
+    color: var(--cat-color, var(--primary));
+    font-weight: 500;
+}
+
+/* ── SE Item Actions (edit mode only) ── */
+.se-item-actions {
+    display: none;
+    gap: 2px;
+}
+
+.edit-mode .se-item-actions {
+    display: flex;
+}
+
+/* ── SE Drag Handle (edit mode only) ── */
+.se-drag-handle {
+    display: none;
+    color: var(--text-dim);
+    cursor: grab;
+    padding: 2px;
+    flex-shrink: 0;
+    transition: color 150ms;
+    align-items: center;
+}
+
+.se-drag-handle:active {
+    cursor: grabbing;
+}
+
+.se-drag-handle:hover {
+    color: var(--primary);
+}
+
+.edit-mode .se-drag-handle {
+    display: flex;
+}
+
+/* ── SE Drag & Drop Indicators ── */
+.se-item.dragging,
+.se-section-header.dragging {
+    opacity: 0.4;
+    background: rgba(var(--primary-rgb), 0.05);
+}
+
+.se-item.drag-over {
+    border-top: 2px solid var(--primary);
+    margin-top: -2px;
+}
+
+.se-item.drag-over-below {
+    border-bottom: 2px solid var(--primary);
+    margin-bottom: -2px;
+}
+
+.se-section-header.drag-over-section-header {
+    border-bottom: 2px solid var(--primary);
+}
+
+/* ── SE Inline Edit Input ── */
+.se-inline-edit-input {
+    background: var(--bg);
+    border: 1px solid var(--primary);
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: inherit;
+    padding: 2px 6px;
+    border-radius: var(--radius);
+    outline: none;
+    width: 100%;
+    box-shadow: var(--glow-sm);
+}
+
+.se-section-header .se-inline-edit-input {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* ── SE Color Picker Dropdown ── */
+.se-color-picker {
+    position: absolute;
+    top: 100%;
+    left: 16px;
+    background: var(--bg-card-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    z-index: 200;
+    box-shadow: var(--shadow);
+    animation: se-fadeIn 150ms var(--ease);
+}
+
+.se-color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 150ms;
+}
+
+.se-color-swatch:hover {
+    transform: scale(1.2);
+}
+
+.se-color-swatch.selected {
+    border-color: var(--text-primary);
+}
+
+@keyframes se-fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── SE Add Section Button (edit mode only) ── */
+.se-add-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 16px;
+    margin: 4px 10px;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 200ms var(--ease);
+    background: transparent;
+    width: calc(100% - 20px);
+}
+
+.se-add-section:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.04);
+}
+
+/* ── Sidebar Footer (Edit + Undo Buttons) ── */
+.sidebar-footer {
+    margin-top: auto;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sidebar-edit-btn {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 7px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 250ms var(--ease);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: center;
+}
+
+.sidebar-edit-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(var(--primary-rgb), 0.06);
+}
+
+.sidebar-edit-btn.active {
+    background: var(--primary);
+    color: var(--bg);
+    border-color: var(--primary);
+    box-shadow: var(--glow-sm);
+}
+
+.sidebar-undo-btn {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 200ms var(--ease);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    justify-content: center;
+}
+
+.sidebar-undo-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.06);
+}
+
+.undo-count {
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 0.55rem;
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+/* ── Edit mode: sidebar-full layout adjustment ── */
+.app-sidebar.edit-mode .sidebar-full {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.app-sidebar.edit-mode .sidebar-categories {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ── Hide edit controls in collapsed/hidden sidebar ── */
+.app-sidebar.collapsed .sidebar-footer,
+.app-sidebar.hidden .sidebar-footer,
+.app-sidebar.collapsed .se-add-section,
+.app-sidebar.hidden .se-add-section {
+    display: none;
+}
+
+/* ── Edit mode adjustments for items ── */
+.edit-mode .se-item {
+    padding-left: 10px;
+}
+
+.edit-mode .se-section-header {
+    padding-left: 6px;
+}
+
+/* ── Disable edit mode when collapsed ── */
+.app-sidebar.collapsed.edit-mode .se-drag-handle,
+.app-sidebar.collapsed.edit-mode .se-section-actions,
+.app-sidebar.collapsed.edit-mode .se-item-actions,
+.app-sidebar.collapsed.edit-mode .se-section-label,
+.app-sidebar.collapsed.edit-mode .se-item-label,
+.app-sidebar.collapsed.edit-mode .se-section-chevron {
+    display: none !important;
+}

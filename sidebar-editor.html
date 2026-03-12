@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MEPEX — Sidebar Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   MEPEX SIDEBAR EDITOR — PROTOTYPE
+   Stack: Vanilla JS (ES6+), no frameworks
+   Brand: Dark theme, Turquesa #00A9C1, Outfit + Space Mono
+   ============================================================ */
+
+:root {
+  --primary:        #00A9C1;
+  --primary-rgb:    0, 169, 193;
+  --accent:         #F28D15;
+  --accent-rgb:     242, 141, 21;
+
+  --bg:             #050505;
+  --bg-card:        #111111;
+  --bg-card-2:      #1A1A1A;
+  --bg-card-3:      #222222;
+  --bg-hover:       #1e1e1e;
+
+  --border:         #2a2a2a;
+  --border-subtle:  rgba(0, 169, 193, 0.08);
+  --border-active:  rgba(0, 169, 193, 0.25);
+
+  --text-primary:   #E8E8E8;
+  --text-muted:     #888888;
+  --text-dim:       #555555;
+
+  --color-success:  #00CC88;
+  --color-warning:  #F28D15;
+  --color-error:    #ff4444;
+  --color-info:     #00A9C1;
+
+  --radius:         4px;
+  --radius-md:      6px;
+  --radius-lg:      10px;
+  --glow:           0 0 25px rgba(0, 169, 193, 0.3), 0 0 60px rgba(0, 169, 193, 0.08);
+  --glow-sm:        0 0 12px rgba(0, 169, 193, 0.2);
+  --shadow:         0 2px 12px rgba(0,0,0,0.4);
+  --ease:           cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  --font-main:      'Outfit', sans-serif;
+  --font-mono:      'Space Mono', monospace;
+
+  /* Category colors */
+  --cat-principal:    #00A9C1;
+  --cat-comercial:    #F28D15;
+  --cat-operaciones:  #00CC88;
+  --cat-recursos:     #9B7DFF;
+  --cat-admin:        #4A90D9;
+
+  /* Sidebar sizing */
+  --sidebar-width:      260px;
+  --sidebar-collapsed:  60px;
+  --sidebar-hidden:     0px;
+  --header-height:      52px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-main);
+  background: var(--bg);
+  color: var(--text-primary);
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #00bdd8; }
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+#app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* ── HEADER ── */
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 100;
+  gap: 12px;
+}
+
+.header-hamburger {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius);
+  transition: all 200ms var(--ease);
+}
+.header-hamburger:hover { color: var(--primary); background: rgba(0,169,193,0.08); }
+.header-hamburger svg { display: block; }
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-logo-text {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.35em;
+}
+.header-logo-sub {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.15em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-edit-toggle {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 250ms var(--ease);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.header-edit-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(0,169,193,0.06);
+}
+.header-edit-toggle.active {
+  background: var(--primary);
+  color: var(--bg);
+  border-color: var(--primary);
+  box-shadow: var(--glow-sm);
+}
+
+.header-undo-btn {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: not-allowed;
+  transition: all 200ms var(--ease);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.4;
+}
+.header-undo-btn.has-history {
+  opacity: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.header-undo-btn.has-history:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(242,141,21,0.06);
+}
+
+.undo-count {
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 0.55rem;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transition: width 300ms var(--ease);
+  z-index: 90;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: var(--sidebar-collapsed);
+}
+
+.sidebar.hidden {
+  width: 0;
+  border-right: none;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+}
+
+/* ── SIDEBAR SECTIONS ── */
+.sidebar-section {
+  margin-bottom: 2px;
+  transition: background 200ms var(--ease);
+}
+
+.sidebar-section.drag-over-section {
+  background: rgba(0, 169, 193, 0.04);
+}
+
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px 6px;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.sidebar.collapsed .sidebar-section-header {
+  padding: 10px 0 6px;
+  justify-content: center;
+}
+
+.sidebar-section-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-section-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 200ms var(--ease);
+}
+
+.sidebar.collapsed .sidebar-section-label,
+.sidebar.collapsed .sidebar-section-chevron,
+.sidebar.collapsed .sidebar-section-actions {
+  display: none;
+}
+
+.sidebar-section-chevron {
+  color: var(--text-dim);
+  transition: transform 200ms var(--ease);
+  flex-shrink: 0;
+}
+.sidebar-section.section-collapsed .sidebar-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.sidebar-section-actions {
+  display: none;
+  gap: 2px;
+  margin-left: auto;
+}
+.edit-mode .sidebar-section-actions {
+  display: flex;
+}
+
+.section-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: var(--radius);
+  transition: all 150ms;
+  display: flex;
+  align-items: center;
+}
+.section-action-btn:hover {
+  color: var(--primary);
+  background: rgba(0,169,193,0.1);
+}
+.section-action-btn.danger:hover {
+  color: var(--color-error);
+  background: rgba(255,68,68,0.1);
+}
+
+/* ── SIDEBAR ITEMS ── */
+.sidebar-items {
+  overflow: hidden;
+  transition: max-height 300ms var(--ease), opacity 200ms var(--ease);
+  max-height: 500px;
+  opacity: 1;
+}
+.sidebar-section.section-collapsed .sidebar-items {
+  max-height: 0;
+  opacity: 0;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  padding: 7px 16px 7px 40px;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 150ms var(--ease);
+  position: relative;
+  user-select: none;
+}
+
+.sidebar.collapsed .sidebar-item {
+  padding: 8px 0;
+  justify-content: center;
+}
+
+.sidebar-item:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-item.active {
+  background: rgba(0, 169, 193, 0.08);
+}
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--primary);
+  border-radius: 0 3px 3px 0;
+}
+
+.sidebar-item-emoji {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.sidebar-item-label {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.sidebar.collapsed .sidebar-item-label,
+.sidebar.collapsed .sidebar-item-actions {
+  display: none;
+}
+
+.sidebar-item.active .sidebar-item-label {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.sidebar-item-actions {
+  display: none;
+  gap: 2px;
+}
+.edit-mode .sidebar-item-actions {
+  display: flex;
+}
+
+/* ── DRAG & DROP ── */
+.sidebar-item.dragging,
+.sidebar-section-header.dragging {
+  opacity: 0.4;
+  background: rgba(0,169,193,0.05);
+}
+
+.sidebar-item.drag-over {
+  border-top: 2px solid var(--primary);
+  margin-top: -2px;
+}
+
+.sidebar-item.drag-over-below {
+  border-bottom: 2px solid var(--primary);
+  margin-bottom: -2px;
+}
+
+.sidebar-section-header.drag-over-section-header {
+  border-bottom: 2px solid var(--primary);
+}
+
+.drag-handle {
+  display: none;
+  color: var(--text-dim);
+  cursor: grab;
+  padding: 2px;
+  flex-shrink: 0;
+  transition: color 150ms;
+}
+.drag-handle:active { cursor: grabbing; }
+.drag-handle:hover { color: var(--primary); }
+.edit-mode .drag-handle { display: flex; }
+
+/* ── INLINE EDIT ── */
+.inline-edit-input {
+  background: var(--bg);
+  border: 1px solid var(--primary);
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  font-size: inherit;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  outline: none;
+  width: 100%;
+  box-shadow: var(--glow-sm);
+}
+
+.sidebar-section-header .inline-edit-input {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── ADD BUTTONS (edit mode) ── */
+.sidebar-add-section {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  margin: 4px 10px;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 200ms var(--ease);
+  background: transparent;
+  width: calc(100% - 20px);
+}
+.sidebar-add-section:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(0,169,193,0.04);
+}
+.edit-mode .sidebar-add-section { display: flex; }
+
+.sidebar-add-item {
+  display: none;
+  align-items: center;
+  padding: 5px 16px 5px 40px;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 150ms var(--ease);
+  background: transparent;
+  border: none;
+  width: 100%;
+  font-family: var(--font-main);
+}
+.sidebar-add-item:hover {
+  color: var(--primary);
+  background: rgba(0,169,193,0.04);
+}
+.edit-mode .sidebar-add-item { display: flex; }
+
+/* ── MAIN CONTENT ── */
+.main-content {
+  margin-left: var(--sidebar-width);
+  margin-top: var(--header-height);
+  flex: 1;
+  padding: 30px;
+  overflow-y: auto;
+  height: calc(100vh - var(--header-height));
+  transition: margin-left 300ms var(--ease);
+}
+
+.sidebar.collapsed ~ .main-content {
+  margin-left: var(--sidebar-collapsed);
+}
+
+.sidebar.hidden ~ .main-content {
+  margin-left: 0;
+}
+
+/* ── MAIN PAGE CONTENT ── */
+.main-welcome {
+  max-width: 700px;
+}
+.main-welcome h1 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  margin-bottom: 8px;
+}
+.main-welcome p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.instructions-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 16px;
+}
+.instructions-card h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 14px;
+}
+.instruction-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(42,42,42,0.5);
+}
+.instruction-row:last-child { border-bottom: none; }
+.instruction-key {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: rgba(242,141,21,0.08);
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 110px;
+  text-align: center;
+}
+.instruction-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── TOAST ── */
+.toast-container {
+  position: fixed;
+  top: 64px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: toastIn 250ms var(--ease);
+  max-width: 320px;
+  position: relative;
+  overflow: hidden;
+}
+.toast.toast-out { animation: toastOut 200ms var(--ease) forwards; }
+.toast-icon { flex-shrink: 0; }
+.toast.info { border-left: 3px solid var(--primary); }
+.toast.success { border-left: 3px solid var(--color-success); }
+.toast.warning { border-left: 3px solid var(--accent); }
+.toast.error { border-left: 3px solid var(--color-error); }
+
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--primary);
+  animation: toastProgress 2500ms linear forwards;
+}
+.toast.success .toast-progress { background: var(--color-success); }
+.toast.warning .toast-progress { background: var(--accent); }
+.toast.error .toast-progress { background: var(--color-error); }
+
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(30px); } }
+@keyframes toastProgress { from { width: 100%; } to { width: 0%; } }
+
+/* ── COLOR PICKER DROPDOWN ── */
+.color-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 16px;
+  background: var(--bg-card-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  z-index: 200;
+  box-shadow: var(--shadow);
+  animation: fadeIn 150ms var(--ease);
+}
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 150ms;
+}
+.color-swatch:hover { transform: scale(1.2); }
+.color-swatch.selected { border-color: var(--text-primary); }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── SIDEBAR COLLAPSE BUTTON ── */
+.sidebar-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 200ms var(--ease);
+  width: 100%;
+}
+.sidebar-collapse-btn:hover {
+  color: var(--primary);
+  background: rgba(0,169,193,0.04);
+}
+.sidebar-collapse-btn svg {
+  transition: transform 300ms var(--ease);
+}
+.sidebar.collapsed .sidebar-collapse-btn svg {
+  transform: rotate(180deg);
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1024px) {
+  .sidebar { width: var(--sidebar-collapsed); }
+  .sidebar .sidebar-section-label,
+  .sidebar .sidebar-section-chevron,
+  .sidebar .sidebar-section-actions,
+  .sidebar .sidebar-item-label,
+  .sidebar .sidebar-item-actions,
+  .sidebar .sidebar-add-section,
+  .sidebar .sidebar-add-item,
+  .sidebar .drag-handle { display: none !important; }
+  .sidebar .sidebar-section-header { padding: 10px 0 6px; justify-content: center; }
+  .sidebar .sidebar-item { padding: 8px 0; justify-content: center; }
+  .main-content { margin-left: var(--sidebar-collapsed) !important; }
+}
+
+@media (max-width: 768px) {
+  .header-hamburger { display: flex; }
+  .sidebar {
+    width: var(--sidebar-width);
+    transform: translateX(-100%);
+    transition: transform 300ms var(--ease);
+    box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .sidebar .sidebar-section-label,
+  .sidebar .sidebar-section-chevron,
+  .sidebar .sidebar-item-label { display: block !important; }
+  .sidebar .sidebar-section-header { padding: 10px 16px 6px; justify-content: flex-start; }
+  .sidebar .sidebar-item { padding: 7px 16px 7px 40px; justify-content: flex-start; }
+  .main-content { margin-left: 0 !important; }
+
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 85;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 300ms;
+  }
+  .mobile-overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content { padding: 16px; }
+  .header-logo-text { font-size: 0.85rem; }
+  .header-logo-sub { display: none; }
+}
+
+/* ── TOOLTIP ── */
+.sidebar.collapsed .sidebar-item[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(var(--sidebar-collapsed) + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-card-2);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  z-index: 200;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+@media (max-width: 1024px) {
+  .sidebar .sidebar-item[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: calc(var(--sidebar-collapsed) + 6px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg-card-2);
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+    z-index: 200;
+    box-shadow: var(--shadow);
+    pointer-events: none;
+  }
+}
+
+/* ── SECTION DRAG GHOST ── */
+.section-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--bg-card-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-md);
+  padding: 6px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--primary);
+  box-shadow: var(--glow-sm);
+  opacity: 0.9;
+}
+
+/* ── ITEM DRAG GHOST ── */
+.item-drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--bg-card-2);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  box-shadow: var(--glow-sm);
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Header -->
+  <header class="header">
+    <button class="header-hamburger" id="hamburgerBtn" title="Menú">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <div class="header-logo">
+      <div>
+        <div class="header-logo-text">M E P E X</div>
+        <div class="header-logo-sub">Sistema de Gestión</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="header-undo-btn" id="undoBtn" title="Deshacer (Ctrl+Z)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+        </svg>
+        <span>Deshacer</span>
+        <span class="undo-count" id="undoCount" style="display:none">0</span>
+      </button>
+      <button class="header-edit-toggle" id="editToggle">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+        <span>Editar sidebar</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile overlay -->
+  <div class="mobile-overlay" id="mobileOverlay"></div>
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-scroll" id="sidebarScroll">
+      <!-- Rendered dynamically -->
+    </div>
+    <button class="sidebar-collapse-btn" id="collapseBtn" title="Colapsar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main-content" id="mainContent">
+    <!-- Rendered dynamically -->
+  </main>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+/* ============================================================
+   MEPEX SIDEBAR EDITOR — Vanilla JS (ES6+)
+   ============================================================ */
+
+// ── SVG Icons ──
+const Icons = {
+  drag: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>`,
+  plus: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  trash: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  palette: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`,
+  chevron: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+};
+
+// ── Category Icons (SVGs matching MEPEX) ──
+const CategoryIcons = {
+  principal: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+  comercial: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  operaciones: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  recursos: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`,
+  admin: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+};
+
+// ── Available colors for sections ──
+const SECTION_COLORS = [
+  '#00A9C1', '#F28D15', '#00CC88', '#9B7DFF', '#4A90D9',
+  '#E85D75', '#FF6B6B', '#51CF66', '#FFD43B', '#CC5DE8',
+];
+
+// ── Default sidebar data ──
+const DEFAULT_SIDEBAR = [
+  {
+    id: 's1', label: 'PRINCIPAL', icon: 'principal', color: '#00A9C1', collapsed: false,
+    items: [
+      { id: 'i1', label: 'Lobby', emoji: '🏠', route: 'lobby' },
+      { id: 'i2', label: 'Calendario', emoji: '📅', route: 'calendario' },
+    ]
+  },
+  {
+    id: 's2', label: 'COMERCIAL', icon: 'comercial', color: '#F28D15', collapsed: false,
+    items: [
+      { id: 'i3', label: 'Ventas', emoji: '💰', route: 'ventas' },
+      { id: 'i4', label: 'Clientes', emoji: '💎', route: 'clientes' },
+    ]
+  },
+  {
+    id: 's3', label: 'OPERACIONES', icon: 'operaciones', color: '#00CC88', collapsed: false,
+    items: [
+      { id: 'i5', label: 'Proyectos', emoji: '📋', route: 'proyectos' },
+      { id: 'i6', label: 'Eventos', emoji: '🏗️', route: 'eventos' },
+      { id: 'i7', label: 'Producción', emoji: '⚙️', route: 'produccion' },
+    ]
+  },
+  {
+    id: 's4', label: 'RECURSOS', icon: 'recursos', color: '#9B7DFF', collapsed: false,
+    items: [
+      { id: 'i8', label: 'Inventario', emoji: '📦', route: 'inventario' },
+    ]
+  },
+  {
+    id: 's5', label: 'ADMIN & FINANZAS', icon: 'admin', color: '#4A90D9', collapsed: false,
+    items: [
+      { id: 'i9', label: 'Equipo', emoji: '👥', route: 'equipo' },
+      { id: 'i10', label: 'Finanzas', emoji: '📊', route: 'finanzas' },
+      { id: 'i11', label: 'Proveedores', emoji: '🏭', route: 'proveedores' },
+    ]
+  },
+];
+
+// ── Toast System ──
+const Toast = {
+  _container: null,
+  init() { this._container = document.getElementById('toastContainer'); },
+  show(message, type = 'info') {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    const icons = { info: '💡', success: '✓', warning: '⚠', error: '✕' };
+    t.innerHTML = `<span class="toast-icon">${icons[type] || '💡'}</span><span>${message}</span><div class="toast-progress"></div>`;
+    this._container.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-out'); setTimeout(() => t.remove(), 200); }, 2500);
+  },
+  info(m) { this.show(m, 'info'); },
+  success(m) { this.show(m, 'success'); },
+  warning(m) { this.show(m, 'warning'); },
+  error(m) { this.show(m, 'error'); },
+};
+
+// ── Undo System ──
+const UndoSystem = {
+  _history: [],
+  _maxHistory: 50,
+
+  push(state, actionLabel) {
+    this._history.push({ state: JSON.parse(JSON.stringify(state)), label: actionLabel });
+    if (this._history.length > this._maxHistory) this._history.shift();
+    this._updateUI();
+  },
+
+  pop() {
+    if (this._history.length === 0) return null;
+    const entry = this._history.pop();
+    this._updateUI();
+    return entry;
+  },
+
+  canUndo() { return this._history.length > 0; },
+
+  _updateUI() {
+    const btn = document.getElementById('undoBtn');
+    const count = document.getElementById('undoCount');
+    if (this._history.length > 0) {
+      btn.classList.add('has-history');
+      count.style.display = 'inline';
+      count.textContent = this._history.length;
+    } else {
+      btn.classList.remove('has-history');
+      count.style.display = 'none';
+    }
+  },
+};
+
+// ── Sidebar Editor ──
+const SidebarEditor = {
+  _data: [],
+  _editMode: false,
+  _activeItem: null,
+  _nextId: 100,
+  _dragState: null,
+  _colorPickerOpen: null,
+
+  init() {
+    // Load from localStorage or use defaults
+    const saved = localStorage.getItem('mepex_sidebar_config');
+    this._data = saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_SIDEBAR));
+    this._activeItem = this._data[0]?.items[0]?.id || null;
+
+    Toast.init();
+    this.render();
+    this._attachGlobalEvents();
+    this._renderMainContent();
+  },
+
+  // ── Save ──
+  _save() {
+    localStorage.setItem('mepex_sidebar_config', JSON.stringify(this._data));
+  },
+
+  _pushUndo(label) {
+    UndoSystem.push(this._data, label);
+  },
+
+  undo() {
+    const entry = UndoSystem.pop();
+    if (!entry) return;
+    this._data = entry.state;
+    this._save();
+    this.render();
+    Toast.info(`Deshecho: ${entry.label}`);
+  },
+
+  // ── Generate ID ──
+  _genId(prefix = 'x') {
+    return prefix + (++this._nextId) + '_' + Date.now().toString(36);
+  },
+
+  // ── Render Sidebar ──
+  render() {
+    const scroll = document.getElementById('sidebarScroll');
+    const sidebar = document.getElementById('sidebar');
+
+    if (this._editMode) {
+      sidebar.classList.add('edit-mode');
+    } else {
+      sidebar.classList.remove('edit-mode');
+    }
+
+    let html = '';
+
+    this._data.forEach((section, sIdx) => {
+      const collapsedClass = section.collapsed ? 'section-collapsed' : '';
+      html += `<div class="sidebar-section ${collapsedClass}" data-section-id="${section.id}" data-section-idx="${sIdx}">`;
+
+      // Section header
+      html += `<div class="sidebar-section-header" data-section-id="${section.id}" draggable="${this._editMode}">`;
+      html += `<span class="drag-handle" title="Arrastrar sección">${Icons.drag}</span>`;
+      html += `<span class="sidebar-section-icon" style="color:${section.color}">${CategoryIcons[section.icon] || CategoryIcons.principal}</span>`;
+      html += `<span class="sidebar-section-label" data-section-id="${section.id}">${section.label}</span>`;
+      html += `<div class="sidebar-section-actions">`;
+      html += `<button class="section-action-btn" data-action="color" data-section-id="${section.id}" title="Color">${Icons.palette}</button>`;
+      html += `<button class="section-action-btn" data-action="add-item" data-section-id="${section.id}" title="Agregar subsección">${Icons.plus}</button>`;
+      html += `<button class="section-action-btn danger" data-action="delete-section" data-section-id="${section.id}" title="Eliminar sección">${Icons.trash}</button>`;
+      html += `</div>`;
+      html += `<span class="sidebar-section-chevron">${Icons.chevron}</span>`;
+      html += `</div>`;
+
+      // Items
+      html += `<div class="sidebar-items">`;
+      section.items.forEach((item, iIdx) => {
+        const activeClass = item.id === this._activeItem ? 'active' : '';
+        html += `<div class="sidebar-item ${activeClass}" data-item-id="${item.id}" data-section-id="${section.id}" data-tooltip="${item.label}" draggable="${this._editMode}">`;
+        html += `<span class="drag-handle" title="Arrastrar">${Icons.drag}</span>`;
+        html += `<span class="sidebar-item-emoji">${item.emoji || '📄'}</span>`;
+        html += `<span class="sidebar-item-label" data-item-id="${item.id}">${item.label}</span>`;
+        html += `<div class="sidebar-item-actions">`;
+        html += `<button class="section-action-btn danger" data-action="delete-item" data-item-id="${item.id}" data-section-id="${section.id}" title="Eliminar">${Icons.trash}</button>`;
+        html += `</div>`;
+        html += `</div>`;
+      });
+
+      // Add item button
+      html += `<button class="sidebar-add-item" data-action="add-item" data-section-id="${section.id}">`;
+      html += `${Icons.plus} <span>Agregar subsección</span>`;
+      html += `</button>`;
+
+      html += `</div>`; // sidebar-items
+      html += `</div>`; // sidebar-section
+    });
+
+    // Add section button
+    html += `<button class="sidebar-add-section" data-action="add-section">${Icons.plus} <span>Nueva sección</span></button>`;
+
+    scroll.innerHTML = html;
+    this._attachSidebarEvents();
+  },
+
+  // ── Main Content ──
+  _renderMainContent() {
+    const main = document.getElementById('mainContent');
+    main.innerHTML = `
+      <div class="main-welcome">
+        <h1>Sidebar Editor</h1>
+        <p>Prototipo funcional del sidebar configurable de MEPEX. Todas las ediciones se guardan automáticamente y podés deshacerlas con Ctrl+Z.</p>
+
+        <div class="instructions-card">
+          <h3>Instrucciones</h3>
+          <div class="instruction-row">
+            <span class="instruction-key">Editar Sidebar</span>
+            <span class="instruction-desc">Activá el modo edición con el botón del header. Aparecen handles de arrastre, botones de agregar y eliminar.</span>
+          </div>
+          <div class="instruction-row">
+            <span class="instruction-key">Doble click</span>
+            <span class="instruction-desc">Renombrá secciones o subsecciones haciendo doble click en su nombre.</span>
+          </div>
+          <div class="instruction-row">
+            <span class="instruction-key">Drag & Drop</span>
+            <span class="instruction-desc">Arrastrá subsecciones para reordenarlas o moverlas entre secciones. Arrastrá secciones enteras para reordenarlas.</span>
+          </div>
+          <div class="instruction-row">
+            <span class="instruction-key">Ctrl + Z</span>
+            <span class="instruction-desc">Deshacé cualquier cambio. Funciona globalmente. El contador muestra cuántas acciones podés deshacer.</span>
+          </div>
+          <div class="instruction-row">
+            <span class="instruction-key">Color</span>
+            <span class="instruction-desc">Cambiá el color de cada sección con el botón de paleta (modo edición).</span>
+          </div>
+          <div class="instruction-row">
+            <span class="instruction-key">Responsive</span>
+            <span class="instruction-desc">Redimensioná la ventana: el sidebar colapsa a íconos, y luego se oculta con hamburguesa en móvil.</span>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  // ── Attach Sidebar Events ──
+  _attachSidebarEvents() {
+    const scroll = document.getElementById('sidebarScroll');
+
+    // Click on section header → toggle collapse
+    scroll.querySelectorAll('.sidebar-section-header').forEach(header => {
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.section-action-btn') || e.target.closest('.drag-handle') || e.target.closest('.inline-edit-input')) return;
+        const sId = header.dataset.sectionId;
+        const section = this._data.find(s => s.id === sId);
+        if (section) {
+          section.collapsed = !section.collapsed;
+          this._save();
+          this.render();
+        }
+      });
+    });
+
+    // Click on item → set active
+    scroll.querySelectorAll('.sidebar-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.section-action-btn') || e.target.closest('.drag-handle') || e.target.closest('.inline-edit-input')) return;
+        this._activeItem = item.dataset.itemId;
+        this.render();
+      });
+    });
+
+    // Double click on labels → inline edit
+    scroll.querySelectorAll('.sidebar-section-label').forEach(label => {
+      label.addEventListener('dblclick', () => this._startInlineEdit(label, 'section'));
+    });
+    scroll.querySelectorAll('.sidebar-item-label').forEach(label => {
+      label.addEventListener('dblclick', () => this._startInlineEdit(label, 'item'));
+    });
+
+    // Action buttons
+    scroll.querySelectorAll('.section-action-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = btn.dataset.action;
+        const sId = btn.dataset.sectionId;
+        const iId = btn.dataset.itemId;
+
+        if (action === 'add-item') this._addItem(sId);
+        else if (action === 'delete-section') this._deleteSection(sId);
+        else if (action === 'delete-item') this._deleteItem(sId, iId);
+        else if (action === 'color') this._openColorPicker(btn, sId);
+      });
+    });
+
+    // Add section button
+    scroll.querySelectorAll('[data-action="add-section"]').forEach(btn => {
+      btn.addEventListener('click', () => this._addSection());
+    });
+
+    // Add item buttons (the bottom ones inside items container)
+    scroll.querySelectorAll('.sidebar-add-item').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._addItem(btn.dataset.sectionId);
+      });
+    });
+
+    // Drag & drop for items
+    if (this._editMode) {
+      this._attachDragEvents();
+    }
+  },
+
+  // ── Inline Edit ──
+  _startInlineEdit(labelEl, type) {
+    const currentText = labelEl.textContent;
+    const id = type === 'section' ? labelEl.dataset.sectionId : labelEl.dataset.itemId;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentText;
+    input.className = 'inline-edit-input';
+
+    labelEl.textContent = '';
+    labelEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      const newVal = input.value.trim();
+      if (newVal && newVal !== currentText) {
+        this._pushUndo(`Renombrar "${currentText}" → "${newVal}"`);
+        if (type === 'section') {
+          const section = this._data.find(s => s.id === id);
+          if (section) section.label = newVal.toUpperCase();
+        } else {
+          for (const s of this._data) {
+            const item = s.items.find(i => i.id === id);
+            if (item) { item.label = newVal; break; }
+          }
+        }
+        this._save();
+        Toast.success('Renombrado');
+      }
+      this.render();
+    };
+
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { labelEl.textContent = currentText; }
+    });
+  },
+
+  // ── Add Section ──
+  _addSection() {
+    this._pushUndo('Agregar sección');
+    const colors = SECTION_COLORS;
+    const usedColors = this._data.map(s => s.color);
+    const available = colors.filter(c => !usedColors.includes(c));
+    const color = available[0] || colors[Math.floor(Math.random() * colors.length)];
+
+    this._data.push({
+      id: this._genId('s'),
+      label: 'NUEVA SECCIÓN',
+      icon: 'principal',
+      color: color,
+      collapsed: false,
+      items: []
+    });
+    this._save();
+    this.render();
+    Toast.success('Sección creada');
+
+    // Auto-start rename
+    setTimeout(() => {
+      const labels = document.querySelectorAll('.sidebar-section-label');
+      const last = labels[labels.length - 1];
+      if (last) this._startInlineEdit(last, 'section');
+    }, 50);
+  },
+
+  // ── Delete Section ──
+  _deleteSection(sId) {
+    const section = this._data.find(s => s.id === sId);
+    if (!section) return;
+    if (section.items.length > 0 && !confirm(`¿Eliminar "${section.label}" y sus ${section.items.length} subsecciones?`)) return;
+    this._pushUndo(`Eliminar sección "${section.label}"`);
+    this._data = this._data.filter(s => s.id !== sId);
+    this._save();
+    this.render();
+    Toast.warning('Sección eliminada');
+  },
+
+  // ── Add Item ──
+  _addItem(sId) {
+    const section = this._data.find(s => s.id === sId);
+    if (!section) return;
+    this._pushUndo(`Agregar subsección en "${section.label}"`);
+    section.collapsed = false;
+    const emojis = ['📄', '📋', '🔧', '📌', '🗂️', '📝', '🔗', '⚡'];
+    section.items.push({
+      id: this._genId('i'),
+      label: 'Nueva subsección',
+      emoji: emojis[Math.floor(Math.random() * emojis.length)],
+      route: 'nuevo-' + Date.now().toString(36),
+    });
+    this._save();
+    this.render();
+    Toast.success('Subsección creada');
+
+    // Auto-start rename
+    setTimeout(() => {
+      const sectionEl = document.querySelector(`[data-section-id="${sId}"].sidebar-section`);
+      if (!sectionEl) return;
+      const labels = sectionEl.querySelectorAll('.sidebar-item-label');
+      const last = labels[labels.length - 1];
+      if (last) this._startInlineEdit(last, 'item');
+    }, 50);
+  },
+
+  // ── Delete Item ──
+  _deleteItem(sId, iId) {
+    const section = this._data.find(s => s.id === sId);
+    if (!section) return;
+    const item = section.items.find(i => i.id === iId);
+    if (!item) return;
+    this._pushUndo(`Eliminar "${item.label}"`);
+    section.items = section.items.filter(i => i.id !== iId);
+    this._save();
+    this.render();
+    Toast.warning(`"${item.label}" eliminada`);
+  },
+
+  // ── Color Picker ──
+  _openColorPicker(btn, sId) {
+    // Close any open picker
+    document.querySelectorAll('.color-picker-dropdown').forEach(el => el.remove());
+
+    const section = this._data.find(s => s.id === sId);
+    if (!section) return;
+
+    const picker = document.createElement('div');
+    picker.className = 'color-picker-dropdown';
+
+    SECTION_COLORS.forEach(color => {
+      const swatch = document.createElement('div');
+      swatch.className = `color-swatch ${color === section.color ? 'selected' : ''}`;
+      swatch.style.background = color;
+      swatch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._pushUndo(`Cambiar color de "${section.label}"`);
+        section.color = color;
+        this._save();
+        this.render();
+        Toast.success('Color actualizado');
+      });
+      picker.appendChild(swatch);
+    });
+
+    const header = btn.closest('.sidebar-section-header');
+    header.style.position = 'relative';
+    header.appendChild(picker);
+
+    // Close on click outside
+    const close = (e) => {
+      if (!picker.contains(e.target)) {
+        picker.remove();
+        document.removeEventListener('click', close);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', close), 10);
+  },
+
+  // ── Drag & Drop ──
+  _attachDragEvents() {
+    const scroll = document.getElementById('sidebarScroll');
+
+    // ITEM drag
+    scroll.querySelectorAll('.sidebar-item[draggable="true"]').forEach(item => {
+      item.addEventListener('dragstart', (e) => {
+        this._dragState = { type: 'item', id: item.dataset.itemId, fromSection: item.dataset.sectionId };
+        item.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', ''); // Required for Firefox
+      });
+
+      item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+        this._clearDragIndicators();
+        this._dragState = null;
+      });
+
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!this._dragState || this._dragState.type !== 'item') return;
+        if (item.dataset.itemId === this._dragState.id) return;
+
+        this._clearDragIndicators();
+        const rect = item.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          item.classList.add('drag-over');
+        } else {
+          item.classList.add('drag-over-below');
+        }
+      });
+
+      item.addEventListener('dragleave', () => {
+        item.classList.remove('drag-over', 'drag-over-below');
+      });
+
+      item.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!this._dragState || this._dragState.type !== 'item') return;
+
+        const rect = item.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const insertBefore = e.clientY < midY;
+
+        this._moveItem(
+          this._dragState.id,
+          this._dragState.fromSection,
+          item.dataset.sectionId,
+          item.dataset.itemId,
+          insertBefore
+        );
+        this._clearDragIndicators();
+        this._dragState = null;
+      });
+    });
+
+    // SECTION drop zone (for dropping items into empty sections or at end)
+    scroll.querySelectorAll('.sidebar-items').forEach(container => {
+      container.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!this._dragState || this._dragState.type !== 'item') return;
+        const sectionEl = container.closest('.sidebar-section');
+        if (sectionEl) sectionEl.classList.add('drag-over-section');
+      });
+
+      container.addEventListener('dragleave', (e) => {
+        const sectionEl = container.closest('.sidebar-section');
+        if (sectionEl && !container.contains(e.relatedTarget)) {
+          sectionEl.classList.remove('drag-over-section');
+        }
+      });
+
+      container.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!this._dragState || this._dragState.type !== 'item') return;
+        // Only handle if dropped on the container itself, not on an item
+        if (e.target.closest('.sidebar-item')) return;
+
+        const sectionEl = container.closest('.sidebar-section');
+        const toSectionId = sectionEl?.dataset.sectionId;
+        if (!toSectionId) return;
+
+        this._moveItem(this._dragState.id, this._dragState.fromSection, toSectionId, null, false);
+        this._clearDragIndicators();
+        this._dragState = null;
+      });
+    });
+
+    // SECTION header drag (reorder sections)
+    scroll.querySelectorAll('.sidebar-section-header[draggable="true"]').forEach(header => {
+      header.addEventListener('dragstart', (e) => {
+        if (e.target.closest('.section-action-btn')) { e.preventDefault(); return; }
+        this._dragState = { type: 'section', id: header.dataset.sectionId };
+        header.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+      });
+
+      header.addEventListener('dragend', () => {
+        header.classList.remove('dragging');
+        this._clearDragIndicators();
+        this._dragState = null;
+      });
+
+      header.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!this._dragState || this._dragState.type !== 'section') return;
+        if (header.dataset.sectionId === this._dragState.id) return;
+        this._clearDragIndicators();
+        header.classList.add('drag-over-section-header');
+      });
+
+      header.addEventListener('dragleave', () => {
+        header.classList.remove('drag-over-section-header');
+      });
+
+      header.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!this._dragState || this._dragState.type !== 'section') return;
+        this._moveSection(this._dragState.id, header.dataset.sectionId);
+        this._clearDragIndicators();
+        this._dragState = null;
+      });
+    });
+  },
+
+  _moveItem(itemId, fromSectionId, toSectionId, targetItemId, insertBefore) {
+    const fromSection = this._data.find(s => s.id === fromSectionId);
+    const toSection = this._data.find(s => s.id === toSectionId);
+    if (!fromSection || !toSection) return;
+
+    const itemIdx = fromSection.items.findIndex(i => i.id === itemId);
+    if (itemIdx === -1) return;
+
+    const [item] = fromSection.items.splice(itemIdx, 1);
+    this._pushUndo(`Mover "${item.label}"`);
+
+    if (targetItemId) {
+      const targetIdx = toSection.items.findIndex(i => i.id === targetItemId);
+      const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
+      toSection.items.splice(insertIdx, 0, item);
+    } else {
+      toSection.items.push(item);
+    }
+
+    this._save();
+    this.render();
+    Toast.info(`"${item.label}" movido`);
+  },
+
+  _moveSection(fromId, toId) {
+    const fromIdx = this._data.findIndex(s => s.id === fromId);
+    const toIdx = this._data.findIndex(s => s.id === toId);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+
+    const section = this._data[fromIdx];
+    this._pushUndo(`Mover sección "${section.label}"`);
+    this._data.splice(fromIdx, 1);
+    const newToIdx = this._data.findIndex(s => s.id === toId);
+    this._data.splice(newToIdx + 1, 0, section);
+
+    this._save();
+    this.render();
+    Toast.info(`Sección "${section.label}" movida`);
+  },
+
+  _clearDragIndicators() {
+    document.querySelectorAll('.drag-over, .drag-over-below, .drag-over-section, .drag-over-section-header').forEach(el => {
+      el.classList.remove('drag-over', 'drag-over-below', 'drag-over-section', 'drag-over-section-header');
+    });
+  },
+
+  // ── Toggle Edit Mode ──
+  toggleEditMode() {
+    this._editMode = !this._editMode;
+    const btn = document.getElementById('editToggle');
+    btn.classList.toggle('active', this._editMode);
+    btn.querySelector('span').textContent = this._editMode ? 'Listo' : 'Editar sidebar';
+    this.render();
+
+    if (this._editMode) {
+      Toast.info('Modo edición activado');
+    }
+  },
+
+  // ── Global Events ──
+  _attachGlobalEvents() {
+    // Edit toggle
+    document.getElementById('editToggle').addEventListener('click', () => this.toggleEditMode());
+
+    // Undo button
+    document.getElementById('undoBtn').addEventListener('click', () => this.undo());
+
+    // Ctrl+Z
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        this.undo();
+      }
+    });
+
+    // Collapse sidebar
+    document.getElementById('collapseBtn').addEventListener('click', () => {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.toggle('collapsed');
+    });
+
+    // Hamburger (mobile)
+    document.getElementById('hamburgerBtn').addEventListener('click', () => {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('mobileOverlay');
+      sidebar.classList.toggle('mobile-open');
+      overlay.classList.toggle('visible');
+    });
+
+    // Mobile overlay close
+    document.getElementById('mobileOverlay').addEventListener('click', () => {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('mobileOverlay');
+      sidebar.classList.remove('mobile-open');
+      overlay.classList.remove('visible');
+    });
+
+    // Close color picker on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.color-picker-dropdown').forEach(el => el.remove());
+      }
+    });
+  },
+};
+
+// ── Bootstrap ──
+document.addEventListener('DOMContentLoaded', () => {
+  SidebarEditor.init();
+});
+</script>
+</body>
+</html>
