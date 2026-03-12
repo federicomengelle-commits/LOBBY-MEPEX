@@ -19,6 +19,29 @@ const Modules = {
     _activeStatusFilter: null,
     _activeTypeFilter: null,
     _activeRubroFilter: null,
+    _activeClasificacionFilter: [],  // multi-select
+    _activeCategoriaFilter: [],      // multi-select
+    _activeProveedorFilter: [],      // multi-select
+
+    // ─── Insumos color maps ───
+    _clasificacionColors: {
+        'Logística':     { bg: '#1a3a4a', text: '#4FC3F7', border: '#4FC3F730' },
+        'Sub alquiler':  { bg: '#3a2a1a', text: '#FFB74D', border: '#FFB74D30' },
+        'Materiales':    { bg: '#1a3a2a', text: '#66BB6A', border: '#66BB6A30' },
+        'Insumo':        { bg: '#2a1a3a', text: '#AB47BC', border: '#AB47BC30' },
+        'Mano de obra':  { bg: '#3a1a2a', text: '#EF5350', border: '#EF5350' },
+    },
+    _categoriaColors: {
+        'Logística':     { bg: '#1a3a4a', text: '#4FC3F7', border: '#4FC3F730' },
+        'Oficina':       { bg: '#2a2a3a', text: '#7986CB', border: '#7986CB30' },
+        'Materia prima': { bg: '#1a3a2a', text: '#66BB6A', border: '#66BB6A30' },
+        'Ferretería':    { bg: '#3a3a1a', text: '#FDD835', border: '#FDD83530' },
+        'Limpieza':      { bg: '#1a3a3a', text: '#26C6DA', border: '#26C6DA30' },
+        'Pintura':       { bg: '#3a2a2a', text: '#FF7043', border: '#FF704330' },
+        'Embalaje':      { bg: '#2a3a2a', text: '#9CCC65', border: '#9CCC6530' },
+        'Electricidad':  { bg: '#3a3a2a', text: '#FFCA28', border: '#FFCA2830' },
+        'Mano de Obra':  { bg: '#3a1a2a', text: '#EF5350', border: '#EF535030' },
+    },
 
     // ─── Selection state ───
     _selectedRows: new Set(),
@@ -68,8 +91,8 @@ const Modules = {
     _insumoFormFields: [
         { key: 'nombre', label: 'Nombre', type: 'text', required: true, placeholder: 'Ej: Aluminio pintado (blanco perfil)' },
         { key: 'codigo', label: 'Código', type: 'text', required: false, placeholder: 'Ej: MAT-ALB' },
-        { key: 'clasificacion', label: 'Clasificación', type: 'select', required: false, options: ['Materiales', 'Mano de obra', 'Servicios', 'Sub-alquiler', 'Consumibles'] },
-        { key: 'categoria', label: 'Categoría', type: 'select', required: false, options: ['Materia prima', 'Ferretería', 'Eléctrica', 'Gráfica', 'Pintura', 'Varios'] },
+        { key: 'clasificacion', label: 'Clasificación', type: 'select', required: false, options: ['Logística', 'Sub alquiler', 'Materiales', 'Insumo', 'Mano de obra'] },
+        { key: 'categoria', label: 'Categoría', type: 'select', required: false, options: ['Logística', 'Oficina', 'Materia prima', 'Ferretería', 'Limpieza', 'Pintura', 'Embalaje', 'Electricidad', 'Mano de Obra'] },
         { key: 'costoUnitario', label: 'Costo unitario', type: 'number', required: true, placeholder: '0.00' },
         { key: 'moneda', label: 'Moneda', type: 'select', required: false, options: ['USD', 'ARS'] },
         { key: 'unidadBase', label: 'Unidad', type: 'select', required: true, options: ['Kg', 'm²', 'metro', 'unidad', 'hora', 'día', 'litro', 'rollo', 'bolsa'] },
@@ -138,6 +161,10 @@ const Modules = {
         this._activeRubroFilter = view.filters.rubro || null;
         this._sortCol = view.filters.sortCol || null;
         this._sortDir = view.filters.sortDir || 'asc';
+        // Multi-select filters
+        this._activeClasificacionFilter = view.filters.clasificacion || [];
+        this._activeCategoriaFilter = view.filters.categoria || [];
+        this._activeProveedorFilter = view.filters.proveedor || [];
     },
 
     _saveCurrentFiltersToView(storageKey) {
@@ -150,6 +177,9 @@ const Modules = {
                 rubro: this._activeRubroFilter,
                 sortCol: this._sortCol,
                 sortDir: this._sortDir,
+                clasificacion: this._activeClasificacionFilter,
+                categoria: this._activeCategoriaFilter,
+                proveedor: this._activeProveedorFilter,
             };
             this._saveViews(storageKey, views);
         }
@@ -481,18 +511,20 @@ const Modules = {
         // Render table
         this._renderApiTable(data, apiType);
 
-        // Attach search filter
+        // Attach search filter (guard against duplicate listeners)
         const searchInput = document.getElementById('apiSectionSearch');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
+        if (searchInput && !searchInput._handlerAttached) {
+            searchInput._handlerAttached = true;
+            searchInput.addEventListener('input', () => {
                 this._applyAllFilters();
             });
         }
 
-        // Attach column toggle button
+        // Attach column toggle button (guard against duplicate listeners)
         const btnCols = document.getElementById('btnToggleCols');
         const colsPanel = document.getElementById('apiColsPanel');
-        if (btnCols && colsPanel) {
+        if (btnCols && colsPanel && !btnCols._handlerAttached) {
+            btnCols._handlerAttached = true;
             btnCols.addEventListener('click', () => {
                 colsPanel.style.display = colsPanel.style.display === 'none' ? 'flex' : 'none';
             });
@@ -502,10 +534,12 @@ const Modules = {
         this._isLocked = this._getLockState();
         this._applyLockUI();
 
-        // Attach lock button
+        // Attach lock button (replace node to prevent duplicate listeners)
         const btnLock = document.getElementById('btnToggleLock');
-        if (btnLock) {
-            btnLock.addEventListener('click', () => {
+        if (btnLock && !btnLock._lockHandlerAttached) {
+            btnLock._lockHandlerAttached = true;
+            btnLock.addEventListener('click', (e) => {
+                e.stopPropagation();
                 this._isLocked = !this._isLocked;
                 this._setLockState(this._isLocked);
                 this._applyLockUI();
@@ -513,11 +547,11 @@ const Modules = {
             });
         }
 
-        // Attach "Nuevo" button
+        // Attach "Nuevo" button (guard against duplicate listeners)
         const btnNew = document.getElementById('btnNewRecord');
-        if (btnNew) {
+        if (btnNew && !btnNew._handlerAttached) {
+            btnNew._handlerAttached = true;
             if (apiType === 'cotizaciones') {
-                // Cotizaciones se crean desde el Cotizador externo
                 btnNew.title = 'Abrir Cotizador';
                 btnNew.addEventListener('click', () => {
                     window.open('https://cotizador-mepex.vercel.app', '_blank', 'noopener');
@@ -758,6 +792,9 @@ const Modules = {
                 rubro: this._activeRubroFilter,
                 sortCol: this._sortCol,
                 sortDir: this._sortDir,
+                clasificacion: this._activeClasificacionFilter || [],
+                categoria: this._activeCategoriaFilter || [],
+                proveedor: this._activeProveedorFilter || [],
             },
         };
         views.push(newView);
@@ -876,9 +913,22 @@ const Modules = {
             data = data.filter(i => (i.rubro || '') === this._activeRubroFilter);
         }
 
-        // Clasificacion filter (insumos)
+        // Multi-select filters (insumos)
+        if (type === 'insumos') {
+            if (this._activeClasificacionFilter && this._activeClasificacionFilter.length > 0) {
+                data = data.filter(i => this._activeClasificacionFilter.includes(i.clasificacion));
+            }
+            if (this._activeCategoriaFilter && this._activeCategoriaFilter.length > 0) {
+                data = data.filter(i => this._activeCategoriaFilter.includes(i.categoria));
+            }
+            if (this._activeProveedorFilter && this._activeProveedorFilter.length > 0) {
+                data = data.filter(i => this._activeProveedorFilter.includes(i.proveedor));
+            }
+        }
+
+        // Legacy clasificacion filter (other types that might use _activeTypeFilter for insumos)
         if (this._activeTypeFilter && type === 'insumos') {
-            data = data.filter(i => (i.clasificacion || '') === this._activeTypeFilter);
+            // Superseded by multi-select above, keep for backward compat
         }
 
         this._renderApiTable(data, type);
@@ -1666,6 +1716,151 @@ const Modules = {
                 font-family: inherit; cursor: pointer; outline: none; font-size: 11px; padding: 2px 6px;
             }
             .cot-inline-estado:focus { box-shadow: 0 0 0 2px rgba(0,169,193,0.2); }
+
+            /* ─── Ficha Edit Mode (Insumos) ─── */
+            .ficha-edit-input {
+                width: 100%;
+                padding: 6px 10px;
+                background: var(--bg-hover, #22252c);
+                border: 1px solid var(--border, #2a2d35);
+                border-radius: 6px;
+                color: var(--text-primary, #fff);
+                font-family: inherit;
+                font-size: 0.82rem;
+                outline: none;
+                transition: border-color 0.15s;
+            }
+            .ficha-edit-input:focus {
+                border-color: var(--primary, #00A9C1);
+                box-shadow: 0 0 0 2px rgba(0,169,193,0.15);
+            }
+            .ficha-edit-select {
+                cursor: pointer;
+                appearance: auto;
+            }
+            .ficha-edit-textarea {
+                min-height: 60px;
+                resize: vertical;
+            }
+            .ficha-edit-footer {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding-top: 12px;
+                border-top: 1px solid var(--border, #2a2d35);
+                margin-top: 8px;
+            }
+            .ficha-save-status {
+                font-size: 0.75rem;
+                font-weight: 500;
+                transition: opacity 0.3s;
+            }
+
+            /* ─── Multi-Select Filter Dropdowns ─── */
+            .mepex-multifilter-bar {
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+                align-items: flex-start;
+            }
+            .mepex-multifilter {
+                position: relative;
+                min-width: 150px;
+            }
+            .mepex-multifilter-trigger {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 12px;
+                background: #1a1a2e;
+                border: 1px solid #2a2d35;
+                border-radius: 6px;
+                color: #aaa;
+                font-size: 0.78rem;
+                cursor: pointer;
+                transition: border-color 0.15s;
+                white-space: nowrap;
+            }
+            .mepex-multifilter-trigger:hover { border-color: #00BCD4; color: #fff; }
+            .mepex-multifilter-trigger.has-selection { border-color: #00BCD4; color: #00BCD4; }
+            .mepex-multifilter-trigger svg { flex-shrink: 0; }
+            .mepex-multifilter-dropdown {
+                display: none;
+                position: absolute;
+                top: calc(100% + 4px);
+                left: 0;
+                min-width: 200px;
+                max-height: 240px;
+                overflow-y: auto;
+                background: #1a1a2e;
+                border: 1px solid #2a2d35;
+                border-radius: 8px;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+                z-index: 150;
+                padding: 4px;
+            }
+            .mepex-multifilter-dropdown.open { display: block; }
+            .mepex-multifilter-option {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 7px 10px;
+                border-radius: 4px;
+                font-size: 0.78rem;
+                color: #ccc;
+                cursor: pointer;
+                transition: background 0.12s;
+            }
+            .mepex-multifilter-option:hover { background: #22252c; }
+            .mepex-multifilter-option.selected { background: rgba(0,188,212,0.1); color: #00BCD4; }
+            .mepex-multifilter-option .mf-check {
+                width: 16px; height: 16px; border-radius: 3px;
+                border: 1.5px solid #555; display: flex; align-items: center; justify-content: center;
+                flex-shrink: 0; transition: all 0.12s;
+            }
+            .mepex-multifilter-option.selected .mf-check {
+                background: #00BCD4; border-color: #00BCD4;
+            }
+            .mepex-multifilter-chips {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                margin-top: 6px;
+            }
+            .mepex-multifilter-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 3px 8px;
+                background: rgba(0,188,212,0.15);
+                color: #00BCD4;
+                border-radius: 12px;
+                font-size: 0.7rem;
+                font-weight: 500;
+                cursor: default;
+            }
+            .mepex-multifilter-chip-x {
+                cursor: pointer;
+                font-size: 0.75rem;
+                line-height: 1;
+                opacity: 0.7;
+                transition: opacity 0.12s;
+            }
+            .mepex-multifilter-chip-x:hover { opacity: 1; }
+            .mepex-filter-clear-btn {
+                padding: 5px 12px;
+                background: transparent;
+                border: 1px solid #333;
+                border-radius: 6px;
+                color: #888;
+                font-size: 0.72rem;
+                cursor: pointer;
+                transition: all 0.15s;
+                white-space: nowrap;
+                align-self: flex-start;
+                margin-top: 1px;
+            }
+            .mepex-filter-clear-btn:hover { border-color: #EF5350; color: #EF5350; }
 
             @media (max-width: 600px) {
                 .ficha-panel { width: 100vw; }
@@ -2865,7 +3060,11 @@ const Modules = {
         insumos: {
             icon: '🧱',
             color: '#9B7DFF',
-            getStatus: (item) => item.clasificacion ? { label: item.clasificacion, class: 'badge-ghost' } : null,
+            editMode: true, // opens ficha directly in edit mode
+            getStatus: (item) => {
+                const cc = Modules._clasificacionColors[item.clasificacion];
+                return cc ? { label: item.clasificacion, class: '', style: `background:${cc.bg}; color:${cc.text}; border:1px solid ${cc.border}` } : (item.clasificacion ? { label: item.clasificacion, class: 'badge-ghost' } : null);
+            },
             tabs: [
                 { id: 'info', label: 'Información', icon: '📋' },
                 { id: 'historial', label: 'Historial', icon: '📈' },
@@ -2881,28 +3080,34 @@ const Modules = {
                         </div>`;
                 }
                 if (tabId === 'info') {
-                    const moneyPrefix = item.moneda === 'USD' ? 'US$' : '$';
+                    const fields = Modules._insumoFormFields;
+                    const mkSelect = (key, opts, val) => `<select class="ficha-edit-input ficha-edit-select" data-field="${key}">${opts.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+                    const mkInput = (key, val, type='text', placeholder='') => `<input class="ficha-edit-input" data-field="${key}" type="${type}" value="${val != null ? val : ''}" placeholder="${placeholder}" ${type === 'number' ? 'step="0.01"' : ''}>`;
+
                     return `
                         <div class="ficha-section">
                             <div class="ficha-section-title">Insumo</div>
-                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.nombre)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value">${v(item.codigo)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Clasificación</span><span class="ficha-row-value">${v(item.clasificacion)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${v(item.categoria)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Unidad</span><span class="ficha-row-value">${v(item.unidadBase)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value cost-value">${moneyPrefix}${API.formatCurrency(item.costoUnitario).replace('$','')} / ${item.unidadBase}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${mkInput('nombre', item.nombre, 'text', 'Nombre del insumo')}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value">${mkInput('codigo', item.codigo, 'text', 'Ej: MAT-ALB')}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Clasificación</span><span class="ficha-row-value">${mkSelect('clasificacion', ['', ...fields.find(f=>f.key==='clasificacion').options], item.clasificacion)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${mkSelect('categoria', ['', ...fields.find(f=>f.key==='categoria').options], item.categoria)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Unidad</span><span class="ficha-row-value">${mkSelect('unidadBase', fields.find(f=>f.key==='unidadBase').options, item.unidadBase)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value">${mkInput('costoUnitario', item.costoUnitario, 'number', '0.00')}</span></div>
                         </div>
                         <div class="ficha-section">
                             <div class="ficha-section-title">Proveedor</div>
-                            <div class="ficha-row"><span class="ficha-row-label">Proveedor</span><span class="ficha-row-value">${v(item.proveedor)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Moneda</span><span class="ficha-row-value">${v(item.moneda)}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Proveedor</span><span class="ficha-row-value">${mkInput('proveedor', item.proveedor, 'text', 'Ej: Alpros S.A')}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Moneda</span><span class="ficha-row-value">${mkSelect('moneda', ['USD', 'ARS'], item.moneda)}</span></div>
                             ${item.fechaUltimoPrecio ? `<div class="ficha-row"><span class="ficha-row-label">Último precio</span><span class="ficha-row-value">${API.formatDate(item.fechaUltimoPrecio)}</span></div>` : ''}
                         </div>
-                        ${item.notas ? `
                         <div class="ficha-section">
                             <div class="ficha-section-title">Notas</div>
-                            <p class="ficha-row-value">${item.notas}</p>
-                        </div>` : ''}`;
+                            <div class="ficha-row"><span class="ficha-row-label">Notas</span><span class="ficha-row-value"><textarea class="ficha-edit-input ficha-edit-textarea" data-field="notas" placeholder="Observaciones">${item.notas || ''}</textarea></span></div>
+                        </div>
+                        <div class="ficha-edit-footer">
+                            <button class="btn btn-primary btn-sm" id="fichaInsumoSave">Guardar cambios</button>
+                            <span class="ficha-save-status" id="fichaSaveStatus"></span>
+                        </div>`;
                 }
                 return '';
             }
@@ -3127,8 +3332,9 @@ const Modules = {
 
         const v = (val) => (val != null && val !== '') ? val : '—';
         const status = config.getStatus(item);
-        const statusBadge = status ? `<span class="badge ${status.class || this._projectStatusClass(status.label)}">${v(status.label)}</span>` : '';
+        const statusBadge = status ? `<span class="badge ${status.class || this._projectStatusClass(status.label)}" ${status.style ? `style="${status.style}"` : ''}>${v(status.label)}</span>` : '';
         const firstTab = config.tabs[0].id;
+        const isEditMode = config.editMode === true;
 
         panel.innerHTML = `
             <div class="ficha-panel-header">
@@ -3140,9 +3346,9 @@ const Modules = {
                     </div>
                 </div>
                 <div class="ficha-panel-header-actions">
-                    <button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
+                    ${!isEditMode ? `<button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                    </button>
+                    </button>` : ''}
                     <button class="btn btn-ghost btn-sm ficha-delete-btn" id="fichaDelete" title="Eliminar">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
@@ -3195,13 +3401,20 @@ const Modules = {
         document.addEventListener('keydown', this._fichaEscHandler);
 
         // Edit/Delete
-        panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
-            this._closeFicha();
-            this._openEditModal(item, type);
-        });
+        if (!isEditMode) {
+            panel.querySelector('#fichaEdit')?.addEventListener('click', () => {
+                this._closeFicha();
+                this._openEditModal(item, type);
+            });
+        }
         panel.querySelector('#fichaDelete')?.addEventListener('click', () => {
             this._deleteSingle(item, type);
         });
+
+        // Inline edit save for insumos
+        if (isEditMode && type === 'insumos') {
+            this._attachInsumoFichaSave(item, panel);
+        }
 
         // Auto-load data for first tab
         if (type === 'clients') this._loadClientTabData(item, firstTab);
@@ -3693,20 +3906,20 @@ const Modules = {
         const visCols = this._getOrderedVisibleCols(storageKey, allCols);
         this._renderColsPanel(storageKey, allCols, visCols);
 
-        // Filters — by clasificacion
-        const clasificaciones = [...new Set(data.map(i => i.clasificacion).filter(Boolean))].sort();
+        // Multi-select filters
+        const clasificacionOpts = ['Logística', 'Sub alquiler', 'Materiales', 'Insumo', 'Mano de obra'];
+        const categoriaOpts = ['Logística', 'Oficina', 'Materia prima', 'Ferretería', 'Limpieza', 'Pintura', 'Embalaje', 'Electricidad', 'Mano de Obra'];
+        const proveedorOpts = [...new Set(data.map(i => i.proveedor).filter(Boolean))].sort();
+
         const filtersEl = document.getElementById('apiToolbarFilters');
         if (filtersEl) {
-            filtersEl.innerHTML = `<div class="mepex-filter-chips">
-                <button class="mepex-filter-chip ${!this._activeTypeFilter ? 'active' : ''}" data-filter-cat="">Todos</button>
-                ${clasificaciones.map(c => `<button class="mepex-filter-chip ${this._activeTypeFilter === c ? 'active' : ''}" data-filter-cat="${c}">${c}</button>`).join('')}
+            filtersEl.innerHTML = `<div class="mepex-multifilter-bar">
+                ${this._renderMultiFilter('clasificacion', 'Clasificación', clasificacionOpts, this._activeClasificacionFilter)}
+                ${this._renderMultiFilter('categoria', 'Categoría', categoriaOpts, this._activeCategoriaFilter)}
+                ${this._renderMultiFilter('proveedor', 'Proveedor', proveedorOpts, this._activeProveedorFilter)}
+                <button class="mepex-filter-clear-btn" id="btnClearAllFilters">Limpiar filtros</button>
             </div>`;
-            filtersEl.querySelectorAll('[data-filter-cat]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    this._activeTypeFilter = btn.dataset.filterCat || null;
-                    this._applyAllFilters();
-                });
-            });
+            this._attachMultiFilterListeners(filtersEl);
         }
 
         // Sort
@@ -3717,8 +3930,14 @@ const Modules = {
             switch (colId) {
                 case 'nombre': return `<span class="td-primary">${item.nombre}</span>`;
                 case 'codigo': return `<span class="td-number">${item.codigo || '—'}</span>`;
-                case 'clasificacion': return `<span class="badge badge-ghost">${item.clasificacion || '—'}</span>`;
-                case 'categoria': return `<span class="badge badge-ghost">${item.categoria || '—'}</span>`;
+                case 'clasificacion': {
+                    const cc = Modules._clasificacionColors[item.clasificacion];
+                    return cc ? `<span class="badge" style="background:${cc.bg}; color:${cc.text}; border:1px solid ${cc.border}">${item.clasificacion}</span>` : `<span class="badge badge-ghost">${item.clasificacion || '—'}</span>`;
+                }
+                case 'categoria': {
+                    const catc = Modules._categoriaColors[item.categoria];
+                    return catc ? `<span class="badge" style="background:${catc.bg}; color:${catc.text}; border:1px solid ${catc.border}">${item.categoria}</span>` : `<span class="badge badge-ghost">${item.categoria || '—'}</span>`;
+                }
                 case 'unidad': return item.unidadBase || '—';
                 case 'costo': return `<span class="td-number cost-value insumo-price-cell" data-insumo-id="${item.id}" data-current-price="${item.costoUnitario}" data-unidad="${item.unidadBase}">${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$','')}<span class="cost-unit">/${item.unidadBase}</span></span>`;
                 case 'moneda': return item.moneda || '—';
@@ -3740,6 +3959,118 @@ const Modules = {
         `).join('');
 
         return `<table class="api-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+    },
+
+    // ─── Multi-select filter helpers ───
+    _renderMultiFilter(filterId, label, options, selected) {
+        const hasSelection = selected && selected.length > 0;
+        const chevron = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+        const checkSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+        return `<div class="mepex-multifilter" data-filter-id="${filterId}">
+            <div class="mepex-multifilter-trigger ${hasSelection ? 'has-selection' : ''}" data-mf-toggle="${filterId}">
+                <span>${label}${hasSelection ? ` (${selected.length})` : ''}</span>
+                ${chevron}
+            </div>
+            <div class="mepex-multifilter-dropdown" id="mfDropdown_${filterId}">
+                ${options.map(opt => `
+                    <div class="mepex-multifilter-option ${selected.includes(opt) ? 'selected' : ''}" data-mf-value="${opt}" data-mf-filter="${filterId}">
+                        <span class="mf-check">${selected.includes(opt) ? checkSvg : ''}</span>
+                        <span>${opt}</span>
+                    </div>
+                `).join('')}
+            </div>
+            ${hasSelection ? `<div class="mepex-multifilter-chips">
+                ${selected.map(s => `<span class="mepex-multifilter-chip" data-mf-chip="${filterId}" data-mf-chip-value="${s}">${s}<span class="mepex-multifilter-chip-x" data-mf-remove="${filterId}" data-mf-remove-value="${s}">✕</span></span>`).join('')}
+            </div>` : ''}
+        </div>`;
+    },
+
+    _attachMultiFilterListeners(container) {
+        const self = this;
+        const checkSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+        // Toggle dropdowns
+        container.querySelectorAll('[data-mf-toggle]').forEach(trigger => {
+            trigger.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterId = trigger.dataset.mfToggle;
+                const dropdown = document.getElementById('mfDropdown_' + filterId);
+                // Close all other dropdowns
+                container.querySelectorAll('.mepex-multifilter-dropdown.open').forEach(d => {
+                    if (d !== dropdown) d.classList.remove('open');
+                });
+                dropdown.classList.toggle('open');
+            });
+        });
+
+        // Click on options
+        container.querySelectorAll('.mepex-multifilter-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterId = opt.dataset.mfFilter;
+                const value = opt.dataset.mfValue;
+                const arr = self._getMultiFilterArray(filterId);
+                const idx = arr.indexOf(value);
+                if (idx >= 0) {
+                    arr.splice(idx, 1);
+                    opt.classList.remove('selected');
+                    opt.querySelector('.mf-check').innerHTML = '';
+                } else {
+                    arr.push(value);
+                    opt.classList.add('selected');
+                    opt.querySelector('.mf-check').innerHTML = checkSvg;
+                }
+                self._setMultiFilterArray(filterId, arr);
+                self._applyAllFilters();
+            });
+        });
+
+        // Remove chips
+        container.querySelectorAll('[data-mf-remove]').forEach(x => {
+            x.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterId = x.dataset.mfRemove;
+                const value = x.dataset.mfRemoveValue;
+                const arr = self._getMultiFilterArray(filterId);
+                const idx = arr.indexOf(value);
+                if (idx >= 0) arr.splice(idx, 1);
+                self._setMultiFilterArray(filterId, arr);
+                self._applyAllFilters();
+            });
+        });
+
+        // Clear all
+        const clearBtn = container.querySelector('#btnClearAllFilters');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                self._activeClasificacionFilter = [];
+                self._activeCategoriaFilter = [];
+                self._activeProveedorFilter = [];
+                self._applyAllFilters();
+            });
+        }
+
+        // Close dropdowns on click outside
+        if (!this._multiFilterDocClickAttached) {
+            this._multiFilterDocClickAttached = true;
+            document.addEventListener('click', () => {
+                document.querySelectorAll('.mepex-multifilter-dropdown.open').forEach(d => d.classList.remove('open'));
+            });
+        }
+    },
+
+    _getMultiFilterArray(filterId) {
+        if (filterId === 'clasificacion') return this._activeClasificacionFilter;
+        if (filterId === 'categoria') return this._activeCategoriaFilter;
+        if (filterId === 'proveedor') return this._activeProveedorFilter;
+        return [];
+    },
+
+    _setMultiFilterArray(filterId, arr) {
+        if (filterId === 'clasificacion') this._activeClasificacionFilter = arr;
+        if (filterId === 'categoria') this._activeCategoriaFilter = arr;
+        if (filterId === 'proveedor') this._activeProveedorFilter = arr;
     },
 
     _attachInsumosListeners(data) {
@@ -4909,6 +5240,64 @@ const Modules = {
 
     async _loadInsumoTabData(item, tabId) {
         if (tabId === 'historial') await this._loadInsumoHistorial(item);
+        if (tabId === 'info') {
+            // Re-attach save handler when switching back to info tab
+            const panel = document.getElementById('fichaPanel');
+            if (panel) this._attachInsumoFichaSave(item, panel);
+        }
+    },
+
+    _attachInsumoFichaSave(item, panel) {
+        const saveBtn = panel.querySelector('#fichaInsumoSave');
+        const statusEl = panel.querySelector('#fichaSaveStatus');
+        if (!saveBtn) return;
+
+        saveBtn.addEventListener('click', async () => {
+            const inputs = panel.querySelectorAll('.ficha-edit-input');
+            const values = {};
+            inputs.forEach(inp => {
+                const key = inp.dataset.field;
+                if (!key) return;
+                if (inp.type === 'number') values[key] = parseFloat(inp.value) || 0;
+                else if (inp.tagName === 'TEXTAREA') values[key] = inp.value;
+                else values[key] = inp.value;
+            });
+
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Guardando…';
+            if (statusEl) statusEl.textContent = '';
+
+            // Check if price changed for logging
+            const oldPrice = item.costoUnitario;
+            const newPrice = values.costoUnitario;
+            const priceChanged = newPrice != null && Math.abs(newPrice - oldPrice) > 0.001;
+
+            if (priceChanged) {
+                await API.logPrecioChange(item.id, oldPrice, newPrice, 'Edición en ficha');
+            }
+
+            const result = await API.updateInsumo(item.id, values);
+            if (result) {
+                Toast.success('Insumo actualizado');
+                if (statusEl) { statusEl.textContent = 'Guardado ✓'; statusEl.style.color = '#66BB6A'; }
+                // Update item reference for current session
+                Object.assign(item, values);
+                // Update panel name
+                const nameEl = panel.querySelector('.ficha-panel-name');
+                if (nameEl && values.nombre) nameEl.textContent = values.nombre;
+                // Cascade if price changed
+                if (priceChanged) {
+                    const cascade = await API.recalcularPorInsumo(item.id);
+                    if (cascade.ok && cascade.updated > 0) Toast.info(`${cascade.updated} items recalculados`);
+                }
+                this._refreshCurrentTable();
+            } else {
+                Toast.error('Error al guardar');
+                if (statusEl) { statusEl.textContent = 'Error'; statusEl.style.color = '#EF5350'; }
+            }
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Guardar cambios';
+        });
     },
 
     async _loadInsumoHistorial(item) {
