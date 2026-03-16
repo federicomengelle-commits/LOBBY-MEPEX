@@ -35,6 +35,7 @@ const App = {
         SidebarEditor.init();
 
         const app = document.getElementById('app');
+        // UndoUI.init() is called after innerHTML is set (see below after _attachShellEvents)
         app.innerHTML = `
             ${this._renderGlobalHeader(user)}
             <div class="app-body">
@@ -43,6 +44,9 @@ const App = {
             </div>
         `;
         this._attachShellEvents(user);
+
+        // Initialize undo/redo UI buttons in header
+        UndoUI.init();
 
         // Check API connection in background
         this._checkConnection();
@@ -493,11 +497,25 @@ const App = {
             if (e.key === 'Escape' && this.searchOpen) {
                 this.closeSearch();
             }
-            // Ctrl+Z → undo sidebar edit
+            // Ctrl+Z → undo (sidebar edit has priority, then UndoManager)
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                const tag = document.activeElement?.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
                 if (SidebarEditor.isEditMode() && SidebarEditor.canUndo()) {
                     e.preventDefault();
                     SidebarEditor.undo();
+                } else if (UndoManager.canUndo()) {
+                    e.preventDefault();
+                    UndoManager.undo();
+                }
+            }
+            // Ctrl+Y / Ctrl+Shift+Z → redo
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && (e.key === 'z' || e.key === 'Z')))) {
+                const tag = document.activeElement?.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+                if (UndoManager.canRedo()) {
+                    e.preventDefault();
+                    UndoManager.redo();
                 }
             }
         });

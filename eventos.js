@@ -1014,7 +1014,7 @@ const EventosModule = {
         document.querySelector('.ev-btn-delete-event')?.addEventListener('click', async () => {
             const confirmed = await Modal.confirm({
                 title: 'Eliminar evento',
-                message: `¿Seguro que querés eliminar <strong>"${ev.name}"</strong>? Esta acción no se puede deshacer.`,
+                message: `¿Seguro que querés eliminar <strong>"${ev.name}"</strong>? Se puede deshacer con Ctrl+Z.`,
                 confirmText: 'Eliminar',
                 danger: true,
             });

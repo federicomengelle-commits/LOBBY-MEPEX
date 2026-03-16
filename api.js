@@ -35,6 +35,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('clientes')
                 .select('*')
+                .eq('_deleted', false)
                 .order('nombre_empresa', { ascending: true });
 
             if (error) throw error;
@@ -90,6 +91,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('proyectos_2026')
                 .select('*')
+                .eq('_deleted', false)
                 .order('nombre', { ascending: true });
 
             if (error) throw error;
@@ -155,6 +157,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('eventos_2026')
                 .select('*')
+                .eq('_deleted', false)
                 .order('fecha_evento_inicio', { ascending: true });
 
             if (error) throw error;
@@ -209,6 +212,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('proveedor')
                 .select('*')
+                .eq('_deleted', false)
                 .order('nombre', { ascending: true });
 
             if (error) throw error;
@@ -239,10 +243,9 @@ const API = {
                 cuit: data.cuit || null,
                 detalle: data.contacto || data.detalle || '',
             };
-            const { data: result, error } = await supabaseClient.from('proveedor').insert([payload]).select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('proveedor', payload, `Nuevo proveedor: ${data.name || data.nombre || ''}`);
             this.clearCache();
-            return result?.[0] ? { id: result[0].id, name: result[0].nombre, cuit: result[0].cuit || '', detalle: result[0].detalle || '' } : null;
+            return result ? { id: result.id, name: result.nombre, cuit: result.cuit || '', detalle: result.detalle || '' } : null;
         } catch (e) {
             console.warn('[API] Error creating proveedor:', e.message);
             return null;
@@ -316,19 +319,23 @@ const API = {
                 supabaseClient
                     .from('proyectos_2026')
                     .select('*')
+                    .eq('_deleted', false)
                     .not('responsable', 'in', '("Finalizado","Rechazado")'),
                 // Clientes totales
                 supabaseClient
                     .from('clientes')
-                    .select('*', { count: 'exact', head: true }),
+                    .select('*', { count: 'exact', head: true })
+                    .eq('_deleted', false),
                 // Proveedores activos
                 supabaseClient
                     .from('proveedor')
-                    .select('*', { count: 'exact', head: true }),
+                    .select('*', { count: 'exact', head: true })
+                    .eq('_deleted', false),
                 // Eventos próximos
                 supabaseClient
                     .from('eventos_2026')
                     .select('*', { count: 'exact', head: true })
+                    .eq('_deleted', false)
                     .gte('fecha_evento_inicio', new Date().toISOString().split('T')[0]),
             ]);
 
@@ -419,11 +426,9 @@ const API = {
                 telefono: data.email || '',
                 correo_electronico: data.rubro || '',
             };
-            const { data: result, error } = await supabaseClient
-                .from('clientes').insert([payload]).select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('clientes', payload, `Nuevo cliente: ${data.name || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating client:', e.message);
             return null;
@@ -442,11 +447,9 @@ const API = {
             if (data.phone !== undefined) payload.rubro = data.phone;
             if (data.email !== undefined) payload.telefono = data.email;
             if (data.rubro !== undefined) payload.correo_electronico = data.rubro;
-            const { data: result, error } = await supabaseClient
-                .from('clientes').update(payload).eq('id', id).select();
-            if (error) throw error;
+            await UndoHelpers.updateRecord('clientes', id, payload, `Edito cliente: ${data.name || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return true;
         } catch (e) {
             console.warn('[API] Error updating client:', e.message);
             return null;
@@ -455,8 +458,7 @@ const API = {
 
     async deleteClient(id) {
         try {
-            const { error } = await supabaseClient.from('clientes').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('clientes', id, 'Elimino cliente');
             this.clearCache();
             return true;
         } catch (e) {
@@ -478,11 +480,9 @@ const API = {
                 n_lote: data.responsible || '',
                 tipo: data.type || '',
             };
-            const { data: result, error } = await supabaseClient
-                .from('proyectos_2026').insert([payload]).select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('proyectos_2026', payload, `Nuevo proyecto: ${data.name || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating project:', e.message);
             return null;
@@ -499,11 +499,9 @@ const API = {
             if (data.eventName !== undefined) payload.empresa = data.eventName;
             if (data.responsible !== undefined) payload.n_lote = data.responsible;
             if (data.type !== undefined) payload.tipo = data.type;
-            const { data: result, error } = await supabaseClient
-                .from('proyectos_2026').update(payload).eq('id', id).select();
-            if (error) throw error;
+            await UndoHelpers.updateRecord('proyectos_2026', id, payload, `Edito proyecto: ${data.name || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return true;
         } catch (e) {
             console.warn('[API] Error updating project:', e.message);
             return null;
@@ -512,8 +510,7 @@ const API = {
 
     async deleteProject(id) {
         try {
-            const { error } = await supabaseClient.from('proyectos_2026').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('proyectos_2026', id, 'Elimino proyecto');
             this.clearCache();
             return true;
         } catch (e) {
@@ -539,11 +536,9 @@ const API = {
                 prioridad: data.priority || '',
                 estado: data.status || 'Sin empezar',
             };
-            const { data: result, error } = await supabaseClient
-                .from('eventos_2026').insert([payload]).select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('eventos_2026', payload, `Nuevo evento: ${data.name || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating event:', e.message);
             return null;
@@ -565,11 +560,9 @@ const API = {
             if (data.notasOperativas !== undefined) payload.notas_operativas = data.notasOperativas;
             if (data.priority !== undefined) payload.prioridad = data.priority;
             if (data.status !== undefined) payload.estado = data.status;
-            const { data: result, error } = await supabaseClient
-                .from('eventos_2026').update(payload).eq('id', id).select();
-            if (error) throw error;
+            await UndoHelpers.updateRecord('eventos_2026', id, payload, `Edito evento: ${data.name || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return true;
         } catch (e) {
             console.warn('[API] Error updating event:', e.message);
             return null;
@@ -578,8 +571,7 @@ const API = {
 
     async deleteEvent(id) {
         try {
-            const { error } = await supabaseClient.from('eventos_2026').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('eventos_2026', id, 'Elimino evento');
             this.clearCache();
             return true;
         } catch (e) {
@@ -861,6 +853,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('proyectos_2026')
                 .select('*')
+                .eq('_deleted', false)
                 .ilike('estado', `%${clientName}%`)
                 .order('nombre', { ascending: true });
 
@@ -892,6 +885,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('eventos_2026')
                 .select('*')
+                .eq('_deleted', false)
                 .in('nombre', names);
 
             if (error) throw error;
@@ -1438,6 +1432,7 @@ const API = {
                 const { data: clientes } = await supabaseClient
                     .from('clientes')
                     .select('id, nombre_empresa, contacto_empresa, rubro, telefono, correo_electronico')
+                    .eq('_deleted', false)
                     .in('id', clientIds);
                 if (clientes) {
                     // NOTA: columnas rotadas — rubro=phone, telefono=email, correo_electronico=rubro

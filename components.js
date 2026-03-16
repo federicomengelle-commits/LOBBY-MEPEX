@@ -266,7 +266,7 @@ const Confirm = {
     async delete(entityName) {
         return Modal.confirm({
             title: 'Confirmar eliminaci\u00f3n',
-            message: `\u00bfSeguro que quer\u00e9s eliminar <strong>"${entityName}"</strong>? Esta acci\u00f3n no se puede deshacer.`,
+            message: `\u00bfSeguro que quer\u00e9s eliminar <strong>"${entityName}"</strong>? Se puede deshacer con Ctrl+Z.`,
             confirmText: 'Eliminar',
             cancelText: 'Cancelar',
             danger: true,

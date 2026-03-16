@@ -595,6 +595,11 @@ const Modules = {
         await this._loadSectionData(this.currentModule, this.currentSection);
     },
 
+    // ─── PUBLIC REFRESH (used by UndoHelpers) ───
+    async refreshCurrentView() {
+        await this._refreshCurrentTable();
+    },
+
     // ─── CREATE MODAL ───
     _openCreateModal(type) {
         const config = this._entityConfig[type];

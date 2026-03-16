@@ -8486,3 +8486,46 @@ body {
 .app-sidebar.collapsed.edit-mode .se-section-chevron {
     display: none !important;
 }
+
+
+/* =============================================
+   UNDO/REDO CONTROLS (header)
+   ============================================= */
+
+.undo-controls {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-right: 12px;
+    padding-right: 12px;
+    border-right: 1px solid var(--border, #2a2a2a);
+}
+
+.undo-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--text-secondary, #888);
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.undo-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--border, #2a2a2a);
+    color: var(--text-primary, #E8E8E8);
+}
+
+.undo-btn:active:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(0.95);
+}
+
+.undo-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
