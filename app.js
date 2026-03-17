@@ -499,8 +499,6 @@ const App = {
             }
             // Ctrl+Z → undo (sidebar edit has priority, then UndoManager)
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                const tag = document.activeElement?.tagName;
-                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
                 if (SidebarEditor.isEditMode() && SidebarEditor.canUndo()) {
                     e.preventDefault();
                     SidebarEditor.undo();
@@ -511,8 +509,6 @@ const App = {
             }
             // Ctrl+Y / Ctrl+Shift+Z → redo
             if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && (e.key === 'z' || e.key === 'Z')))) {
-                const tag = document.activeElement?.tagName;
-                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
                 if (UndoManager.canRedo()) {
                     e.preventDefault();
                     UndoManager.redo();
