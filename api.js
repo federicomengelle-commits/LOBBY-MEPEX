@@ -262,6 +262,7 @@ const API = {
                 .from('opciones_select')
                 .select('*')
                 .eq('campo', campo)
+                .eq('_deleted', false)
                 .order('orden', { ascending: true });
             if (error) throw error;
             const mapped = (data || []).map(o => ({ id: o.id, campo: o.campo, valor: o.valor, color: o.color || null, orden: o.orden || 0 }));
@@ -278,13 +279,9 @@ const API = {
             // Get max orden for this campo
             const existing = await this.getSelectOptions(campo);
             const maxOrden = existing ? Math.max(0, ...existing.map(o => o.orden)) : 0;
-            const { data, error } = await supabaseClient
-                .from('opciones_select')
-                .insert([{ campo, valor, orden: maxOrden + 1 }])
-                .select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('opciones_select', { campo, valor, orden: maxOrden + 1 }, `Nueva opcion: ${valor}`);
             this.clearCache();
-            return data?.[0] || true;
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating select option:', e.message);
             return null;
@@ -293,8 +290,7 @@ const API = {
 
     async deleteSelectOption(id) {
         try {
-            const { error } = await supabaseClient.from('opciones_select').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('opciones_select', id, 'Elimino opcion de select');
             this.clearCache();
             return true;
         } catch (e) {
@@ -716,10 +712,8 @@ const API = {
                 storage_path: doc.storagePath || doc.storage_path || null,
                 uploaded_by: doc.uploadedBy || doc.uploaded_by || null,
             };
-            const { data, error } = await supabaseClient
-                .from('evento_documentos').insert([row]).select();
-            if (error) throw error;
-            return data?.[0] || true;
+            const result = await UndoHelpers.createRecord('evento_documentos', row, `Nuevo documento: ${doc.nombre || doc.nombre_archivo || ''}`);
+            return result || true;
         } catch (e) {
             console.warn('[API] Error adding event documento:', e.message);
             return null;
@@ -729,9 +723,7 @@ const API = {
     async deleteEventDocumento(docId) {
         if (!docId) return null;
         try {
-            const { error } = await supabaseClient
-                .from('evento_documentos').delete().eq('id', docId);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('evento_documentos', docId, 'Elimino documento de evento');
             return true;
         } catch (e) {
             console.warn('[API] Error deleting event documento:', e.message);
@@ -792,6 +784,7 @@ const API = {
                 .from('interacciones')
                 .select('*')
                 .eq('cliente_id', clienteId)
+                .eq('_deleted', false)
                 .order('fecha', { ascending: false });
 
             if (error) throw error;
@@ -822,12 +815,8 @@ const API = {
                 fecha: data.fecha || new Date().toISOString(),
                 es_automatica: data.esAutomatica || false,
             };
-            const { data: result, error } = await supabaseClient
-                .from('interacciones')
-                .insert([payload])
-                .select();
-            if (error) throw error;
-            return result?.[0] || true;
+            const result = await UndoHelpers.createRecord('interacciones', payload, `Nueva interaccion: ${data.canal || ''}`);
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating interaccion:', e.message);
             return null;
@@ -836,8 +825,7 @@ const API = {
 
     async deleteInteraccion(id) {
         try {
-            const { error } = await supabaseClient.from('interacciones').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('interacciones', id, 'Elimino interaccion');
             return true;
         } catch (e) {
             console.warn('[API] Error deleting interaccion:', e.message);
@@ -925,15 +913,17 @@ const API = {
         return timeStr;
     },
 
-    // ─── Bulk Delete ─────────────────────────
+    // ─── Bulk Delete (soft delete + undo for each) ───
     async deleteMultiple(table, ids) {
         try {
-            const { error } = await supabaseClient.from(table).delete().in('id', ids);
-            if (error) throw error;
+            for (const id of ids) {
+                await UndoHelpers.deleteRecord(table, id, `Elimino registro de ${table}`);
+            }
             this.clearCache();
             return true;
         } catch (e) {
             console.warn(`[API] Error bulk deleting from ${table}:`, e.message);
+            this.clearCache();
             return null;
         }
     },
@@ -1057,7 +1047,7 @@ const API = {
         if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
         try {
             const { data, error } = await supabaseClient
-                .from('insumos_base').select('*').order('nombre', { ascending: true });
+                .from('insumos_base').select('*').eq('_deleted', false).order('nombre', { ascending: true });
             if (error) throw error;
             const mapped = (data || []).map(i => ({
                 id: i.id, nombre: i.nombre || '', codigo: i.codigo || '',
@@ -1092,10 +1082,9 @@ const API = {
                 proveedor: data.proveedor || '',
                 notas: data.notas || '',
             };
-            const { data: result, error } = await supabaseClient.from('insumos_base').insert([payload]).select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('insumos_base', payload, `Nuevo insumo: ${data.nombre || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating insumo:', e.message);
             return null;
@@ -1115,10 +1104,9 @@ const API = {
             if (data.proveedor !== undefined) payload.proveedor = data.proveedor;
             if (data.notas !== undefined) payload.notas = data.notas;
             payload.updated_at = new Date().toISOString();
-            const { data: result, error } = await supabaseClient.from('insumos_base').update(payload).eq('id', id).select();
-            if (error) throw error;
+            await UndoHelpers.updateRecord('insumos_base', id, payload, 'Edito insumo');
             this.clearCache();
-            return result?.[0] || true;
+            return true;
         } catch (e) {
             console.warn('[API] Error updating insumo:', e.message);
             return null;
@@ -1127,8 +1115,7 @@ const API = {
 
     async deleteInsumo(id) {
         try {
-            const { error } = await supabaseClient.from('insumos_base').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('insumos_base', id, 'Elimino insumo');
             this.clearCache();
             return true;
         } catch (e) {
@@ -1145,7 +1132,7 @@ const API = {
         if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
         try {
             const { data, error } = await supabaseClient
-                .from('catalogo_items').select('*').order('nombre', { ascending: true });
+                .from('catalogo_items').select('*').eq('_deleted', false).order('nombre', { ascending: true });
             if (error) throw error;
             const mapped = (data || []).map(i => ({
                 id: i.id,
@@ -1188,10 +1175,9 @@ const API = {
                 nivel: data.nivel || 3,
                 familia: data.familia || '',
             };
-            const { data: result, error } = await supabaseClient.from('catalogo_items').insert([payload]).select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('catalogo_items', payload, `Nuevo item: ${data.nombre || ''}`);
             this.clearCache();
-            return result?.[0] || true;
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating catalogo item:', e.message);
             return null;
@@ -1213,10 +1199,9 @@ const API = {
             if (data.nivel !== undefined) payload.nivel = data.nivel;
             if (data.familia !== undefined) payload.familia = data.familia;
             if (data.margenOverride !== undefined) payload.margen_override = data.margenOverride;
-            const { data: result, error } = await supabaseClient.from('catalogo_items').update(payload).eq('id', id).select();
-            if (error) throw error;
+            await UndoHelpers.updateRecord('catalogo_items', id, payload, 'Edito item de catalogo');
             this.clearCache();
-            return result?.[0] || true;
+            return true;
         } catch (e) {
             console.warn('[API] Error updating catalogo item:', e.message);
             return null;
@@ -1225,8 +1210,7 @@ const API = {
 
     async deleteCatalogoItem(id) {
         try {
-            const { error } = await supabaseClient.from('catalogo_items').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('catalogo_items', id, 'Elimino item de catalogo');
             this.clearCache();
             return true;
         } catch (e) {
@@ -1242,6 +1226,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('receta_componentes').select('*')
                 .eq('item_id', itemId)
+                .eq('_deleted', false)
                 .order('created_at', { ascending: true });
             if (error) throw error;
             return (data || []).map(r => ({
@@ -1266,9 +1251,8 @@ const API = {
                 unidad_uso: data.unidadUso || '',
                 notas: data.notas || '',
             };
-            const { data: result, error } = await supabaseClient.from('receta_componentes').insert([payload]).select();
-            if (error) throw error;
-            return result?.[0] || true;
+            const result = await UndoHelpers.createRecord('receta_componentes', payload, 'Nuevo componente de receta');
+            return result || true;
         } catch (e) {
             console.warn('[API] Error adding receta componente:', e.message);
             return null;
@@ -1281,9 +1265,8 @@ const API = {
             if (data.cantidad !== undefined) payload.cantidad = data.cantidad;
             if (data.unidadUso !== undefined) payload.unidad_uso = data.unidadUso;
             if (data.notas !== undefined) payload.notas = data.notas;
-            const { data: result, error } = await supabaseClient.from('receta_componentes').update(payload).eq('id', id).select();
-            if (error) throw error;
-            return result?.[0] || true;
+            await UndoHelpers.updateRecord('receta_componentes', id, payload, 'Edito componente de receta');
+            return true;
         } catch (e) {
             console.warn('[API] Error updating receta componente:', e.message);
             return null;
@@ -1292,8 +1275,7 @@ const API = {
 
     async deleteRecetaComponente(id) {
         try {
-            const { error } = await supabaseClient.from('receta_componentes').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('receta_componentes', id, 'Elimino componente de receta');
             return true;
         } catch (e) {
             console.warn('[API] Error deleting receta componente:', e.message);
@@ -1421,6 +1403,7 @@ const API = {
             const { data, error } = await supabaseClient
                 .from('cotizaciones')
                 .select('*')
+                .eq('_deleted', false)
                 .order('created_at', { ascending: false });
             console.log('[API] getCotizaciones — result:', data?.length || 0, 'rows, error:', error);
             if (error) throw error;
@@ -1519,13 +1502,9 @@ const API = {
                 vendedor_id: data.vendedorId || null,
                 notas_internas: data.notasInternas || '',
             };
-            const { data: result, error } = await supabaseClient
-                .from('cotizaciones')
-                .insert([payload])
-                .select();
-            if (error) throw error;
+            const result = await UndoHelpers.createRecord('cotizaciones', payload, `Nueva cotizacion: ${numero}`);
             this.clearCache();
-            return result?.[0] || true;
+            return result || true;
         } catch (e) {
             console.warn('[API] Error creating cotizacion:', e.message);
             return null;
@@ -1534,14 +1513,9 @@ const API = {
 
     async updateCotizacionEstado(id, nuevoEstado) {
         try {
-            const { data, error } = await supabaseClient
-                .from('cotizaciones')
-                .update({ estado: nuevoEstado })
-                .eq('id', id)
-                .select();
-            if (error) throw error;
+            await UndoHelpers.changeStatus('cotizaciones', id, nuevoEstado, 'Cotizacion');
             this.clearCache();
-            return data?.[0] || true;
+            return true;
         } catch (e) {
             console.warn('[API] Error updating cotizacion estado:', e.message);
             return null;
@@ -1606,11 +1580,9 @@ const API = {
             if (data.pdfUrl !== undefined) payload.pdf_url = data.pdfUrl;
             if (data.subtotal !== undefined) payload.subtotal = parseFloat(data.subtotal) || 0;
             if (data.iva !== undefined) payload.iva = parseFloat(data.iva) || 0;
-            const { data: result, error } = await supabaseClient
-                .from('cotizaciones').update(payload).eq('id', id).select();
-            if (error) throw error;
+            await UndoHelpers.updateRecord('cotizaciones', id, payload, 'Edito cotizacion');
             this.clearCache();
-            return result?.[0] || true;
+            return true;
         } catch (e) {
             console.warn('[API] Error updating cotizacion:', e.message);
             return null;
@@ -1619,8 +1591,7 @@ const API = {
 
     async deleteCotizacion(id) {
         try {
-            const { error } = await supabaseClient.from('cotizaciones').delete().eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('cotizaciones', id, 'Elimino cotizacion');
             this.clearCache();
             return true;
         } catch (e) {
@@ -1963,7 +1934,7 @@ const API = {
         try {
             // 1. Cargar todas las recetas de una vez
             const { data: allComps, error } = await supabaseClient
-                .from('receta_componentes').select('item_id, componente_type, componente_id');
+                .from('receta_componentes').select('item_id, componente_type, componente_id').eq('_deleted', false);
             if (error) throw error;
 
             // 2. Grafo inverso: componenteKey → [itemIds que lo usan]
