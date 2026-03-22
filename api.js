@@ -999,7 +999,12 @@ const API = {
                 .from('profiles')
                 .update({ active })
                 .eq('id', userId);
-            if (error) throw error;
+            if (error) {
+                if (error.message?.includes('schema cache')) {
+                    return { success: false, error: 'La columna "active" no existe en la BD. Ejecutá la migración SQL.' };
+                }
+                throw error;
+            }
             return { success: true };
         } catch (e) {
             console.warn('[API] Error toggling user active:', e.message);
@@ -1015,12 +1020,33 @@ const API = {
             if (updates.role !== undefined) payload.role = updates.role;
             if (updates.custom_permissions !== undefined) payload.custom_permissions = updates.custom_permissions;
             if (updates.telefono !== undefined) payload.telefono = updates.telefono;
-            const { data, error } = await supabaseClient
-                .from('profiles')
-                .update(payload)
-                .eq('id', userId)
-                .select()
-                .single();
+
+            const doUpdate = async (p) => {
+                const { data, error } = await supabaseClient
+                    .from('profiles')
+                    .update(p)
+                    .eq('id', userId)
+                    .select()
+                    .single();
+                return { data, error };
+            };
+
+            let { data, error } = await doUpdate(payload);
+
+            // If column doesn't exist, retry without it
+            if (error && error.message?.includes('schema cache')) {
+                const safePayload = {};
+                if (payload.name !== undefined) safePayload.name = payload.name;
+                if (payload.initials !== undefined) safePayload.initials = payload.initials;
+                if (payload.role !== undefined) safePayload.role = payload.role;
+                if (Object.keys(safePayload).length > 0) {
+                    const retry = await doUpdate(safePayload);
+                    data = retry.data;
+                    error = retry.error;
+                    if (!error) console.warn('[API] updateProfile: saved core fields only (missing columns in DB)');
+                }
+            }
+
             if (error) {
                 console.error('[API] Supabase updateProfile error:', error.code, error.message, error.details, error.hint);
                 throw error;
