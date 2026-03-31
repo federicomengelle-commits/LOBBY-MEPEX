@@ -554,7 +554,7 @@ const Modules = {
             if (apiType === 'cotizaciones') {
                 btnNew.title = 'Abrir Cotizador';
                 btnNew.addEventListener('click', () => {
-                    window.open('https://cotizador-mepex.vercel.app', '_blank', 'noopener');
+                    window.open('http://195.200.1.250/cotizador/', '_blank', 'noopener');
                 });
             } else {
                 btnNew.addEventListener('click', () => {

@@ -80,19 +80,19 @@ const Data = {
     // ─── ACCIONES RÁPIDAS POR ROL ───
     quickActions: {
         superadmin: [
-            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
+            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
             { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
         ],
         admin: [
-            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
+            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
             { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
         ],
         venta: [
-            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'https://cotizador-mepex.vercel.app' },
+            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
         ],
@@ -143,7 +143,7 @@ const Data = {
                     icon: '📄',
                     description: 'Armar cotización → PDF con marca → guardado en Notion',
                     isExternal: true,
-                    externalUrl: 'https://cotizador-mepex.vercel.app',
+                    externalUrl: 'http://195.200.1.250/cotizador/',
                     fields: []
                 },
                 {
