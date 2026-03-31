@@ -1478,6 +1478,10 @@ const API = {
                     // Campos del cotizador
                     tipoCotizacion: c.tipo_cotizacion || '',
                     tipoStand: c.tipo_stand || '',
+                    projectId: c.project_id || null,
+                    eventId: c.event_id || null,
+                    fullState: c.full_state || null,
+                    altura: c.altura || '',
                     superficie: parseFloat(c.superficie) || 0,
                     pdfUrl: c.pdf_url || '',
                     fechaEmision: c.fecha_emision,

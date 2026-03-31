@@ -22,6 +22,8 @@ const Modules = {
     _activeClasificacionFilter: [],  // multi-select
     _activeCategoriaFilter: [],      // multi-select
     _activeProveedorFilter: [],      // multi-select
+    _activeCotClienteFilter: [],
+    _activeCotEventoFilter: [],
 
     // ─── Insumos color maps ───
     _clasificacionColors: {
@@ -898,6 +900,15 @@ const Modules = {
                     return label.includes(f) || (c.estado || '').toLowerCase().includes(f);
                 });
             }
+        }
+
+        // Cotizaciones: Client filter
+        if (type === 'cotizaciones' && this._activeCotClienteFilter && this._activeCotClienteFilter.length > 0) {
+            data = data.filter(c => this._activeCotClienteFilter.includes(c.clienteNombre));
+        }
+        // Cotizaciones: Event filter
+        if (type === 'cotizaciones' && this._activeCotEventoFilter && this._activeCotEventoFilter.length > 0) {
+            data = data.filter(c => this._activeCotEventoFilter.includes(c.nombreEvento));
         }
 
         // Type filter (projects)
@@ -3323,17 +3334,38 @@ const Modules = {
                         </div>
                         <div class="ficha-section">
                             <div class="ficha-section-title">Evento</div>
-                            <div class="ficha-row"><span class="ficha-row-label">Evento</span><span class="ficha-row-value">${item.nombreEvento ? `<span class="ficha-chip" data-link-type="evento" style="cursor:pointer; color:var(--primary)">${item.nombreEvento}</span>` : '—'}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Evento</span><span class="ficha-row-value">${item.nombreEvento ? `<span class="ficha-chip" data-link-type="evento" data-link-id="${item.eventId || ''}" style="cursor:pointer; color:var(--primary)">${item.nombreEvento}</span>` : '—'}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Tipo</span><span class="ficha-row-value">${v(item.tipoEvento)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Fecha</span><span class="ficha-row-value">${item.fechaEvento ? new Date(item.fechaEvento + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</span></div>
                         </div>
+                        ${item.projectId ? `<div class="ficha-section">
+                            <div class="ficha-section-title">Proyecto</div>
+                            <div class="ficha-row"><span class="ficha-row-label">Proyecto</span><span class="ficha-row-value"><span class="ficha-chip" data-link-type="proyecto" data-link-id="${item.projectId}" style="cursor:pointer; color:var(--primary)">📋 Ver proyecto</span></span></div>
+                        </div>` : ''}
                         <div class="ficha-section">
                             <div class="ficha-section-title">Presupuesto</div>
                             <div class="ficha-row"><span class="ficha-row-label">Subtotal</span><span class="ficha-row-value">${fmt(item.subtotal)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">IVA (21%)</span><span class="ficha-row-value">${fmt(item.iva)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Total</span><span class="ficha-row-value" style="font-weight:700; color:#00ACC9; font-size:1rem;">${fmt(item.montoTotal)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Emisión</span><span class="ficha-row-value">${item.fechaEmision ? new Date(item.fechaEmision + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</span></div>
-                            ${item.pdfUrl ? `<div class="ficha-row"><span class="ficha-row-label">PDF</span><span class="ficha-row-value"><a href="${item.pdfUrl}" target="_blank" class="cot-pdf-link" style="color:#3B82F6">📄 Ver PDF</a></span></div>` : ''}
+                            ${item.pdfUrl ? `
+                            </div>
+                            <div class="ficha-pdf-section">
+                                <div class="ficha-section-title">Propuesta PDF</div>
+                                <div class="ficha-pdf-actions">
+                                    <button class="btn btn-primary btn-sm" id="fichaPdfPreview" data-url="${item.pdfUrl}">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                        Ver PDF
+                                    </button>
+                                    <a href="${item.pdfUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                        Nueva pestaña
+                                    </a>
+                                </div>
+                                <div class="ficha-pdf-embed" id="fichaPdfEmbed" style="display:none;">
+                                    <iframe src="" class="ficha-pdf-iframe" id="fichaPdfIframe"></iframe>
+                                </div>
+                            ` : ''}
                         </div>
                         ${item.pymeVentaId ? `<div class="ficha-section pyme-ficha-section">
                             <div class="ficha-section-title">🧾 Facturación (La PyME)</div>
@@ -3952,7 +3984,7 @@ const Modules = {
         const panel = document.getElementById('fichaPanel');
         if (!panel) return;
 
-        // Cross-links to client/event fichas
+        // Cross-links to client/event/proyecto fichas
         panel.querySelectorAll('.ficha-chip[data-link-type]').forEach(chip => {
             chip.addEventListener('click', async () => {
                 const linkType = chip.dataset.linkType;
@@ -3961,14 +3993,52 @@ const Modules = {
                     const client = clients?.find(c => c.id === item.clienteId);
                     if (client) { this._closeFicha(); setTimeout(() => this._openFicha(client, 'clients'), 300); }
                 }
-                if (linkType === 'evento' && item.nombreEvento) {
+                if (linkType === 'evento') {
                     const events = await API.getEvents();
-                    const evName = item.nombreEvento.trim().toLowerCase();
-                    const event = events?.find(e => (e.name || '').trim().toLowerCase() === evName);
+                    let event = null;
+                    // Prefer FK lookup
+                    if (item.eventId) {
+                        event = events?.find(e => e.id === item.eventId);
+                    }
+                    // Fallback to name match
+                    if (!event && item.nombreEvento) {
+                        const evName = item.nombreEvento.trim().toLowerCase();
+                        event = events?.find(e => (e.name || '').trim().toLowerCase() === evName);
+                    }
                     if (event) { this._closeFicha(); setTimeout(() => this._openFicha(event, 'events'), 300); }
+                }
+                if (linkType === 'proyecto' && (item.projectId || chip.dataset.linkId)) {
+                    const pid = item.projectId || chip.dataset.linkId;
+                    const projects = await API.getProjects();
+                    const project = projects?.find(p => p.id === pid);
+                    if (project) { this._closeFicha(); setTimeout(() => this._openFicha(project, 'projects'), 300); }
                 }
             });
         });
+
+        // PDF preview toggle
+        const pdfBtn = panel.querySelector('#fichaPdfPreview');
+        if (pdfBtn) {
+            pdfBtn.addEventListener('click', () => {
+                const embedEl = document.getElementById('fichaPdfEmbed');
+                const iframe = document.getElementById('fichaPdfIframe');
+                if (!embedEl || !iframe) return;
+
+                if (embedEl.style.display === 'none') {
+                    iframe.src = pdfBtn.dataset.url;
+                    embedEl.style.display = 'block';
+                    pdfBtn.innerHTML = `
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        Ocultar PDF`;
+                } else {
+                    embedEl.style.display = 'none';
+                    iframe.src = '';
+                    pdfBtn.innerHTML = `
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        Ver PDF`;
+                }
+            });
+        }
 
         // V2: Urgency indicator
         this._renderResumenUrgency(item);
@@ -4178,6 +4248,8 @@ const Modules = {
         if (filterId === 'clasificacion') return this._activeClasificacionFilter;
         if (filterId === 'categoria') return this._activeCategoriaFilter;
         if (filterId === 'proveedor') return this._activeProveedorFilter;
+        if (filterId === 'cot_cliente') return this._activeCotClienteFilter;
+        if (filterId === 'cot_evento') return this._activeCotEventoFilter;
         return [];
     },
 
@@ -4185,6 +4257,8 @@ const Modules = {
         if (filterId === 'clasificacion') this._activeClasificacionFilter = arr;
         if (filterId === 'categoria') this._activeCategoriaFilter = arr;
         if (filterId === 'proveedor') this._activeProveedorFilter = arr;
+        if (filterId === 'cot_cliente') this._activeCotClienteFilter = arr;
+        if (filterId === 'cot_evento') this._activeCotEventoFilter = arr;
     },
 
     _attachInsumosListeners(data) {
@@ -5847,13 +5921,32 @@ const Modules = {
         const filtersEl = document.getElementById('apiToolbarFilters');
         if (filtersEl) {
             const statuses = ['Todos', 'Borrador', 'Enviada', 'En Negociación', 'Aprobada', 'Cerrada Ganada', 'Cerrada Perdida'];
+
+            // Use _currentApiData (unfiltered) for filter options so they don't disappear when filtering
+            const allData = this._currentApiData || cotizaciones;
+            const allClienteOpts = [...new Set(allData.map(c => c.clienteNombre).filter(Boolean))].sort();
+            const allEventoOpts = [...new Set(allData.map(c => c.nombreEvento).filter(Boolean))].sort();
+
             filtersEl.innerHTML = `
-                <div class="mepex-filter-chips">
+                <div class="mepex-filter-chips" style="margin-bottom: 8px;">
                     ${statuses.map(s => `
                         <button class="mepex-filter-chip ${(!this._activeStatusFilter && s === 'Todos') || this._activeStatusFilter === s ? 'active' : ''}" data-status-filter="${s}">${s}</button>
                     `).join('')}
                 </div>
+                <div class="mepex-multifilter-bar">
+                    ${this._renderMultiFilter('cot_cliente', 'Cliente', allClienteOpts, this._activeCotClienteFilter)}
+                    ${this._renderMultiFilter('cot_evento', 'Evento', allEventoOpts, this._activeCotEventoFilter)}
+                    ${(this._activeCotClienteFilter.length || this._activeCotEventoFilter.length) ? '<button class="mepex-filter-clear-btn" id="btnClearCotFilters">Limpiar filtros</button>' : ''}
+                </div>
             `;
+            this._attachMultiFilterListeners(filtersEl);
+
+            // Clear button for cot-specific filters
+            document.getElementById('btnClearCotFilters')?.addEventListener('click', () => {
+                this._activeCotClienteFilter = [];
+                this._activeCotEventoFilter = [];
+                this._applyAllFilters();
+            });
         }
 
         // Column panel
@@ -5882,9 +5975,16 @@ const Modules = {
                     case 'numero':
                         return `<td class="td-cot-code">${c.numero || '—'}</td>`;
                     case 'cliente':
-                        return `<td class="td-primary">${c.clienteNombre || '—'}</td>`;
+                        return c.clienteId
+                            ? `<td class="td-primary td-link" data-link-type="cliente" data-link-id="${c.clienteId}">${c.clienteNombre || '—'}</td>`
+                            : `<td class="td-primary">${c.clienteNombre || '—'}</td>`;
                     case 'evento':
-                        return `<td>${c.nombreEvento || '—'}</td>`;
+                        if (c.eventId) {
+                            return `<td class="td-link" data-link-type="evento" data-link-id="${c.eventId}">${c.nombreEvento || '—'}</td>`;
+                        }
+                        return c.nombreEvento
+                            ? `<td class="td-link" data-link-type="evento-nombre" data-link-nombre="${c.nombreEvento}">${c.nombreEvento}</td>`
+                            : `<td>—</td>`;
                     case 'tipoStand':
                         return `<td class="td-capitalize">${c.tipoStand || c.tipoCotizacion || '—'}</td>`;
                     case 'monto':
@@ -5980,6 +6080,34 @@ const Modules = {
                 const id = row.dataset.id;
                 const item = this._currentApiData.find(c => c.id == id);
                 if (item) this._openFichaByType(item, 'cotizaciones');
+            });
+        });
+
+        // Cell links → open ficha for cliente/evento
+        document.querySelectorAll('.td-link[data-link-type]').forEach(cell => {
+            cell.addEventListener('click', async (e) => {
+                e.stopPropagation(); // Prevent row click from firing
+                const linkType = cell.dataset.linkType;
+                const linkId = cell.dataset.linkId;
+
+                if (linkType === 'cliente' && linkId) {
+                    const clients = await API.getClients();
+                    const client = clients?.find(cl => cl.id === linkId);
+                    if (client) this._openFichaByType(client, 'clients');
+                }
+                if (linkType === 'evento' && linkId) {
+                    const events = await API.getEvents();
+                    const event = events?.find(ev => ev.id === linkId);
+                    if (event) this._openFichaByType(event, 'events');
+                }
+                if (linkType === 'evento-nombre') {
+                    const nombre = cell.dataset.linkNombre;
+                    if (nombre) {
+                        const events = await API.getEvents();
+                        const event = events?.find(ev => (ev.name || '').trim().toLowerCase() === nombre.trim().toLowerCase());
+                        if (event) this._openFichaByType(event, 'events');
+                    }
+                }
             });
         });
 
