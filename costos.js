@@ -32,6 +32,13 @@ const CostosModule = {
     // Receta status cache (item.id → { status, comps })
     _recetaStatusCache: {},
 
+    // Listas de precio
+    _listas: [],
+    _selectedLista: null,
+    _listaRubros: [],   // override por rubro for selected list
+    _listaItems: [],    // override por item for selected list
+    _listaSearchQuery: '',
+
     // Options
     _clasificacionOpts: ['Logística', 'Sub alquiler', 'Materiales', 'Insumo', 'Mano de obra'],
     _categoriaOpts: ['Logística', 'Oficina', 'Materia prima', 'Ferretería', 'Limpieza', 'Pintura', 'Embalaje', 'Electricidad', 'Mano de Obra'],
@@ -156,16 +163,19 @@ const CostosModule = {
 
     async _loadData() {
         try {
-            const [insumos, items] = await Promise.all([
+            const [insumos, items, listas] = await Promise.all([
                 API.getInsumos(),
                 API.getCatalogoItems(),
+                API.getListasPrecio(),
             ]);
             this._insumos = insumos || [];
             this._catalogoItems = items || [];
+            this._listas = listas || [];
         } catch (e) {
             console.warn('[Costos] Error loading data:', e.message);
             this._insumos = [];
             this._catalogoItems = [];
+            this._listas = [];
         }
 
         // Pre-load recipe statuses for all catalog items
@@ -266,38 +276,594 @@ const CostosModule = {
                 this._renderRecetasFilters();
                 break;
             case 'listas-precio':
-                this._renderPlaceholderTab();
                 this._clearFilters();
+                this._renderListasPrecioTab();
                 break;
         }
     },
 
-    _renderPlaceholderTab() {
+    // ═══════════════════════════════════════════
+    //  TAB: LISTAS DE PRECIO
+    // ═══════════════════════════════════════════
+
+    async _renderListasPrecioTab() {
         const container = document.getElementById('costosMainContent');
-        const filtersEl = document.getElementById('costosFilters');
-        if (filtersEl) filtersEl.innerHTML = '';
         if (!container) return;
 
-        const tabName = 'Listas de Precio';
-        const tabIcon = '💲';
+        // Build cards for each lista + "new" button
+        const cardsHtml = this._listas.map(l => {
+            const isSelected = this._selectedLista && this._selectedLista.id === l.id;
+            const tipoIcon = l.tipo === 'general' ? '📋' : l.tipo === 'agencias' ? '🏢' : '📝';
+            const estadoBadge = l.estado === 'activa'
+                ? '<span class="costos-lista-badge activa">Activa</span>'
+                : '<span class="costos-lista-badge borrador">Borrador</span>';
+            return `
+                <div class="costos-lista-card ${isSelected ? 'selected' : ''}" data-lista-id="${l.id}">
+                    <div class="costos-lista-card-header">
+                        <span class="costos-lista-card-icon">${tipoIcon}</span>
+                        <span class="costos-lista-card-name">${l.nombre}</span>
+                        ${estadoBadge}
+                    </div>
+                    <div class="costos-lista-card-meta">
+                        <span class="costos-lista-card-margen">Margen global: <strong>${l.margenGlobal}%</strong></span>
+                        <span class="costos-lista-card-tipo">${l.tipo}</span>
+                    </div>
+                    ${l.tipo === 'custom' ? `
+                        <div class="costos-lista-card-actions">
+                            <button class="costos-lista-btn-edit" data-lista-id="${l.id}" title="Editar">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            <button class="costos-lista-btn-delete" data-lista-id="${l.id}" title="Eliminar">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
 
         container.innerHTML = `
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; gap: 24px; padding: 60px 24px; text-align: center;">
-                <div style="width: 80px; height: 80px; border-radius: 16px; background: #4A90D915; border: 1px solid #4A90D930; display: flex; align-items: center; justify-content: center; font-size: 36px;">
-                    ${tabIcon}
+            <div class="costos-listas-layout">
+                <div class="costos-listas-sidebar">
+                    <div class="costos-listas-sidebar-header">
+                        <span>Listas de Precio</span>
+                        <button class="costos-btn-new-lista" id="costosNewLista" title="Nueva lista">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </button>
+                    </div>
+                    <div class="costos-listas-cards">
+                        ${cardsHtml}
+                    </div>
                 </div>
-                <div>
-                    <h3 style="font-family: var(--font-main); font-size: 1.5rem; font-weight: 600; color: var(--text-primary); margin: 0 0 8px 0;">${tabName}</h3>
-                    <p style="font-family: var(--font-main); font-size: 0.95rem; color: var(--text-muted); margin: 0 0 16px 0;">
-                        Esta sección está en desarrollo
-                    </p>
-                    <span class="badge badge-accent">En desarrollo</span>
+                <div class="costos-listas-detail" id="costosListaDetail">
+                    ${this._selectedLista ? '' : `
+                        <div class="costos-listas-empty-detail">
+                            <div class="costos-listas-empty-icon">💲</div>
+                            <p>Seleccioná una lista para ver los precios</p>
+                        </div>
+                    `}
                 </div>
             </div>
         `;
 
+        // If a lista is selected, render its detail
+        if (this._selectedLista) {
+            await this._renderListaDetail(this._selectedLista);
+        }
+
+        this._attachListasEvents();
+
         const countEl = document.getElementById('costosRecordCount');
-        if (countEl) countEl.textContent = '';
+        if (countEl) countEl.textContent = `${this._listas.length} lista${this._listas.length !== 1 ? 's' : ''}`;
+    },
+
+    async _renderListaDetail(lista) {
+        const detailEl = document.getElementById('costosListaDetail');
+        if (!detailEl) return;
+
+        // Load overrides for this lista
+        const [rubros, items] = await Promise.all([
+            API.getListaRubros(lista.id),
+            API.getListaItems(lista.id),
+        ]);
+        this._listaRubros = rubros;
+        this._listaItems = items;
+
+        // Build rubro overrides map
+        const rubroMap = {};
+        for (const r of rubros) rubroMap[r.rubro] = r;
+        // Build item overrides map
+        const itemMap = {};
+        for (const i of items) itemMap[i.itemId] = i;
+
+        // Get General lista for Agencias comparison
+        let generalLista = null;
+        let generalRubroMap = {};
+        let generalItemMap = {};
+        if (lista.tipo === 'agencias') {
+            generalLista = this._listas.find(l => l.tipo === 'general');
+            if (generalLista) {
+                const [gRubros, gItems] = await Promise.all([
+                    API.getListaRubros(generalLista.id),
+                    API.getListaItems(generalLista.id),
+                ]);
+                for (const r of gRubros) generalRubroMap[r.rubro] = r;
+                for (const i of gItems) generalItemMap[i.itemId] = i;
+            }
+        }
+
+        // Filter items by search
+        let catalogData = [...this._catalogoItems];
+        const q = (this._listaSearchQuery || '').toLowerCase();
+        if (q) {
+            catalogData = catalogData.filter(i =>
+                (i.nombre || '').toLowerCase().includes(q) ||
+                (i.codigo || '').toLowerCase().includes(q) ||
+                (i.rubro || '').toLowerCase().includes(q)
+            );
+        }
+
+        // Sort by nombre
+        catalogData.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+        // Helper: resolve effective margin for an item in a lista
+        const getMargen = (item, listaObj, rMap, iMap) => {
+            // Item override > Rubro override > Global
+            if (iMap[item.id]) return { value: iMap[item.id].margen, level: 'item' };
+            if (item.rubro && rMap[item.rubro]) return { value: rMap[item.rubro].margen, level: 'rubro' };
+            return { value: listaObj.margenGlobal, level: 'global' };
+        };
+
+        const isAgencias = lista.tipo === 'agencias' && generalLista;
+
+        const rows = catalogData.map(item => {
+            const rs = this._getRecetaStatus(item.id);
+            const costo = rs.costoCalculado || 0;
+            const m = getMargen(item, lista, rubroMap, itemMap);
+            const precio = API.calcPrecioCliente(costo, m.value);
+
+            // Level indicator
+            const levelClass = `costos-margen-${m.level}`;
+            const levelTitle = m.level === 'item' ? 'Override item' : m.level === 'rubro' ? 'Override rubro' : 'Margen global';
+
+            // Agencias discount column
+            let descuentoCol = '';
+            if (isAgencias) {
+                const gm = getMargen(item, generalLista, generalRubroMap, generalItemMap);
+                const precioGeneral = API.calcPrecioCliente(costo, gm.value);
+                const diff = precioGeneral > 0 ? Math.round((1 - precio / precioGeneral) * 10000) / 100 : 0;
+                descuentoCol = `<td class="td-number"><span class="costos-descuento-badge">${diff > 0 ? '-' : ''}${Math.abs(diff)}%</span></td>`;
+            }
+
+            return `
+                <tr class="costos-table-row costos-lista-item-row" data-item-id="${item.id}">
+                    <td><span class="td-mono">${item.codigo || '—'}</span></td>
+                    <td><span class="td-primary">${item.nombre}</span></td>
+                    <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
+                    <td class="td-number">${API.formatCurrency(costo)}</td>
+                    <td class="costos-margen-cell">
+                        <div class="costos-margen-inline ${levelClass}" title="${levelTitle}">
+                            <input type="number" class="costos-margen-input" data-item-id="${item.id}" value="${m.value}" step="0.5" min="0" max="999">
+                            <span class="costos-margen-pct">%</span>
+                            <span class="costos-margen-level" title="${levelTitle}">${m.level === 'item' ? '●' : m.level === 'rubro' ? '◐' : '○'}</span>
+                        </div>
+                    </td>
+                    <td class="td-number td-mono"><strong>${API.formatCurrency(precio)}</strong></td>
+                    ${descuentoCol}
+                </tr>
+            `;
+        }).join('');
+
+        const estadoBadge = lista.estado === 'activa'
+            ? '<span class="costos-lista-badge activa">Activa</span>'
+            : '<span class="costos-lista-badge borrador">Borrador</span>';
+
+        detailEl.innerHTML = `
+            <div class="costos-lista-detail-header">
+                <div class="costos-lista-detail-title">
+                    <h3>${lista.nombre}</h3>
+                    ${estadoBadge}
+                    <span class="costos-lista-detail-tipo">${lista.tipo}</span>
+                </div>
+                <div class="costos-lista-detail-controls">
+                    <div class="costos-lista-global-margen">
+                        <label>Margen global:</label>
+                        <div class="costos-margen-inline costos-margen-global">
+                            <input type="number" class="costos-margen-input" id="costosGlobalMargenInput" value="${lista.margenGlobal}" step="0.5" min="0" max="999">
+                            <span class="costos-margen-pct">%</span>
+                        </div>
+                    </div>
+                    <div class="costos-lista-search-box">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="costos-lista-search-input" id="costosListaSearchInput" placeholder="Filtrar items…" value="${this._listaSearchQuery || ''}" autocomplete="off">
+                    </div>
+                    <button class="costos-btn-rubro-overrides" id="costosRubroOverrides" title="Overrides por rubro">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+                        Rubros (${rubros.length})
+                    </button>
+                </div>
+            </div>
+            <div class="costos-lista-detail-legend">
+                <span class="costos-legend-item"><span class="costos-margen-level">○</span> Global</span>
+                <span class="costos-legend-item"><span class="costos-margen-level" style="color:#F28D15">◐</span> Rubro</span>
+                <span class="costos-legend-item"><span class="costos-margen-level" style="color:#00A9C1">●</span> Item</span>
+                ${isAgencias ? '<span class="costos-legend-item costos-legend-agencias">Descuento = diferencia vs General</span>' : ''}
+            </div>
+            <div class="costos-lista-table-wrap">
+                ${catalogData.length === 0 ? `
+                    <div class="costos-empty">
+                        <div class="costos-empty-icon">💲</div>
+                        <p>No se encontraron items</p>
+                    </div>
+                ` : `
+                    <table class="costos-table costos-lista-table">
+                        <thead>
+                            <tr>
+                                <th>CÓDIGO</th>
+                                <th>ITEM</th>
+                                <th>RUBRO</th>
+                                <th>COSTO PROD.</th>
+                                <th>MARGEN (%)</th>
+                                <th>PRECIO FINAL</th>
+                                ${isAgencias ? '<th>DESC. vs GENERAL</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                `}
+            </div>
+        `;
+
+        this._attachListaDetailEvents(lista, rubroMap, itemMap);
+    },
+
+    _attachListasEvents() {
+        // Card selection
+        document.querySelectorAll('.costos-lista-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.costos-lista-btn-edit') || e.target.closest('.costos-lista-btn-delete')) return;
+                const id = parseInt(card.dataset.listaId);
+                const lista = this._listas.find(l => l.id === id);
+                if (!lista) return;
+                this._selectedLista = lista;
+                this._listaSearchQuery = '';
+                this._renderListasPrecioTab();
+            });
+        });
+
+        // Edit buttons
+        document.querySelectorAll('.costos-lista-btn-edit').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.dataset.listaId);
+                const lista = this._listas.find(l => l.id === id);
+                if (lista) this._openEditListaModal(lista);
+            });
+        });
+
+        // Delete buttons
+        document.querySelectorAll('.costos-lista-btn-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const id = parseInt(btn.dataset.listaId);
+                const lista = this._listas.find(l => l.id === id);
+                if (!lista) return;
+                const ok = await Confirm.delete(lista.nombre);
+                if (!ok) return;
+                const result = await API.deleteListaPrecio(id);
+                if (result) {
+                    Toast.success(`Lista "${lista.nombre}" eliminada`);
+                    if (this._selectedLista && this._selectedLista.id === id) this._selectedLista = null;
+                    await this._refreshData();
+                } else {
+                    Toast.error('Error al eliminar la lista');
+                }
+            });
+        });
+
+        // New lista button
+        const newBtn = document.getElementById('costosNewLista');
+        if (newBtn) newBtn.addEventListener('click', () => this._openNewListaModal());
+    },
+
+    _attachListaDetailEvents(lista, rubroMap, itemMap) {
+        // Global margin input
+        const globalInput = document.getElementById('costosGlobalMargenInput');
+        if (globalInput) {
+            const saveGlobal = async () => {
+                const val = parseFloat(globalInput.value) || 0;
+                if (val === lista.margenGlobal) return;
+                const result = await API.updateListaPrecio(lista.id, { margenGlobal: val });
+                if (result) {
+                    lista.margenGlobal = val;
+                    this._selectedLista = lista;
+                    Toast.success(`Margen global actualizado a ${val}%`);
+                    await this._refreshListaDetail();
+                }
+            };
+            globalInput.addEventListener('blur', saveGlobal);
+            globalInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); globalInput.blur(); }
+                if (e.key === 'Escape') { globalInput.value = lista.margenGlobal; globalInput.blur(); }
+            });
+        }
+
+        // Item margin inputs
+        document.querySelectorAll('.costos-margen-input[data-item-id]').forEach(input => {
+            const itemId = parseInt(input.dataset.itemId);
+            const originalVal = parseFloat(input.value);
+
+            const saveMargin = async () => {
+                const val = parseFloat(input.value) || 0;
+                if (val === originalVal) return;
+
+                // Determine if this creates/updates an item override
+                const item = this._catalogoItems.find(i => i.id === itemId);
+
+                // If value matches rubro or global, remove item override instead
+                const rubroMargen = item && item.rubro && rubroMap[item.rubro] ? rubroMap[item.rubro].margen : null;
+                const globalMargen = lista.margenGlobal;
+
+                if (rubroMargen !== null && val === rubroMargen) {
+                    // Remove item override, falls back to rubro
+                    const existing = itemMap[itemId];
+                    if (existing) await API.deleteListaItem(existing.id);
+                } else if (rubroMargen === null && val === globalMargen) {
+                    // Remove item override, falls back to global
+                    const existing = itemMap[itemId];
+                    if (existing) await API.deleteListaItem(existing.id);
+                } else {
+                    // Upsert item override
+                    await API.upsertListaItem(lista.id, itemId, val);
+                }
+
+                await this._refreshListaDetail();
+            };
+
+            input.addEventListener('blur', saveMargin);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                if (e.key === 'Escape') { input.value = originalVal; input.blur(); }
+            });
+        });
+
+        // Lista search input
+        const searchInput = document.getElementById('costosListaSearchInput');
+        if (searchInput) {
+            let debounce;
+            searchInput.addEventListener('input', () => {
+                clearTimeout(debounce);
+                debounce = setTimeout(() => {
+                    this._listaSearchQuery = searchInput.value.trim();
+                    this._renderListaDetail(lista);
+                }, 200);
+            });
+        }
+
+        // Rubro overrides button
+        const rubroBtn = document.getElementById('costosRubroOverrides');
+        if (rubroBtn) {
+            rubroBtn.addEventListener('click', () => this._openRubroOverridesModal(lista));
+        }
+    },
+
+    async _refreshListaDetail() {
+        if (!this._selectedLista) return;
+        // Re-fetch lista data in case global margin changed
+        API.clearCache();
+        const listas = await API.getListasPrecio();
+        this._listas = listas || [];
+        const updated = this._listas.find(l => l.id === this._selectedLista.id);
+        if (updated) this._selectedLista = updated;
+        await this._renderListaDetail(this._selectedLista);
+        // Re-render cards to reflect changes
+        document.querySelectorAll('.costos-lista-card').forEach(card => {
+            const id = parseInt(card.dataset.listaId);
+            card.classList.toggle('selected', this._selectedLista && this._selectedLista.id === id);
+        });
+    },
+
+    _openNewListaModal() {
+        Modal.open({
+            title: 'Nueva Lista de Precio',
+            size: 'small',
+            body: `
+                <div style="display:flex;flex-direction:column;gap:16px;padding:8px 0;">
+                    <div>
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Nombre</label>
+                        <input type="text" id="newListaNombre" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;" placeholder="Ej: Lista Mayoristas">
+                    </div>
+                    <div>
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Margen global (%)</label>
+                        <input type="number" id="newListaMargen" value="30" step="0.5" min="0" max="999" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-mono);font-size:14px;">
+                    </div>
+                    <div>
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Descripción</label>
+                        <textarea id="newListaDesc" rows="2" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;resize:vertical;" placeholder="Opcional…"></textarea>
+                    </div>
+                    <div>
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Estado</label>
+                        <select id="newListaEstado" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;">
+                            <option value="borrador">Borrador</option>
+                            <option value="activa">Activa</option>
+                        </select>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn btn-primary" id="newListaSave">Crear Lista</button>
+            `,
+        });
+
+        setTimeout(() => {
+            const saveBtn = document.getElementById('newListaSave');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', async () => {
+                    const nombre = document.getElementById('newListaNombre')?.value?.trim();
+                    if (!nombre) { Toast.warning('Ingresá un nombre'); return; }
+                    const margen = parseFloat(document.getElementById('newListaMargen')?.value) || 0;
+                    const desc = document.getElementById('newListaDesc')?.value?.trim() || '';
+                    const estado = document.getElementById('newListaEstado')?.value || 'borrador';
+
+                    const result = await API.createListaPrecio({
+                        nombre, tipo: 'custom', estado, margenGlobal: margen, descripcion: desc,
+                    });
+                    if (result) {
+                        Toast.success(`Lista "${nombre}" creada`);
+                        Modal.close();
+                        await this._refreshData();
+                    } else {
+                        Toast.error('Error al crear la lista');
+                    }
+                });
+            }
+            document.getElementById('newListaNombre')?.focus();
+        }, 100);
+    },
+
+    _openEditListaModal(lista) {
+        Modal.open({
+            title: `Editar: ${lista.nombre}`,
+            size: 'small',
+            body: `
+                <div style="display:flex;flex-direction:column;gap:16px;padding:8px 0;">
+                    <div>
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Nombre</label>
+                        <input type="text" id="editListaNombre" value="${lista.nombre}" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;">
+                    </div>
+                    <div>
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Descripción</label>
+                        <textarea id="editListaDesc" rows="2" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;resize:vertical;">${lista.descripcion || ''}</textarea>
+                    </div>
+                    <div>
+                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Estado</label>
+                        <select id="editListaEstado" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;">
+                            <option value="borrador" ${lista.estado === 'borrador' ? 'selected' : ''}>Borrador</option>
+                            <option value="activa" ${lista.estado === 'activa' ? 'selected' : ''}>Activa</option>
+                        </select>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn btn-primary" id="editListaSave">Guardar</button>
+            `,
+        });
+
+        setTimeout(() => {
+            const saveBtn = document.getElementById('editListaSave');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', async () => {
+                    const nombre = document.getElementById('editListaNombre')?.value?.trim();
+                    if (!nombre) { Toast.warning('Ingresá un nombre'); return; }
+                    const desc = document.getElementById('editListaDesc')?.value?.trim() || '';
+                    const estado = document.getElementById('editListaEstado')?.value || 'borrador';
+
+                    const result = await API.updateListaPrecio(lista.id, { nombre, descripcion: desc, estado });
+                    if (result) {
+                        Toast.success(`Lista actualizada`);
+                        Modal.close();
+                        if (this._selectedLista && this._selectedLista.id === lista.id) {
+                            this._selectedLista = { ...this._selectedLista, nombre, descripcion: desc, estado };
+                        }
+                        await this._refreshData();
+                    } else {
+                        Toast.error('Error al actualizar');
+                    }
+                });
+            }
+        }, 100);
+    },
+
+    _openRubroOverridesModal(lista) {
+        // Get all unique rubros from catalog
+        const rubros = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
+        const rubroMap = {};
+        for (const r of this._listaRubros) rubroMap[r.rubro] = r;
+
+        const rubroRows = rubros.map(rubro => {
+            const override = rubroMap[rubro];
+            const hasOverride = !!override;
+            const margen = hasOverride ? override.margen : lista.margenGlobal;
+            const itemCount = this._catalogoItems.filter(i => i.rubro === rubro).length;
+            return `
+                <div class="costos-rubro-override-row" data-rubro="${rubro}">
+                    <div class="costos-rubro-override-info">
+                        <span class="costos-rubro-override-name">${rubro}</span>
+                        <span class="costos-rubro-override-count">${itemCount} items</span>
+                    </div>
+                    <div class="costos-rubro-override-controls">
+                        <input type="number" class="costos-rubro-margen-input" data-rubro="${rubro}" value="${margen}" step="0.5" min="0" max="999" style="width:70px;padding:6px 8px;background:#1a1a1a;border:1px solid ${hasOverride ? '#F28D15' : 'var(--border)'};border-radius:4px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;text-align:right;">
+                        <span style="color:var(--text-muted);font-size:13px;">%</span>
+                        ${hasOverride ? `<button class="costos-rubro-remove-btn" data-rubro-id="${override.id}" title="Quitar override" style="background:none;border:none;color:#ff4444;cursor:pointer;padding:4px;">✕</button>` : '<span style="width:24px;"></span>'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        Modal.open({
+            title: `Overrides por Rubro — ${lista.nombre}`,
+            size: 'medium',
+            body: `
+                <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px 0;">
+                    Los márgenes por rubro sobreescriben el margen global (${lista.margenGlobal}%) para todos los items de ese rubro, salvo los que tengan override individual.
+                </p>
+                <div class="costos-rubro-overrides-list" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;">
+                    ${rubroRows || '<p style="color:var(--text-dim)">No hay rubros en el catálogo</p>'}
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" onclick="Modal.close()">Cerrar</button>
+                <button class="btn btn-primary" id="saveRubroOverrides">Guardar cambios</button>
+            `,
+        });
+
+        setTimeout(() => {
+            // Save all rubro overrides
+            const saveBtn = document.getElementById('saveRubroOverrides');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', async () => {
+                    const inputs = document.querySelectorAll('.costos-rubro-margen-input');
+                    let changes = 0;
+                    for (const input of inputs) {
+                        const rubro = input.dataset.rubro;
+                        const val = parseFloat(input.value) || 0;
+                        const existing = rubroMap[rubro];
+                        const existingVal = existing ? existing.margen : lista.margenGlobal;
+
+                        if (val !== existingVal) {
+                            if (val === lista.margenGlobal && existing) {
+                                // Remove override — falls back to global
+                                await API.deleteListaRubro(existing.id);
+                            } else if (val !== lista.margenGlobal) {
+                                await API.upsertListaRubro(lista.id, rubro, val);
+                            }
+                            changes++;
+                        }
+                    }
+                    if (changes > 0) {
+                        Toast.success(`${changes} rubro${changes > 1 ? 's' : ''} actualizado${changes > 1 ? 's' : ''}`);
+                        Modal.close();
+                        await this._refreshListaDetail();
+                    } else {
+                        Modal.close();
+                    }
+                });
+            }
+
+            // Remove individual override buttons
+            document.querySelectorAll('.costos-rubro-remove-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = parseInt(btn.dataset.rubroId);
+                    await API.deleteListaRubro(id);
+                    Toast.success('Override eliminado');
+                    Modal.close();
+                    this._openRubroOverridesModal(lista);
+                    await this._refreshListaDetail();
+                });
+            });
+        }, 100);
     },
 
     _clearFilters() {
@@ -1459,12 +2025,14 @@ const CostosModule = {
 
     async _refreshData() {
         API.clearCache();
-        const [insumos, items] = await Promise.all([
+        const [insumos, items, listas] = await Promise.all([
             API.getInsumos(),
             API.getCatalogoItems(),
+            API.getListasPrecio(),
         ]);
         this._insumos = insumos || [];
         this._catalogoItems = items || [];
+        this._listas = listas || [];
         await this._loadAllRecetaStatuses();
         this._updateTabCounts();
         this._renderActiveTab();

@@ -1967,6 +1967,171 @@ const API = {
         return Math.round(costoProduccion * (1 + margen / 100) * 100) / 100;
     },
 
+    // ─── Listas de Precio CRUD ─────────────────
+    async getListasPrecio() {
+        const cacheKey = 'listas_precio';
+        const cached = this._cache[cacheKey];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        try {
+            const { data, error } = await supabaseClient
+                .from('listas_precio').select('*').eq('_deleted', false).order('created_at', { ascending: true });
+            if (error) throw error;
+            const mapped = (data || []).map(l => ({
+                id: l.id, nombre: l.nombre, tipo: l.tipo,
+                estado: l.estado || 'borrador',
+                margenGlobal: parseFloat(l.margen_global) || 0,
+                descripcion: l.descripcion || '',
+                createdAt: l.created_at, updatedAt: l.updated_at,
+            }));
+            this._cache[cacheKey] = { data: mapped, ts: Date.now() };
+            return mapped;
+        } catch (e) {
+            console.warn('[API] Error fetching listas_precio:', e.message);
+            return [];
+        }
+    },
+
+    async createListaPrecio(data) {
+        try {
+            const payload = {
+                nombre: data.nombre || '', tipo: data.tipo || 'custom',
+                estado: data.estado || 'borrador',
+                margen_global: data.margenGlobal || 0,
+                descripcion: data.descripcion || '',
+            };
+            const result = await UndoHelpers.createRecord('listas_precio', payload, `Nueva lista: ${data.nombre}`);
+            this.clearCache();
+            return result || true;
+        } catch (e) {
+            console.warn('[API] Error creating lista_precio:', e.message);
+            return null;
+        }
+    },
+
+    async updateListaPrecio(id, data) {
+        try {
+            const payload = {};
+            if (data.nombre !== undefined) payload.nombre = data.nombre;
+            if (data.tipo !== undefined) payload.tipo = data.tipo;
+            if (data.estado !== undefined) payload.estado = data.estado;
+            if (data.margenGlobal !== undefined) payload.margen_global = data.margenGlobal;
+            if (data.descripcion !== undefined) payload.descripcion = data.descripcion;
+            payload.updated_at = new Date().toISOString();
+            await UndoHelpers.updateRecord('listas_precio', id, payload, 'Edito lista de precio');
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updating lista_precio:', e.message);
+            return null;
+        }
+    },
+
+    async deleteListaPrecio(id) {
+        try {
+            await UndoHelpers.deleteRecord('listas_precio', id, 'Elimino lista de precio');
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting lista_precio:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Lista Precio Rubros (override por rubro) ──
+    async getListaRubros(listaId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('lista_precio_rubros').select('*')
+                .eq('lista_id', listaId).eq('_deleted', false);
+            if (error) throw error;
+            return (data || []).map(r => ({
+                id: r.id, listaId: r.lista_id, rubro: r.rubro,
+                margen: parseFloat(r.margen) || 0,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching lista rubros:', e.message);
+            return [];
+        }
+    },
+
+    async upsertListaRubro(listaId, rubro, margen) {
+        try {
+            // Check if exists
+            const { data: existing } = await supabaseClient
+                .from('lista_precio_rubros').select('id')
+                .eq('lista_id', listaId).eq('rubro', rubro).eq('_deleted', false).limit(1);
+            if (existing && existing.length > 0) {
+                await supabaseClient.from('lista_precio_rubros')
+                    .update({ margen }).eq('id', existing[0].id);
+            } else {
+                await supabaseClient.from('lista_precio_rubros')
+                    .insert([{ lista_id: listaId, rubro, margen }]);
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error upserting lista rubro:', e.message);
+            return null;
+        }
+    },
+
+    async deleteListaRubro(id) {
+        try {
+            await supabaseClient.from('lista_precio_rubros')
+                .update({ _deleted: true }).eq('id', id);
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting lista rubro:', e.message);
+            return null;
+        }
+    },
+
+    // ─── Lista Precio Items (override por item) ──
+    async getListaItems(listaId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('lista_precio_items').select('*')
+                .eq('lista_id', listaId).eq('_deleted', false);
+            if (error) throw error;
+            return (data || []).map(r => ({
+                id: r.id, listaId: r.lista_id, itemId: r.item_id,
+                margen: parseFloat(r.margen) || 0,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching lista items:', e.message);
+            return [];
+        }
+    },
+
+    async upsertListaItem(listaId, itemId, margen) {
+        try {
+            const { data: existing } = await supabaseClient
+                .from('lista_precio_items').select('id')
+                .eq('lista_id', listaId).eq('item_id', itemId).eq('_deleted', false).limit(1);
+            if (existing && existing.length > 0) {
+                await supabaseClient.from('lista_precio_items')
+                    .update({ margen }).eq('id', existing[0].id);
+            } else {
+                await supabaseClient.from('lista_precio_items')
+                    .insert([{ lista_id: listaId, item_id: itemId, margen }]);
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error upserting lista item:', e.message);
+            return null;
+        }
+    },
+
+    async deleteListaItem(id) {
+        try {
+            await supabaseClient.from('lista_precio_items')
+                .update({ _deleted: true }).eq('id', id);
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleting lista item:', e.message);
+            return null;
+        }
+    },
+
     // ─── Insumo Precio Historial ─────────────────
     async logPrecioChange(insumoId, precioAnterior, precioNuevo, motivo = '') {
         try {
