@@ -32,7 +32,7 @@ const EventosModule = {
         { value: 'proximo', label: 'Próximo', color: '#00BCD4' },
         { value: 'en_curso', label: 'En curso', color: '#4CAF50' },
         { value: 'finalizado', label: 'Finalizado', color: '#666' },
-        { value: 'cancelado', label: 'Cancelado', color: '#ff4444' },
+        { value: 'rechazado', label: 'Rechazado', color: '#ff4444' },
     ],
 
     _rolOptions: ['Supervisor', 'Montajista', 'Electricista', 'Chofer', 'Auxiliar'],
@@ -155,7 +155,7 @@ const EventosModule = {
         const s = raw.toLowerCase().replace(/\s+/g, '_').replace(/á/g, 'a').replace(/ó/g, 'o');
         if (s.includes('curso') || s === 'en_proceso') return 'en_curso';
         if (s.includes('final')) return 'finalizado';
-        if (s.includes('cancel')) return 'cancelado';
+        if (s.includes('cancel') || s.includes('rechaz')) return 'rechazado';
         if (s.includes('proxim') || s === 'sin_empezar') return 'proximo';
         return 'proximo';
     },
@@ -554,6 +554,12 @@ const EventosModule = {
                                 <span class="ev-date-sep">—</span>
                                 <input type="date" class="ev-form-input" name="setupEndDate" value="${ev.setupEndDate || ''}">
                             </div>
+                            <div class="ev-date-row ev-time-row">
+                                <input type="time" class="ev-form-input ev-form-time" name="setupTimeOpen" value="${ev.setupTimeOpen || ''}" placeholder="Apertura">
+                                <span class="ev-date-sep">—</span>
+                                <input type="time" class="ev-form-input ev-form-time" name="setupTimeClose" value="${ev.setupTimeClose || ''}" placeholder="Cierre">
+                                <span class="ev-time-hint">Horario</span>
+                            </div>
                         </div>
                         <div class="ev-date-group">
                             <label class="ev-form-label">Funcionamiento</label>
@@ -562,6 +568,12 @@ const EventosModule = {
                                 <span class="ev-date-sep">—</span>
                                 <input type="date" class="ev-form-input" name="eventEndDate" value="${ev.eventEndDate || ''}">
                             </div>
+                            <div class="ev-date-row ev-time-row">
+                                <input type="time" class="ev-form-input ev-form-time" name="eventTimeOpen" value="${ev.eventTimeOpen || ''}" placeholder="Apertura">
+                                <span class="ev-date-sep">—</span>
+                                <input type="time" class="ev-form-input ev-form-time" name="eventTimeClose" value="${ev.eventTimeClose || ''}" placeholder="Cierre">
+                                <span class="ev-time-hint">Horario</span>
+                            </div>
                         </div>
                         <div class="ev-date-group">
                             <label class="ev-form-label">Desarme</label>
@@ -569,6 +581,12 @@ const EventosModule = {
                                 <input type="date" class="ev-form-input" name="teardownDate" value="${ev.teardownDate || ''}">
                                 <span class="ev-date-sep">—</span>
                                 <input type="date" class="ev-form-input" name="teardownEndDate" value="${ev.teardownEndDate || ''}">
+                            </div>
+                            <div class="ev-date-row ev-time-row">
+                                <input type="time" class="ev-form-input ev-form-time" name="teardownTimeOpen" value="${ev.teardownTimeOpen || ''}" placeholder="Apertura">
+                                <span class="ev-date-sep">—</span>
+                                <input type="time" class="ev-form-input ev-form-time" name="teardownTimeClose" value="${ev.teardownTimeClose || ''}" placeholder="Cierre">
+                                <span class="ev-time-hint">Horario</span>
                             </div>
                         </div>
                         <div class="ev-section-btns">
@@ -592,14 +610,17 @@ const EventosModule = {
                     <div class="ev-date-item">
                         <span class="ev-date-label">Armado</span>
                         <span class="ev-date-value">${this._fmtDateRange(ev.setupDate, ev.setupEndDate)}</span>
+                        ${this._fmtTimeRange(ev.setupTimeOpen, ev.setupTimeClose)}
                     </div>
                     <div class="ev-date-item">
                         <span class="ev-date-label">Funcionamiento</span>
                         <span class="ev-date-value">${this._fmtDateRange(ev.eventStartDate, ev.eventEndDate)}</span>
+                        ${this._fmtTimeRange(ev.eventTimeOpen, ev.eventTimeClose)}
                     </div>
                     <div class="ev-date-item">
                         <span class="ev-date-label">Desarme</span>
                         <span class="ev-date-value">${this._fmtDateRange(ev.teardownDate, ev.teardownEndDate)}</span>
+                        ${this._fmtTimeRange(ev.teardownTimeOpen, ev.teardownTimeClose)}
                     </div>
                 </div>
             </div>
@@ -1140,6 +1161,13 @@ const EventosModule = {
                 eventStartDate: getData('eventStartDate'),
                 eventEndDate: getData('eventEndDate'),
                 teardownDate: getData('teardownDate'),
+                // Horarios por fase
+                setupTimeOpen: getData('setupTimeOpen'),
+                setupTimeClose: getData('setupTimeClose'),
+                eventTimeOpen: getData('eventTimeOpen'),
+                eventTimeClose: getData('eventTimeClose'),
+                teardownTimeOpen: getData('teardownTimeOpen'),
+                teardownTimeClose: getData('teardownTimeClose'),
             };
             const teardownEndDate = getData('teardownEndDate');
 
@@ -1148,7 +1176,7 @@ const EventosModule = {
             if (result) {
                 // Log date changes
                 const user = Auth.getUser()?.name || '';
-                API.logEventChange(ev.id, 'campo_editado', 'Fechas actualizadas', {
+                API.logEventChange(ev.id, 'campo_editado', 'Fechas y horarios actualizados', {
                     campo: 'fechas',
                     anterior: { setup: ev.setupDate, event: ev.eventStartDate, teardown: ev.teardownDate },
                     nuevo: { setup: update.setupDate, event: update.eventStartDate, teardown: update.teardownDate },
@@ -1239,21 +1267,38 @@ const EventosModule = {
                             ${this._statusOptions.map(s => `<option value="${s.value}" ${s.value === 'proximo' ? 'selected' : ''}>${s.label}</option>`).join('')}
                         </select>
                     </div>
-                    <div class="form-field">
-                        <label class="form-label">Inicio armado</label>
-                        <input class="form-input" type="date" name="setupDate">
+                    <div class="form-field form-field-full">
+                        <label class="form-label">Armado</label>
+                        <div class="ev-create-date-row">
+                            <input class="form-input" type="date" name="setupDate" title="Inicio armado">
+                            <span class="ev-date-sep">—</span>
+                            <input class="form-input" type="date" name="setupEndDate" title="Fin armado">
+                            <input class="form-input ev-form-time" type="time" name="setupTimeOpen" title="Hora apertura">
+                            <span class="ev-date-sep">—</span>
+                            <input class="form-input ev-form-time" type="time" name="setupTimeClose" title="Hora cierre">
+                        </div>
                     </div>
-                    <div class="form-field">
-                        <label class="form-label">Inicio evento</label>
-                        <input class="form-input" type="date" name="eventStartDate">
+                    <div class="form-field form-field-full">
+                        <label class="form-label">Funcionamiento</label>
+                        <div class="ev-create-date-row">
+                            <input class="form-input" type="date" name="eventStartDate" title="Inicio evento">
+                            <span class="ev-date-sep">—</span>
+                            <input class="form-input" type="date" name="eventEndDate" title="Fin evento">
+                            <input class="form-input ev-form-time" type="time" name="eventTimeOpen" title="Hora apertura">
+                            <span class="ev-date-sep">—</span>
+                            <input class="form-input ev-form-time" type="time" name="eventTimeClose" title="Hora cierre">
+                        </div>
                     </div>
-                    <div class="form-field">
-                        <label class="form-label">Fin evento</label>
-                        <input class="form-input" type="date" name="eventEndDate">
-                    </div>
-                    <div class="form-field">
+                    <div class="form-field form-field-full">
                         <label class="form-label">Desarme</label>
-                        <input class="form-input" type="date" name="teardownDate">
+                        <div class="ev-create-date-row">
+                            <input class="form-input" type="date" name="teardownDate" title="Inicio desarme">
+                            <span class="ev-date-sep">—</span>
+                            <input class="form-input" type="date" name="teardownEndDate" title="Fin desarme">
+                            <input class="form-input ev-form-time" type="time" name="teardownTimeOpen" title="Hora apertura">
+                            <span class="ev-date-sep">—</span>
+                            <input class="form-input ev-form-time" type="time" name="teardownTimeClose" title="Hora cierre">
+                        </div>
                     </div>
                 </div>
             </form>
@@ -1278,14 +1323,23 @@ const EventosModule = {
                 return;
             }
 
+            const getVal = (n) => form.querySelector(`[name="${n}"]`)?.value || null;
             const data = {
                 name,
-                venue: form.querySelector('[name="venue"]').value.trim(),
-                status: form.querySelector('[name="estado"]').value,
-                setupDate: form.querySelector('[name="setupDate"]').value || null,
-                eventStartDate: form.querySelector('[name="eventStartDate"]').value || null,
-                eventEndDate: form.querySelector('[name="eventEndDate"]').value || null,
-                teardownDate: form.querySelector('[name="teardownDate"]').value || null,
+                venue: (getVal('venue') || '').trim(),
+                status: getVal('estado'),
+                setupDate: getVal('setupDate'),
+                setupEndDate: getVal('setupEndDate'),
+                eventStartDate: getVal('eventStartDate'),
+                eventEndDate: getVal('eventEndDate'),
+                teardownDate: getVal('teardownDate'),
+                teardownEndDate: getVal('teardownEndDate'),
+                setupTimeOpen: getVal('setupTimeOpen'),
+                setupTimeClose: getVal('setupTimeClose'),
+                eventTimeOpen: getVal('eventTimeOpen'),
+                eventTimeClose: getVal('eventTimeClose'),
+                teardownTimeOpen: getVal('teardownTimeOpen'),
+                teardownTimeClose: getVal('teardownTimeClose'),
             };
 
             submitBtn.disabled = true;
@@ -1507,6 +1561,13 @@ const EventosModule = {
         if (!start && !end) return '—';
         if (start && end) return `${this._fmtDate(start)} — ${this._fmtDate(end)}`;
         return this._fmtDate(start || end);
+    },
+
+    _fmtTimeRange(open, close) {
+        if (!open && !close) return '';
+        const fmt = (t) => t ? t.slice(0, 5) : '';
+        if (open && close) return `<span class="ev-time-value">🕐 ${fmt(open)} — ${fmt(close)}</span>`;
+        return `<span class="ev-time-value">🕐 ${fmt(open || close)}</span>`;
     },
 
     _fmtDatetime(dtStr) {

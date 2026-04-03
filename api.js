@@ -174,6 +174,13 @@ const API = {
                 eventEndDate: e.fecha_evento_fin || null,
                 teardownDate: e.fecha_desarme || null,
                 teardownEndDate: e.fecha_desarme_fin || e.fecha_desarme || null,
+                // Horarios por fase
+                setupTimeOpen: e.hora_armado_apertura || null,
+                setupTimeClose: e.hora_armado_cierre || null,
+                eventTimeOpen: e.hora_evento_apertura || null,
+                eventTimeClose: e.hora_evento_cierre || null,
+                teardownTimeOpen: e.hora_desarme_apertura || null,
+                teardownTimeClose: e.hora_desarme_cierre || null,
                 color: e.color || null,
                 notasOperativas: e.notas_operativas || '',
                 priority: e.prioridad || '',
@@ -527,6 +534,13 @@ const API = {
                 fecha_evento_fin: data.eventEndDate || null,
                 fecha_desarme: data.teardownDate || null,
                 fecha_desarme_fin: data.teardownEndDate || null,
+                // Horarios por fase
+                hora_armado_apertura: data.setupTimeOpen || null,
+                hora_armado_cierre: data.setupTimeClose || null,
+                hora_evento_apertura: data.eventTimeOpen || null,
+                hora_evento_cierre: data.eventTimeClose || null,
+                hora_desarme_apertura: data.teardownTimeOpen || null,
+                hora_desarme_cierre: data.teardownTimeClose || null,
                 color: data.color || null,
                 notas_operativas: data.notasOperativas || null,
                 prioridad: data.priority || '',
@@ -552,6 +566,13 @@ const API = {
             if (data.eventEndDate !== undefined) payload.fecha_evento_fin = data.eventEndDate || null;
             if (data.teardownDate !== undefined) payload.fecha_desarme = data.teardownDate || null;
             if (data.teardownEndDate !== undefined) payload.fecha_desarme_fin = data.teardownEndDate || null;
+            // Horarios por fase
+            if (data.setupTimeOpen !== undefined) payload.hora_armado_apertura = data.setupTimeOpen || null;
+            if (data.setupTimeClose !== undefined) payload.hora_armado_cierre = data.setupTimeClose || null;
+            if (data.eventTimeOpen !== undefined) payload.hora_evento_apertura = data.eventTimeOpen || null;
+            if (data.eventTimeClose !== undefined) payload.hora_evento_cierre = data.eventTimeClose || null;
+            if (data.teardownTimeOpen !== undefined) payload.hora_desarme_apertura = data.teardownTimeOpen || null;
+            if (data.teardownTimeClose !== undefined) payload.hora_desarme_cierre = data.teardownTimeClose || null;
             if (data.color !== undefined) payload.color = data.color;
             if (data.notasOperativas !== undefined) payload.notas_operativas = data.notasOperativas;
             if (data.priority !== undefined) payload.prioridad = data.priority;

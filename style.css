@@ -6098,6 +6098,44 @@ body {
     color: #555;
     font-size: 14px;
 }
+.ev-time-row {
+    margin-top: 4px;
+}
+.ev-form-time {
+    max-width: 110px;
+}
+.ev-time-hint {
+    font-size: 11px;
+    color: #555;
+    white-space: nowrap;
+}
+.ev-time-value {
+    display: block;
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 2px;
+}
+.ev-create-date-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.ev-create-date-row .form-input {
+    flex: 1;
+    min-width: 110px;
+}
+.ev-create-date-row .ev-form-time {
+    flex: 0 0 90px;
+    min-width: 80px;
+}
+.ev-create-date-row .ev-date-sep {
+    flex: 0 0 auto;
+}
+.form-field-full {
+    grid-column: 1 / -1;
+}
 
 /* Form elements */
 .ev-form-label {
