@@ -3182,7 +3182,7 @@ const Modules = {
                             <div class="ficha-row"><span class="ficha-row-label">Clasificación</span><span class="ficha-row-value">${mkEditableSelect('clasificacion', item.clasificacion)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${mkEditableSelect('categoria', item.categoria)}</span></div>
                             <div class="ficha-row"><span class="ficha-row-label">Unidad</span><span class="ficha-row-value">${mkSelect('unidadBase', fields.find(f=>f.key==='unidadBase').options, item.unidadBase)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value">${mkInput('costoUnitario', item.costoUnitario, 'number', '0.00')}</span></div>
+                            <div class="ficha-row"><span class="ficha-row-label">Costo unitario</span><span class="ficha-row-value"><span class="td-number" style="font-size:14px;" title="Editar desde módulo Costos">${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$','')}<span class="cost-unit">/${item.unidadBase}</span></span> <a href="#costos" style="font-size:11px; color:#4A90D9; margin-left:8px;">Editar en Costos →</a></span></div>
                         </div>
                         <div class="ficha-section">
                             <div class="ficha-section-title">Proveedor</div>
@@ -4031,7 +4031,7 @@ const Modules = {
                     return catc ? `<span class="badge" style="background:${catc.bg}; color:${catc.text}; border:1px solid ${catc.border}">${item.categoria}</span>` : `<span class="badge badge-ghost">${item.categoria || '—'}</span>`;
                 }
                 case 'unidad': return item.unidadBase || '—';
-                case 'costo': return `<span class="td-number cost-value insumo-price-cell" data-insumo-id="${item.id}" data-current-price="${item.costoUnitario}" data-unidad="${item.unidadBase}">${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$','')}<span class="cost-unit">/${item.unidadBase}</span></span>`;
+                case 'costo': return `<span class="td-number cost-value" title="Editar desde Costos">${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$','')}<span class="cost-unit">/${item.unidadBase}</span></span>`;
                 case 'moneda': return item.moneda || '—';
                 case 'proveedor': return item.proveedor || '—';
                 case 'conversion': return item.factorConversion ? `${item.factorConversion} ${item.unidadBase}/${item.unidadAlternativa}` : '—';
@@ -4182,62 +4182,7 @@ const Modules = {
         this._attachColDragListeners('mepex_insumos_cols_v1', [
             { id: 'nombre' }, { id: 'codigo' }, { id: 'clasificacion' }, { id: 'categoria' }, { id: 'unidad' }, { id: 'costo' }, { id: 'moneda' }, { id: 'proveedor' },
         ]);
-        // Inyectar botón "Actualizar precios" en toolbar
-        const sideActions = document.getElementById('apiSideActions');
-        if (sideActions && !document.getElementById('btnBulkPrice')) {
-            const btn = document.createElement('button');
-            btn.id = 'btnBulkPrice';
-            btn.className = 'side-action-btn';
-            btn.title = 'Actualizar precios en lote';
-            btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`;
-            btn.addEventListener('click', () => this._openBulkPriceModal(data));
-            sideActions.appendChild(btn);
-        }
-        // Inline price editing
-        document.querySelectorAll('.insumo-price-cell').forEach(cell => {
-            cell.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (cell.querySelector('.inline-price-input')) return; // ya editando
-                const insumoId = cell.dataset.insumoId;
-                const currentPrice = parseFloat(cell.dataset.currentPrice);
-                const unidad = cell.dataset.unidad;
-                const originalHtml = cell.innerHTML;
-
-                const input = document.createElement('input');
-                input.type = 'number';
-                input.step = '0.01';
-                input.value = currentPrice;
-                input.className = 'inline-price-input';
-                cell.innerHTML = '';
-                cell.appendChild(input);
-                input.focus();
-                input.select();
-
-                const save = async () => {
-                    const newPrice = parseFloat(input.value);
-                    if (isNaN(newPrice) || newPrice < 0 || Math.abs(newPrice - currentPrice) < 0.001) {
-                        cell.innerHTML = originalHtml;
-                        return;
-                    }
-                    cell.innerHTML = `<span style="opacity:0.5">${API.formatCurrency(newPrice)}</span>`;
-                    await API.logPrecioChange(parseInt(insumoId), currentPrice, newPrice, 'Edición inline');
-                    await API.updateInsumo(parseInt(insumoId), { costoUnitario: newPrice });
-                    Toast.success(`Precio actualizado: ${API.formatCurrency(newPrice)}`);
-                    // Cascada
-                    const result = await API.recalcularPorInsumo(parseInt(insumoId));
-                    if (result.ok && result.updated > 0) {
-                        Toast.info(`${result.updated} items recalculados`);
-                    }
-                    this._refreshCurrentTable();
-                };
-
-                input.addEventListener('blur', save);
-                input.addEventListener('keydown', (ev) => {
-                    if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
-                    if (ev.key === 'Escape') { cell.innerHTML = originalHtml; }
-                });
-            });
-        });
+        // Nota: edición de precios deshabilitada — se edita desde módulo Costos (#costos)
 
         // Row click → open ficha
         document.querySelectorAll('.api-table-row[data-id]').forEach(row => {

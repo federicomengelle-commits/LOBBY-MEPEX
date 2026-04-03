@@ -50,7 +50,7 @@ const Router = {
 
             // ── Admin & Finanzas ──
             'finanzas':         { render: () => this._renderPlaceholder('finanzas'), requiresAuth: true, module: 'finanzas' },
-            'costos':           { render: () => this._renderPlaceholder('costos'), requiresAuth: true, module: 'costos' },
+            'costos':           { render: () => CostosModule.render(), requiresAuth: true, module: 'costos', adminOnly: true },
         };
 
         // Listen for hash changes

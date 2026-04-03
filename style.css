@@ -9926,3 +9926,690 @@ body {
 .cat-btn-delete:hover {
     background: rgba(255, 68, 68, 0.08) !important;
 }
+
+/* ═══════════════════════════════════════════
+   MÓDULO COSTOS
+   ═══════════════════════════════════════════ */
+
+.costos-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: calc(100vh - 56px);
+    background: var(--bg, #050505);
+}
+
+/* ─── Toolbar ─── */
+.costos-toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.costos-toolbar-left {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.costos-title {
+    font-family: 'Cabin', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.costos-title-icon {
+    font-size: 24px;
+}
+.costos-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.costos-search-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 6px 10px;
+    transition: border-color 0.15s;
+}
+.costos-search-box:focus-within {
+    border-color: #4A90D9;
+}
+.costos-search-box svg {
+    color: #555;
+    flex-shrink: 0;
+}
+.costos-search-input {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    outline: none;
+    width: 200px;
+}
+.costos-search-input::placeholder { color: #555; }
+
+/* ─── Tabs ─── */
+.costos-tabs-bar {
+    display: flex;
+    padding: 0 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.costos-tabs {
+    display: flex;
+    gap: 0;
+}
+.costos-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 18px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #666;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+.costos-tab:hover {
+    color: #aaa;
+}
+.costos-tab.active {
+    color: #4A90D9;
+    border-bottom-color: #4A90D9;
+}
+.costos-tab-icon {
+    font-size: 14px;
+}
+.costos-tab-count {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    background: rgba(255,255,255,0.06);
+    padding: 1px 7px;
+    border-radius: 10px;
+    color: #888;
+    font-weight: 400;
+}
+.costos-tab.active .costos-tab-count {
+    background: rgba(74, 144, 217, 0.15);
+    color: #4A90D9;
+}
+
+/* ─── Filters ─── */
+.costos-filters {
+    padding: 0 24px;
+}
+.costos-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    flex-wrap: wrap;
+}
+.costos-filter-clear {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #666;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+.costos-filter-clear:hover {
+    color: #ccc;
+    border-color: rgba(255,255,255,0.15);
+}
+
+/* Multi-filter dropdown */
+.costos-multifilter {
+    position: relative;
+}
+.costos-mf-trigger {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    color: #888;
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.costos-mf-trigger:hover {
+    border-color: rgba(255,255,255,0.15);
+}
+.costos-mf-trigger.has-selection {
+    border-color: #4A90D940;
+    color: #4A90D9;
+    background: rgba(74, 144, 217, 0.08);
+}
+.costos-mf-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: #1a1a1a;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 6px;
+    min-width: 180px;
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.costos-mf-dropdown.open {
+    display: block;
+}
+.costos-mf-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #ccc;
+    transition: background 0.1s;
+}
+.costos-mf-option:hover {
+    background: rgba(255,255,255,0.06);
+}
+.costos-mf-option input[type="checkbox"] {
+    accent-color: #4A90D9;
+    width: 14px;
+    height: 14px;
+}
+
+/* ─── Body ─── */
+.costos-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+.costos-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+}
+.costos-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 60px;
+    color: #666;
+    font-size: 14px;
+}
+.costos-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+    text-align: center;
+    color: #888;
+}
+.costos-empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+}
+.costos-record-count {
+    padding: 8px 24px;
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    color: #555;
+    border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* ─── Table ─── */
+.costos-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.costos-table thead th {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #555;
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    white-space: nowrap;
+    user-select: none;
+}
+.costos-table thead th.sortable {
+    cursor: pointer;
+}
+.costos-table thead th.sortable:hover {
+    color: #888;
+}
+.costos-sort-icon {
+    margin-left: 4px;
+    color: #4A90D9;
+}
+.costos-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: #ccc;
+    vertical-align: middle;
+}
+.costos-table-row {
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.costos-table-row:hover {
+    background: rgba(255,255,255,0.03);
+}
+.costos-table-row.active {
+    background: rgba(74, 144, 217, 0.08);
+}
+.costos-table .td-primary {
+    font-weight: 600;
+    color: #e8e8e8;
+}
+.costos-table .td-mono {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 12px;
+    color: #888;
+}
+.costos-table .td-number {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 12px;
+}
+
+/* Inline price cell */
+.costos-price-cell {
+    cursor: pointer;
+    transition: background 0.1s;
+    border-radius: 4px;
+    padding: 2px 4px !important;
+}
+.costos-price-cell:hover {
+    background: rgba(74, 144, 217, 0.1);
+}
+
+/* ─── Side Panel ─── */
+.costos-side-panel {
+    width: 0;
+    overflow: hidden;
+    transition: width 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    border-left: 1px solid transparent;
+    background: #0a0a0a;
+    flex-shrink: 0;
+}
+.costos-side-panel.open {
+    width: 420px;
+    border-left-color: rgba(255,255,255,0.06);
+    overflow-y: auto;
+}
+.costos-panel-inner {
+    width: 420px;
+}
+
+/* ─── Ficha ─── */
+.costos-ficha {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.costos-ficha-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    gap: 12px;
+}
+.costos-ficha-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.costos-ficha-title {
+    font-family: 'Cabin', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    word-break: break-word;
+}
+.costos-ficha-code {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    color: #4A90D9;
+    letter-spacing: 0.03em;
+}
+.costos-ficha-close {
+    background: none;
+    border: none;
+    color: #555;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+}
+.costos-ficha-close:hover {
+    color: #ccc;
+    background: rgba(255,255,255,0.06);
+}
+.costos-ficha-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    flex: 1;
+}
+.costos-ficha-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.costos-ficha-section-title {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #4A90D9;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(74, 144, 217, 0.15);
+}
+.costos-ficha-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+}
+.costos-ficha-label {
+    font-size: 12px;
+    color: #666;
+    width: 100px;
+    flex-shrink: 0;
+}
+.costos-ficha-input {
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    padding: 6px 8px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.costos-ficha-input:focus {
+    border-color: #4A90D9;
+}
+.costos-ficha-input::placeholder { color: #444; }
+.costos-ficha-select {
+    flex: 1;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    padding: 6px 8px;
+    outline: none;
+    cursor: pointer;
+}
+.costos-ficha-select:focus {
+    border-color: #4A90D9;
+}
+.costos-ficha-textarea {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 4px;
+    color: #ccc;
+    font-family: 'Cabin', sans-serif;
+    font-size: 13px;
+    padding: 8px;
+    outline: none;
+    resize: vertical;
+    min-height: 60px;
+    transition: border-color 0.15s;
+}
+.costos-ficha-textarea:focus {
+    border-color: #4A90D9;
+}
+.costos-ficha-price-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+}
+.costos-ficha-price-unit {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    color: #555;
+}
+.costos-ficha-value-static {
+    font-size: 13px;
+    color: #888;
+}
+.costos-ficha-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+}
+.costos-ficha-save-status {
+    font-size: 12px;
+    color: #4A90D9;
+    margin-left: auto;
+}
+
+/* ─── Historial ─── */
+.costos-historial-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.costos-historial-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 4px;
+    border-left: 2px solid rgba(74, 144, 217, 0.3);
+}
+.costos-historial-date {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 10px;
+    color: #555;
+}
+.costos-historial-prices {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 12px;
+}
+.costos-historial-old {
+    color: #666;
+    text-decoration: line-through;
+}
+.costos-historial-arrow {
+    color: #444;
+}
+.costos-historial-new {
+    color: #e8e8e8;
+    font-weight: 600;
+}
+.costos-historial-var {
+    font-size: 10px;
+    font-weight: 700;
+}
+.costos-historial-motivo {
+    font-size: 11px;
+    color: #555;
+}
+
+/* ─── Receta/BOM ─── */
+.costos-receta-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.costos-receta-table thead th {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #555;
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.costos-receta-table tbody td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 12px;
+    color: #ccc;
+    vertical-align: middle;
+}
+.costos-receta-comp-row:hover {
+    background: rgba(255,255,255,0.03);
+}
+.costos-comp-type-badge {
+    font-size: 10px;
+    margin-left: 4px;
+}
+.costos-receta-qty-input {
+    width: 60px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 3px;
+    color: #ccc;
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 12px;
+    padding: 3px 6px;
+    text-align: right;
+    outline: none;
+}
+.costos-receta-qty-input:focus {
+    border-color: #4A90D9;
+}
+.costos-receta-remove-btn {
+    background: none;
+    border: none;
+    color: #555;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    transition: color 0.1s, background 0.1s;
+}
+.costos-receta-remove-btn:hover {
+    color: #ff4444;
+    background: rgba(255,68,68,0.1);
+}
+
+.costos-receta-total-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.costos-receta-total-label {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+}
+.costos-receta-total-value {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 18px;
+    font-weight: 700;
+    color: #4A90D9;
+}
+.costos-receta-total-diff {
+    font-size: 11px;
+    color: #666;
+}
+.costos-receta-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    flex-wrap: wrap;
+}
+.costos-receta-empty {
+    padding: 20px 0;
+    text-align: center;
+}
+
+/* ─── Add insumo modal list ─── */
+.costos-add-insumo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.costos-add-insumo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.costos-add-insumo-row:hover {
+    background: rgba(255,255,255,0.04);
+}
+.costos-add-insumo-row.selected {
+    background: rgba(74, 144, 217, 0.12);
+    border: 1px solid rgba(74, 144, 217, 0.3);
+}
+.costos-add-insumo-name {
+    flex: 1;
+    font-size: 13px;
+    color: #e8e8e8;
+    font-weight: 500;
+}
+.costos-add-insumo-code {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    color: #555;
+}
+.costos-add-insumo-cost {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    color: #4A90D9;
+}
