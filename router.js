@@ -32,7 +32,7 @@ const Router = {
             'notificaciones':   { render: () => Settings.renderNotifications(), requiresAuth: true },
 
             // ── Comercial ──
-            'crm':              { render: () => this._renderPlaceholder('crm'), requiresAuth: true, module: 'crm' },
+            'crm':              { render: () => CRM.render(), requiresAuth: true, module: 'crm' },
             'cotizador':        { render: () => this._openExternal('http://195.200.1.250/cotizador/'), requiresAuth: true, module: 'cotizador' },
             'catalogo':         { render: () => this._renderPlaceholder('catalogo'), requiresAuth: true, module: 'catalogo' },
 

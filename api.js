@@ -56,6 +56,10 @@ const API = {
                 phone: c.rubro || '',
                 email: c.telefono || '',
                 rubro: c.correo_electronico || '',
+                // CRM fields (nuevas columnas)
+                tipo: c.tipo || '',
+                estado: c.estado || 'activo',
+                score: parseInt(c.score) || 0,
             }));
 
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -428,6 +432,10 @@ const API = {
                 rubro: data.phone || '',
                 telefono: data.email || '',
                 correo_electronico: data.rubro || '',
+                // CRM fields
+                tipo: data.tipo || '',
+                estado: data.estado || 'activo',
+                score: parseInt(data.score) || 0,
             };
             const result = await UndoHelpers.createRecord('clientes', payload, `Nuevo cliente: ${data.name || ''}`);
             this.clearCache();
@@ -450,6 +458,10 @@ const API = {
             if (data.phone !== undefined) payload.rubro = data.phone;
             if (data.email !== undefined) payload.telefono = data.email;
             if (data.rubro !== undefined) payload.correo_electronico = data.rubro;
+            // CRM fields
+            if (data.tipo !== undefined) payload.tipo = data.tipo;
+            if (data.estado !== undefined) payload.estado = data.estado;
+            if (data.score !== undefined) payload.score = parseInt(data.score) || 0;
             await UndoHelpers.updateRecord('clientes', id, payload, `Edito cliente: ${data.name || ''}`);
             this.clearCache();
             return true;
