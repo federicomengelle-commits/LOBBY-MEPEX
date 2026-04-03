@@ -63,17 +63,32 @@ const SidebarEditor = {
     _dragState: null,
 
     // ─── INIT ───
+    // Config version — bump this to force sidebar reset on structure changes
+    _configVersion: 2,
+
     init() {
+        const savedVersion = localStorage.getItem('mepex_sidebar_version');
         const saved = localStorage.getItem('mepex_sidebar_config');
-        if (saved) {
+
+        // Force rebuild if version mismatch (structure changed)
+        if (saved && savedVersion === String(this._configVersion)) {
             try {
                 this._data = JSON.parse(saved);
             } catch {
                 this._data = this._buildDefaultFromData();
+                this._persistVersion();
             }
         } else {
+            // First load or version mismatch → rebuild from Data.categories
             this._data = this._buildDefaultFromData();
+            this._persistVersion();
+            // Clear stale config
+            localStorage.removeItem('mepex_sidebar_config');
         }
+    },
+
+    _persistVersion() {
+        localStorage.setItem('mepex_sidebar_version', String(this._configVersion));
     },
 
     // ─── Build default config from Data.categories ───

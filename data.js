@@ -4,22 +4,34 @@
    Definición de módulos, sub-secciones, roles,
    conexiones circulares, indicadores mock,
    acciones rápidas por rol y actividad reciente.
+
+   REDISEÑO v2 — 5 categorías, 14 módulos
    ============================================= */
 
 const Data = {
 
     // ─── PERMISOS POR ROL ───
-    // superadmin: Fede — todo + métricas exclusivas + panel de control
-    // admin: Lelean, Sofi — todo salvo métricas de rendimiento
-    // venta: Noe — comercial + operaciones + recursos
-    // pm: Meli, Leo — proyectos, eventos, clientes, producción, inventario
-    // taller: Diego, Juan, Carlos, Willy — operaciones
+    // superadmin: Fede — todo + admin panel
+    // admin: Lelean, Sofi, Ana*, AleTec*, Budie* — todo menos admin panel
+    // venta: Noe — comercial + operativo con escritura
+    // pm: Meli, Leo — operativo + comercial en lectura
+    // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['ventas', 'clientes', 'proyectos', 'eventos', 'finanzas', 'produccion', 'inventario', 'rrhh', 'proveedores'],
-        admin: ['ventas', 'clientes', 'proyectos', 'eventos', 'finanzas', 'produccion', 'inventario', 'rrhh', 'proveedores'],
-        venta: ['ventas', 'clientes', 'proyectos', 'eventos', 'produccion', 'inventario'],
-        pm: ['proyectos', 'eventos', 'clientes', 'produccion', 'inventario'],
-        taller: ['proyectos', 'eventos', 'produccion'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'produccion', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'produccion', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos'],
+        venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
+        pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'produccion', 'logistica', 'inventario'],
+        taller:     ['proyectos', 'eventos', 'produccion', 'logistica', 'inventario'],
+    },
+
+    // ─── PERMISOS DE SOLO LECTURA ───
+    // Módulos donde el rol tiene acceso pero solo de consulta (no edita)
+    readOnlyPermissions: {
+        superadmin: [],
+        admin:      [],
+        venta:      [],
+        pm:         ['crm', 'catalogo', 'inventario'],
+        taller:     ['proyectos', 'eventos', 'inventario'],
     },
 
     // ─── LABELS DE ROL ───
@@ -52,28 +64,28 @@ const Data = {
             name: 'COMERCIAL',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>',
             color: '#F28D15',
-            moduleIds: ['ventas', 'clientes'],
+            moduleIds: ['crm', 'cotizador', 'catalogo'],
         },
         {
             id: 'operaciones',
             name: 'OPERACIONES',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
             color: '#00CC88',
-            moduleIds: ['proyectos', 'eventos', 'produccion'],
+            moduleIds: ['proyectos', 'eventos', 'produccion', 'logistica'],
         },
         {
             id: 'recursos',
             name: 'RECURSOS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
             color: '#9B7DFF',
-            moduleIds: ['inventario'],
+            moduleIds: ['rrhh', 'compras', 'inventario', 'locaciones'],
         },
         {
             id: 'admin',
             name: 'ADMIN & FINANZAS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',
             color: '#4A90D9',
-            moduleIds: ['rrhh', 'finanzas', 'proveedores'],
+            moduleIds: ['finanzas', 'costos', 'admin-panel'],
         },
     ],
 
@@ -82,175 +94,108 @@ const Data = {
         superadmin: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
-            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
-            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
+            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
+            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'navigate', route: 'proyectos' },
         ],
         admin: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
-            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
-            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
+            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
+            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'navigate', route: 'proyectos' },
         ],
         venta: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'enviar-prop', icon: '📤', label: 'Enviar propuesta', action: 'alert', message: 'Envío de propuesta — próximamente' },
-            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
+            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
         ],
         pm: [
-            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'create', entity: 'projects' },
-            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'create', entity: 'clients' },
-            { id: 'nuevo-evento', icon: '📅', label: 'Nuevo evento', action: 'create', entity: 'events' },
+            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'navigate', route: 'proyectos' },
+            { id: 'nuevo-evento', icon: '📅', label: 'Nuevo evento', action: 'navigate', route: 'eventos' },
+            { id: 'ver-calendario', icon: '🗓️', label: 'Calendario', action: 'navigate', route: 'calendario' },
         ],
         taller: [
-            { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'alert', message: 'Mis tareas — próximamente' },
-            { id: 'descontar-mat', icon: '📦', label: 'Descontar material', action: 'alert', message: 'Descuento de material — próximamente' },
-            { id: 'orden-compra', icon: '📝', label: 'Orden de compra', action: 'alert', message: 'Orden de compra — próximamente' },
+            { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'navigate', route: 'produccion' },
+            { id: 'ver-calendario', icon: '🗓️', label: 'Calendario', action: 'navigate', route: 'calendario' },
+            { id: 'ver-inventario', icon: '📦', label: 'Inventario', action: 'navigate', route: 'inventario' },
         ],
     },
 
     // ─── ACTIVIDAD RECIENTE MOCK ───
     recentActivity: [
-        { time: 'Hace 12 min', user: 'Noe', action: 'envió cotización', detail: 'COT-2026-0015 — Stand Arcor', icon: '📤', color: '#FF7200' },
+        { time: 'Hace 12 min', user: 'Noe', action: 'envió cotización', detail: 'COT-2026-0015 — Stand Arcor', icon: '📤', color: '#F28D15' },
         { time: 'Hace 1 hora', user: 'Sistema', action: 'proyecto aprobado', detail: 'Stand Arcor — Expo Alimentek', icon: '✅', color: '#00CC88' },
-        { time: 'Hace 2 horas', user: 'Meli', action: 'entrega con OK', detail: 'Stand Unilever — La Rural', icon: '📸', color: '#00ACC9' },
-        { time: 'Hace 3 horas', user: 'Fede', action: 'nuevo proyecto creado', detail: 'Stand Samsung — CES 2026', icon: '📋', color: '#FF7200' },
-        { time: 'Ayer', user: 'Noe', action: 'cliente actualizado', detail: 'Coca-Cola Company — datos CRM', icon: '👤', color: '#00ACC9' },
-        { time: 'Ayer', user: 'Diego', action: 'material descontado', detail: '12 paneles → Stand Samsung', icon: '📦', color: '#B0B0B0' },
+        { time: 'Hace 2 horas', user: 'Meli', action: 'entrega con OK', detail: 'Stand Unilever — La Rural', icon: '📸', color: '#00A9C1' },
+        { time: 'Hace 3 horas', user: 'Fede', action: 'nuevo proyecto creado', detail: 'Stand Samsung — CES 2026', icon: '📋', color: '#00CC88' },
+        { time: 'Ayer', user: 'Noe', action: 'cliente actualizado', detail: 'Coca-Cola Company — datos CRM', icon: '👤', color: '#F28D15' },
+        { time: 'Ayer', user: 'Diego', action: 'material descontado', detail: '12 paneles → Stand Samsung', icon: '📦', color: '#9B7DFF' },
     ],
 
     // ─── MÓDULOS ───
     modules: {
-        ventas: {
-            id: 'ventas',
-            name: 'Ventas + Marketing',
-            shortName: 'Ventas',
+
+        // ════════════════════════════════════════════
+        //  COMERCIAL
+        // ════════════════════════════════════════════
+
+        crm: {
+            id: 'crm',
+            name: 'CRM',
+            shortName: 'CRM',
             icon: '🔶',
-            description: 'Cotizar, negociar, cerrar. Pipeline comercial y marketing.',
-            status: 'active',
-            color: '#FF7200',
+            description: 'Clientes, pipeline comercial, cotizaciones, interacciones y marketing.',
+            status: 'development',
+            color: '#F28D15',
             order: 1,
             sections: [
-                {
-                    id: 'tabla',
-                    name: 'Cotizaciones',
-                    icon: '📋',
-                    description: 'Tabla de cotizaciones con filtros y columnas personalizables',
-                    fields: []
-                },
-                {
-                    id: 'cotizador',
-                    name: 'Cotizador',
-                    icon: '📄',
-                    description: 'Armar cotización → PDF con marca → guardado en Notion',
-                    isExternal: true,
-                    externalUrl: 'http://195.200.1.250/cotizador/',
-                    fields: []
-                },
-                {
-                    id: 'pipeline',
-                    name: 'Pipeline Comercial',
-                    icon: '📊',
-                    description: 'Ciclo de vida de cada cotización con estados y alertas',
-                    fields: [
-                        { label: 'Estado', type: 'select', options: ['Enviada', 'En negociación', 'Aprobada', 'Cerrada Ganada', 'Cerrada Perdida'] },
-                        { label: 'Timer desde envío', type: 'indicator' },
-                        { label: 'Alerta de seguimiento', type: 'indicator' },
-                        { label: 'Acción rápida', type: 'actions', options: ['WhatsApp', 'Mail'] },
-                    ]
-                },
-                {
-                    id: 'envio',
-                    name: 'Lanzador de Envío',
-                    icon: '📨',
-                    description: 'Enviar cotización al cliente directo desde el sistema',
-                    fields: [
-                        { label: 'Cotización', type: 'select' },
-                        { label: 'Template de mail', type: 'select' },
-                        { label: 'PDF adjunto', type: 'file' },
-                        { label: 'Vista previa', type: 'preview' },
-                    ]
-                },
-                {
-                    id: 'dashboard',
-                    name: 'Dashboard',
-                    icon: '📈',
-                    description: 'Analytics financieros, embudo de conversión y evolución',
-                    adminOnly: true,
-                    fields: []
-                },
-                {
-                    id: 'marketing',
-                    name: 'Marketing',
-                    icon: '📢',
-                    description: 'Plantillas de comunicación y composición masiva',
-                    fields: []
-                },
+                { id: 'clientes', name: 'Clientes', icon: '👤', description: 'Base de clientes con score, tipo, rubro, estado', fields: [] },
+                { id: 'pipeline', name: 'Pipeline', icon: '📊', description: 'Kanban: Borrador → Enviada → Negociación → Aprobada → Ganada → Perdida → Facturada', fields: [] },
+                { id: 'cotizaciones', name: 'Cotizaciones', icon: '📋', description: 'Tabla de cotizaciones con ficha lateral, timeline y seguimiento', fields: [] },
+                { id: 'interacciones', name: 'Interacciones', icon: '💬', description: 'Feed cronológico global de todas las interacciones', fields: [] },
+                { id: 'marketing', name: 'Marketing', icon: '📢', description: 'Campañas, templates de comunicación', fields: [] },
             ],
             connections: [
-                { to: 'clientes', label: 'Ver CRM', context: 'Cliente de esta cotización' },
-                { to: 'eventos', label: 'Ver Evento', context: 'Evento asociado' },
-                { to: 'finanzas', label: 'Ver Cobros', context: 'Pendiente de cobro generado' },
-                { to: 'produccion', label: 'Ver Producción', context: 'Proyecto enviado a producción' },
+                { to: 'eventos', label: 'Ver Evento', context: 'Evento asociado a cotización' },
+                { to: 'proyectos', label: 'Ver Proyecto', context: 'Proyecto del cliente' },
+                { to: 'finanzas', label: 'Ver Cobros', context: 'Estado de cuenta del cliente' },
             ],
         },
 
-        clientes: {
-            id: 'clientes',
-            name: 'Clientes / CRM',
-            shortName: 'Clientes',
-            icon: '🔶',
-            description: 'Fichas, timeline de interacciones, historial completo.',
-            status: 'development',
-            color: '#FF7200',
+        cotizador: {
+            id: 'cotizador',
+            name: 'Cotizador',
+            shortName: 'Cotizador',
+            icon: '📄',
+            description: 'Herramienta de cotización — abre en nueva pestaña.',
+            status: 'active',
+            color: '#F28D15',
             order: 2,
+            isExternal: true,
+            externalUrl: 'http://195.200.1.250/cotizador/',
+            sections: [],
+            connections: [],
+        },
+
+        catalogo: {
+            id: 'catalogo',
+            name: 'Catálogo',
+            shortName: 'Catálogo',
+            icon: '🔩',
+            description: 'Vitrina de items y servicios para clientes. Precio viene de Costos.',
+            status: 'development',
+            color: '#F28D15',
+            order: 3,
             sections: [
-                {
-                    id: 'ficha',
-                    name: 'Ficha del Cliente',
-                    icon: '👤',
-                    description: 'Razón social, CUIT, contacto, tipo, rubro',
-                    fields: [
-                        { label: 'Razón Social', type: 'text' },
-                        { label: 'CUIT', type: 'text' },
-                        { label: 'Contacto principal', type: 'text' },
-                        { label: 'Email', type: 'email' },
-                        { label: 'Teléfono', type: 'tel' },
-                        { label: 'Tipo', type: 'select', options: ['Marca', 'Productora', 'Organizador', 'Agencia', 'Productor Freelance'] },
-                        { label: 'Rubro', type: 'text' },
-                    ]
-                },
-                {
-                    id: 'timeline',
-                    name: 'Timeline de Interacciones',
-                    icon: '💬',
-                    description: 'Registro unificado de todas las comunicaciones con el cliente',
-                    fields: [
-                        { label: 'Fecha/hora', type: 'datetime' },
-                        { label: 'Canal', type: 'select', options: ['WA MEPEX', 'WA Lelean', 'WA Fede', 'Mail', 'Instagram', 'Teléfono', 'Presencial'] },
-                        { label: 'Quién atendió', type: 'select', options: ['Fede', 'Lelean', 'Noe'] },
-                        { label: 'Resumen', type: 'text' },
-                        { label: 'Adjunto', type: 'file' },
-                    ]
-                },
-                {
-                    id: 'historial',
-                    name: 'Historial Completo',
-                    icon: '📋',
-                    description: 'Proyectos, cotizaciones, estado de cuenta, timeline — todo en una vista',
-                    fields: [
-                        { label: 'Proyectos', type: 'list' },
-                        { label: 'Cotizaciones', type: 'list' },
-                        { label: 'Estado de cuenta', type: 'indicator' },
-                        { label: 'Filtros', type: 'select', options: ['Por año', 'Por tipo'] },
-                    ]
-                },
+                { id: 'items', name: 'Items', icon: '🔩', description: 'Tabla/grilla: nombre, código, rubro, categoría, origen, unidad, foto', fields: [] },
             ],
             connections: [
-                { to: 'ventas', label: 'Ver Cotizaciones', context: 'Cotizaciones de este cliente' },
-                { to: 'eventos', label: 'Ver Proyectos', context: 'Proyectos del cliente' },
-                { to: 'finanzas', label: 'Estado de Cuenta', context: 'Debe/haber del cliente' },
+                { to: 'costos', label: 'Ver Costos', context: 'Precio y listas de precio' },
+                { to: 'inventario', label: 'Ver Insumos', context: 'Insumos del item' },
             ],
         },
+
+        // ════════════════════════════════════════════
+        //  OPERACIONES
+        // ════════════════════════════════════════════
 
         proyectos: {
             id: 'proyectos',
@@ -259,29 +204,17 @@ const Data = {
             icon: '🏗️',
             description: 'Stands, exposiciones, congresos y alquileres vinculados a eventos y clientes.',
             status: 'active',
-            color: '#FF7200',
-            order: 3,
+            color: '#00CC88',
+            order: 4,
             sections: [
-                {
-                    id: 'lista',
-                    name: 'Lista de Proyectos',
-                    icon: '📋',
-                    description: 'Todos los proyectos con filtros por estado y tipo',
-                    fields: []
-                },
-                {
-                    id: 'por_evento',
-                    name: 'Proyectos por evento',
-                    icon: '📅',
-                    description: 'Vista agrupada de proyectos organizados por evento',
-                    fields: []
-                },
+                { id: 'lista', name: 'Lista de Proyectos', icon: '📋', description: 'Todos los proyectos con filtros por estado, evento, responsable, tipo', fields: [] },
+                { id: 'por_evento', name: 'Proyectos por evento', icon: '📅', description: 'Vista agrupada de proyectos organizados por evento', fields: [] },
             ],
             connections: [
-                { to: 'ventas', label: 'Ver Cotización', context: 'Cotización origen del proyecto' },
-                { to: 'clientes', label: 'Ver Cliente', context: 'Cliente del proyecto' },
+                { to: 'crm', label: 'Ver CRM', context: 'Cliente y cotización del proyecto' },
                 { to: 'eventos', label: 'Ver Evento', context: 'Evento al que pertenece' },
                 { to: 'produccion', label: 'Ver Producción', context: 'Estado de fabricación' },
+                { to: 'logistica', label: 'Ver Logística', context: 'Transporte y montaje' },
                 { to: 'inventario', label: 'Ver Materiales', context: 'Materiales reservados' },
                 { to: 'finanzas', label: 'Ver Finanzas', context: 'Movimientos del proyecto' },
             ],
@@ -291,192 +224,215 @@ const Data = {
             id: 'eventos',
             name: 'Eventos',
             shortName: 'Eventos',
-            icon: '🔶',
+            icon: '🎪',
             description: 'Gestión de eventos: fechas, venues, organizadores, planos y reglamentos.',
-            status: 'development',
-            color: '#FF7200',
-            order: 4,
+            status: 'active',
+            color: '#00CC88',
+            order: 5,
             sections: [
-                {
-                    id: 'evento',
-                    name: 'Evento',
-                    icon: '🎪',
-                    description: 'Nombre, fechas, venue, organizador, plano, reglamento',
-                    fields: [
-                        { label: 'Nombre', type: 'text' },
-                        { label: 'Fechas (montaje/evento/desmontaje)', type: 'daterange' },
-                        { label: 'Lugar / Venue', type: 'text' },
-                        { label: 'Organizador', type: 'relation' },
-                        { label: 'Plano general', type: 'file' },
-                        { label: 'Reglamento', type: 'text' },
-                    ]
-                },
-                {
-                    id: 'proyecto',
-                    name: 'Proyecto',
-                    icon: '🏗️',
-                    description: 'Proyectos / stands vinculados a un evento',
-                    fields: []
-                },
+                { id: 'evento', name: 'Evento', icon: '🎪', description: 'Nombre, fechas (armado/evento/desarme con horarios), venue, organizador', fields: [] },
+                { id: 'proyecto', name: 'Proyectos', icon: '🏗️', description: 'Proyectos / stands vinculados a un evento', fields: [] },
             ],
             connections: [
                 { to: 'proyectos', label: 'Ver Proyectos', context: 'Proyectos dentro de este evento' },
-                { to: 'clientes', label: 'Ver Cliente', context: 'Cliente organizador' },
-            ],
-        },
-
-        finanzas: {
-            id: 'finanzas',
-            name: 'Finanzas / Administración',
-            shortName: 'Finanzas',
-            icon: '🔷',
-            description: 'Facturación, cobros, tesorería, rentabilidad, reportes.',
-            status: 'upcoming',
-            color: '#00ACC9',
-            order: 5,
-            sections: [
-                {
-                    id: 'facturacion', name: 'Facturación', icon: '🧾',
-                    description: 'Integración LaPyme, factura electrónica AFIP',
-                    fields: [{ label: 'Integración', type: 'indicator' }, { label: 'Facturas emitidas', type: 'list' }]
-                },
-                {
-                    id: 'cobros', name: 'Cobros por Proyecto', icon: '💰',
-                    description: 'Seña, pagos parciales, saldo, alertas de vencimiento',
-                    fields: [
-                        { label: 'Proyecto', type: 'relation' },
-                        { label: 'Estado', type: 'select', options: ['Pendiente', 'Parcial', 'Cobrado', 'Moroso'] },
-                        { label: 'Monto cobrado', type: 'number' },
-                        { label: 'Saldo pendiente', type: 'number' },
-                    ]
-                },
-                {
-                    id: 'tesoreria', name: 'Tesorería', icon: '🏦',
-                    description: 'Valores, disponibilidad, proyección de flujo de caja',
-                    fields: [{ label: 'Cheques pendientes', type: 'list' }, { label: 'Disponibilidad', type: 'indicator' }, { label: 'Proyección', type: 'chart' }]
-                },
-                {
-                    id: 'contabilidad', name: 'Contabilidad', icon: '📒',
-                    description: 'Libro diario, asientos bancarios, estado de resultados',
-                    fields: []
-                },
-                {
-                    id: 'rentabilidad', name: 'Rentabilidad', icon: '📈',
-                    description: 'Por proyecto, evento, cliente, período',
-                    fields: [{ label: 'Vista', type: 'select', options: ['Por proyecto', 'Por evento', 'Por cliente', 'Por período'] }]
-                },
-                {
-                    id: 'pagos-terceros', name: 'Pagos a Terceros', icon: '💸',
-                    description: 'Proveedores, RRHH, jornales, proyección de egresos',
-                    fields: []
-                },
-                {
-                    id: 'reportes', name: 'Reportes', icon: '📊',
-                    description: 'Fabricador de reportes personalizado, filtros, exportable',
-                    fields: [
-                        { label: 'Filtros', type: 'select', options: ['Fecha', 'Cliente', 'Evento', 'Tipo proyecto', 'Rubro'] },
-                        { label: 'Exportar', type: 'actions', options: ['PDF', 'Excel'] },
-                    ]
-                },
-            ],
-            connections: [
-                { to: 'clientes', label: 'Estado de Cuenta', context: 'Cuentas de clientes' },
-                { to: 'eventos', label: 'Ver Proyectos', context: 'Costos por proyecto' },
-                { to: 'inventario', label: 'Costos Material', context: 'Costos de inventario/compras' },
-                { to: 'rrhh', label: 'Jornales', context: 'Pagos de personal' },
-                { to: 'proveedores', label: 'Ver Proveedores', context: 'Pagos programados' },
+                { to: 'crm', label: 'Ver Cliente', context: 'Cliente organizador' },
+                { to: 'logistica', label: 'Ver Logística', context: 'Transporte y montaje del evento' },
             ],
         },
 
         produccion: {
             id: 'produccion',
-            name: 'Producción & Operaciones',
+            name: 'Producción',
             shortName: 'Producción',
-            icon: '🔷',
-            description: 'Taller, logística, montaje, entregas, mantenimiento.',
-            status: 'upcoming',
-            color: '#00ACC9',
+            icon: '🔨',
+            description: 'Tareas de taller por proyecto, mantenimiento de herramientas.',
+            status: 'development',
+            color: '#00CC88',
             order: 6,
             sections: [
-                { id: 'taller', name: 'Producción en Taller', icon: '🔨', description: 'Tareas por proyecto, avance, materiales necesarios', fields: [{ label: 'Proyecto', type: 'relation' }, { label: 'Tareas', type: 'list' }, { label: 'Estado de avance', type: 'indicator' }, { label: 'Materiales', type: 'list' }] },
-                { id: 'logistica', name: 'Logística', icon: '🚛', description: 'Vehículos, cronograma, coordinación de armados simultáneos', fields: [{ label: 'Vehículo asignado', type: 'select' }, { label: 'Cronograma', type: 'timeline' }] },
-                { id: 'montaje', name: 'Montaje / Desmontaje', icon: '🏗️', description: 'Equipo asignado, checklist de entrega', fields: [{ label: 'Equipo', type: 'list' }, { label: 'Checklist', type: 'checklist' }] },
-                { id: 'entrega', name: 'Entrega con OK', icon: '✅', description: 'Fotos del proyecto, firma digital del responsable', fields: [{ label: 'Fotos', type: 'file' }, { label: 'Firma digital', type: 'signature' }] },
-                { id: 'mantenimiento', name: 'Mantenimiento', icon: '🔧', description: 'Instalaciones, vehículos: service, VTV, alertas', fields: [{ label: 'Tipo', type: 'select', options: ['Instalaciones', 'Vehículos'] }, { label: 'Próximo service', type: 'date' }, { label: 'Alertas', type: 'indicator' }] },
+                { id: 'tareas', name: 'Tareas por Proyecto', icon: '✅', description: 'Lista simple: qué hacer + estado (pendiente/en proceso/listo)', fields: [] },
+                { id: 'mantenimiento', name: 'Mantenimiento', icon: '🔧', description: 'Herramientas, matafuegos, reparaciones, alertas vencimiento', fields: [] },
             ],
             connections: [
-                { to: 'ventas', label: 'Ver Cotización', context: 'Proyecto aprobado desde ventas' },
-                { to: 'eventos', label: 'Ver Proyecto', context: 'Proyecto en producción' },
-                { to: 'inventario', label: 'Ver Stock', context: 'Materiales consumidos' },
-                { to: 'rrhh', label: 'Ver Equipo', context: 'Personal asignado' },
-                { to: 'finanzas', label: 'Costos Reales', context: 'Alimenta rentabilidad' },
+                { to: 'proyectos', label: 'Ver Proyecto', context: 'Proyecto en producción' },
+                { to: 'inventario', label: 'Ver Stock', context: 'Materiales necesarios' },
+                { to: 'logistica', label: 'Ver Logística', context: 'Montaje/desmontaje' },
             ],
         },
 
-        inventario: {
-            id: 'inventario',
-            name: 'Inventario & Costos',
-            shortName: 'Inventario',
-            icon: '📦',
-            description: 'Insumos, catálogo de items, cascada de costos, stock.',
-            status: 'active',
-            color: '#9B7DFF',
+        logistica: {
+            id: 'logistica',
+            name: 'Logística',
+            shortName: 'Logística',
+            icon: '🚛',
+            description: 'Vehículos, transporte, montaje/desmontaje, entrega con OK.',
+            status: 'development',
+            color: '#00CC88',
             order: 7,
             sections: [
-                { id: 'insumos', name: 'Insumos', icon: '🧱', description: 'Materias primas: aluminio, placas, vidrio, tornillería, mano de obra, subalquileres', fields: [] },
-                { id: 'catalogo', name: 'Catálogo de Items', icon: '🔩', description: 'Componentes fabricados con receta de costos: cerrojos, dinteles, paneles', fields: [] },
-                { id: 'simulador', name: 'Simulador', icon: '📊', description: 'Recálculo en cascada, simulación de impacto de precios', fields: [] },
-                { id: 'stock', name: 'Stock', icon: '📦', description: 'Panelería, iluminación, mobiliario, alfombras, estructura, herramientas', fields: [{ label: 'Categoría', type: 'select', options: ['Panelería', 'Iluminación', 'Mobiliario', 'Alfombras', 'Estructura', 'Carros', 'Escaleras', 'Herramientas'] }, { label: 'Estado', type: 'select', options: ['Disponible', 'Asignado', 'En reparación', 'Baja'] }, { label: 'Cantidad', type: 'number' }] },
+                { id: 'vehiculos', name: 'Vehículos', icon: '🚛', description: 'Flota propia: datos, estado, VTV, service, seguro, disponibilidad', fields: [] },
+                { id: 'transporte', name: 'Transporte', icon: '📦', description: 'Cronograma salidas/retornos por evento, vehículo, conductor', fields: [] },
+                { id: 'montaje', name: 'Montaje / Desmontaje', icon: '🏗️', description: 'Checklist de lo que sale del depósito, verificación al volver', fields: [] },
+                { id: 'entrega', name: 'Entrega con OK', icon: '📸', description: 'Fotos del stand terminado, firma/confirmación del cliente', fields: [] },
             ],
             connections: [
-                { to: 'eventos', label: 'Ver Proyectos', context: 'Proyectos que reservan materiales' },
-                { to: 'produccion', label: 'Ver Producción', context: 'Consumo de materiales' },
-                { to: 'finanzas', label: 'Ver Compras', context: 'Movimientos de compras' },
-                { to: 'proveedores', label: 'Ver Proveedores', context: 'Proveedores suministran' },
+                { to: 'eventos', label: 'Ver Evento', context: 'Evento del transporte' },
+                { to: 'produccion', label: 'Ver Producción', context: 'Lo que sale de taller' },
+                { to: 'rrhh', label: 'Ver Equipo', context: 'Personal asignado al montaje' },
             ],
         },
+
+        // ════════════════════════════════════════════
+        //  RECURSOS
+        // ════════════════════════════════════════════
 
         rrhh: {
             id: 'rrhh',
             name: 'RRHH / Equipo',
-            shortName: 'Equipo',
-            icon: '⬜',
-            description: 'Personal, asignaciones, pagos, vacaciones.',
-            status: 'upcoming',
-            color: '#B0B0B0',
+            shortName: 'RRHH',
+            icon: '👥',
+            description: 'Personal, asignaciones por evento, pagos, vacaciones.',
+            status: 'development',
+            color: '#9B7DFF',
             order: 8,
             sections: [
-                { id: 'personal', name: 'Personal', icon: '👥', description: 'Fijos (17), eventuales base (3), pico (40). Datos, rol, antigüedad.', fields: [{ label: 'Nombre', type: 'text' }, { label: 'Tipo', type: 'select', options: ['Fijo', 'Eventual base', 'Eventual pico', 'Externo'] }, { label: 'Rol', type: 'text' }, { label: 'Antigüedad', type: 'date' }] },
-                { id: 'asignacion', name: 'Asignación', icon: '📌', description: 'Por proyecto, por evento, calendario de disponibilidad', fields: [{ label: 'Proyecto', type: 'relation' }, { label: 'Evento', type: 'relation' }, { label: 'Calendario', type: 'calendar' }] },
-                { id: 'pagos-rrhh', name: 'Pagos', icon: '💵', description: 'Jornales, extras, horas adicionales, grupos externos', fields: [{ label: 'Tipo', type: 'select', options: ['Jornal', 'Extra', 'Horas adicionales', 'Grupo externo'] }, { label: 'Monto', type: 'number' }] },
-                { id: 'vacaciones', name: 'Vacaciones', icon: '🏖️', description: 'Días disponibles, solicitud/aprobación, calendario, alerta superposición', fields: [{ label: 'Días disponibles', type: 'number' }, { label: 'Solicitud', type: 'daterange' }, { label: 'Estado', type: 'select', options: ['Pendiente', 'Aprobada', 'Rechazada'] }] },
+                { id: 'nomina', name: 'Nómina', icon: '👥', description: 'Personal fijo (17), eventual base (3), pico (40). Cuadrillas externas como unidad.', fields: [] },
+                { id: 'asignacion', name: 'Asignación', icon: '📌', description: 'Por evento/proyecto, cruza con Calendario Operativo', fields: [] },
+                { id: 'pagos-rrhh', name: 'Pagos', icon: '💵', description: 'Jornales, extras, horas adicionales, grupos externos', fields: [] },
+                { id: 'vacaciones', name: 'Vacaciones', icon: '🏖️', description: 'Calendario, días disponibles, solicitudes', fields: [] },
             ],
             connections: [
-                { to: 'eventos', label: 'Ver Proyectos', context: 'Asignaciones de personal' },
+                { to: 'eventos', label: 'Ver Eventos', context: 'Asignaciones de personal' },
                 { to: 'produccion', label: 'Ver Producción', context: 'Disponibilidad para producción' },
                 { to: 'finanzas', label: 'Ver Pagos', context: 'Jornales y pagos' },
             ],
         },
 
-        proveedores: {
-            id: 'proveedores',
-            name: 'Proveedores & Compras',
-            shortName: 'Proveedores',
-            icon: '⬜',
-            description: 'Base de proveedores, gestión comercial, pagos planificados.',
-            status: 'upcoming',
-            color: '#B0B0B0',
+        compras: {
+            id: 'compras',
+            name: 'Compras',
+            shortName: 'Compras',
+            icon: '🛒',
+            description: 'Proveedores, órdenes de compra, comparación, pagos planificados.',
+            status: 'development',
+            color: '#9B7DFF',
             order: 9,
             sections: [
-                { id: 'base-proveedores', name: 'Base de Proveedores', icon: '🏪', description: 'Datos, rubro, calificación (cumplimiento, calidad, precio)', fields: [{ label: 'Nombre', type: 'text' }, { label: 'Rubro', type: 'select', options: ['Gráfica', 'Transporte', 'Ferretería', 'Pintura', 'Aluminio', 'Maderas', 'Vidrios', 'Tech', 'Mano de obra'] }, { label: 'Calificación', type: 'rating' }, { label: 'Contacto', type: 'text' }] },
-                { id: 'gestion-comercial', name: 'Gestión Comercial', icon: '📑', description: 'Historial de compras, comparación de presupuestos', fields: [{ label: 'Historial', type: 'list' }, { label: 'Comparar precios', type: 'action' }] },
-                { id: 'pagos-proveedores', name: 'Pagos Planificados', icon: '📅', description: 'Fecha de pago, pendientes por semana/mes, proyección', fields: [{ label: 'Fecha programada', type: 'date' }, { label: 'Monto', type: 'number' }, { label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado', 'Vencido'] }] },
+                { id: 'proveedores', name: 'Proveedores', icon: '🏪', description: 'Tabla + ficha: datos, rubro, calificación (cumplimiento, calidad, precio)', fields: [] },
+                { id: 'ordenes', name: 'Órdenes de Compra', icon: '📝', description: 'Generar OC, vincular proveedor, estado (pendiente/aprobada/recibida/pagada)', fields: [] },
+                { id: 'comparacion', name: 'Comparación', icon: '⚖️', description: 'Presupuestos de distintos proveedores para mismo insumo/servicio', fields: [] },
+                { id: 'pagos-proveedores', name: 'Pagos Planificados', icon: '📅', description: 'Qué se debe, a quién, cuándo vence', fields: [] },
             ],
             connections: [
                 { to: 'inventario', label: 'Ver Inventario', context: 'Compras vinculadas a inventario' },
-                { to: 'eventos', label: 'Ver Proyectos', context: 'Compras por proyecto' },
                 { to: 'finanzas', label: 'Ver Tesorería', context: 'Pagos en tesorería' },
             ],
+        },
+
+        inventario: {
+            id: 'inventario',
+            name: 'Inventario',
+            shortName: 'Inventario',
+            icon: '📦',
+            description: 'Insumos base y stock de equipamiento.',
+            status: 'active',
+            color: '#9B7DFF',
+            order: 10,
+            sections: [
+                { id: 'insumos', name: 'Insumos', icon: '🧱', description: 'Materias primas: clasificación, categoría, costo unitario, moneda, unidad, proveedor', fields: [] },
+                { id: 'stock', name: 'Stock', icon: '📦', description: 'Panelería, iluminación, mobiliario, alfombras, estructura, herramientas', fields: [
+                    { label: 'Categoría', type: 'select', options: ['Panelería', 'Iluminación', 'Mobiliario', 'Alfombras', 'Estructura', 'Carros', 'Escaleras', 'Herramientas'] },
+                    { label: 'Estado', type: 'select', options: ['Disponible', 'Asignado', 'En reparación', 'Baja'] },
+                    { label: 'Cantidad', type: 'number' },
+                ] },
+            ],
+            connections: [
+                { to: 'produccion', label: 'Ver Producción', context: 'Consumo de materiales' },
+                { to: 'compras', label: 'Ver Compras', context: 'Órdenes de compra de insumos' },
+                { to: 'locaciones', label: 'Ver Locaciones', context: 'Stock por locación' },
+            ],
+        },
+
+        locaciones: {
+            id: 'locaciones',
+            name: 'Locaciones',
+            shortName: 'Locaciones',
+            icon: '🏭',
+            description: 'Depósito, taller, oficina — documentación y stock por lugar.',
+            status: 'development',
+            color: '#9B7DFF',
+            order: 11,
+            sections: [
+                { id: 'lugares', name: 'Lugares', icon: '🏭', description: 'Tabla: nombre, dirección, tipo, superficie, estado', fields: [] },
+                { id: 'documentacion', name: 'Documentación', icon: '📄', description: 'Contratos, habilitaciones, seguros, vencimientos por locación', fields: [] },
+                { id: 'stock-locacion', name: 'Stock por Locación', icon: '📦', description: 'Qué hay en cada lugar, cruzado con Inventario', fields: [] },
+            ],
+            connections: [
+                { to: 'inventario', label: 'Ver Inventario', context: 'Stock total del sistema' },
+            ],
+        },
+
+        // ════════════════════════════════════════════
+        //  ADMIN & FINANZAS
+        // ════════════════════════════════════════════
+
+        finanzas: {
+            id: 'finanzas',
+            name: 'Finanzas',
+            shortName: 'Finanzas',
+            icon: '💰',
+            description: 'Facturación, cobros, tesorería, pagos a terceros, reportes.',
+            status: 'development',
+            color: '#4A90D9',
+            order: 12,
+            sections: [
+                { id: 'facturacion', name: 'Facturación', icon: '🧾', description: 'Integración LaPyme, factura electrónica AFIP', fields: [] },
+                { id: 'cobros', name: 'Cobros por Proyecto', icon: '💰', description: 'Seña, pagos parciales, saldo, alertas de vencimiento', fields: [] },
+                { id: 'tesoreria', name: 'Tesorería', icon: '🏦', description: 'Valores, disponibilidad, proyección de flujo de caja', fields: [] },
+                { id: 'pagos-terceros', name: 'Pagos a Terceros', icon: '💸', description: 'Proveedores, RRHH, jornales (cruza con Compras y RRHH)', fields: [] },
+                { id: 'calendario-admin', name: 'Calendario Administrativo', icon: '📅', description: 'Vencimientos, cobros entrantes, pagos salientes', fields: [] },
+                { id: 'reportes', name: 'Reportes', icon: '📊', description: 'Rentabilidad por proyecto, cliente, período. Exportable.', fields: [] },
+            ],
+            connections: [
+                { to: 'crm', label: 'Ver CRM', context: 'Cuentas de clientes' },
+                { to: 'compras', label: 'Ver Compras', context: 'Pagos a proveedores' },
+                { to: 'rrhh', label: 'Ver RRHH', context: 'Jornales y pagos de personal' },
+            ],
+        },
+
+        costos: {
+            id: 'costos',
+            name: 'Costos',
+            shortName: 'Costos',
+            icon: '🧮',
+            description: 'Recetas/BOM, simulador de precios, listas de precio. Solo admin.',
+            status: 'development',
+            color: '#4A90D9',
+            order: 13,
+            sections: [
+                { id: 'recetas', name: 'Recetas / BOM', icon: '📐', description: 'Composición de items, clonar y ajustar recetas base', fields: [] },
+                { id: 'catalogo-base', name: 'Catálogo Base', icon: '🔩', description: 'Items con costo de producción calculado desde recetas', fields: [] },
+                { id: 'listas-precio', name: 'Listas de Precio', icon: '💲', description: 'General, Agencias, Volumen — margen y descuentos', fields: [] },
+                { id: 'simulador', name: 'Simulador', icon: '📊', description: 'Recálculo en cascada, simulación de impacto de precios', fields: [] },
+                { id: 'generador-catalogo', name: 'Generador de Catálogos', icon: '📄', description: 'Exportar catálogos custom por audiencia', fields: [] },
+            ],
+            connections: [
+                { to: 'catalogo', label: 'Ver Catálogo', context: 'Items publicados para clientes' },
+                { to: 'inventario', label: 'Ver Insumos', context: 'Costos de materias primas' },
+            ],
+        },
+
+        'admin-panel': {
+            id: 'admin-panel',
+            name: 'Admin',
+            shortName: 'Admin',
+            icon: '⚙️',
+            description: 'Panel de control: usuarios, roles, audit log, configuración del sistema.',
+            status: 'active',
+            color: '#4A90D9',
+            order: 14,
+            sections: [],
+            connections: [],
         },
     },
 
@@ -526,6 +482,11 @@ const Data = {
         return this.getModuleList().filter(m => allowed.includes(m.id));
     },
 
+    isReadOnly(role, moduleId) {
+        const ro = this.readOnlyPermissions[role] || [];
+        return ro.includes(moduleId);
+    },
+
     getIndicatorsForRole(role) {
         return this.dashboardIndicators[role] || this.dashboardIndicators.superadmin;
     },
@@ -550,11 +511,12 @@ const Data = {
 
         // Search modules
         this.getModuleList().forEach(mod => {
+            if (mod.isExternal) return; // Don't show external links in search
             if (mod.name.toLowerCase().includes(q) || mod.shortName.toLowerCase().includes(q) || mod.description.toLowerCase().includes(q)) {
                 results.push({ type: 'module', label: mod.name, icon: mod.icon, route: mod.id });
             }
             // Search sections
-            mod.sections.forEach(sec => {
+            (mod.sections || []).forEach(sec => {
                 if (sec.name.toLowerCase().includes(q) || sec.description.toLowerCase().includes(q)) {
                     results.push({ type: 'section', label: `${mod.shortName} › ${sec.name}`, icon: sec.icon, route: mod.id, sectionId: sec.id });
                 }
