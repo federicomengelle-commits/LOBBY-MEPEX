@@ -53,6 +53,14 @@ const CRM = {
     _interFilterTipo: null,
     _interSearch: '',
 
+    // ─── Marketing tab state ───
+    // TODO: Crear tabla marketing_campanias en Supabase con columnas:
+    //   id (uuid, PK), nombre (text), canal (text), estado (text),
+    //   fecha_inicio (date), fecha_fin (date), contactos (integer),
+    //   descripcion (text), created_at (timestamptz), deleted (boolean default false)
+    _campanias: [],
+    _mktFilterEstado: null,
+
     // ─── Counts per tab ───
     _counts: { clientes: 0, pipeline: 0, cotizaciones: 0, interacciones: 0, marketing: 0 },
 
@@ -120,6 +128,22 @@ const CRM = {
         { value: 'llamada',  label: 'Llamada',  icon: '\uD83D\uDCDE', color: '#00CC88' },
         { value: 'reunion',  label: 'Reuni\u00F3n',  icon: '\uD83E\uDD1D', color: '#9B7DFF' },
         { value: 'estado',   label: 'Estado',   icon: '\uD83D\uDD04', color: '#F28D15' },
+    ],
+
+    // ─── Marketing config ───
+    _mktEstados: [
+        { value: 'activa',      label: 'Activa',      color: '#00CC88', icon: '🟢' },
+        { value: 'programada',  label: 'Programada',  color: '#4A90D9', icon: '🔵' },
+        { value: 'planificada', label: 'Planificada', color: '#888888', icon: '⚪' },
+        { value: 'finalizada',  label: 'Finalizada',  color: '#9B7DFF', icon: '🟣' },
+    ],
+    _mktCanales: [
+        { value: 'email',     label: 'Email',       icon: '✉️' },
+        { value: 'whatsapp',  label: 'WhatsApp',    icon: '💬' },
+        { value: 'linkedin',  label: 'LinkedIn',    icon: '💼' },
+        { value: 'telefono',  label: 'Teléfono',    icon: '📞' },
+        { value: 'evento',    label: 'Evento',      icon: '📅' },
+        { value: 'otro',      label: 'Otro',        icon: '📣' },
     ],
 
     // ─── Tab definitions ───
@@ -272,6 +296,12 @@ const CRM = {
                 !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
             ).length;
             this._counts.interacciones = this._allTimeline.length;
+
+            // Load marketing campaigns (local for now until Supabase table exists)
+            if (!this._campanias || this._campanias.length === 0) {
+                this._campanias = this._loadLocalCampanias();
+            }
+            this._counts.marketing = this._campanias.length;
             this._updateTabCounts();
 
         } catch (e) {
@@ -416,6 +446,9 @@ const CRM = {
         } else if (this._activeTab === 'interacciones') {
             main.innerHTML = this._renderInteraccionesTab();
             this._attachInterListeners();
+        } else if (this._activeTab === 'marketing') {
+            main.innerHTML = this._renderMarketingTab();
+            this._attachMarketingListeners();
         } else {
             main.innerHTML = this._renderPlaceholderTab(this._activeTab);
         }
@@ -2520,6 +2553,311 @@ const CRM = {
 
 
     // ═══════════════════════════════════════════
+    //  MARKETING TAB
+    // ═══════════════════════════════════════════
+
+    // Local storage for campaigns until Supabase table is created
+    _loadLocalCampanias() {
+        try {
+            const stored = localStorage.getItem('crm_campanias');
+            if (stored) return JSON.parse(stored);
+        } catch (e) { /* ignore */ }
+        return [];
+    },
+
+    _saveLocalCampanias() {
+        try {
+            localStorage.setItem('crm_campanias', JSON.stringify(this._campanias));
+        } catch (e) { /* ignore */ }
+    },
+
+    _renderMarketingTab() {
+        const user = Auth.getUser();
+        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
+
+        // Filter
+        let filtered = [...this._campanias];
+        if (this._mktFilterEstado) {
+            filtered = filtered.filter(c => c.estado === this._mktFilterEstado);
+        }
+
+        // Sort: activa first, then programada, planificada, finalizada
+        const estadoOrder = { activa: 0, programada: 1, planificada: 2, finalizada: 3 };
+        filtered.sort((a, b) => (estadoOrder[a.estado] || 9) - (estadoOrder[b.estado] || 9));
+
+        // Estado filter chips
+        const allEstados = [
+            { value: null, label: 'Todas' },
+            ...this._mktEstados,
+        ];
+        const chipFilter = allEstados.map(e => {
+            const active = this._mktFilterEstado === e.value;
+            const chipColor = e.color || '#00A9C1';
+            return `<button class="mkt-chip ${active ? 'active' : ''}" data-estado="${e.value || ''}" style="${active ? `background: ${chipColor}20; border-color: ${chipColor}60; color: ${chipColor}` : ''}">
+                ${e.icon ? e.icon + ' ' : ''}${e.label}
+            </button>`;
+        }).join('');
+
+        // Cards
+        let cardsHTML = '';
+        if (filtered.length === 0 && !this._mktFilterEstado) {
+            cardsHTML = `
+                <div class="mkt-empty">
+                    <div class="mkt-empty-icon">📣</div>
+                    <h3>Sin campañas</h3>
+                    <p>Creá tu primera campaña de marketing para empezar a trackear el alcance comercial.</p>
+                </div>`;
+        } else {
+            cardsHTML = '<div class="mkt-grid">';
+            filtered.forEach(camp => {
+                const estCfg = this._mktEstados.find(e => e.value === camp.estado) || this._mktEstados[2];
+                const canalCfg = this._mktCanales.find(c => c.value === camp.canal) || { icon: '📣', label: camp.canal || '—' };
+                const fechaInicio = camp.fechaInicio ? new Date(camp.fechaInicio).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—';
+                const fechaFin = camp.fechaFin ? new Date(camp.fechaFin).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—';
+                const contactos = camp.contactos ? camp.contactos.toLocaleString('es-AR') : '0';
+
+                cardsHTML += `
+                    <div class="mkt-card" data-id="${camp.id}">
+                        <div class="mkt-card-header">
+                            <span class="mkt-card-badge" style="background: ${estCfg.color}18; color: ${estCfg.color}; border-color: ${estCfg.color}30">${estCfg.label}</span>
+                            <div class="mkt-card-actions">
+                                <button class="mkt-card-btn mkt-edit-btn" data-id="${camp.id}" title="Editar">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                </button>
+                                <button class="mkt-card-btn mkt-del-btn" data-id="${camp.id}" title="Eliminar">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <h3 class="mkt-card-name">${camp.nombre || 'Sin nombre'}</h3>
+                        <div class="mkt-card-meta">
+                            <div class="mkt-card-row">
+                                <span class="mkt-card-label">Canal</span>
+                                <span class="mkt-card-value">${canalCfg.icon} ${canalCfg.label}</span>
+                            </div>
+                            <div class="mkt-card-row">
+                                <span class="mkt-card-label">Período</span>
+                                <span class="mkt-card-value">${fechaInicio} → ${fechaFin}</span>
+                            </div>
+                            <div class="mkt-card-row">
+                                <span class="mkt-card-label">Contactos</span>
+                                <span class="mkt-card-value mkt-card-contactos">${contactos}</span>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+
+            // "+ Nueva campaña" card
+            if (!isReadOnly) {
+                cardsHTML += `
+                    <div class="mkt-card mkt-card-new" id="mktNewCard">
+                        <div class="mkt-card-new-inner">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span>Nueva campaña</span>
+                        </div>
+                    </div>`;
+            }
+            cardsHTML += '</div>';
+        }
+
+        // If there's no filter active and no campaigns, still show the new card
+        if (filtered.length === 0 && !this._mktFilterEstado && !isReadOnly) {
+            cardsHTML = `
+                <div class="mkt-grid">
+                    <div class="mkt-card mkt-card-new" id="mktNewCard">
+                        <div class="mkt-card-new-inner">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span>Nueva campaña</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mkt-empty" style="margin-top: 16px;">
+                    <div class="mkt-empty-icon">📣</div>
+                    <h3>Sin campañas</h3>
+                    <p>Creá tu primera campaña de marketing para empezar a trackear el alcance comercial.</p>
+                </div>`;
+        }
+
+        return `
+            <div class="mkt-container">
+                <div class="mkt-toolbar">
+                    <div class="mkt-chips" id="mktChips">
+                        ${chipFilter}
+                    </div>
+                    <div class="mkt-count">${filtered.length} campaña${filtered.length !== 1 ? 's' : ''}</div>
+                </div>
+                <div class="mkt-body">
+                    ${cardsHTML}
+                </div>
+            </div>`;
+    },
+
+    _attachMarketingListeners() {
+        const user = Auth.getUser();
+        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
+
+        // Filter chips
+        const chips = document.getElementById('mktChips');
+        if (chips) {
+            chips.addEventListener('click', (e) => {
+                const chip = e.target.closest('.mkt-chip');
+                if (!chip) return;
+                const estado = chip.dataset.estado || null;
+                this._mktFilterEstado = estado || null;
+                const main = document.getElementById('crmMainContent');
+                if (main) {
+                    main.innerHTML = this._renderMarketingTab();
+                    this._attachMarketingListeners();
+                }
+            });
+        }
+
+        // New card
+        const newCard = document.getElementById('mktNewCard');
+        if (newCard && !isReadOnly) {
+            newCard.addEventListener('click', () => this._openMarketingModal(null));
+        }
+
+        // Edit buttons
+        document.querySelectorAll('.mkt-edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                const camp = this._campanias.find(c => c.id === id);
+                if (camp) this._openMarketingModal(camp);
+            });
+        });
+
+        // Delete buttons
+        document.querySelectorAll('.mkt-del-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                const camp = this._campanias.find(c => c.id === id);
+                if (!camp) return;
+                const ok = await Confirm.delete(camp.nombre || 'campaña');
+                if (!ok) return;
+                this._campanias = this._campanias.filter(c => c.id !== id);
+                this._saveLocalCampanias();
+                this._counts.marketing = this._campanias.length;
+                this._updateTabCounts();
+                Toast.success('Campaña eliminada');
+                const main = document.getElementById('crmMainContent');
+                if (main) {
+                    main.innerHTML = this._renderMarketingTab();
+                    this._attachMarketingListeners();
+                }
+            });
+        });
+    },
+
+    _openMarketingModal(existing) {
+        const isEdit = !!existing;
+        const title = isEdit ? 'Editar campaña' : 'Nueva campaña';
+
+        const estadoOpts = this._mktEstados.map(e =>
+            `<option value="${e.value}" ${existing && existing.estado === e.value ? 'selected' : ''}>${e.icon} ${e.label}</option>`
+        ).join('');
+
+        const canalOpts = this._mktCanales.map(c =>
+            `<option value="${c.value}" ${existing && existing.canal === c.value ? 'selected' : ''}>${c.icon} ${c.label}</option>`
+        ).join('');
+
+        const body = `
+            <form id="mktForm" class="mkt-form">
+                <div class="mkt-form-group">
+                    <label class="mkt-form-label">Nombre</label>
+                    <input type="text" class="mkt-form-input" id="mktNombre" value="${existing ? (existing.nombre || '') : ''}" placeholder="Ej: Campaña ferias Q2" required />
+                </div>
+                <div class="mkt-form-row">
+                    <div class="mkt-form-group">
+                        <label class="mkt-form-label">Canal</label>
+                        <select class="mkt-form-select" id="mktCanal">${canalOpts}</select>
+                    </div>
+                    <div class="mkt-form-group">
+                        <label class="mkt-form-label">Estado</label>
+                        <select class="mkt-form-select" id="mktEstado">${estadoOpts}</select>
+                    </div>
+                </div>
+                <div class="mkt-form-row">
+                    <div class="mkt-form-group">
+                        <label class="mkt-form-label">Fecha inicio</label>
+                        <input type="date" class="mkt-form-input" id="mktFechaInicio" value="${existing ? (existing.fechaInicio || '') : ''}" />
+                    </div>
+                    <div class="mkt-form-group">
+                        <label class="mkt-form-label">Fecha fin</label>
+                        <input type="date" class="mkt-form-input" id="mktFechaFin" value="${existing ? (existing.fechaFin || '') : ''}" />
+                    </div>
+                </div>
+                <div class="mkt-form-group">
+                    <label class="mkt-form-label">Contactos alcanzados</label>
+                    <input type="number" class="mkt-form-input" id="mktContactos" value="${existing ? (existing.contactos || 0) : 0}" min="0" />
+                </div>
+            </form>`;
+
+        const instance = Modal.open({
+            title,
+            body,
+            size: 'small',
+            footer: `
+                <button class="btn btn-ghost" id="mktCancel">Cancelar</button>
+                <button class="btn btn-primary" id="mktSave">${isEdit ? 'Guardar' : 'Crear'}</button>
+            `,
+        });
+
+        // Events
+        const cancelBtn = document.getElementById('mktCancel');
+        const saveBtn = document.getElementById('mktSave');
+
+        if (cancelBtn) cancelBtn.addEventListener('click', () => Modal.close(instance.id));
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => {
+                const nombre = document.getElementById('mktNombre').value.trim();
+                if (!nombre) {
+                    Toast.warning('El nombre es obligatorio');
+                    return;
+                }
+                const data = {
+                    nombre,
+                    canal: document.getElementById('mktCanal').value,
+                    estado: document.getElementById('mktEstado').value,
+                    fechaInicio: document.getElementById('mktFechaInicio').value || null,
+                    fechaFin: document.getElementById('mktFechaFin').value || null,
+                    contactos: parseInt(document.getElementById('mktContactos').value) || 0,
+                };
+
+                if (isEdit) {
+                    // Update
+                    const idx = this._campanias.findIndex(c => c.id === existing.id);
+                    if (idx >= 0) {
+                        this._campanias[idx] = { ...this._campanias[idx], ...data };
+                    }
+                    Toast.success('Campaña actualizada');
+                } else {
+                    // Create
+                    data.id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+                    data.createdAt = new Date().toISOString();
+                    this._campanias.push(data);
+                    Toast.success('Campaña creada');
+                }
+
+                this._saveLocalCampanias();
+                this._counts.marketing = this._campanias.length;
+                this._updateTabCounts();
+                Modal.close(instance.id);
+
+                const main = document.getElementById('crmMainContent');
+                if (main) {
+                    main.innerHTML = this._renderMarketingTab();
+                    this._attachMarketingListeners();
+                }
+            });
+        }
+    },
+
+
+    // ═══════════════════════════════════════════
     //  STYLES (injected once)
     // ═══════════════════════════════════════════
 
@@ -4210,6 +4548,281 @@ const CRM = {
     color: var(--text-muted);
     max-width: 400px;
     margin: 0;
+}
+
+/* ═══════════════════════════════════════════
+   MARKETING TAB
+   ═══════════════════════════════════════════ */
+
+.mkt-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px 24px;
+}
+
+/* Toolbar */
+.mkt-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.mkt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.mkt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    font-family: var(--font-main);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 200ms ease;
+    white-space: nowrap;
+}
+.mkt-chip:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+.mkt-chip.active {
+    font-weight: 500;
+}
+.mkt-count {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+/* Grid */
+.mkt-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+@media (max-width: 1100px) {
+    .mkt-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+    .mkt-grid { grid-template-columns: 1fr; }
+}
+
+/* Card */
+.mkt-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: border-color 250ms ease, box-shadow 250ms ease;
+}
+.mkt-card:hover {
+    border-color: rgba(0,169,193,0.3);
+    box-shadow: 0 0 16px rgba(0,169,193,0.06);
+}
+.mkt-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.mkt-card-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.mkt-card-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 200ms;
+}
+.mkt-card:hover .mkt-card-actions {
+    opacity: 1;
+}
+.mkt-card-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 200ms ease;
+}
+.mkt-card-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.05);
+    border-color: var(--border);
+}
+.mkt-del-btn:hover {
+    color: var(--color-error) !important;
+    border-color: rgba(255,68,68,0.3) !important;
+}
+.mkt-card-name {
+    font-family: var(--font-main);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.3;
+}
+.mkt-card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.mkt-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.82rem;
+}
+.mkt-card-label {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.mkt-card-value {
+    color: var(--text-muted);
+}
+.mkt-card-contactos {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--primary);
+}
+
+/* New card */
+.mkt-card-new {
+    border-style: dashed;
+    border-color: var(--border);
+    background: transparent;
+    cursor: pointer;
+    min-height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 250ms, background 250ms;
+}
+.mkt-card-new:hover {
+    border-color: var(--primary);
+    background: rgba(0,169,193,0.04);
+}
+.mkt-card-new-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-dim);
+    transition: color 250ms;
+}
+.mkt-card-new:hover .mkt-card-new-inner {
+    color: var(--primary);
+}
+.mkt-card-new-inner span {
+    font-family: var(--font-main);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* Empty */
+.mkt-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+    text-align: center;
+    gap: 12px;
+}
+.mkt-empty-icon {
+    font-size: 48px;
+    opacity: 0.5;
+}
+.mkt-empty h3 {
+    font-family: var(--font-main);
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+.mkt-empty p {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    max-width: 400px;
+    margin: 0;
+}
+
+/* Form in modal */
+.mkt-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.mkt-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.mkt-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.mkt-form-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.mkt-form-input,
+.mkt-form-select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 12px;
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 200ms;
+}
+.mkt-form-input:focus,
+.mkt-form-select:focus {
+    border-color: var(--primary);
+}
+.mkt-form-input::placeholder {
+    color: var(--text-dim);
+}
+.mkt-form-select {
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
 }
         `;
         document.head.appendChild(style);
