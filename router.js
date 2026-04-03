@@ -34,7 +34,7 @@ const Router = {
             // ── Comercial ──
             'crm':              { render: () => CRM.render(), requiresAuth: true, module: 'crm' },
             'cotizador':        { render: () => this._openExternal('http://195.200.1.250/cotizador/'), requiresAuth: true, module: 'cotizador' },
-            'catalogo':         { render: () => this._renderPlaceholder('catalogo'), requiresAuth: true, module: 'catalogo' },
+            'catalogo':         { render: () => CatalogoModule.render(), requiresAuth: true, module: 'catalogo' },
 
             // ── Operaciones ──
             'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },

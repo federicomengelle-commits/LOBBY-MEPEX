@@ -423,7 +423,7 @@ const Modules = {
             'eventos:proyecto': 'projects',
             // proyectos:lista removed — now handled by ProyectosModule
             'inventario:insumos': 'insumos',
-            'inventario:catalogo': 'catalogo',
+            // inventario:catalogo removed — now handled by CatalogoModule
             'ventas:tabla': 'cotizaciones',
         };
         return map[`${moduleId}:${sectionId}`] || null;
