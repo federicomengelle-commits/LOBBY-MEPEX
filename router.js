@@ -47,7 +47,7 @@ const Router = {
             'rrhh':             { render: () => this._renderPlaceholder('rrhh'), requiresAuth: true, module: 'rrhh' },
             'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras' },
             'inventario':       { render: () => Modules.render('inventario'), requiresAuth: true, module: 'inventario' },
-            'locaciones':       { render: () => this._renderPlaceholder('locaciones'), requiresAuth: true, module: 'locaciones' },
+            'locaciones':       { render: () => LocacionesModule.render(), requiresAuth: true, module: 'locaciones' },
 
             // ── Admin & Finanzas ──
             'finanzas':         { render: () => this._renderPlaceholder('finanzas'), requiresAuth: true, module: 'finanzas' },
