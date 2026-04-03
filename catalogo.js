@@ -219,16 +219,8 @@ const CatalogoModule = {
         const dir = this._sortDir === 'asc' ? 1 : -1;
 
         return data.sort((a, b) => {
-            let va, vb;
-            switch (col) {
-                case 'precio':
-                    va = a.precioCliente || 0;
-                    vb = b.precioCliente || 0;
-                    break;
-                default:
-                    va = (a[col] || '').toString().toLowerCase();
-                    vb = (b[col] || '').toString().toLowerCase();
-            }
+            const va = (a[col] || '').toString().toLowerCase();
+            const vb = (b[col] || '').toString().toLowerCase();
             if (va < vb) return -1 * dir;
             if (va > vb) return 1 * dir;
             return 0;
@@ -290,7 +282,6 @@ const CatalogoModule = {
                     <td class="cat-td cat-td-thumb">
                         ${item.foto ? `<img src="${item.foto}" class="cat-thumb-img" alt="">` : '<span class="cat-thumb-empty">📷</span>'}
                     </td>
-                    <td class="cat-td cat-td-price">${API.formatCurrency(item.precioCliente)}</td>
                 </tr>`;
         }).join('');
 
@@ -306,7 +297,6 @@ const CatalogoModule = {
                             <th class="cat-th sortable" data-sort="origen">ORIGEN${sortIcon('origen')}</th>
                             <th class="cat-th">UNIDAD</th>
                             <th class="cat-th">FOTO</th>
-                            <th class="cat-th sortable" data-sort="precio">PRECIO CLIENTE${sortIcon('precio')}</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -470,15 +460,6 @@ const CatalogoModule = {
                     <div class="cat-info-row"><span class="cat-info-label">Descripción</span><span class="cat-info-value">${v(item.descripcion)}</span></div>
                     <div class="cat-info-row"><span class="cat-info-label">Origen</span><span class="cat-info-value">${v(item.origen)}</span></div>
                     <div class="cat-info-row"><span class="cat-info-label">Unidad</span><span class="cat-info-value">${v(item.unidad)}</span></div>
-                </div>
-            </div>
-
-            <!-- Precio -->
-            <div class="cat-panel-section">
-                <h3 class="cat-section-title">Precio cliente</h3>
-                <div class="cat-panel-precio">
-                    <span class="cat-precio-value">${API.formatCurrency(item.precioCliente)}</span>
-                    <span class="cat-precio-hint">Definido en Costos → Listas de precio</span>
                 </div>
             </div>
 

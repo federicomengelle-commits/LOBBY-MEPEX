@@ -283,83 +283,39 @@ const CostosModule = {
     },
 
     // ═══════════════════════════════════════════
-    //  TAB: LISTAS DE PRECIO
+    //  TAB: LISTAS DE PRECIO (Lista Base única)
     // ═══════════════════════════════════════════
+
+    _getListaBase() {
+        // Always use the "general" lista as the single Lista Base
+        return this._listas.find(l => l.tipo === 'general') || this._listas[0] || null;
+    },
 
     async _renderListasPrecioTab() {
         const container = document.getElementById('costosMainContent');
         if (!container) return;
 
-        // Build cards for each lista + "new" button
-        const cardsHtml = this._listas.map(l => {
-            const isSelected = this._selectedLista && this._selectedLista.id === l.id;
-            const tipoIcon = l.tipo === 'general' ? '📋' : l.tipo === 'agencias' ? '🏢' : '📝';
-            const estadoBadge = l.estado === 'activa'
-                ? '<span class="costos-lista-badge activa">Activa</span>'
-                : '<span class="costos-lista-badge borrador">Borrador</span>';
-            return `
-                <div class="costos-lista-card ${isSelected ? 'selected' : ''}" data-lista-id="${l.id}">
-                    <div class="costos-lista-card-header">
-                        <span class="costos-lista-card-icon">${tipoIcon}</span>
-                        <span class="costos-lista-card-name">${l.nombre}</span>
-                        ${estadoBadge}
-                    </div>
-                    <div class="costos-lista-card-meta">
-                        <span class="costos-lista-card-margen">Margen global: <strong>${l.margenGlobal}%</strong></span>
-                        <span class="costos-lista-card-tipo">${l.tipo}</span>
-                    </div>
-                    ${l.tipo === 'custom' ? `
-                        <div class="costos-lista-card-actions">
-                            <button class="costos-lista-btn-edit" data-lista-id="${l.id}" title="Editar">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            </button>
-                            <button class="costos-lista-btn-delete" data-lista-id="${l.id}" title="Eliminar">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            </button>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }).join('');
-
-        container.innerHTML = `
-            <div class="costos-listas-layout">
-                <div class="costos-listas-sidebar">
-                    <div class="costos-listas-sidebar-header">
-                        <span>Listas de Precio</span>
-                        <button class="costos-btn-new-lista" id="costosNewLista" title="Nueva lista">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        </button>
-                    </div>
-                    <div class="costos-listas-cards">
-                        ${cardsHtml}
-                    </div>
-                </div>
-                <div class="costos-listas-detail" id="costosListaDetail">
-                    ${this._selectedLista ? '' : `
-                        <div class="costos-listas-empty-detail">
-                            <div class="costos-listas-empty-icon">💲</div>
-                            <p>Seleccioná una lista para ver los precios</p>
-                        </div>
-                    `}
-                </div>
-            </div>
-        `;
-
-        // If a lista is selected, render its detail
-        if (this._selectedLista) {
-            await this._renderListaDetail(this._selectedLista);
+        const lista = this._getListaBase();
+        if (!lista) {
+            container.innerHTML = `
+                <div class="costos-empty">
+                    <div class="costos-empty-icon">💲</div>
+                    <p>No hay lista de precios configurada</p>
+                    <p style="color:#555; font-size:13px;">Creá una lista tipo "general" en Supabase para comenzar</p>
+                </div>`;
+            return;
         }
 
-        this._attachListasEvents();
+        this._selectedLista = lista;
+        await this._renderListaDetail(lista);
 
         const countEl = document.getElementById('costosRecordCount');
-        if (countEl) countEl.textContent = `${this._listas.length} lista${this._listas.length !== 1 ? 's' : ''}`;
+        if (countEl) countEl.textContent = `${this._catalogoItems.length} item${this._catalogoItems.length !== 1 ? 's' : ''}`;
     },
 
     async _renderListaDetail(lista) {
-        const detailEl = document.getElementById('costosListaDetail');
-        if (!detailEl) return;
+        const container = document.getElementById('costosMainContent');
+        if (!container) return;
 
         // Load overrides for this lista
         const [rubros, items] = await Promise.all([
@@ -376,22 +332,6 @@ const CostosModule = {
         const itemMap = {};
         for (const i of items) itemMap[i.itemId] = i;
 
-        // Get General lista for Agencias comparison
-        let generalLista = null;
-        let generalRubroMap = {};
-        let generalItemMap = {};
-        if (lista.tipo === 'agencias') {
-            generalLista = this._listas.find(l => l.tipo === 'general');
-            if (generalLista) {
-                const [gRubros, gItems] = await Promise.all([
-                    API.getListaRubros(generalLista.id),
-                    API.getListaItems(generalLista.id),
-                ]);
-                for (const r of gRubros) generalRubroMap[r.rubro] = r;
-                for (const i of gItems) generalItemMap[i.itemId] = i;
-            }
-        }
-
         // Filter items by search
         let catalogData = [...this._catalogoItems];
         const q = (this._listaSearchQuery || '').toLowerCase();
@@ -406,15 +346,13 @@ const CostosModule = {
         // Sort by nombre
         catalogData.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
 
-        // Helper: resolve effective margin for an item in a lista
+        // Helper: resolve effective margin for an item
         const getMargen = (item, listaObj, rMap, iMap) => {
             // Item override > Rubro override > Global
             if (iMap[item.id]) return { value: iMap[item.id].margen, level: 'item' };
             if (item.rubro && rMap[item.rubro]) return { value: rMap[item.rubro].margen, level: 'rubro' };
             return { value: listaObj.margenGlobal, level: 'global' };
         };
-
-        const isAgencias = lista.tipo === 'agencias' && generalLista;
 
         const rows = catalogData.map(item => {
             const rs = this._getRecetaStatus(item.id);
@@ -425,15 +363,6 @@ const CostosModule = {
             // Level indicator
             const levelClass = `costos-margen-${m.level}`;
             const levelTitle = m.level === 'item' ? 'Override item' : m.level === 'rubro' ? 'Override rubro' : 'Margen global';
-
-            // Agencias discount column
-            let descuentoCol = '';
-            if (isAgencias) {
-                const gm = getMargen(item, generalLista, generalRubroMap, generalItemMap);
-                const precioGeneral = API.calcPrecioCliente(costo, gm.value);
-                const diff = precioGeneral > 0 ? Math.round((1 - precio / precioGeneral) * 10000) / 100 : 0;
-                descuentoCol = `<td class="td-number"><span class="costos-descuento-badge">${diff > 0 ? '-' : ''}${Math.abs(diff)}%</span></td>`;
-            }
 
             return `
                 <tr class="costos-table-row costos-lista-item-row" data-item-id="${item.id}">
@@ -449,21 +378,16 @@ const CostosModule = {
                         </div>
                     </td>
                     <td class="td-number td-mono"><strong>${API.formatCurrency(precio)}</strong></td>
-                    ${descuentoCol}
                 </tr>
             `;
         }).join('');
 
-        const estadoBadge = lista.estado === 'activa'
-            ? '<span class="costos-lista-badge activa">Activa</span>'
-            : '<span class="costos-lista-badge borrador">Borrador</span>';
-
-        detailEl.innerHTML = `
+        container.innerHTML = `
             <div class="costos-lista-detail-header">
                 <div class="costos-lista-detail-title">
-                    <h3>${lista.nombre}</h3>
-                    ${estadoBadge}
-                    <span class="costos-lista-detail-tipo">${lista.tipo}</span>
+                    <h3>Lista Base</h3>
+                    <span class="costos-lista-badge activa">Activa</span>
+                    <span class="costos-lista-detail-tipo" style="color:var(--text-dim); font-size:12px;">Precios de referencia para cotizar</span>
                 </div>
                 <div class="costos-lista-detail-controls">
                     <div class="costos-lista-global-margen">
@@ -487,7 +411,6 @@ const CostosModule = {
                 <span class="costos-legend-item"><span class="costos-margen-level">○</span> Global</span>
                 <span class="costos-legend-item"><span class="costos-margen-level" style="color:#F28D15">◐</span> Rubro</span>
                 <span class="costos-legend-item"><span class="costos-margen-level" style="color:#00A9C1">●</span> Item</span>
-                ${isAgencias ? '<span class="costos-legend-item costos-legend-agencias">Descuento = diferencia vs General</span>' : ''}
             </div>
             <div class="costos-lista-table-wrap">
                 ${catalogData.length === 0 ? `
@@ -505,68 +428,28 @@ const CostosModule = {
                                 <th>COSTO PROD.</th>
                                 <th>MARGEN (%)</th>
                                 <th>PRECIO FINAL</th>
-                                ${isAgencias ? '<th>DESC. vs GENERAL</th>' : ''}
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
                     </table>
                 `}
             </div>
+            <div class="costos-lista-action-bar">
+                <button class="btn btn-primary" id="costosUpdateCotizador">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    Actualizar precios Cotizador
+                </button>
+                <button class="btn btn-ghost" id="costosExportPDF">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    Exportar PDF catálogo
+                </button>
+            </div>
         `;
 
-        this._attachListaDetailEvents(lista, rubroMap, itemMap);
+        this._attachListaDetailEvents(lista, rubroMap, itemMap, catalogData);
     },
 
-    _attachListasEvents() {
-        // Card selection
-        document.querySelectorAll('.costos-lista-card').forEach(card => {
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.costos-lista-btn-edit') || e.target.closest('.costos-lista-btn-delete')) return;
-                const id = parseInt(card.dataset.listaId);
-                const lista = this._listas.find(l => l.id === id);
-                if (!lista) return;
-                this._selectedLista = lista;
-                this._listaSearchQuery = '';
-                this._renderListasPrecioTab();
-            });
-        });
-
-        // Edit buttons
-        document.querySelectorAll('.costos-lista-btn-edit').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const id = parseInt(btn.dataset.listaId);
-                const lista = this._listas.find(l => l.id === id);
-                if (lista) this._openEditListaModal(lista);
-            });
-        });
-
-        // Delete buttons
-        document.querySelectorAll('.costos-lista-btn-delete').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const id = parseInt(btn.dataset.listaId);
-                const lista = this._listas.find(l => l.id === id);
-                if (!lista) return;
-                const ok = await Confirm.delete(lista.nombre);
-                if (!ok) return;
-                const result = await API.deleteListaPrecio(id);
-                if (result) {
-                    Toast.success(`Lista "${lista.nombre}" eliminada`);
-                    if (this._selectedLista && this._selectedLista.id === id) this._selectedLista = null;
-                    await this._refreshData();
-                } else {
-                    Toast.error('Error al eliminar la lista');
-                }
-            });
-        });
-
-        // New lista button
-        const newBtn = document.getElementById('costosNewLista');
-        if (newBtn) newBtn.addEventListener('click', () => this._openNewListaModal());
-    },
-
-    _attachListaDetailEvents(lista, rubroMap, itemMap) {
+    _attachListaDetailEvents(lista, rubroMap, itemMap, catalogData) {
         // Global margin input
         const globalInput = document.getElementById('costosGlobalMargenInput');
         if (globalInput) {
@@ -605,15 +488,12 @@ const CostosModule = {
                 const globalMargen = lista.margenGlobal;
 
                 if (rubroMargen !== null && val === rubroMargen) {
-                    // Remove item override, falls back to rubro
                     const existing = itemMap[itemId];
                     if (existing) await API.deleteListaItem(existing.id);
                 } else if (rubroMargen === null && val === globalMargen) {
-                    // Remove item override, falls back to global
                     const existing = itemMap[itemId];
                     if (existing) await API.deleteListaItem(existing.id);
                 } else {
-                    // Upsert item override
                     await API.upsertListaItem(lista.id, itemId, val);
                 }
 
@@ -645,135 +525,138 @@ const CostosModule = {
         if (rubroBtn) {
             rubroBtn.addEventListener('click', () => this._openRubroOverridesModal(lista));
         }
+
+        // Actualizar precios Cotizador
+        const updateBtn = document.getElementById('costosUpdateCotizador');
+        if (updateBtn) {
+            updateBtn.addEventListener('click', async () => {
+                const confirmed = await Modal.confirm({
+                    title: 'Actualizar precios del Cotizador',
+                    message: `Se escribirá el precio calculado (costo + margen) en catalogo_items.precio_cliente para ${this._catalogoItems.length} items. El Cotizador leerá estos precios. ¿Continuar?`,
+                });
+                if (!confirmed) return;
+
+                updateBtn.disabled = true;
+                updateBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;"></div> Actualizando…`;
+
+                let updated = 0;
+                const getMargen = (item) => {
+                    if (itemMap[item.id]) return itemMap[item.id].margen;
+                    if (item.rubro && rubroMap[item.rubro]) return rubroMap[item.rubro].margen;
+                    return lista.margenGlobal;
+                };
+
+                for (const item of this._catalogoItems) {
+                    const rs = this._getRecetaStatus(item.id);
+                    const costo = rs.costoCalculado || 0;
+                    const margen = getMargen(item);
+                    const precioCliente = API.calcPrecioCliente(costo, margen);
+
+                    const result = await API.updateCatalogoItem(item.id, { precio_cliente: precioCliente });
+                    if (result) updated++;
+                }
+
+                Toast.success(`${updated} precios actualizados en catalogo_items`);
+                updateBtn.disabled = false;
+                updateBtn.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    Actualizar precios Cotizador`;
+            });
+        }
+
+        // Exportar PDF catálogo (sin precios)
+        const pdfBtn = document.getElementById('costosExportPDF');
+        if (pdfBtn) {
+            pdfBtn.addEventListener('click', () => this._exportCatalogoPDF());
+        }
+    },
+
+    async _exportCatalogoPDF() {
+        // Generate a printable catalog PDF without prices
+        const items = [...this._catalogoItems].sort((a, b) => (a.rubro || '').localeCompare(b.rubro || '') || (a.nombre || '').localeCompare(b.nombre || ''));
+
+        if (items.length === 0) {
+            Toast.warning('No hay items en el catálogo para exportar');
+            return;
+        }
+
+        // Group by rubro
+        const byRubro = {};
+        for (const item of items) {
+            const rubro = item.rubro || 'Sin rubro';
+            if (!byRubro[rubro]) byRubro[rubro] = [];
+            byRubro[rubro].push(item);
+        }
+
+        // Build print HTML
+        const rubroSections = Object.entries(byRubro).map(([rubro, ritems]) => `
+            <div style="break-inside:avoid; margin-bottom:24px;">
+                <h2 style="font-size:16px; color:#00A9C1; border-bottom:2px solid #00A9C1; padding-bottom:4px; margin:0 0 12px 0;">${rubro}</h2>
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead>
+                        <tr style="background:#222; color:#ccc;">
+                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Código</th>
+                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Nombre</th>
+                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Categoría</th>
+                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Unidad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${ritems.map(item => `
+                            <tr>
+                                <td style="padding:5px 8px; border:1px solid #333; font-family:monospace;">${item.codigo || '—'}</td>
+                                <td style="padding:5px 8px; border:1px solid #333; font-weight:500;">${item.nombre || '—'}</td>
+                                <td style="padding:5px 8px; border:1px solid #333;">${item.categoria || '—'}</td>
+                                <td style="padding:5px 8px; border:1px solid #333;">${item.unidad || '—'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `).join('');
+
+        const printHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Catálogo MEPEX</title>
+                <style>
+                    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                    body { font-family: 'Segoe UI', Arial, sans-serif; background: #050505; color: #E8E8E8; padding: 32px; margin: 0; }
+                </style>
+            </head>
+            <body>
+                <div style="text-align:center; margin-bottom:32px;">
+                    <h1 style="font-size:24px; color:#00A9C1; margin:0;">MEPEX — Catálogo de Productos</h1>
+                    <p style="color:#888; font-size:13px; margin:6px 0 0 0;">Generado: ${new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                </div>
+                ${rubroSections}
+                <div style="margin-top:32px; text-align:center; color:#555; font-size:11px;">
+                    MEPEX — Montaje y Equipamiento para Exposiciones | ${items.length} items
+                </div>
+            </body>
+            </html>
+        `;
+
+        const printWin = window.open('', '_blank');
+        if (printWin) {
+            printWin.document.write(printHtml);
+            printWin.document.close();
+            setTimeout(() => printWin.print(), 500);
+            Toast.success('PDF de catálogo generado (sin precios)');
+        } else {
+            Toast.error('No se pudo abrir la ventana de impresión. Verificá los permisos del navegador.');
+        }
     },
 
     async _refreshListaDetail() {
         if (!this._selectedLista) return;
-        // Re-fetch lista data in case global margin changed
         API.clearCache();
         const listas = await API.getListasPrecio();
         this._listas = listas || [];
         const updated = this._listas.find(l => l.id === this._selectedLista.id);
         if (updated) this._selectedLista = updated;
         await this._renderListaDetail(this._selectedLista);
-        // Re-render cards to reflect changes
-        document.querySelectorAll('.costos-lista-card').forEach(card => {
-            const id = parseInt(card.dataset.listaId);
-            card.classList.toggle('selected', this._selectedLista && this._selectedLista.id === id);
-        });
-    },
-
-    _openNewListaModal() {
-        Modal.open({
-            title: 'Nueva Lista de Precio',
-            size: 'small',
-            body: `
-                <div style="display:flex;flex-direction:column;gap:16px;padding:8px 0;">
-                    <div>
-                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Nombre</label>
-                        <input type="text" id="newListaNombre" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;" placeholder="Ej: Lista Mayoristas">
-                    </div>
-                    <div>
-                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Margen global (%)</label>
-                        <input type="number" id="newListaMargen" value="30" step="0.5" min="0" max="999" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-mono);font-size:14px;">
-                    </div>
-                    <div>
-                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Descripción</label>
-                        <textarea id="newListaDesc" rows="2" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;resize:vertical;" placeholder="Opcional…"></textarea>
-                    </div>
-                    <div>
-                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Estado</label>
-                        <select id="newListaEstado" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;">
-                            <option value="borrador">Borrador</option>
-                            <option value="activa">Activa</option>
-                        </select>
-                    </div>
-                </div>
-            `,
-            footer: `
-                <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn btn-primary" id="newListaSave">Crear Lista</button>
-            `,
-        });
-
-        setTimeout(() => {
-            const saveBtn = document.getElementById('newListaSave');
-            if (saveBtn) {
-                saveBtn.addEventListener('click', async () => {
-                    const nombre = document.getElementById('newListaNombre')?.value?.trim();
-                    if (!nombre) { Toast.warning('Ingresá un nombre'); return; }
-                    const margen = parseFloat(document.getElementById('newListaMargen')?.value) || 0;
-                    const desc = document.getElementById('newListaDesc')?.value?.trim() || '';
-                    const estado = document.getElementById('newListaEstado')?.value || 'borrador';
-
-                    const result = await API.createListaPrecio({
-                        nombre, tipo: 'custom', estado, margenGlobal: margen, descripcion: desc,
-                    });
-                    if (result) {
-                        Toast.success(`Lista "${nombre}" creada`);
-                        Modal.close();
-                        await this._refreshData();
-                    } else {
-                        Toast.error('Error al crear la lista');
-                    }
-                });
-            }
-            document.getElementById('newListaNombre')?.focus();
-        }, 100);
-    },
-
-    _openEditListaModal(lista) {
-        Modal.open({
-            title: `Editar: ${lista.nombre}`,
-            size: 'small',
-            body: `
-                <div style="display:flex;flex-direction:column;gap:16px;padding:8px 0;">
-                    <div>
-                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Nombre</label>
-                        <input type="text" id="editListaNombre" value="${lista.nombre}" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;">
-                    </div>
-                    <div>
-                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Descripción</label>
-                        <textarea id="editListaDesc" rows="2" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;resize:vertical;">${lista.descripcion || ''}</textarea>
-                    </div>
-                    <div>
-                        <label style="font-size:13px;color:var(--text-muted);margin-bottom:4px;display:block;">Estado</label>
-                        <select id="editListaEstado" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:14px;">
-                            <option value="borrador" ${lista.estado === 'borrador' ? 'selected' : ''}>Borrador</option>
-                            <option value="activa" ${lista.estado === 'activa' ? 'selected' : ''}>Activa</option>
-                        </select>
-                    </div>
-                </div>
-            `,
-            footer: `
-                <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn btn-primary" id="editListaSave">Guardar</button>
-            `,
-        });
-
-        setTimeout(() => {
-            const saveBtn = document.getElementById('editListaSave');
-            if (saveBtn) {
-                saveBtn.addEventListener('click', async () => {
-                    const nombre = document.getElementById('editListaNombre')?.value?.trim();
-                    if (!nombre) { Toast.warning('Ingresá un nombre'); return; }
-                    const desc = document.getElementById('editListaDesc')?.value?.trim() || '';
-                    const estado = document.getElementById('editListaEstado')?.value || 'borrador';
-
-                    const result = await API.updateListaPrecio(lista.id, { nombre, descripcion: desc, estado });
-                    if (result) {
-                        Toast.success(`Lista actualizada`);
-                        Modal.close();
-                        if (this._selectedLista && this._selectedLista.id === lista.id) {
-                            this._selectedLista = { ...this._selectedLista, nombre, descripcion: desc, estado };
-                        }
-                        await this._refreshData();
-                    } else {
-                        Toast.error('Error al actualizar');
-                    }
-                });
-            }
-        }, 100);
     },
 
     _openRubroOverridesModal(lista) {
