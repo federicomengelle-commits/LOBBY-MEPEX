@@ -333,7 +333,6 @@ const Modules = {
         // Check if this is a custom section
         if (this._isCustomSection(mod.id, sectionId)) {
             if (mod.id === 'inventario' && sectionId === 'simulador') return this._renderSimuladorSection();
-            if (mod.id === 'proyectos' && sectionId === 'por_evento') return this._renderProyectosPorEventoSection();
             if (mod.id === 'ventas' && sectionId === 'pipeline') return this._renderPipelineSection();
             if (mod.id === 'ventas' && sectionId === 'dashboard') return this._renderDashboardSection();
             if (mod.id === 'ventas' && sectionId === 'marketing') return this._renderMarketingSection();
@@ -422,7 +421,7 @@ const Modules = {
             'clientes:ficha': 'clients',
             'eventos:evento': 'events',
             'eventos:proyecto': 'projects',
-            'proyectos:lista': 'projects',
+            // proyectos:lista removed — now handled by ProyectosModule
             'inventario:insumos': 'insumos',
             'inventario:catalogo': 'catalogo',
             'ventas:tabla': 'cotizaciones',
@@ -433,7 +432,6 @@ const Modules = {
     // ─── DETECT CUSTOM (non-table) SECTIONS ───
     _isCustomSection(moduleId, sectionId) {
         if (moduleId === 'inventario' && sectionId === 'simulador') return true;
-        if (moduleId === 'proyectos' && sectionId === 'por_evento') return true;
         if (moduleId === 'ventas' && sectionId === 'pipeline') return true;
         if (moduleId === 'ventas' && sectionId === 'dashboard') return true;
         if (moduleId === 'ventas' && sectionId === 'marketing') return true;
@@ -445,7 +443,6 @@ const Modules = {
         // Handle custom sections
         if (this._isCustomSection(mod.id, sectionId)) {
             if (mod.id === 'inventario' && sectionId === 'simulador') { this._initSimulador(); return; }
-            if (mod.id === 'proyectos' && sectionId === 'por_evento') { this._initProyectosPorEvento(); return; }
             if (mod.id === 'ventas' && sectionId === 'pipeline') { this._initPipeline(); return; }
             if (mod.id === 'ventas' && sectionId === 'dashboard') { this._initDashboard(); return; }
             if (mod.id === 'ventas' && sectionId === 'marketing') { this._initMarketing(); return; }
@@ -4754,178 +4751,6 @@ const Modules = {
                 if (cot) { this._closeFicha(); setTimeout(() => this._openFichaByType(cot, 'cotizaciones'), 300); }
             });
         });
-    },
-
-    // ═══════════════════════════════════════════
-    //  PROYECTOS POR EVENTO — Custom Section
-    // ═══════════════════════════════════════════
-
-    _renderProyectosPorEventoSection() {
-        return `
-            <div class="section-content">
-                <div class="section-header" style="margin-bottom:16px;">
-                    <span class="section-icon">📅</span>
-                    <h2 class="title-3">Proyectos por evento</h2>
-                </div>
-                <div class="pxe-container" id="pxeContainer">
-                    <div class="api-loading">
-                        <div class="api-spinner"></div>
-                        <span>Cargando proyectos y eventos…</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    async _initProyectosPorEvento() {
-        const container = document.getElementById('pxeContainer');
-        if (!container) return;
-
-        try {
-            const [projects, events] = await Promise.all([
-                API.getProjects(),
-                API.getEvents(),
-            ]);
-
-            if (!projects || !events) {
-                container.innerHTML = `
-                    <div class="api-offline-msg">
-                        <span class="api-offline-icon">⚠️</span>
-                        <p>No se pudo conectar con la API</p>
-                    </div>`;
-                return;
-            }
-
-            // Group projects by eventName
-            const eventMap = {};
-            const sinEvento = [];
-
-            for (const p of projects) {
-                const evName = (p.eventName || '').trim();
-                if (!evName) { sinEvento.push(p); continue; }
-                if (!eventMap[evName]) eventMap[evName] = { event: null, projects: [] };
-                eventMap[evName].projects.push(p);
-            }
-
-            // Match with event data for dates
-            for (const ev of events) {
-                const name = (ev.name || '').trim();
-                if (eventMap[name]) eventMap[name].event = ev;
-            }
-
-            // Sort events by eventStartDate
-            const sortedEventNames = Object.keys(eventMap).sort((a, b) => {
-                const ea = eventMap[a].event;
-                const eb = eventMap[b].event;
-                const da = ea?.eventStartDate || '9999';
-                const db = eb?.eventStartDate || '9999';
-                return da < db ? -1 : da > db ? 1 : 0;
-            });
-
-            const statusColor = (s) => {
-                const sl = (s || '').toLowerCase();
-                if (sl.includes('aprobado') || sl.includes('finalizado')) return '#00CC88';
-                if (sl.includes('proceso') || sl.includes('taller')) return '#00A9C1';
-                if (sl.includes('pendiente') || sl.includes('aguarda')) return '#F28D15';
-                if (sl.includes('rechazado')) return '#FF4444';
-                return '#666';
-            };
-
-            const renderProjectCard = (p) => `
-                <div class="pxe-project-card" data-project-id="${p.id}">
-                    <div class="pxe-project-main">
-                        <span class="pxe-project-name">${p.name || 'Sin nombre'}</span>
-                        <span class="pxe-project-client">${p.clientName || ''}</span>
-                    </div>
-                    <div class="pxe-project-meta">
-                        ${p.type ? `<span class="badge badge-ghost">${p.type}</span>` : ''}
-                        <span class="pxe-status-dot" style="background:${statusColor(p.status)}"></span>
-                        <span class="pxe-project-status">${p.status || '—'}</span>
-                    </div>
-                </div>
-            `;
-
-            let html = '';
-
-            for (const evName of sortedEventNames) {
-                const group = eventMap[evName];
-                const ev = group.event;
-                const count = group.projects.length;
-                const dateStr = ev?.eventStartDate ? API.formatDate(ev.eventStartDate) : '';
-                const venueStr = ev?.venue || '';
-                const evStatus = ev?.status || '';
-
-                html += `
-                    <div class="pxe-event-group" data-event-name="${evName}">
-                        <div class="pxe-event-header" data-pxe-toggle>
-                            <div class="pxe-event-toggle">
-                                <svg class="pxe-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-                            </div>
-                            <div class="pxe-event-info">
-                                <span class="pxe-event-name">${evName}</span>
-                                ${venueStr ? `<span class="pxe-event-venue">${venueStr}</span>` : ''}
-                            </div>
-                            <div class="pxe-event-badges">
-                                ${dateStr ? `<span class="pxe-event-date">${dateStr}</span>` : ''}
-                                <span class="pxe-event-count">${count} proyecto${count !== 1 ? 's' : ''}</span>
-                                ${evStatus ? `<span class="badge badge-ghost">${evStatus}</span>` : ''}
-                            </div>
-                        </div>
-                        <div class="pxe-event-body">
-                            ${group.projects.map(renderProjectCard).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-
-            if (sinEvento.length) {
-                html += `
-                    <div class="pxe-event-group pxe-no-event" data-event-name="__sin_evento__">
-                        <div class="pxe-event-header" data-pxe-toggle>
-                            <div class="pxe-event-toggle">
-                                <svg class="pxe-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-                            </div>
-                            <div class="pxe-event-info">
-                                <span class="pxe-event-name" style="opacity:0.5;">Sin evento asignado</span>
-                            </div>
-                            <div class="pxe-event-badges">
-                                <span class="pxe-event-count">${sinEvento.length} proyecto${sinEvento.length !== 1 ? 's' : ''}</span>
-                            </div>
-                        </div>
-                        <div class="pxe-event-body">
-                            ${sinEvento.map(renderProjectCard).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-
-            if (!sortedEventNames.length && !sinEvento.length) {
-                html = `<div class="section-placeholder"><div class="placeholder-icon">📋</div><p class="placeholder-text">No hay proyectos cargados</p></div>`;
-            }
-
-            container.innerHTML = html;
-
-            // Toggle collapsibles
-            container.querySelectorAll('[data-pxe-toggle]').forEach(header => {
-                header.addEventListener('click', () => {
-                    const group = header.closest('.pxe-event-group');
-                    group.classList.toggle('collapsed');
-                });
-            });
-
-            // Click project card → open ficha
-            container.querySelectorAll('.pxe-project-card[data-project-id]').forEach(card => {
-                card.addEventListener('click', () => {
-                    const pid = card.dataset.projectId;
-                    const project = projects.find(p => String(p.id) === String(pid));
-                    if (project) this._openFichaByType(project, 'projects');
-                });
-            });
-
-        } catch (e) {
-            console.warn('[Modules] Error loading proyectos por evento:', e);
-            container.innerHTML = `<div class="api-offline-msg"><span class="api-offline-icon">⚠️</span><p>Error al cargar datos</p></div>`;
-        }
     },
 
     // ═══════════════════════════════════════════

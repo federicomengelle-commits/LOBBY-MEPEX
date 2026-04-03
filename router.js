@@ -37,7 +37,7 @@ const Router = {
             'catalogo':         { render: () => this._renderPlaceholder('catalogo'), requiresAuth: true, module: 'catalogo' },
 
             // ── Operaciones ──
-            'proyectos':        { render: () => Modules.render('proyectos'), requiresAuth: true, module: 'proyectos' },
+            'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },
             'eventos':          { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos' },
             'produccion':       { render: () => this._renderPlaceholder('produccion'), requiresAuth: true, module: 'produccion' },
             'logistica':        { render: () => this._renderPlaceholder('logistica'), requiresAuth: true, module: 'logistica' },
