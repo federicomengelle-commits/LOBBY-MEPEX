@@ -25,6 +25,18 @@ const CRM = {
     _activePanelData: null,
     _stylesInjected: false,
 
+    // ─── Pipeline state ───
+    _pipelineView: 'kanban', // 'kanban' | 'tabla'
+    _pipelineSearch: '',
+    _pipelineTipoEvento: null,
+    _pipelineMontoMin: null,
+    _pipelineMontoMax: null,
+    _pipelineFiltered: [],
+    _pipelineSortCol: 'createdAt',
+    _pipelineSortDir: 'desc',
+    _users: [],
+    _dragData: null,
+
     // ─── Counts per tab ───
     _counts: { clientes: 0, pipeline: 0, cotizaciones: 0, interacciones: 0, marketing: 0 },
 
@@ -43,6 +55,24 @@ const CRM = {
         { value: 'lead',     label: 'Lead',      color: '#F28D15' },
         { value: 'inactivo', label: 'Inactivo', color: '#555555' },
     ],
+
+    // ─── Pipeline columns config ───
+    _pipelineColumns: [
+        { id: 'borrador',        label: 'Borrador',         color: '#888888', icon: '\u270F\uFE0F' },
+        { id: 'enviada',         label: 'Enviada',          color: '#4A90D9', icon: '\uD83D\uDCE4' },
+        { id: 'en_negociacion',  label: 'En Negociaci\u00F3n', color: '#F28D15', icon: '\uD83E\uDD1D' },
+        { id: 'aprobada',        label: 'Aprobada',         color: '#00CC88', icon: '\u2705' },
+        { id: 'cerrada_ganada',  label: 'Cerrada Ganada',   color: '#00CC88', icon: '\uD83C\uDFC6' },
+        { id: 'cerrada_perdida', label: 'Cerrada Perdida',  color: '#EF5350', icon: '\u274C' },
+        { id: 'facturada',       label: 'Facturada',        color: '#9B7DFF', icon: '\uD83D\uDCB0' },
+    ],
+
+    // ─── Temperatura config ───
+    _tempConfig: {
+        hot:  { label: 'Hot',  icon: '\uD83D\uDD25', color: '#EF5350' },
+        warm: { label: 'Warm', icon: '\u2600\uFE0F', color: '#F28D15' },
+        cold: { label: 'Cold', icon: '\u2744\uFE0F', color: '#4A90D9' },
+    },
 
     // ─── Tab definitions ───
     _tabs: [
@@ -166,15 +196,17 @@ const CRM = {
 
     async _loadData() {
         try {
-            const [clients, projects, cotizaciones] = await Promise.all([
+            const [clients, projects, cotizaciones, users] = await Promise.all([
                 API.getClients(),
                 API.getProjects(),
                 API.getCotizaciones ? API.getCotizaciones() : Promise.resolve([]),
+                API.getUsers ? API.getUsers() : Promise.resolve([]),
             ]);
 
             this._clients = clients || [];
             this._projects = projects || [];
             this._cotizaciones = cotizaciones || [];
+            this._users = (users || []).filter(u => u.active !== false);
 
             // Build project count per client
             this._clients.forEach(c => {
@@ -186,6 +218,9 @@ const CRM = {
             // Update counts
             this._counts.clientes = this._clients.length;
             this._counts.cotizaciones = this._cotizaciones.length;
+            this._counts.pipeline = this._cotizaciones.filter(c =>
+                !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+            ).length;
             this._updateTabCounts();
 
         } catch (e) {
@@ -193,10 +228,12 @@ const CRM = {
             this._clients = [];
             this._projects = [];
             this._cotizaciones = [];
+            this._users = [];
         }
 
         this._populateRubroFilter();
         this._applyFilters();
+        this._applyPipelineFilters();
         this._renderTabContent();
     },
 
@@ -300,7 +337,7 @@ const CRM = {
         document.querySelectorAll('.crm-tab').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
-        // Show/hide toolbar (only for clientes)
+        // Show/hide toolbar (only for clientes — pipeline has its own)
         const toolbar = document.getElementById('crmToolbar');
         if (toolbar) toolbar.style.display = tab === 'clientes' ? '' : 'none';
         // Close panel
@@ -316,6 +353,9 @@ const CRM = {
         if (this._activeTab === 'clientes') {
             main.innerHTML = this._renderClientesTable();
             this._attachClientListeners();
+        } else if (this._activeTab === 'pipeline') {
+            main.innerHTML = this._renderPipeline();
+            this._attachPipelineListeners();
         } else {
             main.innerHTML = this._renderPlaceholderTab(this._activeTab);
         }
@@ -937,6 +977,547 @@ const CRM = {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  PIPELINE — KPIs
+    // ═══════════════════════════════════════════
+
+    _calcPipelineKPIs() {
+        const cots = this._cotizaciones;
+        // Tasa de conversión: ganadas / (ganadas + perdidas)
+        const ganadas = cots.filter(c => c.estado === 'cerrada_ganada').length;
+        const perdidas = cots.filter(c => c.estado === 'cerrada_perdida').length;
+        const totalCerradas = ganadas + perdidas;
+        const tasaConversion = totalCerradas > 0 ? Math.round((ganadas / totalCerradas) * 100) : 0;
+
+        // Tiempo promedio de cierre (días entre creación y estado cerrada_ganada)
+        const ganadaItems = cots.filter(c => c.estado === 'cerrada_ganada' && c.createdAt && c.updatedAt);
+        let tiempoPromedio = 0;
+        if (ganadaItems.length > 0) {
+            const totalDias = ganadaItems.reduce((sum, c) => {
+                const created = new Date(c.createdAt);
+                const updated = new Date(c.updatedAt);
+                return sum + Math.max(0, Math.round((updated - created) / (1000 * 60 * 60 * 24)));
+            }, 0);
+            tiempoPromedio = Math.round(totalDias / ganadaItems.length);
+        }
+
+        // Cotizaciones activas (no cerradas ni facturadas)
+        const activas = cots.filter(c =>
+            !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+        ).length;
+
+        // Hot leads (temperatura hot o monto alto)
+        const hotLeads = cots.filter(c =>
+            c.temperatura === 'hot' && !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+        ).length;
+
+        // Por vencer (creadas hace más de 15 días y aún activas)
+        const now = new Date();
+        const porVencer = cots.filter(c => {
+            if (['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)) return false;
+            if (!c.createdAt) return false;
+            const dias = Math.round((now - new Date(c.createdAt)) / (1000 * 60 * 60 * 24));
+            return dias >= 15;
+        }).length;
+
+        return { tasaConversion, tiempoPromedio, activas, hotLeads, porVencer };
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  PIPELINE — FILTERS
+    // ═══════════════════════════════════════════
+
+    _applyPipelineFilters() {
+        let filtered = [...this._cotizaciones];
+
+        if (this._pipelineSearch) {
+            const q = this._pipelineSearch.toLowerCase();
+            filtered = filtered.filter(c =>
+                (c.numero || '').toLowerCase().includes(q) ||
+                (c.clienteNombre || '').toLowerCase().includes(q) ||
+                (c.nombreEvento || '').toLowerCase().includes(q) ||
+                (c.notasInternas || '').toLowerCase().includes(q)
+            );
+        }
+
+        if (this._pipelineTipoEvento) {
+            filtered = filtered.filter(c => c.tipoEvento === this._pipelineTipoEvento);
+        }
+
+        if (this._pipelineMontoMin !== null) {
+            filtered = filtered.filter(c => (c.montoTotal || 0) >= this._pipelineMontoMin);
+        }
+
+        if (this._pipelineMontoMax !== null) {
+            filtered = filtered.filter(c => (c.montoTotal || 0) <= this._pipelineMontoMax);
+        }
+
+        this._pipelineFiltered = filtered;
+    },
+
+    _getVendedorName(vendedorId) {
+        if (!vendedorId) return '\u2014';
+        const user = this._users.find(u => u.uid === vendedorId);
+        return user ? (user.name || user.username) : '\u2014';
+    },
+
+    _getDaysSince(dateStr) {
+        if (!dateStr) return null;
+        const d = new Date(dateStr);
+        const now = new Date();
+        return Math.max(0, Math.round((now - d) / (1000 * 60 * 60 * 24)));
+    },
+
+    _getDaysColor(days) {
+        if (days === null) return 'var(--text-dim)';
+        if (days <= 2) return '#00CC88';
+        if (days <= 5) return '#F28D15';
+        return '#EF5350';
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  PIPELINE — RENDER
+    // ═══════════════════════════════════════════
+
+    _renderPipeline() {
+        const kpis = this._calcPipelineKPIs();
+        const tiposEvento = [...new Set(this._cotizaciones.map(c => c.tipoEvento).filter(Boolean))].sort();
+
+        return `
+            <!-- Pipeline KPIs -->
+            <div class="pip-kpis">
+                <div class="pip-kpi">
+                    <span class="pip-kpi-val">${kpis.tasaConversion}%</span>
+                    <span class="pip-kpi-label">Tasa conversi\u00F3n</span>
+                </div>
+                <div class="pip-kpi">
+                    <span class="pip-kpi-val">${kpis.tiempoPromedio}d</span>
+                    <span class="pip-kpi-label">Tiempo prom. cierre</span>
+                </div>
+                <div class="pip-kpi">
+                    <span class="pip-kpi-val">${kpis.activas}</span>
+                    <span class="pip-kpi-label">Activas</span>
+                </div>
+                <div class="pip-kpi">
+                    <span class="pip-kpi-val pip-kpi-hot">${kpis.hotLeads}</span>
+                    <span class="pip-kpi-label">Hot leads</span>
+                </div>
+                <div class="pip-kpi">
+                    <span class="pip-kpi-val ${kpis.porVencer > 0 ? 'pip-kpi-warn' : ''}">${kpis.porVencer}</span>
+                    <span class="pip-kpi-label">Por vencer</span>
+                </div>
+            </div>
+
+            <!-- Pipeline Toolbar -->
+            <div class="pip-toolbar">
+                <div class="pip-toolbar-left">
+                    <div class="crm-search-wrap">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="crm-search" id="pipSearch" placeholder="Buscar cotizaci\u00F3n..." autocomplete="off" value="${this._escHtml(this._pipelineSearch)}" />
+                    </div>
+                    <select class="crm-filter-select" id="pipFilterTipoEvento">
+                        <option value="">Tipo de evento</option>
+                        ${tiposEvento.map(t => `<option value="${t}" ${this._pipelineTipoEvento === t ? 'selected' : ''}>${t}</option>`).join('')}
+                    </select>
+                    <input type="number" class="crm-filter-input" id="pipMontoMin" placeholder="Monto m\u00EDn" value="${this._pipelineMontoMin !== null ? this._pipelineMontoMin : ''}" />
+                    <input type="number" class="crm-filter-input" id="pipMontoMax" placeholder="Monto m\u00E1x" value="${this._pipelineMontoMax !== null ? this._pipelineMontoMax : ''}" />
+                </div>
+                <div class="pip-toolbar-right">
+                    ${typeof API.syncPymeToLobby === 'function' ? `
+                    <button class="btn btn-ghost pip-btn-sync" id="pipSyncPyme" title="Sincronizar con La PyME">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Sync PyME
+                    </button>` : ''}
+                    <div class="pip-view-toggle">
+                        <button class="pip-view-btn ${this._pipelineView === 'kanban' ? 'active' : ''}" data-view="kanban" title="Kanban">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="6" height="14" x="3" y="5" rx="1"/><rect width="6" height="8" x="15" y="5" rx="1"/><rect width="6" height="18" x="9" y="3" rx="1"/></svg>
+                        </button>
+                        <button class="pip-view-btn ${this._pipelineView === 'tabla' ? 'active' : ''}" data-view="tabla" title="Tabla">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" x2="21" y1="9" y2="9"/><line x1="3" x2="21" y1="15" y2="15"/><line x1="9" x2="9" y1="3" y2="21"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pipeline Content -->
+            <div class="pip-content" id="pipContent">
+                ${this._pipelineView === 'kanban' ? this._renderKanban() : this._renderPipelineTable()}
+            </div>
+        `;
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  PIPELINE — KANBAN VIEW
+    // ═══════════════════════════════════════════
+
+    _renderKanban() {
+        const data = this._pipelineFiltered;
+
+        return `
+            <div class="pip-kanban">
+                ${this._pipelineColumns.map(col => {
+                    const cards = data.filter(c => (c.estado || 'borrador') === col.id);
+                    const montoTotal = cards.reduce((s, c) => s + (c.montoTotal || 0), 0);
+                    const montoStr = montoTotal > 0 ? '$' + montoTotal.toLocaleString('es-AR') : '$0';
+
+                    return `
+                        <div class="pip-col" data-estado="${col.id}">
+                            <div class="pip-col-header">
+                                <div class="pip-col-title">
+                                    <span class="pip-col-dot" style="background:${col.color}"></span>
+                                    <span>${col.label}</span>
+                                    <span class="pip-col-count">${cards.length}</span>
+                                </div>
+                                <span class="pip-col-monto">${montoStr}</span>
+                            </div>
+                            <div class="pip-col-body" data-estado="${col.id}">
+                                ${cards.map(c => this._renderPipelineCard(c, col)).join('')}
+                                ${cards.length === 0 ? '<div class="pip-col-empty">Sin cotizaciones</div>' : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    },
+
+    _renderPipelineCard(cot, col) {
+        const days = this._getDaysSince(cot.createdAt);
+        const daysColor = this._getDaysColor(days);
+        const vendedor = this._getVendedorName(cot.vendedorId);
+        const temp = this._tempConfig[cot.temperatura] || null;
+        const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '';
+
+        return `
+            <div class="pip-card" draggable="true" data-id="${cot.id}" data-estado="${cot.estado || 'borrador'}">
+                <div class="pip-card-top">
+                    <span class="pip-card-code">${cot.numero || 'COT-???'}</span>
+                    ${temp ? `<span class="pip-card-temp" style="color:${temp.color}" title="${temp.label}">${temp.icon}</span>` : ''}
+                </div>
+                <div class="pip-card-cliente">${cot.clienteNombre || '\u2014'}</div>
+                <div class="pip-card-evento">${cot.nombreEvento || '\u2014'}</div>
+                ${cot.tipoEvento ? `<span class="pip-card-tipo">${cot.tipoEvento}</span>` : ''}
+                <div class="pip-card-bottom">
+                    ${monto ? `<span class="pip-card-monto">${monto}</span>` : '<span></span>'}
+                    <div class="pip-card-meta">
+                        ${days !== null ? `<span class="pip-card-days" style="color:${daysColor}">${days}d</span>` : ''}
+                        <span class="pip-card-vendedor" title="${vendedor}">${vendedor.split(' ')[0]}</span>
+                    </div>
+                </div>
+                ${cot.notasInternas ? `<div class="pip-card-notas" title="${this._escHtml(cot.notasInternas)}">${cot.notasInternas.substring(0, 60)}${cot.notasInternas.length > 60 ? '...' : ''}</div>` : ''}
+            </div>
+        `;
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  PIPELINE — TABLE VIEW
+    // ═══════════════════════════════════════════
+
+    _pipSortIndicator(col) {
+        if (this._pipelineSortCol !== col) return '';
+        return this._pipelineSortDir === 'asc'
+            ? ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>'
+            : ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>';
+    },
+
+    _renderPipelineTable() {
+        let sorted = [...this._pipelineFiltered];
+
+        // Sort
+        sorted.sort((a, b) => {
+            let va, vb;
+            switch (this._pipelineSortCol) {
+                case 'numero':    va = a.numero || ''; vb = b.numero || ''; break;
+                case 'cliente':   va = a.clienteNombre || ''; vb = b.clienteNombre || ''; break;
+                case 'evento':    va = a.nombreEvento || ''; vb = b.nombreEvento || ''; break;
+                case 'tipo':      va = a.tipoEvento || ''; vb = b.tipoEvento || ''; break;
+                case 'monto':     va = a.montoTotal || 0; vb = b.montoTotal || 0; break;
+                case 'estado':    va = a.estado || ''; vb = b.estado || ''; break;
+                case 'dias':      va = this._getDaysSince(a.createdAt) || 0; vb = this._getDaysSince(b.createdAt) || 0; break;
+                case 'vendedor':  va = this._getVendedorName(a.vendedorId); vb = this._getVendedorName(b.vendedorId); break;
+                default:          va = a.createdAt || ''; vb = b.createdAt || '';
+            }
+            if (typeof va === 'number') return this._pipelineSortDir === 'asc' ? va - vb : vb - va;
+            const cmp = String(va).localeCompare(String(vb), 'es');
+            return this._pipelineSortDir === 'asc' ? cmp : -cmp;
+        });
+
+        const cols = [
+            { id: 'numero',   header: 'C\u00F3digo' },
+            { id: 'cliente',  header: 'Cliente' },
+            { id: 'evento',   header: 'Evento' },
+            { id: 'tipo',     header: 'Tipo' },
+            { id: 'monto',    header: 'Monto' },
+            { id: 'estado',   header: 'Estado' },
+            { id: 'dias',     header: 'D\u00EDas' },
+            { id: 'vendedor', header: 'Vendedor' },
+        ];
+
+        if (sorted.length === 0) {
+            return `
+                <div class="crm-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+                    <p>No hay cotizaciones con esos filtros.</p>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="crm-table-wrap">
+                <table class="crm-table pip-table">
+                    <thead><tr>
+                        ${cols.map(c => `<th class="sortable" data-sort-col="${c.id}">${c.header}${this._pipSortIndicator(c.id)}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                        ${sorted.map(cot => {
+                            const colCfg = this._pipelineColumns.find(c => c.id === (cot.estado || 'borrador'));
+                            const days = this._getDaysSince(cot.createdAt);
+                            const daysColor = this._getDaysColor(days);
+                            const temp = this._tempConfig[cot.temperatura] || null;
+                            const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '\u2014';
+
+                            return `
+                                <tr class="crm-row pip-tbl-row" data-id="${cot.id}" data-cliente-id="${cot.clienteId || ''}">
+                                    <td class="pip-tbl-code">${cot.numero || 'COT-???'} ${temp ? `<span style="color:${temp.color}">${temp.icon}</span>` : ''}</td>
+                                    <td class="crm-td-empresa">${cot.clienteNombre || '\u2014'}</td>
+                                    <td>${cot.nombreEvento || '\u2014'}</td>
+                                    <td class="crm-td-rubro">${cot.tipoEvento || '\u2014'}</td>
+                                    <td class="pip-tbl-monto">${monto}</td>
+                                    <td><span class="crm-badge-tipo" style="background:${colCfg ? colCfg.color + '18' : 'transparent'}; color:${colCfg ? colCfg.color : '#888'}; border:1px solid ${colCfg ? colCfg.color + '30' : 'transparent'}">${this._formatEstadoCot(cot.estado)}</span></td>
+                                    <td><span style="color:${daysColor}; font-family:var(--font-mono); font-size:0.75rem; font-weight:700">${days !== null ? days + 'd' : '\u2014'}</span></td>
+                                    <td class="crm-td-rubro">${this._getVendedorName(cot.vendedorId)}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="crm-table-footer">
+                <span class="crm-table-count">${sorted.length} cotizaciones</span>
+            </div>
+        `;
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  PIPELINE — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachPipelineListeners() {
+        // Search
+        const search = document.getElementById('pipSearch');
+        if (search) {
+            search.addEventListener('input', () => {
+                this._pipelineSearch = search.value.trim();
+                this._applyPipelineFilters();
+                this._rerenderPipelineContent();
+            });
+        }
+
+        // Tipo evento filter
+        const tipoSel = document.getElementById('pipFilterTipoEvento');
+        if (tipoSel) {
+            tipoSel.addEventListener('change', () => {
+                this._pipelineTipoEvento = tipoSel.value || null;
+                this._applyPipelineFilters();
+                this._rerenderPipelineContent();
+            });
+        }
+
+        // Monto filters
+        const montoMin = document.getElementById('pipMontoMin');
+        const montoMax = document.getElementById('pipMontoMax');
+        if (montoMin) {
+            montoMin.addEventListener('change', () => {
+                this._pipelineMontoMin = montoMin.value ? parseFloat(montoMin.value) : null;
+                this._applyPipelineFilters();
+                this._rerenderPipelineContent();
+            });
+        }
+        if (montoMax) {
+            montoMax.addEventListener('change', () => {
+                this._pipelineMontoMax = montoMax.value ? parseFloat(montoMax.value) : null;
+                this._applyPipelineFilters();
+                this._rerenderPipelineContent();
+            });
+        }
+
+        // View toggle
+        document.querySelectorAll('.pip-view-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._pipelineView = btn.dataset.view;
+                document.querySelectorAll('.pip-view-btn').forEach(b => b.classList.toggle('active', b === btn));
+                this._rerenderPipelineContent();
+            });
+        });
+
+        // Sync PyME button
+        const syncBtn = document.getElementById('pipSyncPyme');
+        if (syncBtn) {
+            syncBtn.addEventListener('click', async () => {
+                syncBtn.disabled = true;
+                syncBtn.textContent = 'Sincronizando...';
+                try {
+                    if (typeof API.syncPymeToLobby === 'function') {
+                        await API.syncPymeToLobby();
+                        Toast.success('Sincronizaci\u00F3n con La PyME completada');
+                        await this._loadData();
+                    }
+                } catch (e) {
+                    Toast.error('Error al sincronizar: ' + e.message);
+                }
+                syncBtn.disabled = false;
+                syncBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Sync PyME';
+            });
+        }
+
+        // Attach view-specific listeners
+        this._attachPipelineViewListeners();
+    },
+
+    _rerenderPipelineContent() {
+        const pipContent = document.getElementById('pipContent');
+        if (!pipContent) return;
+        pipContent.innerHTML = this._pipelineView === 'kanban' ? this._renderKanban() : this._renderPipelineTable();
+        this._attachPipelineViewListeners();
+    },
+
+    _attachPipelineViewListeners() {
+        if (this._pipelineView === 'kanban') {
+            this._attachKanbanDragDrop();
+            this._attachKanbanCardClicks();
+        } else {
+            this._attachPipelineTableListeners();
+        }
+    },
+
+    // ─── Kanban drag & drop ───
+    _attachKanbanDragDrop() {
+        const cards = document.querySelectorAll('.pip-card[draggable]');
+        const cols = document.querySelectorAll('.pip-col-body[data-estado]');
+
+        cards.forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                this._dragData = { id: card.dataset.id, estado: card.dataset.estado };
+                card.classList.add('pip-card-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', card.dataset.id);
+            });
+            card.addEventListener('dragend', () => {
+                card.classList.remove('pip-card-dragging');
+                document.querySelectorAll('.pip-col-body').forEach(c => c.classList.remove('pip-col-dragover'));
+                this._dragData = null;
+            });
+        });
+
+        cols.forEach(col => {
+            col.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                col.classList.add('pip-col-dragover');
+            });
+            col.addEventListener('dragleave', (e) => {
+                if (!col.contains(e.relatedTarget)) {
+                    col.classList.remove('pip-col-dragover');
+                }
+            });
+            col.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                col.classList.remove('pip-col-dragover');
+                const newEstado = col.dataset.estado;
+                if (!this._dragData) return;
+                const { id, estado: oldEstado } = this._dragData;
+                if (newEstado === oldEstado) return;
+
+                // Optimistic update
+                const cot = this._cotizaciones.find(c => String(c.id) === String(id));
+                if (cot) {
+                    cot.estado = newEstado;
+                    this._applyPipelineFilters();
+                    this._counts.pipeline = this._cotizaciones.filter(c =>
+                        !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+                    ).length;
+                    this._updateTabCounts();
+                    this._rerenderPipelineContent();
+                }
+
+                // Persist
+                const result = await API.updateCotizacionEstado(id, newEstado);
+                if (result) {
+                    Toast.success(`Cotizaci\u00F3n movida a ${this._formatEstadoCot(newEstado)}`);
+                } else {
+                    // Revert
+                    if (cot) cot.estado = oldEstado;
+                    this._applyPipelineFilters();
+                    this._rerenderPipelineContent();
+                    Toast.error('Error al actualizar estado');
+                }
+            });
+        });
+    },
+
+    // ─── Kanban card clicks → open client panel ───
+    _attachKanbanCardClicks() {
+        document.querySelectorAll('.pip-card[data-id]').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('[draggable]') && e.dataTransfer) return;
+                const cotId = card.dataset.id;
+                const cot = this._cotizaciones.find(c => String(c.id) === String(cotId));
+                if (!cot) return;
+                // Find linked client
+                const client = this._clients.find(cl =>
+                    cl.id === cot.clienteId ||
+                    (cot.clienteNombre && cl.name && cot.clienteNombre.toLowerCase() === cl.name.toLowerCase())
+                );
+                if (client) {
+                    this._openPanel(client);
+                } else {
+                    Toast.info('Cliente no encontrado en la base');
+                }
+            });
+        });
+    },
+
+    // ─── Pipeline table listeners ───
+    _attachPipelineTableListeners() {
+        // Sort headers
+        document.querySelectorAll('.pip-table th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sortCol;
+                if (this._pipelineSortCol === col) {
+                    this._pipelineSortDir = this._pipelineSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._pipelineSortCol = col;
+                    this._pipelineSortDir = 'asc';
+                }
+                this._rerenderPipelineContent();
+            });
+        });
+
+        // Row click → open client panel
+        document.querySelectorAll('.pip-tbl-row[data-id]').forEach(row => {
+            row.addEventListener('click', () => {
+                const cotId = row.dataset.id;
+                const cot = this._cotizaciones.find(c => String(c.id) === String(cotId));
+                if (!cot) return;
+                const client = this._clients.find(cl =>
+                    cl.id === cot.clienteId ||
+                    (cot.clienteNombre && cl.name && cot.clienteNombre.toLowerCase() === cl.name.toLowerCase())
+                );
+                if (client) {
+                    this._openPanel(client);
+                } else {
+                    Toast.info('Cliente no encontrado en la base');
+                }
+            });
+        });
     },
 
 
@@ -1712,6 +2293,342 @@ const CRM = {
 }
 .crm-main::-webkit-scrollbar-thumb {
     background: rgba(var(--primary-rgb), 0.2);
+    border-radius: 3px;
+}
+
+/* ═══════════════════════════════════════════
+   PIPELINE STYLES
+   ═══════════════════════════════════════════ */
+
+/* ─── KPIs ─── */
+.pip-kpis {
+    display: flex;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+.pip-kpi {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 16px 12px;
+    background: var(--bg);
+    text-align: center;
+}
+.pip-kpi-val {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.pip-kpi-hot { color: #EF5350 !important; }
+.pip-kpi-warn { color: #F28D15 !important; }
+.pip-kpi-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+}
+
+/* ─── Pipeline Toolbar ─── */
+.pip-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.pip-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+.pip-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.crm-filter-input {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: 0.8rem;
+    width: 110px;
+    outline: none;
+    transition: border-color 250ms ease;
+}
+.crm-filter-input:focus {
+    border-color: #F28D15;
+}
+.crm-filter-input::placeholder {
+    color: var(--text-dim);
+}
+
+/* View toggle */
+.pip-view-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.pip-view-btn {
+    background: var(--bg-card);
+    border: none;
+    color: var(--text-dim);
+    padding: 6px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: all 200ms ease;
+}
+.pip-view-btn:not(:last-child) {
+    border-right: 1px solid var(--border);
+}
+.pip-view-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.04);
+}
+.pip-view-btn.active {
+    color: #F28D15;
+    background: rgba(242,141,21,0.1);
+}
+
+/* Sync button */
+.pip-btn-sync {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    gap: 6px;
+    display: flex;
+    align-items: center;
+}
+
+/* ─── Kanban ─── */
+.pip-kanban {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    min-height: 400px;
+}
+.pip-col {
+    flex: 1;
+    min-width: 200px;
+    max-width: 260px;
+    display: flex;
+    flex-direction: column;
+}
+.pip-col-header {
+    padding: 10px 12px;
+    border-radius: 8px 8px 0 0;
+    background: rgba(17,17,17,0.8);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.pip-col-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+.pip-col-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.pip-col-count {
+    font-size: 0.6rem;
+    padding: 1px 5px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-dim);
+}
+.pip-col-monto {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    padding-left: 16px;
+}
+.pip-col-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 8px;
+    background: rgba(11,11,11,0.5);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    min-height: 80px;
+    transition: background 200ms ease;
+}
+.pip-col-dragover {
+    background: rgba(242,141,21,0.06) !important;
+    border-color: rgba(242,141,21,0.3) !important;
+}
+.pip-col-empty {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    text-align: center;
+    padding: 20px 8px;
+    font-style: italic;
+}
+
+/* ─── Pipeline Card ─── */
+.pip-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 200ms ease;
+    position: relative;
+}
+.pip-card:hover {
+    border-color: rgba(242,141,21,0.4);
+    box-shadow: 0 0 12px rgba(242,141,21,0.08);
+    transform: translateY(-1px);
+}
+.pip-card-dragging {
+    opacity: 0.4;
+    transform: rotate(2deg);
+}
+.pip-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.pip-card-code {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #F28D15;
+}
+.pip-card-temp {
+    font-size: 0.9rem;
+}
+.pip-card-cliente {
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pip-card-evento {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pip-card-tipo {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.04);
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-bottom: 8px;
+}
+.pip-card-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+}
+.pip-card-monto {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.pip-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.pip-card-days {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+.pip-card-vendedor {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pip-card-notas {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(255,255,255,0.06);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    font-style: italic;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ─── Pipeline Table ─── */
+.pip-tbl-code {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #F28D15 !important;
+    white-space: nowrap;
+}
+.pip-tbl-monto {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ─── Kanban scrollbar ─── */
+.pip-kanban::-webkit-scrollbar {
+    height: 6px;
+}
+.pip-kanban::-webkit-scrollbar-track {
+    background: transparent;
+}
+.pip-kanban::-webkit-scrollbar-thumb {
+    background: rgba(242,141,21,0.2);
     border-radius: 3px;
 }
         `;

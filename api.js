@@ -1520,6 +1520,8 @@ const API = {
                     fechaEmision: c.fecha_emision,
                     subtotal: parseFloat(c.subtotal) || 0,
                     iva: parseFloat(c.iva) || 0,
+                    // CRM Pipeline
+                    temperatura: c.temperatura || '',
                     // Campos La PyME
                     pymeVentaId: c.pyme_venta_id || null,
                     pymeFacturaNumero: c.pyme_factura_numero || '',
