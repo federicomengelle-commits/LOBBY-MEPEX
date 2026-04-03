@@ -37,6 +37,17 @@ const CRM = {
     _users: [],
     _dragData: null,
 
+    // ─── Cotizaciones tab state ───
+    _cotFilterEstado: null,
+    _cotSearch: '',
+    _cotSortCol: 'createdAt',
+    _cotSortDir: 'desc',
+    _cotFiltered: [],
+    _cotPanelId: null,
+    _cotPanelData: null,
+    _cotPanelSubTab: 'resumen',
+    _cotTimeline: [],
+
     // ─── Counts per tab ───
     _counts: { clientes: 0, pipeline: 0, cotizaciones: 0, interacciones: 0, marketing: 0 },
 
@@ -73,6 +84,36 @@ const CRM = {
         warm: { label: 'Warm', icon: '\u2600\uFE0F', color: '#F28D15' },
         cold: { label: 'Cold', icon: '\u2744\uFE0F', color: '#4A90D9' },
     },
+
+    // ─── Cotización estado config (para tab cotizaciones) ───
+    _cotEstados: [
+        { value: 'borrador',        label: 'Borrador',       color: '#888888' },
+        { value: 'enviada',         label: 'Enviada',        color: '#4A90D9' },
+        { value: 'en_negociacion',  label: 'En revisi\u00F3n',  color: '#F28D15' },
+        { value: 'aprobada',        label: 'Aprobada',       color: '#00CC88' },
+        { value: 'cerrada_ganada',  label: 'Aprobada',       color: '#00CC88' },
+        { value: 'cerrada_perdida', label: 'Rechazada',      color: '#EF5350' },
+        { value: 'facturada',       label: 'Facturada',      color: '#9B7DFF' },
+    ],
+
+    // ─── Cotización filter chips ───
+    _cotFilterChips: [
+        { value: null,              label: 'Todas' },
+        { value: 'borrador',        label: 'Borrador' },
+        { value: 'enviada',         label: 'Enviada' },
+        { value: 'en_negociacion',  label: 'En revisi\u00F3n' },
+        { value: 'aprobada',        label: 'Aprobada' },
+        { value: 'cerrada_perdida', label: 'Rechazada' },
+    ],
+
+    // ─── Timeline interaction types ───
+    _timelineTypes: [
+        { value: 'nota',     label: 'Nota',     icon: '\uD83D\uDCDD', color: '#888' },
+        { value: 'email',    label: 'Email',    icon: '\uD83D\uDCE7', color: '#4A90D9' },
+        { value: 'whatsapp', label: 'WhatsApp', icon: '\uD83D\uDCAC', color: '#25D366' },
+        { value: 'vista',    label: 'Vista',    icon: '\uD83D\uDC41\uFE0F', color: '#9B7DFF' },
+        { value: 'estado',   label: 'Estado',   icon: '\uD83D\uDD04', color: '#F28D15' },
+    ],
 
     // ─── Tab definitions ───
     _tabs: [
@@ -337,11 +378,12 @@ const CRM = {
         document.querySelectorAll('.crm-tab').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
-        // Show/hide toolbar (only for clientes — pipeline has its own)
+        // Show/hide toolbar (only for clientes — pipeline/cotizaciones have their own)
         const toolbar = document.getElementById('crmToolbar');
         if (toolbar) toolbar.style.display = tab === 'clientes' ? '' : 'none';
-        // Close panel
+        // Close panels
         this._closePanel();
+        this._closeCotPanel();
         // Render content
         this._renderTabContent();
     },
@@ -356,6 +398,10 @@ const CRM = {
         } else if (this._activeTab === 'pipeline') {
             main.innerHTML = this._renderPipeline();
             this._attachPipelineListeners();
+        } else if (this._activeTab === 'cotizaciones') {
+            this._applyCotFilters();
+            main.innerHTML = this._renderCotizacionesTab();
+            this._attachCotListeners();
         } else {
             main.innerHTML = this._renderPlaceholderTab(this._activeTab);
         }
@@ -1522,6 +1568,763 @@ const CRM = {
 
 
     // ═══════════════════════════════════════════
+    //  COTIZACIONES — FILTERS
+    // ═══════════════════════════════════════════
+
+    _applyCotFilters() {
+        let filtered = [...this._cotizaciones];
+
+        if (this._cotSearch) {
+            const q = this._cotSearch.toLowerCase();
+            filtered = filtered.filter(c =>
+                (c.numero || '').toLowerCase().includes(q) ||
+                (c.clienteNombre || '').toLowerCase().includes(q) ||
+                (c.nombreEvento || '').toLowerCase().includes(q) ||
+                (c.notasInternas || '').toLowerCase().includes(q)
+            );
+        }
+
+        if (this._cotFilterEstado) {
+            // Map 'aprobada' chip to include cerrada_ganada, 'rechazada' to cerrada_perdida
+            if (this._cotFilterEstado === 'aprobada') {
+                filtered = filtered.filter(c => c.estado === 'aprobada' || c.estado === 'cerrada_ganada');
+            } else if (this._cotFilterEstado === 'cerrada_perdida') {
+                filtered = filtered.filter(c => c.estado === 'cerrada_perdida');
+            } else {
+                filtered = filtered.filter(c => c.estado === this._cotFilterEstado);
+            }
+        }
+
+        // Sort
+        filtered.sort((a, b) => {
+            let va, vb;
+            switch (this._cotSortCol) {
+                case 'numero':    va = a.numero || ''; vb = b.numero || ''; break;
+                case 'cliente':   va = a.clienteNombre || ''; vb = b.clienteNombre || ''; break;
+                case 'evento':    va = a.nombreEvento || ''; vb = b.nombreEvento || ''; break;
+                case 'fecha':     va = a.fechaEvento || a.createdAt || ''; vb = b.fechaEvento || b.createdAt || ''; break;
+                case 'estado':    va = a.estado || ''; vb = b.estado || ''; break;
+                case 'monto':     va = a.montoTotal || 0; vb = b.montoTotal || 0; break;
+                case 'vendedor':  va = this._getVendedorName(a.vendedorId); vb = this._getVendedorName(b.vendedorId); break;
+                default:          va = a.createdAt || ''; vb = b.createdAt || '';
+            }
+            if (typeof va === 'number') return this._cotSortDir === 'asc' ? va - vb : vb - va;
+            const cmp = String(va).localeCompare(String(vb), 'es');
+            return this._cotSortDir === 'asc' ? cmp : -cmp;
+        });
+
+        this._cotFiltered = filtered;
+    },
+
+    _getCotEstadoConfig(estado) {
+        return this._cotEstados.find(e => e.value === estado) || { label: estado || '\u2014', color: '#888' };
+    },
+
+    _isCotVencida(cot) {
+        if (!cot.fechaEvento) return false;
+        if (['aprobada', 'cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(cot.estado)) return false;
+        const eventDate = new Date(cot.fechaEvento);
+        return eventDate < new Date();
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  COTIZACIONES — TABLE RENDER
+    // ═══════════════════════════════════════════
+
+    _renderCotizacionesTab() {
+        return `
+            <!-- Cotizaciones toolbar -->
+            <div class="cot-toolbar">
+                <div class="cot-toolbar-left">
+                    <div class="crm-search-wrap">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="crm-search" id="cotSearch" placeholder="Buscar cotizaci\u00F3n..." autocomplete="off" value="${this._escHtml(this._cotSearch)}" />
+                    </div>
+                </div>
+                <div class="cot-chips" id="cotChips">
+                    ${this._cotFilterChips.map(ch => `
+                        <button class="cot-chip ${this._cotFilterEstado === ch.value ? 'active' : ''}" data-estado="${ch.value || ''}">
+                            ${ch.label}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+
+            <!-- Cotizaciones table -->
+            ${this._renderCotTable()}
+        `;
+    },
+
+    _cotSortIndicator(col) {
+        if (this._cotSortCol !== col) return '';
+        return this._cotSortDir === 'asc'
+            ? ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>'
+            : ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>';
+    },
+
+    _renderCotTable() {
+        if (this._cotFiltered.length === 0) {
+            return `
+                <div class="crm-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+                    <p>${this._cotSearch || this._cotFilterEstado ? 'No se encontraron cotizaciones con esos filtros.' : 'No hay cotizaciones registradas.'}</p>
+                </div>
+            `;
+        }
+
+        const cols = [
+            { id: 'numero',   header: 'C\u00F3digo' },
+            { id: 'cliente',  header: 'Cliente' },
+            { id: 'evento',   header: 'Evento' },
+            { id: 'fecha',    header: 'Fecha' },
+            { id: 'estado',   header: 'Estado' },
+            { id: 'monto',    header: 'Monto' },
+            { id: 'vendedor', header: 'Vendedor' },
+            { id: 'vigencia', header: 'Vigencia' },
+        ];
+
+        return `
+            <div class="crm-table-wrap">
+                <table class="crm-table cot-tbl">
+                    <thead><tr>
+                        ${cols.map(c => `<th class="sortable" data-sort-col="${c.id}">${c.header}${this._cotSortIndicator(c.id)}</th>`).join('')}
+                    </tr></thead>
+                    <tbody>
+                        ${this._cotFiltered.map(cot => this._renderCotRow(cot)).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="crm-table-footer">
+                <span class="crm-table-count">${this._cotFiltered.length} de ${this._cotizaciones.length} cotizaciones</span>
+            </div>
+        `;
+    },
+
+    _renderCotRow(cot) {
+        const est = this._getCotEstadoConfig(cot.estado);
+        const vencida = this._isCotVencida(cot);
+        const fecha = cot.fechaEvento ? new Date(cot.fechaEvento).toLocaleDateString('es-AR') : '\u2014';
+        const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '\u2014';
+        const vendedor = this._getVendedorName(cot.vendedorId);
+        const isActive = this._cotPanelId === cot.id;
+
+        // Vigencia
+        let vigenciaHtml;
+        if (vencida) {
+            vigenciaHtml = '<span class="cot-vigencia-warn">\u26A0 Vencida</span>';
+        } else if (cot.fechaEvento) {
+            const dias = this._getDaysSince(cot.fechaEvento);
+            if (dias !== null && dias <= 0) {
+                const diasHasta = Math.abs(Math.round((new Date(cot.fechaEvento) - new Date()) / (1000*60*60*24)));
+                vigenciaHtml = `<span class="cot-vigencia-ok">${diasHasta}d</span>`;
+            } else {
+                vigenciaHtml = '<span class="cot-vigencia-ok">Vigente</span>';
+            }
+        } else {
+            vigenciaHtml = '<span class="text-muted">\u2014</span>';
+        }
+
+        return `
+            <tr class="crm-row cot-row ${isActive ? 'crm-row-active' : ''}" data-cot-id="${cot.id}" data-cliente-id="${cot.clienteId || ''}">
+                <td class="cot-td-code">${cot.numero || 'COT-???'}</td>
+                <td class="cot-td-cliente" data-action="open-client">${cot.clienteNombre || '\u2014'}</td>
+                <td>${cot.nombreEvento || '\u2014'}</td>
+                <td class="crm-td-rubro">${fecha}</td>
+                <td><span class="crm-badge-tipo" style="background:${est.color}18; color:${est.color}; border:1px solid ${est.color}30">${est.label}</span></td>
+                <td class="pip-tbl-monto">${monto}</td>
+                <td class="crm-td-rubro">${vendedor}</td>
+                <td>${vigenciaHtml}</td>
+            </tr>
+        `;
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  COTIZACIONES — FICHA LATERAL
+    // ═══════════════════════════════════════════
+
+    async _openCotPanel(cot) {
+        this._cotPanelId = cot.id;
+        this._cotPanelData = cot;
+        this._cotPanelSubTab = 'resumen';
+
+        // Load timeline
+        this._cotTimeline = [];
+        if (API.getCotizacionTimeline) {
+            try {
+                this._cotTimeline = await API.getCotizacionTimeline(cot.id) || [];
+            } catch (e) { /* ignore */ }
+        }
+
+        const panel = document.getElementById('crmPanel');
+        if (!panel) return;
+
+        panel.classList.add('crm-panel-open');
+        panel.innerHTML = this._buildCotPanelContent(cot);
+        this._attachCotPanelEvents(cot);
+
+        // Highlight row
+        document.querySelectorAll('.cot-row').forEach(row => {
+            row.classList.toggle('crm-row-active', row.dataset.cotId === String(cot.id));
+        });
+    },
+
+    _closeCotPanel() {
+        this._cotPanelId = null;
+        this._cotPanelData = null;
+        this._cotTimeline = [];
+
+        const panel = document.getElementById('crmPanel');
+        if (panel) {
+            panel.classList.remove('crm-panel-open');
+            panel.innerHTML = '';
+        }
+
+        document.querySelectorAll('.cot-row').forEach(row => row.classList.remove('crm-row-active'));
+    },
+
+    _buildCotPanelContent(cot) {
+        const est = this._getCotEstadoConfig(cot.estado);
+        const user = Auth.getUser();
+        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
+
+        return `
+            <div class="crm-panel-inner">
+                <!-- Header -->
+                <div class="crm-panel-header">
+                    <div class="crm-panel-header-top">
+                        <button class="crm-panel-close" id="cotPanelClose">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                        ${!isReadOnly ? `
+                        <div class="crm-panel-actions">
+                            <button class="crm-panel-btn" id="cotPanelEdit" title="Editar notas">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            <button class="crm-panel-btn crm-panel-btn-danger" id="cotPanelDelete" title="Eliminar">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </div>` : ''}
+                    </div>
+                    <div class="cot-panel-title">
+                        <span class="cot-panel-code">${cot.numero || 'COT-???'}</span>
+                        <span class="crm-badge-tipo" style="background:${est.color}18; color:${est.color}; border:1px solid ${est.color}30">${est.label}</span>
+                    </div>
+                </div>
+
+                <!-- Sub-tabs -->
+                <div class="cot-panel-tabs">
+                    <button class="cot-panel-tab ${this._cotPanelSubTab === 'resumen' ? 'active' : ''}" data-subtab="resumen">Resumen</button>
+                    <button class="cot-panel-tab ${this._cotPanelSubTab === 'timeline' ? 'active' : ''}" data-subtab="timeline">Timeline</button>
+                    <button class="cot-panel-tab ${this._cotPanelSubTab === 'seguimiento' ? 'active' : ''}" data-subtab="seguimiento">Seguimiento</button>
+                </div>
+
+                <!-- Sub-tab content -->
+                <div class="cot-panel-body" id="cotPanelBody">
+                    ${this._renderCotSubTab(cot)}
+                </div>
+            </div>
+        `;
+    },
+
+    _renderCotSubTab(cot) {
+        switch (this._cotPanelSubTab) {
+            case 'resumen':     return this._renderCotResumen(cot);
+            case 'timeline':    return this._renderCotTimeline(cot);
+            case 'seguimiento': return this._renderCotSeguimiento(cot);
+            default:            return '';
+        }
+    },
+
+
+    // ─── Sub-tab: Resumen ───
+    _renderCotResumen(cot) {
+        const est = this._getCotEstadoConfig(cot.estado);
+        const vendedor = this._getVendedorName(cot.vendedorId);
+        const fecha = cot.fechaEvento ? new Date(cot.fechaEvento).toLocaleDateString('es-AR') : '\u2014';
+        const fechaEmision = cot.fechaEmision ? new Date(cot.fechaEmision).toLocaleDateString('es-AR') : (cot.createdAt ? new Date(cot.createdAt).toLocaleDateString('es-AR') : '\u2014');
+        const subtotal = cot.subtotal || cot.montoTotal || 0;
+        const iva = cot.iva || Math.round(subtotal * 0.21);
+        const total = subtotal + iva;
+
+        // Find linked project
+        const project = cot.projectId ? this._projects.find(p => String(p.id) === String(cot.projectId)) : null;
+
+        return `
+            <!-- Datos cotizaci\u00F3n -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Cotizaci\u00F3n</h4>
+                <div class="crm-panel-fields">
+                    <div class="cot-field-row"><span class="cot-field-label">C\u00F3digo</span><span class="cot-field-val cot-code-val">${cot.numero || '\u2014'}</span></div>
+                    <div class="cot-field-row"><span class="cot-field-label">Estado</span><span class="crm-badge-tipo" style="background:${est.color}18; color:${est.color}; border:1px solid ${est.color}30">${est.label}</span></div>
+                    ${cot.tipoStand ? `<div class="cot-field-row"><span class="cot-field-label">Tipo stand</span><span class="cot-field-val">${cot.tipoStand}</span></div>` : ''}
+                    ${cot.superficie ? `<div class="cot-field-row"><span class="cot-field-label">Superficie</span><span class="cot-field-val">${cot.superficie} m\u00B2</span></div>` : ''}
+                    <div class="cot-field-row"><span class="cot-field-label">Vendedor</span><span class="cot-field-val">${vendedor}</span></div>
+                </div>
+            </div>
+
+            <!-- Cliente -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Cliente</h4>
+                <div class="crm-panel-fields">
+                    <div class="cot-field-row"><span class="cot-field-label">Empresa</span><span class="cot-field-val">${cot.clienteNombre || '\u2014'}</span></div>
+                    ${cot.clienteContacto ? `<div class="cot-field-row"><span class="cot-field-label">Contacto</span><span class="cot-field-val">${cot.clienteContacto}</span></div>` : ''}
+                    ${cot.clienteTelefono ? `<div class="cot-field-row"><span class="cot-field-label">Tel\u00E9fono</span><span class="cot-field-val">${cot.clienteTelefono}</span></div>` : ''}
+                    ${cot.clienteEmail ? `<div class="cot-field-row"><span class="cot-field-label">Email</span><span class="cot-field-val">${cot.clienteEmail}</span></div>` : ''}
+                </div>
+            </div>
+
+            <!-- Evento -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Evento</h4>
+                <div class="crm-panel-fields">
+                    <div class="cot-field-row"><span class="cot-field-label">Nombre</span><span class="cot-field-val">${cot.nombreEvento || '\u2014'}</span></div>
+                    ${cot.tipoEvento ? `<div class="cot-field-row"><span class="cot-field-label">Tipo</span><span class="cot-field-val">${cot.tipoEvento}</span></div>` : ''}
+                    <div class="cot-field-row"><span class="cot-field-label">Fecha</span><span class="cot-field-val">${fecha}</span></div>
+                </div>
+            </div>
+
+            <!-- Proyecto vinculado -->
+            ${project ? `
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Proyecto vinculado</h4>
+                <div class="crm-panel-list">
+                    <div class="crm-panel-list-item crm-panel-list-link" data-nav="proyectos">
+                        <span class="crm-panel-list-detail">${project.name || '\u2014'}</span>
+                        <span class="crm-badge-estado-sm">${project.status || '\u2014'}</span>
+                    </div>
+                </div>
+            </div>` : ''}
+
+            <!-- Presupuesto -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Presupuesto</h4>
+                <div class="cot-presupuesto">
+                    <div class="cot-presu-row"><span>Subtotal</span><span class="cot-presu-val">$${subtotal.toLocaleString('es-AR')}</span></div>
+                    <div class="cot-presu-row"><span>IVA 21%</span><span class="cot-presu-val">$${iva.toLocaleString('es-AR')}</span></div>
+                    <div class="cot-presu-row cot-presu-total"><span>Total</span><span class="cot-presu-val">$${total.toLocaleString('es-AR')}</span></div>
+                </div>
+            </div>
+
+            <!-- Fecha emisi\u00F3n -->
+            <div class="crm-panel-section">
+                <div class="cot-field-row"><span class="cot-field-label">Fecha emisi\u00F3n</span><span class="cot-field-val">${fechaEmision}</span></div>
+            </div>
+
+            <!-- PDF -->
+            ${cot.pdfUrl ? `
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Documento</h4>
+                <div class="cot-pdf-actions">
+                    <button class="btn btn-ghost cot-btn-pdf" id="cotBtnPdfInline" title="Ver PDF">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+                        Ver PDF
+                    </button>
+                    <button class="btn btn-ghost cot-btn-pdf" id="cotBtnPdfNew" title="Abrir en nueva pesta\u00F1a">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        Nueva pesta\u00F1a
+                    </button>
+                </div>
+            </div>` : ''}
+
+            <!-- Notas -->
+            ${cot.notasInternas ? `
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Notas internas</h4>
+                <p class="cot-notas-text">${cot.notasInternas}</p>
+            </div>` : ''}
+        `;
+    },
+
+
+    // ─── Sub-tab: Timeline ───
+    _renderCotTimeline(cot) {
+        const user = Auth.getUser();
+        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
+
+        const inputHtml = !isReadOnly ? `
+            <div class="cot-tl-input">
+                <div class="cot-tl-input-row">
+                    <select class="crm-form-input cot-tl-select" id="cotTlTipo">
+                        ${this._timelineTypes.filter(t => t.value !== 'estado').map(t => `<option value="${t.value}">${t.icon} ${t.label}</option>`).join('')}
+                    </select>
+                    <input type="text" class="crm-form-input cot-tl-desc" id="cotTlDesc" placeholder="Descripci\u00F3n de la interacci\u00F3n..." />
+                    <button class="btn btn-primary cot-tl-add" id="cotTlAdd">Agregar</button>
+                </div>
+            </div>
+        ` : '';
+
+        const items = this._cotTimeline;
+
+        let feedHtml;
+        if (items.length === 0) {
+            feedHtml = '<p class="crm-panel-empty">Sin interacciones registradas</p>';
+        } else {
+            // Group by date
+            const grouped = {};
+            items.forEach(item => {
+                const d = item.createdAt ? new Date(item.createdAt).toLocaleDateString('es-AR') : 'Sin fecha';
+                if (!grouped[d]) grouped[d] = [];
+                grouped[d].push(item);
+            });
+
+            feedHtml = Object.entries(grouped).map(([date, entries]) => {
+                return `
+                    <div class="cot-tl-group">
+                        <div class="cot-tl-date">${date}</div>
+                        ${entries.map(entry => {
+                            const tCfg = this._timelineTypes.find(t => t.value === entry.tipo) || this._timelineTypes[0];
+                            const time = entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+                            return `
+                                <div class="cot-tl-item">
+                                    <div class="cot-tl-icon" style="background:${tCfg.color}18; color:${tCfg.color}">${tCfg.icon}</div>
+                                    <div class="cot-tl-content">
+                                        <div class="cot-tl-header">
+                                            <span class="cot-tl-type" style="color:${tCfg.color}">${tCfg.label}</span>
+                                            <span class="cot-tl-time">${time}</span>
+                                        </div>
+                                        <p class="cot-tl-text">${entry.descripcion || '\u2014'}</p>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        return `
+            ${inputHtml}
+            <div class="cot-tl-feed">${feedHtml}</div>
+        `;
+    },
+
+
+    // ─── Sub-tab: Seguimiento ───
+    _renderCotSeguimiento(cot) {
+        const days = this._getDaysSince(cot.createdAt);
+        const daysColor = this._getDaysColor(days);
+        const lastInteraction = this._cotTimeline.length > 0 ? this._cotTimeline[0] : null;
+        const daysSinceInteraction = lastInteraction ? this._getDaysSince(lastInteraction.createdAt) : days;
+        const daysSinceColor = this._getDaysColor(daysSinceInteraction);
+
+        // Follow-up alerts
+        const alerts = [];
+        if (this._isCotVencida(cot)) {
+            alerts.push({ icon: '\u26A0\uFE0F', text: 'Cotizaci\u00F3n vencida \u2014 evento ya pas\u00F3', color: '#EF5350' });
+        }
+        if (daysSinceInteraction !== null && daysSinceInteraction > 5 && !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(cot.estado)) {
+            alerts.push({ icon: '\u23F0', text: `${daysSinceInteraction} d\u00EDas sin respuesta`, color: '#F28D15' });
+        }
+        if (cot.estado === 'enviada' && days > 3) {
+            alerts.push({ icon: '\uD83D\uDCE9', text: 'Follow-up recomendado \u2014 cotizaci\u00F3n enviada hace ' + days + ' d\u00EDas', color: '#4A90D9' });
+        }
+        if (cot.estado === 'en_negociacion' && days > 10) {
+            alerts.push({ icon: '\uD83E\uDD1D', text: 'Negociaci\u00F3n extendida \u2014 considerar cierre', color: '#F28D15' });
+        }
+
+        return `
+            <!-- Alertas -->
+            <div class="cot-seg-alerts">
+                ${alerts.length > 0 ? alerts.map(a => `
+                    <div class="cot-seg-alert" style="border-left: 3px solid ${a.color}">
+                        <span>${a.icon}</span>
+                        <span>${a.text}</span>
+                    </div>
+                `).join('') : '<p class="crm-panel-empty">Sin alertas activas</p>'}
+            </div>
+
+            <!-- M\u00E9tricas -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">M\u00E9tricas</h4>
+                <div class="crm-panel-fields">
+                    <div class="cot-field-row">
+                        <span class="cot-field-label">D\u00EDas desde creaci\u00F3n</span>
+                        <span class="cot-field-val" style="color:${daysColor}; font-weight:700">${days !== null ? days + ' d\u00EDas' : '\u2014'}</span>
+                    </div>
+                    <div class="cot-field-row">
+                        <span class="cot-field-label">D\u00EDas sin interacci\u00F3n</span>
+                        <span class="cot-field-val" style="color:${daysSinceColor}; font-weight:700">${daysSinceInteraction !== null ? daysSinceInteraction + ' d\u00EDas' : '\u2014'}</span>
+                    </div>
+                    <div class="cot-field-row">
+                        <span class="cot-field-label">\u00DAltima interacci\u00F3n</span>
+                        <span class="cot-field-val">${lastInteraction ? new Date(lastInteraction.createdAt).toLocaleDateString('es-AR') : 'Ninguna'}</span>
+                    </div>
+                    <div class="cot-field-row">
+                        <span class="cot-field-label">Total interacciones</span>
+                        <span class="cot-field-val">${this._cotTimeline.length}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pr\u00F3xima acci\u00F3n sugerida -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">Pr\u00F3xima acci\u00F3n</h4>
+                <div class="cot-seg-next">
+                    ${this._getSuggestedAction(cot, days, daysSinceInteraction)}
+                </div>
+            </div>
+        `;
+    },
+
+    _getSuggestedAction(cot, days, daysSinceInteraction) {
+        if (['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(cot.estado)) {
+            return '<p class="crm-panel-empty">Cotizaci\u00F3n cerrada \u2014 sin acciones pendientes</p>';
+        }
+        if (cot.estado === 'borrador') {
+            return '<div class="cot-seg-suggestion">\uD83D\uDCE4 Enviar cotizaci\u00F3n al cliente</div>';
+        }
+        if (cot.estado === 'enviada' && days > 3) {
+            return '<div class="cot-seg-suggestion">\uD83D\uDCDE Llamar al cliente para follow-up</div>';
+        }
+        if (cot.estado === 'en_negociacion') {
+            return '<div class="cot-seg-suggestion">\uD83D\uDCCB Preparar revisi\u00F3n de condiciones</div>';
+        }
+        if (cot.estado === 'aprobada') {
+            return '<div class="cot-seg-suggestion">\uD83D\uDCB0 Generar factura y cerrar como ganada</div>';
+        }
+        if (daysSinceInteraction > 5) {
+            return '<div class="cot-seg-suggestion">\u23F0 Contactar al cliente \u2014 sin respuesta hace ' + daysSinceInteraction + ' d\u00EDas</div>';
+        }
+        return '<div class="cot-seg-suggestion">\u2705 Al d\u00EDa \u2014 esperar respuesta del cliente</div>';
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  COTIZACIONES — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachCotListeners() {
+        // Search
+        const search = document.getElementById('cotSearch');
+        if (search) {
+            search.addEventListener('input', () => {
+                this._cotSearch = search.value.trim();
+                this._applyCotFilters();
+                this._rerenderCotContent();
+            });
+        }
+
+        // Filter chips
+        document.querySelectorAll('.cot-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const val = chip.dataset.estado || null;
+                this._cotFilterEstado = val;
+                document.querySelectorAll('.cot-chip').forEach(c => c.classList.toggle('active', (c.dataset.estado || null) === val));
+                this._applyCotFilters();
+                this._rerenderCotContent();
+            });
+        });
+
+        // Attach table listeners
+        this._attachCotTableListeners();
+    },
+
+    _rerenderCotContent() {
+        // Re-render just the table portion, preserving toolbar
+        const main = document.getElementById('crmMainContent');
+        if (!main) return;
+        // Re-render everything (chips + table)
+        this._applyCotFilters();
+        main.innerHTML = this._renderCotizacionesTab();
+        this._attachCotListeners();
+    },
+
+    _attachCotTableListeners() {
+        // Sort headers
+        document.querySelectorAll('.cot-tbl th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sortCol;
+                if (this._cotSortCol === col) {
+                    this._cotSortDir = this._cotSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._cotSortCol = col;
+                    this._cotSortDir = 'asc';
+                }
+                this._applyCotFilters();
+                this._rerenderCotContent();
+            });
+        });
+
+        // Row click → open cotizacion panel
+        document.querySelectorAll('.cot-row[data-cot-id]').forEach(row => {
+            row.addEventListener('click', (e) => {
+                // If clicking client name, open client panel instead
+                if (e.target.closest('[data-action="open-client"]')) {
+                    const clienteId = row.dataset.clienteId;
+                    const cotId = row.dataset.cotId;
+                    const cot = this._cotizaciones.find(c => String(c.id) === String(cotId));
+                    const client = this._clients.find(cl =>
+                        cl.id == clienteId || (cot && cot.clienteNombre && cl.name && cot.clienteNombre.toLowerCase() === cl.name.toLowerCase())
+                    );
+                    if (client) {
+                        this._closeCotPanel();
+                        this._openPanel(client);
+                    }
+                    return;
+                }
+                // Otherwise open cotizacion panel
+                const cotId = row.dataset.cotId;
+                const cot = this._cotizaciones.find(c => String(c.id) === String(cotId));
+                if (cot) this._openCotPanel(cot);
+            });
+        });
+    },
+
+    _attachCotPanelEvents(cot) {
+        // Close
+        const closeBtn = document.getElementById('cotPanelClose');
+        if (closeBtn) closeBtn.addEventListener('click', () => this._closeCotPanel());
+
+        // Sub-tabs
+        document.querySelectorAll('.cot-panel-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                this._cotPanelSubTab = tab.dataset.subtab;
+                document.querySelectorAll('.cot-panel-tab').forEach(t => t.classList.toggle('active', t === tab));
+                const body = document.getElementById('cotPanelBody');
+                if (body) {
+                    body.innerHTML = this._renderCotSubTab(cot);
+                    this._attachCotSubTabEvents(cot);
+                }
+            });
+        });
+
+        // Edit button → edit notas
+        const editBtn = document.getElementById('cotPanelEdit');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => this._editCotNotas(cot));
+        }
+
+        // Delete button
+        const deleteBtn = document.getElementById('cotPanelDelete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async () => {
+                const confirmed = await Modal.confirm({
+                    title: 'Eliminar cotizaci\u00F3n',
+                    message: `\u00BFEliminar <strong>${cot.numero || 'esta cotizaci\u00F3n'}</strong>? Se puede deshacer con Ctrl+Z.`,
+                    confirmText: 'Eliminar',
+                    danger: true,
+                });
+                if (!confirmed) return;
+                const result = await API.deleteCotizacion(cot.id);
+                if (result) {
+                    Toast.success('Cotizaci\u00F3n eliminada');
+                    this._closeCotPanel();
+                    await this._loadData();
+                } else {
+                    Toast.error('Error al eliminar cotizaci\u00F3n');
+                }
+            });
+        }
+
+        // PDF buttons
+        const pdfInline = document.getElementById('cotBtnPdfInline');
+        if (pdfInline && cot.pdfUrl) {
+            pdfInline.addEventListener('click', () => {
+                Modal.open({
+                    title: `PDF \u2014 ${cot.numero || ''}`,
+                    body: `<iframe src="${cot.pdfUrl}" style="width:100%; height:70vh; border:none; border-radius:6px;"></iframe>`,
+                    size: 'lg',
+                });
+            });
+        }
+        const pdfNew = document.getElementById('cotBtnPdfNew');
+        if (pdfNew && cot.pdfUrl) {
+            pdfNew.addEventListener('click', () => window.open(cot.pdfUrl, '_blank', 'noopener'));
+        }
+
+        // Project link
+        document.querySelectorAll('[data-nav="proyectos"]').forEach(el => {
+            el.addEventListener('click', () => Router.navigate('proyectos'));
+        });
+
+        // Escape
+        const escHandler = (e) => {
+            if (e.key === 'Escape' && this._cotPanelId) {
+                this._closeCotPanel();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        // Attach sub-tab specific events
+        this._attachCotSubTabEvents(cot);
+    },
+
+    _attachCotSubTabEvents(cot) {
+        // Timeline: add interaction
+        const addBtn = document.getElementById('cotTlAdd');
+        if (addBtn) {
+            addBtn.addEventListener('click', async () => {
+                const tipo = document.getElementById('cotTlTipo')?.value;
+                const desc = document.getElementById('cotTlDesc')?.value?.trim();
+                if (!desc) { Toast.warning('Escrib\u00ED una descripci\u00F3n'); return; }
+
+                addBtn.disabled = true;
+                addBtn.textContent = '...';
+                const result = await API.addCotizacionTimeline(cot.id, tipo, desc);
+                if (result) {
+                    Toast.success('Interacci\u00F3n registrada');
+                    // Reload timeline
+                    this._cotTimeline = await API.getCotizacionTimeline(cot.id) || [];
+                    const body = document.getElementById('cotPanelBody');
+                    if (body) {
+                        body.innerHTML = this._renderCotTimeline(cot);
+                        this._attachCotSubTabEvents(cot);
+                    }
+                } else {
+                    Toast.error('Error al registrar interacci\u00F3n');
+                    addBtn.disabled = false;
+                    addBtn.textContent = 'Agregar';
+                }
+            });
+        }
+    },
+
+    _editCotNotas(cot) {
+        const body = `
+            <form class="crm-form" id="cotNotasForm">
+                <div class="crm-form-group crm-form-full">
+                    <label class="crm-form-label">Notas internas</label>
+                    <textarea class="crm-form-input" name="notas" rows="5" placeholder="Notas internas sobre esta cotizaci\u00F3n...">${this._escHtml(cot.notasInternas || '')}</textarea>
+                </div>
+            </form>
+        `;
+        const instance = Modal.open({
+            title: `Notas \u2014 ${cot.numero || ''}`,
+            body,
+            size: 'sm',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="cotNotasSave">Guardar</button>
+            `,
+        });
+        const saveBtn = instance.overlay.querySelector('#cotNotasSave');
+        saveBtn.addEventListener('click', async () => {
+            const notas = instance.overlay.querySelector('[name="notas"]').value.trim();
+            saveBtn.disabled = true;
+            const result = await API.updateCotizacion(cot.id, { notasInternas: notas });
+            if (result) {
+                Toast.success('Notas actualizadas');
+                Modal.close(instance.id);
+                cot.notasInternas = notas;
+                this._cotPanelData = cot;
+                // Re-render panel
+                const panel = document.getElementById('crmPanel');
+                if (panel && this._cotPanelId === cot.id) {
+                    panel.innerHTML = this._buildCotPanelContent(cot);
+                    this._attachCotPanelEvents(cot);
+                }
+            } else {
+                Toast.error('Error al guardar notas');
+                saveBtn.disabled = false;
+            }
+        });
+    },
+
+
+    // ═══════════════════════════════════════════
     //  STYLES (injected once)
     // ═══════════════════════════════════════════
 
@@ -2630,6 +3433,357 @@ const CRM = {
 .pip-kanban::-webkit-scrollbar-thumb {
     background: rgba(242,141,21,0.2);
     border-radius: 3px;
+}
+
+/* ═══════════════════════════════════════════
+   COTIZACIONES STYLES
+   ═══════════════════════════════════════════ */
+
+/* ─── Cotizaciones Toolbar ─── */
+.cot-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.cot-toolbar-left {
+    flex: 1;
+    min-width: 200px;
+}
+
+/* ─── Filter chips ─── */
+.cot-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.cot-chip {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 200ms ease;
+    white-space: nowrap;
+}
+.cot-chip:hover {
+    border-color: rgba(242,141,21,0.4);
+    color: var(--text-primary);
+}
+.cot-chip.active {
+    background: rgba(242,141,21,0.12);
+    border-color: rgba(242,141,21,0.4);
+    color: #F28D15;
+}
+
+/* ─── Cotizaciones table cells ─── */
+.cot-td-code {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary) !important;
+    white-space: nowrap;
+}
+.cot-td-cliente {
+    font-weight: 600;
+    color: var(--text-primary) !important;
+    cursor: pointer;
+    transition: color 200ms ease;
+}
+.cot-td-cliente:hover {
+    color: #F28D15 !important;
+    text-decoration: underline;
+}
+
+/* Vigencia */
+.cot-vigencia-warn {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #EF5350;
+}
+.cot-vigencia-ok {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: #00CC88;
+}
+
+/* ─── Cotización panel ─── */
+.cot-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+}
+.cot-panel-code {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+/* Panel sub-tabs */
+.cot-panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: rgba(17,17,17,0.4);
+}
+.cot-panel-tab {
+    flex: 1;
+    padding: 10px 12px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: all 200ms ease;
+    text-align: center;
+}
+.cot-panel-tab:hover {
+    color: var(--text-primary);
+    background: rgba(var(--primary-rgb), 0.04);
+}
+.cot-panel-tab.active {
+    color: #F28D15;
+    border-bottom-color: #F28D15;
+}
+
+/* Panel body */
+.cot-panel-body {
+    overflow-y: auto;
+    max-height: calc(100vh - 340px);
+}
+
+/* ─── Field rows ─── */
+.cot-field-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+}
+.cot-field-label {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+.cot-field-val {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    text-align: right;
+}
+.cot-code-val {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--primary) !important;
+}
+
+/* ─── Presupuesto ─── */
+.cot-presupuesto {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.cot-presu-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    border-bottom: 1px solid rgba(var(--primary-rgb),0.04);
+}
+.cot-presu-row:last-child {
+    border-bottom: none;
+}
+.cot-presu-val {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.cot-presu-total {
+    background: rgba(242,141,21,0.06);
+}
+.cot-presu-total span {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.cot-presu-total .cot-presu-val {
+    color: #F28D15;
+    font-size: 0.95rem;
+}
+
+/* ─── PDF actions ─── */
+.cot-pdf-actions {
+    display: flex;
+    gap: 8px;
+}
+.cot-btn-pdf {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    gap: 6px;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    justify-content: center;
+}
+
+/* ─── Notas ─── */
+.cot-notas-text {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+/* ─── Timeline ─── */
+.cot-tl-input {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+}
+.cot-tl-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.cot-tl-select {
+    width: 120px;
+    flex-shrink: 0;
+    font-size: 0.78rem !important;
+    padding: 6px 8px !important;
+}
+.cot-tl-desc {
+    flex: 1;
+    font-size: 0.82rem !important;
+    padding: 6px 10px !important;
+}
+.cot-tl-add {
+    flex-shrink: 0;
+    padding: 6px 14px !important;
+    font-size: 0.75rem !important;
+}
+.cot-tl-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 0 0 16px 0;
+}
+.cot-tl-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.cot-tl-date {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(var(--primary-rgb),0.06);
+}
+.cot-tl-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 0;
+}
+.cot-tl-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+.cot-tl-content {
+    flex: 1;
+    min-width: 0;
+}
+.cot-tl-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.cot-tl-type {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.cot-tl-time {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+}
+.cot-tl-text {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* ─── Seguimiento ─── */
+.cot-seg-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0;
+}
+.cot-seg-alert {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+}
+.cot-seg-next {
+    padding: 4px 0;
+}
+.cot-seg-suggestion {
+    padding: 12px 14px;
+    background: rgba(242,141,21,0.06);
+    border: 1px solid rgba(242,141,21,0.15);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+/* ─── Cot panel scrollbar ─── */
+.cot-panel-body::-webkit-scrollbar {
+    width: 4px;
+}
+.cot-panel-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+.cot-panel-body::-webkit-scrollbar-thumb {
+    background: rgba(242,141,21,0.2);
+    border-radius: 2px;
 }
         `;
         document.head.appendChild(style);
