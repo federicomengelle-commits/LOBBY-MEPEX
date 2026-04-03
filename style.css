@@ -10613,3 +10613,61 @@ body {
     font-size: 11px;
     color: #4A90D9;
 }
+
+/* ─── Estado receta badges ─── */
+.costos-badge-completa {
+    background: rgba(0, 204, 136, 0.12) !important;
+    color: #00CC88 !important;
+    border: 1px solid rgba(0, 204, 136, 0.3) !important;
+}
+.costos-badge-incompleta {
+    background: rgba(242, 141, 21, 0.12) !important;
+    color: #F28D15 !important;
+    border: 1px solid rgba(242, 141, 21, 0.3) !important;
+}
+.costos-badge-sin-receta {
+    background: rgba(255, 68, 68, 0.12) !important;
+    color: #ff4444 !important;
+    border: 1px solid rgba(255, 68, 68, 0.3) !important;
+}
+
+/* ─── Estado chips filter ─── */
+.costos-estado-chips {
+    display: flex;
+    gap: 4px;
+}
+.costos-estado-chip {
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: #666;
+    font-size: 12px;
+    font-family: 'Cabin', sans-serif;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.costos-estado-chip:hover {
+    color: #aaa;
+    border-color: rgba(255,255,255,0.15);
+}
+.costos-estado-chip.active {
+    color: #4A90D9;
+    border-color: #4A90D940;
+    background: rgba(74, 144, 217, 0.08);
+}
+.costos-estado-chip.chip-completa.active {
+    color: #00CC88;
+    border-color: rgba(0, 204, 136, 0.4);
+    background: rgba(0, 204, 136, 0.08);
+}
+.costos-estado-chip.chip-incompleta.active {
+    color: #F28D15;
+    border-color: rgba(242, 141, 21, 0.4);
+    background: rgba(242, 141, 21, 0.08);
+}
+.costos-estado-chip.chip-sin-receta.active {
+    color: #ff4444;
+    border-color: rgba(255, 68, 68, 0.4);
+    background: rgba(255, 68, 68, 0.08);
+}

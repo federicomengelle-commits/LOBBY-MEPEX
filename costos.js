@@ -2,7 +2,7 @@
    MEPEX Lobby — Módulo Costos
    =============================================
    Fuente de verdad de costos: insumos editables,
-   recetas/BOM, catálogo base, listas de precio.
+   recetas y costos, listas de precio.
    Solo visible para superadmin y admin.
    Tabla Supabase: insumos_base, catalogo_items,
    receta_componentes, insumo_precio_historial
@@ -27,6 +27,10 @@ const CostosModule = {
     _filterClasificacion: [],
     _filterCategoria: [],
     _filterProveedor: [],
+    _filterRecetaEstado: '',  // '', 'completa', 'incompleta', 'sin-receta'
+
+    // Receta status cache (item.id → { status, comps })
+    _recetaStatusCache: {},
 
     // Options
     _clasificacionOpts: ['Logística', 'Sub alquiler', 'Materiales', 'Insumo', 'Mano de obra'],
@@ -115,13 +119,8 @@ const CostosModule = {
                         </button>
                         <button class="costos-tab ${this._activeTab === 'recetas' ? 'active' : ''}" data-tab="recetas">
                             <span class="costos-tab-icon">📐</span>
-                            Recetas / BOM
+                            Recetas y Costos
                             <span class="costos-tab-count" id="costosCountRecetas">0</span>
-                        </button>
-                        <button class="costos-tab ${this._activeTab === 'catalogo-base' ? 'active' : ''}" data-tab="catalogo-base">
-                            <span class="costos-tab-icon">🔩</span>
-                            Catálogo Base
-                            <span class="costos-tab-count" id="costosCountCatalogo">0</span>
                         </button>
                         <button class="costos-tab ${this._activeTab === 'listas-precio' ? 'active' : ''}" data-tab="listas-precio">
                             <span class="costos-tab-icon">💲</span>
@@ -169,18 +168,83 @@ const CostosModule = {
             this._catalogoItems = [];
         }
 
+        // Pre-load recipe statuses for all catalog items
+        await this._loadAllRecetaStatuses();
+
         // Update tab counts
         this._updateTabCounts();
         this._renderActiveTab();
     },
 
+    async _loadAllRecetaStatuses() {
+        this._recetaStatusCache = {};
+        // Batch load: fetch all receta_componentes at once
+        try {
+            const { data, error } = await supabaseClient
+                .from('receta_componentes').select('item_id, componente_type, componente_id, cantidad')
+                .eq('_deleted', false);
+            if (error) throw error;
+
+            // Group by item_id
+            const byItem = {};
+            for (const row of (data || [])) {
+                if (!byItem[row.item_id]) byItem[row.item_id] = [];
+                byItem[row.item_id].push(row);
+            }
+
+            // Build insumos lookup
+            const insumosMap = {};
+            for (const ins of this._insumos) {
+                insumosMap[ins.id] = ins;
+            }
+            const itemsMap = {};
+            for (const it of this._catalogoItems) {
+                itemsMap[it.id] = it;
+            }
+
+            // Calculate status + cost for each catalog item
+            for (const item of this._catalogoItems) {
+                const comps = byItem[item.id] || [];
+                if (comps.length === 0) {
+                    this._recetaStatusCache[item.id] = { status: 'sin-receta', costoCalculado: 0, compCount: 0 };
+                    continue;
+                }
+
+                let costoCalc = 0;
+                let hasZeroCost = false;
+                for (const comp of comps) {
+                    let costoUnit = 0;
+                    if (comp.componente_type === 'insumo') {
+                        const ins = insumosMap[comp.componente_id];
+                        costoUnit = ins ? ins.costoUnitario : 0;
+                    } else if (comp.componente_type === 'item') {
+                        const sub = itemsMap[comp.componente_id];
+                        costoUnit = sub ? sub.costoProduccion : 0;
+                    }
+                    if (costoUnit === 0) hasZeroCost = true;
+                    costoCalc += (parseFloat(comp.cantidad) || 0) * costoUnit;
+                }
+
+                this._recetaStatusCache[item.id] = {
+                    status: hasZeroCost ? 'incompleta' : 'completa',
+                    costoCalculado: Math.round(costoCalc * 100) / 100,
+                    compCount: comps.length,
+                };
+            }
+        } catch (e) {
+            console.warn('[Costos] Error loading receta statuses:', e.message);
+        }
+    },
+
+    _getRecetaStatus(itemId) {
+        return this._recetaStatusCache[itemId] || { status: 'sin-receta', costoCalculado: 0, compCount: 0 };
+    },
+
     _updateTabCounts() {
         const cInsumos = document.getElementById('costosCountInsumos');
         const cRecetas = document.getElementById('costosCountRecetas');
-        const cCatalogo = document.getElementById('costosCountCatalogo');
         if (cInsumos) cInsumos.textContent = this._insumos.length;
         if (cRecetas) cRecetas.textContent = this._catalogoItems.length;
-        if (cCatalogo) cCatalogo.textContent = this._catalogoItems.length;
     },
 
     // ═══════════════════════════════════════════
@@ -201,7 +265,6 @@ const CostosModule = {
                 this._applyRecetasFilters();
                 this._renderRecetasFilters();
                 break;
-            case 'catalogo-base':
             case 'listas-precio':
                 this._renderPlaceholderTab();
                 this._clearFilters();
@@ -215,8 +278,8 @@ const CostosModule = {
         if (filtersEl) filtersEl.innerHTML = '';
         if (!container) return;
 
-        const tabName = this._activeTab === 'catalogo-base' ? 'Catálogo Base' : 'Listas de Precio';
-        const tabIcon = this._activeTab === 'catalogo-base' ? '🔩' : '💲';
+        const tabName = 'Listas de Precio';
+        const tabIcon = '💲';
 
         container.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; gap: 24px; padding: 60px 24px; text-align: center;">
@@ -782,14 +845,29 @@ const CostosModule = {
         if (!filtersEl) return;
 
         const rubroOpts = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
+        const est = this._filterRecetaEstado;
 
         filtersEl.innerHTML = `
             <div class="costos-filter-bar">
                 ${this._renderMultiFilter('rubro', 'Rubro', rubroOpts, this._filterRubro || [])}
+                <div class="costos-estado-chips">
+                    <button class="costos-estado-chip ${!est ? 'active' : ''}" data-estado="">Todos</button>
+                    <button class="costos-estado-chip chip-completa ${est === 'completa' ? 'active' : ''}" data-estado="completa">Completa</button>
+                    <button class="costos-estado-chip chip-incompleta ${est === 'incompleta' ? 'active' : ''}" data-estado="incompleta">Incompleta</button>
+                    <button class="costos-estado-chip chip-sin-receta ${est === 'sin-receta' ? 'active' : ''}" data-estado="sin-receta">Sin receta</button>
+                </div>
                 <button class="costos-filter-clear" id="costosClearFilters">Limpiar</button>
             </div>
         `;
         this._attachFilterListeners(filtersEl);
+
+        // Estado chip clicks
+        filtersEl.querySelectorAll('.costos-estado-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                this._filterRecetaEstado = chip.dataset.estado;
+                this._renderActiveTab();
+            });
+        });
     },
 
     _filterRubro: [],
@@ -809,6 +887,14 @@ const CostosModule = {
 
         if (this._filterRubro && this._filterRubro.length) {
             data = data.filter(i => this._filterRubro.includes(i.rubro));
+        }
+
+        // Filter by receta status
+        if (this._filterRecetaEstado) {
+            data = data.filter(i => {
+                const rs = this._getRecetaStatus(i.id);
+                return rs.status === this._filterRecetaEstado;
+            });
         }
 
         data = this._sortData(data);
@@ -839,15 +925,30 @@ const CostosModule = {
             return this._sortDir === 'asc' ? '<span class="costos-sort-icon">↑</span>' : '<span class="costos-sort-icon">↓</span>';
         };
 
-        const rows = data.map(item => `
-            <tr class="costos-table-row costos-receta-row" data-id="${item.id}">
-                <td><span class="td-primary">${item.nombre}</span></td>
-                <td><span class="td-mono">${item.codigo || '—'}</span></td>
-                <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
-                <td><span class="td-number">${API.formatCurrency(item.costoProduccion)}</span></td>
-                <td><span class="td-number">${item.unidad || '—'}</span></td>
-            </tr>
-        `).join('');
+        const estadoBadge = (status) => {
+            switch (status) {
+                case 'completa':
+                    return `<span class="badge costos-badge-completa">Completa</span>`;
+                case 'incompleta':
+                    return `<span class="badge costos-badge-incompleta">Incompleta</span>`;
+                default:
+                    return `<span class="badge costos-badge-sin-receta">Sin receta</span>`;
+            }
+        };
+
+        const rows = data.map(item => {
+            const rs = this._getRecetaStatus(item.id);
+            return `
+                <tr class="costos-table-row costos-receta-row" data-id="${item.id}">
+                    <td><span class="td-primary">${item.nombre}</span></td>
+                    <td><span class="td-mono">${item.codigo || '—'}</span></td>
+                    <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
+                    <td><span class="td-number">${API.formatCurrency(rs.costoCalculado)}</span></td>
+                    <td>${estadoBadge(rs.status)}</td>
+                    <td><span class="td-number">${item.unidad || '—'}</span></td>
+                </tr>
+            `;
+        }).join('');
 
         container.innerHTML = `
             <table class="costos-table">
@@ -856,7 +957,8 @@ const CostosModule = {
                         <th class="sortable" data-sort-col="nombre">ITEM ${sortIcon('nombre')}</th>
                         <th class="sortable" data-sort-col="codigo">CÓDIGO ${sortIcon('codigo')}</th>
                         <th class="sortable" data-sort-col="rubro">RUBRO ${sortIcon('rubro')}</th>
-                        <th class="sortable" data-sort-col="costoProduccion">COSTO PROD. ${sortIcon('costoProduccion')}</th>
+                        <th class="sortable" data-sort-col="costoCalculado">COSTO PROD. ${sortIcon('costoCalculado')}</th>
+                        <th class="sortable" data-sort-col="estadoReceta">ESTADO ${sortIcon('estadoReceta')}</th>
                         <th>UNIDAD</th>
                     </tr>
                 </thead>
@@ -1015,7 +1117,7 @@ const CostosModule = {
 
             <div class="costos-receta-total-bar">
                 <span class="costos-receta-total-label">Costo de producción</span>
-                <span class="costos-receta-total-value">${API.formatCurrency(costoTotal)}</span>
+                <span class="costos-receta-total-value" id="costosRecetaTotalValue">${API.formatCurrency(costoTotal)}</span>
                 ${Math.abs(costoTotal - item.costoProduccion) > 0.01 ? `
                     <span class="costos-receta-total-diff" title="Diferencia con costo guardado">
                         (guardado: ${API.formatCurrency(item.costoProduccion)})
@@ -1043,8 +1145,25 @@ const CostosModule = {
     },
 
     _attachRecetaEvents(item, compData) {
+        // Real-time cost recalculation on quantity input
+        const recalcTotal = () => {
+            let total = 0;
+            document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
+                const compId = inp.dataset.compId;
+                const comp = compData.find(c => String(c.id) === String(compId));
+                if (!comp) return;
+                const qty = parseFloat(inp.value) || 0;
+                total += qty * comp.costoUnit;
+            });
+            const totalEl = document.getElementById('costosRecetaTotalValue');
+            if (totalEl) totalEl.textContent = API.formatCurrency(total);
+        };
+
         // Quantity inline edit
         document.querySelectorAll('.costos-receta-qty-input').forEach(input => {
+            // Live update on input
+            input.addEventListener('input', recalcTotal);
+
             const save = async () => {
                 const compId = input.dataset.compId;
                 const newQty = parseFloat(input.value);
@@ -1309,6 +1428,15 @@ const CostosModule = {
                     va = a.costoUnitario || 0; vb = b.costoUnitario || 0; break;
                 case 'costoProduccion':
                     va = a.costoProduccion || 0; vb = b.costoProduccion || 0; break;
+                case 'costoCalculado':
+                    va = this._getRecetaStatus(a.id).costoCalculado || 0;
+                    vb = this._getRecetaStatus(b.id).costoCalculado || 0;
+                    break;
+                case 'estadoReceta':
+                    const order = { 'sin-receta': 0, 'incompleta': 1, 'completa': 2 };
+                    va = order[this._getRecetaStatus(a.id).status] ?? 0;
+                    vb = order[this._getRecetaStatus(b.id).status] ?? 0;
+                    break;
                 default:
                     va = (a[col] || '').toString().toLowerCase();
                     vb = (b[col] || '').toString().toLowerCase();
@@ -1337,6 +1465,7 @@ const CostosModule = {
         ]);
         this._insumos = insumos || [];
         this._catalogoItems = items || [];
+        await this._loadAllRecetaStatuses();
         this._updateTabCounts();
         this._renderActiveTab();
     },
@@ -1405,6 +1534,7 @@ const CostosModule = {
                 this._filterCategoria = [];
                 this._filterProveedor = [];
                 this._filterRubro = [];
+                this._filterRecetaEstado = '';
                 this._renderActiveTab();
             });
         }
