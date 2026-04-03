@@ -3983,6 +3983,7 @@ const Modules = {
     // ═══════════════════════════════════════════
 
     _renderInsumosTable(data) {
+        this._injectStyles();
         const storageKey = 'mepex_insumos_cols_v1';
         const allCols = [
             { id: 'nombre', header: 'NOMBRE', defaultVisible: true },

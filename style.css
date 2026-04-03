@@ -3278,7 +3278,7 @@ body {
 .api-table-main {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
+    overflow-x: auto;
 }
 
 .api-side-actions {
