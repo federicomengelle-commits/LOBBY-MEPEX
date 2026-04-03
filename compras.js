@@ -194,11 +194,54 @@ const ComprasModule = {
                 .order('nombre', { ascending: true });
             if (error) throw error;
             this._proveedores = data || [];
+
+            // Auto-migrar proveedores de tabla vieja si compras_proveedores está vacía
+            if (this._proveedores.length === 0 && !this._migrationAttempted) {
+                this._migrationAttempted = true;
+                await this._migrateOldProveedores();
+            }
         } catch (e) {
             console.warn('[Compras] Error loading proveedores:', e);
             this._proveedores = [];
         }
         this._renderProveedores();
+    },
+
+    async _migrateOldProveedores() {
+        try {
+            const { data: old, error } = await supabaseClient
+                .from('proveedor')
+                .select('*')
+                .eq('_deleted', false)
+                .order('nombre', { ascending: true });
+            if (error || !old || old.length === 0) return;
+
+            const rows = old.map(p => ({
+                nombre: p.nombre || '',
+                razon_social: null,
+                rubro: p.rubro || null,
+                contacto: p.detalle || null,
+                telefono: null,
+                email: null,
+                notas: p.domicilio_comercial ? `CUIT: ${p.cuit || '—'} | Domicilio: ${p.domicilio_comercial}` : (p.cuit ? `CUIT: ${p.cuit}` : null),
+                _deleted: false,
+            }));
+
+            const { error: insErr } = await supabaseClient.from('compras_proveedores').insert(rows);
+            if (insErr) throw insErr;
+
+            // Reload
+            const { data: fresh } = await supabaseClient
+                .from('compras_proveedores')
+                .select('*')
+                .eq('_deleted', false)
+                .order('nombre', { ascending: true });
+            this._proveedores = fresh || [];
+            Toast.info(`${rows.length} proveedores migrados desde la base anterior`);
+            console.log(`[Compras] Migrados ${rows.length} proveedores desde tabla 'proveedor'`);
+        } catch (e) {
+            console.warn('[Compras] Error migrando proveedores:', e);
+        }
     },
 
     _renderProveedores() {

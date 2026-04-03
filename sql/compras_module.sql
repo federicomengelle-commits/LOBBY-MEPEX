@@ -82,3 +82,21 @@ CREATE POLICY "compras_proveedores_all" ON compras_proveedores FOR ALL TO authen
 CREATE POLICY "compras_ordenes_all" ON compras_ordenes FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "compras_orden_items_all" ON compras_orden_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "compras_pagos_all" ON compras_pagos FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ── Migrar proveedores de tabla vieja ──
+-- Copia datos de la tabla 'proveedor' existente a 'compras_proveedores'
+-- (ejecutar solo una vez, verificar que la tabla 'proveedor' existe)
+INSERT INTO compras_proveedores (nombre, rubro, contacto, notas, _deleted)
+SELECT
+    nombre,
+    rubro,
+    detalle,
+    CASE
+        WHEN domicilio_comercial IS NOT NULL AND cuit IS NOT NULL THEN 'CUIT: ' || cuit || ' | Domicilio: ' || domicilio_comercial
+        WHEN cuit IS NOT NULL THEN 'CUIT: ' || cuit
+        ELSE NULL
+    END,
+    FALSE
+FROM proveedor
+WHERE _deleted = FALSE
+ON CONFLICT DO NOTHING;
