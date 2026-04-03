@@ -54,7 +54,7 @@ const Modules = {
         projects: { label: 'proyecto', labelPlural: 'proyectos', supabaseTable: 'proyectos_2026' },
         events:   { label: 'evento',   labelPlural: 'eventos',   supabaseTable: 'eventos_2026' },
         insumos:  { label: 'insumo',   labelPlural: 'insumos',   supabaseTable: 'insumos_base' },
-        catalogo: { label: 'item',     labelPlural: 'items',     supabaseTable: 'catalogo_items' },
+        // catalogo removed — now handled by CatalogoModule
         cotizaciones: { label: 'cotización', labelPlural: 'cotizaciones', supabaseTable: 'cotizaciones' },
     },
 
@@ -102,16 +102,6 @@ const Modules = {
         { key: 'notas', label: 'Notas', type: 'text', required: false, placeholder: 'Observaciones' },
     ],
 
-    _catalogoFormFields: [
-        { key: 'nombre', label: 'Nombre del item', type: 'text', required: true, placeholder: 'Ej: Cerrojo de perfil' },
-        { key: 'codigo', label: 'Código', type: 'text', required: false, placeholder: 'Ej: CRJ-001' },
-        { key: 'rubro', label: 'Rubro', type: 'select', required: false, options: ['Equipamiento', 'Iluminación', 'Infraestructura', 'Más servicios'] },
-        { key: 'categoria', label: 'Categoría', type: 'text', required: false, placeholder: 'Ej: Mobiliario, Tableros, Sistema OCTEXA' },
-        { key: 'descripcion', label: 'Descripción', type: 'text', required: false, placeholder: 'Descripción del item' },
-        { key: 'origen', label: 'Origen', type: 'select', required: false, options: ['Fabricación propia', 'Compra', 'Sub Alquiler'] },
-        { key: 'unidad', label: 'Unidad', type: 'select', required: false, options: ['Unidad', 'Metro', 'm²', 'Kit', 'Juego'] },
-    ],
-
     _cotizacionFormFields: [
         { key: 'nombreEvento', label: 'Evento', type: 'text', required: true, placeholder: 'Ej: Expo Alimentek 2026' },
         { key: 'tipoEvento', label: 'Tipo de evento', type: 'select', required: false, options: ['', 'feria', 'congreso', 'corporativo', 'social', 'festival', 'boda'] },
@@ -125,7 +115,6 @@ const Modules = {
         if (type === 'projects') return this._projectFormFields;
         if (type === 'events') return this._eventFormFields;
         if (type === 'insumos') return this._insumoFormFields;
-        if (type === 'catalogo') return this._catalogoFormFields;
         if (type === 'cotizaciones') return this._cotizacionFormFields;
         return [];
     },
@@ -332,7 +321,6 @@ const Modules = {
 
         // Check if this is a custom section
         if (this._isCustomSection(mod.id, sectionId)) {
-            if (mod.id === 'inventario' && sectionId === 'simulador') return this._renderSimuladorSection();
             if (mod.id === 'ventas' && sectionId === 'pipeline') return this._renderPipelineSection();
             if (mod.id === 'ventas' && sectionId === 'dashboard') return this._renderDashboardSection();
             if (mod.id === 'ventas' && sectionId === 'marketing') return this._renderMarketingSection();
@@ -431,7 +419,6 @@ const Modules = {
 
     // ─── DETECT CUSTOM (non-table) SECTIONS ───
     _isCustomSection(moduleId, sectionId) {
-        if (moduleId === 'inventario' && sectionId === 'simulador') return true;
         if (moduleId === 'ventas' && sectionId === 'pipeline') return true;
         if (moduleId === 'ventas' && sectionId === 'dashboard') return true;
         if (moduleId === 'ventas' && sectionId === 'marketing') return true;
@@ -442,7 +429,6 @@ const Modules = {
     async _loadSectionData(mod, sectionId) {
         // Handle custom sections
         if (this._isCustomSection(mod.id, sectionId)) {
-            if (mod.id === 'inventario' && sectionId === 'simulador') { this._initSimulador(); return; }
             if (mod.id === 'ventas' && sectionId === 'pipeline') { this._initPipeline(); return; }
             if (mod.id === 'ventas' && sectionId === 'dashboard') { this._initDashboard(); return; }
             if (mod.id === 'ventas' && sectionId === 'marketing') { this._initMarketing(); return; }
@@ -478,9 +464,6 @@ const Modules = {
                     break;
                 case 'insumos':
                     data = await API.getInsumos();
-                    break;
-                case 'catalogo':
-                    data = await API.getCatalogoItems();
                     break;
                 case 'cotizaciones':
                     data = await API.getCotizaciones();
@@ -633,7 +616,6 @@ const Modules = {
             else if (type === 'projects') result = await API.createProject(values);
             else if (type === 'events') result = await API.createEvent(values);
             else if (type === 'insumos') result = await API.createInsumo(values);
-            else if (type === 'catalogo') result = await API.createCatalogoItem(values);
             else if (type === 'cotizaciones') result = await API.createCotizacion(values);
 
             if (result) {
@@ -682,7 +664,6 @@ const Modules = {
             else if (type === 'projects') result = await API.updateProject(item.id, values);
             else if (type === 'events') result = await API.updateEvent(item.id, values);
             else if (type === 'insumos') result = await API.updateInsumo(item.id, values);
-            else if (type === 'catalogo') result = await API.updateCatalogoItem(item.id, values);
             else if (type === 'cotizaciones') result = await API.updateCotizacion(item.id, values);
 
             if (result) {
@@ -711,7 +692,6 @@ const Modules = {
         else if (type === 'projects') result = await API.deleteProject(item.id);
         else if (type === 'events') result = await API.deleteEvent(item.id);
         else if (type === 'insumos') result = await API.deleteInsumo(item.id);
-        else if (type === 'catalogo') result = await API.deleteCatalogoItem(item.id);
         else if (type === 'cotizaciones') result = await API.deleteCotizacion(item.id);
 
         if (result) {
@@ -921,11 +901,6 @@ const Modules = {
             });
         }
 
-        // Rubro filter (catalogo)
-        if (this._activeRubroFilter && type === 'catalogo') {
-            data = data.filter(i => (i.rubro || '') === this._activeRubroFilter);
-        }
-
         // Multi-select filters (insumos)
         if (type === 'insumos') {
             if (this._activeClasificacionFilter && this._activeClasificacionFilter.length > 0) {
@@ -976,10 +951,6 @@ const Modules = {
             case 'insumos':
                 container.innerHTML = this._renderInsumosTable(data);
                 this._attachInsumosListeners(data);
-                break;
-            case 'catalogo':
-                container.innerHTML = this._renderCatalogoTable(data);
-                this._attachCatalogoListeners(data);
                 break;
             case 'cotizaciones':
                 container.innerHTML = this._renderCotizacionesTable(data);
@@ -2221,9 +2192,6 @@ const Modules = {
             } else if (type === 'insumos') {
                 va = this._getInsumoSortValue(a, colId);
                 vb = this._getInsumoSortValue(b, colId);
-            } else if (type === 'catalogo') {
-                va = this._getCatalogoSortValue(a, colId);
-                vb = this._getCatalogoSortValue(b, colId);
             } else if (type === 'cotizaciones') {
                 va = this._getCotizacionSortValue(a, colId);
                 vb = this._getCotizacionSortValue(b, colId);
@@ -3234,62 +3202,7 @@ const Modules = {
                 return '';
             }
         },
-        catalogo: {
-            icon: '🔩',
-            color: '#9B7DFF',
-            getStatus: (item) => item.rubro ? { label: item.rubro, class: 'badge-ghost' } : null,
-            tabs: [
-                { id: 'info', label: 'Información', icon: '📋' },
-                { id: 'receta', label: 'Receta', icon: '🧪' },
-            ],
-            renderTab(item, tabId, v) {
-                if (tabId === 'info') {
-                    return `
-                        <div class="ficha-section">
-                            <div class="ficha-section-title">Item del catálogo</div>
-                            <div class="ficha-row"><span class="ficha-row-label">Nombre</span><span class="ficha-row-value">${v(item.nombre)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Código</span><span class="ficha-row-value">${v(item.codigo)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Rubro</span><span class="ficha-row-value">${v(item.rubro)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Categoría</span><span class="ficha-row-value">${v(item.categoria)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Descripción</span><span class="ficha-row-value">${v(item.descripcion)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Origen</span><span class="ficha-row-value">${v(item.origen)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Unidad</span><span class="ficha-row-value">${v(item.unidad)}</span></div>
-                        </div>
-                        <div class="ficha-section">
-                            <div class="ficha-section-title">Costos</div>
-                            <div class="ficha-kpi-row" id="fichaCostosRow">
-                                <div class="ficha-kpi"><span class="ficha-kpi-value cost-value">${API.formatCurrency(item.costoProduccion)}</span><span class="ficha-kpi-label">Costo producción</span></div>
-                                <div class="ficha-kpi ficha-kpi-editable" id="fichaMargenKpi" data-item-id="${item.id}">
-                                    <span class="ficha-kpi-value" id="fichaMargenValue">…</span>
-                                    <span class="ficha-kpi-label">Margen</span>
-                                    <span class="ficha-kpi-hint" id="fichaMargenHint"></span>
-                                </div>
-                                <div class="ficha-kpi"><span class="ficha-kpi-value" id="fichaPrecioValue">${API.formatCurrency(item.precioCliente)}</span><span class="ficha-kpi-label">Precio cliente</span></div>
-                            </div>
-                        </div>`;
-                }
-                if (tabId === 'receta') {
-                    return `
-                        <div class="receta-module">
-                            <div class="receta-header">
-                                <span class="ficha-section-title">COMPOSICIÓN / RECETA</span>
-                                <span class="receta-total" id="recetaTotalCost">Cargando…</span>
-                            </div>
-                            <div class="receta-list" id="recetaList">
-                                <div class="ficha-loading-small">Cargando receta…</div>
-                            </div>
-                            <div class="receta-add" id="recetaAddSection">
-                                <button class="btn btn-secondary btn-sm" id="btnAddComponente">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                    Agregar componente
-                                </button>
-                                <button class="btn btn-ghost btn-sm" id="btnCopyReceta" data-item-id="${item.id}">📋 Copiar receta de…</button>
-                            </div>
-                        </div>`;
-                }
-                return '';
-            }
-        },
+        // catalogo ficha config removed — now handled by CatalogoModule
         cotizaciones: {
             icon: '💰',
             color: '#00ACC9',
@@ -3526,7 +3439,6 @@ const Modules = {
                 content.innerHTML = config.renderTab(item, tabId, v);
                 // Trigger async loading for tabs that need data
                 if (type === 'clients') this._loadClientTabData(item, tabId);
-                if (type === 'catalogo') this._loadCatalogoTabData(item, tabId);
                 if (type === 'events') this._loadEventTabData(item, tabId);
                 if (type === 'insumos') this._loadInsumoTabData(item, tabId);
                 if (type === 'cotizaciones') this._loadCotizacionTabData(item, tabId);
@@ -3561,7 +3473,6 @@ const Modules = {
 
         // Auto-load data for first tab
         if (type === 'clients') this._loadClientTabData(item, firstTab);
-        if (type === 'catalogo') this._loadCatalogoTabData(item, firstTab);
         if (type === 'events') this._loadEventTabData(item, firstTab);
         if (type === 'insumos') this._loadInsumoTabData(item, firstTab);
         if (type === 'cotizaciones') this._loadCotizacionTabData(item, firstTab);
@@ -4479,148 +4390,6 @@ const Modules = {
     },
 
     // ═══════════════════════════════════════════
-    //  INVENTARIO — CATÁLOGO TABLE
-    // ═══════════════════════════════════════════
-
-    _renderCatalogoTable(data) {
-        const storageKey = 'mepex_catalogo_cols_v1';
-        const allCols = [
-            { id: 'codigo', header: 'CÓDIGO', defaultVisible: true },
-            { id: 'nombre', header: 'NOMBRE', defaultVisible: true },
-            { id: 'rubro', header: 'RUBRO', defaultVisible: true },
-            { id: 'categoria', header: 'CATEGORÍA', defaultVisible: true },
-            { id: 'origen', header: 'ORIGEN', defaultVisible: false },
-            { id: 'costo', header: 'COSTO PROD.', defaultVisible: true },
-            { id: 'precio', header: 'PRECIO CLIENTE', defaultVisible: true },
-            { id: 'unidad', header: 'UNIDAD', defaultVisible: false },
-        ];
-
-        const visCols = this._getOrderedVisibleCols(storageKey, allCols);
-        this._renderColsPanel(storageKey, allCols, visCols);
-
-        // Filters by rubro
-        const rubros = [...new Set(data.map(i => i.rubro).filter(Boolean))].sort();
-        const filtersEl = document.getElementById('apiToolbarFilters');
-        if (filtersEl) {
-            filtersEl.innerHTML = `<div class="mepex-filter-chips">
-                <button class="mepex-filter-chip ${!this._activeRubroFilter ? 'active' : ''}" data-filter-rubro="">Todos</button>
-                ${rubros.map(r => `<button class="mepex-filter-chip ${this._activeRubroFilter === r ? 'active' : ''}" data-filter-rubro="${r}">${r}</button>`).join('')}
-            </div>`;
-            filtersEl.querySelectorAll('[data-filter-rubro]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    this._activeRubroFilter = btn.dataset.filterRubro || null;
-                    this._applyAllFilters();
-                });
-            });
-        }
-
-        let sorted = data;
-        if (this._sortCol) sorted = this._sortData(data, this._sortCol, this._sortDir, 'catalogo');
-
-        const cellVal = (item, colId) => {
-            switch (colId) {
-                case 'codigo': return `<span class="td-number">${item.codigo || '—'}</span>`;
-                case 'nombre': return `<span class="td-primary">${item.nombre}</span>`;
-                case 'rubro': return `<span class="badge badge-ghost">${item.rubro || '—'}</span>`;
-                case 'categoria': return item.categoria || '—';
-                case 'origen': return item.origen || '—';
-                case 'costo': return `<span class="td-number cost-value">${API.formatCurrency(item.costoProduccion)}</span>`;
-                case 'precio': return `<span class="td-number">${API.formatCurrency(item.precioCliente)}</span>`;
-                case 'unidad': return item.unidad || '—';
-                default: return '—';
-            }
-        };
-
-        const headerHtml = visCols.map(colId => {
-            const col = allCols.find(c => c.id === colId);
-            return `<th class="sortable" data-sort-col="${colId}">${col.header}${this._sortIndicator(colId)}</th>`;
-        }).join('');
-
-        const rowsHtml = sorted.map(item => `
-            <tr class="api-table-row" data-id="${item.id}">
-                ${visCols.map(colId => `<td>${cellVal(item, colId)}</td>`).join('')}
-            </tr>
-        `).join('');
-
-        return `<table class="api-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
-    },
-
-    _attachCatalogoListeners(data) {
-        document.querySelectorAll('th.sortable[data-sort-col]').forEach(th => {
-            th.addEventListener('click', () => {
-                const col = th.dataset.sortCol;
-                if (this._sortCol === col) this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
-                else { this._sortCol = col; this._sortDir = 'asc'; }
-                this._applyAllFilters();
-            });
-        });
-        this._attachColDragListeners('mepex_catalogo_cols_v1', [
-            { id: 'codigo' }, { id: 'nombre' }, { id: 'rubro' }, { id: 'categoria' }, { id: 'origen' }, { id: 'costo' }, { id: 'precio' }, { id: 'unidad' },
-        ]);
-        document.querySelectorAll('.api-table-row[data-id]').forEach(row => {
-            row.addEventListener('click', () => {
-                const item = data.find(i => String(i.id) === row.dataset.id);
-                if (item) this._openFichaByType(item, 'catalogo');
-            });
-        });
-    },
-
-    _getCatalogoSortValue(item, colId) {
-        switch (colId) {
-            case 'codigo': return (item.codigo || '').toLowerCase();
-            case 'nombre': return (item.nombre || '').toLowerCase();
-            case 'rubro': return (item.rubro || '').toLowerCase();
-            case 'categoria': return (item.categoria || '').toLowerCase();
-            case 'origen': return (item.origen || '').toLowerCase();
-            case 'costo': return item.costoProduccion || 0;
-            case 'precio': return item.precioCliente || 0;
-            default: return null;
-        }
-    },
-
-    // ═══════════════════════════════════════════
-    //  INVENTARIO — SIMULADOR SECTION
-    // ═══════════════════════════════════════════
-
-    _renderSimuladorSection() {
-        return `
-            <div class="section-content">
-                <div class="simulador-container">
-                    <div class="simulador-header">
-                        <div>
-                            <h2 class="title-3">📊 Simulador de Costos</h2>
-                            <p class="subtitle">Recalculá la cascada completa o simulá impacto de cambios de precio</p>
-                        </div>
-                    </div>
-
-                    <div class="simulador-cards">
-                        <div class="simulador-card">
-                            <div class="simulador-card-icon">🔄</div>
-                            <div class="simulador-card-info">
-                                <h3 class="title-3">Recalcular todo</h3>
-                                <p class="subtitle">Recorre todos los items del catálogo y actualiza los costos de producción según las recetas e insumos actuales.</p>
-                            </div>
-                            <button class="btn btn-primary" id="btnRecalcularTodo">
-                                Recalcular cascada
-                            </button>
-                        </div>
-
-                        <div class="simulador-card">
-                            <div class="simulador-card-icon">📈</div>
-                            <div class="simulador-card-info">
-                                <h3 class="title-3">Resumen del catálogo</h3>
-                                <p class="subtitle" id="simuladorResumen">Cargando…</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="simulador-log" id="simuladorLog"></div>
-                </div>
-            </div>
-        `;
-    },
-
-    // ═══════════════════════════════════════════
     //  EVENTS — Async Tab Data Loaders
     // ═══════════════════════════════════════════
 
@@ -4757,906 +4526,12 @@ const Modules = {
     //  INVENTARIO — FICHA CONFIGS
     // ═══════════════════════════════════════════
 
-    // Sort override for insumos/catalogo
+    // Sort override for insumos
     _getSortValueForType(item, colId, type) {
         if (type === 'insumos') return this._getInsumoSortValue(item, colId);
-        if (type === 'catalogo') return this._getCatalogoSortValue(item, colId);
         return null;
     },
 
-    // ═══════════════════════════════════════════
-    //  CATÁLOGO — Async Tab Data Loaders
-    // ═══════════════════════════════════════════
-
-    async _loadCatalogoTabData(item, tabId) {
-        if (tabId === 'info') await this._loadCatalogoMargen(item);
-        if (tabId === 'receta') await this._loadCatalogoReceta(item);
-    },
-
-    async _loadCatalogoMargen(item) {
-        const margenKpi = document.getElementById('fichaMargenKpi');
-        const margenValue = document.getElementById('fichaMargenValue');
-        const margenHint = document.getElementById('fichaMargenHint');
-        if (!margenKpi || !margenValue) return;
-
-        // Determinar margen efectivo
-        const categoriasConfig = await API.getCategoriasConfig();
-        const catConfig = categoriasConfig.find(c => c.nombre === item.categoria);
-        const catDefault = catConfig ? catConfig.margenDefault : 0;
-        const isOverride = item.margenOverride != null;
-        const effectiveMargin = isOverride ? item.margenOverride : catDefault;
-
-        // Mostrar valor y hint
-        margenValue.textContent = effectiveMargin + '%';
-        if (isOverride) {
-            margenHint.innerHTML = `(personalizado) <span class="ficha-margen-reset" id="fichaMargenReset">Resetear</span>`;
-        } else {
-            margenHint.textContent = catDefault > 0 ? `(cat: ${catDefault}%)` : '(sin default)';
-        }
-
-        // Click para editar margen inline
-        margenKpi.addEventListener('click', (e) => {
-            if (e.target.id === 'fichaMargenReset') {
-                e.stopPropagation();
-                this._resetMargen(item, catDefault);
-                return;
-            }
-            if (margenKpi.querySelector('.ficha-kpi-input')) return; // ya editando
-            this._editMargenInline(item, effectiveMargin, catDefault);
-        });
-
-        // Reset handler
-        const resetBtn = document.getElementById('fichaMargenReset');
-        if (resetBtn) {
-            resetBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this._resetMargen(item, catDefault);
-            });
-        }
-    },
-
-    async _editMargenInline(item, currentMargin, catDefault) {
-        const margenValue = document.getElementById('fichaMargenValue');
-        const margenHint = document.getElementById('fichaMargenHint');
-        if (!margenValue) return;
-
-        // Reemplazar con input
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.step = '0.1';
-        input.value = currentMargin;
-        input.className = 'ficha-kpi-input';
-        margenValue.replaceWith(input);
-        margenHint.textContent = 'Enter para guardar';
-        input.focus();
-        input.select();
-
-        const save = async () => {
-            const newMargin = parseFloat(input.value);
-            if (isNaN(newMargin) || newMargin < 0) {
-                Toast.error('Margen inválido');
-                this._restoreMargenDisplay(input, currentMargin);
-                return;
-            }
-
-            // Guardar override
-            await API.updateCatalogoItem(item.id, { margenOverride: newMargin });
-            item.margenOverride = newMargin;
-
-            // Recalcular precio
-            const nuevoPrecio = API.calcPrecioCliente(item.costoProduccion, newMargin);
-            await API.updateCatalogoItem(item.id, { precioCliente: nuevoPrecio });
-            item.precioCliente = nuevoPrecio;
-
-            // Actualizar display
-            const span = document.createElement('span');
-            span.className = 'ficha-kpi-value';
-            span.id = 'fichaMargenValue';
-            span.textContent = newMargin + '%';
-            input.replaceWith(span);
-
-            const hint = document.getElementById('fichaMargenHint');
-            if (hint) hint.innerHTML = `(personalizado) <span class="ficha-margen-reset" id="fichaMargenReset">Resetear</span>`;
-
-            const precioEl = document.getElementById('fichaPrecioValue');
-            if (precioEl) precioEl.textContent = API.formatCurrency(nuevoPrecio);
-
-            Toast.success(`Margen: ${newMargin}% → Precio: ${API.formatCurrency(nuevoPrecio)}`);
-        };
-
-        input.addEventListener('blur', save);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-            if (e.key === 'Escape') { this._restoreMargenDisplay(input, currentMargin); }
-        });
-    },
-
-    _restoreMargenDisplay(input, margin) {
-        const span = document.createElement('span');
-        span.className = 'ficha-kpi-value';
-        span.id = 'fichaMargenValue';
-        span.textContent = margin + '%';
-        input.replaceWith(span);
-    },
-
-    async _resetMargen(item, catDefault) {
-        await API.updateCatalogoItem(item.id, { margenOverride: null });
-        item.margenOverride = null;
-
-        const nuevoPrecio = API.calcPrecioCliente(item.costoProduccion, catDefault);
-        await API.updateCatalogoItem(item.id, { precioCliente: nuevoPrecio });
-        item.precioCliente = nuevoPrecio;
-
-        // Actualizar display
-        const margenValue = document.getElementById('fichaMargenValue');
-        const margenHint = document.getElementById('fichaMargenHint');
-        const precioEl = document.getElementById('fichaPrecioValue');
-
-        if (margenValue) margenValue.textContent = catDefault + '%';
-        if (margenHint) margenHint.textContent = catDefault > 0 ? `(cat: ${catDefault}%)` : '(sin default)';
-        if (precioEl) precioEl.textContent = API.formatCurrency(nuevoPrecio);
-
-        Toast.success(`Margen reseteado a default: ${catDefault}%`);
-    },
-
-    async _loadCatalogoReceta(item) {
-        const listEl = document.getElementById('recetaList');
-        const totalEl = document.getElementById('recetaTotalCost');
-        if (!listEl) return;
-
-        try {
-            const [componentes, insumos, items] = await Promise.all([
-                API.getRecetaComponentes(item.id),
-                API.getInsumos(),
-                API.getCatalogoItems(),
-            ]);
-
-            if (componentes.length === 0) {
-                listEl.innerHTML = `
-                    <div class="ficha-timeline-empty">
-                        <div class="ficha-timeline-empty-icon">🧪</div>
-                        <p>Sin componentes en la receta</p>
-                        <p class="text-muted">Agregá insumos u otros items para componer este producto</p>
-                    </div>`;
-                if (totalEl) totalEl.textContent = 'Sin receta';
-                this._attachRecetaAddHandler(item, insumos, items);
-                this._attachRecetaCopyHandler(item);
-                return;
-            }
-
-            // Resolve names and calculate costs
-            let totalCost = 0;
-            const rows = componentes.map(comp => {
-                let nombre = '?', costo = 0, unidad = '';
-                if (comp.componenteType === 'insumo') {
-                    const ins = (insumos || []).find(i => String(i.id) === String(comp.componenteId));
-                    if (ins) {
-                        nombre = ins.nombre;
-                        costo = ins.costoUnitario;
-                        unidad = ins.unidadBase;
-                    }
-                } else if (comp.componenteType === 'item') {
-                    const sub = (items || []).find(i => String(i.id) === String(comp.componenteId));
-                    if (sub) {
-                        nombre = sub.nombre;
-                        costo = sub.costoProduccion;
-                        unidad = sub.unidad;
-                    }
-                }
-                const subtotal = comp.cantidad * costo;
-                totalCost += subtotal;
-                return { ...comp, nombre, costoUnit: costo, unidad, subtotal };
-            });
-
-            listEl.innerHTML = `
-                <table class="receta-table">
-                    <thead>
-                        <tr>
-                            <th>TIPO</th>
-                            <th>COMPONENTE</th>
-                            <th class="text-right">CANT.</th>
-                            <th class="text-right">COSTO UNIT.</th>
-                            <th class="text-right">SUBTOTAL</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows.map(r => `
-                            <tr class="receta-row" data-comp-id="${r.id}">
-                                <td><span class="badge badge-ghost receta-type-badge">${r.componenteType === 'insumo' ? '🧱 Insumo' : '🔩 Item'}</span></td>
-                                <td class="td-primary">${r.nombre}</td>
-                                <td class="text-right"><span class="receta-cant" data-comp-id="${r.id}" contenteditable="true">${parseFloat(r.cantidad.toFixed(4))}</span> <span class="cost-unit">${r.unidadUso || r.unidad}</span></td>
-                                <td class="text-right cost-value">${API.formatCurrency(r.costoUnit)}</td>
-                                <td class="text-right cost-value">${API.formatCurrency(r.subtotal)}</td>
-                                <td><button class="receta-delete-btn" data-delete-comp="${r.id}" title="Quitar">✕</button></td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>`;
-
-            if (totalEl) totalEl.innerHTML = `<span class="cost-value">${API.formatCurrency(totalCost)}</span>`;
-
-            // Attach inline edit for quantity
-            listEl.querySelectorAll('.receta-cant[contenteditable]').forEach(el => {
-                el.addEventListener('blur', async () => {
-                    const compId = el.dataset.compId;
-                    const newCant = parseFloat(el.textContent);
-                    if (isNaN(newCant) || newCant <= 0) {
-                        el.textContent = '1';
-                        return;
-                    }
-                    await API.updateRecetaComponente(compId, { cantidad: newCant });
-                    // Recalculate item cost
-                    await API.recalcularCostoItem(item.id);
-                    Toast.success('Cantidad actualizada');
-                    // Refresh receta view
-                    this._loadCatalogoReceta(item);
-                });
-                el.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
-                });
-            });
-
-            // Attach delete handlers
-            listEl.querySelectorAll('[data-delete-comp]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const compId = btn.dataset.deleteComp;
-                    const row = btn.closest('.receta-row');
-                    if (row) row.style.opacity = '0.4';
-                    const result = await API.deleteRecetaComponente(compId);
-                    if (result) {
-                        await API.recalcularCostoItem(item.id);
-                        Toast.success('Componente eliminado');
-                        this._loadCatalogoReceta(item);
-                    } else {
-                        if (row) row.style.opacity = '1';
-                        Toast.error('Error al eliminar');
-                    }
-                });
-            });
-
-            this._attachRecetaAddHandler(item, insumos, items);
-            this._attachRecetaCopyHandler(item);
-
-        } catch (e) {
-            console.warn('[Modules] Error loading receta:', e.message);
-            listEl.innerHTML = '<div class="ficha-empty-msg">Error cargando receta</div>';
-        }
-    },
-
-    _attachRecetaCopyHandler(item) {
-        const btn = document.getElementById('btnCopyReceta');
-        if (!btn) return;
-
-        btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            btn.textContent = 'Cargando items…';
-
-            try {
-                const allItems = await API.getCatalogoItems();
-                // Filtrar el item actual, ordenar mismo rubro primero
-                const filtered = allItems
-                    .filter(i => String(i.id) !== String(item.id))
-                    .sort((a, b) => {
-                        if (a.rubro === item.rubro && b.rubro !== item.rubro) return -1;
-                        if (b.rubro === item.rubro && a.rubro !== item.rubro) return 1;
-                        return (a.nombre || '').localeCompare(b.nombre || '');
-                    });
-
-                if (filtered.length === 0) {
-                    Toast.info('No hay otros items en el catálogo');
-                    btn.disabled = false;
-                    btn.textContent = '📋 Copiar receta de…';
-                    return;
-                }
-
-                // Build modal with search
-                const instance = Modal.open({
-                    title: 'Copiar receta de otro item',
-                    size: 'md',
-                    body: `
-                        <div class="copy-receta-modal">
-                            <input type="text" class="form-input copy-receta-search" id="copyRecetaSearch" placeholder="Buscar item por nombre o código…" autocomplete="off">
-                            <div class="copy-receta-list" id="copyRecetaList">
-                                ${this._renderCopyRecetaItems(filtered, '')}
-                            </div>
-                            <p class="copy-receta-hint">Se copiarán todos los componentes de la receta seleccionada</p>
-                        </div>`,
-                    footer: '<button class="btn btn-ghost" data-modal-close>Cancelar</button>',
-                });
-
-                // Search filter
-                const searchInput = document.getElementById('copyRecetaSearch');
-                const listContainer = document.getElementById('copyRecetaList');
-
-                searchInput?.focus();
-                searchInput?.addEventListener('input', () => {
-                    const q = searchInput.value.toLowerCase();
-                    if (listContainer) {
-                        listContainer.innerHTML = this._renderCopyRecetaItems(filtered, q);
-                        this._attachCopyRecetaItemListeners(listContainer, item, instance);
-                    }
-                });
-
-                this._attachCopyRecetaItemListeners(listContainer, item, instance);
-
-            } catch (e) {
-                console.error('❌ Error cargando items para copiar receta:', e);
-                Toast.error('Error al cargar catálogo');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = '📋 Copiar receta de…';
-            }
-        });
-    },
-
-    _renderCopyRecetaItems(items, query) {
-        const filtered = query
-            ? items.filter(i =>
-                (i.nombre || '').toLowerCase().includes(query) ||
-                (i.codigo || '').toLowerCase().includes(query) ||
-                (i.categoria || '').toLowerCase().includes(query))
-            : items;
-
-        if (filtered.length === 0) {
-            return '<div class="copy-receta-empty">Sin resultados</div>';
-        }
-
-        return filtered.slice(0, 30).map(i => `
-            <div class="copy-receta-item" data-source-id="${i.id}">
-                <div class="copy-receta-item-main">
-                    <span class="copy-receta-item-name">${i.nombre}</span>
-                    ${i.codigo ? `<span class="copy-receta-item-code">${i.codigo}</span>` : ''}
-                </div>
-                <div class="copy-receta-item-meta">
-                    ${i.rubro || ''} ${i.categoria ? '· ' + i.categoria : ''} · Costo: ${API.formatCurrency(i.costoProduccion)}
-                </div>
-            </div>
-        `).join('');
-    },
-
-    _attachCopyRecetaItemListeners(container, targetItem, modalInstance) {
-        if (!container) return;
-        container.querySelectorAll('.copy-receta-item').forEach(el => {
-            el.addEventListener('click', async () => {
-                const sourceId = el.dataset.sourceId;
-                el.style.opacity = '0.4';
-                el.style.pointerEvents = 'none';
-
-                try {
-                    // Cargar receta del item fuente
-                    const sourceReceta = await API.getRecetaComponentes(sourceId);
-                    if (!sourceReceta || sourceReceta.length === 0) {
-                        Toast.warning('El item seleccionado no tiene receta');
-                        el.style.opacity = '1';
-                        el.style.pointerEvents = '';
-                        return;
-                    }
-
-                    // Copiar cada componente
-                    let copied = 0;
-                    for (const comp of sourceReceta) {
-                        const result = await API.addRecetaComponente({
-                            itemId: targetItem.id,
-                            componenteType: comp.componenteType,
-                            componenteId: String(comp.componenteId),
-                            cantidad: comp.cantidad,
-                            unidadUso: comp.unidadUso,
-                        });
-                        if (result) copied++;
-                    }
-
-                    // Recalcular costo
-                    await API.recalcularCostoItem(targetItem.id);
-
-                    // Cerrar modal y refresh
-                    if (modalInstance?.overlay) modalInstance.overlay.remove();
-                    Toast.success(`Receta copiada: ${copied} componentes`);
-                    this._loadCatalogoReceta(targetItem);
-
-                } catch (e) {
-                    console.error('❌ Error copiando receta:', e);
-                    Toast.error('Error al copiar receta');
-                    el.style.opacity = '1';
-                    el.style.pointerEvents = '';
-                }
-            });
-        });
-    },
-
-    _attachRecetaAddHandler(item, insumos, items) {
-        const btn = document.getElementById('btnAddComponente');
-        if (!btn) return;
-
-        btn.addEventListener('click', () => {
-            // Build list of addable components
-            const options = [];
-            (insumos || []).forEach(i => {
-                options.push({ type: 'insumo', id: i.id, label: `🧱 ${i.nombre}`, unidad: i.unidadBase, codigo: i.codigo });
-            });
-            (items || []).filter(i => String(i.id) !== String(item.id)).forEach(i => {
-                options.push({ type: 'item', id: i.id, label: `🔩 ${i.nombre}`, unidad: i.unidad, codigo: i.codigo });
-            });
-
-            // Create search modal inline
-            const addSection = document.getElementById('recetaAddSection');
-            if (!addSection) return;
-
-            addSection.innerHTML = `
-                <div class="receta-search-box">
-                    <input type="text" class="receta-search-input" id="recetaSearchInput" placeholder="Buscar insumo o item…" autocomplete="off">
-                    <div class="receta-search-results" id="recetaSearchResults"></div>
-                    <button class="btn btn-ghost btn-sm" id="recetaCancelSearch">Cancelar</button>
-                </div>`;
-
-            const input = document.getElementById('recetaSearchInput');
-            const results = document.getElementById('recetaSearchResults');
-            const cancelBtn = document.getElementById('recetaCancelSearch');
-
-            input?.focus();
-
-            const renderResults = (q) => {
-                const filtered = q
-                    ? options.filter(o => o.label.toLowerCase().includes(q.toLowerCase()) || (o.codigo || '').toLowerCase().includes(q.toLowerCase()))
-                    : options.slice(0, 15);
-
-                results.innerHTML = filtered.length === 0
-                    ? '<div class="receta-no-results">Sin resultados</div>'
-                    : filtered.map(o => `
-                        <div class="receta-search-item" data-add-type="${o.type}" data-add-id="${o.id}" data-add-unidad="${o.unidad}">
-                            <span class="receta-search-item-label">${o.label}</span>
-                            ${o.codigo ? `<span class="receta-search-item-code">${o.codigo}</span>` : ''}
-                        </div>
-                    `).join('');
-
-                results.querySelectorAll('.receta-search-item').forEach(el => {
-                    el.addEventListener('click', async () => {
-                        const compType = el.dataset.addType;
-                        const compId = el.dataset.addId;
-                        const compUnidad = el.dataset.addUnidad;
-                        el.style.opacity = '0.4';
-                        const result = await API.addRecetaComponente({
-                            itemId: item.id,
-                            componenteType: compType,
-                            componenteId: String(compId),
-                            cantidad: 1,
-                            unidadUso: compUnidad,
-                        });
-                        if (result) {
-                            await API.recalcularCostoItem(item.id);
-                            Toast.success('Componente agregado');
-                            this._loadCatalogoReceta(item);
-                        } else {
-                            Toast.error('Error al agregar componente');
-                            el.style.opacity = '1';
-                        }
-                    });
-                });
-            };
-
-            renderResults('');
-            input?.addEventListener('input', () => renderResults(input.value));
-            cancelBtn?.addEventListener('click', () => {
-                addSection.innerHTML = `
-                    <button class="btn btn-secondary btn-sm" id="btnAddComponente">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Agregar componente
-                    </button>`;
-                this._attachRecetaAddHandler(item, insumos, items);
-            });
-        });
-    },
-
-    // ═══════════════════════════════════════════
-    //  INSUMOS — Async Tab Data Loaders
-    // ═══════════════════════════════════════════
-
-    async _loadInsumoTabData(item, tabId) {
-        if (tabId === 'historial') await this._loadInsumoHistorial(item);
-        if (tabId === 'info') {
-            const panel = document.getElementById('fichaPanel');
-            if (panel) {
-                this._attachInsumoFichaSave(item, panel);
-                this._initEditableSelects(panel, item);
-                this._initProveedorSearch(panel, item);
-            }
-        }
-    },
-
-    // ─── Editable Select Dropdowns (clasificacion/categoria) ───
-    async _initEditableSelects(panel, item) {
-        const campos = ['clasificacion', 'categoria'];
-        for (const campo of campos) {
-            await this._loadEditableSelectOptions(panel, campo, item[campo]);
-        }
-    },
-
-    async _loadEditableSelectOptions(panel, campo, currentVal) {
-        const optionsEl = panel.querySelector(`#esOptions_${campo}`);
-        if (!optionsEl) return;
-
-        // Try DB first, fallback to hardcoded
-        let options = await API.getSelectOptions(campo);
-        if (!options || options.length === 0) {
-            // Fallback: use hardcoded options from form fields
-            const field = this._insumoFormFields.find(f => f.key === campo);
-            const fallbackOpts = field ? field.options : [];
-            options = fallbackOpts.map((v, i) => ({ id: null, campo, valor: v, orden: i }));
-        }
-
-        optionsEl.innerHTML = options.map(o => `
-            <div class="ficha-es-option ${o.valor === currentVal ? 'selected' : ''}" data-es-val="${o.valor}" data-es-id="${o.id || ''}">
-                <span>${o.valor}</span>
-                <span class="ficha-es-option-x" data-es-delete="${o.id || ''}" data-es-campo="${campo}" title="Eliminar opción">✕</span>
-            </div>
-        `).join('');
-
-        // Attach click on options
-        optionsEl.querySelectorAll('.ficha-es-option').forEach(opt => {
-            opt.addEventListener('click', (e) => {
-                if (e.target.closest('.ficha-es-option-x')) return;
-                e.stopPropagation();
-                const val = opt.dataset.esVal;
-                const valueEl = panel.querySelector(`.ficha-es-value[data-field="${campo}"]`);
-                if (valueEl) valueEl.textContent = val;
-                // Mark selected
-                optionsEl.querySelectorAll('.ficha-es-option').forEach(o => o.classList.remove('selected'));
-                opt.classList.add('selected');
-                // Close dropdown
-                panel.querySelector(`#esDropdown_${campo}`)?.classList.remove('open');
-            });
-        });
-
-        // Delete option
-        optionsEl.querySelectorAll('.ficha-es-option-x').forEach(x => {
-            x.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const optId = x.dataset.esDelete;
-                const optCampo = x.dataset.esCampo;
-                if (!optId) { Toast.error('No se puede eliminar (opción por defecto)'); return; }
-                const optName = x.closest('.ficha-es-option')?.dataset.esVal || '';
-                const confirmed = confirm(`¿Eliminar "${optName}"? Los insumos que la tengan asignada quedarán sin ${optCampo}.`);
-                if (!confirmed) return;
-                const result = await API.deleteSelectOption(parseInt(optId));
-                if (result) {
-                    Toast.success(`"${optName}" eliminada`);
-                    const currentValEl = panel.querySelector(`.ficha-es-value[data-field="${optCampo}"]`);
-                    const currentSelected = currentValEl?.textContent;
-                    await this._loadEditableSelectOptions(panel, optCampo, currentSelected === optName ? '' : currentSelected);
-                    if (currentSelected === optName && currentValEl) currentValEl.textContent = 'Seleccionar…';
-                } else {
-                    Toast.error('Error al eliminar');
-                }
-            });
-        });
-
-        // Toggle dropdown
-        const trigger = panel.querySelector(`[data-es-toggle="${campo}"]`);
-        if (trigger && !trigger._handlerAttached) {
-            trigger._handlerAttached = true;
-            trigger.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const dd = panel.querySelector(`#esDropdown_${campo}`);
-                // Close other dropdowns
-                panel.querySelectorAll('.ficha-es-dropdown.open').forEach(d => { if (d !== dd) d.classList.remove('open'); });
-                dd?.classList.toggle('open');
-            });
-        }
-
-        // Add option button
-        const addBtn = panel.querySelector(`#esAddBtn_${campo}`);
-        if (addBtn && !addBtn._handlerAttached) {
-            addBtn._handlerAttached = true;
-            addBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const addRow = panel.querySelector(`#esAddRow_${campo}`);
-                if (!addRow) return;
-                addRow.innerHTML = `
-                    <div class="ficha-es-add-form">
-                        <input class="ficha-edit-input" id="esNewInput_${campo}" type="text" placeholder="Nombre de la opción…" autocomplete="off">
-                        <button class="ficha-es-confirm-btn" id="esConfirmAdd_${campo}" title="Confirmar">✓</button>
-                        <button class="ficha-es-cancel-btn" id="esCancelAdd_${campo}" title="Cancelar">✕</button>
-                    </div>`;
-                const inp = addRow.querySelector(`#esNewInput_${campo}`);
-                inp?.focus();
-
-                const confirmAdd = async () => {
-                    const newVal = inp?.value?.trim();
-                    if (!newVal) return;
-                    const result = await API.createSelectOption(campo, newVal);
-                    if (result) {
-                        Toast.success(`"${newVal}" agregada`);
-                        const currentValEl = panel.querySelector(`.ficha-es-value[data-field="${campo}"]`);
-                        await this._loadEditableSelectOptions(panel, campo, currentValEl?.textContent);
-                        addRow.innerHTML = `<button class="ficha-es-add-btn" id="esAddBtn_${campo}">+ Agregar opción</button>`;
-                        // Re-attach add handler
-                        addRow.querySelector(`#esAddBtn_${campo}`)?.addEventListener('click', addBtn._savedHandler || (() => {}));
-                    } else {
-                        Toast.error('Error al agregar');
-                    }
-                };
-
-                addRow.querySelector(`#esConfirmAdd_${campo}`)?.addEventListener('click', (ev) => { ev.stopPropagation(); confirmAdd(); });
-                inp?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.stopPropagation(); confirmAdd(); } });
-                addRow.querySelector(`#esCancelAdd_${campo}`)?.addEventListener('click', (ev) => {
-                    ev.stopPropagation();
-                    addRow.innerHTML = `<button class="ficha-es-add-btn" id="esAddBtn_${campo}">+ Agregar opción</button>`;
-                });
-            });
-        }
-
-        // Close on click outside
-        if (!panel._esDocClickAttached) {
-            panel._esDocClickAttached = true;
-            document.addEventListener('click', () => {
-                panel.querySelectorAll('.ficha-es-dropdown.open').forEach(d => d.classList.remove('open'));
-            });
-        }
-    },
-
-    // ─── Proveedor Search Dropdown ───
-    async _initProveedorSearch(panel, item) {
-        const input = panel.querySelector('#fichaProvInput');
-        const dropdown = panel.querySelector('#fichaProvDropdown');
-        const listEl = panel.querySelector('#fichaProvList');
-        if (!input || !dropdown || !listEl) return;
-
-        let proveedores = await API.getProveedores() || [];
-
-        const renderList = (q) => {
-            const filtered = q ? proveedores.filter(p => p.name.toLowerCase().includes(q.toLowerCase())) : proveedores;
-            listEl.innerHTML = filtered.length === 0
-                ? `<div class="ficha-prov-empty">Sin resultados</div>`
-                : filtered.map(p => `
-                    <div class="ficha-prov-item ${p.name === input.value ? 'selected' : ''}" data-prov-name="${p.name}" data-prov-id="${p.id}">
-                        <span>${p.name}</span>
-                        ${p.cuit ? `<span class="ficha-prov-cuit">${p.cuit}</span>` : ''}
-                    </div>
-                `).join('');
-
-            // Attach click
-            listEl.querySelectorAll('.ficha-prov-item').forEach(item => {
-                item.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    input.value = item.dataset.provName;
-                    dropdown.classList.remove('open');
-                });
-            });
-        };
-
-        input.addEventListener('focus', () => { renderList(input.value); dropdown.classList.add('open'); });
-        input.addEventListener('input', () => { renderList(input.value); dropdown.classList.add('open'); });
-
-        // New proveedor button
-        const btnNew = panel.querySelector('#btnNewProveedor');
-        if (btnNew) {
-            btnNew.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const addArea = btnNew.parentElement;
-                addArea.innerHTML = `
-                    <div class="ficha-prov-new-form">
-                        <input class="ficha-edit-input" id="newProvNombre" type="text" placeholder="Nombre *" autocomplete="off">
-                        <input class="ficha-edit-input" id="newProvCuit" type="text" placeholder="CUIT (opcional)" autocomplete="off">
-                        <input class="ficha-edit-input" id="newProvContacto" type="text" placeholder="Contacto (opcional)" autocomplete="off">
-                        <div class="ficha-prov-new-actions">
-                            <button class="btn btn-primary btn-sm" id="btnSaveNewProv">Crear</button>
-                            <button class="btn btn-ghost btn-sm" id="btnCancelNewProv">Cancelar</button>
-                        </div>
-                    </div>`;
-                addArea.querySelector('#newProvNombre')?.focus();
-
-                addArea.querySelector('#btnSaveNewProv')?.addEventListener('click', async () => {
-                    const nombre = addArea.querySelector('#newProvNombre')?.value?.trim();
-                    if (!nombre) { Toast.error('Nombre requerido'); return; }
-                    const cuit = addArea.querySelector('#newProvCuit')?.value?.trim() || '';
-                    const contacto = addArea.querySelector('#newProvContacto')?.value?.trim() || '';
-                    const result = await API.createProveedor({ name: nombre, cuit, contacto });
-                    if (result) {
-                        Toast.success(`Proveedor "${nombre}" creado`);
-                        input.value = nombre;
-                        dropdown.classList.remove('open');
-                        // Refresh list
-                        API.clearCache();
-                        proveedores = await API.getProveedores() || [];
-                        addArea.innerHTML = `<button class="ficha-es-add-btn" id="btnNewProveedor">+ Nuevo proveedor</button>`;
-                    } else {
-                        Toast.error('Error al crear proveedor');
-                    }
-                });
-                addArea.querySelector('#btnCancelNewProv')?.addEventListener('click', () => {
-                    addArea.innerHTML = `<button class="ficha-es-add-btn" id="btnNewProveedor">+ Nuevo proveedor</button>`;
-                });
-            });
-        }
-
-        // Close on click outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('.ficha-prov-search')) dropdown.classList.remove('open');
-        });
-    },
-
-    _attachInsumoFichaSave(item, panel) {
-        const saveBtn = panel.querySelector('#fichaInsumoSave');
-        const statusEl = panel.querySelector('#fichaSaveStatus');
-        if (!saveBtn) return;
-
-        saveBtn.addEventListener('click', async () => {
-            // Collect values from regular inputs
-            const inputs = panel.querySelectorAll('.ficha-edit-input');
-            const values = {};
-            inputs.forEach(inp => {
-                const key = inp.dataset.field;
-                if (!key) return;
-                if (inp.type === 'number') values[key] = parseFloat(inp.value) || 0;
-                else if (inp.tagName === 'TEXTAREA') values[key] = inp.value;
-                else values[key] = inp.value;
-            });
-
-            // Collect values from editable selects
-            panel.querySelectorAll('.ficha-es-value').forEach(el => {
-                const key = el.dataset.field;
-                const val = el.textContent;
-                if (key && val !== 'Seleccionar…') values[key] = val;
-                else if (key) values[key] = '';
-            });
-
-            // Proveedor from search input
-            const provInput = panel.querySelector('#fichaProvInput');
-            if (provInput) values.proveedor = provInput.value;
-
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Guardando…';
-            if (statusEl) statusEl.textContent = '';
-
-            const oldPrice = item.costoUnitario;
-            const newPrice = values.costoUnitario;
-            const priceChanged = newPrice != null && Math.abs(newPrice - oldPrice) > 0.001;
-
-            if (priceChanged) {
-                await API.logPrecioChange(item.id, oldPrice, newPrice, 'Edición en ficha');
-            }
-
-            const result = await API.updateInsumo(item.id, values);
-            if (result) {
-                Toast.success('Insumo actualizado');
-                if (statusEl) { statusEl.textContent = 'Guardado ✓'; statusEl.style.color = '#66BB6A'; }
-                Object.assign(item, values);
-                const nameEl = panel.querySelector('.ficha-panel-name');
-                if (nameEl && values.nombre) nameEl.textContent = values.nombre;
-                if (priceChanged) {
-                    const cascade = await API.recalcularPorInsumo(item.id);
-                    if (cascade.ok && cascade.updated > 0) Toast.info(`${cascade.updated} items recalculados`);
-                }
-                this._refreshCurrentTable();
-            } else {
-                Toast.error('Error al guardar');
-                if (statusEl) { statusEl.textContent = 'Error'; statusEl.style.color = '#EF5350'; }
-            }
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Guardar cambios';
-        });
-    },
-
-    async _loadInsumoHistorial(item) {
-        const listEl = document.getElementById('precioHistorialList');
-        if (!listEl) return;
-
-        listEl.innerHTML = '<div class="ficha-timeline-loading">Cargando historial…</div>';
-
-        try {
-            const historial = await API.getPrecioHistorial(item.id);
-
-            if (!historial || historial.length === 0) {
-                listEl.innerHTML = `
-                    <div class="ficha-timeline-empty">
-                        <div class="ficha-timeline-empty-icon">📈</div>
-                        <p>Sin historial de precios</p>
-                        <p class="text-muted">Los cambios de precio se registrarán aquí automáticamente</p>
-                    </div>`;
-                return;
-            }
-
-            const rows = historial.map(h => {
-                const isUp = h.precioNuevo > h.precioAnterior;
-                const arrow = isUp ? '↑' : '↓';
-                const arrowColor = isUp ? '#ff5252' : '#00d4aa';
-                const varText = h.variacionPorcentual != null
-                    ? `${h.variacionPorcentual > 0 ? '+' : ''}${h.variacionPorcentual.toFixed(1)}%`
-                    : '';
-                const dateStr = h.createdAt
-                    ? new Date(h.createdAt).toLocaleDateString('es-AR', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
-                    })
-                    : '—';
-                const motivo = h.motivo || '';
-                const usuario = h.usuario || '';
-
-                return `
-                    <div class="precio-hist-item">
-                        <div class="precio-hist-arrow" style="color:${arrowColor}">${arrow}</div>
-                        <div class="precio-hist-content">
-                            <div class="precio-hist-values">
-                                ${API.formatCurrency(h.precioAnterior)}
-                                <span style="color:#888;margin:0 4px">→</span>
-                                <strong>${API.formatCurrency(h.precioNuevo)}</strong>
-                                <span class="precio-hist-var" style="color:${arrowColor}">${varText}</span>
-                            </div>
-                            <div class="precio-hist-meta">
-                                ${dateStr}${usuario ? ` · ${usuario}` : ''}${motivo ? ` · ${motivo}` : ''}
-                            </div>
-                        </div>
-                    </div>`;
-            }).join('');
-
-            listEl.innerHTML = rows;
-        } catch (e) {
-            console.error('❌ Error cargando historial:', e);
-            listEl.innerHTML = '<div class="ficha-timeline-empty">Error al cargar historial</div>';
-        }
-    },
-
-    // ═══════════════════════════════════════════
-    //  SIMULADOR — Init & Event Handlers
-    // ═══════════════════════════════════════════
-
-    async _initSimulador() {
-        // Load summary data
-        const resumenEl = document.getElementById('simuladorResumen');
-        const logEl = document.getElementById('simuladorLog');
-
-        try {
-            const [insumos, items] = await Promise.all([
-                API.getInsumos(),
-                API.getCatalogoItems(),
-            ]);
-
-            const totalInsumos = insumos ? insumos.length : 0;
-            const totalItems = items ? items.length : 0;
-            const itemsConCosto = items ? items.filter(i => i.costoProduccion > 0).length : 0;
-            const itemsSinCosto = totalItems - itemsConCosto;
-
-            if (resumenEl) {
-                resumenEl.innerHTML = `
-                    <strong>${totalInsumos}</strong> insumos · <strong>${totalItems}</strong> items en catálogo ·
-                    <strong>${itemsConCosto}</strong> con costo · <span style="color:var(--color-warning)">${itemsSinCosto} sin costo</span>`;
-            }
-        } catch (e) {
-            if (resumenEl) resumenEl.textContent = 'Error cargando resumen';
-        }
-
-        // Attach recalculate button
-        const btn = document.getElementById('btnRecalcularTodo');
-        if (btn) {
-            btn.addEventListener('click', async () => {
-                btn.disabled = true;
-                btn.textContent = 'Recalculando…';
-                if (logEl) logEl.innerHTML = '<div class="simulador-log-entry">🔄 Iniciando recálculo de cascada…</div>';
-
-                try {
-                    const result = await API.recalcularTodo();
-                    btn.disabled = false;
-                    btn.textContent = 'Recalcular cascada';
-
-                    if (result.ok) {
-                        const msg = `✅ Cascada completa: ${result.total} items procesados, ${result.updated} actualizados.`;
-                        if (logEl) logEl.innerHTML = `<div class="simulador-log-entry simulador-log-success">${msg}</div>`;
-                        Toast.success(`${result.updated} items actualizados`);
-                        // Refresh summary
-                        this._initSimulador();
-                    } else {
-                        if (logEl) logEl.innerHTML = '<div class="simulador-log-entry simulador-log-error">❌ Error en la recalculación</div>';
-                        Toast.error('Error al recalcular');
-                    }
-                } catch (e) {
-                    btn.disabled = false;
-                    btn.textContent = 'Recalcular cascada';
-                    if (logEl) logEl.innerHTML = `<div class="simulador-log-entry simulador-log-error">❌ ${e.message}</div>`;
-                    Toast.error('Error al recalcular');
-                }
-            });
-        }
-    },
 
     // ═══════════════════════════════════════════
     //  COTIZACIONES TABLE
