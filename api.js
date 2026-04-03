@@ -1607,6 +1607,28 @@ const API = {
         }
     },
 
+    async getAllTimeline(limit = 200) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('cotizacion_timeline')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            if (error) throw error;
+            return (data || []).map(t => ({
+                id: t.id,
+                cotizacionId: t.cotizacion_id,
+                tipo: t.tipo,
+                descripcion: t.descripcion,
+                metadata: t.metadata,
+                createdAt: t.created_at,
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching all timeline:', e.message);
+            return [];
+        }
+    },
+
     async getCotizacionTimeline(cotizacionId) {
         try {
             const { data, error } = await supabaseClient

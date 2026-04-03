@@ -48,6 +48,11 @@ const CRM = {
     _cotPanelSubTab: 'resumen',
     _cotTimeline: [],
 
+    // ─── Interacciones tab state ───
+    _allTimeline: [],
+    _interFilterTipo: null,
+    _interSearch: '',
+
     // ─── Counts per tab ───
     _counts: { clientes: 0, pipeline: 0, cotizaciones: 0, interacciones: 0, marketing: 0 },
 
@@ -108,10 +113,12 @@ const CRM = {
 
     // ─── Timeline interaction types ───
     _timelineTypes: [
-        { value: 'nota',     label: 'Nota',     icon: '\uD83D\uDCDD', color: '#888' },
-        { value: 'email',    label: 'Email',    icon: '\uD83D\uDCE7', color: '#4A90D9' },
+        { value: 'nota',     label: 'Nota',     icon: '\uD83D\uDCCB', color: '#888' },
+        { value: 'email',    label: 'Email',    icon: '\u2709\uFE0F', color: '#4A90D9' },
         { value: 'whatsapp', label: 'WhatsApp', icon: '\uD83D\uDCAC', color: '#25D366' },
         { value: 'vista',    label: 'Vista',    icon: '\uD83D\uDC41\uFE0F', color: '#9B7DFF' },
+        { value: 'llamada',  label: 'Llamada',  icon: '\uD83D\uDCDE', color: '#00CC88' },
+        { value: 'reunion',  label: 'Reuni\u00F3n',  icon: '\uD83E\uDD1D', color: '#9B7DFF' },
         { value: 'estado',   label: 'Estado',   icon: '\uD83D\uDD04', color: '#F28D15' },
     ],
 
@@ -237,17 +244,19 @@ const CRM = {
 
     async _loadData() {
         try {
-            const [clients, projects, cotizaciones, users] = await Promise.all([
+            const [clients, projects, cotizaciones, users, allTimeline] = await Promise.all([
                 API.getClients(),
                 API.getProjects(),
                 API.getCotizaciones ? API.getCotizaciones() : Promise.resolve([]),
                 API.getUsers ? API.getUsers() : Promise.resolve([]),
+                API.getAllTimeline ? API.getAllTimeline(200) : Promise.resolve([]),
             ]);
 
             this._clients = clients || [];
             this._projects = projects || [];
             this._cotizaciones = cotizaciones || [];
             this._users = (users || []).filter(u => u.active !== false);
+            this._allTimeline = allTimeline || [];
 
             // Build project count per client
             this._clients.forEach(c => {
@@ -262,6 +271,7 @@ const CRM = {
             this._counts.pipeline = this._cotizaciones.filter(c =>
                 !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
             ).length;
+            this._counts.interacciones = this._allTimeline.length;
             this._updateTabCounts();
 
         } catch (e) {
@@ -270,6 +280,7 @@ const CRM = {
             this._projects = [];
             this._cotizaciones = [];
             this._users = [];
+            this._allTimeline = [];
         }
 
         this._populateRubroFilter();
@@ -402,6 +413,9 @@ const CRM = {
             this._applyCotFilters();
             main.innerHTML = this._renderCotizacionesTab();
             this._attachCotListeners();
+        } else if (this._activeTab === 'interacciones') {
+            main.innerHTML = this._renderInteraccionesTab();
+            this._attachInterListeners();
         } else {
             main.innerHTML = this._renderPlaceholderTab(this._activeTab);
         }
@@ -2325,6 +2339,187 @@ const CRM = {
 
 
     // ═══════════════════════════════════════════
+    //  INTERACCIONES TAB
+    // ═══════════════════════════════════════════
+
+    _renderInteraccionesTab() {
+        // Cross-reference timeline with cotizaciones/clients
+        const enriched = this._allTimeline.map(entry => {
+            const cot = this._cotizaciones.find(c => c.id === entry.cotizacionId);
+            const clientName = cot ? cot.cliente : '—';
+            const cotRef = cot ? (cot.numero || `COT-${String(cot.id).slice(0,6)}`) : '';
+            const user = entry.metadata && entry.metadata.usuario ? entry.metadata.usuario : '';
+            return { ...entry, clientName, cotRef, cotEstado: cot ? cot.estado : '', user };
+        });
+
+        // Apply filters
+        let filtered = enriched;
+        if (this._interFilterTipo) {
+            filtered = filtered.filter(e => e.tipo === this._interFilterTipo);
+        }
+        if (this._interSearch) {
+            const q = this._interSearch.toLowerCase();
+            filtered = filtered.filter(e =>
+                (e.clientName && e.clientName.toLowerCase().includes(q)) ||
+                (e.descripcion && e.descripcion.toLowerCase().includes(q)) ||
+                (e.cotRef && e.cotRef.toLowerCase().includes(q)) ||
+                (e.user && e.user.toLowerCase().includes(q))
+            );
+        }
+
+        // Group by date
+        const groups = {};
+        filtered.forEach(entry => {
+            const d = new Date(entry.createdAt);
+            const key = d.toISOString().split('T')[0];
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(entry);
+        });
+        const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+        // Type chips
+        const allTypes = [
+            { value: null, label: 'Todas' },
+            ...this._timelineTypes.filter(t => t.value !== 'estado'),
+        ];
+
+        const chipFilter = allTypes.map(t => {
+            const active = this._interFilterTipo === t.value;
+            const cfg = t.value ? this._timelineTypes.find(x => x.value === t.value) : null;
+            const chipColor = cfg ? cfg.color : '#00A9C1';
+            return `<button class="inter-chip ${active ? 'active' : ''}" data-tipo="${t.value || ''}" style="${active ? `background: ${chipColor}20; border-color: ${chipColor}60; color: ${chipColor}` : ''}">
+                ${cfg ? cfg.icon + ' ' : ''}${t.label}
+            </button>`;
+        }).join('');
+
+        // Feed
+        let feedHTML = '';
+        if (sortedDates.length === 0) {
+            feedHTML = `
+                <div class="inter-empty">
+                    <div class="inter-empty-icon">💬</div>
+                    <h3>Sin interacciones</h3>
+                    <p>Las interacciones aparecerán aquí a medida que se registren en las cotizaciones.</p>
+                </div>`;
+        } else {
+            sortedDates.forEach(dateKey => {
+                const d = new Date(dateKey + 'T12:00:00');
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                let dateLabel;
+                if (dateKey === today.toISOString().split('T')[0]) {
+                    dateLabel = 'Hoy';
+                } else if (dateKey === yesterday.toISOString().split('T')[0]) {
+                    dateLabel = 'Ayer';
+                } else {
+                    dateLabel = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+                    dateLabel = dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1);
+                }
+
+                feedHTML += `<div class="inter-date-group">
+                    <div class="inter-date-label">${dateLabel}</div>
+                    <div class="inter-date-items">`;
+
+                groups[dateKey].forEach(entry => {
+                    const tCfg = this._timelineTypes.find(t => t.value === entry.tipo) || this._timelineTypes[0];
+                    const time = new Date(entry.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                    const duration = entry.metadata && entry.metadata.duracion ? `<span class="inter-duration">⏱ ${entry.metadata.duracion} min</span>` : '';
+
+                    feedHTML += `
+                        <div class="inter-item" data-id="${entry.id}">
+                            <div class="inter-item-icon" style="background: ${tCfg.color}15; color: ${tCfg.color}; border-color: ${tCfg.color}30">
+                                ${tCfg.icon}
+                            </div>
+                            <div class="inter-item-body">
+                                <div class="inter-item-header">
+                                    <span class="inter-item-tipo" style="color: ${tCfg.color}">${tCfg.label}</span>
+                                    <span class="inter-item-sep">·</span>
+                                    <a class="inter-item-client" data-client-name="${(entry.clientName || '').replace(/"/g, '&quot;')}">${entry.clientName || '—'}</a>
+                                    ${entry.cotRef ? `<span class="inter-item-sep">·</span><span class="inter-item-ref">${entry.cotRef}</span>` : ''}
+                                    <span class="inter-item-time">${time}</span>
+                                    ${duration}
+                                </div>
+                                <div class="inter-item-desc">${entry.descripcion || ''}</div>
+                                ${entry.user ? `<div class="inter-item-user">por ${entry.user}</div>` : ''}
+                            </div>
+                        </div>`;
+                });
+
+                feedHTML += `</div></div>`;
+            });
+        }
+
+        return `
+            <div class="inter-container">
+                <div class="inter-toolbar">
+                    <div class="inter-search-wrap">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="inter-search" id="interSearch" placeholder="Buscar interacción..." value="${this._interSearch}" autocomplete="off" />
+                    </div>
+                    <div class="inter-count">${filtered.length} interaccion${filtered.length !== 1 ? 'es' : ''}</div>
+                </div>
+                <div class="inter-chips" id="interChips">
+                    ${chipFilter}
+                </div>
+                <div class="inter-feed" id="interFeed">
+                    ${feedHTML}
+                </div>
+            </div>`;
+    },
+
+    _attachInterListeners() {
+        // Search
+        const searchInput = document.getElementById('interSearch');
+        if (searchInput) {
+            let debounce;
+            searchInput.addEventListener('input', () => {
+                clearTimeout(debounce);
+                debounce = setTimeout(() => {
+                    this._interSearch = searchInput.value.trim();
+                    const main = document.getElementById('crmMainContent');
+                    if (main) {
+                        main.innerHTML = this._renderInteraccionesTab();
+                        this._attachInterListeners();
+                    }
+                }, 250);
+            });
+        }
+
+        // Chip filters
+        const chips = document.getElementById('interChips');
+        if (chips) {
+            chips.addEventListener('click', (e) => {
+                const chip = e.target.closest('.inter-chip');
+                if (!chip) return;
+                const tipo = chip.dataset.tipo || null;
+                this._interFilterTipo = tipo || null;
+                const main = document.getElementById('crmMainContent');
+                if (main) {
+                    main.innerHTML = this._renderInteraccionesTab();
+                    this._attachInterListeners();
+                }
+            });
+        }
+
+        // Click client name → open panel
+        const feed = document.getElementById('interFeed');
+        if (feed) {
+            feed.addEventListener('click', (e) => {
+                const clientLink = e.target.closest('.inter-item-client');
+                if (!clientLink) return;
+                const clientName = clientLink.dataset.clientName;
+                if (!clientName || clientName === '—') return;
+                const client = this._clients.find(c => c.name && c.name === clientName);
+                if (client) {
+                    this._openPanel(client);
+                }
+            });
+        }
+    },
+
+
+    // ═══════════════════════════════════════════
     //  STYLES (injected once)
     // ═══════════════════════════════════════════
 
@@ -3784,6 +3979,237 @@ const CRM = {
 .cot-panel-body::-webkit-scrollbar-thumb {
     background: rgba(242,141,21,0.2);
     border-radius: 2px;
+}
+
+/* ═══════════════════════════════════════════
+   INTERACCIONES TAB
+   ═══════════════════════════════════════════ */
+
+.inter-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 24px;
+    max-width: 860px;
+}
+
+/* Toolbar */
+.inter-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.inter-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 12px;
+    flex: 1;
+    max-width: 360px;
+    transition: border-color 250ms ease;
+}
+.inter-search-wrap:focus-within {
+    border-color: var(--primary);
+}
+.inter-search-wrap svg {
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+.inter-search {
+    background: none;
+    border: none;
+    outline: none;
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    padding: 8px 0;
+    width: 100%;
+}
+.inter-search::placeholder {
+    color: var(--text-dim);
+}
+.inter-count {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+/* Chips */
+.inter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.inter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    font-family: var(--font-main);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 200ms ease;
+    white-space: nowrap;
+}
+.inter-chip:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+.inter-chip.active {
+    font-weight: 500;
+}
+
+/* Feed */
+.inter-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+.inter-date-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.inter-date-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+}
+.inter-date-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Item */
+.inter-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--bg-card);
+    border: 1px solid transparent;
+    transition: all 200ms ease;
+}
+.inter-item:hover {
+    border-color: var(--border);
+}
+.inter-item-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.inter-item-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.inter-item-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 0.82rem;
+}
+.inter-item-tipo {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.inter-item-sep {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+}
+.inter-item-client {
+    color: var(--primary);
+    cursor: pointer;
+    font-weight: 500;
+    transition: opacity 200ms;
+    text-decoration: none;
+}
+.inter-item-client:hover {
+    opacity: 0.8;
+    text-decoration: underline;
+}
+.inter-item-ref {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+}
+.inter-item-time {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-left: auto;
+}
+.inter-duration {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: rgba(0,169,193,0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.inter-item-desc {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+.inter-item-user {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+/* Empty state */
+.inter-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 24px;
+    text-align: center;
+    gap: 12px;
+}
+.inter-empty-icon {
+    font-size: 48px;
+    opacity: 0.5;
+}
+.inter-empty h3 {
+    font-family: var(--font-main);
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+.inter-empty p {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    max-width: 400px;
+    margin: 0;
 }
         `;
         document.head.appendChild(style);
