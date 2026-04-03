@@ -45,7 +45,7 @@ const Router = {
 
             // ── Recursos ──
             'rrhh':             { render: () => this._renderPlaceholder('rrhh'), requiresAuth: true, module: 'rrhh' },
-            'compras':          { render: () => this._renderPlaceholder('compras'), requiresAuth: true, module: 'compras' },
+            'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras' },
             'inventario':       { render: () => Modules.render('inventario'), requiresAuth: true, module: 'inventario' },
             'locaciones':       { render: () => this._renderPlaceholder('locaciones'), requiresAuth: true, module: 'locaciones' },
 
