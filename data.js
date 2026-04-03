@@ -299,7 +299,6 @@ const Data = {
             sections: [
                 { id: 'nomina', name: 'Nómina', icon: '👥', description: 'Personal fijo (17), eventual base (3), pico (40). Cuadrillas externas como unidad.', fields: [] },
                 { id: 'asignacion', name: 'Asignación', icon: '📌', description: 'Por evento/proyecto, cruza con Calendario Operativo', fields: [] },
-                { id: 'pagos-rrhh', name: 'Pagos', icon: '💵', description: 'Jornales, extras, horas adicionales, grupos externos', fields: [] },
                 { id: 'vacaciones', name: 'Vacaciones', icon: '🏖️', description: 'Calendario, días disponibles, solicitudes', fields: [] },
             ],
             connections: [
