@@ -18,6 +18,7 @@ const Router = {
         'ventas':      'crm',
         'clientes':    'crm',
         'proveedores': 'compras',
+        'produccion':  'taller',
     },
 
     async init() {
@@ -39,7 +40,7 @@ const Router = {
             // ── Operaciones ──
             'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },
             'eventos':          { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos' },
-            'produccion':       { render: () => this._renderPlaceholder('produccion'), requiresAuth: true, module: 'produccion' },
+            'taller':           { render: () => TallerModule.render(), requiresAuth: true, module: 'taller' },
             'logistica':        { render: () => this._renderPlaceholder('logistica'), requiresAuth: true, module: 'logistica' },
 
             // ── Recursos ──

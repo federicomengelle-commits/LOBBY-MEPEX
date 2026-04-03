@@ -17,11 +17,11 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'produccion', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'produccion', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
-        pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'produccion', 'logistica', 'inventario'],
-        taller:     ['proyectos', 'eventos', 'produccion', 'logistica', 'inventario'],
+        pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
+        taller:     ['proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
     },
 
     // ─── PERMISOS DE SOLO LECTURA ───
@@ -32,6 +32,7 @@ const Data = {
         venta:      [],
         pm:         ['crm', 'catalogo', 'inventario'],
         taller:     ['proyectos', 'eventos', 'inventario'],
+        // Note: 'taller' in readOnly refers to the role, not the module
     },
 
     // ─── LABELS DE ROL ───
@@ -71,7 +72,7 @@ const Data = {
             name: 'OPERACIONES',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
             color: '#00CC88',
-            moduleIds: ['proyectos', 'eventos', 'produccion', 'logistica'],
+            moduleIds: ['proyectos', 'eventos', 'taller', 'logistica'],
         },
         {
             id: 'recursos',
@@ -114,7 +115,7 @@ const Data = {
             { id: 'ver-calendario', icon: '🗓️', label: 'Calendario', action: 'navigate', route: 'calendario' },
         ],
         taller: [
-            { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'navigate', route: 'produccion' },
+            { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'navigate', route: 'taller' },
             { id: 'ver-calendario', icon: '🗓️', label: 'Calendario', action: 'navigate', route: 'calendario' },
             { id: 'ver-inventario', icon: '📦', label: 'Inventario', action: 'navigate', route: 'inventario' },
         ],
@@ -213,7 +214,7 @@ const Data = {
             connections: [
                 { to: 'crm', label: 'Ver CRM', context: 'Cliente y cotización del proyecto' },
                 { to: 'eventos', label: 'Ver Evento', context: 'Evento al que pertenece' },
-                { to: 'produccion', label: 'Ver Producción', context: 'Estado de fabricación' },
+                { to: 'taller', label: 'Ver Taller', context: 'Estado de preparación' },
                 { to: 'logistica', label: 'Ver Logística', context: 'Transporte y montaje' },
                 { to: 'inventario', label: 'Ver Materiales', context: 'Materiales reservados' },
                 { to: 'finanzas', label: 'Ver Finanzas', context: 'Movimientos del proyecto' },
@@ -240,21 +241,21 @@ const Data = {
             ],
         },
 
-        produccion: {
-            id: 'produccion',
-            name: 'Producción',
-            shortName: 'Producción',
+        taller: {
+            id: 'taller',
+            name: 'Taller',
+            shortName: 'Taller',
             icon: '🔨',
-            description: 'Tareas de taller por proyecto, mantenimiento de herramientas.',
-            status: 'development',
+            description: 'Proyectos en preparación, checklist de producción y mantenimiento de equipos.',
+            status: 'active',
             color: '#00CC88',
             order: 6,
             sections: [
-                { id: 'tareas', name: 'Tareas por Proyecto', icon: '✅', description: 'Lista simple: qué hacer + estado (pendiente/en proceso/listo)', fields: [] },
-                { id: 'mantenimiento', name: 'Mantenimiento', icon: '🔧', description: 'Herramientas, matafuegos, reparaciones, alertas vencimiento', fields: [] },
+                { id: 'proyectos-taller', name: 'Proyectos en Taller', icon: '🏗️', description: 'Proyectos en proceso con checklist de preparación', fields: [] },
+                { id: 'mantenimiento', name: 'Mantenimiento', icon: '🔧', description: 'Herramientas, matafuegos, equipos, alertas vencimiento', fields: [] },
             ],
             connections: [
-                { to: 'proyectos', label: 'Ver Proyecto', context: 'Proyecto en producción' },
+                { to: 'proyectos', label: 'Ver Proyecto', context: 'Ficha completa del proyecto' },
                 { to: 'inventario', label: 'Ver Stock', context: 'Materiales necesarios' },
                 { to: 'logistica', label: 'Ver Logística', context: 'Montaje/desmontaje' },
             ],
@@ -277,7 +278,7 @@ const Data = {
             ],
             connections: [
                 { to: 'eventos', label: 'Ver Evento', context: 'Evento del transporte' },
-                { to: 'produccion', label: 'Ver Producción', context: 'Lo que sale de taller' },
+                { to: 'taller', label: 'Ver Taller', context: 'Lo que sale de taller' },
                 { to: 'rrhh', label: 'Ver Equipo', context: 'Personal asignado al montaje' },
             ],
         },
@@ -303,7 +304,7 @@ const Data = {
             ],
             connections: [
                 { to: 'eventos', label: 'Ver Eventos', context: 'Asignaciones de personal' },
-                { to: 'produccion', label: 'Ver Producción', context: 'Disponibilidad para producción' },
+                { to: 'taller', label: 'Ver Taller', context: 'Disponibilidad para taller' },
                 { to: 'finanzas', label: 'Ver Pagos', context: 'Jornales y pagos' },
             ],
         },
@@ -347,7 +348,7 @@ const Data = {
                 ] },
             ],
             connections: [
-                { to: 'produccion', label: 'Ver Producción', context: 'Consumo de materiales' },
+                { to: 'taller', label: 'Ver Taller', context: 'Consumo de materiales' },
                 { to: 'compras', label: 'Ver Compras', context: 'Órdenes de compra de insumos' },
                 { to: 'locaciones', label: 'Ver Locaciones', context: 'Stock por locación' },
             ],
