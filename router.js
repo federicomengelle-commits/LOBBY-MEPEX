@@ -163,9 +163,10 @@ const Router = {
         // Render the route
         route.render();
 
-        // Update sidebar active state
+        // Update sidebar active state + refresh badges
         if (this.shellRendered) {
             App.updateSidebarActive();
+            if (typeof Badges !== 'undefined') Badges._updateDOM();
         }
     },
 

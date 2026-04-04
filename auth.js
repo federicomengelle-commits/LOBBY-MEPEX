@@ -40,6 +40,7 @@ const Auth = {
     // ─── LOGOUT ───
     async logout() {
         this._profile = null;
+        if (typeof Badges !== 'undefined') Badges.stop();
         await supabaseClient.auth.signOut();
         Router.navigate('login');
     },

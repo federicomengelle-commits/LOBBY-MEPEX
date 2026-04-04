@@ -48,6 +48,9 @@ const App = {
         // Initialize undo/redo UI buttons in header
         UndoUI.init();
 
+        // Initialize badges (alertas en sidebar)
+        Badges.init();
+
         // Check API connection in background
         this._checkConnection();
     },

@@ -9304,6 +9304,25 @@ body {
     font-weight: 500;
 }
 
+/* ── Sidebar Badges (circulito naranja de alertas) ── */
+.sidebar-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #F28D15;
+    color: #FFFFFF;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
 /* ── SE Item Actions (edit mode only) ── */
 .se-item-actions {
     display: none;
