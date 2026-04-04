@@ -94,63 +94,102 @@ const Badges = {
     },
 
     // ─── CALCULATORS: una función por badge ───
+    //
+    // Schema verificado contra Supabase 2026-04-04.
+    // NOTA: proyectos_2026 tiene columnas rotadas:
+    //   'estado'       → contiene nombre de cliente
+    //   'responsable'  → contiene estado real del proyecto
+    //   'empresa'      → contiene nombre de evento
+    //   'n_lote'       → contiene responsable real
+    //
     _calculators: {
 
-        // 1. CRM: cotizaciones activas con evento ≤ 3 días
+        // 1. CRM: cotizaciones activas con fecha_evento ≤ 3 días
+        //    + clientes sin contacto ≥ 15 días (requiere columna ultimo_contacto — ver sql/badges_schema_additions.sql)
+        //    Columnas usadas: cotizaciones.estado, cotizaciones.fecha_evento, clientes.ultimo_contacto
         async crm() {
             let count = 0;
+            // Cotizaciones con evento próximo a vencer
             try {
                 const limit3 = Badges._dateOffset(3);
                 const { count: cotCount, error } = await supabaseClient
                     .from('cotizaciones')
                     .select('id', { count: 'exact', head: true })
                     .eq('_deleted', false)
-                    .in('estado', ['enviada', 'en_negociacion'])
+                    .in('estado', ['enviada', 'en_negociacion', 'borrador'])
                     .lte('fecha_evento', limit3)
-                    .gte('fecha_evento', Badges._dateOffset(-30)); // no contar las de hace mucho
+                    .gte('fecha_evento', Badges._dateOffset(0)); // solo futuras o de hoy
                 if (!error && cotCount) count += cotCount;
-            } catch (e) { /* tabla o columna no existe */ }
+            } catch (e) { /* sin data aún */ }
+            // Clientes sin follow-up ≥ 15 días
+            try {
+                const limit15 = Badges._dateOffset(-15);
+                const { count: cliCount, error } = await supabaseClient
+                    .from('clientes')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('_deleted', false)
+                    .eq('estado', 'activo')
+                    .lte('ultimo_contacto', limit15);
+                if (!error && cliCount) count += cliCount;
+            } catch (e) { /* columna ultimo_contacto puede no existir aún */ }
             return count;
         },
 
-        // 2. Proyectos: sin cambio de estado ≥ 5 días
+        // 2. Proyectos: sin cambio ≥ 5 días (estados activos)
+        //    Columnas rotadas: 'responsable' = estado real del proyecto
+        //    Usa updated_at si existe, fallback a created_at
+        //    (ver sql/badges_schema_additions.sql para ALTER TABLE)
         async proyectos() {
             try {
                 const limit5 = Badges._dateOffset(-5);
-                const { count, error } = await supabaseClient
+                // Intentar con updated_at primero
+                let { data, error } = await supabaseClient
                     .from('proyectos_2026')
-                    .select('id', { count: 'exact', head: true })
+                    .select('id, updated_at, created_at')
                     .eq('_deleted', false)
-                    .in('estado', ['en_proceso', 'en_produccion', 'pendiente'])
-                    .lte('updated_at', limit5);
-                if (error) return 0;
-                return count || 0;
+                    .in('responsable', ['En proceso', 'En producción', 'Pendiente', 'En preparación']);
+                if (error || !data) return 0;
+                // Filtrar los que no se actualizaron hace ≥ 5 días
+                return data.filter(p => {
+                    const ts = p.updated_at || p.created_at;
+                    return ts && ts.split('T')[0] <= limit5;
+                }).length;
             } catch (e) { return 0; }
         },
 
-        // 3. Eventos: armado ≤ 7 días sin equipo asignado
+        // 3. Eventos: armado ≤ 7 días — contar todos los próximos
+        //    No existe columna equipo_montaje en eventos_2026, así que contamos
+        //    eventos con armado próximo que no tengan proyectos vinculados (sin stands asignados)
         async eventos() {
             try {
                 const hoy = Badges._dateOffset(0);
                 const limit7 = Badges._dateOffset(7);
-                const { data, error } = await supabaseClient
+                const { data: eventos, error } = await supabaseClient
                     .from('eventos_2026')
-                    .select('id, equipo_montaje')
+                    .select('id')
                     .eq('_deleted', false)
                     .gte('fecha_armado_inicio', hoy)
                     .lte('fecha_armado_inicio', limit7);
-                if (error || !data) return 0;
-                // Contar los que no tienen equipo asignado
-                return data.filter(e => !e.equipo_montaje || e.equipo_montaje.length === 0).length;
+                if (error || !eventos || eventos.length === 0) return 0;
+                // Verificar cuáles no tienen proyectos vinculados (= sin equipo/stands)
+                const eventoIds = eventos.map(e => e.id);
+                const { data: proyectos } = await supabaseClient
+                    .from('proyectos_2026')
+                    .select('evento_id')
+                    .eq('_deleted', false)
+                    .in('evento_id', eventoIds);
+                const eventosConProyecto = new Set((proyectos || []).map(p => p.evento_id));
+                return eventoIds.filter(id => !eventosConProyecto.has(id)).length;
             } catch (e) { return 0; }
         },
 
         // 4. Taller: proyectos con checklist incompleto y armado ≤ 3 días
+        //    Columnas: eventos_2026.fecha_armado_inicio, proyectos_2026.evento_id,
+        //    taller_checklist.proyecto_id, taller_checklist.checked
         async taller() {
             try {
                 const hoy = Badges._dateOffset(0);
                 const limit3 = Badges._dateOffset(3);
-                // Buscar eventos con armado próximo
                 const { data: eventos, error: evErr } = await supabaseClient
                     .from('eventos_2026')
                     .select('id')
@@ -159,7 +198,6 @@ const Badges = {
                     .lte('fecha_armado_inicio', limit3);
                 if (evErr || !eventos || eventos.length === 0) return 0;
                 const eventoIds = eventos.map(e => e.id);
-                // Buscar proyectos vinculados a esos eventos
                 const { data: proyectos, error: prErr } = await supabaseClient
                     .from('proyectos_2026')
                     .select('id')
@@ -167,7 +205,6 @@ const Badges = {
                     .in('evento_id', eventoIds);
                 if (prErr || !proyectos || proyectos.length === 0) return 0;
                 const proyIds = proyectos.map(p => p.id);
-                // Buscar checklist items sin completar
                 const { data: checks, error: chErr } = await supabaseClient
                     .from('taller_checklist')
                     .select('proyecto_id')
@@ -175,12 +212,12 @@ const Badges = {
                     .eq('checked', false)
                     .in('proyecto_id', proyIds);
                 if (chErr || !checks) return 0;
-                // Contar proyectos distintos con tareas pendientes
                 return new Set(checks.map(c => c.proyecto_id)).size;
             } catch (e) { return 0; }
         },
 
         // 5. Logística: vehículos con VTV o seguro vencido
+        //    Columnas: logistica_vehiculos.vtv_vencimiento, .seguro_vencimiento (ambas date)
         async logistica() {
             try {
                 const hoy = Badges._dateOffset(0);
@@ -196,12 +233,13 @@ const Badges = {
             } catch (e) { return 0; }
         },
 
-        // 6. Finanzas: cobros vencidos — placeholder (tabla no implementada aún)
+        // 6. Finanzas: placeholder (tabla de cobros no implementada aún)
         async finanzas() {
             return 0;
         },
 
         // 7. Compras: pagos a proveedores vencidos
+        //    Columnas: compras_pagos.estado, .fecha_vencimiento
         async compras() {
             try {
                 const hoy = Badges._dateOffset(0);
@@ -217,6 +255,7 @@ const Badges = {
         },
 
         // 8. RRHH: solicitudes de vacaciones pendientes
+        //    Columnas: rrhh_vacaciones_solicitudes.estado
         async rrhh() {
             try {
                 const { count, error } = await supabaseClient
@@ -229,8 +268,10 @@ const Badges = {
             } catch (e) { return 0; }
         },
 
-        // 9. Inventario: insumos con stock bajo mínimo — placeholder
-        //    (insumos_base no tiene stock_actual/stock_minimo aún)
+        // 9. Inventario: insumos con stock bajo mínimo
+        //    Requiere columnas stock_actual y stock_minimo en insumos_base
+        //    (ver sql/badges_schema_additions.sql para ALTER TABLE)
+        //    Retorna 0 si las columnas no existen aún
         async inventario() {
             try {
                 const { data, error } = await supabaseClient
@@ -248,6 +289,7 @@ const Badges = {
         },
 
         // 10. Locaciones: documentos con vencimiento ≤ 30 días
+        //     Columnas: locaciones_documentos.fecha_vencimiento
         async locaciones() {
             try {
                 const limit30 = Badges._dateOffset(30);
