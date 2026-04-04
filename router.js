@@ -21,6 +21,19 @@ const Router = {
         'produccion':  'taller',
     },
 
+    // ─── Ruta por defecto según rol ───
+    _defaultRoutes: {
+        superadmin: 'lobby',
+        admin:      'lobby',
+        venta:      'crm',
+        pm:         'proyectos',
+        taller:     'taller',
+    },
+
+    getDefaultRoute(role) {
+        return this._defaultRoutes[role] || 'lobby';
+    },
+
     async init() {
         // Register routes
         this.routes = {
@@ -82,9 +95,14 @@ const Router = {
 
         const route = this.routes[hash];
 
-        // Unknown route → go to lobby or login
+        // Unknown route → go to default route or login
         if (!route) {
-            this.navigate(Auth.isAuthenticated() ? 'lobby' : 'login');
+            if (Auth.isAuthenticated()) {
+                const user = Auth.getUser();
+                this.navigate(this.getDefaultRoute(user?.role));
+            } else {
+                this.navigate('login');
+            }
             return;
         }
 
@@ -94,27 +112,40 @@ const Router = {
             return;
         }
 
-        // Already logged in, trying to access login → go to lobby
+        // Already logged in, trying to access login → go to default route
         if (hash === 'login' && Auth.isAuthenticated()) {
-            this.navigate('lobby');
+            const user = Auth.getUser();
+            this.navigate(this.getDefaultRoute(user?.role));
             return;
+        }
+
+        // Lobby restricted to superadmin/admin — redirect others to their default
+        if (hash === 'lobby') {
+            const user = Auth.getUser();
+            if (user && user.role !== 'superadmin' && user.role !== 'admin') {
+                this.navigate(this.getDefaultRoute(user.role));
+                return;
+            }
         }
 
         // Role guard for modules
         if (route.module && !Auth.hasAccess(route.module)) {
-            this.navigate('lobby');
+            const user = Auth.getUser();
+            this.navigate(this.getDefaultRoute(user?.role));
             return;
         }
 
         // Super admin-only guard (solo Fede)
         if (route.superadminOnly && !Auth.isSuperAdmin()) {
-            this.navigate('lobby');
+            const user = Auth.getUser();
+            this.navigate(this.getDefaultRoute(user?.role));
             return;
         }
 
         // Admin-level guard (superadmin + admin)
         if (route.adminOnly && !Auth.isAdminLevel()) {
-            this.navigate('lobby');
+            const user = Auth.getUser();
+            this.navigate(this.getDefaultRoute(user?.role));
             return;
         }
 

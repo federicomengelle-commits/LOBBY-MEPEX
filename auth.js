@@ -204,9 +204,10 @@ const Auth = {
             const result = await Auth.login(userId, password);
 
             if (result.success) {
-                // Check for start module preference
+                // Check for start module preference, then role default
                 const startModule = Auth.getStartModule();
-                Router.navigate(startModule || 'lobby');
+                const defaultRoute = Router.getDefaultRoute(Auth.getUser()?.role);
+                Router.navigate(startModule || defaultRoute);
             } else {
                 errorEl.textContent = result.error;
                 errorEl.style.display = 'block';
