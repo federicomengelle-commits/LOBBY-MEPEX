@@ -15,10 +15,11 @@ const Router = {
 
     // ─── Redirects: rutas viejas → nuevas ───
     _redirects: {
-        'ventas':      'crm',
-        'clientes':    'crm',
-        'proveedores': 'compras',
-        'produccion':  'taller',
+        'ventas':          'crm',
+        'clientes':        'crm',
+        'proveedores':     'compras',
+        'produccion':      'taller',
+        'admin-usuarios':  'admin-panel',
     },
 
     // ─── Ruta por defecto según rol ───

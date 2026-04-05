@@ -106,6 +106,12 @@ const Auth = {
             if (!profile) return false;
 
             this._profile = profile;
+
+            // Refresh Data caches with roles from Supabase
+            if (typeof Data !== 'undefined' && Data.loadRolesFromDB) {
+                Data.loadRolesFromDB(); // fire-and-forget, fallbacks work if it fails
+            }
+
             return true;
         } catch (e) {
             console.error('[Auth] Restore session error:', e);

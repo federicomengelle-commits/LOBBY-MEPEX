@@ -523,6 +523,50 @@ const Data = {
         return this._roleColors[role] || '#7A8599';
     },
 
+    // ─── CARGAR ROLES DESDE SUPABASE ───
+    // Actualiza rolePermissions, readOnlyPermissions, _roleColors y roleLabels
+    // en memoria con datos de la tabla `roles`. Se llama post-login como refresh.
+    // Si falla, los valores hardcodeados arriba se usan como fallback offline.
+    async loadRolesFromDB() {
+        try {
+            const { data: roles, error } = await supabaseClient
+                .from('roles')
+                .select('id, label, color, permissions')
+                .order('id');
+            if (error) throw error;
+            if (!roles || roles.length === 0) return;
+
+            const newPerms = {};
+            const newReadOnly = {};
+            const newColors = {};
+            const newLabels = {};
+
+            roles.forEach(r => {
+                const writeModules = [];
+                const readModules = [];
+                if (r.permissions) {
+                    for (const [mod, level] of Object.entries(r.permissions)) {
+                        if (level === 'write') writeModules.push(mod);
+                        else if (level === 'read') readModules.push(mod);
+                    }
+                }
+                newPerms[r.id] = [...writeModules, ...readModules];
+                newReadOnly[r.id] = readModules;
+                if (r.color) newColors[r.id] = r.color;
+                if (r.label) newLabels[r.id] = r.label;
+            });
+
+            this.rolePermissions = newPerms;
+            this.readOnlyPermissions = newReadOnly;
+            Object.assign(this._roleColors, newColors);
+            Object.assign(this.roleLabels, newLabels);
+
+            console.log('[Data] Roles loaded from DB:', Object.keys(newPerms));
+        } catch (err) {
+            console.warn('[Data] Failed to load roles from DB, using fallback:', err.message);
+        }
+    },
+
     // ─── BUSCADOR: buscar en módulos y secciones ───
     search(query) {
         if (!query || query.length < 2) return [];

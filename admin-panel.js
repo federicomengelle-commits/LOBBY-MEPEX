@@ -11,7 +11,8 @@ const AdminPanel = {
     // ─── STATE ───
     _activeTab: 'dashboard',
     _logs: [],
-    _users: [],
+    _logUserMap: {},   // Dummy user map for audit log rendering (TODO: remove when audit_log is real)
+    _dashProfiles: [], // Real profiles loaded for Dashboard tab
     _sortCol: 'name',
     _sortDir: 'asc',
     _searchQuery: '',
@@ -31,65 +32,23 @@ const AdminPanel = {
     _allLogsLoaded: false,
     _scrollHandler: null,
 
-    // ─── DUMMY DATA ───
-    _generateData() {
-        const now = new Date('2026-03-09T16:45:00');
+    // ─── DUMMY AUDIT LOG DATA ───
+    // TODO: Reemplazar con query real a tabla audit_log de Supabase cuando exista
+    _generateDummyLogs() {
+        // Minimal user map for dummy audit log rendering
+        this._logUserMap = {
+            fede:   { name: 'Federico Méndez', initials: 'FM', role: 'superadmin' },
+            lelean: { name: 'Leonardo Méndez', initials: 'LM', role: 'admin' },
+            sofi:   { name: 'Sofía Méndez', initials: 'SM', role: 'admin' },
+            noe:    { name: 'Noelia Ruiz', initials: 'NR', role: 'venta' },
+            meli:   { name: 'Melina Torres', initials: 'MT', role: 'pm' },
+            leo:    { name: 'Leonardo Quiroga', initials: 'LQ', role: 'pm' },
+            diego:  { name: 'Diego Fernández', initials: 'DF', role: 'taller' },
+            juan:   { name: 'Juan Labajian', initials: 'JL', role: 'taller' },
+            carlos: { name: 'Carlos Herrera', initials: 'CH', role: 'taller' },
+            willy:  { name: 'Guillermo Paz', initials: 'GP', role: 'taller' },
+        };
 
-        // ── Users (10 personas reales) ──
-        this._users = [
-            {
-                id: 'fede', name: 'Federico Méndez', role: 'superadmin', email: 'fede@mepex.com.ar',
-                initials: 'FM', lastLogin: new Date('2026-03-09T08:12:00'), device: 'MacBook Pro — Chrome',
-                usageToday: 512, usageWeek: 2340, sessionsNow: 1, actionsToday: 47, online: true,
-            },
-            {
-                id: 'lelean', name: 'Leonardo Méndez', role: 'admin', email: 'lelean@mepex.com.ar',
-                initials: 'LM', lastLogin: new Date('2026-03-09T09:30:00'), device: 'PC Oficina — Chrome',
-                usageToday: 398, usageWeek: 1870, sessionsNow: 1, actionsToday: 32, online: true,
-            },
-            {
-                id: 'sofi', name: 'Sofía Méndez', role: 'admin', email: 'sofi@mepex.com.ar',
-                initials: 'SM', lastLogin: new Date('2026-03-09T09:00:00'), device: 'Notebook HP — Chrome',
-                usageToday: 285, usageWeek: 1520, sessionsNow: 1, actionsToday: 22, online: true,
-            },
-            {
-                id: 'noe', name: 'Noelia Ruiz', role: 'venta', email: 'noe@mepex.com.ar',
-                initials: 'NR', lastLogin: new Date('2026-03-09T08:45:00'), device: 'Notebook Lenovo — Chrome',
-                usageToday: 445, usageWeek: 2100, sessionsNow: 1, actionsToday: 38, online: true,
-            },
-            {
-                id: 'meli', name: 'Melina Torres', role: 'pm', email: 'meli@mepex.com.ar',
-                initials: 'MT', lastLogin: new Date('2026-03-09T08:30:00'), device: 'Notebook Dell — Chrome',
-                usageToday: 380, usageWeek: 1900, sessionsNow: 1, actionsToday: 28, online: true,
-            },
-            {
-                id: 'leo', name: 'Leonardo Quiroga', role: 'pm', email: 'leo@mepex.com.ar',
-                initials: 'LQ', lastLogin: new Date('2026-03-09T10:15:00'), device: 'iPad Pro — Safari',
-                usageToday: 210, usageWeek: 1450, sessionsNow: 0, actionsToday: 18, online: false,
-            },
-            {
-                id: 'diego', name: 'Diego Fernández', role: 'taller', email: 'diego@mepex.com.ar',
-                initials: 'DF', lastLogin: new Date('2026-03-09T07:00:00'), device: 'Tablet Taller 1 — Chrome',
-                usageToday: 340, usageWeek: 1750, sessionsNow: 1, actionsToday: 26, online: true,
-            },
-            {
-                id: 'juan', name: 'Juan Labajian', role: 'taller', email: 'juan@mepex.com.ar',
-                initials: 'JL', lastLogin: new Date('2026-03-09T07:10:00'), device: 'Tablet Taller 2 — Chrome',
-                usageToday: 310, usageWeek: 1600, sessionsNow: 1, actionsToday: 22, online: true,
-            },
-            {
-                id: 'carlos', name: 'Carlos Herrera', role: 'taller', email: 'carlos@mepex.com.ar',
-                initials: 'CH', lastLogin: new Date('2026-03-09T07:05:00'), device: 'Tablet Taller 3 — Chrome',
-                usageToday: 320, usageWeek: 1680, sessionsNow: 0, actionsToday: 20, online: false,
-            },
-            {
-                id: 'willy', name: 'Guillermo Paz', role: 'taller', email: 'willy@mepex.com.ar',
-                initials: 'GP', lastLogin: new Date('2026-03-08T07:00:00'), device: 'Tablet Taller 4 — Chrome',
-                usageToday: 0, usageWeek: 1280, sessionsNow: 0, actionsToday: 0, online: false,
-            },
-        ];
-
-        // ── Audit Logs (last 48h, ~80 entries) ──
         this._logs = [
             // ─ Hoy 09 marzo ─
             { ts: new Date('2026-03-09T16:40:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0052 para YPF', device: 'Notebook Lenovo' },
@@ -175,17 +134,16 @@ const AdminPanel = {
 
     // ─── HELPERS ───
     _getUserById(id) {
-        return this._users.find(u => u.id === id);
+        // TODO: Remove when audit_log uses real user references
+        return this._logUserMap[id] || null;
     },
 
     _getRoleColor(role) {
-        const map = { superadmin: '#FF4757', admin: '#00A9C1', venta: '#F28D15', pm: '#00CC88', taller: '#9B7DFF' };
-        return map[role] || '#7A8599';
+        return Data.getRoleColor(role);
     },
 
     _getRoleLabel(role) {
-        const map = { superadmin: 'Super Admin', admin: 'Admin', venta: 'Ventas', pm: 'PM', taller: 'Taller' };
-        return map[role] || role;
+        return Data.getRoleLabel(role);
     },
 
     _getActionColor(action) {
@@ -231,7 +189,7 @@ const AdminPanel = {
     },
 
     _formatDate(date) {
-        const now = new Date('2026-03-09T16:45:00');
+        const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const diff = (today - d) / 86400000;
@@ -251,7 +209,7 @@ const AdminPanel = {
         const content = document.getElementById('mainContent');
         if (!content) return;
 
-        this._generateData();
+        this._generateDummyLogs(); // TODO: Replace with real audit_log query
         this._logPage = 0;
         this._allLogsLoaded = false;
         this._logFilters = { user: '', module: '', action: '', dateFrom: '', dateTo: '' };
@@ -357,8 +315,8 @@ const AdminPanel = {
 
         switch (this._activeTab) {
             case 'dashboard':
-                container.innerHTML = this._renderDashboardTab();
-                this._attachDashboardEvents();
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+                this._loadDashboardTab();
                 break;
             case 'usuarios':
                 container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
@@ -380,8 +338,22 @@ const AdminPanel = {
     },
 
     // ═══════════════════════════════════════════
-    //  TAB 1: DASHBOARD (métricas + tabla usuarios)
+    //  TAB 1: DASHBOARD (métricas + tabla usuarios reales)
     // ═══════════════════════════════════════════
+    async _loadDashboardTab() {
+        try {
+            this._dashProfiles = await API.getProfiles();
+        } catch (err) {
+            console.error('[AdminPanel] Error loading dashboard profiles:', err);
+            this._dashProfiles = [];
+        }
+        const container = document.getElementById('admTabContent');
+        if (container) {
+            container.innerHTML = this._renderDashboardTab();
+            this._attachDashboardEvents();
+        }
+    },
+
     _renderDashboardTab() {
         return `
             ${this._renderMetrics()}
@@ -390,17 +362,12 @@ const AdminPanel = {
     },
 
     _renderMetrics() {
-        const onlineCount = this._users.filter(u => u.online).length;
-        const totalActions = this._users.reduce((s, u) => s + u.actionsToday, 0);
-
-        // Module usage count from today's logs
-        const todayLogs = this._logs.filter(l => this._formatDate(l.ts) === 'Hoy' && l.module !== 'Sistema');
-        const moduleCounts = {};
-        todayLogs.forEach(l => { moduleCounts[l.module] = (moduleCounts[l.module] || 0) + 1; });
-        const topModule = Object.entries(moduleCounts).sort((a, b) => b[1] - a[1])[0];
-
-        // Last error/denied
-        const lastError = this._logs.find(l => l.action === 'error' || l.action === 'denied');
+        const activeUsers = this._dashProfiles.filter(u => u.active).length;
+        const totalUsers = this._dashProfiles.length;
+        const activeRoles = new Set(this._dashProfiles.filter(u => u.active).map(u => u.role));
+        const rolesInUse = activeRoles.size;
+        const activeModules = Data.getModuleList().filter(m => m.status !== 'upcoming').length;
+        const totalModules = Data.getModuleList().length;
 
         return `
             <div class="admpanel-metrics">
@@ -409,19 +376,18 @@ const AdminPanel = {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <span class="admpanel-metric-value">${onlineCount}</span>
-                        <span class="admpanel-metric-label">USUARIOS ONLINE</span>
+                        <span class="admpanel-metric-value">${activeUsers}<span style="font-size:0.55em;color:var(--text-muted);">/${totalUsers}</span></span>
+                        <span class="admpanel-metric-label">USUARIOS ACTIVOS</span>
                     </div>
-                    <span class="admpanel-metric-dot online"></span>
                 </div>
 
                 <div class="admpanel-metric-card">
                     <div class="admpanel-metric-icon" style="color: #F28D15;">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <span class="admpanel-metric-value">${totalActions}</span>
-                        <span class="admpanel-metric-label">ACCIONES HOY</span>
+                        <span class="admpanel-metric-value">${rolesInUse}</span>
+                        <span class="admpanel-metric-label">ROLES EN USO</span>
                     </div>
                 </div>
 
@@ -430,17 +396,18 @@ const AdminPanel = {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <span class="admpanel-metric-value">${topModule ? topModule[0] : '—'}</span>
-                        <span class="admpanel-metric-label">MÓDULO MÁS USADO</span>
+                        <span class="admpanel-metric-value">${activeModules}<span style="font-size:0.55em;color:var(--text-muted);">/${totalModules}</span></span>
+                        <span class="admpanel-metric-label">MÓDULOS ACTIVOS</span>
                     </div>
                 </div>
 
-                <div class="admpanel-metric-card ${lastError ? 'admpanel-metric-card--alert' : ''}">
-                    <div class="admpanel-metric-icon" style="color: ${lastError ? '#FF4757' : '#7A8599'};">
+                <div class="admpanel-metric-card">
+                    <div class="admpanel-metric-icon" style="color: #7A8599;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <span class="admpanel-metric-value admpanel-metric-value--sm">${lastError ? this._formatDateTime(lastError.ts) : 'Sin errores'}</span>
+                        <!-- TODO: Conectar con tabla audit_log cuando exista -->
+                        <span class="admpanel-metric-value admpanel-metric-value--sm">—</span>
                         <span class="admpanel-metric-label">ÚLTIMO ERROR</span>
                     </div>
                 </div>
@@ -452,7 +419,7 @@ const AdminPanel = {
         return `
             <div class="admpanel-section">
                 <div class="admpanel-section-header">
-                    <h2 class="admpanel-section-title">Estadísticas de usuarios</h2>
+                    <h2 class="admpanel-section-title">Equipo</h2>
                     <div class="admpanel-search-box">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         <input type="text" class="admpanel-search-input" id="admUserSearch" placeholder="Buscar usuario…" autocomplete="off">
@@ -466,14 +433,14 @@ const AdminPanel = {
     },
 
     _renderUsersTable() {
-        let users = [...this._users];
+        let users = [...this._dashProfiles];
 
         // Filter by search
         if (this._searchQuery) {
             const q = this._searchQuery.toLowerCase();
             users = users.filter(u =>
-                u.name.toLowerCase().includes(q) ||
-                u.email.toLowerCase().includes(q) ||
+                (u.name || '').toLowerCase().includes(q) ||
+                (u.username || '').toLowerCase().includes(q) ||
                 this._getRoleLabel(u.role).toLowerCase().includes(q)
             );
         }
@@ -483,16 +450,10 @@ const AdminPanel = {
         users.sort((a, b) => {
             let va, vb;
             switch (this._sortCol) {
-                case 'name': va = a.name; vb = b.name; break;
-                case 'role': va = a.role; vb = b.role; break;
-                case 'email': va = a.email; vb = b.email; break;
-                case 'lastLogin': va = a.lastLogin.getTime(); vb = b.lastLogin.getTime(); break;
-                case 'device': va = a.device; vb = b.device; break;
-                case 'usageToday': va = a.usageToday; vb = b.usageToday; break;
-                case 'usageWeek': va = a.usageWeek; vb = b.usageWeek; break;
-                case 'sessionsNow': va = a.sessionsNow; vb = b.sessionsNow; break;
-                case 'actionsToday': va = a.actionsToday; vb = b.actionsToday; break;
-                default: va = a.name; vb = b.name;
+                case 'name': va = a.name || ''; vb = b.name || ''; break;
+                case 'role': va = a.role || ''; vb = b.role || ''; break;
+                case 'active': va = a.active ? 1 : 0; vb = b.active ? 1 : 0; break;
+                default: va = a.name || ''; vb = b.name || '';
             }
             if (typeof va === 'string') return va.localeCompare(vb) * dir;
             return (va - vb) * dir;
@@ -505,45 +466,44 @@ const AdminPanel = {
                 : '<svg class="admpanel-sort-icon active" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 9l5-5 5 5"/></svg>';
         };
 
+        if (users.length === 0) {
+            return '<div class="admpanel-log-empty">No se encontraron usuarios</div>';
+        }
+
         return `
             <table class="admpanel-table">
                 <thead>
                     <tr>
                         <th data-sort="name">Nombre ${sortIcon('name')}</th>
+                        <th>Username</th>
                         <th data-sort="role">Rol ${sortIcon('role')}</th>
-                        <th data-sort="email">Email ${sortIcon('email')}</th>
-                        <th data-sort="lastLogin">Último login ${sortIcon('lastLogin')}</th>
-                        <th data-sort="device">Dispositivo ${sortIcon('device')}</th>
-                        <th data-sort="usageToday">Uso hoy ${sortIcon('usageToday')}</th>
-                        <th data-sort="usageWeek">Uso semana ${sortIcon('usageWeek')}</th>
-                        <th data-sort="sessionsNow">Sesiones ${sortIcon('sessionsNow')}</th>
-                        <th data-sort="actionsToday">Acciones ${sortIcon('actionsToday')}</th>
+                        <th>Teléfono</th>
+                        <th data-sort="active">Estado ${sortIcon('active')}</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${users.map(u => `
-                        <tr class="admpanel-user-row ${u.online ? 'online' : ''}">
+                    ${users.map(u => {
+                        const roleColor = this._getRoleColor(u.role);
+                        return `
+                        <tr class="admpanel-user-row">
                             <td>
                                 <div class="admpanel-user-cell">
-                                    <span class="admpanel-user-avatar" style="background:${this._getRoleColor(u.role)}20; color:${this._getRoleColor(u.role)}; border: 1px solid ${this._getRoleColor(u.role)}40;">${u.initials}</span>
-                                    <span class="admpanel-user-name">${u.name}</span>
+                                    <span class="admpanel-user-avatar" style="background:${roleColor}20; color:${roleColor}; border: 1px solid ${roleColor}40;">${u.initials || '??'}</span>
+                                    <span class="admpanel-user-name">${u.name || '—'}</span>
                                 </div>
                             </td>
-                            <td><span class="admpanel-role-badge" style="background:${this._getRoleColor(u.role)}18; color:${this._getRoleColor(u.role)}; border: 1px solid ${this._getRoleColor(u.role)}35;">${this._getRoleLabel(u.role)}</span></td>
-                            <td class="admpanel-cell-muted">${u.email}</td>
-                            <td class="admpanel-cell-muted">${this._formatDateTime(u.lastLogin)}</td>
-                            <td class="admpanel-cell-muted">${u.device}</td>
-                            <td class="admpanel-cell-mono">${this._formatMinutes(u.usageToday)}</td>
-                            <td class="admpanel-cell-mono">${this._formatMinutes(u.usageWeek)}</td>
+                            <td class="admpanel-cell-mono">${u.username || '—'}</td>
+                            <td><span class="admpanel-role-badge" style="background:${roleColor}18; color:${roleColor}; border: 1px solid ${roleColor}35;">${this._getRoleLabel(u.role)}</span></td>
+                            <td class="admpanel-cell-muted">${u.telefono || '—'}</td>
                             <td>
-                                <span class="admpanel-session-badge ${u.online ? 'online' : 'offline'}">
-                                    <span class="admpanel-session-dot"></span>
-                                    ${u.sessionsNow}
+                                <span class="admpanel-status-badge ${u.active ? 'active' : 'inactive'}">
+                                    <span class="admpanel-status-dot"></span>
+                                    ${u.active ? 'Activo' : 'Inactivo'}
                                 </span>
                             </td>
-                            <td class="admpanel-cell-mono">${u.actionsToday}</td>
                         </tr>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
         `;
@@ -1503,7 +1463,8 @@ const AdminPanel = {
     //  TAB 4: AUDIT LOG
     // ═══════════════════════════════════════════
     _renderLogsTab() {
-        const userOptions = this._users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+        // TODO: Use real profiles when audit_log is connected to real data
+        const userOptions = Object.entries(this._logUserMap).map(([id, u]) => `<option value="${id}">${u.name}</option>`).join('');
         const modules = [...new Set(this._logs.map(l => l.module))].sort();
         const moduleOptions = modules.map(m => `<option value="${m}">${m}</option>`).join('');
 
@@ -1595,7 +1556,12 @@ const AdminPanel = {
         slice.forEach(log => {
             const dateLabel = this._formatDate(log.ts);
             if (dateLabel !== lastDateLabel) {
-                html += `<div class="admpanel-log-date-sep">${dateLabel === 'Hoy' ? 'Hoy — 9 marzo' : dateLabel === 'Ayer' ? 'Ayer — 8 marzo' : dateLabel}</div>`;
+                let sepLabel = dateLabel;
+                if (dateLabel === 'Hoy' || dateLabel === 'Ayer') {
+                    const d = dateLabel === 'Hoy' ? new Date() : new Date(Date.now() - 86400000);
+                    sepLabel = `${dateLabel} — ${d.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })}`;
+                }
+                html += `<div class="admpanel-log-date-sep">${sepLabel}</div>`;
                 lastDateLabel = dateLabel;
             }
 
