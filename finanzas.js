@@ -44,6 +44,21 @@ const FinanzasModule = {
     _ingresosFechaHasta: '',
     _ingresosDebounce: null,
 
+    // Egresos state
+    _egresos: [],
+    _egresosFiltered: [],
+    _egresosSearch: '',
+    _egresosSortCol: 'fecha',
+    _egresosSortDir: 'desc',
+    _egresosCatFilter: '',
+    _egresosMedioFilter: '',
+    _egresosEstadoFilter: '',
+    _egresosCuentaFilter: '',
+    _egresosFechaDesde: '',
+    _egresosFechaHasta: '',
+    _egresosSoloCF: false,
+    _egresosDebounce: null,
+
     // Lookup maps (graceful degradation)
     _proyectosMap: {},
     _clientesMap: {},
@@ -388,6 +403,48 @@ const FinanzasModule = {
                 .fin-badge-pagofacil { background: rgba(242,141,21,0.12); color: #F28D15; }
                 .fin-badge-otro { background: rgba(136,136,136,0.12); color: #888; }
 
+                /* ─── Estado egreso badges ─── */
+                .fin-badge-pagado { background: rgba(0,204,136,0.12); color: #00CC88; }
+                .fin-badge-programado { background: rgba(74,144,217,0.12); color: #4A90D9; }
+
+                /* ─── CF tag ─── */
+                .fin-cf-tag {
+                    display: inline-block;
+                    padding: 1px 6px;
+                    border-radius: 3px;
+                    background: rgba(255,209,102,0.18);
+                    color: #FFD166;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    letter-spacing: 0.5px;
+                    margin-left: 4px;
+                    vertical-align: middle;
+                }
+
+                /* ─── Toggle chip (Solo CF) ─── */
+                .fin-filter-toggle {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 5px;
+                    padding: 4px 10px;
+                    border-radius: 4px;
+                    border: 1px solid #2a2a2a;
+                    background: transparent;
+                    color: #666;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                }
+                .fin-filter-toggle:hover { border-color: #FFD166; color: #FFD166; }
+                .fin-filter-toggle.active {
+                    background: rgba(255,209,102,0.12);
+                    border-color: #FFD166;
+                    color: #FFD166;
+                }
+
                 /* ─── Filters bar ─── */
                 .fin-filters {
                     display: flex;
@@ -706,6 +763,12 @@ const FinanzasModule = {
                 await this._loadIngresos();
                 this._attachIngresosEvents();
                 break;
+            case 'egresos':
+                container.innerHTML = this._buildEgresosHTML();
+                await this._loadLookups();
+                await this._loadEgresos();
+                this._attachEgresosEvents();
+                break;
             default:
                 container.innerHTML = this._buildPlaceholder(this._activeTab);
                 break;
@@ -787,6 +850,40 @@ const FinanzasModule = {
         if (!dateStr) return '—';
         const d = new Date(dateStr + 'T12:00:00');
         return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    },
+
+    _categoriaEgreso: {
+        proveedor:      { label: 'Proveedor',       color: '#F28D15' },
+        rrhh:           { label: 'RRHH',             color: '#9B7DFF' },
+        impuesto:       { label: 'Impuesto',         color: '#E84855' },
+        servicio:       { label: 'Servicio',         color: '#4A90D9' },
+        credito_fiscal: { label: 'Crédito Fiscal',   color: '#FFD166', tag: 'CF' },
+        alquiler:       { label: 'Alquiler',         color: '#00CC88' },
+        logistica:      { label: 'Logística',        color: '#00A9C1' },
+        otro:           { label: 'Otro',             color: '#888888' },
+    },
+
+    _categoriaBadge(cat) {
+        const c = this._categoriaEgreso[cat] || { label: cat, color: '#888' };
+        let html = `<span class="fin-badge" style="background:${c.color}18;color:${c.color};">${c.label}</span>`;
+        if (c.tag) html += `<span class="fin-cf-tag">${c.tag}</span>`;
+        return html;
+    },
+
+    _estadoEgresoBadge(estado) {
+        const map = {
+            'pagado':     { cls: 'fin-badge-pagado',     label: 'Pagado' },
+            'pendiente':  { cls: 'fin-badge-pendiente',  label: 'Pendiente' },
+            'programado': { cls: 'fin-badge-programado', label: 'Programado' },
+            'anulado':    { cls: 'fin-badge-anulado',    label: 'Anulado' },
+        };
+        const m = map[estado] || { cls: '', label: estado };
+        return `<span class="fin-badge ${m.cls}">${m.label}</span>`;
+    },
+
+    _parseCFData(notas) {
+        if (!notas) return null;
+        try { return JSON.parse(notas); } catch (e) { return null; }
     },
 
     // ═══════════════════════════════════════════
@@ -1110,7 +1207,7 @@ const FinanzasModule = {
         this._activePanelData = null;
         this._activePanelTab = null;
         // Close any open side panel
-        ['finCuentasPanel', 'finIngresosPanel'].forEach(panelId => {
+        ['finCuentasPanel', 'finIngresosPanel', 'finEgresosPanel'].forEach(panelId => {
             const panel = document.getElementById(panelId);
             if (panel) {
                 panel.classList.remove('open');
@@ -1946,6 +2043,761 @@ const FinanzasModule = {
                 console.error('[Finanzas] Error guardando ingreso:', e);
                 Toast.error('Error al guardar: ' + (e.message || e));
             }
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: EGRESOS — HTML
+    // ═══════════════════════════════════════════
+
+    _buildEgresosHTML() {
+        const cuentasOpts = Object.values(this._cuentasMap)
+            .map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+        const catOpts = Object.entries(this._categoriaEgreso)
+            .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+
+        return `
+            <div class="fin-cuentas-toolbar">
+                <div class="fin-search-box">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" class="fin-search-input" id="finEgresosSearch" placeholder="Buscar concepto, destinatario…" autocomplete="off" value="${this._egresosSearch}">
+                </div>
+                ${!this._isRO ? `
+                <button class="fin-btn-new" id="finBtnNewEgreso">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Nuevo egreso
+                </button>
+                ` : ''}
+            </div>
+            <div class="fin-filters">
+                <span class="fin-filter-label">Categoría</span>
+                <select class="fin-filter-select" id="finEgrCatFilter">
+                    <option value="">Todas</option>
+                    ${catOpts}
+                </select>
+                <span class="fin-filter-label">Estado</span>
+                <select class="fin-filter-select" id="finEgrEstadoFilter">
+                    <option value="">Todos</option>
+                    <option value="pagado">Pagado</option>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="programado">Programado</option>
+                    <option value="anulado">Anulado</option>
+                </select>
+                <span class="fin-filter-label">Medio</span>
+                <select class="fin-filter-select" id="finEgrMedioFilter">
+                    <option value="">Todos</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="mercadopago">MercadoPago</option>
+                    <option value="pagofacil">PagoFácil</option>
+                    <option value="otro">Otro</option>
+                </select>
+                <span class="fin-filter-label">Cuenta</span>
+                <select class="fin-filter-select" id="finEgrCuentaFilter">
+                    <option value="">Todas</option>
+                    ${cuentasOpts}
+                </select>
+                <span class="fin-filter-label">Desde</span>
+                <input type="date" class="fin-filter-date" id="finEgrDesde" value="${this._egresosFechaDesde}">
+                <span class="fin-filter-label">Hasta</span>
+                <input type="date" class="fin-filter-date" id="finEgrHasta" value="${this._egresosFechaHasta}">
+                <button class="fin-filter-toggle ${this._egresosSoloCF ? 'active' : ''}" id="finEgrSoloCF">
+                    <span class="fin-cf-tag" style="margin:0;">CF</span> Solo CF
+                </button>
+            </div>
+            <div class="fin-body">
+                <div class="fin-main" id="finEgresosMain">
+                    <div class="fin-loading"><div class="spinner"></div> Cargando egresos…</div>
+                </div>
+                <div class="fin-side-panel" id="finEgresosPanel"></div>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: EGRESOS — DATA
+    // ═══════════════════════════════════════════
+
+    async _loadEgresos() {
+        try {
+            let query = supabaseClient
+                .from('egresos')
+                .select('*, cuentas_financieras(nombre, color)')
+                .eq('_deleted', false)
+                .order('fecha', { ascending: false });
+
+            const canal = this._getCanalFilter();
+            if (canal) query = query.eq('canal', canal);
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            this._egresos = data || [];
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
+        } catch (e) {
+            console.error('[Finanzas] Error cargando egresos:', e);
+            Toast.error('Error al cargar egresos');
+            this._egresos = [];
+            this._egresosFiltered = [];
+            this._renderEgresosTable();
+        }
+    },
+
+    _applyEgresosFilter() {
+        let items = [...this._egresos];
+
+        if (this._egresosSearch) {
+            const q = this._egresosSearch.toLowerCase();
+            items = items.filter(e =>
+                (e.concepto || '').toLowerCase().includes(q) ||
+                (e.destinatario || '').toLowerCase().includes(q) ||
+                (e.subcategoria || '').toLowerCase().includes(q) ||
+                (this._proyectosMap[e.proyecto_id] || '').toLowerCase().includes(q)
+            );
+        }
+        if (this._egresosCatFilter) items = items.filter(e => e.categoria === this._egresosCatFilter);
+        if (this._egresosMedioFilter) items = items.filter(e => e.medio === this._egresosMedioFilter);
+        if (this._egresosEstadoFilter) items = items.filter(e => e.estado === this._egresosEstadoFilter);
+        if (this._egresosCuentaFilter) items = items.filter(e => e.cuenta_id === this._egresosCuentaFilter);
+        if (this._egresosFechaDesde) items = items.filter(e => e.fecha >= this._egresosFechaDesde);
+        if (this._egresosFechaHasta) items = items.filter(e => e.fecha <= this._egresosFechaHasta);
+        if (this._egresosSoloCF) items = items.filter(e => e.categoria === 'credito_fiscal');
+
+        const col = this._egresosSortCol;
+        const dir = this._egresosSortDir === 'asc' ? 1 : -1;
+        items.sort((a, b) => {
+            let va = a[col], vb = b[col];
+            if (col === 'proyecto') { va = this._proyectosMap[a.proyecto_id] || ''; vb = this._proyectosMap[b.proyecto_id] || ''; }
+            if (col === 'cuenta') { va = (a.cuentas_financieras || {}).nombre || ''; vb = (b.cuentas_financieras || {}).nombre || ''; }
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+            if (va < vb) return -1 * dir;
+            if (va > vb) return 1 * dir;
+            return 0;
+        });
+
+        this._egresosFiltered = items;
+    },
+
+    _renderEgresosTable() {
+        const main = document.getElementById('finEgresosMain');
+        if (!main) return;
+
+        if (this._egresosFiltered.length === 0 && this._egresos.length === 0) {
+            main.innerHTML = `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">💸</div>
+                    <div class="fin-empty-text">No hay egresos registrados. Registrá el primero para empezar.</div>
+                    ${!this._isRO ? `
+                    <button class="fin-btn-new" id="finBtnNewEgresoEmpty">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Nuevo egreso
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+            document.getElementById('finBtnNewEgresoEmpty')?.addEventListener('click', () => this._showEgresoModal());
+            return;
+        }
+
+        if (this._egresosFiltered.length === 0) {
+            main.innerHTML = `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">🔍</div>
+                    <div class="fin-empty-text">Sin resultados con los filtros actuales</div>
+                </div>
+            `;
+            return;
+        }
+
+        const sortIcon = (col) => {
+            if (this._egresosSortCol !== col) return '';
+            return `<span class="fin-sort-icon">${this._egresosSortDir === 'asc' ? '▲' : '▼'}</span>`;
+        };
+
+        const total = this._egresosFiltered
+            .filter(e => e.estado !== 'anulado')
+            .reduce((s, e) => s + (parseFloat(e.monto) || 0), 0);
+
+        main.innerHTML = `
+            <div class="fin-table-wrapper">
+                <table class="fin-table">
+                    <thead>
+                        <tr>
+                            <th class="fin-th sortable" data-sort="fecha">Fecha ${sortIcon('fecha')}</th>
+                            <th class="fin-th sortable" data-sort="categoria">Categoría ${sortIcon('categoria')}</th>
+                            <th class="fin-th sortable" data-sort="destinatario">Destinatario ${sortIcon('destinatario')}</th>
+                            <th class="fin-th sortable" data-sort="proyecto">Proyecto ${sortIcon('proyecto')}</th>
+                            <th class="fin-th sortable" data-sort="concepto">Concepto ${sortIcon('concepto')}</th>
+                            <th class="fin-th sortable" data-sort="monto">Monto ${sortIcon('monto')}</th>
+                            <th class="fin-th">Medio</th>
+                            <th class="fin-th">Canal</th>
+                            <th class="fin-th sortable" data-sort="cuenta">Cuenta ${sortIcon('cuenta')}</th>
+                            <th class="fin-th sortable" data-sort="estado">Estado ${sortIcon('estado')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${this._egresosFiltered.map(e => {
+                            const proyNombre = this._proyectosMap[e.proyecto_id] || '—';
+                            const cuentaNombre = (e.cuentas_financieras || {}).nombre || '—';
+                            return `
+                            <tr class="fin-row ${this._activePanel === e.id ? 'active' : ''}" data-id="${e.id}">
+                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(e.fecha)}</td>
+                                <td class="fin-td">${this._categoriaBadge(e.categoria)}</td>
+                                <td class="fin-td">${e.destinatario || '<span class="fin-td-muted">—</span>'}</td>
+                                <td class="fin-td">${proyNombre}</td>
+                                <td class="fin-td fin-td-name">${e.concepto}</td>
+                                <td class="fin-td fin-td-money" style="color:#E84855;">${this._formatMoney(e.monto)}</td>
+                                <td class="fin-td">${this._medioBadge(e.medio)}</td>
+                                <td class="fin-td">${this._canalBadge(e.canal)}</td>
+                                <td class="fin-td">${cuentaNombre}</td>
+                                <td class="fin-td">${this._estadoEgresoBadge(e.estado)}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="fin-record-count">
+                ${this._egresosFiltered.length} egreso${this._egresosFiltered.length !== 1 ? 's' : ''}
+                — Total: <strong style="color:#E84855;">${this._formatMoney(total)}</strong>
+            </div>
+        `;
+
+        main.querySelectorAll('.fin-th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sort;
+                if (this._egresosSortCol === col) {
+                    this._egresosSortDir = this._egresosSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._egresosSortCol = col;
+                    this._egresosSortDir = col === 'fecha' ? 'desc' : 'asc';
+                }
+                this._applyEgresosFilter();
+                this._renderEgresosTable();
+            });
+        });
+
+        main.querySelectorAll('.fin-row').forEach(row => {
+            row.addEventListener('click', () => this._openEgresoPanel(row.dataset.id));
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: EGRESOS — SIDE PANEL
+    // ═══════════════════════════════════════════
+
+    _openEgresoPanel(id) {
+        const egreso = this._egresos.find(e => e.id === id);
+        if (!egreso) return;
+
+        this._activePanel = id;
+        this._activePanelData = egreso;
+        this._activePanelTab = 'egresos';
+
+        const panel = document.getElementById('finEgresosPanel');
+        if (!panel) return;
+
+        const proyNombre = this._proyectosMap[egreso.proyecto_id] || '—';
+        const cuentaNombre = (egreso.cuentas_financieras || {}).nombre || '—';
+        const cuentaColor = (egreso.cuentas_financieras || {}).color || '#4A90D9';
+        const cfData = egreso.categoria === 'credito_fiscal' ? this._parseCFData(egreso.notas) : null;
+
+        panel.innerHTML = `
+            <div class="fin-panel-inner">
+                <div class="fin-panel-header">
+                    <div class="fin-panel-color-bar" style="background:${(this._categoriaEgreso[egreso.categoria] || {}).color || '#888'}"></div>
+                    <button class="fin-panel-close" id="finEgrPanelClose">&times;</button>
+                    <div class="fin-panel-name">${egreso.concepto}</div>
+                    <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                        ${this._categoriaBadge(egreso.categoria)}
+                        ${this._medioBadge(egreso.medio)}
+                        ${this._canalBadge(egreso.canal)}
+                        ${this._estadoEgresoBadge(egreso.estado)}
+                    </div>
+                    <div style="font-family:var(--font-mono,'Space Mono',monospace); font-size:1.3rem; font-weight:700; color:#E84855; margin-top:12px;">
+                        ${this._formatMoney(egreso.monto)}
+                    </div>
+                </div>
+
+                <div class="fin-panel-section">
+                    <div class="fin-section-title">Detalle</div>
+                    <div class="fin-info-grid">
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Fecha</span>
+                            <span class="fin-info-value">${this._formatDate(egreso.fecha)}</span>
+                        </div>
+                        ${egreso.destinatario ? `
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Destinatario</span>
+                            <span class="fin-info-value">${egreso.destinatario}</span>
+                        </div>
+                        ` : ''}
+                        ${egreso.subcategoria ? `
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Subcategoría</span>
+                            <span class="fin-info-value">${egreso.subcategoria}</span>
+                        </div>
+                        ` : ''}
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Proyecto</span>
+                            <span class="fin-info-value">${proyNombre}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Cuenta</span>
+                            <span class="fin-info-value">${cuentaNombre}</span>
+                        </div>
+                        ${egreso.estado === 'programado' && egreso.fecha_programada ? `
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Fecha prog.</span>
+                            <span class="fin-info-value">${this._formatDate(egreso.fecha_programada)}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                ${cfData ? `
+                <div class="fin-panel-section">
+                    <div class="fin-section-title"><span class="fin-cf-tag" style="margin-right:6px;">CF</span> Crédito Fiscal</div>
+                    <div class="fin-info-grid">
+                        ${cfData.proveedor_cf ? `
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Proveedor</span>
+                            <span class="fin-info-value">${cfData.proveedor_cf}</span>
+                        </div>
+                        ` : ''}
+                        ${cfData.cuit_cf ? `
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">CUIT</span>
+                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${cfData.cuit_cf}</span>
+                        </div>
+                        ` : ''}
+                        ${cfData.nro_fc ? `
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Nro. FC</span>
+                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${cfData.nro_fc}</span>
+                        </div>
+                        ` : ''}
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Neto</span>
+                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.85rem;">${this._formatMoney(cfData.neto)}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">IVA</span>
+                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.85rem;">${this._formatMoney(cfData.iva)}</span>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
+
+                ${!cfData && egreso.notas ? `
+                <div class="fin-panel-section">
+                    <div class="fin-section-title">Notas</div>
+                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${egreso.notas}</div>
+                </div>
+                ` : ''}
+
+                <div class="fin-panel-section">
+                    <div class="fin-section-title">Registro</div>
+                    <div class="fin-info-grid">
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Creado</span>
+                            <span class="fin-info-value" style="font-size:0.8rem;color:#888;">${new Date(egreso.created_at).toLocaleDateString('es-AR')}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Actualizado</span>
+                            <span class="fin-info-value" style="font-size:0.8rem;color:#888;">${new Date(egreso.updated_at).toLocaleDateString('es-AR')}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${!this._isRO ? `
+                <div class="fin-panel-actions">
+                    <button class="fin-panel-btn" id="finEgrPanelEdit">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                        Editar
+                    </button>
+                    ${egreso.estado !== 'anulado' ? `
+                    <button class="fin-panel-btn fin-panel-btn-warn" id="finEgrPanelAnular">
+                        Anular
+                    </button>
+                    ` : ''}
+                    ${Auth.isSuperAdmin() ? `
+                    <button class="fin-panel-btn fin-panel-btn-danger" id="finEgrPanelDelete">
+                        Eliminar
+                    </button>
+                    ` : ''}
+                </div>
+                ` : ''}
+            </div>
+        `;
+
+        panel.classList.add('open');
+        document.querySelectorAll('#finEgresosMain .fin-row').forEach(r => r.classList.toggle('active', r.dataset.id === id));
+
+        document.getElementById('finEgrPanelClose')?.addEventListener('click', () => this._closeEgresoPanel());
+        document.getElementById('finEgrPanelEdit')?.addEventListener('click', () => this._showEgresoModal(egreso));
+
+        document.getElementById('finEgrPanelAnular')?.addEventListener('click', async () => {
+            const ok = await Modal.confirm({
+                title: 'Anular egreso',
+                message: `¿Seguro que querés anular <strong>"${egreso.concepto}"</strong> por ${this._formatMoney(egreso.monto)}?`,
+                confirmText: 'Anular',
+                cancelText: 'Cancelar',
+            });
+            if (ok) {
+                try {
+                    const { error } = await supabaseClient.from('egresos').update({ estado: 'anulado' }).eq('id', egreso.id);
+                    if (error) throw error;
+                    Toast.success('Egreso anulado');
+                    this._closeEgresoPanel();
+                    await this._loadEgresos();
+                } catch (err) {
+                    Toast.error('Error al anular egreso');
+                }
+            }
+        });
+
+        document.getElementById('finEgrPanelDelete')?.addEventListener('click', async () => {
+            const ok = await Modal.confirm({
+                title: 'Eliminar egreso',
+                message: `¿Seguro que querés eliminar <strong>"${egreso.concepto}"</strong>?`,
+                confirmText: 'Eliminar',
+                cancelText: 'Cancelar',
+                danger: true,
+            });
+            if (ok) {
+                try {
+                    const { error } = await supabaseClient.from('egresos').update({ _deleted: true }).eq('id', egreso.id);
+                    if (error) throw error;
+                    Toast.success('Egreso eliminado');
+                    this._closeEgresoPanel();
+                    await this._loadEgresos();
+                } catch (err) {
+                    Toast.error('Error al eliminar egreso');
+                }
+            }
+        });
+
+        if (this._panelEscHandler) document.removeEventListener('keydown', this._panelEscHandler);
+        this._panelEscHandler = (e) => { if (e.key === 'Escape') this._closeEgresoPanel(); };
+        document.addEventListener('keydown', this._panelEscHandler);
+    },
+
+    _closeEgresoPanel() {
+        this._activePanel = null;
+        this._activePanelData = null;
+        this._activePanelTab = null;
+        const panel = document.getElementById('finEgresosPanel');
+        if (panel) { panel.classList.remove('open'); panel.innerHTML = ''; }
+        document.querySelectorAll('#finEgresosMain .fin-row.active').forEach(r => r.classList.remove('active'));
+        if (this._panelEscHandler) { document.removeEventListener('keydown', this._panelEscHandler); this._panelEscHandler = null; }
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: EGRESOS — MODAL CREATE/EDIT
+    // ═══════════════════════════════════════════
+
+    _showEgresoModal(egreso = null) {
+        const isEdit = !!egreso;
+        const title = isEdit ? 'Editar egreso' : 'Nuevo egreso';
+        const e = egreso || {};
+
+        const today = new Date().toISOString().slice(0, 10);
+        const defaultCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
+        const cfData = (isEdit && e.categoria === 'credito_fiscal') ? this._parseCFData(e.notas) : null;
+
+        const proyKeys = Object.keys(this._proyectosMap);
+        const proyOptions = proyKeys.length > 0
+            ? `<select class="fin-form-select" id="finEgrFormProyecto">
+                <option value="">— Sin proyecto —</option>
+                ${proyKeys.map(k => `<option value="${k}" ${e.proyecto_id === k ? 'selected' : ''}>${this._proyectosMap[k]}</option>`).join('')}
+               </select>`
+            : `<input type="text" class="fin-form-input" id="finEgrFormProyecto" value="" placeholder="(sin tabla proyectos)" disabled>`;
+
+        const cuentasArr = Object.entries(this._cuentasMap);
+        const cuentaOptions = cuentasArr.map(([id, c]) =>
+            `<option value="${id}" ${e.cuenta_id === id ? 'selected' : ''}>${c.nombre}</option>`
+        ).join('');
+
+        const catOptions = Object.entries(this._categoriaEgreso)
+            .map(([k, v]) => `<option value="${k}" ${e.categoria === k ? 'selected' : ''}>${v.label}</option>`).join('');
+
+        const isCF = e.categoria === 'credito_fiscal';
+        const isProg = e.estado === 'programado';
+
+        Modal.open({
+            title,
+            size: 'lg',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Fecha *</label>
+                            <input type="date" class="fin-form-input" id="finEgrFormFecha" value="${e.fecha || today}">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Categoría *</label>
+                            <select class="fin-form-select" id="finEgrFormCat">${catOptions}</select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Monto *</label>
+                            <input type="number" class="fin-form-input" id="finEgrFormMonto" value="${e.monto || ''}" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Subcategoría</label>
+                            <input type="text" class="fin-form-input" id="finEgrFormSubcat" value="${e.subcategoria || ''}" placeholder="Monotributo, Alquiler depósito…">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Destinatario</label>
+                            <input type="text" class="fin-form-input" id="finEgrFormDest" value="${e.destinatario || ''}" placeholder="Nombre proveedor, empleado…">
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Concepto *</label>
+                        <input type="text" class="fin-form-input" id="finEgrFormConcepto" value="${e.concepto || ''}" placeholder="Descripción del pago">
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Proyecto</label>
+                            ${proyOptions}
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Medio *</label>
+                            <select class="fin-form-select" id="finEgrFormMedio">
+                                <option value="transferencia" ${e.medio === 'transferencia' ? 'selected' : ''}>Transferencia</option>
+                                <option value="efectivo" ${e.medio === 'efectivo' ? 'selected' : ''}>Efectivo</option>
+                                <option value="cheque" ${e.medio === 'cheque' ? 'selected' : ''}>Cheque</option>
+                                <option value="mercadopago" ${e.medio === 'mercadopago' ? 'selected' : ''}>MercadoPago</option>
+                                <option value="pagofacil" ${e.medio === 'pagofacil' ? 'selected' : ''}>PagoFácil</option>
+                                <option value="otro" ${e.medio === 'otro' ? 'selected' : ''}>Otro</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Canal *</label>
+                            <select class="fin-form-select" id="finEgrFormCanal">
+                                <option value="oficial" ${(e.canal || defaultCanal) === 'oficial' ? 'selected' : ''}>Oficial</option>
+                                <option value="interno" ${(e.canal || defaultCanal) === 'interno' ? 'selected' : ''}>Interno</option>
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cuenta origen</label>
+                            <select class="fin-form-select" id="finEgrFormCuenta">
+                                <option value="">— Sin cuenta —</option>
+                                ${cuentaOptions}
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Estado</label>
+                            <select class="fin-form-select" id="finEgrFormEstado">
+                                <option value="pagado" ${(e.estado || 'pagado') === 'pagado' ? 'selected' : ''}>Pagado</option>
+                                <option value="pendiente" ${e.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                                <option value="programado" ${e.estado === 'programado' ? 'selected' : ''}>Programado</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="finEgrProgRow" class="fin-form-group" style="display:${isProg ? 'flex' : 'none'};">
+                        <label class="fin-form-label">Fecha programada</label>
+                        <input type="date" class="fin-form-input" id="finEgrFormFechaProg" value="${e.fecha_programada || ''}">
+                    </div>
+                    <div id="finEgrCFSection" style="display:${isCF ? 'block' : 'none'}; border:1px solid rgba(255,209,102,0.2); border-radius:6px; padding:12px; margin-top:4px;">
+                        <div style="font-family:var(--font-mono,'Space Mono',monospace); font-size:0.72rem; color:#FFD166; font-weight:700; margin-bottom:10px;">
+                            <span class="fin-cf-tag" style="margin-right:4px;">CF</span> DATOS CRÉDITO FISCAL
+                        </div>
+                        <div class="fin-form-row">
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Proveedor emisor</label>
+                                <input type="text" class="fin-form-input" id="finEgrCFProv" value="${(cfData || {}).proveedor_cf || ''}" placeholder="Razón social">
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">CUIT</label>
+                                <input type="text" class="fin-form-input" id="finEgrCFCuit" value="${(cfData || {}).cuit_cf || ''}" placeholder="30-XXXXXXXX-X">
+                            </div>
+                        </div>
+                        <div class="fin-form-row">
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Nro. Factura</label>
+                                <input type="text" class="fin-form-input" id="finEgrCFNro" value="${(cfData || {}).nro_fc || ''}" placeholder="0001-00000001">
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Neto</label>
+                                <input type="number" class="fin-form-input" id="finEgrCFNeto" value="${(cfData || {}).neto || ''}" step="0.01" placeholder="Auto">
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">IVA</label>
+                                <input type="number" class="fin-form-input" id="finEgrCFIva" value="${(cfData || {}).iva || ''}" step="0.01" placeholder="Auto">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Notas</label>
+                        <textarea class="fin-form-textarea" id="finEgrFormNotas" placeholder="Notas internas…">${(!isCF && e.notas) ? e.notas : ''}</textarea>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="finBtnSaveEgreso">${isEdit ? 'Guardar' : 'Registrar'}</button>
+            `,
+        });
+
+        // Toggle CF section on category change
+        const catSelect = document.getElementById('finEgrFormCat');
+        const cfSection = document.getElementById('finEgrCFSection');
+        catSelect?.addEventListener('change', () => {
+            const show = catSelect.value === 'credito_fiscal';
+            if (cfSection) cfSection.style.display = show ? 'block' : 'none';
+        });
+
+        // Toggle fecha programada
+        const estadoSelect = document.getElementById('finEgrFormEstado');
+        const progRow = document.getElementById('finEgrProgRow');
+        estadoSelect?.addEventListener('change', () => {
+            if (progRow) progRow.style.display = estadoSelect.value === 'programado' ? 'flex' : 'none';
+        });
+
+        // Auto-calc neto/IVA when monto changes
+        const montoInput = document.getElementById('finEgrFormMonto');
+        montoInput?.addEventListener('input', () => {
+            if (catSelect?.value !== 'credito_fiscal') return;
+            const monto = parseFloat(montoInput.value) || 0;
+            const neto = Math.round((monto / 1.21) * 100) / 100;
+            const iva = Math.round((monto - neto) * 100) / 100;
+            const netoEl = document.getElementById('finEgrCFNeto');
+            const ivaEl = document.getElementById('finEgrCFIva');
+            if (netoEl && !netoEl._userEdited) netoEl.value = neto || '';
+            if (ivaEl && !ivaEl._userEdited) ivaEl.value = iva || '';
+        });
+
+        // Mark neto/IVA as manually edited
+        document.getElementById('finEgrCFNeto')?.addEventListener('input', function() { this._userEdited = true; });
+        document.getElementById('finEgrCFIva')?.addEventListener('input', function() { this._userEdited = true; });
+
+        // Save
+        document.getElementById('finBtnSaveEgreso')?.addEventListener('click', async () => {
+            const fecha = document.getElementById('finEgrFormFecha')?.value;
+            const categoria = document.getElementById('finEgrFormCat')?.value;
+            const monto = parseFloat(document.getElementById('finEgrFormMonto')?.value);
+            const concepto = document.getElementById('finEgrFormConcepto')?.value.trim();
+            const subcategoria = document.getElementById('finEgrFormSubcat')?.value.trim() || null;
+            const destinatario = document.getElementById('finEgrFormDest')?.value.trim() || null;
+            const medio = document.getElementById('finEgrFormMedio')?.value;
+            const canal = document.getElementById('finEgrFormCanal')?.value;
+            const cuenta_id = document.getElementById('finEgrFormCuenta')?.value || null;
+            const estado = document.getElementById('finEgrFormEstado')?.value;
+            const fecha_programada = estado === 'programado' ? (document.getElementById('finEgrFormFechaProg')?.value || null) : null;
+
+            const proyEl = document.getElementById('finEgrFormProyecto');
+            const proyecto_id = (proyEl && proyEl.tagName === 'SELECT') ? (proyEl.value || null) : null;
+
+            if (!fecha || !concepto || !monto || isNaN(monto) || !categoria) {
+                Toast.warning('Fecha, categoría, concepto y monto son obligatorios');
+                return;
+            }
+
+            // Build notas
+            let notas = null;
+            if (categoria === 'credito_fiscal') {
+                const cfPayload = {
+                    proveedor_cf: document.getElementById('finEgrCFProv')?.value.trim() || null,
+                    cuit_cf: document.getElementById('finEgrCFCuit')?.value.trim() || null,
+                    nro_fc: document.getElementById('finEgrCFNro')?.value.trim() || null,
+                    neto: parseFloat(document.getElementById('finEgrCFNeto')?.value) || null,
+                    iva: parseFloat(document.getElementById('finEgrCFIva')?.value) || null,
+                };
+                notas = JSON.stringify(cfPayload);
+            } else {
+                notas = document.getElementById('finEgrFormNotas')?.value.trim() || null;
+            }
+
+            const payload = {
+                fecha, categoria, subcategoria, destinatario, concepto,
+                monto, medio, canal, cuenta_id, estado, fecha_programada,
+                proyecto_id, notas,
+            };
+
+            try {
+                if (isEdit) {
+                    const { error } = await supabaseClient.from('egresos').update(payload).eq('id', egreso.id);
+                    if (error) throw error;
+                    Toast.success('Egreso actualizado');
+                } else {
+                    payload.created_by = Auth.getUser()?.uid || null;
+                    const { error } = await supabaseClient.from('egresos').insert([payload]);
+                    if (error) throw error;
+                    Toast.success('Egreso registrado');
+                }
+
+                Modal.closeAll();
+                await this._loadEgresos();
+                if (isEdit && egreso.id) this._openEgresoPanel(egreso.id);
+            } catch (err) {
+                console.error('[Finanzas] Error guardando egreso:', err);
+                Toast.error('Error al guardar: ' + (err.message || err));
+            }
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: EGRESOS — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachEgresosEvents() {
+        const searchInput = document.getElementById('finEgresosSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                clearTimeout(this._egresosDebounce);
+                this._egresosDebounce = setTimeout(() => {
+                    this._egresosSearch = searchInput.value.trim();
+                    this._applyEgresosFilter();
+                    this._renderEgresosTable();
+                }, 300);
+            });
+        }
+
+        document.getElementById('finBtnNewEgreso')?.addEventListener('click', () => this._showEgresoModal());
+
+        document.getElementById('finEgrCatFilter')?.addEventListener('change', (ev) => {
+            this._egresosCatFilter = ev.target.value;
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
+        });
+        document.getElementById('finEgrEstadoFilter')?.addEventListener('change', (ev) => {
+            this._egresosEstadoFilter = ev.target.value;
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
+        });
+        document.getElementById('finEgrMedioFilter')?.addEventListener('change', (ev) => {
+            this._egresosMedioFilter = ev.target.value;
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
+        });
+        document.getElementById('finEgrCuentaFilter')?.addEventListener('change', (ev) => {
+            this._egresosCuentaFilter = ev.target.value;
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
+        });
+        document.getElementById('finEgrDesde')?.addEventListener('change', (ev) => {
+            this._egresosFechaDesde = ev.target.value;
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
+        });
+        document.getElementById('finEgrHasta')?.addEventListener('change', (ev) => {
+            this._egresosFechaHasta = ev.target.value;
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
+        });
+        document.getElementById('finEgrSoloCF')?.addEventListener('click', (ev) => {
+            this._egresosSoloCF = !this._egresosSoloCF;
+            ev.currentTarget.classList.toggle('active', this._egresosSoloCF);
+            this._applyEgresosFilter();
+            this._renderEgresosTable();
         });
     },
 
