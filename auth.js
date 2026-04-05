@@ -56,11 +56,33 @@ const Auth = {
     },
 
     // ─── ROLE-BASED ACCESS ───
+    // Priority: customPermissions → _rolePermissions (Supabase) → Data.rolePermissions (fallback)
     hasAccess(moduleId) {
+        return this.getAccessLevel(moduleId) !== 'none';
+    },
+
+    // ─── ACCESS LEVEL: "write" | "read" | "none" ───
+    getAccessLevel(moduleId) {
         const user = this.getUser();
-        if (!user) return false;
-        const allowed = user.customPermissions || Data.rolePermissions[user.role] || [];
-        return allowed.includes(moduleId);
+        if (!user) return 'none';
+
+        // 1) Custom per-user override (array of module IDs = write access)
+        if (user.customPermissions) {
+            return user.customPermissions.includes(moduleId) ? 'write' : 'none';
+        }
+
+        // 2) Supabase roles table cache (JSONB: { moduleId: "write"|"read"|"none" })
+        if (user._rolePermissions) {
+            const level = user._rolePermissions[moduleId];
+            if (level === 'write' || level === 'read') return level;
+            return 'none';
+        }
+
+        // 3) Fallback to Data.rolePermissions (offline / roles query failed)
+        const allowed = Data.rolePermissions[user.role] || [];
+        if (!allowed.includes(moduleId)) return 'none';
+        const readOnly = Data.readOnlyPermissions[user.role] || [];
+        return readOnly.includes(moduleId) ? 'read' : 'write';
     },
 
     // ─── SUPER ADMIN CHECK (solo Fede) ───
@@ -100,7 +122,8 @@ const Auth = {
                 .eq('id', userId)
                 .single();
             if (error || !data) return null;
-            return {
+
+            const profile = {
                 id: data.username,
                 name: data.name,
                 role: data.role,
@@ -109,7 +132,29 @@ const Auth = {
                 customPermissions: data.custom_permissions || null,
                 active: data.active !== false,
                 telefono: data.telefono || '',
+                // These will be populated from the roles table
+                _rolePermissions: null,
+                _roleLabel: null,
+                _roleColor: null,
             };
+
+            // Fetch role definition from Supabase roles table
+            try {
+                const { data: roleData, error: roleError } = await supabaseClient
+                    .from('roles')
+                    .select('permissions, label, color')
+                    .eq('id', data.role)
+                    .single();
+                if (!roleError && roleData) {
+                    profile._rolePermissions = roleData.permissions || {};
+                    profile._roleLabel = roleData.label || null;
+                    profile._roleColor = roleData.color || null;
+                }
+            } catch (roleErr) {
+                console.warn('[Auth] Could not fetch role from Supabase, using Data fallback:', roleErr);
+            }
+
+            return profile;
         } catch (e) {
             console.error('[Auth] Fetch profile error:', e);
             return null;

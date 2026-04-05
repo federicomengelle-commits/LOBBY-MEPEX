@@ -42,7 +42,6 @@ const Router = {
             'calendario':       { render: () => CalendarioOperativo.render(), requiresAuth: true },
             'perfil':           { render: () => Settings.renderProfile(), requiresAuth: true },
             'admin-panel':      { render: () => AdminPanel.render(), requiresAuth: true, superadminOnly: true },
-            'admin-usuarios':   { render: () => Settings.renderAdminUsers(), requiresAuth: true, adminOnly: true },
             'notificaciones':   { render: () => Settings.renderNotifications(), requiresAuth: true },
 
             // ── Comercial ──

@@ -10,9 +10,11 @@
 
 const Data = {
 
-    // ─── PERMISOS POR ROL ───
+    // ─── PERMISOS POR ROL (FALLBACK OFFLINE) ───
+    // Fuente de verdad: tabla `roles` en Supabase (permissions JSONB).
+    // Este mapa se usa como fallback si la query a Supabase falla.
     // superadmin: Fede — todo + admin panel
-    // admin: Lelean, Sofi, Ana*, AleTec*, Budie* — todo menos admin panel
+    // admin: Lelean, Sofi — todo menos admin panel
     // venta: Noe — comercial + operativo con escritura
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
@@ -24,8 +26,9 @@ const Data = {
         taller:     ['proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
     },
 
-    // ─── PERMISOS DE SOLO LECTURA ───
-    // Módulos donde el rol tiene acceso pero solo de consulta (no edita)
+    // ─── PERMISOS DE SOLO LECTURA (FALLBACK OFFLINE) ───
+    // Fuente de verdad: tabla `roles` en Supabase (permissions JSONB, valor "read").
+    // Este mapa se usa como fallback si la query a Supabase falla.
     readOnlyPermissions: {
         superadmin: [],
         admin:      [],
@@ -498,7 +501,26 @@ const Data = {
     },
 
     getRoleLabel(role) {
+        // Use Supabase cache if available
+        const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+        if (user && user.role === role && user._roleLabel) return user._roleLabel;
         return this.roleLabels[role] || role;
+    },
+
+    // ─── COLOR DEL ROL ───
+    _roleColors: {
+        superadmin: '#FF4757',
+        admin: '#00A9C1',
+        venta: '#F28D15',
+        pm: '#00CC88',
+        taller: '#9B7DFF',
+    },
+
+    getRoleColor(role) {
+        // Use Supabase cache if available
+        const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+        if (user && user.role === role && user._roleColor) return user._roleColor;
+        return this._roleColors[role] || '#7A8599';
     },
 
     // ─── BUSCADOR: buscar en módulos y secciones ───
