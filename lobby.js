@@ -625,9 +625,9 @@ const Lobby = {
             if (data && data.length > 0) {
                 activities = data.map(log => ({
                     time: this._timeAgo(new Date(log.created_at)),
-                    user: log.username || 'Sistema',
+                    user: log.user_name || 'Sistema',
                     action: log.action || '',
-                    detail: log.detail || '',
+                    detail: (log.details?.message) || '',
                     icon: this._actionIcon(log.action),
                     color: 'var(--primary)',
                 }));

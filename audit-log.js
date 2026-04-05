@@ -4,6 +4,10 @@
    AuditLog.record() — fire-and-forget insert
    into audit_log table in Supabase.
    Heartbeat — updates last_seen_at every 2 min.
+
+   Columnas reales de audit_log:
+   id, user_id, user_name, user_email, action, module,
+   table_name, record_id, details (jsonb), tipo, ip_address, created_at
    ============================================= */
 
 const AuditLog = {
@@ -14,13 +18,14 @@ const AuditLog = {
             const user = Auth.getUser();
             const row = {
                 user_id: user?.uid || null,
-                username: user?.name || 'unknown',
+                user_name: user?.name || 'unknown',
+                user_email: user?.email || null,
                 action,
-                module,
-                detail: detail || null,
-                entity_type: entityType || null,
-                entity_id: entityId || null,
-                device: this._parseDevice(),
+                module: module || null,
+                table_name: entityType || null,
+                record_id: entityId || null,
+                details: detail ? { message: detail, device: this._parseDevice() } : { device: this._parseDevice() },
+                tipo: 'info',
             };
 
             const { error } = await supabaseClient
@@ -63,9 +68,7 @@ const AuditLog = {
 
     startHeartbeat() {
         this.stopHeartbeat();
-        // Immediate first beat
         this._beat();
-        // Every 2 minutes
         this._heartbeatInterval = setInterval(() => this._beat(), 2 * 60 * 1000);
     },
 
@@ -96,7 +99,7 @@ const AuditLog = {
     isUserOnline(lastSeenAt) {
         if (!lastSeenAt) return false;
         const diff = Date.now() - new Date(lastSeenAt).getTime();
-        return diff < 5 * 60 * 1000; // 5 minutos
+        return diff < 5 * 60 * 1000;
     },
 
     // ═══════════════════════════════════════
@@ -107,12 +110,14 @@ const AuditLog = {
             const user = Auth.getUser();
             await supabaseClient.from('audit_log').insert({
                 user_id: user?.uid || null,
-                username: user?.name || 'anonimo',
-                entity_type: tableName,
-                entity_id: recordId,
+                user_name: user?.name || 'anonimo',
+                user_email: user?.email || null,
+                table_name: tableName,
+                record_id: recordId,
                 action: action,
-                detail: JSON.stringify(details),
+                details: details,
                 module: (typeof Modules !== 'undefined' && Modules.currentModule?.id) || null,
+                tipo: 'info',
             });
         } catch (error) {
             console.warn('[AuditLog] no se pudo registrar:', error.message);
@@ -122,7 +127,7 @@ const AuditLog = {
     async getHistory(tableName, recordId, limit = 20) {
         const { data, error } = await supabaseClient
             .from('audit_log').select('*')
-            .eq('entity_type', tableName).eq('entity_id', recordId)
+            .eq('table_name', tableName).eq('record_id', recordId)
             .order('created_at', { ascending: false }).limit(limit);
         return error ? [] : data;
     },
@@ -152,7 +157,7 @@ const AuditLog = {
         }
 
         try {
-            const details = typeof entry.detail === 'string' ? JSON.parse(entry.detail || '{}') : {};
+            const details = entry.details || {};
             switch (entry.action) {
                 case 'update': {
                     const oldValues = {};
@@ -161,21 +166,21 @@ const AuditLog = {
                     } else if (details.old) {
                         Object.assign(oldValues, details.old);
                     }
-                    await supabaseClient.from(entry.entity_type).update(oldValues).eq('id', entry.entity_id);
+                    await supabaseClient.from(entry.table_name).update(oldValues).eq('id', entry.record_id);
                     break;
                 }
                 case 'delete':
-                    await supabaseClient.from(entry.entity_type).update({ _deleted: false }).eq('id', entry.entity_id);
+                    await supabaseClient.from(entry.table_name).update({ _deleted: false }).eq('id', entry.record_id);
                     break;
                 case 'create':
-                    await supabaseClient.from(entry.entity_type).update({ _deleted: true }).eq('id', entry.entity_id);
+                    await supabaseClient.from(entry.table_name).update({ _deleted: true }).eq('id', entry.record_id);
                     break;
                 default:
                     Toast.warning('Tipo de accion no revertible');
                     return false;
             }
 
-            await this.log(entry.entity_type, entry.entity_id, 'revert_from_history', {
+            await this.log(entry.table_name, entry.record_id, 'revert_from_history', {
                 original_audit_id: auditEntryId,
                 original_action: entry.action,
                 reverted_details: details,

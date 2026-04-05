@@ -1477,7 +1477,7 @@ const AdminPanel = {
         try {
             const [profiles, distinctUsers, distinctModules] = await Promise.all([
                 API.getProfiles(),
-                supabaseClient.from('audit_log').select('username, user_id').order('username'),
+                supabaseClient.from('audit_log').select('user_name, user_id').order('user_name'),
                 supabaseClient.from('audit_log').select('module').order('module'),
             ]);
 
@@ -1491,13 +1491,13 @@ const AdminPanel = {
             const userMap = new Map();
             if (distinctUsers.data) {
                 distinctUsers.data.forEach(r => {
-                    if (r.username && !userMap.has(r.username)) {
-                        userMap.set(r.username, r.user_id);
+                    if (r.user_name && !userMap.has(r.user_name)) {
+                        userMap.set(r.user_name, r.user_id);
                     }
                 });
             }
             this._logDistinctUsers = [...userMap.entries()].map(([name, uid]) => {
-                return { username: name, name };
+                return { user_name: name, name };
             }).sort((a, b) => a.name.localeCompare(b.name));
 
             const moduleSet = new Set();
@@ -1523,7 +1523,7 @@ const AdminPanel = {
 
     _renderLogsTab() {
         const userOptions = (this._logDistinctUsers || []).map(u =>
-            `<option value="${u.username}">${u.name}</option>`
+            `<option value="${u.user_name}">${u.name}</option>`
         ).join('');
         const moduleOptions = (this._logDistinctModules || []).map(m =>
             `<option value="${m}">${m}</option>`
@@ -1579,7 +1579,7 @@ const AdminPanel = {
             .range(offset, offset + limit - 1);
 
         const f = this._logFilters;
-        if (f.user) query = query.eq('username', f.user);
+        if (f.user) query = query.eq('user_name', f.user);
         if (f.module) query = query.eq('module', f.module);
         if (f.action) query = query.eq('action', f.action);
         if (f.dateFrom) query = query.gte('created_at', f.dateFrom + 'T00:00:00');
@@ -1632,13 +1632,14 @@ const AdminPanel = {
             }
 
             const profile = this._logProfilesMap[log.user_id];
-            const userName = profile ? profile.name.split(' ')[0] : (log.username || 'unknown').split(' ')[0];
-            const userInitials = profile ? profile.initials : (log.username || '??').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+            const userName = profile ? profile.name.split(' ')[0] : (log.user_name || 'unknown').split(' ')[0];
+            const userInitials = profile ? profile.initials : (log.user_name || '??').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
             const roleColor = profile ? this._getRoleColor(profile.role) : '#7A8599';
-            const modLabel = log.module || log.entity_type || 'sistema';
+            const modLabel = log.module || log.table_name || 'sistema';
             const moduleColor = this._getModuleColor(modLabel);
-            const detail = log.detail || `${this._getActionLabel(log.action)} en ${modLabel}`;
-            const device = log.device || '';
+            const details = log.details || {};
+            const detail = details.message || `${this._getActionLabel(log.action)} en ${modLabel}`;
+            const device = details.device || '';
             const actionLabel = log.action === 'update' ? 'edit' : log.action;
 
             html += `
