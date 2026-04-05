@@ -1,14 +1,15 @@
 /* =============================================
    MEPEX Lobby — Admin Panel (Panel de Control)
    =============================================
-   Dashboard de actividad del sistema. Solo ADMIN.
-   Secciones: métricas rápidas, estadísticas de
-   usuarios, feed de audit logs.
+   Dashboard de actividad del sistema. Solo SUPERADMIN.
+   4 tabs: Dashboard, Usuarios, Roles y Permisos,
+   Audit Log.
    ============================================= */
 
 const AdminPanel = {
 
     // ─── STATE ───
+    _activeTab: 'dashboard',
     _logs: [],
     _users: [],
     _sortCol: 'name',
@@ -233,7 +234,9 @@ const AdminPanel = {
         return `${this._formatDate(date)} ${this._formatTime(date)}`;
     },
 
-    // ─── RENDER ───
+    // ═══════════════════════════════════════════
+    //  RENDER — Module shell with 4 tabs
+    // ═══════════════════════════════════════════
     render() {
         const content = document.getElementById('mainContent');
         if (!content) return;
@@ -246,37 +249,121 @@ const AdminPanel = {
         this._sortCol = 'name';
         this._sortDir = 'asc';
 
-        content.innerHTML = `
-            <div class="admpanel">
-                ${this._renderHeader()}
-                ${this._renderMetrics()}
-                ${this._renderUsersSection()}
-                ${this._renderLogsSection()}
-            </div>
-        `;
-
-        this._attachEvents();
-        this._renderLogEntries(true);
+        content.innerHTML = this._buildShell();
+        this._attachTabEvents();
+        this._renderTabContent();
     },
 
-    // ─── HEADER ───
-    _renderHeader() {
+    _buildShell() {
         return `
-            <div class="admpanel-header">
-                <div class="admpanel-header-left">
-                    <a href="#lobby" class="settings-back">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                    </a>
-                    <div>
-                        <h1 class="admpanel-title">PANEL DE CONTROL</h1>
-                        <p class="admpanel-subtitle">Actividad del sistema — ${new Date(2026, 2, 9).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <div class="module-view admpanel">
+                <div class="module-subheader">
+                    <div class="module-subheader-top">
+                        <div class="module-breadcrumb">
+                            <a href="#lobby" class="breadcrumb-link">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                Lobby
+                            </a>
+                            <span class="breadcrumb-sep">›</span>
+                            <span class="breadcrumb-cat" style="color: #4A90D9">ADMIN & FINANZAS</span>
+                            <span class="breadcrumb-sep">›</span>
+                            <span class="breadcrumb-current">Admin</span>
+                        </div>
+                    </div>
+                    <div class="module-subheader-bottom">
+                        <div class="module-header-title">
+                            <span class="module-header-icon">⚙️</span>
+                            <h2 class="title-2">Panel de Control</h2>
+                            <span class="badge badge-ghost" style="background: #FF475718; color: #FF4757; border: 1px solid #FF475735;">Solo superadmin</span>
+                        </div>
+                    </div>
+                    <div class="module-section-tabs">
+                        <button class="section-tab ${this._activeTab === 'dashboard' ? 'active' : ''}" data-admtab="dashboard">
+                            <span class="section-tab-icon">🖥️</span>
+                            <span class="section-tab-text">Dashboard</span>
+                        </button>
+                        <button class="section-tab ${this._activeTab === 'usuarios' ? 'active' : ''}" data-admtab="usuarios">
+                            <span class="section-tab-icon">👥</span>
+                            <span class="section-tab-text">Usuarios</span>
+                        </button>
+                        <button class="section-tab ${this._activeTab === 'roles' ? 'active' : ''}" data-admtab="roles">
+                            <span class="section-tab-icon">🔐</span>
+                            <span class="section-tab-text">Roles y Permisos</span>
+                        </button>
+                        <button class="section-tab ${this._activeTab === 'logs' ? 'active' : ''}" data-admtab="logs">
+                            <span class="section-tab-icon">📋</span>
+                            <span class="section-tab-text">Audit Log</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="module-content" id="admTabContent">
+                    <div style="display:flex;align-items:center;justify-content:center;min-height:300px;">
+                        <div class="spinner"></div>
                     </div>
                 </div>
             </div>
         `;
     },
 
-    // ─── SECTION 3: MÉTRICAS RÁPIDAS ───
+    // ─── TAB NAVIGATION ───
+    _attachTabEvents() {
+        document.querySelectorAll('.section-tab[data-admtab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.admtab;
+                if (tab === this._activeTab) return;
+
+                this._activeTab = tab;
+                document.querySelectorAll('.section-tab[data-admtab]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Remove scroll handler from previous tab
+                if (this._scrollHandler) {
+                    const mc = document.getElementById('mainContent');
+                    if (mc) mc.removeEventListener('scroll', this._scrollHandler);
+                    this._scrollHandler = null;
+                }
+
+                this._renderTabContent();
+            });
+        });
+    },
+
+    _renderTabContent() {
+        const container = document.getElementById('admTabContent');
+        if (!container) return;
+
+        switch (this._activeTab) {
+            case 'dashboard':
+                container.innerHTML = this._renderDashboardTab();
+                this._attachDashboardEvents();
+                break;
+            case 'usuarios':
+                container.innerHTML = this._renderUsuariosTab();
+                break;
+            case 'roles':
+                container.innerHTML = this._renderRolesTab();
+                break;
+            case 'logs':
+                this._logPage = 0;
+                this._allLogsLoaded = false;
+                this._logFilters = { user: '', module: '', action: '', dateFrom: '', dateTo: '' };
+                container.innerHTML = this._renderLogsTab();
+                this._renderLogEntries(true);
+                this._attachLogsEvents();
+                break;
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB 1: DASHBOARD (métricas + tabla usuarios)
+    // ═══════════════════════════════════════════
+    _renderDashboardTab() {
+        return `
+            ${this._renderMetrics()}
+            ${this._renderUsersStatsSection()}
+        `;
+    },
+
     _renderMetrics() {
         const onlineCount = this._users.filter(u => u.online).length;
         const totalActions = this._users.reduce((s, u) => s + u.actionsToday, 0);
@@ -336,8 +423,7 @@ const AdminPanel = {
         `;
     },
 
-    // ─── SECTION 1: TABLA DE USUARIOS ───
-    _renderUsersSection() {
+    _renderUsersStatsSection() {
         return `
             <div class="admpanel-section">
                 <div class="admpanel-section-header">
@@ -438,8 +524,75 @@ const AdminPanel = {
         `;
     },
 
-    // ─── SECTION 2: FEED DE LOGS ───
-    _renderLogsSection() {
+    _attachDashboardEvents() {
+        // Sort table
+        this._attachSortEvents();
+
+        // Search users
+        const searchInput = document.getElementById('admUserSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this._searchQuery = e.target.value;
+                const wrap = document.getElementById('admUsersTableWrap');
+                if (wrap) {
+                    wrap.innerHTML = this._renderUsersTable();
+                    this._attachSortEvents();
+                }
+            });
+        }
+    },
+
+    _attachSortEvents() {
+        document.querySelectorAll('.admpanel-table thead th[data-sort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sort;
+                if (this._sortCol === col) {
+                    this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._sortCol = col;
+                    this._sortDir = 'asc';
+                }
+                const wrap = document.getElementById('admUsersTableWrap');
+                if (wrap) {
+                    wrap.innerHTML = this._renderUsersTable();
+                    this._attachSortEvents();
+                }
+            });
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB 2: USUARIOS (placeholder)
+    // ═══════════════════════════════════════════
+    _renderUsuariosTab() {
+        return `
+            <div class="admpanel-placeholder">
+                <div class="admpanel-placeholder-icon">👥</div>
+                <h3 class="admpanel-placeholder-title">Gestión de usuarios</h3>
+                <p class="admpanel-placeholder-text">Crear, editar y desactivar usuarios del sistema. Asignar roles y permisos individuales.</p>
+                <span class="admpanel-placeholder-badge">Próximamente — Fase 3</span>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB 3: ROLES Y PERMISOS (placeholder)
+    // ═══════════════════════════════════════════
+    _renderRolesTab() {
+        return `
+            <div class="admpanel-placeholder">
+                <div class="admpanel-placeholder-icon">🔐</div>
+                <h3 class="admpanel-placeholder-title">Roles y Permisos</h3>
+                <p class="admpanel-placeholder-text">Administrar roles del sistema, definir permisos por módulo (escritura, lectura, sin acceso) y crear roles personalizados.</p>
+                <span class="admpanel-placeholder-badge">Próximamente — Fase 4</span>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB 4: AUDIT LOG
+    // ═══════════════════════════════════════════
+    _renderLogsTab() {
         const userOptions = this._users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
         const modules = [...new Set(this._logs.map(l => l.module))].sort();
         const moduleOptions = modules.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -578,51 +731,7 @@ const AdminPanel = {
         }
     },
 
-    // ─── EVENTS ───
-    _attachEvents() {
-        // Sort table
-        document.querySelectorAll('.admpanel-table thead th[data-sort]').forEach(th => {
-            th.addEventListener('click', () => {
-                const col = th.dataset.sort;
-                if (this._sortCol === col) {
-                    this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
-                } else {
-                    this._sortCol = col;
-                    this._sortDir = 'asc';
-                }
-                const wrap = document.getElementById('admUsersTableWrap');
-                if (wrap) wrap.innerHTML = this._renderUsersTable();
-                // Reattach sort events
-                document.querySelectorAll('.admpanel-table thead th[data-sort]').forEach(th2 => {
-                    th2.addEventListener('click', () => {
-                        const c = th2.dataset.sort;
-                        if (this._sortCol === c) {
-                            this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
-                        } else {
-                            this._sortCol = c;
-                            this._sortDir = 'asc';
-                        }
-                        const w = document.getElementById('admUsersTableWrap');
-                        if (w) w.innerHTML = this._renderUsersTable();
-                        this._attachSortEvents();
-                    });
-                });
-            });
-        });
-
-        // Search users
-        const searchInput = document.getElementById('admUserSearch');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                this._searchQuery = e.target.value;
-                const wrap = document.getElementById('admUsersTableWrap');
-                if (wrap) {
-                    wrap.innerHTML = this._renderUsersTable();
-                    this._attachSortEvents();
-                }
-            });
-        }
-
+    _attachLogsEvents() {
         // Log filters
         ['admLogUser', 'admLogModule', 'admLogAction'].forEach(id => {
             const el = document.getElementById(id);
@@ -650,7 +759,6 @@ const AdminPanel = {
         // Infinite scroll
         const mainContent = document.getElementById('mainContent');
         if (mainContent) {
-            // Remove previous handler
             if (this._scrollHandler) mainContent.removeEventListener('scroll', this._scrollHandler);
 
             this._scrollHandler = () => {
@@ -667,24 +775,5 @@ const AdminPanel = {
             };
             mainContent.addEventListener('scroll', this._scrollHandler);
         }
-    },
-
-    _attachSortEvents() {
-        document.querySelectorAll('.admpanel-table thead th[data-sort]').forEach(th => {
-            th.addEventListener('click', () => {
-                const col = th.dataset.sort;
-                if (this._sortCol === col) {
-                    this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
-                } else {
-                    this._sortCol = col;
-                    this._sortDir = 'asc';
-                }
-                const wrap = document.getElementById('admUsersTableWrap');
-                if (wrap) {
-                    wrap.innerHTML = this._renderUsersTable();
-                    this._attachSortEvents();
-                }
-            });
-        });
     },
 };
