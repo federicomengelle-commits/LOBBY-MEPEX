@@ -1042,7 +1042,8 @@ const API = {
     // ─── Toggle User Active Status ───────────
     async toggleUserActive(userId, active) {
         try {
-            const { error } = await supabaseClient
+            const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
+            const { error } = await client
                 .from('profiles')
                 .update({ active })
                 .eq('id', userId);
@@ -1069,7 +1070,8 @@ const API = {
             if (updates.telefono !== undefined) payload.telefono = updates.telefono;
 
             const doUpdate = async (p) => {
-                const { data, error } = await supabaseClient
+                const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
+                const { data, error } = await client
                     .from('profiles')
                     .update(p)
                     .eq('id', userId)
@@ -2306,11 +2308,17 @@ const API = {
     },
 
     async adminResetPassword(uid, newPassword) {
-        return this._adminFetch('/admin/users/reset-password', { uid, newPassword });
+        const { error } = await supabaseAdmin.auth.admin.updateUserById(uid, { password: newPassword });
+        if (error) throw error;
+        return { success: true };
     },
 
     async adminDeleteUser(uid) {
-        return this._adminFetch('/admin/users/delete', { uid });
+        // Soft delete: deactivate profile
+        const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
+        const { error } = await client.from('profiles').update({ active: false, _deleted: true }).eq('id', uid);
+        if (error) throw error;
+        return { success: true };
     },
 
     // ─── Profiles (direct Supabase) ───
@@ -2325,7 +2333,8 @@ const API = {
     },
 
     async updateProfile(uid, updates) {
-        const { error } = await supabaseClient
+        const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
+        const { error } = await client
             .from('profiles')
             .update(updates)
             .eq('id', uid);
