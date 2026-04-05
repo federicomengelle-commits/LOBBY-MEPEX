@@ -21,6 +21,10 @@ const AdminPanel = {
     _userSearch: '',
     _userSortCol: 'name',
     _userSortDir: 'asc',
+    // Tab Roles y Permisos
+    _rolesData: [],
+    _permEdits: {},   // { roleId: { moduleId: "write"|"read"|"none" } }
+    _rolesDirty: false,
     _logFilters: { user: '', module: '', action: '', dateFrom: '', dateTo: '' },
     _logPage: 0,
     _logPageSize: 20,
@@ -314,9 +318,22 @@ const AdminPanel = {
     // ─── TAB NAVIGATION ───
     _attachTabEvents() {
         document.querySelectorAll('.section-tab[data-admtab]').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const tab = btn.dataset.admtab;
                 if (tab === this._activeTab) return;
+
+                // Guard: unsaved roles changes
+                if (this._rolesDirty) {
+                    const discard = await Modal.confirm({
+                        title: 'Cambios sin guardar',
+                        message: 'Tenés cambios en Roles y Permisos sin guardar. ¿Descartar?',
+                        confirmText: 'Descartar',
+                        danger: true,
+                    });
+                    if (!discard) return;
+                    this._rolesDirty = false;
+                    this._permEdits = {};
+                }
 
                 this._activeTab = tab;
                 document.querySelectorAll('.section-tab[data-admtab]').forEach(b => b.classList.remove('active'));
@@ -348,7 +365,8 @@ const AdminPanel = {
                 this._loadUsuariosTab();
                 break;
             case 'roles':
-                container.innerHTML = this._renderRolesTab();
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+                this._loadRolesTab();
                 break;
             case 'logs':
                 this._logPage = 0;
@@ -1057,17 +1075,428 @@ const AdminPanel = {
     },
 
     // ═══════════════════════════════════════════
-    //  TAB 3: ROLES Y PERMISOS (placeholder)
+    //  TAB 3: ROLES Y PERMISOS (grilla editable)
     // ═══════════════════════════════════════════
+
+    // Module grid definition (order matters)
+    _permModules: [
+        { cat: 'COMERCIAL', color: '#F28D15', modules: [
+            { id: 'crm', name: 'CRM', icon: '🔶' },
+            { id: 'cotizador', name: 'Cotizador', icon: '📄' },
+            { id: 'catalogo', name: 'Catálogo', icon: '🔩' },
+        ]},
+        { cat: 'OPERACIONES', color: '#00CC88', modules: [
+            { id: 'proyectos', name: 'Proyectos', icon: '🏗️' },
+            { id: 'eventos', name: 'Eventos', icon: '🎪' },
+            { id: 'taller', name: 'Taller', icon: '🔨' },
+            { id: 'logistica', name: 'Logística', icon: '🚛' },
+        ]},
+        { cat: 'RECURSOS', color: '#9B7DFF', modules: [
+            { id: 'rrhh', name: 'RRHH', icon: '👥' },
+            { id: 'compras', name: 'Compras', icon: '🛒' },
+            { id: 'inventario', name: 'Inventario', icon: '📦' },
+            { id: 'locaciones', name: 'Locaciones', icon: '🏭' },
+        ]},
+        { cat: 'ADMIN & FINANZAS', color: '#4A90D9', modules: [
+            { id: 'finanzas', name: 'Finanzas', icon: '💰' },
+            { id: 'costos', name: 'Costos', icon: '🧮' },
+            { id: 'admin-panel', name: 'Admin Panel', icon: '⚙️' },
+        ]},
+    ],
+
+    async _loadRolesTab() {
+        try {
+            this._rolesData = await API.getRoles();
+        } catch (err) {
+            console.error('[AdminPanel] Error loading roles:', err);
+            this._rolesData = [];
+        }
+        this._permEdits = {};
+        this._rolesDirty = false;
+        const container = document.getElementById('admTabContent');
+        if (container) {
+            container.innerHTML = this._renderRolesTab();
+            this._attachRolesEvents();
+        }
+    },
+
+    _getPermLevel(roleId, moduleId) {
+        // Check edits first, then original data
+        if (this._permEdits[roleId] && this._permEdits[roleId][moduleId] !== undefined) {
+            return this._permEdits[roleId][moduleId];
+        }
+        const role = this._rolesData.find(r => r.id === roleId);
+        if (!role || !role.permissions) return 'none';
+        return role.permissions[moduleId] || 'none';
+    },
+
+    _setPermLevel(roleId, moduleId, level) {
+        if (!this._permEdits[roleId]) this._permEdits[roleId] = {};
+        this._permEdits[roleId][moduleId] = level;
+        this._rolesDirty = true;
+    },
+
+    _cyclePermLevel(current) {
+        if (current === 'write') return 'read';
+        if (current === 'read') return 'none';
+        return 'write';
+    },
+
     _renderRolesTab() {
+        const roles = this._rolesData;
+
         return `
-            <div class="admpanel-placeholder">
-                <div class="admpanel-placeholder-icon">🔐</div>
-                <h3 class="admpanel-placeholder-title">Roles y Permisos</h3>
-                <p class="admpanel-placeholder-text">Administrar roles del sistema, definir permisos por módulo (escritura, lectura, sin acceso) y crear roles personalizados.</p>
-                <span class="admpanel-placeholder-badge">Próximamente — Fase 4</span>
+            <div class="admpanel-section" style="position:relative;">
+                <div class="admpanel-section-header">
+                    <h2 class="admpanel-section-title">Roles y Permisos</h2>
+                    <button class="btn btn-primary btn-sm" id="admBtnNewRole" style="white-space:nowrap;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Nuevo rol
+                    </button>
+                </div>
+                <div class="admperm-grid-wrap" id="admPermGridWrap">
+                    <table class="admperm-grid">
+                        <thead>
+                            <tr>
+                                <th class="admperm-module-col">Módulo</th>
+                                ${roles.map(r => {
+                                    const count = this._countRoleAccess(r.id);
+                                    return `
+                                    <th class="admperm-role-col">
+                                        <div class="admperm-role-header">
+                                            <span class="admperm-role-badge" style="background:${r.color}20;color:${r.color};border:1px solid ${r.color}40;">${r.label}</span>
+                                            <span class="admperm-role-count">${count} módulos</span>
+                                            ${!r.is_base ? `<button class="admperm-role-delete" data-delete-role="${r.id}" title="Eliminar rol">🗑️</button>` : ''}
+                                        </div>
+                                    </th>`;
+                                }).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${this._permModules.map(cat => `
+                                <tr class="admperm-cat-row">
+                                    <td colspan="${roles.length + 1}" style="--cat-color:${cat.color};">
+                                        <span class="admperm-cat-label" style="color:${cat.color}">${cat.cat}</span>
+                                    </td>
+                                </tr>
+                                ${cat.modules.map(mod => `
+                                <tr class="admperm-mod-row">
+                                    <td class="admperm-module-cell">
+                                        <span class="admperm-mod-icon">${mod.icon}</span>
+                                        <span class="admperm-mod-name">${mod.name}</span>
+                                    </td>
+                                    ${roles.map(r => {
+                                        const level = this._getPermLevel(r.id, mod.id);
+                                        const isSuperadmin = r.id === 'superadmin';
+                                        const isAdminPanel = mod.id === 'admin-panel';
+                                        const locked = isSuperadmin || (isAdminPanel && !isSuperadmin);
+                                        return `
+                                        <td class="admperm-cell ${locked ? 'locked' : ''}"
+                                            data-role="${r.id}" data-mod="${mod.id}" data-level="${level}"
+                                            ${locked ? '' : 'data-clickable="1"'}
+                                            title="${this._permTooltip(level)}">
+                                            <span class="admperm-indicator admperm-${level}">${this._permIcon(level)}</span>
+                                        </td>`;
+                                    }).join('')}
+                                </tr>
+                                `).join('')}
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="admperm-save-bar ${this._rolesDirty ? 'visible' : ''}" id="admPermSaveBar">
+                    <span class="admperm-save-text">Hay cambios sin guardar</span>
+                    <div class="admperm-save-actions">
+                        <button class="btn btn-ghost btn-sm" id="admPermDiscard">Descartar</button>
+                        <button class="btn btn-primary btn-sm" id="admPermSave">Guardar cambios</button>
+                    </div>
+                </div>
             </div>
         `;
+    },
+
+    _countRoleAccess(roleId) {
+        let count = 0;
+        this._permModules.forEach(cat => {
+            cat.modules.forEach(mod => {
+                const lvl = this._getPermLevel(roleId, mod.id);
+                if (lvl === 'write' || lvl === 'read') count++;
+            });
+        });
+        return count;
+    },
+
+    _permIcon(level) {
+        if (level === 'write') return '✅';
+        if (level === 'read') return '👁️';
+        return '—';
+    },
+
+    _permTooltip(level) {
+        if (level === 'write') return 'Lectura y escritura';
+        if (level === 'read') return 'Solo lectura';
+        return 'Sin acceso';
+    },
+
+    _attachRolesEvents() {
+        // Clickable cells
+        document.querySelectorAll('.admperm-cell[data-clickable]').forEach(cell => {
+            cell.addEventListener('click', () => {
+                const roleId = cell.dataset.role;
+                const modId = cell.dataset.mod;
+                const current = this._getPermLevel(roleId, modId);
+                const next = this._cyclePermLevel(current);
+
+                this._setPermLevel(roleId, modId, next);
+                cell.dataset.level = next;
+                cell.title = this._permTooltip(next);
+                const indicator = cell.querySelector('.admperm-indicator');
+                if (indicator) {
+                    indicator.className = `admperm-indicator admperm-${next}`;
+                    indicator.textContent = this._permIcon(next);
+                }
+
+                // Update count in header
+                const th = document.querySelector(`.admperm-role-col .admperm-role-badge[style*="${this._rolesData.find(r => r.id === roleId)?.color}"]`);
+                if (th) {
+                    const countEl = th.parentElement.querySelector('.admperm-role-count');
+                    if (countEl) countEl.textContent = `${this._countRoleAccess(roleId)} módulos`;
+                }
+
+                // Show save bar
+                const bar = document.getElementById('admPermSaveBar');
+                if (bar) bar.classList.add('visible');
+            });
+        });
+
+        // Save button
+        const saveBtn = document.getElementById('admPermSave');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Guardando…';
+                try {
+                    await this._saveRolesPermissions();
+                    this._rolesDirty = false;
+                    this._permEdits = {};
+                    const bar = document.getElementById('admPermSaveBar');
+                    if (bar) bar.classList.remove('visible');
+                    Toast.success('Permisos actualizados');
+                    // Reload to refresh cache
+                    this._loadRolesTab();
+                } catch (err) {
+                    Toast.error(err.message || 'Error al guardar');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Guardar cambios';
+                }
+            });
+        }
+
+        // Discard button
+        const discardBtn = document.getElementById('admPermDiscard');
+        if (discardBtn) {
+            discardBtn.addEventListener('click', () => {
+                this._permEdits = {};
+                this._rolesDirty = false;
+                // Re-render to reset cells
+                const container = document.getElementById('admTabContent');
+                if (container) {
+                    container.innerHTML = this._renderRolesTab();
+                    this._attachRolesEvents();
+                }
+            });
+        }
+
+        // New role button
+        const newRoleBtn = document.getElementById('admBtnNewRole');
+        if (newRoleBtn) newRoleBtn.addEventListener('click', () => this._openCreateRoleModal());
+
+        // Delete role buttons
+        document.querySelectorAll('.admperm-role-delete[data-delete-role]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._deleteRole(btn.dataset.deleteRole);
+            });
+        });
+    },
+
+    async _saveRolesPermissions() {
+        const edits = this._permEdits;
+        const promises = [];
+
+        for (const roleId of Object.keys(edits)) {
+            const role = this._rolesData.find(r => r.id === roleId);
+            if (!role) continue;
+
+            // Merge edits into existing permissions
+            const merged = { ...(role.permissions || {}) };
+            for (const [modId, level] of Object.entries(edits[roleId])) {
+                if (level === 'none') {
+                    delete merged[modId];
+                } else {
+                    merged[modId] = level;
+                }
+            }
+
+            promises.push(
+                supabaseClient
+                    .from('roles')
+                    .update({ permissions: merged, updated_at: new Date().toISOString() })
+                    .eq('id', roleId)
+            );
+        }
+
+        const results = await Promise.all(promises);
+        const errors = results.filter(r => r.error);
+        if (errors.length > 0) {
+            throw new Error(errors.map(e => e.error.message).join(', '));
+        }
+    },
+
+    // ─── CREATE ROLE MODAL ───
+    _openCreateRoleModal() {
+        const colors = ['#FF4757', '#00A9C1', '#F28D15', '#00CC88', '#9B7DFF', '#4A90D9', '#7A8599'];
+
+        const body = `
+            <form id="admCreateRoleForm" class="adm-user-form">
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Nombre del rol *</label>
+                    <input type="text" class="input" id="admRoleName" placeholder="Ej: Coordinador" required>
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">ID del rol *</label>
+                    <input type="text" class="input" id="admRoleId" placeholder="Auto-generado" pattern="[a-z0-9-]+" required>
+                    <span class="adm-form-hint">Minúsculas, números y guiones. No se puede cambiar después.</span>
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Descripción</label>
+                    <input type="text" class="input" id="admRoleDesc" placeholder="Opcional">
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Color</label>
+                    <div class="admperm-color-picker" id="admRoleColorPicker">
+                        ${colors.map((c, i) => `
+                            <button type="button" class="admperm-color-swatch ${i === 0 ? 'selected' : ''}" data-color="${c}" style="background:${c};" title="${c}"></button>
+                        `).join('')}
+                    </div>
+                </div>
+            </form>
+        `;
+
+        const modal = Modal.open({
+            title: 'Nuevo rol',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="admCreateRoleBtn">Crear rol</button>
+            `,
+        });
+
+        // Auto-generate ID from name
+        const nameInput = document.getElementById('admRoleName');
+        const idInput = document.getElementById('admRoleId');
+        nameInput.addEventListener('input', () => {
+            if (!idInput.dataset.manual) {
+                idInput.value = nameInput.value.trim().toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            }
+        });
+        idInput.addEventListener('input', () => { idInput.dataset.manual = '1'; });
+
+        // Color picker
+        let selectedColor = colors[0];
+        document.querySelectorAll('.admperm-color-swatch').forEach(swatch => {
+            swatch.addEventListener('click', () => {
+                document.querySelectorAll('.admperm-color-swatch').forEach(s => s.classList.remove('selected'));
+                swatch.classList.add('selected');
+                selectedColor = swatch.dataset.color;
+            });
+        });
+
+        // Submit
+        document.getElementById('admCreateRoleBtn').addEventListener('click', async () => {
+            const form = document.getElementById('admCreateRoleForm');
+            if (!form.reportValidity()) return;
+
+            const id = idInput.value.trim();
+            const label = nameInput.value.trim();
+            const description = document.getElementById('admRoleDesc').value.trim();
+
+            // Check ID doesn't already exist
+            if (this._rolesData.some(r => r.id === id)) {
+                Toast.error('Ya existe un rol con ese ID');
+                return;
+            }
+
+            const btn = document.getElementById('admCreateRoleBtn');
+            btn.disabled = true;
+            btn.textContent = 'Creando…';
+
+            try {
+                const { error } = await supabaseClient.from('roles').insert({
+                    id,
+                    label,
+                    description,
+                    is_base: false,
+                    permissions: {},
+                    color: selectedColor,
+                });
+                if (error) throw error;
+
+                Modal.close(modal.id);
+                Toast.success(`Rol "${label}" creado`);
+                this._loadRolesTab();
+            } catch (err) {
+                Toast.error(err.message || 'Error al crear rol');
+                btn.disabled = false;
+                btn.textContent = 'Crear rol';
+            }
+        });
+    },
+
+    // ─── DELETE ROLE ───
+    async _deleteRole(roleId) {
+        const role = this._rolesData.find(r => r.id === roleId);
+        if (!role || role.is_base) return;
+
+        // Check for users with this role
+        try {
+            const { data: usersWithRole, error } = await supabaseClient
+                .from('profiles')
+                .select('id')
+                .eq('role', roleId)
+                .eq('_deleted', false);
+
+            if (error) throw error;
+
+            if (usersWithRole && usersWithRole.length > 0) {
+                Toast.error(`Hay ${usersWithRole.length} usuario(s) con este rol. Cambiá su rol antes de eliminar.`);
+                return;
+            }
+        } catch (err) {
+            Toast.error('Error al verificar usuarios');
+            return;
+        }
+
+        const confirmed = await Modal.confirm({
+            title: 'Eliminar rol',
+            message: `¿Eliminar el rol <strong>"${role.label}"</strong>? Esta acción no se puede deshacer.`,
+            confirmText: 'Eliminar',
+            danger: true,
+        });
+
+        if (!confirmed) return;
+
+        try {
+            const { error } = await supabaseClient.from('roles').delete().eq('id', roleId);
+            if (error) throw error;
+            Toast.success(`Rol "${role.label}" eliminado`);
+            this._loadRolesTab();
+        } catch (err) {
+            Toast.error(err.message || 'Error al eliminar rol');
+        }
     },
 
     // ═══════════════════════════════════════════
