@@ -99,4 +99,103 @@ const AuditLog = {
         const diff = Date.now() - new Date(lastSeenAt).getTime();
         return diff < 5 * 60 * 1000; // 5 minutos
     },
+
+    // ═══════════════════════════════════════
+    //  UNDO SYSTEM — Legacy API (used by UndoHelpers)
+    // ═══════════════════════════════════════
+    async log(tableName, recordId, action, details = {}) {
+        try {
+            const user = Auth.getUser();
+            let email = null;
+            try {
+                const { data } = await supabaseClient.auth.getUser();
+                email = data?.user?.email || null;
+            } catch (_) { /* silently ignore */ }
+
+            await supabaseClient.from('audit_log').insert({
+                user_id: user?.uid || null,
+                user_email: email || 'anonimo',
+                user_name: user?.name || 'anonimo',
+                table_name: tableName,
+                record_id: recordId,
+                action: action,
+                details: details,
+                module: (typeof Modules !== 'undefined' && Modules.currentModule?.id) || null,
+            });
+        } catch (error) {
+            console.warn('[AuditLog] no se pudo registrar:', error.message);
+        }
+    },
+
+    async getHistory(tableName, recordId, limit = 20) {
+        const { data, error } = await supabaseClient
+            .from('audit_log').select('*')
+            .eq('table_name', tableName).eq('record_id', recordId)
+            .order('created_at', { ascending: false }).limit(limit);
+        return error ? [] : data;
+    },
+
+    async getUserActivity(userId, limit = 50) {
+        const { data, error } = await supabaseClient
+            .from('audit_log').select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false }).limit(limit);
+        return error ? [] : data;
+    },
+
+    async getRecentActivity(limit = 20) {
+        const { data, error } = await supabaseClient
+            .from('audit_log').select('*')
+            .order('created_at', { ascending: false }).limit(limit);
+        return error ? [] : data;
+    },
+
+    async revertFromHistory(auditEntryId) {
+        const { data: entry, error } = await supabaseClient
+            .from('audit_log').select('*').eq('id', auditEntryId).single();
+
+        if (error || !entry) {
+            Toast.error('No se encontro el registro de auditoria');
+            return false;
+        }
+
+        try {
+            switch (entry.action) {
+                case 'update': {
+                    const oldValues = {};
+                    if (entry.details.field) {
+                        oldValues[entry.details.field] = entry.details.old;
+                    } else if (entry.details.old) {
+                        Object.assign(oldValues, entry.details.old);
+                    }
+                    await supabaseClient.from(entry.table_name).update(oldValues).eq('id', entry.record_id);
+                    break;
+                }
+                case 'delete':
+                    await supabaseClient.from(entry.table_name).update({ _deleted: false }).eq('id', entry.record_id);
+                    break;
+                case 'create':
+                    await supabaseClient.from(entry.table_name).update({ _deleted: true }).eq('id', entry.record_id);
+                    break;
+                default:
+                    Toast.warning('Tipo de accion no revertible');
+                    return false;
+            }
+
+            await this.log(entry.table_name, entry.record_id, 'revert_from_history', {
+                original_audit_id: auditEntryId,
+                original_action: entry.action,
+                reverted_details: entry.details,
+            });
+
+            Toast.success('Cambio revertido exitosamente');
+            if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
+                Modules.refreshCurrentView();
+            }
+            return true;
+        } catch (e) {
+            Toast.error('Error al revertir: ' + e.message);
+            return false;
+        }
+    },
 };
