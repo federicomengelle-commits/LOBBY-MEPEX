@@ -2334,11 +2334,35 @@ const API = {
 
     async updateProfile(uid, updates) {
         const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
-        const { error } = await client
+        const payload = {};
+        if (updates.name !== undefined) payload.name = updates.name;
+        if (updates.initials !== undefined) payload.initials = updates.initials;
+        if (updates.role !== undefined) payload.role = updates.role;
+        if (updates.custom_permissions !== undefined) payload.custom_permissions = updates.custom_permissions;
+        if (updates.telefono !== undefined) payload.telefono = updates.telefono;
+        if (updates.active !== undefined) payload.active = updates.active;
+
+        const { data, error } = await client
             .from('profiles')
-            .update(updates)
-            .eq('id', uid);
-        if (error) throw error;
+            .update(payload)
+            .eq('id', uid)
+            .select()
+            .single();
+
+        if (error) {
+            // Retry with safe fields only if schema cache issue
+            if (error.message?.includes('schema cache')) {
+                const safe = {};
+                if (payload.name) safe.name = payload.name;
+                if (payload.initials) safe.initials = payload.initials;
+                if (payload.role) safe.role = payload.role;
+                const { error: e2 } = await client.from('profiles').update(safe).eq('id', uid);
+                if (e2) throw e2;
+                return { success: true };
+            }
+            throw error;
+        }
+        return { success: true, data };
     },
 
     async getRoles() {

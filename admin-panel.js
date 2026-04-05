@@ -893,6 +893,10 @@ const AdminPanel = {
                     <label class="adm-form-label">Teléfono</label>
                     <input type="text" class="input" id="admEditTelefono" value="${user.telefono || ''}">
                 </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Nueva contraseña</label>
+                    <input type="password" class="input" id="admEditPassword" placeholder="Dejar vacío para no cambiar" minlength="6">
+                </div>
             </form>
         `;
 
@@ -916,6 +920,12 @@ const AdminPanel = {
                 role: document.getElementById('admEditRole').value,
                 telefono: document.getElementById('admEditTelefono').value.trim(),
             };
+            const newPassword = document.getElementById('admEditPassword').value;
+
+            if (newPassword && newPassword.length < 6) {
+                Toast.error('La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
 
             const btn = document.getElementById('admEditUserBtn');
             btn.disabled = true;
@@ -923,6 +933,9 @@ const AdminPanel = {
 
             try {
                 await API.updateProfile(uid, updates);
+                if (newPassword) {
+                    await supabaseAdmin.auth.admin.updateUserById(uid, { password: newPassword });
+                }
                 Modal.close(modal.id);
                 Toast.success(`Usuario "${updates.name}" actualizado`);
                 if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'admin-panel', `Editó usuario ${updates.name}`, 'usuario', uid);
