@@ -10,11 +10,11 @@ const AdminPanel = {
 
     // ─── STATE ───
     _activeTab: 'dashboard',
-    _logs: [],
-    _logUserMap: {},   // Dummy user map for audit log rendering (TODO: remove when audit_log is real)
-    _dashProfiles: [], // Real profiles loaded for Dashboard tab
-    _sortCol: 'name',
-    _sortDir: 'asc',
+    _dashProfiles: [],
+    _dashMetrics: null,
+    _dashRefreshInterval: null,
+    _sortCol: 'online',
+    _sortDir: 'desc',
     _searchQuery: '',
     // Tab Usuarios (real data)
     _realUsers: [],
@@ -26,117 +26,15 @@ const AdminPanel = {
     _rolesData: [],
     _permEdits: {},   // { roleId: { moduleId: "write"|"read"|"none" } }
     _rolesDirty: false,
+    // Tab Audit Log (real data from Supabase)
     _logFilters: { user: '', module: '', action: '', dateFrom: '', dateTo: '' },
     _logPage: 0,
-    _logPageSize: 20,
+    _logPageSize: 30,
     _allLogsLoaded: false,
     _scrollHandler: null,
-
-    // ─── DUMMY AUDIT LOG DATA ───
-    // TODO: Reemplazar con query real a tabla audit_log de Supabase cuando exista
-    _generateDummyLogs() {
-        // Minimal user map for dummy audit log rendering
-        this._logUserMap = {
-            fede:   { name: 'Federico Méndez', initials: 'FM', role: 'superadmin' },
-            lelean: { name: 'Leonardo Méndez', initials: 'LM', role: 'admin' },
-            sofi:   { name: 'Sofía Méndez', initials: 'SM', role: 'admin' },
-            noe:    { name: 'Noelia Ruiz', initials: 'NR', role: 'venta' },
-            meli:   { name: 'Melina Torres', initials: 'MT', role: 'pm' },
-            leo:    { name: 'Leonardo Quiroga', initials: 'LQ', role: 'pm' },
-            diego:  { name: 'Diego Fernández', initials: 'DF', role: 'taller' },
-            juan:   { name: 'Juan Labajian', initials: 'JL', role: 'taller' },
-            carlos: { name: 'Carlos Herrera', initials: 'CH', role: 'taller' },
-            willy:  { name: 'Guillermo Paz', initials: 'GP', role: 'taller' },
-        };
-
-        this._logs = [
-            // ─ Hoy 09 marzo ─
-            { ts: new Date('2026-03-09T16:40:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0052 para YPF', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T16:32:00'), user: 'fede', action: 'edit', module: 'Proyectos', detail: 'Cambió estado proyecto #134 a "En producción"', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T16:18:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Completó tarea "Corte paneles Stand Samsung"', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-09T16:05:00'), user: 'lelean', action: 'view', module: 'Finanzas', detail: 'Consultó dashboard financiero mensual', device: 'PC Oficina' },
-            { ts: new Date('2026-03-09T15:50:00'), user: 'noe', action: 'edit', module: 'Clientes', detail: 'Actualizó datos de contacto de Coca-Cola', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T15:42:00'), user: 'meli', action: 'create', module: 'Proyectos', detail: 'Creó hito "Montaje día 1" en proyecto #132', device: 'iPad Pro' },
-            { ts: new Date('2026-03-09T15:30:00'), user: 'fede', action: 'edit', module: 'Ventas', detail: 'Aprobó cotización COT-2026-0048 de Arcor', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T15:15:00'), user: 'diego', action: 'edit', module: 'Inventario', detail: 'Descontó 8 paneles OCTEXA del stock', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-09T14:58:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0051 para Quilmes', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T14:45:00'), user: 'lelean', action: 'edit', module: 'Proyectos', detail: 'Asignó PM Martín a proyecto Stand Toyota', device: 'PC Oficina' },
-            { ts: new Date('2026-03-09T14:30:00'), user: 'meli', action: 'edit', module: 'Eventos', detail: 'Actualizó fecha de montaje ExpoAgro 2026', device: 'iPad Pro' },
-            { ts: new Date('2026-03-09T14:12:00'), user: 'fede', action: 'create', module: 'Clientes', detail: 'Registró nuevo cliente: Toyota Argentina', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T13:55:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Inició tarea "Pintura estructura Stand Arcor"', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-09T13:40:00'), user: 'noe', action: 'create', module: 'Marketing', detail: 'Generó template de propuesta para Quilmes', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T13:25:00'), user: 'lelean', action: 'view', module: 'Ventas', detail: 'Revisó pipeline comercial completo', device: 'PC Oficina' },
-            { ts: new Date('2026-03-09T13:10:00'), user: 'meli', action: 'edit', module: 'Proyectos', detail: 'Actualizó checklist de Stand Unilever', device: 'iPad Pro' },
-            { ts: new Date('2026-03-09T12:45:00'), user: 'fede', action: 'edit', module: 'Finanzas', detail: 'Registró cobro parcial de Coca-Cola ($1.200.000)', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T12:30:00'), user: 'noe', action: 'edit', module: 'Ventas', detail: 'Envió seguimiento a cotización COT-2026-0045', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T12:15:00'), user: 'diego', action: 'create', module: 'Producción', detail: 'Cargó fotos de avance Stand Samsung', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-09T11:50:00'), user: 'sofi', action: 'edit', module: 'Finanzas', detail: 'Registró factura de proveedor IlumiTech', device: 'Notebook HP' },
-            { ts: new Date('2026-03-09T11:30:00'), user: 'lelean', action: 'edit', module: 'RRHH', detail: 'Actualizó horarios del equipo de taller', device: 'PC Oficina' },
-            { ts: new Date('2026-03-09T11:15:00'), user: 'fede', action: 'edit', module: 'Proveedores', detail: 'Aprobó orden de compra OC-2026-018 a MaderaPlus', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T11:00:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0050 para Nestlé', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T10:45:00'), user: 'meli', action: 'view', module: 'Clientes', detail: 'Consultó ficha cliente Arcor para reunión', device: 'iPad Pro' },
-            { ts: new Date('2026-03-09T10:30:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Marcó como completa "Soldadura base Stand Arcor"', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-09T10:15:00'), user: 'meli', action: 'login', module: 'Sistema', detail: 'Inició sesión desde iPad Pro', device: 'iPad Pro' },
-            { ts: new Date('2026-03-09T10:00:00'), user: 'fede', action: 'edit', module: 'Ventas', detail: 'Cambió prioridad de COT-2026-0047 a urgente', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T09:45:00'), user: 'noe', action: 'edit', module: 'Clientes', detail: 'Agregó contacto secundario a Quilmes', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T09:30:00'), user: 'lelean', action: 'login', module: 'Sistema', detail: 'Inició sesión desde PC Oficina', device: 'PC Oficina' },
-            { ts: new Date('2026-03-09T09:15:00'), user: 'fede', action: 'edit', module: 'Proyectos', detail: 'Actualizó presupuesto proyecto Stand Samsung', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T09:00:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Asignó tarea "Electricidad" a equipo 2', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-09T08:45:00'), user: 'noe', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Notebook Lenovo', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-09T08:30:00'), user: 'fede', action: 'view', module: 'Finanzas', detail: 'Revisó cash flow proyectado del mes', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T08:12:00'), user: 'fede', action: 'login', module: 'Sistema', detail: 'Inició sesión desde MacBook Pro', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-09T07:00:00'), user: 'diego', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Tablet Taller', device: 'Tablet Taller 1' },
-
-            // ─ Ayer 08 marzo ─
-            { ts: new Date('2026-03-08T18:30:00'), user: 'fede', action: 'edit', module: 'Proyectos', detail: 'Cerró proyecto #128 Stand Pepsico como entregado', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T18:00:00'), user: 'noe', action: 'edit', module: 'Ventas', detail: 'Marcó COT-2026-0044 como ganada', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T17:30:00'), user: 'lelean', action: 'edit', module: 'Finanzas', detail: 'Concilió pagos del mes de febrero', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T17:00:00'), user: 'meli', action: 'edit', module: 'Proyectos', detail: 'Generó informe de avance Stand Unilever', device: 'iPad Pro' },
-            { ts: new Date('2026-03-08T16:45:00'), user: 'diego', action: 'edit', module: 'Inventario', detail: 'Registró ingreso 20 perfiles aluminio', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-08T16:20:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0049 para Banco Galicia', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T16:00:00'), user: 'fede', action: 'create', module: 'Eventos', detail: 'Registró evento ExpoAgro 2026 (15-18 marzo)', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T15:40:00'), user: 'meli', action: 'edit', module: 'Producción', detail: 'Reasignó tareas de Stand Arcor por prioridad', device: 'iPad Pro' },
-            { ts: new Date('2026-03-08T15:20:00'), user: 'lelean', action: 'view', module: 'Ventas', detail: 'Revisó métricas comerciales del trimestre', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T15:00:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Completó tarea "Armado estructura Stand Pepsico"', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-08T14:40:00'), user: 'noe', action: 'edit', module: 'Marketing', detail: 'Actualizó plantilla de propuesta comercial', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T14:20:00'), user: 'juan', action: 'edit', module: 'Producción', detail: 'Completó tarea "Pintura paneles Stand Quilmes"', device: 'Tablet Taller 2' },
-            { ts: new Date('2026-03-08T14:10:00'), user: 'leo', action: 'edit', module: 'Proyectos', detail: 'Actualizó timeline de Stand Pepsico', device: 'iPad Pro' },
-            { ts: new Date('2026-03-08T13:50:00'), user: 'fede', action: 'edit', module: 'Clientes', detail: 'Actualizó categoría de cliente Arcor a Premium', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T13:30:00'), user: 'meli', action: 'create', module: 'Proyectos', detail: 'Creó proyecto #134 Stand Toyota — ExpoAgro', device: 'iPad Pro' },
-            { ts: new Date('2026-03-08T13:10:00'), user: 'lelean', action: 'edit', module: 'RRHH', detail: 'Registró vacaciones de Carlos (semana 12)', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T12:50:00'), user: 'noe', action: 'edit', module: 'Ventas', detail: 'Envió propuesta revisada a Banco Galicia', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T12:30:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Reportó retraso en corte de vinilo Stand Samsung', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-08T12:00:00'), user: 'fede', action: 'error', module: 'Sistema', detail: 'Error de conexión con La PyME API (timeout)', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T11:40:00'), user: 'meli', action: 'view', module: 'Eventos', detail: 'Consultó calendario de eventos marzo 2026', device: 'iPad Pro' },
-            { ts: new Date('2026-03-08T11:20:00'), user: 'noe', action: 'create', module: 'Clientes', detail: 'Registró nuevo contacto en Nestlé Argentina', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T11:00:00'), user: 'lelean', action: 'edit', module: 'Proveedores', detail: 'Actualizó condiciones comerciales de IlumiTech', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T10:40:00'), user: 'diego', action: 'edit', module: 'Producción', detail: 'Confirmó recepción de materiales para Stand Arcor', device: 'Tablet Taller 1' },
-            { ts: new Date('2026-03-08T10:20:00'), user: 'fede', action: 'edit', module: 'Ventas', detail: 'Ajustó descuento en COT-2026-0046 para Unilever', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T10:00:00'), user: 'meli', action: 'login', module: 'Sistema', detail: 'Inició sesión desde iPad Pro', device: 'iPad Pro' },
-            { ts: new Date('2026-03-08T09:45:00'), user: 'noe', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Notebook Lenovo', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-08T09:30:00'), user: 'lelean', action: 'login', module: 'Sistema', detail: 'Inició sesión desde PC Oficina', device: 'PC Oficina' },
-            { ts: new Date('2026-03-08T09:15:00'), user: 'fede', action: 'login', module: 'Sistema', detail: 'Inició sesión desde MacBook Pro', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-08T09:00:00'), user: 'diego', action: 'login', module: 'Sistema', detail: 'Inició sesión desde Tablet Taller', device: 'Tablet Taller 1' },
-
-            // ─ Antier 07 marzo ─
-            { ts: new Date('2026-03-07T18:15:00'), user: 'fede', action: 'edit', module: 'Finanzas', detail: 'Actualizó proyección de cash flow Q1 2026', device: 'MacBook Pro' },
-            { ts: new Date('2026-03-07T17:45:00'), user: 'noe', action: 'create', module: 'Ventas', detail: 'Creó cotización COT-2026-0048 para Coca-Cola', device: 'Notebook Lenovo' },
-            { ts: new Date('2026-03-07T17:20:00'), user: 'lelean', action: 'edit', module: 'Proyectos', detail: 'Cerró sprint 4 del proyecto Stand Samsung', device: 'PC Oficina' },
-            { ts: new Date('2026-03-07T16:50:00'), user: 'meli', action: 'edit', module: 'Producción', detail: 'Aprobó planilla de horas del equipo taller', device: 'iPad Pro' },
-            { ts: new Date('2026-03-07T16:30:00'), user: 'carlos', action: 'edit', module: 'Inventario', detail: 'Realizó conteo de stock de iluminación LED', device: 'Tablet Taller 3' },
-            { ts: new Date('2026-03-07T15:30:00'), user: 'sofi', action: 'edit', module: 'RRHH', detail: 'Actualizó legajo de personal eventual', device: 'Notebook HP' },
-            { ts: new Date('2026-03-07T15:00:00'), user: 'fede', action: 'denied', module: 'Sistema', detail: 'Acceso denegado: willy intentó acceder a Finanzas', device: 'Sistema' },
-        ];
-
-        // Sort logs descending by timestamp
-        this._logs.sort((a, b) => b.ts - a.ts);
-    },
+    _logProfilesMap: {}, // uid → { name, initials, role }
 
     // ─── HELPERS ───
-    _getUserById(id) {
-        // TODO: Remove when audit_log uses real user references
-        return this._logUserMap[id] || null;
-    },
 
     _getRoleColor(role) {
         return Data.getRoleColor(role);
@@ -147,7 +45,7 @@ const AdminPanel = {
     },
 
     _getActionColor(action) {
-        const map = { create: '#00CC88', edit: '#F28D15', delete: '#FF4757', login: '#00A9C1', view: '#7A8599', error: '#FF4757', denied: '#FF4757' };
+        const map = { create: '#00CC88', edit: '#F28D15', update: '#F28D15', delete: '#FF4757', login: '#00A9C1', logout: '#00A9C1', view: '#7A8599', error: '#FF4757', denied: '#FF4757' };
         return map[action] || '#7A8599';
     },
 
@@ -157,6 +55,7 @@ const AdminPanel = {
             edit: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
             delete: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>',
             login: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>',
+            logout: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
             view: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
             error: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
             denied: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
@@ -165,17 +64,32 @@ const AdminPanel = {
     },
 
     _getActionLabel(action) {
-        const map = { create: 'Crear', edit: 'Editar', delete: 'Eliminar', login: 'Login', view: 'Ver', error: 'Error', denied: 'Denegado' };
+        const map = { create: 'Crear', edit: 'Editar', update: 'Editar', delete: 'Eliminar', login: 'Login', logout: 'Logout', view: 'Ver', error: 'Error', denied: 'Denegado' };
         return map[action] || action;
     },
 
+    _buildDetailFromLegacy(log) {
+        const d = log.details;
+        const table = log.table_name || '';
+        if (!d) return `${this._getActionLabel(log.action === 'update' ? 'edit' : log.action)} en ${table}`;
+        if (d.field) return `Cambió ${d.field}: "${d.old || '—'}" → "${d.new || '—'}" en ${table}`;
+        if (d.snapshot) return `Eliminó registro de ${table}`;
+        if (d.new && d.old) return `Actualizó registro en ${table}`;
+        if (d.values) return `Creó registro en ${table}`;
+        return `${this._getActionLabel(log.action === 'update' ? 'edit' : log.action)} en ${table}`;
+    },
+
     _getModuleColor(mod) {
-        const map = {
-            'Ventas': '#F28D15', 'Clientes': '#00A9C1', 'Proyectos': '#00CC88', 'Eventos': '#00CC88',
-            'Finanzas': '#4A90D9', 'Producción': '#9B7DFF', 'Inventario': '#9B7DFF', 'Marketing': '#F28D15',
-            'RRHH': '#4A90D9', 'Proveedores': '#4A90D9', 'Sistema': '#7A8599',
-        };
-        return map[mod] || '#7A8599';
+        const m = (mod || '').toLowerCase();
+        const comercial = ['crm', 'cotizador', 'catalogo'];
+        const operaciones = ['proyectos', 'eventos', 'taller', 'logistica'];
+        const recursos = ['rrhh', 'compras', 'inventario', 'locaciones'];
+        const admin = ['finanzas', 'costos', 'admin-panel'];
+        if (comercial.includes(m)) return '#F28D15';
+        if (operaciones.includes(m)) return '#00CC88';
+        if (recursos.includes(m)) return '#9B7DFF';
+        if (admin.includes(m)) return '#4A90D9';
+        return '#7A8599';
     },
 
     _formatMinutes(mins) {
@@ -209,13 +123,13 @@ const AdminPanel = {
         const content = document.getElementById('mainContent');
         if (!content) return;
 
-        this._generateDummyLogs(); // TODO: Replace with real audit_log query
         this._logPage = 0;
         this._allLogsLoaded = false;
         this._logFilters = { user: '', module: '', action: '', dateFrom: '', dateTo: '' };
         this._searchQuery = '';
-        this._sortCol = 'name';
-        this._sortDir = 'asc';
+        this._sortCol = 'online';
+        this._sortDir = 'desc';
+        this._stopDashboardRefresh();
 
         content.innerHTML = this._buildShell();
         this._attachTabEvents();
@@ -293,6 +207,7 @@ const AdminPanel = {
                     this._permEdits = {};
                 }
 
+                this._stopDashboardRefresh();
                 this._activeTab = tab;
                 document.querySelectorAll('.section-tab[data-admtab]').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -327,12 +242,7 @@ const AdminPanel = {
                 this._loadRolesTab();
                 break;
             case 'logs':
-                this._logPage = 0;
-                this._allLogsLoaded = false;
-                this._logFilters = { user: '', module: '', action: '', dateFrom: '', dateTo: '' };
-                container.innerHTML = this._renderLogsTab();
-                this._renderLogEntries(true);
-                this._attachLogsEvents();
+                this._initLogsTab();
                 break;
         }
     },
@@ -342,15 +252,77 @@ const AdminPanel = {
     // ═══════════════════════════════════════════
     async _loadDashboardTab() {
         try {
-            this._dashProfiles = await API.getProfiles();
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const todayISO = todayStart.toISOString();
+            const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+            const [profiles, actionsToday, topModule, lastError] = await Promise.all([
+                API.getProfiles(),
+                supabaseClient.from('audit_log').select('user_id', { count: 'exact', head: true }).gte('created_at', todayISO),
+                supabaseClient.from('audit_log').select('module').gte('created_at', todayISO).neq('module', 'sistema'),
+                supabaseClient.from('audit_log').select('detail, created_at').in('action', ['error', 'denied']).order('created_at', { ascending: false }).limit(1),
+            ]);
+
+            this._dashProfiles = profiles;
+
+            // Count online users
+            const onlineCount = profiles.filter(u => u.active && u.last_seen_at && new Date(u.last_seen_at) >= new Date(fiveMinAgo)).length;
+
+            // Actions today count
+            const actionsTodayCount = actionsToday.count || 0;
+
+            // Most active module today
+            let topModuleName = '—';
+            if (topModule.data && topModule.data.length > 0) {
+                const counts = {};
+                topModule.data.forEach(r => { counts[r.module] = (counts[r.module] || 0) + 1; });
+                topModuleName = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+            }
+
+            // Last error/denied
+            let lastErrorText = '—';
+            if (lastError.data && lastError.data.length > 0) {
+                const e = lastError.data[0];
+                lastErrorText = this._formatDateTime(new Date(e.created_at));
+            }
+
+            // Count actions per user today
+            const { data: userActionsData } = await supabaseClient.from('audit_log').select('user_id').gte('created_at', todayISO);
+            const userActionCounts = {};
+            if (userActionsData) {
+                userActionsData.forEach(r => { userActionCounts[r.user_id] = (userActionCounts[r.user_id] || 0) + 1; });
+            }
+
+            this._dashMetrics = { onlineCount, actionsTodayCount, topModuleName, lastErrorText, userActionCounts };
         } catch (err) {
-            console.error('[AdminPanel] Error loading dashboard profiles:', err);
+            console.error('[AdminPanel] Error loading dashboard:', err);
             this._dashProfiles = [];
+            this._dashMetrics = { onlineCount: 0, actionsTodayCount: 0, topModuleName: '—', lastErrorText: '—', userActionCounts: {} };
         }
+
         const container = document.getElementById('admTabContent');
         if (container) {
             container.innerHTML = this._renderDashboardTab();
             this._attachDashboardEvents();
+        }
+
+        // Auto-refresh every 60s while dashboard is active
+        this._startDashboardRefresh();
+    },
+
+    _startDashboardRefresh() {
+        this._stopDashboardRefresh();
+        this._dashRefreshInterval = setInterval(() => {
+            if (this._activeTab !== 'dashboard') return;
+            this._loadDashboardTab();
+        }, 60 * 1000);
+    },
+
+    _stopDashboardRefresh() {
+        if (this._dashRefreshInterval) {
+            clearInterval(this._dashRefreshInterval);
+            this._dashRefreshInterval = null;
         }
     },
 
@@ -362,12 +334,8 @@ const AdminPanel = {
     },
 
     _renderMetrics() {
-        const activeUsers = this._dashProfiles.filter(u => u.active).length;
+        const m = this._dashMetrics || {};
         const totalUsers = this._dashProfiles.length;
-        const activeRoles = new Set(this._dashProfiles.filter(u => u.active).map(u => u.role));
-        const rolesInUse = activeRoles.size;
-        const activeModules = Data.getModuleList().filter(m => m.status !== 'upcoming').length;
-        const totalModules = Data.getModuleList().length;
 
         return `
             <div class="admpanel-metrics">
@@ -376,8 +344,8 @@ const AdminPanel = {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <span class="admpanel-metric-value">${activeUsers}<span style="font-size:0.55em;color:var(--text-muted);">/${totalUsers}</span></span>
-                        <span class="admpanel-metric-label">USUARIOS ACTIVOS</span>
+                        <span class="admpanel-metric-value">${m.onlineCount || 0}<span style="font-size:0.55em;color:var(--text-muted);">/${totalUsers}</span></span>
+                        <span class="admpanel-metric-label">USUARIOS ONLINE</span>
                     </div>
                 </div>
 
@@ -386,8 +354,8 @@ const AdminPanel = {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <span class="admpanel-metric-value">${rolesInUse}</span>
-                        <span class="admpanel-metric-label">ROLES EN USO</span>
+                        <span class="admpanel-metric-value">${m.actionsTodayCount || 0}</span>
+                        <span class="admpanel-metric-label">ACCIONES HOY</span>
                     </div>
                 </div>
 
@@ -396,8 +364,8 @@ const AdminPanel = {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <span class="admpanel-metric-value">${activeModules}<span style="font-size:0.55em;color:var(--text-muted);">/${totalModules}</span></span>
-                        <span class="admpanel-metric-label">MÓDULOS ACTIVOS</span>
+                        <span class="admpanel-metric-value admpanel-metric-value--sm">${m.topModuleName || '—'}</span>
+                        <span class="admpanel-metric-label">MÓDULO MÁS ACTIVO</span>
                     </div>
                 </div>
 
@@ -406,8 +374,7 @@ const AdminPanel = {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     </div>
                     <div class="admpanel-metric-data">
-                        <!-- TODO: Conectar con tabla audit_log cuando exista -->
-                        <span class="admpanel-metric-value admpanel-metric-value--sm">—</span>
+                        <span class="admpanel-metric-value admpanel-metric-value--sm">${m.lastErrorText || '—'}</span>
                         <span class="admpanel-metric-label">ÚLTIMO ERROR</span>
                     </div>
                 </div>
@@ -432,8 +399,26 @@ const AdminPanel = {
         `;
     },
 
+    _isOnline(user) {
+        if (!user.active || !user.last_seen_at) return false;
+        return (Date.now() - new Date(user.last_seen_at).getTime()) < 5 * 60 * 1000;
+    },
+
+    _formatLastLogin(dateStr) {
+        if (!dateStr) return '—';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today.getTime() - 86400000);
+        const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const time = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false });
+        if (dDay.getTime() === today.getTime()) return `Hoy ${time}`;
+        if (dDay.getTime() === yesterday.getTime()) return `Ayer ${time}`;
+        return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    },
+
     _renderUsersTable() {
-        let users = [...this._dashProfiles];
+        let users = this._dashProfiles.filter(u => u.active);
 
         // Filter by search
         if (this._searchQuery) {
@@ -452,7 +437,7 @@ const AdminPanel = {
             switch (this._sortCol) {
                 case 'name': va = a.name || ''; vb = b.name || ''; break;
                 case 'role': va = a.role || ''; vb = b.role || ''; break;
-                case 'active': va = a.active ? 1 : 0; vb = b.active ? 1 : 0; break;
+                case 'online': va = this._isOnline(a) ? 1 : 0; vb = this._isOnline(b) ? 1 : 0; break;
                 default: va = a.name || ''; vb = b.name || '';
             }
             if (typeof va === 'string') return va.localeCompare(vb) * dir;
@@ -470,20 +455,25 @@ const AdminPanel = {
             return '<div class="admpanel-log-empty">No se encontraron usuarios</div>';
         }
 
+        const actionCounts = this._dashMetrics?.userActionCounts || {};
+
         return `
             <table class="admpanel-table">
                 <thead>
                     <tr>
                         <th data-sort="name">Nombre ${sortIcon('name')}</th>
-                        <th>Username</th>
                         <th data-sort="role">Rol ${sortIcon('role')}</th>
-                        <th>Teléfono</th>
-                        <th data-sort="active">Estado ${sortIcon('active')}</th>
+                        <th data-sort="online">Estado ${sortIcon('online')}</th>
+                        <th>Último login</th>
+                        <th>Dispositivo</th>
+                        <th>Acciones hoy</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${users.map(u => {
                         const roleColor = this._getRoleColor(u.role);
+                        const online = this._isOnline(u);
+                        const userActions = actionCounts[u.id] || 0;
                         return `
                         <tr class="admpanel-user-row">
                             <td>
@@ -492,15 +482,16 @@ const AdminPanel = {
                                     <span class="admpanel-user-name">${u.name || '—'}</span>
                                 </div>
                             </td>
-                            <td class="admpanel-cell-mono">${u.username || '—'}</td>
                             <td><span class="admpanel-role-badge" style="background:${roleColor}18; color:${roleColor}; border: 1px solid ${roleColor}35;">${this._getRoleLabel(u.role)}</span></td>
-                            <td class="admpanel-cell-muted">${u.telefono || '—'}</td>
                             <td>
-                                <span class="admpanel-status-badge ${u.active ? 'active' : 'inactive'}">
+                                <span class="admpanel-status-badge ${online ? 'online' : 'offline'}">
                                     <span class="admpanel-status-dot"></span>
-                                    ${u.active ? 'Activo' : 'Inactivo'}
+                                    ${online ? 'ONLINE' : 'OFFLINE'}
                                 </span>
                             </td>
+                            <td class="admpanel-cell-muted">${this._formatLastLogin(u.last_login_at)}</td>
+                            <td class="admpanel-cell-muted" style="font-size:0.8rem;">${u.last_device || '—'}</td>
+                            <td class="admpanel-cell-mono">${userActions}</td>
                         </tr>
                         `;
                     }).join('')}
@@ -510,10 +501,7 @@ const AdminPanel = {
     },
 
     _attachDashboardEvents() {
-        // Sort table
         this._attachSortEvents();
-
-        // Search users
         const searchInput = document.getElementById('admUserSearch');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => {
@@ -860,9 +848,10 @@ const AdminPanel = {
             btn.textContent = 'Creando…';
 
             try {
-                await API.adminCreateUser({ username, password, name, initials, role, telefono });
+                const newUser = await API.adminCreateUser({ username, password, name, initials, role, telefono });
                 Modal.close(modal.id);
                 Toast.success(`Usuario "${name}" creado correctamente`);
+                if (typeof AuditLog !== 'undefined') AuditLog.record('create', 'admin-panel', `Creó usuario ${name}`, 'usuario', newUser?.id || null);
                 this._loadUsuariosTab();
             } catch (err) {
                 Toast.error(err.message || 'Error al crear usuario');
@@ -935,6 +924,7 @@ const AdminPanel = {
                 await API.updateProfile(uid, updates);
                 Modal.close(modal.id);
                 Toast.success(`Usuario "${updates.name}" actualizado`);
+                if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'admin-panel', `Editó usuario ${updates.name}`, 'usuario', uid);
                 this._loadUsuariosTab();
             } catch (err) {
                 Toast.error(err.message || 'Error al actualizar');
@@ -981,6 +971,7 @@ const AdminPanel = {
                 await API.adminResetPassword(uid, pw);
                 Modal.close(modal.id);
                 Toast.success('Contraseña actualizada');
+                if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'admin-panel', `Reseteó contraseña de ${name}`, 'usuario', uid);
             } catch (err) {
                 Toast.error(err.message || 'Error al cambiar contraseña');
                 btn.disabled = false;
@@ -1008,6 +999,7 @@ const AdminPanel = {
         try {
             await API.updateProfile(uid, { active: !isActive });
             Toast.success(`${name} ${isActive ? 'desactivado' : 'activado'}`);
+            if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'admin-panel', `${action} usuario ${name}`, 'usuario', uid);
             this._loadUsuariosTab();
         } catch (err) {
             Toast.error(err.message || 'Error al cambiar estado');
@@ -1028,6 +1020,7 @@ const AdminPanel = {
         try {
             await API.adminDeleteUser(uid);
             Toast.success(`${name} eliminado`);
+            if (typeof AuditLog !== 'undefined') AuditLog.record('delete', 'admin-panel', `Eliminó usuario ${name}`, 'usuario', uid);
             this._loadUsuariosTab();
         } catch (err) {
             Toast.error(err.message || 'Error al eliminar');
@@ -1236,12 +1229,19 @@ const AdminPanel = {
                 saveBtn.disabled = true;
                 saveBtn.textContent = 'Guardando…';
                 try {
+                    const editedRoleIds = Object.keys(this._permEdits);
                     await this._saveRolesPermissions();
                     this._rolesDirty = false;
                     this._permEdits = {};
                     const bar = document.getElementById('admPermSaveBar');
                     if (bar) bar.classList.remove('visible');
                     Toast.success('Permisos actualizados');
+                    if (typeof AuditLog !== 'undefined') {
+                        editedRoleIds.forEach(roleId => {
+                            const role = this._rolesData.find(r => r.id === roleId);
+                            AuditLog.record('edit', 'admin-panel', `Actualizó permisos del rol ${role?.label || roleId}`, 'rol', roleId);
+                        });
+                    }
                     // Reload to refresh cache
                     this._loadRolesTab();
                 } catch (err) {
@@ -1407,6 +1407,7 @@ const AdminPanel = {
 
                 Modal.close(modal.id);
                 Toast.success(`Rol "${label}" creado`);
+                if (typeof AuditLog !== 'undefined') AuditLog.record('create', 'admin-panel', `Creó rol ${label}`, 'rol', id);
                 this._loadRolesTab();
             } catch (err) {
                 Toast.error(err.message || 'Error al crear rol');
@@ -1453,6 +1454,7 @@ const AdminPanel = {
             const { error } = await supabaseClient.from('roles').delete().eq('id', roleId);
             if (error) throw error;
             Toast.success(`Rol "${role.label}" eliminado`);
+            if (typeof AuditLog !== 'undefined') AuditLog.record('delete', 'admin-panel', `Eliminó rol ${role.label}`, 'rol', roleId);
             this._loadRolesTab();
         } catch (err) {
             Toast.error(err.message || 'Error al eliminar rol');
@@ -1460,13 +1462,71 @@ const AdminPanel = {
     },
 
     // ═══════════════════════════════════════════
-    //  TAB 4: AUDIT LOG
+    //  TAB 4: AUDIT LOG (real data from Supabase)
     // ═══════════════════════════════════════════
+
+    async _initLogsTab() {
+        const container = document.getElementById('admTabContent');
+        if (!container) return;
+
+        // Show loading
+        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+
+        // Load profiles map + distinct users/modules for filters
+        try {
+            const [profiles, distinctUsers, distinctModules] = await Promise.all([
+                API.getProfiles(),
+                supabaseClient.from('audit_log').select('user_name, user_id').order('user_name'),
+                supabaseClient.from('audit_log').select('module').order('module'),
+            ]);
+
+            // Build profiles map (uid → { name, initials, role })
+            this._logProfilesMap = {};
+            profiles.forEach(p => {
+                this._logProfilesMap[p.id] = { name: p.name, initials: p.initials, role: p.role };
+            });
+
+            // Deduplicate users and modules for filters
+            const userMap = new Map();
+            if (distinctUsers.data) {
+                distinctUsers.data.forEach(r => {
+                    if (r.user_name && !userMap.has(r.user_name)) {
+                        userMap.set(r.user_name, r.user_id);
+                    }
+                });
+            }
+            this._logDistinctUsers = [...userMap.entries()].map(([name, uid]) => {
+                return { username: name, name };
+            }).sort((a, b) => a.name.localeCompare(b.name));
+
+            const moduleSet = new Set();
+            if (distinctModules.data) {
+                distinctModules.data.forEach(r => { if (r.module) moduleSet.add(r.module); });
+            }
+            this._logDistinctModules = [...moduleSet].sort();
+        } catch (err) {
+            console.error('[AdminPanel] Error loading logs metadata:', err);
+            this._logProfilesMap = {};
+            this._logDistinctUsers = [];
+            this._logDistinctModules = [];
+        }
+
+        this._logPage = 0;
+        this._allLogsLoaded = false;
+        this._logFilters = { user: '', module: '', action: '', dateFrom: '', dateTo: '' };
+
+        container.innerHTML = this._renderLogsTab();
+        await this._renderLogEntries(true);
+        this._attachLogsEvents();
+    },
+
     _renderLogsTab() {
-        // TODO: Use real profiles when audit_log is connected to real data
-        const userOptions = Object.entries(this._logUserMap).map(([id, u]) => `<option value="${id}">${u.name}</option>`).join('');
-        const modules = [...new Set(this._logs.map(l => l.module))].sort();
-        const moduleOptions = modules.map(m => `<option value="${m}">${m}</option>`).join('');
+        const userOptions = (this._logDistinctUsers || []).map(u =>
+            `<option value="${u.username}">${u.name}</option>`
+        ).join('');
+        const moduleOptions = (this._logDistinctModules || []).map(m =>
+            `<option value="${m}">${m}</option>`
+        ).join('');
 
         return `
             <div class="admpanel-section">
@@ -1488,6 +1548,7 @@ const AdminPanel = {
                         <option value="edit">Editar</option>
                         <option value="delete">Eliminar</option>
                         <option value="login">Login</option>
+                        <option value="logout">Logout</option>
                         <option value="view">Ver</option>
                         <option value="error">Error</option>
                         <option value="denied">Denegado</option>
@@ -1509,26 +1570,26 @@ const AdminPanel = {
         `;
     },
 
-    _getFilteredLogs() {
-        let logs = [...this._logs];
+    async _fetchLogs(offset, limit) {
+        let query = supabaseClient
+            .from('audit_log')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .range(offset, offset + limit - 1);
+
         const f = this._logFilters;
+        if (f.user) query = query.eq('user_name', f.user);
+        if (f.module) query = query.eq('module', f.module);
+        if (f.action) query = query.eq('action', f.action);
+        if (f.dateFrom) query = query.gte('created_at', f.dateFrom + 'T00:00:00');
+        if (f.dateTo) query = query.lte('created_at', f.dateTo + 'T23:59:59');
 
-        if (f.user) logs = logs.filter(l => l.user === f.user);
-        if (f.module) logs = logs.filter(l => l.module === f.module);
-        if (f.action) logs = logs.filter(l => l.action === f.action);
-        if (f.dateFrom) {
-            const from = new Date(f.dateFrom + 'T00:00:00');
-            logs = logs.filter(l => l.ts >= from);
-        }
-        if (f.dateTo) {
-            const to = new Date(f.dateTo + 'T23:59:59');
-            logs = logs.filter(l => l.ts <= to);
-        }
-
-        return logs;
+        const { data, error } = await query;
+        if (error) { console.error('[AdminPanel] Fetch logs error:', error); return []; }
+        return data || [];
     },
 
-    _renderLogEntries(reset) {
+    async _renderLogEntries(reset) {
         if (reset) {
             this._logPage = 0;
             this._allLogsLoaded = false;
@@ -1539,11 +1600,14 @@ const AdminPanel = {
         const endMsg = document.getElementById('admLogEnd');
         if (!feed) return;
 
-        const filtered = this._getFilteredLogs();
-        const start = this._logPage * this._logPageSize;
-        const slice = filtered.slice(start, start + this._logPageSize);
+        if (reset) {
+            feed.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;padding:40px;"><div class="spinner-sm"></div></div>';
+        }
 
-        if (slice.length === 0 && reset) {
+        const offset = this._logPage * this._logPageSize;
+        const logs = await this._fetchLogs(offset, this._logPageSize);
+
+        if (logs.length === 0 && reset) {
             feed.innerHTML = '<div class="admpanel-log-empty">No se encontraron registros con esos filtros</div>';
             if (loader) loader.style.display = 'none';
             if (endMsg) endMsg.style.display = 'none';
@@ -1553,8 +1617,9 @@ const AdminPanel = {
         let html = '';
         let lastDateLabel = reset ? '' : (feed.dataset.lastDate || '');
 
-        slice.forEach(log => {
-            const dateLabel = this._formatDate(log.ts);
+        logs.forEach(log => {
+            const ts = new Date(log.created_at);
+            const dateLabel = this._formatDate(ts);
             if (dateLabel !== lastDateLabel) {
                 let sepLabel = dateLabel;
                 if (dateLabel === 'Hoy' || dateLabel === 'Ayer') {
@@ -1565,23 +1630,31 @@ const AdminPanel = {
                 lastDateLabel = dateLabel;
             }
 
-            const user = this._getUserById(log.user);
-            const userName = user ? user.name.split(' ')[0] : log.user;
-            const userInitials = user ? user.initials : '??';
-            const roleColor = user ? this._getRoleColor(user.role) : '#7A8599';
+            const profile = this._logProfilesMap[log.user_id];
+            const userName = profile ? profile.name.split(' ')[0] : (log.user_name || 'unknown').split(' ')[0];
+            const userInitials = profile ? profile.initials : (log.user_name || '??').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+            const roleColor = profile ? this._getRoleColor(profile.role) : '#7A8599';
+            const modLabel = log.module || log.table_name || 'sistema';
+            const moduleColor = this._getModuleColor(modLabel);
+            // detail: new format stores { text, device }, old format has { snapshot/new/old }
+            const detail = (typeof log.details === 'object' && log.details?.text)
+                ? log.details.text
+                : this._buildDetailFromLegacy(log);
+            const device = (typeof log.details === 'object' && log.details?.device) ? log.details.device : '';
+            const actionLabel = log.action === 'update' ? 'edit' : log.action;
 
             html += `
-                <div class="admpanel-log-entry ${log.action === 'error' || log.action === 'denied' ? 'admpanel-log-entry--error' : ''}">
-                    <span class="admpanel-log-time">${this._formatTime(log.ts)}</span>
+                <div class="admpanel-log-entry ${actionLabel === 'error' || actionLabel === 'denied' ? 'admpanel-log-entry--error' : ''}">
+                    <span class="admpanel-log-time">${this._formatTime(ts)}</span>
                     <span class="admpanel-log-avatar" style="background:${roleColor}20; color:${roleColor}; border:1px solid ${roleColor}40;">${userInitials}</span>
                     <div class="admpanel-log-body">
-                        <span class="admpanel-log-text"><strong>${userName}</strong> ${log.detail.charAt(0).toLowerCase() + log.detail.slice(1)}</span>
+                        <span class="admpanel-log-text"><strong>${userName}</strong> ${detail.charAt(0).toLowerCase() + detail.slice(1)}</span>
                         <div class="admpanel-log-meta">
-                            <span class="admpanel-log-module" style="background:${this._getModuleColor(log.module)}15; color:${this._getModuleColor(log.module)}; border:1px solid ${this._getModuleColor(log.module)}30;">${log.module}</span>
-                            <span class="admpanel-log-device">${log.device}</span>
+                            <span class="admpanel-log-module" style="background:${moduleColor}15; color:${moduleColor}; border:1px solid ${moduleColor}30;">${modLabel}</span>
+                            ${device ? `<span class="admpanel-log-device">${device}</span>` : ''}
                         </div>
                     </div>
-                    <span class="admpanel-log-action-icon" style="color:${this._getActionColor(log.action)}" title="${this._getActionLabel(log.action)}">${this._getActionIcon(log.action)}</span>
+                    <span class="admpanel-log-action-icon" style="color:${this._getActionColor(actionLabel)}" title="${this._getActionLabel(actionLabel)}">${this._getActionIcon(actionLabel)}</span>
                 </div>
             `;
         });
@@ -1596,11 +1669,10 @@ const AdminPanel = {
         this._logPage++;
 
         // Check if all loaded
-        const totalShown = this._logPage * this._logPageSize;
-        if (totalShown >= filtered.length) {
+        if (logs.length < this._logPageSize) {
             this._allLogsLoaded = true;
             if (loader) loader.style.display = 'none';
-            if (endMsg) endMsg.style.display = totalShown > this._logPageSize ? 'block' : 'none';
+            if (endMsg) endMsg.style.display = this._logPage > 1 ? 'block' : 'none';
         } else {
             if (loader) loader.style.display = 'none';
             if (endMsg) endMsg.style.display = 'none';
@@ -1638,15 +1710,16 @@ const AdminPanel = {
             if (this._scrollHandler) mainContent.removeEventListener('scroll', this._scrollHandler);
 
             this._scrollHandler = () => {
-                if (this._allLogsLoaded) return;
+                if (this._allLogsLoaded || this._logLoadingMore) return;
                 const feed = document.getElementById('admLogFeed');
                 if (!feed) return;
                 const feedRect = feed.getBoundingClientRect();
                 const mainRect = mainContent.getBoundingClientRect();
                 if (feedRect.bottom - mainRect.bottom < 200) {
+                    this._logLoadingMore = true;
                     const loader = document.getElementById('admLogLoader');
                     if (loader) loader.style.display = 'flex';
-                    setTimeout(() => this._renderLogEntries(false), 300);
+                    this._renderLogEntries(false).then(() => { this._logLoadingMore = false; });
                 }
             };
             mainContent.addEventListener('scroll', this._scrollHandler);

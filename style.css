@@ -9136,6 +9136,23 @@ body {
     color: #FF4757;
     border: 1px solid rgba(255, 68, 68, 0.25);
 }
+.admpanel-status-badge.online {
+    background: rgba(0, 204, 136, 0.12);
+    color: #00CC88;
+    border: 1px solid rgba(0, 204, 136, 0.25);
+}
+.admpanel-status-badge.online .admpanel-status-dot {
+    animation: admpanel-pulse 2s ease-in-out infinite;
+}
+@keyframes admpanel-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 204, 136, 0.5); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(0, 204, 136, 0); }
+}
+.admpanel-status-badge.offline {
+    background: rgba(122, 133, 153, 0.12);
+    color: #7A8599;
+    border: 1px solid rgba(122, 133, 153, 0.25);
+}
 .admpanel-status-dot {
     width: 6px;
     height: 6px;
@@ -9455,13 +9472,16 @@ body {
     left: 0;
     right: 0;
     z-index: 10;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: space-between;
     padding: 12px 20px;
     background: rgba(242, 141, 21, 0.08);
     border-top: 1px solid rgba(242, 141, 21, 0.25);
     backdrop-filter: blur(12px);
+}
+.admperm-save-bar.visible {
+    display: flex;
     animation: admperm-slideUp 200ms ease;
 }
 @keyframes admperm-slideUp {

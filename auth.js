@@ -30,6 +30,21 @@ const Auth = {
             }
 
             this._profile = profile;
+
+            // Audit log + heartbeat + update login metadata
+            if (typeof AuditLog !== 'undefined') {
+                AuditLog.record('login', 'sistema', 'Inició sesión');
+                AuditLog.startHeartbeat();
+            }
+            // Update last_login_at and last_device in profiles
+            try {
+                const device = typeof AuditLog !== 'undefined' ? AuditLog._parseDevice() : navigator.userAgent;
+                await supabaseClient.from('profiles').update({
+                    last_login_at: new Date().toISOString(),
+                    last_device: device,
+                }).eq('id', data.user.id);
+            } catch (e) { console.warn('[Auth] Could not update login metadata:', e.message); }
+
             return { success: true, user: profile };
         } catch (e) {
             console.error('[Auth] Login error:', e);
@@ -39,6 +54,10 @@ const Auth = {
 
     // ─── LOGOUT ───
     async logout() {
+        if (typeof AuditLog !== 'undefined') {
+            AuditLog.record('logout', 'sistema', 'Cerró sesión');
+            AuditLog.stopHeartbeat();
+        }
         this._profile = null;
         if (typeof Badges !== 'undefined') Badges.stop();
         await supabaseClient.auth.signOut();
@@ -106,6 +125,9 @@ const Auth = {
             if (!profile) return false;
 
             this._profile = profile;
+
+            // Start heartbeat on session restore
+            if (typeof AuditLog !== 'undefined') AuditLog.startHeartbeat();
 
             // Refresh Data caches with roles from Supabase
             if (typeof Data !== 'undefined' && Data.loadRolesFromDB) {

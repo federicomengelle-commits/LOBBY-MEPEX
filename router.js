@@ -130,6 +130,7 @@ const Router = {
 
         // Role guard for modules
         if (route.module && !Auth.hasAccess(route.module)) {
+            if (typeof AuditLog !== 'undefined') AuditLog.record('denied', 'sistema', `Acceso denegado a #${hash}`);
             const user = Auth.getUser();
             this.navigate(this.getDefaultRoute(user?.role));
             return;
@@ -137,6 +138,7 @@ const Router = {
 
         // Super admin-only guard (solo Fede)
         if (route.superadminOnly && !Auth.isSuperAdmin()) {
+            if (typeof AuditLog !== 'undefined') AuditLog.record('denied', 'sistema', `Acceso denegado a #${hash}`);
             const user = Auth.getUser();
             this.navigate(this.getDefaultRoute(user?.role));
             return;
@@ -144,6 +146,7 @@ const Router = {
 
         // Admin-level guard (superadmin + admin)
         if (route.adminOnly && !Auth.isAdminLevel()) {
+            if (typeof AuditLog !== 'undefined') AuditLog.record('denied', 'sistema', `Acceso denegado a #${hash}`);
             const user = Auth.getUser();
             this.navigate(this.getDefaultRoute(user?.role));
             return;
