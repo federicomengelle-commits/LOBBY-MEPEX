@@ -617,7 +617,7 @@ const Lobby = {
         let activities = [];
         try {
             const { data } = await supabaseClient
-                .from('audit_logs')
+                .from('audit_log')
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(8);
@@ -625,10 +625,10 @@ const Lobby = {
             if (data && data.length > 0) {
                 activities = data.map(log => ({
                     time: this._timeAgo(new Date(log.created_at)),
-                    user: log.user_name || log.usuario || 'Sistema',
-                    action: log.action || log.tipo || '',
-                    detail: log.description || log.descripcion || '',
-                    icon: this._actionIcon(log.action || log.tipo),
+                    user: log.username || 'Sistema',
+                    action: log.action || '',
+                    detail: log.detail || '',
+                    icon: this._actionIcon(log.action),
                     color: 'var(--primary)',
                 }));
             }

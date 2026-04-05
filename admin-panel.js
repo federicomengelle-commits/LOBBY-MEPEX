@@ -260,8 +260,8 @@ const AdminPanel = {
             const [profiles, actionsToday, topModule, lastError] = await Promise.all([
                 API.getProfiles(),
                 supabaseClient.from('audit_log').select('user_id', { count: 'exact', head: true }).gte('created_at', todayISO),
-                supabaseClient.from('audit_log').select('module').gte('created_at', todayISO).neq('module', 'sistema'),
-                supabaseClient.from('audit_log').select('detail,created_at').in('action', ['error', 'denied']).order('created_at', { ascending: false }).limit(1),
+                supabaseClient.from('audit_log').select('module').gte('created_at', todayISO).not('module', 'is', null),
+                supabaseClient.from('audit_log').select('*').eq('action', 'error').order('created_at', { ascending: false }).limit(1),
             ]);
 
             this._dashProfiles = profiles;
