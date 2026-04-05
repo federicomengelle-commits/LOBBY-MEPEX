@@ -6359,6 +6359,33 @@ body {
     grid-column: 1 / -1;
 }
 
+/* Inline datetime-local fields for events */
+.ev-dates-inline {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.ev-dates-inline-edit {
+    grid-template-columns: 1fr 1fr;
+}
+.ev-date-inline-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ev-date-inline-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.ev-dates-inline input[type="datetime-local"] {
+    width: 100%;
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 0.8rem;
+}
+
 /* Form elements */
 .ev-form-label {
     display: block;

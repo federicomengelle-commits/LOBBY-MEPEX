@@ -541,52 +541,33 @@ const EventosModule = {
         const isEditing = this._editingSections.has('fechas');
 
         if (isEditing) {
+            const dtSetup = this._combineDatetime(ev.setupDate, ev.setupTimeOpen);
+            const dtEvStart = this._combineDatetime(ev.eventStartDate, ev.eventTimeOpen);
+            const dtEvEnd = this._combineDatetime(ev.eventEndDate, ev.eventTimeClose);
+            const dtTeardown = this._combineDatetime(ev.teardownDate, ev.teardownTimeOpen);
+
             return `
                 <div class="ev-panel-section ev-section-editing" id="evSecFechas">
                     <div class="ev-section-header">
                         <h3 class="ev-section-title">Fechas</h3>
                     </div>
                     <div class="ev-section-form">
-                        <div class="ev-date-group">
-                            <label class="ev-form-label">Armado</label>
-                            <div class="ev-date-row">
-                                <input type="date" class="ev-form-input" name="setupDate" value="${ev.setupDate || ''}">
-                                <span class="ev-date-sep">—</span>
-                                <input type="date" class="ev-form-input" name="setupEndDate" value="${ev.setupEndDate || ''}">
+                        <div class="ev-dates-inline ev-dates-inline-edit">
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Armado</span>
+                                <input type="datetime-local" class="ev-form-input" name="dtSetup" value="${dtSetup}">
                             </div>
-                            <div class="ev-date-row ev-time-row">
-                                <input type="time" class="ev-form-input ev-form-time" name="setupTimeOpen" value="${ev.setupTimeOpen || ''}" placeholder="Apertura">
-                                <span class="ev-date-sep">—</span>
-                                <input type="time" class="ev-form-input ev-form-time" name="setupTimeClose" value="${ev.setupTimeClose || ''}" placeholder="Cierre">
-                                <span class="ev-time-hint">Horario</span>
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Evento inicio</span>
+                                <input type="datetime-local" class="ev-form-input" name="dtEventStart" value="${dtEvStart}">
                             </div>
-                        </div>
-                        <div class="ev-date-group">
-                            <label class="ev-form-label">Funcionamiento</label>
-                            <div class="ev-date-row">
-                                <input type="date" class="ev-form-input" name="eventStartDate" value="${ev.eventStartDate || ''}">
-                                <span class="ev-date-sep">—</span>
-                                <input type="date" class="ev-form-input" name="eventEndDate" value="${ev.eventEndDate || ''}">
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Evento fin</span>
+                                <input type="datetime-local" class="ev-form-input" name="dtEventEnd" value="${dtEvEnd}">
                             </div>
-                            <div class="ev-date-row ev-time-row">
-                                <input type="time" class="ev-form-input ev-form-time" name="eventTimeOpen" value="${ev.eventTimeOpen || ''}" placeholder="Apertura">
-                                <span class="ev-date-sep">—</span>
-                                <input type="time" class="ev-form-input ev-form-time" name="eventTimeClose" value="${ev.eventTimeClose || ''}" placeholder="Cierre">
-                                <span class="ev-time-hint">Horario</span>
-                            </div>
-                        </div>
-                        <div class="ev-date-group">
-                            <label class="ev-form-label">Desarme</label>
-                            <div class="ev-date-row">
-                                <input type="date" class="ev-form-input" name="teardownDate" value="${ev.teardownDate || ''}">
-                                <span class="ev-date-sep">—</span>
-                                <input type="date" class="ev-form-input" name="teardownEndDate" value="${ev.teardownEndDate || ''}">
-                            </div>
-                            <div class="ev-date-row ev-time-row">
-                                <input type="time" class="ev-form-input ev-form-time" name="teardownTimeOpen" value="${ev.teardownTimeOpen || ''}" placeholder="Apertura">
-                                <span class="ev-date-sep">—</span>
-                                <input type="time" class="ev-form-input ev-form-time" name="teardownTimeClose" value="${ev.teardownTimeClose || ''}" placeholder="Cierre">
-                                <span class="ev-time-hint">Horario</span>
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Desarme</span>
+                                <input type="datetime-local" class="ev-form-input" name="dtTeardown" value="${dtTeardown}">
                             </div>
                         </div>
                         <div class="ev-section-btns">
@@ -1154,22 +1135,26 @@ const EventosModule = {
         if (!panel) return;
 
         if (section === 'fechas') {
-            const getData = (name) => panel.querySelector(`[name="${name}"]`)?.value || '';
+            const getVal = (name) => panel.querySelector(`[name="${name}"]`)?.value || '';
+            const sSetup = this._splitDatetime(getVal('dtSetup'));
+            const sEvStart = this._splitDatetime(getVal('dtEventStart'));
+            const sEvEnd = this._splitDatetime(getVal('dtEventEnd'));
+            const sTeardown = this._splitDatetime(getVal('dtTeardown'));
+
             const update = {
-                setupDate: getData('setupDate'),
-                setupEndDate: getData('setupEndDate'),
-                eventStartDate: getData('eventStartDate'),
-                eventEndDate: getData('eventEndDate'),
-                teardownDate: getData('teardownDate'),
-                // Horarios por fase
-                setupTimeOpen: getData('setupTimeOpen'),
-                setupTimeClose: getData('setupTimeClose'),
-                eventTimeOpen: getData('eventTimeOpen'),
-                eventTimeClose: getData('eventTimeClose'),
-                teardownTimeOpen: getData('teardownTimeOpen'),
-                teardownTimeClose: getData('teardownTimeClose'),
+                setupDate: sSetup.date,
+                setupEndDate: sSetup.date,
+                eventStartDate: sEvStart.date,
+                eventEndDate: sEvEnd.date,
+                teardownDate: sTeardown.date,
+                setupTimeOpen: sSetup.time,
+                setupTimeClose: '',
+                eventTimeOpen: sEvStart.time,
+                eventTimeClose: sEvEnd.time,
+                teardownTimeOpen: sTeardown.time,
+                teardownTimeClose: '',
             };
-            const teardownEndDate = getData('teardownEndDate');
+            const teardownEndDate = sTeardown.date;
 
             // Update via API
             const result = await API.updateEvent(ev.id, update);
@@ -1268,36 +1253,24 @@ const EventosModule = {
                         </select>
                     </div>
                     <div class="form-field form-field-full">
-                        <label class="form-label">Armado</label>
-                        <div class="ev-create-date-row">
-                            <input class="form-input" type="date" name="setupDate" title="Inicio armado">
-                            <span class="ev-date-sep">—</span>
-                            <input class="form-input" type="date" name="setupEndDate" title="Fin armado">
-                            <input class="form-input ev-form-time" type="time" name="setupTimeOpen" title="Hora apertura">
-                            <span class="ev-date-sep">—</span>
-                            <input class="form-input ev-form-time" type="time" name="setupTimeClose" title="Hora cierre">
-                        </div>
-                    </div>
-                    <div class="form-field form-field-full">
-                        <label class="form-label">Funcionamiento</label>
-                        <div class="ev-create-date-row">
-                            <input class="form-input" type="date" name="eventStartDate" title="Inicio evento">
-                            <span class="ev-date-sep">—</span>
-                            <input class="form-input" type="date" name="eventEndDate" title="Fin evento">
-                            <input class="form-input ev-form-time" type="time" name="eventTimeOpen" title="Hora apertura">
-                            <span class="ev-date-sep">—</span>
-                            <input class="form-input ev-form-time" type="time" name="eventTimeClose" title="Hora cierre">
-                        </div>
-                    </div>
-                    <div class="form-field form-field-full">
-                        <label class="form-label">Desarme</label>
-                        <div class="ev-create-date-row">
-                            <input class="form-input" type="date" name="teardownDate" title="Inicio desarme">
-                            <span class="ev-date-sep">—</span>
-                            <input class="form-input" type="date" name="teardownEndDate" title="Fin desarme">
-                            <input class="form-input ev-form-time" type="time" name="teardownTimeOpen" title="Hora apertura">
-                            <span class="ev-date-sep">—</span>
-                            <input class="form-input ev-form-time" type="time" name="teardownTimeClose" title="Hora cierre">
+                        <label class="form-label">Fechas</label>
+                        <div class="ev-dates-inline">
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Armado</span>
+                                <input class="form-input" type="datetime-local" name="dtSetup" title="Inicio armado">
+                            </div>
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Evento inicio</span>
+                                <input class="form-input" type="datetime-local" name="dtEventStart" title="Inicio evento">
+                            </div>
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Evento fin</span>
+                                <input class="form-input" type="datetime-local" name="dtEventEnd" title="Fin evento">
+                            </div>
+                            <div class="ev-date-inline-field">
+                                <span class="ev-date-inline-label">Desarme</span>
+                                <input class="form-input" type="datetime-local" name="dtTeardown" title="Inicio desarme">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1324,22 +1297,27 @@ const EventosModule = {
             }
 
             const getVal = (n) => form.querySelector(`[name="${n}"]`)?.value || null;
+            const split = (n) => this._splitDatetime(getVal(n));
+            const sSetup = split('dtSetup');
+            const sEvStart = split('dtEventStart');
+            const sEvEnd = split('dtEventEnd');
+            const sTeardown = split('dtTeardown');
             const data = {
                 name,
                 venue: (getVal('venue') || '').trim(),
                 status: getVal('estado'),
-                setupDate: getVal('setupDate'),
-                setupEndDate: getVal('setupEndDate'),
-                eventStartDate: getVal('eventStartDate'),
-                eventEndDate: getVal('eventEndDate'),
-                teardownDate: getVal('teardownDate'),
-                teardownEndDate: getVal('teardownEndDate'),
-                setupTimeOpen: getVal('setupTimeOpen'),
-                setupTimeClose: getVal('setupTimeClose'),
-                eventTimeOpen: getVal('eventTimeOpen'),
-                eventTimeClose: getVal('eventTimeClose'),
-                teardownTimeOpen: getVal('teardownTimeOpen'),
-                teardownTimeClose: getVal('teardownTimeClose'),
+                setupDate: sSetup.date,
+                setupEndDate: sSetup.date,
+                eventStartDate: sEvStart.date,
+                eventEndDate: sEvEnd.date,
+                teardownDate: sTeardown.date,
+                teardownEndDate: sTeardown.date,
+                setupTimeOpen: sSetup.time,
+                setupTimeClose: '',
+                eventTimeOpen: sEvStart.time,
+                eventTimeClose: sEvEnd.time,
+                teardownTimeOpen: sTeardown.time,
+                teardownTimeClose: '',
             };
 
             submitBtn.disabled = true;
@@ -1577,6 +1555,21 @@ const EventosModule = {
             return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) + ' ' +
                    d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
         } catch { return dtStr; }
+    },
+
+    // ─── Datetime-local helpers ─────────────────
+    // Combine separate date (YYYY-MM-DD) + time (HH:mm) into datetime-local value (YYYY-MM-DDTHH:mm)
+    _combineDatetime(date, time) {
+        if (!date) return '';
+        if (time) return `${date}T${time.slice(0, 5)}`;
+        return `${date}T09:00`;
+    },
+
+    // Split datetime-local value (YYYY-MM-DDTHH:mm) into { date, time }
+    _splitDatetime(datetimeVal) {
+        if (!datetimeVal) return { date: '', time: '' };
+        const parts = datetimeVal.split('T');
+        return { date: parts[0] || '', time: parts[1] ? parts[1].slice(0, 5) : '' };
     },
 
     _getDocIcon(tipo) {
