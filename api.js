@@ -2255,5 +2255,85 @@ const API = {
         const s = String(cuit);
         if (s.length === 11) return `${s.slice(0, 2)}-${s.slice(2, 10)}-${s.slice(10)}`;
         return s;
-    }
+    },
+
+    // ═══════════════════════════════════════════
+    //  ADMIN — Lobby API (VPS endpoints)
+    // ═══════════════════════════════════════════
+    _lobbyApiBase: 'http://195.200.1.250/lobby-api',
+
+    async _getAccessToken() {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        return session?.access_token || null;
+    },
+
+    async _adminFetch(endpoint, body) {
+        const token = await this._getAccessToken();
+        if (!token) throw new Error('No hay sesión activa');
+
+        const res = await fetch(`${this._lobbyApiBase}${endpoint}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || `Error ${res.status}`);
+        }
+        return data;
+    },
+
+    async adminCreateUser({ username, password, name, initials, role, telefono }) {
+        return this._adminFetch('/admin/users/create', { username, password, name, initials, role, telefono });
+    },
+
+    async adminResetPassword(uid, newPassword) {
+        return this._adminFetch('/admin/users/reset-password', { uid, newPassword });
+    },
+
+    async adminDeleteUser(uid) {
+        return this._adminFetch('/admin/users/delete', { uid });
+    },
+
+    // ─── Profiles (direct Supabase) ───
+    async getProfiles() {
+        const { data, error } = await supabaseClient
+            .from('profiles')
+            .select('*')
+            .eq('_deleted', false)
+            .order('name', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async updateProfile(uid, updates) {
+        const { error } = await supabaseClient
+            .from('profiles')
+            .update(updates)
+            .eq('id', uid);
+        if (error) throw error;
+    },
+
+    async getRoles() {
+        const { data, error } = await supabaseClient
+            .from('roles')
+            .select('*')
+            .order('id', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async isUsernameAvailable(username) {
+        const { data, error } = await supabaseClient
+            .from('profiles')
+            .select('username')
+            .eq('username', username)
+            .limit(1);
+        if (error) throw error;
+        return !data || data.length === 0;
+    },
 };

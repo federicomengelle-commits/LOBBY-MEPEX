@@ -9112,6 +9112,90 @@ body {
     border-top: 1px solid rgba(255,255,255,0.03);
 }
 
+/* ─── User management (Tab Usuarios) ─── */
+.admpanel-user-row.inactive {
+    opacity: 0.5;
+}
+.admpanel-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.03em;
+}
+.admpanel-status-badge.active {
+    background: rgba(0, 204, 136, 0.1);
+    color: #00CC88;
+    border: 1px solid rgba(0, 204, 136, 0.25);
+}
+.admpanel-status-badge.inactive {
+    background: rgba(255, 68, 68, 0.1);
+    color: #FF4757;
+    border: 1px solid rgba(255, 68, 68, 0.25);
+}
+.admpanel-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+.admpanel-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+}
+.admpanel-action-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 5px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 200ms ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.admpanel-action-btn:hover {
+    background: rgba(255,255,255,0.05);
+    border-color: var(--border);
+    color: var(--text-primary);
+}
+.admpanel-action-btn--danger:hover {
+    background: rgba(255, 68, 68, 0.1);
+    border-color: rgba(255, 68, 68, 0.3);
+    color: #FF4757;
+}
+
+/* ─── User form (modals) ─── */
+.adm-user-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.adm-form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.adm-form-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.adm-form-hint {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    min-height: 16px;
+    transition: color 200ms;
+}
+
 /* ─── Placeholder tabs ─── */
 .admpanel-placeholder {
     display: flex;

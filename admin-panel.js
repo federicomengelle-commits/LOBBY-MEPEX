@@ -15,6 +15,12 @@ const AdminPanel = {
     _sortCol: 'name',
     _sortDir: 'asc',
     _searchQuery: '',
+    // Tab Usuarios (real data)
+    _realUsers: [],
+    _realRoles: [],
+    _userSearch: '',
+    _userSortCol: 'name',
+    _userSortDir: 'asc',
     _logFilters: { user: '', module: '', action: '', dateFrom: '', dateTo: '' },
     _logPage: 0,
     _logPageSize: 20,
@@ -338,7 +344,8 @@ const AdminPanel = {
                 this._attachDashboardEvents();
                 break;
             case 'usuarios':
-                container.innerHTML = this._renderUsuariosTab();
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+                this._loadUsuariosTab();
                 break;
             case 'roles':
                 container.innerHTML = this._renderRolesTab();
@@ -562,17 +569,491 @@ const AdminPanel = {
     },
 
     // ═══════════════════════════════════════════
-    //  TAB 2: USUARIOS (placeholder)
+    //  TAB 2: USUARIOS (CRUD real)
     // ═══════════════════════════════════════════
+    async _loadUsuariosTab() {
+        try {
+            const [profiles, roles] = await Promise.all([API.getProfiles(), API.getRoles()]);
+            this._realUsers = profiles;
+            this._realRoles = roles;
+            this._userSearch = '';
+            this._userSortCol = 'name';
+            this._userSortDir = 'asc';
+        } catch (err) {
+            console.error('[AdminPanel] Error loading users:', err);
+            this._realUsers = [];
+            this._realRoles = [];
+        }
+        const container = document.getElementById('admTabContent');
+        if (container) {
+            container.innerHTML = this._renderUsuariosTab();
+            this._attachUsuariosEvents();
+        }
+    },
+
     _renderUsuariosTab() {
         return `
-            <div class="admpanel-placeholder">
-                <div class="admpanel-placeholder-icon">👥</div>
-                <h3 class="admpanel-placeholder-title">Gestión de usuarios</h3>
-                <p class="admpanel-placeholder-text">Crear, editar y desactivar usuarios del sistema. Asignar roles y permisos individuales.</p>
-                <span class="admpanel-placeholder-badge">Próximamente — Fase 3</span>
+            <div class="admpanel-section">
+                <div class="admpanel-section-header">
+                    <h2 class="admpanel-section-title">Usuarios del sistema</h2>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <div class="admpanel-search-box">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" class="admpanel-search-input" id="admRealUserSearch" placeholder="Buscar usuario…" autocomplete="off">
+                        </div>
+                        <button class="btn btn-primary btn-sm" id="admBtnNewUser" style="white-space:nowrap;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Nuevo usuario
+                        </button>
+                    </div>
+                </div>
+                <div class="admpanel-table-wrap" id="admRealUsersTableWrap">
+                    ${this._renderRealUsersTable()}
+                </div>
             </div>
         `;
+    },
+
+    _getRoleInfo(roleId) {
+        const r = this._realRoles.find(r => r.id === roleId);
+        return r || { id: roleId, label: roleId, color: '#7A8599' };
+    },
+
+    _renderRealUsersTable() {
+        const currentUser = Auth.getUser();
+        let users = [...this._realUsers];
+
+        // Search filter
+        if (this._userSearch) {
+            const q = this._userSearch.toLowerCase();
+            users = users.filter(u =>
+                (u.name || '').toLowerCase().includes(q) ||
+                (u.username || '').toLowerCase().includes(q)
+            );
+        }
+
+        // Sort
+        const dir = this._userSortDir === 'asc' ? 1 : -1;
+        users.sort((a, b) => {
+            let va, vb;
+            switch (this._userSortCol) {
+                case 'name': va = a.name || ''; vb = b.name || ''; break;
+                case 'role': va = a.role || ''; vb = b.role || ''; break;
+                case 'active': va = a.active ? 1 : 0; vb = b.active ? 1 : 0; break;
+                default: va = a.name || ''; vb = b.name || '';
+            }
+            if (typeof va === 'string') return va.localeCompare(vb) * dir;
+            return (va - vb) * dir;
+        });
+
+        const sortIcon = (col) => {
+            if (this._userSortCol !== col) return '<svg class="admpanel-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5"/><path d="M7 9l5-5 5 5"/></svg>';
+            return this._userSortDir === 'asc'
+                ? '<svg class="admpanel-sort-icon active" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15l5 5 5-5"/></svg>'
+                : '<svg class="admpanel-sort-icon active" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 9l5-5 5 5"/></svg>';
+        };
+
+        if (users.length === 0) {
+            return '<div class="admpanel-log-empty">No se encontraron usuarios</div>';
+        }
+
+        return `
+            <table class="admpanel-table">
+                <thead>
+                    <tr>
+                        <th data-usort="name">Nombre ${sortIcon('name')}</th>
+                        <th>Username</th>
+                        <th data-usort="role">Rol ${sortIcon('role')}</th>
+                        <th>Teléfono</th>
+                        <th data-usort="active">Estado ${sortIcon('active')}</th>
+                        <th style="text-align:right;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${users.map(u => {
+                        const roleInfo = this._getRoleInfo(u.role);
+                        const isSelf = currentUser && currentUser.uid === u.id;
+                        return `
+                        <tr class="admpanel-user-row ${u.active ? '' : 'inactive'}">
+                            <td>
+                                <div class="admpanel-user-cell">
+                                    <span class="admpanel-user-avatar" style="background:${roleInfo.color}20; color:${roleInfo.color}; border: 1px solid ${roleInfo.color}40;">${u.initials || '??'}</span>
+                                    <span class="admpanel-user-name">${u.name || '—'}</span>
+                                </div>
+                            </td>
+                            <td class="admpanel-cell-mono">${u.username || '—'}</td>
+                            <td><span class="admpanel-role-badge" style="background:${roleInfo.color}18; color:${roleInfo.color}; border: 1px solid ${roleInfo.color}35;">${roleInfo.label}</span></td>
+                            <td class="admpanel-cell-muted">${u.telefono || '—'}</td>
+                            <td>
+                                <span class="admpanel-status-badge ${u.active ? 'active' : 'inactive'}">
+                                    <span class="admpanel-status-dot"></span>
+                                    ${u.active ? 'Activo' : 'Inactivo'}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="admpanel-actions">
+                                    <button class="admpanel-action-btn" data-action="edit" data-uid="${u.id}" title="Editar usuario">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                    </button>
+                                    <button class="admpanel-action-btn" data-action="resetpw" data-uid="${u.id}" data-name="${u.name}" title="Cambiar contraseña">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                                    </button>
+                                    ${!isSelf ? `
+                                    <button class="admpanel-action-btn" data-action="toggle" data-uid="${u.id}" data-name="${u.name}" data-active="${u.active}" title="${u.active ? 'Desactivar' : 'Activar'} usuario">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${u.active ? '#00CC88' : '#FF4757'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${u.active
+                                            ? '<rect width="20" height="12" x="2" y="6" rx="6"/><circle cx="16" cy="12" r="3" fill="#00CC88"/>'
+                                            : '<rect width="20" height="12" x="2" y="6" rx="6"/><circle cx="8" cy="12" r="3" fill="#FF4757"/>'
+                                        }</svg>
+                                    </button>
+                                    <button class="admpanel-action-btn admpanel-action-btn--danger" data-action="delete" data-uid="${u.id}" data-name="${u.name}" title="Eliminar usuario">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                    </button>
+                                    ` : '<span class="admpanel-cell-muted" style="font-size:0.7rem;">(tú)</span>'}
+                                </div>
+                            </td>
+                        </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+    },
+
+    _attachUsuariosEvents() {
+        // Search
+        const search = document.getElementById('admRealUserSearch');
+        if (search) {
+            search.addEventListener('input', (e) => {
+                this._userSearch = e.target.value;
+                const wrap = document.getElementById('admRealUsersTableWrap');
+                if (wrap) {
+                    wrap.innerHTML = this._renderRealUsersTable();
+                    this._attachUserTableEvents();
+                }
+            });
+        }
+
+        // New user button
+        const btnNew = document.getElementById('admBtnNewUser');
+        if (btnNew) btnNew.addEventListener('click', () => this._openCreateUserModal());
+
+        // Table events
+        this._attachUserTableEvents();
+    },
+
+    _attachUserTableEvents() {
+        // Sort headers
+        document.querySelectorAll('.admpanel-table thead th[data-usort]').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.usort;
+                if (this._userSortCol === col) {
+                    this._userSortDir = this._userSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._userSortCol = col;
+                    this._userSortDir = 'asc';
+                }
+                const wrap = document.getElementById('admRealUsersTableWrap');
+                if (wrap) {
+                    wrap.innerHTML = this._renderRealUsersTable();
+                    this._attachUserTableEvents();
+                }
+            });
+        });
+
+        // Action buttons
+        document.querySelectorAll('.admpanel-action-btn[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.dataset.action;
+                const uid = btn.dataset.uid;
+                const name = btn.dataset.name;
+                switch (action) {
+                    case 'edit': this._openEditUserModal(uid); break;
+                    case 'resetpw': this._openResetPasswordModal(uid, name); break;
+                    case 'toggle': this._toggleUserActive(uid, name, btn.dataset.active === 'true'); break;
+                    case 'delete': this._deleteUser(uid, name); break;
+                }
+            });
+        });
+    },
+
+    // ─── CREATE USER MODAL ───
+    _openCreateUserModal() {
+        const roleOptions = this._realRoles.map(r =>
+            `<option value="${r.id}">${r.label}</option>`
+        ).join('');
+
+        const body = `
+            <form id="admCreateUserForm" class="adm-user-form">
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Nombre completo *</label>
+                    <input type="text" class="input" id="admNewName" placeholder="Ej: Juan Pérez" required>
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Username *</label>
+                    <input type="text" class="input" id="admNewUsername" placeholder="Solo minúsculas y números" pattern="[a-z0-9]+" required>
+                    <span class="adm-form-hint" id="admUsernameHint"></span>
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Iniciales</label>
+                    <input type="text" class="input" id="admNewInitials" maxlength="3" placeholder="Auto" style="width:80px;">
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Rol *</label>
+                    <select class="input" id="admNewRole" required>${roleOptions}</select>
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Teléfono</label>
+                    <input type="text" class="input" id="admNewTelefono" placeholder="Opcional">
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Contraseña inicial *</label>
+                    <input type="password" class="input" id="admNewPassword" minlength="6" placeholder="Mínimo 6 caracteres" required>
+                </div>
+            </form>
+        `;
+
+        const modal = Modal.open({
+            title: 'Nuevo usuario',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="admCreateUserBtn">Crear usuario</button>
+            `,
+        });
+
+        // Auto-generate initials from name
+        const nameInput = document.getElementById('admNewName');
+        const initialsInput = document.getElementById('admNewInitials');
+        nameInput.addEventListener('input', () => {
+            if (!initialsInput.dataset.manual) {
+                const parts = nameInput.value.trim().split(/\s+/);
+                initialsInput.value = parts.length >= 2
+                    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                    : parts[0] ? parts[0][0].toUpperCase() : '';
+            }
+        });
+        initialsInput.addEventListener('input', () => { initialsInput.dataset.manual = '1'; });
+
+        // Username validation hint
+        const usernameInput = document.getElementById('admNewUsername');
+        const hint = document.getElementById('admUsernameHint');
+        let usernameTimer = null;
+        usernameInput.addEventListener('input', () => {
+            const val = usernameInput.value.trim().toLowerCase();
+            usernameInput.value = val;
+            clearTimeout(usernameTimer);
+            if (!val) { hint.textContent = ''; return; }
+            if (!/^[a-z0-9]+$/.test(val)) {
+                hint.textContent = 'Solo minúsculas y números';
+                hint.style.color = '#FF4757';
+                return;
+            }
+            hint.textContent = 'Verificando…';
+            hint.style.color = 'var(--text-muted)';
+            usernameTimer = setTimeout(async () => {
+                try {
+                    const available = await API.isUsernameAvailable(val);
+                    hint.textContent = available ? '✓ Disponible' : '✗ Ya existe';
+                    hint.style.color = available ? '#00CC88' : '#FF4757';
+                } catch { hint.textContent = ''; }
+            }, 400);
+        });
+
+        // Submit
+        document.getElementById('admCreateUserBtn').addEventListener('click', async () => {
+            const form = document.getElementById('admCreateUserForm');
+            if (!form.reportValidity()) return;
+
+            const username = usernameInput.value.trim();
+            const password = document.getElementById('admNewPassword').value;
+            const name = nameInput.value.trim();
+            const initials = initialsInput.value.trim().toUpperCase() || name.split(/\s+/).map(p => p[0]).join('').toUpperCase().slice(0, 2);
+            const role = document.getElementById('admNewRole').value;
+            const telefono = document.getElementById('admNewTelefono').value.trim();
+
+            if (password.length < 6) {
+                Toast.error('La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
+
+            const btn = document.getElementById('admCreateUserBtn');
+            btn.disabled = true;
+            btn.textContent = 'Creando…';
+
+            try {
+                await API.adminCreateUser({ username, password, name, initials, role, telefono });
+                Modal.close(modal.id);
+                Toast.success(`Usuario "${name}" creado correctamente`);
+                this._loadUsuariosTab();
+            } catch (err) {
+                Toast.error(err.message || 'Error al crear usuario');
+                btn.disabled = false;
+                btn.textContent = 'Crear usuario';
+            }
+        });
+    },
+
+    // ─── EDIT USER MODAL ───
+    _openEditUserModal(uid) {
+        const user = this._realUsers.find(u => u.id === uid);
+        if (!user) return;
+
+        const roleOptions = this._realRoles.map(r =>
+            `<option value="${r.id}" ${r.id === user.role ? 'selected' : ''}>${r.label}</option>`
+        ).join('');
+
+        const body = `
+            <form id="admEditUserForm" class="adm-user-form">
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Username</label>
+                    <input type="text" class="input" value="${user.username}" disabled style="opacity:0.5;">
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Nombre completo *</label>
+                    <input type="text" class="input" id="admEditName" value="${user.name || ''}" required>
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Iniciales</label>
+                    <input type="text" class="input" id="admEditInitials" value="${user.initials || ''}" maxlength="3" style="width:80px;">
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Rol *</label>
+                    <select class="input" id="admEditRole" required>${roleOptions}</select>
+                </div>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Teléfono</label>
+                    <input type="text" class="input" id="admEditTelefono" value="${user.telefono || ''}">
+                </div>
+            </form>
+        `;
+
+        const modal = Modal.open({
+            title: `Editar — ${user.name}`,
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="admEditUserBtn">Guardar</button>
+            `,
+        });
+
+        document.getElementById('admEditUserBtn').addEventListener('click', async () => {
+            const form = document.getElementById('admEditUserForm');
+            if (!form.reportValidity()) return;
+
+            const updates = {
+                name: document.getElementById('admEditName').value.trim(),
+                initials: document.getElementById('admEditInitials').value.trim().toUpperCase(),
+                role: document.getElementById('admEditRole').value,
+                telefono: document.getElementById('admEditTelefono').value.trim(),
+            };
+
+            const btn = document.getElementById('admEditUserBtn');
+            btn.disabled = true;
+            btn.textContent = 'Guardando…';
+
+            try {
+                await API.updateProfile(uid, updates);
+                Modal.close(modal.id);
+                Toast.success(`Usuario "${updates.name}" actualizado`);
+                this._loadUsuariosTab();
+            } catch (err) {
+                Toast.error(err.message || 'Error al actualizar');
+                btn.disabled = false;
+                btn.textContent = 'Guardar';
+            }
+        });
+    },
+
+    // ─── RESET PASSWORD MODAL ───
+    _openResetPasswordModal(uid, name) {
+        const body = `
+            <form id="admResetPwForm" class="adm-user-form">
+                <p style="color:var(--text-muted);margin:0 0 16px;">Cambiar contraseña de <strong>${name}</strong></p>
+                <div class="adm-form-row">
+                    <label class="adm-form-label">Nueva contraseña *</label>
+                    <input type="password" class="input" id="admNewPw" minlength="6" placeholder="Mínimo 6 caracteres" required>
+                </div>
+            </form>
+        `;
+
+        const modal = Modal.open({
+            title: 'Cambiar contraseña',
+            body,
+            size: 'sm',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="admResetPwBtn">Cambiar</button>
+            `,
+        });
+
+        document.getElementById('admResetPwBtn').addEventListener('click', async () => {
+            const pw = document.getElementById('admNewPw').value;
+            if (pw.length < 6) {
+                Toast.error('Mínimo 6 caracteres');
+                return;
+            }
+
+            const btn = document.getElementById('admResetPwBtn');
+            btn.disabled = true;
+            btn.textContent = 'Cambiando…';
+
+            try {
+                await API.adminResetPassword(uid, pw);
+                Modal.close(modal.id);
+                Toast.success('Contraseña actualizada');
+            } catch (err) {
+                Toast.error(err.message || 'Error al cambiar contraseña');
+                btn.disabled = false;
+                btn.textContent = 'Cambiar';
+            }
+        });
+    },
+
+    // ─── TOGGLE ACTIVE ───
+    async _toggleUserActive(uid, name, isActive) {
+        const action = isActive ? 'Desactivar' : 'Activar';
+        const msg = isActive
+            ? `¿Desactivar a <strong>${name}</strong>? No podrá iniciar sesión.`
+            : `¿Activar a <strong>${name}</strong>? Podrá iniciar sesión nuevamente.`;
+
+        const confirmed = await Modal.confirm({
+            title: `${action} usuario`,
+            message: msg,
+            confirmText: action,
+            danger: isActive,
+        });
+
+        if (!confirmed) return;
+
+        try {
+            await API.updateProfile(uid, { active: !isActive });
+            Toast.success(`${name} ${isActive ? 'desactivado' : 'activado'}`);
+            this._loadUsuariosTab();
+        } catch (err) {
+            Toast.error(err.message || 'Error al cambiar estado');
+        }
+    },
+
+    // ─── DELETE USER ───
+    async _deleteUser(uid, name) {
+        const confirmed = await Modal.confirm({
+            title: 'Eliminar usuario',
+            message: `¿Eliminar a <strong>${name}</strong>? Se desactivará su acceso permanentemente.`,
+            confirmText: 'Eliminar',
+            danger: true,
+        });
+
+        if (!confirmed) return;
+
+        try {
+            await API.adminDeleteUser(uid);
+            Toast.success(`${name} eliminado`);
+            this._loadUsuariosTab();
+        } catch (err) {
+            Toast.error(err.message || 'Error al eliminar');
+        }
     },
 
     // ═══════════════════════════════════════════
