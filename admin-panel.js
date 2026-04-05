@@ -848,10 +848,11 @@ const AdminPanel = {
             btn.textContent = 'Creando…';
 
             try {
-                const newUser = await API.adminCreateUser({ username, password, name, initials, role, telefono });
+                const result = await API.createUser(username, password, { name, initials, role, telefono });
+                if (!result.success) throw new Error(result.error || 'Error al crear usuario');
                 Modal.close(modal.id);
                 Toast.success(`Usuario "${name}" creado correctamente`);
-                if (typeof AuditLog !== 'undefined') AuditLog.record('create', 'admin-panel', `Creó usuario ${name}`, 'usuario', newUser?.id || null);
+                if (typeof AuditLog !== 'undefined') AuditLog.record('create', 'admin-panel', `Creó usuario ${name}`, 'usuario', result.userId || null);
                 this._loadUsuariosTab();
             } catch (err) {
                 Toast.error(err.message || 'Error al crear usuario');

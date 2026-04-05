@@ -1008,14 +1008,16 @@ const API = {
             }
 
             // Create profile row
-            const { error: profileError } = await supabaseClient.from('profiles').insert({
+            const profileRow = {
                 id: authData.user.id,
                 username: username,
                 name: profileData.name,
                 role: profileData.role,
                 initials: profileData.initials,
                 active: true,
-            });
+            };
+            if (profileData.telefono) profileRow.telefono = profileData.telefono;
+            const { error: profileError } = await supabaseClient.from('profiles').upsert(profileRow, { onConflict: 'id' });
             if (profileError) throw profileError;
 
             return { success: true, userId: authData.user.id };
