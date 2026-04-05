@@ -29,7 +29,7 @@ const Data = {
     readOnlyPermissions: {
         superadmin: [],
         admin:      [],
-        venta:      [],
+        venta:      ['catalogo'],
         pm:         ['crm', 'catalogo', 'inventario'],
         taller:     ['proyectos', 'eventos', 'inventario'],
         // Note: 'taller' in readOnly refers to the role, not the module

@@ -331,6 +331,8 @@ const Modules = {
         if (apiSection) {
             const views = this._getViews(apiSection);
             const activeView = this._getActiveView(apiSection);
+            const user = Auth.getUser();
+            const isRO = user ? Data.isReadOnly(user.role, mod.id) : false;
 
             return `
                 <div class="section-content">
@@ -352,6 +354,7 @@ const Modules = {
                         </div>
                         <div class="api-toolbar-filters" id="apiToolbarFilters"></div>
                         <span class="api-record-count" id="apiRecordCount">Cargando…</span>
+                        ${isRO ? '<span class="badge badge-ghost" style="margin-left:8px">Solo lectura</span>' : ''}
                     </div>
                     <div class="api-cols-panel mepex-cols-panel" id="apiColsPanel" style="display:none"></div>
                     <div class="api-table-layout">
@@ -364,16 +367,20 @@ const Modules = {
                             </div>
                         </div>
                         <div class="api-side-actions" id="apiSideActions">
+                            ${!isRO ? `
                             <button class="side-action-btn btn-primary" id="btnNewRecord" title="Nuevo registro">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             </button>
+                            ` : ''}
                             <button class="side-action-btn" id="btnToggleCols" title="Columnas visibles">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                             </button>
+                            ${!isRO ? `
                             <button class="side-action-btn ${this._isLocked ? 'is-locked' : ''}" id="btnToggleLock" title="${this._isLocked ? 'Desbloquear edición' : 'Bloquear edición'}">
                                 <svg class="lock-icon-locked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 <svg class="lock-icon-unlocked" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
                             </button>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -3363,10 +3370,21 @@ const Modules = {
         this._openFicha(item, type);
     },
 
+    // Map entity types to module IDs for permission checks
+    _typeToModuleId: {
+        clients: 'crm', projects: 'proyectos', events: 'eventos',
+        insumos: 'inventario', cotizaciones: 'ventas',
+    },
+
     _openFicha(item, type) {
         this._injectStyles();
         const config = this._fichaConfigs[type];
         if (!config) return;
+
+        // ReadOnly check
+        const user = Auth.getUser();
+        const fichaModuleId = this._typeToModuleId[type] || '';
+        const isRO = user ? Data.isReadOnly(user.role, fichaModuleId) : false;
 
         // Ensure overlay + panel exist
         let overlay = document.getElementById('fichaOverlay');
@@ -3402,12 +3420,14 @@ const Modules = {
                     </div>
                 </div>
                 <div class="ficha-panel-header-actions">
-                    ${!isEditMode ? `<button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
+                    ${!isEditMode && !isRO ? `<button class="btn btn-ghost btn-sm ficha-edit-btn" id="fichaEdit" title="Editar">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                     </button>` : ''}
+                    ${!isRO ? `
                     <button class="btn btn-ghost btn-sm ficha-delete-btn" id="fichaDelete" title="Eliminar">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                     </button>
+                    ` : ''}
                     <button class="btn btn-ghost btn-sm ficha-close-btn" id="fichaCerrar">✕</button>
                 </div>
             </div>

@@ -55,6 +55,9 @@ const ProyectosModule = {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
+        // Check read-only for this module
+        this._isRO = Data.isReadOnly(user.role, 'proyectos');
+
         const content = document.getElementById('mainContent');
         if (!content) return;
 
@@ -110,10 +113,10 @@ const ProyectosModule = {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                             </button>
                         </div>
-                        <button class="btn btn-primary pj-btn-new" id="pjBtnNew">
+                        ${!this._isRO ? `<button class="btn btn-primary pj-btn-new" id="pjBtnNew">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Nuevo proyecto
-                        </button>
+                        </button>` : '<span class="badge badge-ghost">Solo lectura</span>'}
                     </div>
                 </div>
                 <div class="pj-body">
@@ -567,9 +570,9 @@ const ProyectosModule = {
                 <div class="pj-panel-section">
                     <div class="pj-section-header">
                         <h3 class="pj-section-title">Datos del proyecto</h3>
-                        <button class="pj-edit-btn" id="pjBtnEditProject" title="Editar">
+                        ${!this._isRO ? `<button class="pj-edit-btn" id="pjBtnEditProject" title="Editar">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                        </button>
+                        </button>` : ''}
                     </div>
                     <div class="pj-info-grid">
                         <div class="pj-info-row">
@@ -636,12 +639,14 @@ const ProyectosModule = {
                 </div>
 
                 <!-- Actions -->
+                ${!this._isRO ? `
                 <div class="pj-panel-section pj-panel-actions">
                     <button class="btn btn-ghost pj-btn-delete" data-project-id="${p.id}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         Eliminar proyecto
                     </button>
                 </div>
+                ` : ''}
             </div>
         `;
     },

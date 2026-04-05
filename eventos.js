@@ -53,6 +53,9 @@ const EventosModule = {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
+        // Check read-only for this module
+        this._isRO = Data.isReadOnly(user.role, 'eventos');
+
         const content = document.getElementById('mainContent');
         if (!content) return;
 
@@ -98,10 +101,12 @@ const EventosModule = {
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                             </button>
                         </div>
+                        ${!this._isRO ? `
                         <button class="btn btn-primary ev-btn-new" id="evBtnNew">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Nuevo evento
                         </button>
+                        ` : '<span class="badge badge-ghost">Solo lectura</span>'}
                     </div>
                 </div>
                 <div class="ev-body">
@@ -525,12 +530,14 @@ const EventosModule = {
                 ${this._renderPanelNotas(ev, notas)}
 
                 <!-- Actions -->
+                ${!this._isRO ? `
                 <div class="ev-panel-section ev-panel-actions">
                     <button class="btn btn-ghost ev-btn-delete-event" data-event-id="${ev.id}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         Eliminar evento
                     </button>
                 </div>
+                ` : ''}
             </div>
         `;
     },
@@ -984,6 +991,17 @@ const EventosModule = {
     _attachPanelEvents(ev) {
         // Close panel
         document.getElementById('evPanelClose')?.addEventListener('click', () => this._closePanel());
+
+        // Hide all edit/delete buttons when read-only
+        if (this._isRO) {
+            document.querySelectorAll('.ev-edit-btn, .ev-btn-link-proyecto, .ev-btn-add-doc, .ev-btn-add-seguro, .ev-btn-delete-event, .ev-doc-remove').forEach(btn => {
+                btn.style.display = 'none';
+            });
+            // Make notas textarea read-only
+            const notasArea = document.getElementById('evNotasArea');
+            if (notasArea) notasArea.disabled = true;
+            return; // No need to attach edit events
+        }
 
         // Edit section buttons
         document.querySelectorAll('[data-edit-section]').forEach(btn => {
