@@ -59,7 +59,7 @@ const Router = {
             // ── Recursos ──
             'rrhh':             { render: () => RRHHModule.render(), requiresAuth: true, module: 'rrhh' },
             'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras' },
-            'inventario':       { render: () => Modules.render('inventario'), requiresAuth: true, module: 'inventario' },
+            'inventario':       { render: () => InventarioModule.render(), requiresAuth: true, module: 'inventario' },
             'locaciones':       { render: () => LocacionesModule.render(), requiresAuth: true, module: 'locaciones' },
 
             // ── Admin & Finanzas ──
