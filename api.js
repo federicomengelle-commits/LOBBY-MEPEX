@@ -1011,7 +1011,7 @@ const API = {
                             active: true,
                         };
                         if (profileData.telefono) profileRow.telefono = profileData.telefono;
-                        await supabaseClient.from('profiles').upsert(profileRow, { onConflict: 'id' });
+                        await supabaseAdmin.from('profiles').upsert(profileRow, { onConflict: 'id' });
                         return { success: true, userId: existing.id };
                     }
                 }
@@ -1029,7 +1029,7 @@ const API = {
                 active: true,
             };
             if (profileData.telefono) profileRow.telefono = profileData.telefono;
-            const { error: profileError } = await supabaseClient.from('profiles').upsert(profileRow, { onConflict: 'id' });
+            const { error: profileError } = await supabaseAdmin.from('profiles').upsert(profileRow, { onConflict: 'id' });
             if (profileError) throw profileError;
 
             return { success: true, userId: authData.user.id };
