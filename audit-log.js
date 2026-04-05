@@ -14,14 +14,13 @@ const AuditLog = {
             const user = Auth.getUser();
             const row = {
                 user_id: user?.uid || null,
-                user_name: user?.name || 'unknown',
-                user_email: (user?.id || 'unknown') + '@mepex.local',
+                username: user?.name || 'unknown',
                 action,
                 module,
-                details: { text: detail, device: this._parseDevice() },
-                table_name: entityType || null,
-                record_id: entityId || null,
-                tipo: 'info',
+                detail: detail || null,
+                entity_type: entityType || null,
+                entity_id: entityId || null,
+                device: this._parseDevice(),
             };
 
             const { error } = await supabaseClient
@@ -106,20 +105,13 @@ const AuditLog = {
     async log(tableName, recordId, action, details = {}) {
         try {
             const user = Auth.getUser();
-            let email = null;
-            try {
-                const { data } = await supabaseClient.auth.getUser();
-                email = data?.user?.email || null;
-            } catch (_) { /* silently ignore */ }
-
             await supabaseClient.from('audit_log').insert({
                 user_id: user?.uid || null,
-                user_email: email || 'anonimo',
-                user_name: user?.name || 'anonimo',
-                table_name: tableName,
-                record_id: recordId,
+                username: user?.name || 'anonimo',
+                entity_type: tableName,
+                entity_id: recordId,
                 action: action,
-                details: details,
+                detail: JSON.stringify(details),
                 module: (typeof Modules !== 'undefined' && Modules.currentModule?.id) || null,
             });
         } catch (error) {
@@ -130,7 +122,7 @@ const AuditLog = {
     async getHistory(tableName, recordId, limit = 20) {
         const { data, error } = await supabaseClient
             .from('audit_log').select('*')
-            .eq('table_name', tableName).eq('record_id', recordId)
+            .eq('entity_type', tableName).eq('entity_id', recordId)
             .order('created_at', { ascending: false }).limit(limit);
         return error ? [] : data;
     },
@@ -160,32 +152,33 @@ const AuditLog = {
         }
 
         try {
+            const details = typeof entry.detail === 'string' ? JSON.parse(entry.detail || '{}') : {};
             switch (entry.action) {
                 case 'update': {
                     const oldValues = {};
-                    if (entry.details.field) {
-                        oldValues[entry.details.field] = entry.details.old;
-                    } else if (entry.details.old) {
-                        Object.assign(oldValues, entry.details.old);
+                    if (details.field) {
+                        oldValues[details.field] = details.old;
+                    } else if (details.old) {
+                        Object.assign(oldValues, details.old);
                     }
-                    await supabaseClient.from(entry.table_name).update(oldValues).eq('id', entry.record_id);
+                    await supabaseClient.from(entry.entity_type).update(oldValues).eq('id', entry.entity_id);
                     break;
                 }
                 case 'delete':
-                    await supabaseClient.from(entry.table_name).update({ _deleted: false }).eq('id', entry.record_id);
+                    await supabaseClient.from(entry.entity_type).update({ _deleted: false }).eq('id', entry.entity_id);
                     break;
                 case 'create':
-                    await supabaseClient.from(entry.table_name).update({ _deleted: true }).eq('id', entry.record_id);
+                    await supabaseClient.from(entry.entity_type).update({ _deleted: true }).eq('id', entry.entity_id);
                     break;
                 default:
                     Toast.warning('Tipo de accion no revertible');
                     return false;
             }
 
-            await this.log(entry.table_name, entry.record_id, 'revert_from_history', {
+            await this.log(entry.entity_type, entry.entity_id, 'revert_from_history', {
                 original_audit_id: auditEntryId,
                 original_action: entry.action,
-                reverted_details: entry.details,
+                reverted_details: details,
             });
 
             Toast.success('Cambio revertido exitosamente');

@@ -261,7 +261,7 @@ const AdminPanel = {
                 API.getProfiles(),
                 supabaseClient.from('audit_log').select('user_id', { count: 'exact', head: true }).gte('created_at', todayISO),
                 supabaseClient.from('audit_log').select('module').gte('created_at', todayISO).neq('module', 'sistema'),
-                supabaseClient.from('audit_log').select('detail, created_at').in('action', ['error', 'denied']).order('created_at', { ascending: false }).limit(1),
+                supabaseClient.from('audit_log').select('detail,created_at').in('action', ['error', 'denied']).order('created_at', { ascending: false }).limit(1),
             ]);
 
             this._dashProfiles = profiles;
@@ -1476,7 +1476,7 @@ const AdminPanel = {
         try {
             const [profiles, distinctUsers, distinctModules] = await Promise.all([
                 API.getProfiles(),
-                supabaseClient.from('audit_log').select('user_name, user_id').order('user_name'),
+                supabaseClient.from('audit_log').select('username, user_id').order('username'),
                 supabaseClient.from('audit_log').select('module').order('module'),
             ]);
 
@@ -1490,8 +1490,8 @@ const AdminPanel = {
             const userMap = new Map();
             if (distinctUsers.data) {
                 distinctUsers.data.forEach(r => {
-                    if (r.user_name && !userMap.has(r.user_name)) {
-                        userMap.set(r.user_name, r.user_id);
+                    if (r.username && !userMap.has(r.username)) {
+                        userMap.set(r.username, r.user_id);
                     }
                 });
             }
@@ -1578,7 +1578,7 @@ const AdminPanel = {
             .range(offset, offset + limit - 1);
 
         const f = this._logFilters;
-        if (f.user) query = query.eq('user_name', f.user);
+        if (f.user) query = query.eq('username', f.user);
         if (f.module) query = query.eq('module', f.module);
         if (f.action) query = query.eq('action', f.action);
         if (f.dateFrom) query = query.gte('created_at', f.dateFrom + 'T00:00:00');
@@ -1631,16 +1631,13 @@ const AdminPanel = {
             }
 
             const profile = this._logProfilesMap[log.user_id];
-            const userName = profile ? profile.name.split(' ')[0] : (log.user_name || 'unknown').split(' ')[0];
-            const userInitials = profile ? profile.initials : (log.user_name || '??').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+            const userName = profile ? profile.name.split(' ')[0] : (log.username || 'unknown').split(' ')[0];
+            const userInitials = profile ? profile.initials : (log.username || '??').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
             const roleColor = profile ? this._getRoleColor(profile.role) : '#7A8599';
-            const modLabel = log.module || log.table_name || 'sistema';
+            const modLabel = log.module || log.entity_type || 'sistema';
             const moduleColor = this._getModuleColor(modLabel);
-            // detail: new format stores { text, device }, old format has { snapshot/new/old }
-            const detail = (typeof log.details === 'object' && log.details?.text)
-                ? log.details.text
-                : this._buildDetailFromLegacy(log);
-            const device = (typeof log.details === 'object' && log.details?.device) ? log.details.device : '';
+            const detail = log.detail || `${this._getActionLabel(log.action)} en ${modLabel}`;
+            const device = log.device || '';
             const actionLabel = log.action === 'update' ? 'edit' : log.action;
 
             html += `
