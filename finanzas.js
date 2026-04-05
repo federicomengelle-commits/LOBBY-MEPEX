@@ -31,9 +31,29 @@ const FinanzasModule = {
     _cuentasSortCol: 'nombre',
     _cuentasSortDir: 'asc',
 
+    // Ingresos state
+    _ingresos: [],
+    _ingresosFiltered: [],
+    _ingresosSearch: '',
+    _ingresosSortCol: 'fecha',
+    _ingresosSortDir: 'desc',
+    _ingresosMedioFilter: '',
+    _ingresosEstadoFilter: '',
+    _ingresosCuentaFilter: '',
+    _ingresosFechaDesde: '',
+    _ingresosFechaHasta: '',
+    _ingresosDebounce: null,
+
+    // Lookup maps (graceful degradation)
+    _proyectosMap: {},
+    _clientesMap: {},
+    _cuentasMap: {},
+    _lookupsLoaded: false,
+
     // Panel state
     _activePanel: null,
     _activePanelData: null,
+    _activePanelTab: null, // 'cuentas' | 'ingresos'
     _panelEscHandler: null,
     _searchDebounce: null,
 
@@ -355,6 +375,57 @@ const FinanzasModule = {
                     vertical-align: middle;
                 }
 
+                /* ─── Estado badges ─── */
+                .fin-badge-confirmado { background: rgba(0,204,136,0.12); color: #00CC88; }
+                .fin-badge-pendiente { background: rgba(242,141,21,0.12); color: #F28D15; }
+                .fin-badge-anulado { background: rgba(255,68,68,0.12); color: #ff4444; }
+
+                /* ─── Medio badges ─── */
+                .fin-badge-transferencia { background: rgba(74,144,217,0.12); color: #4A90D9; }
+                .fin-badge-efectivo { background: rgba(0,204,136,0.12); color: #00CC88; }
+                .fin-badge-cheque { background: rgba(155,125,255,0.12); color: #9B7DFF; }
+                .fin-badge-mercadopago { background: rgba(0,169,193,0.12); color: #00A9C1; }
+                .fin-badge-pagofacil { background: rgba(242,141,21,0.12); color: #F28D15; }
+                .fin-badge-otro { background: rgba(136,136,136,0.12); color: #888; }
+
+                /* ─── Filters bar ─── */
+                .fin-filters {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 10px;
+                    margin-bottom: 16px;
+                }
+                .fin-filter-select {
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.75rem;
+                    padding: 5px 8px;
+                    outline: none;
+                }
+                .fin-filter-select option { background: #111; }
+                .fin-filter-date {
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    padding: 5px 8px;
+                    outline: none;
+                }
+                .fin-filter-date::-webkit-calendar-picker-indicator { filter: invert(0.6); }
+                .fin-filter-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                }
+
                 /* ─── Empty state ─── */
                 .fin-empty {
                     text-align: center;
@@ -629,6 +700,12 @@ const FinanzasModule = {
                 await this._loadCuentas();
                 this._attachCuentasEvents();
                 break;
+            case 'ingresos':
+                container.innerHTML = this._buildIngresosHTML();
+                await this._loadLookups();
+                await this._loadIngresos();
+                this._attachIngresosEvents();
+                break;
             default:
                 container.innerHTML = this._buildPlaceholder(this._activeTab);
                 break;
@@ -681,6 +758,35 @@ const FinanzasModule = {
         return activa
             ? '<span class="fin-badge fin-badge-activa">Activa</span>'
             : '<span class="fin-badge fin-badge-inactiva">Inactiva</span>';
+    },
+
+    _estadoIngresoBadge(estado) {
+        const map = {
+            'confirmado': { cls: 'fin-badge-confirmado', label: 'Confirmado' },
+            'pendiente':  { cls: 'fin-badge-pendiente',  label: 'Pendiente' },
+            'anulado':    { cls: 'fin-badge-anulado',    label: 'Anulado' },
+        };
+        const m = map[estado] || { cls: '', label: estado };
+        return `<span class="fin-badge ${m.cls}">${m.label}</span>`;
+    },
+
+    _medioBadge(medio) {
+        const map = {
+            'transferencia': { cls: 'fin-badge-transferencia', label: 'Transferencia' },
+            'efectivo':      { cls: 'fin-badge-efectivo',      label: 'Efectivo' },
+            'cheque':        { cls: 'fin-badge-cheque',        label: 'Cheque' },
+            'mercadopago':   { cls: 'fin-badge-mercadopago',   label: 'MercadoPago' },
+            'pagofacil':     { cls: 'fin-badge-pagofacil',     label: 'PagoFácil' },
+            'otro':          { cls: 'fin-badge-otro',          label: 'Otro' },
+        };
+        const m = map[medio] || { cls: '', label: medio };
+        return `<span class="fin-badge ${m.cls}">${m.label}</span>`;
+    },
+
+    _formatDate(dateStr) {
+        if (!dateStr) return '—';
+        const d = new Date(dateStr + 'T12:00:00');
+        return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     },
 
     // ═══════════════════════════════════════════
@@ -1002,11 +1108,15 @@ const FinanzasModule = {
     _closePanel() {
         this._activePanel = null;
         this._activePanelData = null;
-        const panel = document.getElementById('finCuentasPanel');
-        if (panel) {
-            panel.classList.remove('open');
-            panel.innerHTML = '';
-        }
+        this._activePanelTab = null;
+        // Close any open side panel
+        ['finCuentasPanel', 'finIngresosPanel'].forEach(panelId => {
+            const panel = document.getElementById(panelId);
+            if (panel) {
+                panel.classList.remove('open');
+                panel.innerHTML = '';
+            }
+        });
         document.querySelectorAll('.fin-row.active').forEach(r => r.classList.remove('active'));
         if (this._panelEscHandler) {
             document.removeEventListener('keydown', this._panelEscHandler);
@@ -1193,6 +1303,699 @@ const FinanzasModule = {
             console.error('[Finanzas] Error eliminando cuenta:', e);
             Toast.error('Error al eliminar cuenta');
         }
+    },
+
+    // ═══════════════════════════════════════════
+    //  LOOKUPS (proyectos, clientes, cuentas)
+    // ═══════════════════════════════════════════
+
+    async _loadLookups() {
+        if (this._lookupsLoaded) return;
+
+        // Cuentas financieras (siempre existen)
+        try {
+            const { data } = await supabaseClient
+                .from('cuentas_financieras')
+                .select('id, nombre, color')
+                .eq('_deleted', false)
+                .eq('activa', true)
+                .order('nombre');
+            (data || []).forEach(c => { this._cuentasMap[c.id] = c; });
+        } catch (e) { /* ignore */ }
+
+        // Proyectos (graceful)
+        try {
+            const { data } = await supabaseClient
+                .from('proyectos_2026')
+                .select('id, nombre')
+                .eq('_deleted', false)
+                .order('nombre');
+            (data || []).forEach(p => { this._proyectosMap[p.id] = p.nombre; });
+        } catch (e) { /* table may not exist */ }
+
+        // Clientes (graceful)
+        try {
+            const { data } = await supabaseClient
+                .from('clientes')
+                .select('id, nombre')
+                .eq('_deleted', false)
+                .order('nombre');
+            (data || []).forEach(c => { this._clientesMap[c.id] = c.nombre; });
+        } catch (e) { /* table may not exist */ }
+
+        this._lookupsLoaded = true;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: INGRESOS — HTML
+    // ═══════════════════════════════════════════
+
+    _buildIngresosHTML() {
+        const cuentasOpts = Object.values(this._cuentasMap)
+            .map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+
+        return `
+            <div class="fin-cuentas-toolbar">
+                <div class="fin-search-box">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" class="fin-search-input" id="finIngresosSearch" placeholder="Buscar concepto, notas…" autocomplete="off" value="${this._ingresosSearch}">
+                </div>
+                ${!this._isRO ? `
+                <button class="fin-btn-new" id="finBtnNewIngreso">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Nuevo ingreso
+                </button>
+                ` : ''}
+            </div>
+            <div class="fin-filters">
+                <span class="fin-filter-label">Medio</span>
+                <select class="fin-filter-select" id="finIngMedioFilter">
+                    <option value="">Todos</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="mercadopago">MercadoPago</option>
+                    <option value="pagofacil">PagoFácil</option>
+                    <option value="otro">Otro</option>
+                </select>
+                <span class="fin-filter-label">Estado</span>
+                <select class="fin-filter-select" id="finIngEstadoFilter">
+                    <option value="">Todos</option>
+                    <option value="confirmado">Confirmado</option>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="anulado">Anulado</option>
+                </select>
+                <span class="fin-filter-label">Cuenta</span>
+                <select class="fin-filter-select" id="finIngCuentaFilter">
+                    <option value="">Todas</option>
+                    ${cuentasOpts}
+                </select>
+                <span class="fin-filter-label">Desde</span>
+                <input type="date" class="fin-filter-date" id="finIngDesde" value="${this._ingresosFechaDesde}">
+                <span class="fin-filter-label">Hasta</span>
+                <input type="date" class="fin-filter-date" id="finIngHasta" value="${this._ingresosFechaHasta}">
+            </div>
+            <div class="fin-body">
+                <div class="fin-main" id="finIngresosMain">
+                    <div class="fin-loading"><div class="spinner"></div> Cargando ingresos…</div>
+                </div>
+                <div class="fin-side-panel" id="finIngresosPanel"></div>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: INGRESOS — DATA
+    // ═══════════════════════════════════════════
+
+    async _loadIngresos() {
+        try {
+            let query = supabaseClient
+                .from('ingresos')
+                .select('*, cuentas_financieras(nombre, color)')
+                .eq('_deleted', false)
+                .order('fecha', { ascending: false });
+
+            const canal = this._getCanalFilter();
+            if (canal) query = query.eq('canal', canal);
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            this._ingresos = data || [];
+            this._applyIngresosFilter();
+            this._renderIngresosTable();
+        } catch (e) {
+            console.error('[Finanzas] Error cargando ingresos:', e);
+            Toast.error('Error al cargar ingresos');
+            this._ingresos = [];
+            this._ingresosFiltered = [];
+            this._renderIngresosTable();
+        }
+    },
+
+    _applyIngresosFilter() {
+        let items = [...this._ingresos];
+
+        // Search
+        if (this._ingresosSearch) {
+            const q = this._ingresosSearch.toLowerCase();
+            items = items.filter(i =>
+                (i.concepto || '').toLowerCase().includes(q) ||
+                (i.notas || '').toLowerCase().includes(q) ||
+                (this._clientesMap[i.cliente_id] || '').toLowerCase().includes(q) ||
+                (this._proyectosMap[i.proyecto_id] || '').toLowerCase().includes(q)
+            );
+        }
+
+        // Medio
+        if (this._ingresosMedioFilter) {
+            items = items.filter(i => i.medio === this._ingresosMedioFilter);
+        }
+        // Estado
+        if (this._ingresosEstadoFilter) {
+            items = items.filter(i => i.estado === this._ingresosEstadoFilter);
+        }
+        // Cuenta
+        if (this._ingresosCuentaFilter) {
+            items = items.filter(i => i.cuenta_id === this._ingresosCuentaFilter);
+        }
+        // Fecha desde
+        if (this._ingresosFechaDesde) {
+            items = items.filter(i => i.fecha >= this._ingresosFechaDesde);
+        }
+        // Fecha hasta
+        if (this._ingresosFechaHasta) {
+            items = items.filter(i => i.fecha <= this._ingresosFechaHasta);
+        }
+
+        // Sort
+        const col = this._ingresosSortCol;
+        const dir = this._ingresosSortDir === 'asc' ? 1 : -1;
+        items.sort((a, b) => {
+            let va = a[col], vb = b[col];
+            if (col === 'proyecto') { va = this._proyectosMap[a.proyecto_id] || ''; vb = this._proyectosMap[b.proyecto_id] || ''; }
+            if (col === 'cliente') { va = this._clientesMap[a.cliente_id] || ''; vb = this._clientesMap[b.cliente_id] || ''; }
+            if (col === 'cuenta') { va = (a.cuentas_financieras || {}).nombre || ''; vb = (b.cuentas_financieras || {}).nombre || ''; }
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+            if (va < vb) return -1 * dir;
+            if (va > vb) return 1 * dir;
+            return 0;
+        });
+
+        this._ingresosFiltered = items;
+    },
+
+    _renderIngresosTable() {
+        const main = document.getElementById('finIngresosMain');
+        if (!main) return;
+
+        if (this._ingresosFiltered.length === 0 && this._ingresos.length === 0) {
+            main.innerHTML = `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">💰</div>
+                    <div class="fin-empty-text">No hay ingresos registrados. Registrá el primero para empezar.</div>
+                    ${!this._isRO ? `
+                    <button class="fin-btn-new" id="finBtnNewIngresoEmpty">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Nuevo ingreso
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+            document.getElementById('finBtnNewIngresoEmpty')?.addEventListener('click', () => this._showIngresoModal());
+            return;
+        }
+
+        if (this._ingresosFiltered.length === 0) {
+            main.innerHTML = `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">🔍</div>
+                    <div class="fin-empty-text">Sin resultados con los filtros actuales</div>
+                </div>
+            `;
+            return;
+        }
+
+        const sortIcon = (col) => {
+            if (this._ingresosSortCol !== col) return '';
+            return `<span class="fin-sort-icon">${this._ingresosSortDir === 'asc' ? '▲' : '▼'}</span>`;
+        };
+
+        // Total
+        const total = this._ingresosFiltered
+            .filter(i => i.estado !== 'anulado')
+            .reduce((s, i) => s + (parseFloat(i.monto) || 0), 0);
+
+        main.innerHTML = `
+            <div class="fin-table-wrapper">
+                <table class="fin-table">
+                    <thead>
+                        <tr>
+                            <th class="fin-th sortable" data-sort="fecha">Fecha ${sortIcon('fecha')}</th>
+                            <th class="fin-th sortable" data-sort="proyecto">Proyecto ${sortIcon('proyecto')}</th>
+                            <th class="fin-th sortable" data-sort="cliente">Cliente ${sortIcon('cliente')}</th>
+                            <th class="fin-th sortable" data-sort="concepto">Concepto ${sortIcon('concepto')}</th>
+                            <th class="fin-th sortable" data-sort="monto">Monto ${sortIcon('monto')}</th>
+                            <th class="fin-th">Medio</th>
+                            <th class="fin-th">Canal</th>
+                            <th class="fin-th sortable" data-sort="cuenta">Cuenta ${sortIcon('cuenta')}</th>
+                            <th class="fin-th sortable" data-sort="estado">Estado ${sortIcon('estado')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${this._ingresosFiltered.map(i => {
+                            const proyNombre = this._proyectosMap[i.proyecto_id] || '—';
+                            const cliNombre = this._clientesMap[i.cliente_id] || '—';
+                            const cuentaNombre = (i.cuentas_financieras || {}).nombre || '—';
+                            return `
+                            <tr class="fin-row ${this._activePanel === i.id ? 'active' : ''}" data-id="${i.id}">
+                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(i.fecha)}</td>
+                                <td class="fin-td">${proyNombre}</td>
+                                <td class="fin-td">${cliNombre}</td>
+                                <td class="fin-td fin-td-name">${i.concepto}</td>
+                                <td class="fin-td fin-td-money">${this._formatMoney(i.monto)}</td>
+                                <td class="fin-td">${this._medioBadge(i.medio)}</td>
+                                <td class="fin-td">${this._canalBadge(i.canal)}</td>
+                                <td class="fin-td">${cuentaNombre}</td>
+                                <td class="fin-td">${this._estadoIngresoBadge(i.estado)}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="fin-record-count">
+                ${this._ingresosFiltered.length} ingreso${this._ingresosFiltered.length !== 1 ? 's' : ''}
+                — Total: <strong style="color:#00CC88;">${this._formatMoney(total)}</strong>
+            </div>
+        `;
+
+        // Sort headers
+        main.querySelectorAll('.fin-th.sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sort;
+                if (this._ingresosSortCol === col) {
+                    this._ingresosSortDir = this._ingresosSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._ingresosSortCol = col;
+                    this._ingresosSortDir = col === 'fecha' ? 'desc' : 'asc';
+                }
+                this._applyIngresosFilter();
+                this._renderIngresosTable();
+            });
+        });
+
+        // Row click → panel
+        main.querySelectorAll('.fin-row').forEach(row => {
+            row.addEventListener('click', () => this._openIngresoPanel(row.dataset.id));
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: INGRESOS — SIDE PANEL
+    // ═══════════════════════════════════════════
+
+    _openIngresoPanel(id) {
+        const ingreso = this._ingresos.find(i => i.id === id);
+        if (!ingreso) return;
+
+        this._activePanel = id;
+        this._activePanelData = ingreso;
+        this._activePanelTab = 'ingresos';
+
+        const panel = document.getElementById('finIngresosPanel');
+        if (!panel) return;
+
+        const proyNombre = this._proyectosMap[ingreso.proyecto_id] || '—';
+        const cliNombre = this._clientesMap[ingreso.cliente_id] || '—';
+        const cuentaNombre = (ingreso.cuentas_financieras || {}).nombre || '—';
+        const cuentaColor = (ingreso.cuentas_financieras || {}).color || '#4A90D9';
+
+        panel.innerHTML = `
+            <div class="fin-panel-inner">
+                <div class="fin-panel-header">
+                    <div class="fin-panel-color-bar" style="background:${cuentaColor}"></div>
+                    <button class="fin-panel-close" id="finIngPanelClose">&times;</button>
+                    <div class="fin-panel-name">${ingreso.concepto}</div>
+                    <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                        ${this._medioBadge(ingreso.medio)}
+                        ${this._canalBadge(ingreso.canal)}
+                        ${this._estadoIngresoBadge(ingreso.estado)}
+                    </div>
+                    <div style="font-family:var(--font-mono,'Space Mono',monospace); font-size:1.3rem; font-weight:700; color:#00CC88; margin-top:12px;">
+                        ${this._formatMoney(ingreso.monto)}
+                    </div>
+                </div>
+
+                <div class="fin-panel-section">
+                    <div class="fin-section-title">Detalle</div>
+                    <div class="fin-info-grid">
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Fecha</span>
+                            <span class="fin-info-value">${this._formatDate(ingreso.fecha)}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Proyecto</span>
+                            <span class="fin-info-value">${proyNombre}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Cliente</span>
+                            <span class="fin-info-value">${cliNombre}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Cuenta</span>
+                            <span class="fin-info-value">${cuentaNombre}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Medio</span>
+                            <span class="fin-info-value">${this._medioBadge(ingreso.medio)}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Canal</span>
+                            <span class="fin-info-value">${this._canalBadge(ingreso.canal)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${ingreso.notas ? `
+                <div class="fin-panel-section">
+                    <div class="fin-section-title">Notas</div>
+                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${ingreso.notas}</div>
+                </div>
+                ` : ''}
+
+                <div class="fin-panel-section">
+                    <div class="fin-section-title">Registro</div>
+                    <div class="fin-info-grid">
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Creado</span>
+                            <span class="fin-info-value" style="font-size:0.8rem;color:#888;">${new Date(ingreso.created_at).toLocaleDateString('es-AR')}</span>
+                        </div>
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Actualizado</span>
+                            <span class="fin-info-value" style="font-size:0.8rem;color:#888;">${new Date(ingreso.updated_at).toLocaleDateString('es-AR')}</span>
+                        </div>
+                    </div>
+                </div>
+
+                ${!this._isRO ? `
+                <div class="fin-panel-actions">
+                    <button class="fin-panel-btn" id="finIngPanelEdit">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                        Editar
+                    </button>
+                    ${ingreso.estado !== 'anulado' ? `
+                    <button class="fin-panel-btn fin-panel-btn-warn" id="finIngPanelAnular">
+                        Anular
+                    </button>
+                    ` : ''}
+                    ${Auth.isSuperAdmin() ? `
+                    <button class="fin-panel-btn fin-panel-btn-danger" id="finIngPanelDelete">
+                        Eliminar
+                    </button>
+                    ` : ''}
+                </div>
+                ` : ''}
+            </div>
+        `;
+
+        panel.classList.add('open');
+        document.querySelectorAll('#finIngresosMain .fin-row').forEach(r => r.classList.toggle('active', r.dataset.id === id));
+
+        // Events
+        document.getElementById('finIngPanelClose')?.addEventListener('click', () => this._closeIngresoPanel());
+        document.getElementById('finIngPanelEdit')?.addEventListener('click', () => this._showIngresoModal(ingreso));
+
+        document.getElementById('finIngPanelAnular')?.addEventListener('click', async () => {
+            const ok = await Modal.confirm({
+                title: 'Anular ingreso',
+                message: `¿Seguro que querés anular <strong>"${ingreso.concepto}"</strong> por ${this._formatMoney(ingreso.monto)}?`,
+                confirmText: 'Anular',
+                cancelText: 'Cancelar',
+            });
+            if (ok) {
+                try {
+                    const { error } = await supabaseClient
+                        .from('ingresos')
+                        .update({ estado: 'anulado' })
+                        .eq('id', ingreso.id);
+                    if (error) throw error;
+                    Toast.success('Ingreso anulado');
+                    this._closeIngresoPanel();
+                    await this._loadIngresos();
+                } catch (e) {
+                    console.error('[Finanzas] Error anulando ingreso:', e);
+                    Toast.error('Error al anular ingreso');
+                }
+            }
+        });
+
+        document.getElementById('finIngPanelDelete')?.addEventListener('click', async () => {
+            const ok = await Modal.confirm({
+                title: 'Eliminar ingreso',
+                message: `¿Seguro que querés eliminar <strong>"${ingreso.concepto}"</strong>?`,
+                confirmText: 'Eliminar',
+                cancelText: 'Cancelar',
+                danger: true,
+            });
+            if (ok) {
+                try {
+                    const { error } = await supabaseClient
+                        .from('ingresos')
+                        .update({ _deleted: true })
+                        .eq('id', ingreso.id);
+                    if (error) throw error;
+                    Toast.success('Ingreso eliminado');
+                    this._closeIngresoPanel();
+                    await this._loadIngresos();
+                } catch (e) {
+                    console.error('[Finanzas] Error eliminando ingreso:', e);
+                    Toast.error('Error al eliminar ingreso');
+                }
+            }
+        });
+
+        // ESC
+        if (this._panelEscHandler) document.removeEventListener('keydown', this._panelEscHandler);
+        this._panelEscHandler = (e) => { if (e.key === 'Escape') this._closeIngresoPanel(); };
+        document.addEventListener('keydown', this._panelEscHandler);
+    },
+
+    _closeIngresoPanel() {
+        this._activePanel = null;
+        this._activePanelData = null;
+        this._activePanelTab = null;
+        const panel = document.getElementById('finIngresosPanel');
+        if (panel) {
+            panel.classList.remove('open');
+            panel.innerHTML = '';
+        }
+        document.querySelectorAll('#finIngresosMain .fin-row.active').forEach(r => r.classList.remove('active'));
+        if (this._panelEscHandler) {
+            document.removeEventListener('keydown', this._panelEscHandler);
+            this._panelEscHandler = null;
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: INGRESOS — MODAL CREATE/EDIT
+    // ═══════════════════════════════════════════
+
+    _showIngresoModal(ingreso = null) {
+        const isEdit = !!ingreso;
+        const title = isEdit ? 'Editar ingreso' : 'Nuevo ingreso';
+        const i = ingreso || {};
+
+        const today = new Date().toISOString().slice(0, 10);
+        const defaultCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
+
+        // Build proyecto options
+        const proyKeys = Object.keys(this._proyectosMap);
+        const proyOptions = proyKeys.length > 0
+            ? `<select class="fin-form-select" id="finIngFormProyecto">
+                <option value="">— Sin proyecto —</option>
+                ${proyKeys.map(k => `<option value="${k}" ${i.proyecto_id === k ? 'selected' : ''}>${this._proyectosMap[k]}</option>`).join('')}
+               </select>`
+            : `<input type="text" class="fin-form-input" id="finIngFormProyecto" value="" placeholder="(sin tabla proyectos)" disabled>`;
+
+        // Build cliente options
+        const cliKeys = Object.keys(this._clientesMap);
+        const cliOptions = cliKeys.length > 0
+            ? `<select class="fin-form-select" id="finIngFormCliente">
+                <option value="">— Sin cliente —</option>
+                ${cliKeys.map(k => `<option value="${k}" ${i.cliente_id === k ? 'selected' : ''}>${this._clientesMap[k]}</option>`).join('')}
+               </select>`
+            : `<input type="text" class="fin-form-input" id="finIngFormCliente" value="" placeholder="(sin tabla clientes)" disabled>`;
+
+        // Cuentas
+        const cuentasArr = Object.entries(this._cuentasMap);
+        const cuentaOptions = cuentasArr.map(([id, c]) =>
+            `<option value="${id}" ${i.cuenta_id === id ? 'selected' : ''}>${c.nombre}</option>`
+        ).join('');
+
+        Modal.open({
+            title,
+            size: 'md',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Fecha *</label>
+                            <input type="date" class="fin-form-input" id="finIngFormFecha" value="${i.fecha || today}">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Monto *</label>
+                            <input type="number" class="fin-form-input" id="finIngFormMonto" value="${i.monto || ''}" step="0.01" placeholder="0.00">
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Concepto *</label>
+                        <input type="text" class="fin-form-input" id="finIngFormConcepto" value="${i.concepto || ''}" placeholder="Seña 40%, Parcial 1, Saldo…">
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Proyecto</label>
+                            ${proyOptions}
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cliente</label>
+                            ${cliOptions}
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Medio *</label>
+                            <select class="fin-form-select" id="finIngFormMedio">
+                                <option value="transferencia" ${i.medio === 'transferencia' ? 'selected' : ''}>Transferencia</option>
+                                <option value="efectivo" ${i.medio === 'efectivo' ? 'selected' : ''}>Efectivo</option>
+                                <option value="cheque" ${i.medio === 'cheque' ? 'selected' : ''}>Cheque</option>
+                                <option value="mercadopago" ${i.medio === 'mercadopago' ? 'selected' : ''}>MercadoPago</option>
+                                <option value="pagofacil" ${i.medio === 'pagofacil' ? 'selected' : ''}>PagoFácil</option>
+                                <option value="otro" ${i.medio === 'otro' ? 'selected' : ''}>Otro</option>
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Canal *</label>
+                            <select class="fin-form-select" id="finIngFormCanal">
+                                <option value="oficial" ${(i.canal || defaultCanal) === 'oficial' ? 'selected' : ''}>Oficial</option>
+                                <option value="interno" ${(i.canal || defaultCanal) === 'interno' ? 'selected' : ''}>Interno</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cuenta destino</label>
+                            <select class="fin-form-select" id="finIngFormCuenta">
+                                <option value="">— Sin cuenta —</option>
+                                ${cuentaOptions}
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Estado</label>
+                            <select class="fin-form-select" id="finIngFormEstado">
+                                <option value="confirmado" ${(i.estado || 'confirmado') === 'confirmado' ? 'selected' : ''}>Confirmado</option>
+                                <option value="pendiente" ${i.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Notas</label>
+                        <textarea class="fin-form-textarea" id="finIngFormNotas" placeholder="Notas internas…">${i.notas || ''}</textarea>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="finBtnSaveIngreso">${isEdit ? 'Guardar' : 'Registrar'}</button>
+            `,
+        });
+
+        document.getElementById('finBtnSaveIngreso')?.addEventListener('click', async () => {
+            const fecha = document.getElementById('finIngFormFecha')?.value;
+            const monto = parseFloat(document.getElementById('finIngFormMonto')?.value);
+            const concepto = document.getElementById('finIngFormConcepto')?.value.trim();
+            const medio = document.getElementById('finIngFormMedio')?.value;
+            const canal = document.getElementById('finIngFormCanal')?.value;
+            const cuenta_id = document.getElementById('finIngFormCuenta')?.value || null;
+            const estado = document.getElementById('finIngFormEstado')?.value;
+            const notas = document.getElementById('finIngFormNotas')?.value.trim() || null;
+
+            // Proyecto/Cliente
+            const proyEl = document.getElementById('finIngFormProyecto');
+            const cliEl = document.getElementById('finIngFormCliente');
+            const proyecto_id = (proyEl && proyEl.tagName === 'SELECT') ? (proyEl.value || null) : null;
+            const cliente_id = (cliEl && cliEl.tagName === 'SELECT') ? (cliEl.value || null) : null;
+
+            if (!fecha || !concepto || !monto || isNaN(monto)) {
+                Toast.warning('Fecha, concepto y monto son obligatorios');
+                return;
+            }
+
+            const payload = {
+                fecha, concepto, monto, medio, canal,
+                cuenta_id, estado, notas,
+                proyecto_id, cliente_id,
+            };
+
+            try {
+                if (isEdit) {
+                    const { error } = await supabaseClient
+                        .from('ingresos')
+                        .update(payload)
+                        .eq('id', ingreso.id);
+                    if (error) throw error;
+                    Toast.success('Ingreso actualizado');
+                } else {
+                    payload.created_by = Auth.getUser()?.uid || null;
+                    const { error } = await supabaseClient
+                        .from('ingresos')
+                        .insert([payload]);
+                    if (error) throw error;
+                    Toast.success('Ingreso registrado');
+                }
+
+                Modal.closeAll();
+                await this._loadIngresos();
+
+                if (isEdit && ingreso.id) {
+                    this._openIngresoPanel(ingreso.id);
+                }
+            } catch (e) {
+                console.error('[Finanzas] Error guardando ingreso:', e);
+                Toast.error('Error al guardar: ' + (e.message || e));
+            }
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: INGRESOS — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachIngresosEvents() {
+        // Search
+        const searchInput = document.getElementById('finIngresosSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                clearTimeout(this._ingresosDebounce);
+                this._ingresosDebounce = setTimeout(() => {
+                    this._ingresosSearch = searchInput.value.trim();
+                    this._applyIngresosFilter();
+                    this._renderIngresosTable();
+                }, 300);
+            });
+        }
+
+        // New button
+        document.getElementById('finBtnNewIngreso')?.addEventListener('click', () => this._showIngresoModal());
+
+        // Filters
+        document.getElementById('finIngMedioFilter')?.addEventListener('change', (e) => {
+            this._ingresosMedioFilter = e.target.value;
+            this._applyIngresosFilter();
+            this._renderIngresosTable();
+        });
+        document.getElementById('finIngEstadoFilter')?.addEventListener('change', (e) => {
+            this._ingresosEstadoFilter = e.target.value;
+            this._applyIngresosFilter();
+            this._renderIngresosTable();
+        });
+        document.getElementById('finIngCuentaFilter')?.addEventListener('change', (e) => {
+            this._ingresosCuentaFilter = e.target.value;
+            this._applyIngresosFilter();
+            this._renderIngresosTable();
+        });
+        document.getElementById('finIngDesde')?.addEventListener('change', (e) => {
+            this._ingresosFechaDesde = e.target.value;
+            this._applyIngresosFilter();
+            this._renderIngresosTable();
+        });
+        document.getElementById('finIngHasta')?.addEventListener('change', (e) => {
+            this._ingresosFechaHasta = e.target.value;
+            this._applyIngresosFilter();
+            this._renderIngresosTable();
+        });
     },
 
     // ═══════════════════════════════════════════
