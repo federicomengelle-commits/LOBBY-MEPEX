@@ -985,27 +985,39 @@ const API = {
         }
     },
 
-    // ─── Create User (signUp + profile) ──────
+    // ─── Create User (admin.createUser + profile) ──────
     async createUser(username, password, profileData) {
         try {
-            // Save current admin session
-            const { data: { session: adminSession } } = await supabaseClient.auth.getSession();
-
-            // Create auth user via signUp
-            const { data: authData, error: authError } = await supabaseClient.auth.signUp({
+            // Create auth user via service_role admin API (accepts @mepex.local)
+            const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
                 email: username + '@mepex.local',
                 password: password,
+                email_confirm: true,
             });
-            if (authError) throw authError;
-            if (!authData?.user?.id) throw new Error('No se pudo crear el usuario de autenticación');
-
-            // Restore admin session (signUp may have changed the active session)
-            if (adminSession) {
-                await supabaseClient.auth.setSession({
-                    access_token: adminSession.access_token,
-                    refresh_token: adminSession.refresh_token,
-                });
+            if (authError) {
+                // If user already exists in auth, try to find their id
+                if (authError.message?.includes('already been registered') || authError.message?.includes('already exists')) {
+                    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+                    const existing = users?.find(u => u.email === username + '@mepex.local');
+                    if (existing) {
+                        // Update password and upsert profile
+                        await supabaseAdmin.auth.admin.updateUserById(existing.id, { password });
+                        const profileRow = {
+                            id: existing.id,
+                            username: username,
+                            name: profileData.name,
+                            role: profileData.role,
+                            initials: profileData.initials,
+                            active: true,
+                        };
+                        if (profileData.telefono) profileRow.telefono = profileData.telefono;
+                        await supabaseClient.from('profiles').upsert(profileRow, { onConflict: 'id' });
+                        return { success: true, userId: existing.id };
+                    }
+                }
+                throw authError;
             }
+            if (!authData?.user?.id) throw new Error('No se pudo crear el usuario de autenticación');
 
             // Create profile row
             const profileRow = {
