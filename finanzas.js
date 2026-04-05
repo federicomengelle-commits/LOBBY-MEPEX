@@ -59,6 +59,17 @@ const FinanzasModule = {
     _egresosSoloCF: false,
     _egresosDebounce: null,
 
+    // Cuentas detail view
+    _cuentaDetailId: null,
+    _cuentaMovimientos: [],
+    _cuentaSaldo: 0,
+
+    // Ingresos subtab
+    _ingresosSubtab: 'cobros', // 'cobros' | 'planes'
+
+    // Plan de cobro
+    _planes: [],
+
     // Lookup maps (graceful degradation)
     _proyectosMap: {},
     _clientesMap: {},
@@ -68,7 +79,7 @@ const FinanzasModule = {
     // Panel state
     _activePanel: null,
     _activePanelData: null,
-    _activePanelTab: null, // 'cuentas' | 'ingresos'
+    _activePanelTab: null,
     _panelEscHandler: null,
     _searchDebounce: null,
 
@@ -445,6 +456,164 @@ const FinanzasModule = {
                     color: #FFD166;
                 }
 
+                /* ─── Movimientos (cuenta detail) ─── */
+                .fin-back-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 12px;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    background: transparent;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.75rem;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                    margin-bottom: 16px;
+                }
+                .fin-back-btn:hover { color: #E8E8E8; border-color: #4A90D9; }
+                .fin-cuenta-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 20px;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                }
+                .fin-cuenta-header-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                .fin-cuenta-header-name {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1.2rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                }
+                .fin-saldo-big {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 1.4rem;
+                    font-weight: 700;
+                }
+                .fin-mov-entrada { color: #00CC88; }
+                .fin-mov-salida { color: #E84855; }
+
+                /* ─── Subtabs ─── */
+                .fin-subtabs {
+                    display: flex;
+                    gap: 0;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    overflow: hidden;
+                    margin-bottom: 16px;
+                    width: fit-content;
+                }
+                .fin-subtab {
+                    padding: 6px 16px;
+                    background: transparent;
+                    border: none;
+                    color: #666;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                }
+                .fin-subtab:not(:last-child) { border-right: 1px solid #2a2a2a; }
+                .fin-subtab:hover { color: #aaa; }
+                .fin-subtab.active {
+                    background: rgba(74, 144, 217, 0.12);
+                    color: #4A90D9;
+                }
+
+                /* ─── Plan de cobro ─── */
+                .fin-plan-card {
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 16px;
+                    margin-bottom: 16px;
+                    background: rgba(255,255,255,0.02);
+                }
+                .fin-plan-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 12px;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .fin-plan-proyecto {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                }
+                .fin-plan-total {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.85rem;
+                    color: #888;
+                }
+                .fin-progress-bar {
+                    width: 100%;
+                    height: 8px;
+                    background: #2a2a2a;
+                    border-radius: 4px;
+                    overflow: hidden;
+                    margin-bottom: 8px;
+                }
+                .fin-progress-fill {
+                    height: 100%;
+                    border-radius: 4px;
+                    transition: width 300ms ease;
+                }
+                .fin-progress-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    color: #888;
+                    margin-bottom: 12px;
+                }
+                .fin-plan-items-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.82rem;
+                    margin-top: 8px;
+                }
+                .fin-plan-items-table th {
+                    padding: 5px 8px;
+                    text-align: left;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    border-bottom: 1px solid #2a2a2a;
+                }
+                .fin-plan-items-table td {
+                    padding: 5px 8px;
+                    color: #ccc;
+                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                }
+                .fin-plan-item-cobrado { color: #00CC88; }
+                .fin-plan-item-parcial { color: #F28D15; }
+                .fin-plan-item-pendiente { color: #888; }
+                .fin-plan-item-vencido { color: #E84855; }
+                .fin-plan-cobrar-btn {
+                    padding: 2px 8px;
+                    border: 1px solid #00CC88;
+                    border-radius: 3px;
+                    background: transparent;
+                    color: #00CC88;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 150ms ease;
+                }
+                .fin-plan-cobrar-btn:hover {
+                    background: rgba(0,204,136,0.12);
+                }
+
                 /* ─── Filters bar ─── */
                 .fin-filters {
                     display: flex;
@@ -753,15 +922,27 @@ const FinanzasModule = {
 
         switch (this._activeTab) {
             case 'cuentas':
-                container.innerHTML = this._buildCuentasHTML();
-                await this._loadCuentas();
-                this._attachCuentasEvents();
+                if (this._cuentaDetailId) {
+                    container.innerHTML = '<div id="finCuentaDetail"><div class="fin-loading"><div class="spinner"></div> Cargando movimientos…</div></div>';
+                    await this._loadLookups();
+                    await this._renderCuentaDetail(this._cuentaDetailId);
+                } else {
+                    container.innerHTML = this._buildCuentasHTML();
+                    await this._loadCuentas();
+                    this._attachCuentasEvents();
+                }
                 break;
             case 'ingresos':
-                container.innerHTML = this._buildIngresosHTML();
                 await this._loadLookups();
-                await this._loadIngresos();
-                this._attachIngresosEvents();
+                if (this._ingresosSubtab === 'planes') {
+                    container.innerHTML = this._buildPlanesHTML();
+                    await this._loadPlanes();
+                    this._attachPlanesEvents();
+                } else {
+                    container.innerHTML = this._buildIngresosHTML();
+                    await this._loadIngresos();
+                    this._attachIngresosEvents();
+                }
                 break;
             case 'egresos':
                 container.innerHTML = this._buildEgresosHTML();
@@ -898,6 +1079,9 @@ const FinanzasModule = {
                     <input type="text" class="fin-search-input" id="finCuentasSearch" placeholder="Buscar cuenta…" autocomplete="off" value="${this._cuentasSearch}">
                 </div>
                 ${!this._isRO ? `
+                <button class="fin-btn-new" id="finBtnTransfer" style="border-color:#F28D15;color:#F28D15;background:rgba(242,141,21,0.08);">
+                    ↔ Transferir
+                </button>
                 <button class="fin-btn-new" id="finBtnNewCuenta">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Nueva cuenta
@@ -1137,6 +1321,12 @@ const FinanzasModule = {
                     </div>
                 </div>
 
+                <div class="fin-panel-actions">
+                    <button class="fin-panel-btn" id="finPanelMovimientos" style="border-color:#4A90D9;color:#4A90D9;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+                        Ver movimientos
+                    </button>
+                </div>
                 ${!this._isRO ? `
                 <div class="fin-panel-actions">
                     <button class="fin-panel-btn" id="finPanelEdit">
@@ -1169,6 +1359,11 @@ const FinanzasModule = {
 
         // Events
         document.getElementById('finPanelClose')?.addEventListener('click', () => this._closePanel());
+        document.getElementById('finPanelMovimientos')?.addEventListener('click', () => {
+            this._cuentaDetailId = cuenta.id;
+            this._closePanel();
+            this._renderTabContent();
+        });
         document.getElementById('finPanelEdit')?.addEventListener('click', () => this._showCuentaModal(cuenta));
 
         document.getElementById('finPanelDeactivate')?.addEventListener('click', async () => {
@@ -1452,6 +1647,10 @@ const FinanzasModule = {
             .map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
 
         return `
+            <div class="fin-subtabs">
+                <button class="fin-subtab ${this._ingresosSubtab === 'cobros' ? 'active' : ''}" data-subtab="cobros">Cobros</button>
+                <button class="fin-subtab ${this._ingresosSubtab === 'planes' ? 'active' : ''}" data-subtab="planes">Planes de cobro</button>
+            </div>
             <div class="fin-cuentas-toolbar">
                 <div class="fin-search-box">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2016,6 +2215,11 @@ const FinanzasModule = {
                 proyecto_id, cliente_id,
             };
 
+            // If linked to a plan item
+            if (i.plan_cobro_item_id) {
+                payload.plan_cobro_item_id = i.plan_cobro_item_id;
+            }
+
             try {
                 if (isEdit) {
                     const { error } = await supabaseClient
@@ -2031,6 +2235,27 @@ const FinanzasModule = {
                         .insert([payload]);
                     if (error) throw error;
                     Toast.success('Ingreso registrado');
+
+                    // Update plan_cobro_item if linked
+                    if (i._prefillPlanItem && i.plan_cobro_item_id) {
+                        try {
+                            const { data: currentItem } = await supabaseClient
+                                .from('plan_cobro_items')
+                                .select('monto, monto_cobrado')
+                                .eq('id', i.plan_cobro_item_id)
+                                .single();
+                            if (currentItem) {
+                                const newCobrado = (Number(currentItem.monto_cobrado) || 0) + monto;
+                                const newEstado = newCobrado >= Number(currentItem.monto) ? 'cobrado' : 'parcial';
+                                await supabaseClient
+                                    .from('plan_cobro_items')
+                                    .update({ monto_cobrado: newCobrado, estado: newEstado })
+                                    .eq('id', i.plan_cobro_item_id);
+                            }
+                        } catch (planErr) {
+                            console.warn('[Finanzas] Error actualizando plan item:', planErr);
+                        }
+                    }
                 }
 
                 Modal.closeAll();
@@ -2745,6 +2970,569 @@ const FinanzasModule = {
     },
 
     // ═══════════════════════════════════════════
+    //  TAB: CUENTAS — DETAIL VIEW (movimientos)
+    // ═══════════════════════════════════════════
+
+    async _calcularSaldo(cuentaId) {
+        const cuenta = this._cuentas.find(c => c.id === cuentaId);
+        const base = (cuenta ? Number(cuenta.saldo_inicial) : 0) || 0;
+
+        let totalIn = 0, totalOut = 0;
+        try {
+            const { data: ingresos } = await supabaseClient
+                .from('ingresos').select('monto')
+                .eq('cuenta_id', cuentaId).eq('_deleted', false)
+                .eq('estado', 'confirmado');
+            totalIn = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
+        } catch (e) { /* table may not exist */ }
+
+        try {
+            const { data: egresos } = await supabaseClient
+                .from('egresos').select('monto')
+                .eq('cuenta_id', cuentaId).eq('_deleted', false)
+                .eq('estado', 'pagado');
+            totalOut = (egresos || []).reduce((s, e) => s + Number(e.monto), 0);
+        } catch (e) { /* table may not exist */ }
+
+        return base + totalIn - totalOut;
+    },
+
+    async _loadMovimientos(cuentaId) {
+        const canal = this._getCanalFilter();
+        let movs = [];
+
+        try {
+            let qIn = supabaseClient.from('ingresos').select('id,fecha,concepto,monto,estado,canal')
+                .eq('cuenta_id', cuentaId).eq('_deleted', false).neq('estado', 'anulado');
+            if (canal) qIn = qIn.eq('canal', canal);
+            const { data: inData } = await qIn;
+            (inData || []).forEach(i => movs.push({ ...i, tipo: 'ingreso' }));
+        } catch (e) { /* ignore */ }
+
+        try {
+            let qOut = supabaseClient.from('egresos').select('id,fecha,concepto,monto,estado,canal')
+                .eq('cuenta_id', cuentaId).eq('_deleted', false).neq('estado', 'anulado');
+            if (canal) qOut = qOut.eq('canal', canal);
+            const { data: outData } = await qOut;
+            (outData || []).forEach(e => movs.push({ ...e, tipo: 'egreso' }));
+        } catch (e) { /* ignore */ }
+
+        movs.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.created_at || '').localeCompare(a.created_at || ''));
+        return movs;
+    },
+
+    async _renderCuentaDetail(cuentaId) {
+        const cuenta = this._cuentas.find(c => c.id === cuentaId);
+        if (!cuenta) {
+            // Load cuentas first
+            await this._loadCuentas();
+        }
+        const c = this._cuentas.find(cc => cc.id === cuentaId);
+        if (!c) { this._cuentaDetailId = null; this._renderTabContent(); return; }
+
+        const saldo = await this._calcularSaldo(cuentaId);
+        const movs = await this._loadMovimientos(cuentaId);
+        this._cuentaSaldo = saldo;
+        this._cuentaMovimientos = movs;
+
+        const container = document.getElementById('finCuentaDetail') || document.getElementById('finanzas-content');
+        if (!container) return;
+
+        // Compute running balance (from oldest to newest, then display reversed)
+        const movsAsc = [...movs].reverse();
+        let running = Number(c.saldo_inicial) || 0;
+        const balances = [];
+        movsAsc.forEach(m => {
+            if (m.tipo === 'ingreso') running += Number(m.monto);
+            else running -= Number(m.monto);
+            balances.push(running);
+        });
+        balances.reverse(); // now matches movs order (newest first)
+
+        const saldoColor = saldo >= 0 ? '#00CC88' : '#E84855';
+
+        container.innerHTML = `
+            <button class="fin-back-btn" id="finBackToCuentas">← Volver a cuentas</button>
+            <div class="fin-cuenta-header">
+                <div class="fin-cuenta-header-left">
+                    <span class="fin-color-dot" style="background:${c.color || '#4A90D9'};width:14px;height:14px;"></span>
+                    <span class="fin-cuenta-header-name">${c.nombre}</span>
+                    ${this._tipoBadge(c.tipo)}
+                </div>
+                <div class="fin-saldo-big" style="color:${saldoColor};">
+                    Saldo: ${this._formatMoney(saldo)}
+                </div>
+            </div>
+
+            ${movs.length === 0 ? `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">📋</div>
+                    <div class="fin-empty-text">Sin movimientos en esta cuenta</div>
+                </div>
+            ` : `
+                <div class="fin-table-wrapper">
+                    <table class="fin-table">
+                        <thead>
+                            <tr>
+                                <th class="fin-th">Fecha</th>
+                                <th class="fin-th">Concepto</th>
+                                <th class="fin-th" style="text-align:right;">Entrada</th>
+                                <th class="fin-th" style="text-align:right;">Salida</th>
+                                <th class="fin-th" style="text-align:right;">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${movs.map((m, idx) => {
+                                const isIn = m.tipo === 'ingreso';
+                                const bal = balances[idx];
+                                const balColor = bal >= 0 ? '#00CC88' : '#E84855';
+                                return `
+                                <tr class="fin-row" style="cursor:default;">
+                                    <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(m.fecha)}</td>
+                                    <td class="fin-td fin-td-name">${m.concepto || '—'}</td>
+                                    <td class="fin-td fin-td-money fin-mov-entrada" style="text-align:right;">${isIn ? this._formatMoney(m.monto) : ''}</td>
+                                    <td class="fin-td fin-td-money fin-mov-salida" style="text-align:right;">${!isIn ? this._formatMoney(m.monto) : ''}</td>
+                                    <td class="fin-td fin-td-money" style="text-align:right;color:${balColor};">${this._formatMoney(bal)}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="fin-record-count">${movs.length} movimiento${movs.length !== 1 ? 's' : ''}</div>
+            `}
+        `;
+
+        document.getElementById('finBackToCuentas')?.addEventListener('click', () => {
+            this._cuentaDetailId = null;
+            this._renderTabContent();
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CUENTAS — TRANSFERENCIA
+    // ═══════════════════════════════════════════
+
+    _showTransferModal() {
+        const cuentasActivas = this._cuentas.filter(c => c.activa);
+        if (cuentasActivas.length < 2) {
+            Toast.warning('Necesitás al menos 2 cuentas activas para transferir');
+            return;
+        }
+
+        const opts = cuentasActivas.map(c =>
+            `<option value="${c.id}">${c.nombre}</option>`
+        ).join('');
+
+        const today = new Date().toISOString().slice(0, 10);
+
+        Modal.open({
+            title: 'Transferencia entre cuentas',
+            size: 'md',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cuenta origen *</label>
+                            <select class="fin-form-select" id="finTransOrigen">${opts}</select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cuenta destino *</label>
+                            <select class="fin-form-select" id="finTransDestino">${opts}</select>
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Monto *</label>
+                            <input type="number" class="fin-form-input" id="finTransMonto" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Fecha</label>
+                            <input type="date" class="fin-form-input" id="finTransFecha" value="${today}">
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Concepto</label>
+                        <input type="text" class="fin-form-input" id="finTransConcepto" placeholder="Paso a caja, reposición…">
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="finBtnDoTransfer">Transferir</button>
+            `,
+        });
+
+        // Set destino to second account by default
+        const destSelect = document.getElementById('finTransDestino');
+        if (destSelect && cuentasActivas.length >= 2) destSelect.value = cuentasActivas[1].id;
+
+        document.getElementById('finBtnDoTransfer')?.addEventListener('click', async () => {
+            const origenId = document.getElementById('finTransOrigen')?.value;
+            const destinoId = document.getElementById('finTransDestino')?.value;
+            const monto = parseFloat(document.getElementById('finTransMonto')?.value);
+            const fecha = document.getElementById('finTransFecha')?.value;
+            const concepto = document.getElementById('finTransConcepto')?.value.trim() || 'Transferencia interna';
+
+            if (!origenId || !destinoId || origenId === destinoId) {
+                Toast.warning('Seleccioná dos cuentas diferentes');
+                return;
+            }
+            if (!monto || isNaN(monto) || monto <= 0) {
+                Toast.warning('Ingresá un monto válido');
+                return;
+            }
+
+            const origenName = cuentasActivas.find(c => c.id === origenId)?.nombre || 'Origen';
+            const destinoName = cuentasActivas.find(c => c.id === destinoId)?.nombre || 'Destino';
+            const uid = Auth.getUser()?.uid || null;
+
+            try {
+                // 1. Create egreso (salida desde origen)
+                const { data: egresoData, error: e1 } = await supabaseClient
+                    .from('egresos')
+                    .insert([{
+                        fecha, categoria: 'otro', concepto: `Transf. a ${destinoName} — ${concepto}`,
+                        monto, medio: 'transferencia', canal: 'oficial',
+                        cuenta_id: origenId, estado: 'pagado', created_by: uid,
+                    }])
+                    .select('id').single();
+                if (e1) throw e1;
+
+                // 2. Create ingreso (entrada a destino)
+                const { data: ingresoData, error: e2 } = await supabaseClient
+                    .from('ingresos')
+                    .insert([{
+                        fecha, concepto: `Transf. desde ${origenName} — ${concepto}`,
+                        monto, medio: 'transferencia', canal: 'oficial',
+                        cuenta_id: destinoId, estado: 'confirmado', created_by: uid,
+                    }])
+                    .select('id').single();
+                if (e2) throw e2;
+
+                // 3. Create transferencia record
+                const { error: e3 } = await supabaseClient
+                    .from('transferencias_internas')
+                    .insert([{
+                        fecha, cuenta_origen_id: origenId, cuenta_destino_id: destinoId,
+                        monto, concepto,
+                        egreso_id: egresoData?.id || null,
+                        ingreso_id: ingresoData?.id || null,
+                        created_by: uid,
+                    }]);
+                if (e3) throw e3;
+
+                Toast.success(`Transferencia de ${this._formatMoney(monto)} realizada`);
+                Modal.closeAll();
+                await this._loadCuentas();
+            } catch (err) {
+                console.error('[Finanzas] Error en transferencia:', err);
+                Toast.error('Error al transferir: ' + (err.message || err));
+            }
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: INGRESOS — PLAN DE COBRO
+    // ═══════════════════════════════════════════
+
+    _buildPlanesHTML() {
+        return `
+            <div class="fin-subtabs">
+                <button class="fin-subtab ${this._ingresosSubtab === 'cobros' ? 'active' : ''}" data-subtab="cobros">Cobros</button>
+                <button class="fin-subtab ${this._ingresosSubtab === 'planes' ? 'active' : ''}" data-subtab="planes">Planes de cobro</button>
+            </div>
+            <div class="fin-cuentas-toolbar">
+                ${!this._isRO ? `
+                <button class="fin-btn-new" id="finBtnNewPlan" style="margin-left:auto;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Nuevo plan
+                </button>
+                ` : ''}
+            </div>
+            <div id="finPlanesMain">
+                <div class="fin-loading"><div class="spinner"></div> Cargando planes…</div>
+            </div>
+        `;
+    },
+
+    async _loadPlanes() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('plan_cobro')
+                .select('*, plan_cobro_items(*)')
+                .eq('_deleted', false)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            this._planes = data || [];
+            this._renderPlanes();
+        } catch (e) {
+            console.error('[Finanzas] Error cargando planes:', e);
+            this._planes = [];
+            this._renderPlanes();
+        }
+    },
+
+    _renderPlanes() {
+        const main = document.getElementById('finPlanesMain');
+        if (!main) return;
+
+        if (this._planes.length === 0) {
+            main.innerHTML = `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">📋</div>
+                    <div class="fin-empty-text">No hay planes de cobro. Creá uno para organizar los cobros por proyecto.</div>
+                </div>
+            `;
+            return;
+        }
+
+        main.innerHTML = this._planes.map(plan => {
+            const proyName = this._proyectosMap[plan.proyecto_id] || 'Proyecto';
+            const items = (plan.plan_cobro_items || [])
+                .filter(i => !i._deleted)
+                .sort((a, b) => a.orden - b.orden);
+            const totalCobrado = items.reduce((s, i) => s + (Number(i.monto_cobrado) || 0), 0);
+            const totalPlan = Number(plan.total_plan) || 1;
+            const pct = Math.min(100, Math.round((totalCobrado / totalPlan) * 100));
+            const barColor = pct >= 100 ? '#00CC88' : pct > 0 ? '#F28D15' : '#2a2a2a';
+
+            return `
+                <div class="fin-plan-card" data-plan-id="${plan.id}">
+                    <div class="fin-plan-header">
+                        <div>
+                            <span class="fin-plan-proyecto">${proyName}</span>
+                            <span class="fin-plan-total"> — Total: ${this._formatMoney(plan.total_plan)}</span>
+                        </div>
+                        ${!this._isRO ? `
+                        <button class="fin-plan-cobrar-btn" data-add-item="${plan.id}" style="border-color:#4A90D9;color:#4A90D9;">+ Item</button>
+                        ` : ''}
+                    </div>
+                    <div class="fin-progress-bar"><div class="fin-progress-fill" style="width:${pct}%;background:${barColor};"></div></div>
+                    <div class="fin-progress-label">${pct}% cobrado — ${this._formatMoney(totalCobrado)} de ${this._formatMoney(plan.total_plan)}</div>
+
+                    ${items.length > 0 ? `
+                    <table class="fin-plan-items-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Concepto</th>
+                                <th style="text-align:right;">Monto</th>
+                                <th>Fecha est.</th>
+                                <th style="text-align:right;">Cobrado</th>
+                                <th>Estado</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${items.map(item => {
+                                const stCls = `fin-plan-item-${item.estado}`;
+                                const stLabel = { cobrado: '✓ Cobrado', parcial: '◐ Parcial', pendiente: '○ Pendiente', vencido: '! Vencido' }[item.estado] || item.estado;
+                                return `
+                                <tr>
+                                    <td style="color:#555;">${item.orden}</td>
+                                    <td>${item.concepto}</td>
+                                    <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${this._formatMoney(item.monto)}</td>
+                                    <td style="font-size:0.78rem;color:#888;">${item.fecha_estimada ? this._formatDate(item.fecha_estimada) : '—'}</td>
+                                    <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;color:${item.monto_cobrado > 0 ? '#00CC88' : '#555'};">${item.monto_cobrado > 0 ? this._formatMoney(item.monto_cobrado) : '—'}</td>
+                                    <td><span class="${stCls}">${stLabel}</span></td>
+                                    <td>${item.estado !== 'cobrado' && !this._isRO ? `<button class="fin-plan-cobrar-btn" data-cobrar-item="${item.id}" data-plan-id="${plan.id}">Cobrar</button>` : ''}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    ` : '<div style="color:#555;font-size:0.85rem;margin-top:8px;">Sin items — agregá el primero.</div>'}
+                </div>
+            `;
+        }).join('');
+
+        // Cobrar item buttons
+        main.querySelectorAll('[data-cobrar-item]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const itemId = btn.dataset.cobrarItem;
+                const planId = btn.dataset.planId;
+                this._cobrarPlanItem(planId, itemId);
+            });
+        });
+
+        // Add item buttons
+        main.querySelectorAll('[data-add-item]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                this._showAddPlanItem(btn.dataset.addItem);
+            });
+        });
+    },
+
+    _showNewPlanModal() {
+        const proyKeys = Object.keys(this._proyectosMap);
+        if (proyKeys.length === 0) {
+            Toast.warning('No hay proyectos cargados');
+            return;
+        }
+
+        const proyOpts = proyKeys.map(k =>
+            `<option value="${k}">${this._proyectosMap[k]}</option>`
+        ).join('');
+
+        Modal.open({
+            title: 'Nuevo plan de cobro',
+            size: 'sm',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Proyecto *</label>
+                        <select class="fin-form-select" id="finPlanProyecto">${proyOpts}</select>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Total del plan *</label>
+                        <input type="number" class="fin-form-input" id="finPlanTotal" step="0.01" placeholder="Monto total contratado">
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Notas</label>
+                        <textarea class="fin-form-textarea" id="finPlanNotas" placeholder="Referencia cotización, condiciones…"></textarea>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="finBtnSavePlan">Crear plan</button>
+            `,
+        });
+
+        document.getElementById('finBtnSavePlan')?.addEventListener('click', async () => {
+            const proyecto_id = document.getElementById('finPlanProyecto')?.value;
+            const total_plan = parseFloat(document.getElementById('finPlanTotal')?.value);
+            const notas = document.getElementById('finPlanNotas')?.value.trim() || null;
+
+            if (!proyecto_id || !total_plan || isNaN(total_plan)) {
+                Toast.warning('Proyecto y total son obligatorios');
+                return;
+            }
+
+            try {
+                const { error } = await supabaseClient.from('plan_cobro').insert([{ proyecto_id, total_plan, notas }]);
+                if (error) throw error;
+                Toast.success('Plan de cobro creado');
+                Modal.closeAll();
+                await this._loadPlanes();
+            } catch (e) {
+                Toast.error('Error al crear plan: ' + (e.message || e));
+            }
+        });
+    },
+
+    _showAddPlanItem(planId) {
+        const plan = this._planes.find(p => p.id === planId);
+        if (!plan) return;
+        const existingItems = (plan.plan_cobro_items || []).filter(i => !i._deleted);
+        const nextOrden = existingItems.length + 1;
+
+        Modal.open({
+            title: 'Agregar item al plan',
+            size: 'md',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Concepto *</label>
+                            <input type="text" class="fin-form-input" id="finPlanItemConcepto" placeholder="Seña 40%, Parcial 1, Saldo…">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Orden</label>
+                            <input type="number" class="fin-form-input" id="finPlanItemOrden" value="${nextOrden}" min="1">
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Monto *</label>
+                            <input type="number" class="fin-form-input" id="finPlanItemMonto" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">% del total</label>
+                            <input type="number" class="fin-form-input" id="finPlanItemPct" step="0.01" placeholder="Auto">
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Fecha estimada</label>
+                        <input type="date" class="fin-form-input" id="finPlanItemFecha">
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="finBtnSavePlanItem">Agregar</button>
+            `,
+        });
+
+        // Auto-calc pct when monto changes
+        const montoInput = document.getElementById('finPlanItemMonto');
+        montoInput?.addEventListener('input', () => {
+            const m = parseFloat(montoInput.value) || 0;
+            const pctEl = document.getElementById('finPlanItemPct');
+            if (pctEl && plan.total_plan > 0) {
+                pctEl.value = Math.round((m / Number(plan.total_plan)) * 10000) / 100;
+            }
+        });
+
+        document.getElementById('finBtnSavePlanItem')?.addEventListener('click', async () => {
+            const concepto = document.getElementById('finPlanItemConcepto')?.value.trim();
+            const monto = parseFloat(document.getElementById('finPlanItemMonto')?.value);
+            const orden = parseInt(document.getElementById('finPlanItemOrden')?.value) || nextOrden;
+            const porcentaje = parseFloat(document.getElementById('finPlanItemPct')?.value) || null;
+            const fecha_estimada = document.getElementById('finPlanItemFecha')?.value || null;
+
+            if (!concepto || !monto || isNaN(monto)) {
+                Toast.warning('Concepto y monto son obligatorios');
+                return;
+            }
+
+            try {
+                const { error } = await supabaseClient.from('plan_cobro_items').insert([{
+                    plan_cobro_id: planId, concepto, monto, orden, porcentaje, fecha_estimada,
+                }]);
+                if (error) throw error;
+                Toast.success('Item agregado');
+                Modal.closeAll();
+                await this._loadPlanes();
+            } catch (e) {
+                Toast.error('Error al agregar item: ' + (e.message || e));
+            }
+        });
+    },
+
+    _cobrarPlanItem(planId, itemId) {
+        const plan = this._planes.find(p => p.id === planId);
+        if (!plan) return;
+        const item = (plan.plan_cobro_items || []).find(i => i.id === itemId);
+        if (!item) return;
+
+        const remaining = Number(item.monto) - Number(item.monto_cobrado || 0);
+        const proyName = this._proyectosMap[plan.proyecto_id] || '';
+
+        // Open ingreso modal pre-filled with plan item data
+        this._showIngresoModal({
+            concepto: item.concepto,
+            monto: remaining,
+            proyecto_id: plan.proyecto_id,
+            plan_cobro_item_id: itemId,
+            _prefillPlanItem: { planId, itemId, remaining },
+        });
+    },
+
+    _attachPlanesEvents() {
+        // Subtab switching
+        document.querySelectorAll('.fin-subtab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._ingresosSubtab = btn.dataset.subtab;
+                this._renderTabContent();
+            });
+        });
+
+        document.getElementById('finBtnNewPlan')?.addEventListener('click', () => this._showNewPlanModal());
+    },
+
+    // ═══════════════════════════════════════════
     //  TAB: EGRESOS — EVENTS
     // ═══════════════════════════════════════════
 
@@ -2806,6 +3594,14 @@ const FinanzasModule = {
     // ═══════════════════════════════════════════
 
     _attachIngresosEvents() {
+        // Subtab switching
+        document.querySelectorAll('.fin-subtab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._ingresosSubtab = btn.dataset.subtab;
+                this._renderTabContent();
+            });
+        });
+
         // Search
         const searchInput = document.getElementById('finIngresosSearch');
         if (searchInput) {
@@ -2893,5 +3689,8 @@ const FinanzasModule = {
 
         // New button
         document.getElementById('finBtnNewCuenta')?.addEventListener('click', () => this._showCuentaModal());
+
+        // Transfer button
+        document.getElementById('finBtnTransfer')?.addEventListener('click', () => this._showTransferModal());
     },
 };
