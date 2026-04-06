@@ -985,54 +985,18 @@ const API = {
         }
     },
 
-    // ─── Create User (admin.createUser + profile) ──────
+    // ─── Create User (via lobby-api backend) ──────
     async createUser(username, password, profileData) {
         try {
-            // Create auth user via service_role admin API (accepts @mepex.local)
-            const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-                email: username + '@mepex.local',
-                password: password,
-                email_confirm: true,
-            });
-            if (authError) {
-                // If user already exists in auth, try to find their id
-                if (authError.message?.includes('already been registered') || authError.message?.includes('already exists')) {
-                    const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
-                    const existing = users?.find(u => u.email === username + '@mepex.local');
-                    if (existing) {
-                        // Update password and upsert profile
-                        await supabaseAdmin.auth.admin.updateUserById(existing.id, { password });
-                        const profileRow = {
-                            id: existing.id,
-                            username: username,
-                            name: profileData.name,
-                            role: profileData.role,
-                            initials: profileData.initials,
-                            active: true,
-                        };
-                        if (profileData.telefono) profileRow.telefono = profileData.telefono;
-                        await supabaseAdmin.from('profiles').upsert(profileRow, { onConflict: 'id' });
-                        return { success: true, userId: existing.id };
-                    }
-                }
-                throw authError;
-            }
-            if (!authData?.user?.id) throw new Error('No se pudo crear el usuario de autenticación');
-
-            // Create profile row
-            const profileRow = {
-                id: authData.user.id,
-                username: username,
+            const result = await this.adminCreateUser({
+                username,
+                password,
                 name: profileData.name,
-                role: profileData.role,
                 initials: profileData.initials,
-                active: true,
-            };
-            if (profileData.telefono) profileRow.telefono = profileData.telefono;
-            const { error: profileError } = await supabaseAdmin.from('profiles').upsert(profileRow, { onConflict: 'id' });
-            if (profileError) throw profileError;
-
-            return { success: true, userId: authData.user.id };
+                role: profileData.role,
+                telefono: profileData.telefono || '',
+            });
+            return { success: true, userId: result.user?.uid };
         } catch (e) {
             console.warn('[API] Error creating user:', e.message);
             return { success: false, error: e.message };
@@ -1042,8 +1006,7 @@ const API = {
     // ─── Toggle User Active Status ───────────
     async toggleUserActive(userId, active) {
         try {
-            const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
-            const { error } = await client
+            const { error } = await supabaseClient
                 .from('profiles')
                 .update({ active })
                 .eq('id', userId);
@@ -1070,8 +1033,7 @@ const API = {
             if (updates.telefono !== undefined) payload.telefono = updates.telefono;
 
             const doUpdate = async (p) => {
-                const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
-                const { data, error } = await client
+                const { data, error } = await supabaseClient
                     .from('profiles')
                     .update(p)
                     .eq('id', userId)
@@ -2308,17 +2270,11 @@ const API = {
     },
 
     async adminResetPassword(uid, newPassword) {
-        const { error } = await supabaseAdmin.auth.admin.updateUserById(uid, { password: newPassword });
-        if (error) throw error;
-        return { success: true };
+        return this._adminFetch('/admin/users/reset-password', { uid, newPassword });
     },
 
     async adminDeleteUser(uid) {
-        // Soft delete: deactivate profile
-        const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
-        const { error } = await client.from('profiles').update({ active: false, _deleted: true }).eq('id', uid);
-        if (error) throw error;
-        return { success: true };
+        return this._adminFetch('/admin/users/delete', { uid });
     },
 
     // ─── Profiles (direct Supabase) ───
@@ -2333,7 +2289,7 @@ const API = {
     },
 
     async updateProfile(uid, updates) {
-        const client = typeof supabaseAdmin !== 'undefined' ? supabaseAdmin : supabaseClient;
+        const client = supabaseClient;
         const payload = {};
         if (updates.name !== undefined) payload.name = updates.name;
         if (updates.initials !== undefined) payload.initials = updates.initials;

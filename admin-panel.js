@@ -934,7 +934,7 @@ const AdminPanel = {
             try {
                 await API.updateProfile(uid, updates);
                 if (newPassword) {
-                    await supabaseAdmin.auth.admin.updateUserById(uid, { password: newPassword });
+                    await API.adminResetPassword(uid, newPassword);
                 }
                 Modal.close(modal.id);
                 Toast.success(`Usuario "${updates.name}" actualizado`);

@@ -1,0 +1,26 @@
+# ─── Secrets & Config ───
+config.js
+.env
+.env.*
+
+# ─── Dependencies ───
+node_modules/
+package-lock.json
+
+# ─── IDE / OS ───
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ─── Claude Code ───
+.claude/
+
+# ─── Temp files ───
+nul
+*.tmp
+*.log
