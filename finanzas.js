@@ -2543,10 +2543,10 @@ const FinanzasModule = {
         try {
             const { data } = await supabaseClient
                 .from('clientes')
-                .select('id, nombre')
+                .select('id, nombre_empresa')
                 .eq('_deleted', false)
-                .order('nombre');
-            (data || []).forEach(c => { this._clientesMap[c.id] = c.nombre; });
+                .order('nombre_empresa');
+            (data || []).forEach(c => { this._clientesMap[c.id] = c.nombre_empresa; });
         } catch (e) { /* table may not exist */ }
 
         this._lookupsLoaded = true;
