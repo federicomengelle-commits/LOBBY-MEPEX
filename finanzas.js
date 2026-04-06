@@ -91,6 +91,15 @@ const FinanzasModule = {
     _factRecibidosDebounce: null,
     _VPS_URL: 'http://195.200.1.250:3000',
 
+    // Calendario state
+    _calSubtab: 'calendario', // 'calendario' | 'plantillas'
+    _calYear: new Date().getFullYear(),
+    _calMonth: new Date().getMonth() + 1, // 1-based
+    _calEvents: {},   // { 'YYYY-MM-DD': [ {tipo, label, color, data} ] }
+    _calSelectedDay: null,
+    _calPlantillas: [],
+    _calVencimientos: [],
+
     // Lookup maps (graceful degradation)
     _proyectosMap: {},
     _clientesMap: {},
@@ -1087,6 +1096,192 @@ const FinanzasModule = {
                     margin-top: 2px;
                 }
                 .fin-iva-calc-sep { color: #333; font-size: 1.2rem; }
+
+                /* ─── Calendario financiero ─── */
+                .fin-cal-nav {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 16px;
+                    margin-bottom: 16px;
+                }
+                .fin-cal-nav-btn {
+                    background: none;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    width: 32px;
+                    height: 32px;
+                    cursor: pointer;
+                    font-size: 1rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: border-color 200ms;
+                }
+                .fin-cal-nav-btn:hover { border-color: #4A90D9; color: #4A90D9; }
+                .fin-cal-month-label {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1.15rem;
+                    font-weight: 600;
+                    color: #E8E8E8;
+                    min-width: 180px;
+                    text-align: center;
+                }
+                .fin-cal-grid {
+                    display: grid;
+                    grid-template-columns: repeat(7, 1fr);
+                    gap: 1px;
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    overflow: hidden;
+                }
+                .fin-cal-header {
+                    background: #0a0a0a;
+                    padding: 8px 4px;
+                    text-align: center;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .fin-cal-day {
+                    background: #111111;
+                    min-height: 72px;
+                    padding: 6px;
+                    cursor: pointer;
+                    transition: background 150ms;
+                    position: relative;
+                }
+                .fin-cal-day:hover { background: #181818; }
+                .fin-cal-day.today {
+                    border: 1.5px solid #00A9C1;
+                    z-index: 1;
+                }
+                .fin-cal-day.selected {
+                    background: rgba(74,144,217,0.1);
+                    border: 1.5px solid #4A90D9;
+                    z-index: 1;
+                }
+                .fin-cal-day.other-month { opacity: 0.3; }
+                .fin-cal-day-num {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.8rem;
+                    color: #888;
+                    margin-bottom: 4px;
+                }
+                .fin-cal-day.today .fin-cal-day-num { color: #00A9C1; font-weight: 700; }
+                .fin-cal-dots {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 3px;
+                }
+                .fin-cal-dot {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 50%;
+                }
+                .fin-cal-chip {
+                    display: block;
+                    font-size: 0.62rem;
+                    padding: 1px 4px;
+                    border-radius: 2px;
+                    margin-top: 2px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 100%;
+                    line-height: 1.4;
+                }
+                .fin-cal-day-detail {
+                    background: #111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 16px;
+                    margin-top: 16px;
+                }
+                .fin-cal-day-detail-title {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1rem;
+                    font-weight: 600;
+                    color: #E8E8E8;
+                    margin-bottom: 12px;
+                }
+                .fin-cal-event-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 8px 10px;
+                    border: 1px solid #1a1a1a;
+                    border-radius: 4px;
+                    margin-bottom: 6px;
+                    cursor: default;
+                    transition: background 150ms;
+                }
+                .fin-cal-event-item:hover { background: rgba(255,255,255,0.02); }
+                .fin-cal-event-dot {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                }
+                .fin-cal-event-info { flex: 1; min-width: 0; }
+                .fin-cal-event-label {
+                    font-size: 0.85rem;
+                    color: #E8E8E8;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .fin-cal-event-sub {
+                    font-size: 0.72rem;
+                    color: #555;
+                    margin-top: 1px;
+                }
+                .fin-cal-event-amount {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.82rem;
+                    color: #E8E8E8;
+                    flex-shrink: 0;
+                }
+                .fin-cal-event-action {
+                    flex-shrink: 0;
+                }
+                .fin-cal-event-action button {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    padding: 3px 10px;
+                    border: 1px solid #00CC88;
+                    border-radius: 3px;
+                    background: transparent;
+                    color: #00CC88;
+                    cursor: pointer;
+                    transition: all 150ms;
+                }
+                .fin-cal-event-action button:hover { background: rgba(0,204,136,0.1); }
+                .fin-cal-toolbar-right {
+                    display: flex;
+                    gap: 8px;
+                    align-items: center;
+                    margin-left: auto;
+                }
+                .fin-plantilla-activo {
+                    display: inline-block;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                }
+                .fin-freq-badge {
+                    display: inline-block;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 0.72rem;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    background: rgba(74,144,217,0.1);
+                    color: #4A90D9;
+                }
             </style>
 
             <div class="fin-wrapper">
@@ -1183,6 +1378,19 @@ const FinanzasModule = {
                     container.innerHTML = this._buildFactEmitidosHTML();
                     await this._loadFactEmitidos();
                     this._attachFactEmitidosEvents();
+                }
+                break;
+            case 'calendario':
+                await this._loadLookups();
+                if (this._calSubtab === 'plantillas') {
+                    container.innerHTML = this._buildPlantillasHTML();
+                    await this._loadPlantillas();
+                    this._attachPlantillasEvents();
+                } else {
+                    container.innerHTML = this._buildCalendarioHTML();
+                    await this._loadCalendarioData(this._calYear, this._calMonth);
+                    this._renderCalendarioGrid();
+                    this._attachCalendarioEvents();
                 }
                 break;
             default:
@@ -5286,6 +5494,750 @@ const FinanzasModule = {
             this._applyFactRecibidosFilter();
             this._renderFactRecibidosTable();
         });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CALENDARIO — HTML
+    // ═══════════════════════════════════════════
+
+    _monthNames: ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],
+    _dayNames: ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],
+
+    _buildCalSubtabs() {
+        return `
+            <div class="fin-subtabs">
+                <button class="fin-subtab ${this._calSubtab === 'calendario' ? 'active' : ''}" data-caltab="calendario">Calendario</button>
+                <button class="fin-subtab ${this._calSubtab === 'plantillas' ? 'active' : ''}" data-caltab="plantillas">Plantillas</button>
+            </div>
+        `;
+    },
+
+    _buildCalendarioHTML() {
+        const monthLabel = `${this._monthNames[this._calMonth - 1]} ${this._calYear}`;
+        return `
+            ${this._buildCalSubtabs()}
+            <div class="fin-cuentas-toolbar">
+                <div class="fin-cal-nav">
+                    <button class="fin-cal-nav-btn" id="finCalPrev">←</button>
+                    <span class="fin-cal-month-label">${monthLabel}</span>
+                    <button class="fin-cal-nav-btn" id="finCalNext">→</button>
+                </div>
+                <div class="fin-cal-toolbar-right">
+                    ${!this._isRO ? `
+                    <button class="fin-btn-new" id="finCalGenerar" style="border-color:#F28D15;color:#F28D15;background:rgba(242,141,21,0.06);">
+                        ⚡ Generar vencimientos
+                    </button>
+                    ` : ''}
+                </div>
+            </div>
+            <div id="finCalGrid"></div>
+            <div id="finCalDayDetail"></div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CALENDARIO — DATA
+    // ═══════════════════════════════════════════
+
+    async _loadCalendarioData(year, month) {
+        const desde = `${year}-${String(month).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const hasta = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+        const events = {};
+        const addEvent = (dateStr, evt) => {
+            if (!dateStr) return;
+            const key = dateStr.slice(0, 10);
+            if (!events[key]) events[key] = [];
+            events[key].push(evt);
+        };
+
+        const canal = this._getCanalFilter();
+
+        // 1. Vencimientos generados
+        try {
+            let q = supabaseClient
+                .from('vencimientos_generados')
+                .select('*, vencimientos_recurrentes(concepto, categoria_egreso)')
+                .eq('_deleted', false)
+                .gte('fecha_vencimiento', desde)
+                .lte('fecha_vencimiento', hasta);
+            const { data } = await q;
+            (data || []).forEach(v => {
+                addEvent(v.fecha_vencimiento, {
+                    tipo: 'vencimiento',
+                    label: v.concepto,
+                    sub: v.vencimientos_recurrentes?.categoria_egreso || '',
+                    color: '#F28D15',
+                    amount: v.monto_estimado,
+                    data: v,
+                });
+            });
+        } catch (_) {}
+
+        // 2. Plan de cobro items (cobros programados)
+        try {
+            let q = supabaseClient
+                .from('plan_cobro_items')
+                .select('*, plan_cobro(proyecto_id)')
+                .eq('_deleted', false)
+                .neq('estado', 'cobrado')
+                .gte('fecha_estimada', desde)
+                .lte('fecha_estimada', hasta);
+            const { data } = await q;
+            (data || []).forEach(item => {
+                const proyName = this._proyectosMap[item.plan_cobro?.proyecto_id] || '';
+                addEvent(item.fecha_estimada, {
+                    tipo: 'cobro',
+                    label: item.concepto,
+                    sub: proyName,
+                    color: '#00CC88',
+                    amount: item.monto,
+                    data: item,
+                });
+            });
+        } catch (_) {}
+
+        // 3. Egresos programados
+        try {
+            let q = supabaseClient
+                .from('egresos')
+                .select('*')
+                .eq('_deleted', false)
+                .eq('estado', 'programado')
+                .gte('fecha_programada', desde)
+                .lte('fecha_programada', hasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            (data || []).forEach(e => {
+                addEvent(e.fecha_programada, {
+                    tipo: 'pago',
+                    label: e.concepto,
+                    sub: e.destinatario || e.categoria,
+                    color: '#E84855',
+                    amount: e.monto,
+                    data: e,
+                });
+            });
+        } catch (_) {}
+
+        // 4. Comprobantes recibidos con vencimiento (usar fecha + 30 como proxy)
+        // Not implemented — could add later
+
+        this._calEvents = events;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CALENDARIO — RENDER GRID
+    // ═══════════════════════════════════════════
+
+    _renderCalendarioGrid() {
+        const container = document.getElementById('finCalGrid');
+        if (!container) return;
+
+        const year = this._calYear;
+        const month = this._calMonth;
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+        // First day of month (0=Sun, convert to Mon=0)
+        const firstDow = new Date(year, month - 1, 1).getDay();
+        const startOffset = firstDow === 0 ? 6 : firstDow - 1; // Monday-based
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const daysInPrevMonth = new Date(year, month - 1, 0).getDate();
+        const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+
+        let html = '<div class="fin-cal-grid">';
+
+        // Headers
+        this._dayNames.forEach(d => {
+            html += `<div class="fin-cal-header">${d}</div>`;
+        });
+
+        // Day cells
+        for (let i = 0; i < totalCells; i++) {
+            let dayNum, dateStr, isOther = false;
+
+            if (i < startOffset) {
+                // Previous month
+                dayNum = daysInPrevMonth - startOffset + i + 1;
+                const pm = month === 1 ? 12 : month - 1;
+                const py = month === 1 ? year - 1 : year;
+                dateStr = `${py}-${String(pm).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                isOther = true;
+            } else if (i >= startOffset + daysInMonth) {
+                // Next month
+                dayNum = i - startOffset - daysInMonth + 1;
+                const nm = month === 12 ? 1 : month + 1;
+                const ny = month === 12 ? year + 1 : year;
+                dateStr = `${ny}-${String(nm).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                isOther = true;
+            } else {
+                dayNum = i - startOffset + 1;
+                dateStr = `${year}-${String(month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+            }
+
+            const isToday = dateStr === todayStr;
+            const isSelected = dateStr === this._calSelectedDay;
+            const events = this._calEvents[dateStr] || [];
+
+            let classes = 'fin-cal-day';
+            if (isOther) classes += ' other-month';
+            if (isToday) classes += ' today';
+            if (isSelected) classes += ' selected';
+
+            // Render dots (max 4 visible, then "+N")
+            let dotsHTML = '';
+            if (events.length > 0) {
+                const show = events.slice(0, 3);
+                dotsHTML = '<div class="fin-cal-dots">';
+                show.forEach(ev => {
+                    dotsHTML += `<span class="fin-cal-dot" style="background:${ev.color};" title="${ev.label}"></span>`;
+                });
+                if (events.length > 3) {
+                    dotsHTML += `<span style="font-size:0.55rem;color:#888;">+${events.length - 3}</span>`;
+                }
+                dotsHTML += '</div>';
+
+                // Show first chip
+                const first = events[0];
+                dotsHTML += `<span class="fin-cal-chip" style="background:${first.color}18;color:${first.color};">${first.label}</span>`;
+            }
+
+            html += `<div class="${classes}" data-date="${dateStr}">
+                <div class="fin-cal-day-num">${dayNum}</div>
+                ${dotsHTML}
+            </div>`;
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+
+        // Day click
+        container.querySelectorAll('.fin-cal-day').forEach(cell => {
+            cell.addEventListener('click', () => {
+                this._calSelectedDay = cell.dataset.date;
+                // Update selected class
+                container.querySelectorAll('.fin-cal-day').forEach(c => c.classList.remove('selected'));
+                cell.classList.add('selected');
+                this._renderDayDetail(cell.dataset.date);
+            });
+        });
+    },
+
+    _renderDayDetail(dateStr) {
+        const detail = document.getElementById('finCalDayDetail');
+        if (!detail) return;
+
+        const events = this._calEvents[dateStr] || [];
+        if (events.length === 0) {
+            detail.innerHTML = '';
+            return;
+        }
+
+        const dateObj = new Date(dateStr + 'T12:00:00');
+        const dayLabel = dateObj.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+        const typeLabels = { vencimiento: 'Vencimiento', cobro: 'Cobro programado', pago: 'Pago programado' };
+
+        detail.innerHTML = `
+            <div class="fin-cal-day-detail">
+                <div class="fin-cal-day-detail-title">📅 ${dayLabel}</div>
+                ${events.map((ev, idx) => `
+                    <div class="fin-cal-event-item" data-event-idx="${idx}" data-date="${dateStr}">
+                        <span class="fin-cal-event-dot" style="background:${ev.color};"></span>
+                        <div class="fin-cal-event-info">
+                            <div class="fin-cal-event-label">${ev.label}</div>
+                            <div class="fin-cal-event-sub">${typeLabels[ev.tipo] || ev.tipo}${ev.sub ? ' — ' + ev.sub : ''}</div>
+                        </div>
+                        ${ev.amount ? `<span class="fin-cal-event-amount">${this._formatMoney(ev.amount)}</span>` : ''}
+                        ${ev.tipo === 'vencimiento' && ev.data?.estado === 'pendiente' && !this._isRO ? `
+                        <div class="fin-cal-event-action">
+                            <button data-pagar-venc="${ev.data.id}">✓ Pagado</button>
+                        </div>
+                        ` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        // Pagar vencimiento
+        detail.querySelectorAll('[data-pagar-venc]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._marcarVencimientoPagado(btn.dataset.pagarVenc);
+            });
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CALENDARIO — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachCalendarioEvents() {
+        // Subtabs
+        document.querySelectorAll('.fin-subtab[data-caltab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._calSubtab = btn.dataset.caltab;
+                this._renderTabContent();
+            });
+        });
+
+        // Nav
+        document.getElementById('finCalPrev')?.addEventListener('click', () => {
+            this._calMonth--;
+            if (this._calMonth < 1) { this._calMonth = 12; this._calYear--; }
+            this._calSelectedDay = null;
+            this._renderTabContent();
+        });
+        document.getElementById('finCalNext')?.addEventListener('click', () => {
+            this._calMonth++;
+            if (this._calMonth > 12) { this._calMonth = 1; this._calYear++; }
+            this._calSelectedDay = null;
+            this._renderTabContent();
+        });
+
+        // Generar vencimientos
+        document.getElementById('finCalGenerar')?.addEventListener('click', () => this._generarVencimientos());
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CALENDARIO — MARCAR PAGADO
+    // ═══════════════════════════════════════════
+
+    _marcarVencimientoPagado(vencId) {
+        const venc = Object.values(this._calEvents).flat().find(e => e.data?.id === vencId);
+        if (!venc) return;
+
+        const cuentasArr = Object.entries(this._cuentasMap);
+        const cuentaOpts = cuentasArr.map(([id, c]) =>
+            `<option value="${id}">${c.nombre}</option>`
+        ).join('');
+
+        Modal.open({
+            title: 'Marcar como pagado',
+            size: 'sm',
+            body: `
+                <div class="fin-form-grid">
+                    <div style="color:#aaa;font-size:0.85rem;margin-bottom:12px;">
+                        <strong>${venc.label}</strong><br>
+                        Monto estimado: ${venc.amount ? this._formatMoney(venc.amount) : '—'}
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Monto real *</label>
+                        <input type="number" class="fin-form-input" id="finVencMonto" value="${venc.amount || ''}" step="0.01">
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Medio</label>
+                            <select class="fin-form-select" id="finVencMedio">
+                                <option value="transferencia">Transferencia</option>
+                                <option value="efectivo">Efectivo</option>
+                                <option value="cheque">Cheque</option>
+                                <option value="mercadopago">MercadoPago</option>
+                                <option value="otro">Otro</option>
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cuenta</label>
+                            <select class="fin-form-select" id="finVencCuenta">
+                                <option value="">— Sin cuenta —</option>
+                                ${cuentaOpts}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="finBtnPagarVenc">Registrar pago</button>
+            `,
+        });
+
+        document.getElementById('finBtnPagarVenc')?.addEventListener('click', async () => {
+            const monto = parseFloat(document.getElementById('finVencMonto')?.value);
+            const medio = document.getElementById('finVencMedio')?.value;
+            const cuenta_id = document.getElementById('finVencCuenta')?.value || null;
+
+            if (!monto || isNaN(monto) || monto <= 0) {
+                Toast.warning('Ingresá un monto válido');
+                return;
+            }
+
+            const uid = Auth.getUser()?.uid || null;
+            const today = new Date().toISOString().slice(0, 10);
+
+            // Get vencimiento data for categoria
+            const vencData = venc.data;
+            const catEgreso = vencData?.vencimientos_recurrentes?.categoria_egreso || 'otro';
+
+            try {
+                // 1. Create egreso
+                const { data: egresoData, error: e1 } = await supabaseClient
+                    .from('egresos')
+                    .insert([{
+                        fecha: today,
+                        categoria: catEgreso,
+                        concepto: venc.label,
+                        monto, medio,
+                        canal: 'oficial',
+                        cuenta_id,
+                        estado: 'pagado',
+                        created_by: uid,
+                    }])
+                    .select('id').single();
+                if (e1) throw e1;
+
+                // 2. Update vencimiento
+                const { error: e2 } = await supabaseClient
+                    .from('vencimientos_generados')
+                    .update({ estado: 'pagado', egreso_id: egresoData?.id || null })
+                    .eq('id', vencId);
+                if (e2) throw e2;
+
+                Toast.success('Vencimiento marcado como pagado');
+                Modal.closeAll();
+                await this._loadCalendarioData(this._calYear, this._calMonth);
+                this._renderCalendarioGrid();
+                if (this._calSelectedDay) this._renderDayDetail(this._calSelectedDay);
+            } catch (e) {
+                console.error('[Finanzas] Error al pagar vencimiento:', e);
+                Toast.error('Error: ' + (e.message || e));
+            }
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CALENDARIO — GENERAR VENCIMIENTOS
+    // ═══════════════════════════════════════════
+
+    async _generarVencimientos() {
+        try {
+            const { data: plantillas, error } = await supabaseClient
+                .from('vencimientos_recurrentes')
+                .select('*')
+                .eq('activo', true)
+                .eq('_deleted', false);
+
+            if (error) throw error;
+            if (!plantillas || plantillas.length === 0) {
+                Toast.warning('No hay plantillas activas. Creá una en la subtab "Plantillas".');
+                return;
+            }
+
+            const freqMap = { mensual: 1, bimestral: 2, trimestral: 3, semestral: 6, anual: 12 };
+            const now = new Date();
+            let created = 0;
+
+            for (const p of plantillas) {
+                const interval = freqMap[p.frecuencia] || 1;
+
+                for (let offset = 0; offset <= 2; offset++) {
+                    const targetMonth = now.getMonth() + (offset * interval);
+                    const targetDate = new Date(now.getFullYear(), targetMonth, Math.min(p.dia_mes || 1, 28));
+
+                    // Skip if in the past
+                    if (targetDate < new Date(now.getFullYear(), now.getMonth(), 1)) continue;
+
+                    const fechaStr = targetDate.toISOString().slice(0, 10);
+
+                    // Check if already exists
+                    const { data: existing } = await supabaseClient
+                        .from('vencimientos_generados')
+                        .select('id')
+                        .eq('recurrente_id', p.id)
+                        .eq('fecha_vencimiento', fechaStr)
+                        .eq('_deleted', false)
+                        .limit(1);
+
+                    if (existing && existing.length > 0) continue;
+
+                    // Create
+                    const { error: insErr } = await supabaseClient
+                        .from('vencimientos_generados')
+                        .insert([{
+                            recurrente_id: p.id,
+                            fecha_vencimiento: fechaStr,
+                            concepto: p.concepto,
+                            monto_estimado: p.monto_estimado,
+                        }]);
+                    if (!insErr) created++;
+                }
+            }
+
+            Toast.success(`${created} vencimiento${created !== 1 ? 's' : ''} generado${created !== 1 ? 's' : ''}`);
+            await this._loadCalendarioData(this._calYear, this._calMonth);
+            this._renderCalendarioGrid();
+        } catch (e) {
+            console.error('[Finanzas] Error generando vencimientos:', e);
+            Toast.error('Error al generar: ' + (e.message || e));
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CALENDARIO — PLANTILLAS
+    // ═══════════════════════════════════════════
+
+    _buildPlantillasHTML() {
+        return `
+            ${this._buildCalSubtabs()}
+            <div class="fin-cuentas-toolbar">
+                ${!this._isRO ? `
+                <button class="fin-btn-new" id="finBtnNewPlantilla" style="margin-left:auto;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Nueva plantilla
+                </button>
+                ` : ''}
+            </div>
+            <div id="finPlantillasMain">
+                <div class="fin-loading"><div class="spinner"></div> Cargando plantillas…</div>
+            </div>
+        `;
+    },
+
+    async _loadPlantillas() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('vencimientos_recurrentes')
+                .select('*')
+                .eq('_deleted', false)
+                .order('concepto', { ascending: true });
+            if (error) throw error;
+            this._calPlantillas = data || [];
+        } catch (e) {
+            console.error('[Finanzas] Error cargando plantillas:', e);
+            this._calPlantillas = [];
+        }
+        this._renderPlantillasTable();
+    },
+
+    _renderPlantillasTable() {
+        const main = document.getElementById('finPlantillasMain');
+        if (!main) return;
+
+        if (this._calPlantillas.length === 0) {
+            main.innerHTML = `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">📋</div>
+                    <div class="fin-empty-text">No hay plantillas de vencimientos. Creá la primera para automatizar pagos recurrentes.</div>
+                    ${!this._isRO ? `
+                    <button class="fin-btn-new" id="finBtnNewPlantillaEmpty">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Nueva plantilla
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+            document.getElementById('finBtnNewPlantillaEmpty')?.addEventListener('click', () => this._showPlantillaModal());
+            return;
+        }
+
+        const freqLabels = { mensual: 'Mensual', bimestral: 'Bimestral', trimestral: 'Trimestral', semestral: 'Semestral', anual: 'Anual' };
+
+        main.innerHTML = `
+            <div class="fin-table-wrapper">
+                <table class="fin-table">
+                    <thead>
+                        <tr>
+                            <th class="fin-th">Concepto</th>
+                            <th class="fin-th" style="text-align:right;">Monto est.</th>
+                            <th class="fin-th">Frecuencia</th>
+                            <th class="fin-th">Día</th>
+                            <th class="fin-th">Categoría</th>
+                            <th class="fin-th">Canal</th>
+                            <th class="fin-th">Cuenta</th>
+                            <th class="fin-th">Activo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${this._calPlantillas.map(p => {
+                            const cuentaName = this._cuentasMap[p.cuenta_sugerida_id]?.nombre || '—';
+                            return `
+                            <tr class="fin-row" data-id="${p.id}" style="cursor:pointer;">
+                                <td class="fin-td fin-td-name">${p.concepto}</td>
+                                <td class="fin-td fin-td-money">${p.monto_estimado ? this._formatMoney(p.monto_estimado) : '—'}</td>
+                                <td class="fin-td"><span class="fin-freq-badge">${freqLabels[p.frecuencia] || p.frecuencia}</span></td>
+                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);text-align:center;">${p.dia_mes || '—'}</td>
+                                <td class="fin-td">${p.categoria_egreso}</td>
+                                <td class="fin-td">${this._canalBadge(p.canal)}</td>
+                                <td class="fin-td">${cuentaName}</td>
+                                <td class="fin-td"><span class="fin-plantilla-activo" style="background:${p.activo ? '#00CC88' : '#555'};"></span></td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="fin-record-count">${this._calPlantillas.length} plantilla${this._calPlantillas.length !== 1 ? 's' : ''}</div>
+        `;
+
+        // Row click → edit
+        main.querySelectorAll('.fin-row').forEach(row => {
+            row.addEventListener('click', () => {
+                const p = this._calPlantillas.find(pl => pl.id === row.dataset.id);
+                if (p) this._showPlantillaModal(p);
+            });
+        });
+    },
+
+    _showPlantillaModal(plantilla = null) {
+        const isEdit = !!plantilla;
+        const title = isEdit ? 'Editar plantilla' : 'Nueva plantilla de vencimiento';
+        const p = plantilla || {};
+
+        const catEgresoOpts = ['impuesto', 'servicio', 'alquiler', 'credito_fiscal', 'logistica', 'rrhh', 'proveedor', 'otro']
+            .map(k => `<option value="${k}" ${p.categoria_egreso === k ? 'selected' : ''}>${k.charAt(0).toUpperCase() + k.slice(1).replace('_', ' ')}</option>`)
+            .join('');
+
+        const cuentaOpts = Object.entries(this._cuentasMap).map(([id, c]) =>
+            `<option value="${id}" ${p.cuenta_sugerida_id === id ? 'selected' : ''}>${c.nombre}</option>`
+        ).join('');
+
+        Modal.open({
+            title,
+            size: 'md',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Concepto *</label>
+                        <input type="text" class="fin-form-input" id="finPlantConcepto" value="${p.concepto || ''}" placeholder="Monotributo, IIBB, Alquiler oficina…">
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Monto estimado</label>
+                            <input type="number" class="fin-form-input" id="finPlantMonto" value="${p.monto_estimado || ''}" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Frecuencia *</label>
+                            <select class="fin-form-select" id="finPlantFreq">
+                                <option value="mensual" ${(p.frecuencia || 'mensual') === 'mensual' ? 'selected' : ''}>Mensual</option>
+                                <option value="bimestral" ${p.frecuencia === 'bimestral' ? 'selected' : ''}>Bimestral</option>
+                                <option value="trimestral" ${p.frecuencia === 'trimestral' ? 'selected' : ''}>Trimestral</option>
+                                <option value="semestral" ${p.frecuencia === 'semestral' ? 'selected' : ''}>Semestral</option>
+                                <option value="anual" ${p.frecuencia === 'anual' ? 'selected' : ''}>Anual</option>
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Día del mes *</label>
+                            <input type="number" class="fin-form-input" id="finPlantDia" value="${p.dia_mes || ''}" min="1" max="31" placeholder="15">
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Categoría egreso *</label>
+                            <select class="fin-form-select" id="finPlantCat">${catEgresoOpts}</select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Subcategoría</label>
+                            <input type="text" class="fin-form-input" id="finPlantSubcat" value="${p.subcategoria || ''}" placeholder="Detalle opcional">
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cuenta sugerida</label>
+                            <select class="fin-form-select" id="finPlantCuenta">
+                                <option value="">— Sin cuenta —</option>
+                                ${cuentaOpts}
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Canal</label>
+                            <select class="fin-form-select" id="finPlantCanal">
+                                <option value="oficial" ${(p.canal || 'oficial') === 'oficial' ? 'selected' : ''}>Oficial</option>
+                                <option value="interno" ${p.canal === 'interno' ? 'selected' : ''}>Interno</option>
+                            </select>
+                        </div>
+                    </div>
+                    ${isEdit ? `
+                    <div class="fin-form-group">
+                        <label class="fin-form-label" style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" id="finPlantActivo" ${p.activo ? 'checked' : ''}>
+                            Activa
+                        </label>
+                    </div>
+                    ` : ''}
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Notas</label>
+                        <textarea class="fin-form-textarea" id="finPlantNotas" placeholder="Notas internas…">${p.notas || ''}</textarea>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                ${isEdit ? `<button class="btn btn-ghost" id="finBtnDeletePlantilla" style="color:#ff4444;border-color:#ff4444;">Eliminar</button>` : ''}
+                <button class="btn btn-primary" id="finBtnSavePlantilla">${isEdit ? 'Guardar' : 'Crear plantilla'}</button>
+            `,
+        });
+
+        document.getElementById('finBtnSavePlantilla')?.addEventListener('click', async () => {
+            const concepto = document.getElementById('finPlantConcepto')?.value.trim();
+            const monto_estimado = parseFloat(document.getElementById('finPlantMonto')?.value) || null;
+            const frecuencia = document.getElementById('finPlantFreq')?.value;
+            const dia_mes = parseInt(document.getElementById('finPlantDia')?.value);
+            const categoria_egreso = document.getElementById('finPlantCat')?.value;
+            const subcategoria = document.getElementById('finPlantSubcat')?.value.trim() || null;
+            const cuenta_sugerida_id = document.getElementById('finPlantCuenta')?.value || null;
+            const canal = document.getElementById('finPlantCanal')?.value;
+            const notas = document.getElementById('finPlantNotas')?.value.trim() || null;
+            const activo = isEdit ? (document.getElementById('finPlantActivo')?.checked ?? true) : true;
+
+            if (!concepto || !frecuencia || !dia_mes || !categoria_egreso) {
+                Toast.warning('Concepto, frecuencia, día y categoría son obligatorios');
+                return;
+            }
+            if (dia_mes < 1 || dia_mes > 31) {
+                Toast.warning('El día debe estar entre 1 y 31');
+                return;
+            }
+
+            const payload = { concepto, monto_estimado, frecuencia, dia_mes, categoria_egreso, subcategoria, cuenta_sugerida_id, canal, activo, notas };
+
+            try {
+                if (isEdit) {
+                    const { error } = await supabaseClient.from('vencimientos_recurrentes').update(payload).eq('id', plantilla.id);
+                    if (error) throw error;
+                    Toast.success('Plantilla actualizada');
+                } else {
+                    const { error } = await supabaseClient.from('vencimientos_recurrentes').insert([payload]);
+                    if (error) throw error;
+                    Toast.success('Plantilla creada');
+                }
+                Modal.closeAll();
+                await this._loadPlantillas();
+            } catch (e) {
+                Toast.error('Error: ' + (e.message || e));
+            }
+        });
+
+        document.getElementById('finBtnDeletePlantilla')?.addEventListener('click', async () => {
+            const ok = await Modal.confirm({
+                title: 'Eliminar plantilla',
+                message: `¿Eliminar "${plantilla.concepto}"?`,
+                confirmText: 'Eliminar', danger: true,
+            });
+            if (ok) {
+                try {
+                    await supabaseClient.from('vencimientos_recurrentes').update({ _deleted: true }).eq('id', plantilla.id);
+                    Toast.success('Plantilla eliminada');
+                    Modal.closeAll();
+                    await this._loadPlantillas();
+                } catch (e) {
+                    Toast.error('Error: ' + (e.message || e));
+                }
+            }
+        });
+    },
+
+    _attachPlantillasEvents() {
+        // Subtabs
+        document.querySelectorAll('.fin-subtab[data-caltab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._calSubtab = btn.dataset.caltab;
+                this._renderTabContent();
+            });
+        });
+
+        // New button
+        document.getElementById('finBtnNewPlantilla')?.addEventListener('click', () => this._showPlantillaModal());
     },
 
     // ═══════════════════════════════════════════
