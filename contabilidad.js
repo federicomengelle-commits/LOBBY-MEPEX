@@ -2418,10 +2418,20 @@ const ContabilidadModule = {
             const esDeudora = cuenta.naturaleza === 'deudora';
 
             // 2. Fetch ALL asiento_lineas for this cuenta
-            const { data: allLineas } = await supabaseClient
+            const { data: allLineas, error: linErr } = await supabaseClient
                 .from('asiento_lineas')
-                .select('asiento_id, debe, haber, monto, tipo_movimiento, orden')
+                .select('*')
                 .eq('cuenta_id', this._mayorCuentaId);
+
+            // DEBUG
+            console.log('[Mayor DEBUG] cuenta_id:', this._mayorCuentaId);
+            console.log('[Mayor DEBUG] allLineas:', allLineas?.length, allLineas);
+            if (linErr) console.error('[Mayor DEBUG] lineas error:', linErr);
+            // If no lineas by cuenta_id, try checking all lineas for debugging
+            if (!allLineas || allLineas.length === 0) {
+                const { data: allCheck } = await supabaseClient.from('asiento_lineas').select('cuenta_id').limit(10);
+                console.log('[Mayor DEBUG] sample cuenta_ids in asiento_lineas:', allCheck);
+            }
 
             if (!allLineas || allLineas.length === 0) {
                 this._mayorMovimientos = [];
