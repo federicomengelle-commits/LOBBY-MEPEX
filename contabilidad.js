@@ -1986,7 +1986,7 @@ const ContabilidadModule = {
                 countQuery = countQuery.eq('tipo', this._diarioTipoFiltro);
             }
             if (this._diarioSearch) {
-                countQuery = countQuery.or(`descripcion.ilike.%${this._diarioSearch}%`);
+                countQuery = countQuery.ilike('concepto', `%${this._diarioSearch}%`);
             }
 
             const countRes = await countQuery;
@@ -2015,7 +2015,7 @@ const ContabilidadModule = {
                 query = query.eq('tipo', this._diarioTipoFiltro);
             }
             if (this._diarioSearch) {
-                query = query.or(`descripcion.ilike.%${this._diarioSearch}%`);
+                query = query.ilike('concepto', `%${this._diarioSearch}%`);
             }
 
             const offset = this._diarioPagina * 50;
@@ -2446,7 +2446,7 @@ const ContabilidadModule = {
 
             let asientosQuery = supabaseClient
                 .from('asientos')
-                .select('id, numero, fecha, descripcion, concepto, tipo, origen_tipo, origen_id, canal')
+                .select('id, numero, fecha, concepto, tipo, origen_tipo, origen_id, canal')
                 .eq('_deleted', false)
                 .in('id', asientoIds);
 
