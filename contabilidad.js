@@ -35,6 +35,18 @@ const ContabilidadModule = {
     _planSearch: '',
     _planSearchDebounce: null,
 
+    // Libro diario state
+    _diarioAsientos: [],
+    _diarioExpandedId: null,
+    _diarioFechaDesde: '',
+    _diarioFechaHasta: '',
+    _diarioTipoFiltro: 'todos',
+    _diarioSearch: '',
+    _diarioPagina: 0,
+    _diarioTotal: 0,
+    _diarioTotales: { debe: 0, haber: 0, count: 0 },
+    _diarioSearchDebounce: null,
+
     // Panel state
     _activePanel: null,
     _activePanelData: null,
@@ -655,6 +667,284 @@ const ContabilidadModule = {
                     width: 100%;
                 }
                 .cont-vinc-table select option { background: #111; }
+
+                /* ─── Libro Diario ─── */
+                .cont-diario-filters {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 16px;
+                    flex-wrap: wrap;
+                }
+                .cont-diario-filter-input {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.82rem;
+                    padding: 6px 10px;
+                    outline: none;
+                    transition: border-color 200ms ease;
+                }
+                .cont-diario-filter-input:focus { border-color: #4A90D9; }
+                .cont-diario-filter-input::placeholder { color: #444; }
+                .cont-diario-filter-select {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.75rem;
+                    padding: 6px 8px;
+                    outline: none;
+                }
+                .cont-diario-filter-select option { background: #111; }
+                .cont-diario-search {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                }
+                .cont-diario-search svg { color: #555; flex-shrink: 0; }
+                .cont-diario-search input {
+                    background: transparent;
+                    border: none;
+                    color: #E8E8E8;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.82rem;
+                    outline: none;
+                    width: 200px;
+                }
+                .cont-diario-search input::placeholder { color: #444; }
+                .cont-diario-filter-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                /* Asiento rows */
+                .cont-diario-list { margin-top: 4px; }
+                .cont-asiento {
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    margin-bottom: 4px;
+                    overflow: hidden;
+                    transition: border-color 200ms ease;
+                }
+                .cont-asiento.expanded { border-color: #3a3a3a; }
+                .cont-asiento-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 16px;
+                    padding: 10px 16px;
+                    cursor: pointer;
+                    transition: background 150ms ease;
+                    user-select: none;
+                }
+                .cont-asiento:nth-child(odd) .cont-asiento-header { background: #0d0d0d; }
+                .cont-asiento:nth-child(even) .cont-asiento-header { background: #111111; }
+                .cont-asiento-header:hover { background: rgba(74,144,217,0.04); }
+                .cont-asiento.expanded .cont-asiento-header { background: rgba(74,144,217,0.06); }
+                .cont-asiento-num {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #888;
+                    min-width: 50px;
+                }
+                .cont-asiento-fecha {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #888;
+                    min-width: 80px;
+                }
+                .cont-asiento-concepto {
+                    flex: 1;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.85rem;
+                    color: #E8E8E8;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+                .cont-asiento-tipo {
+                    display: inline-block;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    letter-spacing: 0.3px;
+                    min-width: 80px;
+                    text-align: center;
+                }
+                .cont-asiento-tipo-automatico {
+                    background: rgba(74,144,217,0.15);
+                    color: #4A90D9;
+                }
+                .cont-asiento-tipo-manual {
+                    background: rgba(242,141,21,0.15);
+                    color: #F28D15;
+                }
+                .cont-asiento-monto {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.8rem;
+                    color: #E8E8E8;
+                    min-width: 100px;
+                    text-align: right;
+                }
+                .cont-asiento-canal {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.62rem;
+                    font-weight: 700;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    border: 1px solid #333;
+                    color: #666;
+                    min-width: 55px;
+                    text-align: center;
+                }
+                .cont-asiento-arrow {
+                    color: #555;
+                    font-size: 0.7rem;
+                    transition: transform 200ms ease;
+                }
+                .cont-asiento.expanded .cont-asiento-arrow { transform: rotate(90deg); }
+
+                /* Expanded detail */
+                .cont-asiento-detail {
+                    display: none;
+                    background: #0a0a0a;
+                    border-top: 1px solid #2a2a2a;
+                    padding: 12px 16px 16px;
+                }
+                .cont-asiento.expanded .cont-asiento-detail { display: block; }
+                .cont-lineas-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-bottom: 8px;
+                }
+                .cont-lineas-table th {
+                    padding: 6px 12px;
+                    text-align: left;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border-bottom: 1px solid #2a2a2a;
+                }
+                .cont-lineas-table th:nth-child(2),
+                .cont-lineas-table th:nth-child(3) { text-align: right; }
+                .cont-lineas-table td {
+                    padding: 5px 12px;
+                    color: #ccc;
+                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                    font-size: 0.82rem;
+                }
+                .cont-lineas-table td:nth-child(2),
+                .cont-lineas-table td:nth-child(3) {
+                    text-align: right;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.8rem;
+                }
+                .cont-lineas-cuenta-code {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #00A9C1;
+                    margin-right: 6px;
+                }
+                .cont-lineas-total-row td {
+                    border-top: 2px solid #2a2a2a;
+                    border-bottom: none;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    padding-top: 8px;
+                }
+                .cont-asiento-origen {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    color: #00A9C1;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.8rem;
+                    cursor: pointer;
+                    margin-top: 8px;
+                    transition: opacity 200ms ease;
+                }
+                .cont-asiento-origen:hover { text-decoration: underline; opacity: 0.8; }
+
+                /* Pagination */
+                .cont-diario-pagination {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-top: 16px;
+                    padding-top: 12px;
+                    border-top: 1px solid #2a2a2a;
+                }
+                .cont-diario-pag-info {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    color: #555;
+                }
+                .cont-diario-pag-btns { display: flex; gap: 8px; }
+                .cont-diario-pag-btn {
+                    padding: 5px 14px;
+                    border-radius: 4px;
+                    border: 1px solid #2a2a2a;
+                    background: transparent;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                }
+                .cont-diario-pag-btn:hover:not(:disabled) {
+                    border-color: #4A90D9;
+                    color: #4A90D9;
+                }
+                .cont-diario-pag-btn:disabled {
+                    opacity: 0.3;
+                    cursor: not-allowed;
+                }
+
+                /* Summary */
+                .cont-diario-summary {
+                    display: flex;
+                    align-items: center;
+                    gap: 32px;
+                    margin-top: 12px;
+                    padding: 12px 16px;
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                }
+                .cont-diario-summary-item {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 8px;
+                }
+                .cont-diario-summary-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .cont-diario-summary-value {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.85rem;
+                    color: #E8E8E8;
+                    font-weight: 700;
+                }
             </style>
 
             <div class="cont-wrapper">
@@ -712,6 +1002,11 @@ const ContabilidadModule = {
                 container.innerHTML = this._buildPlanCuentasHTML();
                 await this._loadPlanCuentas();
                 this._attachPlanCuentasEvents();
+                break;
+            case 'libro_diario':
+                container.innerHTML = this._buildDiarioHTML();
+                await this._loadAsientos();
+                this._attachDiarioEvents();
                 break;
             default:
                 container.innerHTML = this._buildPlaceholder();
@@ -1430,6 +1725,374 @@ const ContabilidadModule = {
 
         // Vincular
         document.getElementById('contBtnVincular')?.addEventListener('click', () => this._showVincularModal());
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: LIBRO DIARIO
+    // ═══════════════════════════════════════════
+
+    _buildDiarioHTML() {
+        return `
+            <div class="cont-diario-filters">
+                <span class="cont-diario-filter-label">Desde</span>
+                <input type="date" class="cont-diario-filter-input" id="contDiarioDesde" value="${this._diarioFechaDesde}">
+                <span class="cont-diario-filter-label">Hasta</span>
+                <input type="date" class="cont-diario-filter-input" id="contDiarioHasta" value="${this._diarioFechaHasta}">
+                <span class="cont-diario-filter-label">Tipo</span>
+                <select class="cont-diario-filter-select" id="contDiarioTipo">
+                    <option value="todos" ${this._diarioTipoFiltro === 'todos' ? 'selected' : ''}>Todos</option>
+                    <option value="automatico" ${this._diarioTipoFiltro === 'automatico' ? 'selected' : ''}>Autom\u00e1tico</option>
+                    <option value="manual" ${this._diarioTipoFiltro === 'manual' ? 'selected' : ''}>Manual</option>
+                </select>
+                <div class="cont-diario-search">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="contDiarioSearch" placeholder="Buscar por concepto..." value="${this._diarioSearch}">
+                </div>
+                <button class="cont-btn-ghost" id="contDiarioLimpiar">Limpiar filtros</button>
+            </div>
+            <div id="contDiarioList" class="cont-diario-list">
+                <div style="text-align:center; padding:40px; color:#555;">
+                    <div class="spinner"></div> Cargando asientos\u2026
+                </div>
+            </div>
+            <div id="contDiarioPagination"></div>
+            <div id="contDiarioSummary"></div>
+        `;
+    },
+
+    async _loadAsientos() {
+        try {
+            // 1. Count + totals query
+            let countQuery = supabaseClient
+                .from('asientos')
+                .select('id, total_debe, total_haber', { count: 'exact' })
+                .eq('_deleted', false);
+
+            const canal = this._getCanalFilter();
+            if (canal) countQuery = countQuery.eq('canal', canal);
+            if (this._diarioFechaDesde) countQuery = countQuery.gte('fecha', this._diarioFechaDesde);
+            if (this._diarioFechaHasta) countQuery = countQuery.lte('fecha', this._diarioFechaHasta);
+            if (this._diarioTipoFiltro && this._diarioTipoFiltro !== 'todos') {
+                countQuery = countQuery.eq('tipo', this._diarioTipoFiltro);
+            }
+            if (this._diarioSearch) {
+                countQuery = countQuery.ilike('descripcion', `%${this._diarioSearch}%`);
+            }
+
+            const countRes = await countQuery;
+            this._diarioTotal = countRes.count || 0;
+
+            // Calculate totals from all filtered results
+            const allData = countRes.data || [];
+            this._diarioTotales = {
+                debe: allData.reduce((s, a) => s + (parseFloat(a.total_debe) || 0), 0),
+                haber: allData.reduce((s, a) => s + (parseFloat(a.total_haber) || 0), 0),
+                count: this._diarioTotal,
+            };
+
+            // 2. Paginated asientos query
+            let query = supabaseClient
+                .from('asientos')
+                .select('*')
+                .eq('_deleted', false)
+                .order('fecha', { ascending: false })
+                .order('numero', { ascending: false });
+
+            if (canal) query = query.eq('canal', canal);
+            if (this._diarioFechaDesde) query = query.gte('fecha', this._diarioFechaDesde);
+            if (this._diarioFechaHasta) query = query.lte('fecha', this._diarioFechaHasta);
+            if (this._diarioTipoFiltro && this._diarioTipoFiltro !== 'todos') {
+                query = query.eq('tipo', this._diarioTipoFiltro);
+            }
+            if (this._diarioSearch) {
+                query = query.ilike('descripcion', `%${this._diarioSearch}%`);
+            }
+
+            const offset = this._diarioPagina * 50;
+            query = query.range(offset, offset + 49);
+
+            const { data: asientos, error } = await query;
+            if (error) throw error;
+
+            // 3. Load lines for these asientos
+            if (asientos && asientos.length > 0) {
+                const ids = asientos.map(a => a.id);
+                const { data: lineas } = await supabaseClient
+                    .from('asiento_lineas')
+                    .select('*, plan_cuentas ( codigo, nombre )')
+                    .in('asiento_id', ids)
+                    .order('orden');
+
+                // Map lines to asientos
+                const lineasMap = {};
+                (lineas || []).forEach(l => {
+                    if (!lineasMap[l.asiento_id]) lineasMap[l.asiento_id] = [];
+                    lineasMap[l.asiento_id].push(l);
+                });
+
+                asientos.forEach(a => {
+                    a._lineas = lineasMap[a.id] || [];
+                });
+            }
+
+            this._diarioAsientos = asientos || [];
+        } catch (e) {
+            console.error('[Contabilidad] Error loading asientos:', e);
+            this._diarioAsientos = [];
+            this._diarioTotal = 0;
+            this._diarioTotales = { debe: 0, haber: 0, count: 0 };
+        }
+
+        this._renderDiarioList();
+        this._renderDiarioPagination();
+        this._renderDiarioSummary();
+    },
+
+    _renderDiarioList() {
+        const el = document.getElementById('contDiarioList');
+        if (!el) return;
+
+        if (!this._diarioAsientos.length) {
+            el.innerHTML = `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u{1F4D6}</div>
+                    <div class="cont-empty-text">No hay asientos registrados en el per\u00edodo seleccionado.</div>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        for (const asiento of this._diarioAsientos) {
+            const isExpanded = this._diarioExpandedId === asiento.id;
+            const fecha = asiento.fecha
+                ? new Date(asiento.fecha + 'T12:00:00').toLocaleDateString('es-AR')
+                : '\u2014';
+            const concepto = asiento.descripcion || '\u2014';
+            const conceptoTrunc = concepto.length > 50 ? concepto.substring(0, 50) + '\u2026' : concepto;
+            const tipoCls = asiento.tipo === 'automatico' ? 'cont-asiento-tipo-automatico' : 'cont-asiento-tipo-manual';
+            const tipoLabel = asiento.tipo === 'automatico' ? 'AUTOM\u00c1TICO' : 'MANUAL';
+            const canalLabel = (asiento.canal || 'oficial').toUpperCase();
+
+            html += `
+                <div class="cont-asiento ${isExpanded ? 'expanded' : ''}" data-asiento-id="${asiento.id}">
+                    <div class="cont-asiento-header" data-toggle-asiento="${asiento.id}">
+                        <span class="cont-asiento-arrow">\u25B6</span>
+                        <span class="cont-asiento-num">#${asiento.numero || '\u2014'}</span>
+                        <span class="cont-asiento-fecha">${fecha}</span>
+                        <span class="cont-asiento-concepto" title="${concepto}">${conceptoTrunc}</span>
+                        <span class="cont-asiento-tipo ${tipoCls}">${tipoLabel}</span>
+                        <span class="cont-asiento-monto">${this._formatMoney(asiento.total_debe)}</span>
+                        <span class="cont-asiento-canal">${canalLabel}</span>
+                    </div>
+                    <div class="cont-asiento-detail">
+                        ${isExpanded ? this._renderAsientoDetail(asiento) : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        el.innerHTML = html;
+
+        // Attach toggle events
+        el.querySelectorAll('[data-toggle-asiento]').forEach(header => {
+            header.addEventListener('click', () => {
+                const id = header.dataset.toggleAsiento;
+                if (this._diarioExpandedId === id) {
+                    this._diarioExpandedId = null;
+                } else {
+                    this._diarioExpandedId = id;
+                }
+                this._renderDiarioList();
+            });
+        });
+
+        // Attach origin links
+        el.querySelectorAll('[data-origen-route]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.stopPropagation();
+                Router.navigate(link.dataset.origenRoute);
+            });
+        });
+    },
+
+    _renderAsientoDetail(asiento) {
+        const lineas = asiento._lineas || [];
+        let totalDebe = 0;
+        let totalHaber = 0;
+
+        let rowsHtml = '';
+        for (const linea of lineas) {
+            const cuenta = linea.plan_cuentas;
+            const codigo = cuenta ? cuenta.codigo : '\u2014';
+            const nombre = cuenta ? cuenta.nombre : '\u2014';
+            const debe = parseFloat(linea.debe) || 0;
+            const haber = parseFloat(linea.haber) || 0;
+            totalDebe += debe;
+            totalHaber += haber;
+
+            rowsHtml += `
+                <tr>
+                    <td><span class="cont-lineas-cuenta-code">${codigo}</span> ${nombre}</td>
+                    <td>${debe > 0 ? this._formatMoney(debe) : ''}</td>
+                    <td>${haber > 0 ? this._formatMoney(haber) : ''}</td>
+                </tr>
+            `;
+        }
+
+        // Totals row
+        rowsHtml += `
+            <tr class="cont-lineas-total-row">
+                <td style="font-weight:700">TOTALES</td>
+                <td>${this._formatMoney(totalDebe)}</td>
+                <td>${this._formatMoney(totalHaber)}</td>
+            </tr>
+        `;
+
+        // Origin link
+        let origenHtml = '';
+        if (asiento.tipo === 'automatico' && asiento.origen_tipo) {
+            const labels = {
+                ingreso: 'Ver ingreso en Finanzas \u2192',
+                egreso: 'Ver egreso en Finanzas \u2192',
+                transferencia: 'Ver transferencia en Finanzas \u2192',
+            };
+            const label = labels[asiento.origen_tipo] || `Ver ${asiento.origen_tipo} en Finanzas \u2192`;
+            origenHtml = `
+                <span class="cont-asiento-origen" data-origen-route="finanzas">${label}</span>
+            `;
+        }
+
+        return `
+            <table class="cont-lineas-table">
+                <thead>
+                    <tr>
+                        <th>Cuenta</th>
+                        <th>Debe</th>
+                        <th>Haber</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+            ${origenHtml}
+        `;
+    },
+
+    _renderDiarioPagination() {
+        const el = document.getElementById('contDiarioPagination');
+        if (!el) return;
+
+        if (this._diarioTotal === 0) { el.innerHTML = ''; return; }
+
+        const pageSize = 50;
+        const from = this._diarioPagina * pageSize + 1;
+        const to = Math.min(from + pageSize - 1, this._diarioTotal);
+        const hasPrev = this._diarioPagina > 0;
+        const hasNext = to < this._diarioTotal;
+
+        el.innerHTML = `
+            <div class="cont-diario-pagination">
+                <span class="cont-diario-pag-info">Mostrando ${from}\u2013${to} de ${this._diarioTotal} asientos</span>
+                <div class="cont-diario-pag-btns">
+                    <button class="cont-diario-pag-btn" id="contDiarioPrev" ${hasPrev ? '' : 'disabled'}>\u2190 Anterior</button>
+                    <button class="cont-diario-pag-btn" id="contDiarioNext" ${hasNext ? '' : 'disabled'}>Siguiente \u2192</button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('contDiarioPrev')?.addEventListener('click', () => {
+            if (this._diarioPagina > 0) {
+                this._diarioPagina--;
+                this._diarioExpandedId = null;
+                this._loadAsientos();
+            }
+        });
+        document.getElementById('contDiarioNext')?.addEventListener('click', () => {
+            if (to < this._diarioTotal) {
+                this._diarioPagina++;
+                this._diarioExpandedId = null;
+                this._loadAsientos();
+            }
+        });
+    },
+
+    _renderDiarioSummary() {
+        const el = document.getElementById('contDiarioSummary');
+        if (!el) return;
+
+        if (this._diarioTotal === 0) { el.innerHTML = ''; return; }
+
+        el.innerHTML = `
+            <div class="cont-diario-summary">
+                <div class="cont-diario-summary-item">
+                    <span class="cont-diario-summary-label">Total Debe</span>
+                    <span class="cont-diario-summary-value">${this._formatMoney(this._diarioTotales.debe)}</span>
+                </div>
+                <div class="cont-diario-summary-item">
+                    <span class="cont-diario-summary-label">Total Haber</span>
+                    <span class="cont-diario-summary-value">${this._formatMoney(this._diarioTotales.haber)}</span>
+                </div>
+                <div class="cont-diario-summary-item">
+                    <span class="cont-diario-summary-label">Asientos</span>
+                    <span class="cont-diario-summary-value">${this._diarioTotales.count}</span>
+                </div>
+            </div>
+        `;
+    },
+
+    _attachDiarioEvents() {
+        // Date filters
+        document.getElementById('contDiarioDesde')?.addEventListener('change', (e) => {
+            this._diarioFechaDesde = e.target.value;
+            this._diarioPagina = 0;
+            this._diarioExpandedId = null;
+            this._loadAsientos();
+        });
+        document.getElementById('contDiarioHasta')?.addEventListener('change', (e) => {
+            this._diarioFechaHasta = e.target.value;
+            this._diarioPagina = 0;
+            this._diarioExpandedId = null;
+            this._loadAsientos();
+        });
+
+        // Tipo filter
+        document.getElementById('contDiarioTipo')?.addEventListener('change', (e) => {
+            this._diarioTipoFiltro = e.target.value;
+            this._diarioPagina = 0;
+            this._diarioExpandedId = null;
+            this._loadAsientos();
+        });
+
+        // Search with debounce
+        document.getElementById('contDiarioSearch')?.addEventListener('input', (e) => {
+            clearTimeout(this._diarioSearchDebounce);
+            this._diarioSearchDebounce = setTimeout(() => {
+                this._diarioSearch = e.target.value.trim();
+                this._diarioPagina = 0;
+                this._diarioExpandedId = null;
+                this._loadAsientos();
+            }, 300);
+        });
+
+        // Clear filters
+        document.getElementById('contDiarioLimpiar')?.addEventListener('click', () => {
+            this._diarioFechaDesde = '';
+            this._diarioFechaHasta = '';
+            this._diarioTipoFiltro = 'todos';
+            this._diarioSearch = '';
+            this._diarioPagina = 0;
+            this._diarioExpandedId = null;
+            // Update UI inputs
+            const desde = document.getElementById('contDiarioDesde');
+            const hasta = document.getElementById('contDiarioHasta');
+            const tipo = document.getElementById('contDiarioTipo');
+            const search = document.getElementById('contDiarioSearch');
+            if (desde) desde.value = '';
+            if (hasta) hasta.value = '';
+            if (tipo) tipo.value = 'todos';
+            if (search) search.value = '';
+            this._loadAsientos();
+        });
     },
 
     // ═══════════════════════════════════════════
