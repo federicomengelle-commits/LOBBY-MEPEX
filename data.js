@@ -89,7 +89,7 @@ const Data = {
             name: 'ADMIN & FINANZAS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',
             color: '#4A90D9',
-            moduleIds: ['finanzas', 'costos', 'admin-panel'],
+            moduleIds: ['finanzas', 'contabilidad', 'costos', 'admin-panel'],
         },
     ],
 
@@ -400,6 +400,29 @@ const Data = {
                 { to: 'crm', label: 'Ver CRM', context: 'Cuentas de clientes' },
                 { to: 'compras', label: 'Ver Compras', context: 'Pagos a proveedores' },
                 { to: 'rrhh', label: 'Ver RRHH', context: 'Jornales y pagos de personal' },
+            ],
+        },
+
+        contabilidad: {
+            id: 'contabilidad',
+            name: 'Contabilidad',
+            shortName: 'Contab.',
+            icon: '\u{1F4DA}',
+            description: 'Plan de cuentas, libro diario, libro mayor, asientos, libros IVA, reportes.',
+            status: 'development',
+            color: '#4A90D9',
+            order: 12.5,
+            sections: [
+                { id: 'plan-cuentas', name: 'Plan de Cuentas', icon: '\u{1F333}', description: 'Árbol jerárquico 3 niveles, vinculación con cuentas financieras', fields: [] },
+                { id: 'libro-diario', name: 'Libro Diario', icon: '\u{1F4D6}', description: 'Asientos cronológicos, automáticos y manuales', fields: [] },
+                { id: 'libro-mayor', name: 'Libro Mayor', icon: '\u{1F4CB}', description: 'Movimientos por cuenta, saldos', fields: [] },
+                { id: 'asiento-manual', name: 'Asiento Manual', icon: '\u270F\uFE0F', description: 'Crear asientos de ajuste manuales', fields: [] },
+                { id: 'libros-iva', name: 'Libros IVA', icon: '\u{1F9FE}', description: 'IVA Ventas e IVA Compras', fields: [] },
+                { id: 'reportes', name: 'Reportes', icon: '\u{1F4CA}', description: 'Balance, estado de resultados, mayor por cuenta', fields: [] },
+            ],
+            connections: [
+                { to: 'finanzas', label: 'Ver Finanzas', context: 'Cuentas financieras y movimientos' },
+                { to: 'costos', label: 'Ver Costos', context: 'Costos de producción' },
             ],
         },
 
