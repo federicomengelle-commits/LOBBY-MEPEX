@@ -1776,7 +1776,7 @@ const ContabilidadModule = {
                 countQuery = countQuery.eq('tipo', this._diarioTipoFiltro);
             }
             if (this._diarioSearch) {
-                countQuery = countQuery.ilike('descripcion', `%${this._diarioSearch}%`);
+                countQuery = countQuery.or(`descripcion.ilike.%${this._diarioSearch}%`);
             }
 
             const countRes = await countQuery;
@@ -1805,7 +1805,7 @@ const ContabilidadModule = {
                 query = query.eq('tipo', this._diarioTipoFiltro);
             }
             if (this._diarioSearch) {
-                query = query.ilike('descripcion', `%${this._diarioSearch}%`);
+                query = query.or(`descripcion.ilike.%${this._diarioSearch}%`);
             }
 
             const offset = this._diarioPagina * 50;
@@ -1817,11 +1817,12 @@ const ContabilidadModule = {
             // 3. Load lines for these asientos
             if (asientos && asientos.length > 0) {
                 const ids = asientos.map(a => a.id);
-                const { data: lineas } = await supabaseClient
+                const { data: lineas, error: lineasErr } = await supabaseClient
                     .from('asiento_lineas')
                     .select('*, plan_cuentas ( codigo, nombre )')
                     .in('asiento_id', ids)
                     .order('orden');
+                if (lineasErr) console.warn('[Contabilidad] Error loading lineas:', lineasErr);
 
                 // Map lines to asientos
                 const lineasMap = {};
@@ -1836,6 +1837,14 @@ const ContabilidadModule = {
             }
 
             this._diarioAsientos = asientos || [];
+
+            // DEBUG: log first asiento structure to verify field names
+            if (this._diarioAsientos.length > 0) {
+                console.log('[Contabilidad DEBUG] Asiento sample:', JSON.stringify(this._diarioAsientos[0], null, 2));
+                if (this._diarioAsientos[0]._lineas?.length > 0) {
+                    console.log('[Contabilidad DEBUG] Linea sample:', JSON.stringify(this._diarioAsientos[0]._lineas[0], null, 2));
+                }
+            }
         } catch (e) {
             console.error('[Contabilidad] Error loading asientos:', e);
             this._diarioAsientos = [];
@@ -1868,7 +1877,7 @@ const ContabilidadModule = {
             const fecha = asiento.fecha
                 ? new Date(asiento.fecha + 'T12:00:00').toLocaleDateString('es-AR')
                 : '\u2014';
-            const concepto = asiento.descripcion || '\u2014';
+            const concepto = asiento.descripcion || asiento.concepto || '\u2014';
             const conceptoTrunc = concepto.length > 50 ? concepto.substring(0, 50) + '\u2026' : concepto;
             const tipoCls = asiento.tipo === 'automatico' ? 'cont-asiento-tipo-automatico' : 'cont-asiento-tipo-manual';
             const tipoLabel = asiento.tipo === 'automatico' ? 'AUTOM\u00c1TICO' : 'MANUAL';
@@ -1926,8 +1935,15 @@ const ContabilidadModule = {
             const cuenta = linea.plan_cuentas;
             const codigo = cuenta ? cuenta.codigo : '\u2014';
             const nombre = cuenta ? cuenta.nombre : '\u2014';
-            const debe = parseFloat(linea.debe) || 0;
-            const haber = parseFloat(linea.haber) || 0;
+
+            // Support both schemas: {debe, haber} or {monto, tipo_movimiento}
+            let debe = parseFloat(linea.debe) || 0;
+            let haber = parseFloat(linea.haber) || 0;
+            if (debe === 0 && haber === 0 && linea.monto) {
+                const monto = parseFloat(linea.monto) || 0;
+                if (linea.tipo_movimiento === 'debe') debe = monto;
+                else if (linea.tipo_movimiento === 'haber') haber = monto;
+            }
             totalDebe += debe;
             totalHaber += haber;
 
