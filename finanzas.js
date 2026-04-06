@@ -110,6 +110,14 @@ const FinanzasModule = {
     _repDesde: '',
     _repHasta: '',
 
+    // Conciliación
+    _conciliaciones: [],
+    _conciliacionActiva: null,   // object if editing
+    _concilStep: 1,              // 1=setup, 2=carga, 3=matching, 4=revision, 5=cierre
+    _concilLineas: [],
+    _concilMovsLobby: [],        // ingresos+egresos de la cuenta/periodo
+    _concilMovsSinExt: [],       // movimientos LOBBY sin match en extracto
+
     // Lookup maps (graceful degradation)
     _proyectosMap: {},
     _clientesMap: {},
@@ -1460,6 +1468,263 @@ const FinanzasModule = {
                     margin-left: auto;
                 }
                 .fin-export-btn:hover { border-color: #4A90D9; color: #4A90D9; }
+
+                /* ─── Conciliación ─── */
+                .fin-concil-list { margin-top: 8px; }
+                .fin-concil-estado {
+                    display: inline-block;
+                    padding: 2px 10px;
+                    border-radius: 4px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                }
+                .fin-concil-estado.en_proceso { background: rgba(242,141,21,0.15); color: #F28D15; }
+                .fin-concil-estado.conciliado { background: rgba(0,204,136,0.15); color: #00CC88; }
+                .fin-concil-estado.con_diferencia { background: rgba(232,72,85,0.15); color: #E84855; }
+
+                .fin-concil-wizard {
+                    background: #111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 24px;
+                    max-width: 800px;
+                }
+                .fin-concil-wizard h3 {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.85rem;
+                    color: #4A90D9;
+                    margin: 0 0 16px;
+                    font-weight: 700;
+                }
+                .fin-concil-step-bar {
+                    display: flex;
+                    gap: 4px;
+                    margin-bottom: 20px;
+                }
+                .fin-concil-step-pill {
+                    padding: 5px 14px;
+                    border-radius: 4px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    color: #555;
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
+                }
+                .fin-concil-step-pill.active {
+                    color: #4A90D9;
+                    border-color: #4A90D9;
+                    background: rgba(74,144,217,0.1);
+                }
+                .fin-concil-step-pill.done {
+                    color: #00CC88;
+                    border-color: #00CC88;
+                    background: rgba(0,204,136,0.08);
+                }
+
+                .fin-concil-form-row {
+                    display: flex;
+                    gap: 16px;
+                    margin-bottom: 12px;
+                    align-items: flex-end;
+                }
+                .fin-concil-form-group {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    flex: 1;
+                }
+                .fin-concil-form-group label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #888;
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                }
+                .fin-concil-form-group input,
+                .fin-concil-form-group select,
+                .fin-concil-form-group textarea {
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    padding: 8px 10px;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.85rem;
+                    outline: none;
+                }
+                .fin-concil-form-group input:focus,
+                .fin-concil-form-group select:focus,
+                .fin-concil-form-group textarea:focus {
+                    border-color: #4A90D9;
+                }
+                .fin-concil-form-group textarea {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.75rem;
+                    min-height: 100px;
+                    resize: vertical;
+                }
+
+                /* Carga lineas */
+                .fin-concil-lineas-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.82rem;
+                    margin-top: 12px;
+                }
+                .fin-concil-lineas-table th {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    padding: 6px 10px;
+                    border-bottom: 1px solid #2a2a2a;
+                    text-align: left;
+                }
+                .fin-concil-lineas-table td {
+                    padding: 6px 10px;
+                    border-bottom: 1px solid #1a1a1a;
+                    color: #E8E8E8;
+                }
+                .fin-concil-lineas-table .btn-remove {
+                    background: none;
+                    border: none;
+                    color: #E84855;
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                }
+
+                /* Vista 3 columnas */
+                .fin-concil-review {
+                    display: grid;
+                    grid-template-columns: 1fr auto 1fr;
+                    gap: 0;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    overflow: hidden;
+                    margin-top: 12px;
+                }
+                .fin-concil-review-header {
+                    display: contents;
+                }
+                .fin-concil-review-header > div {
+                    padding: 10px 14px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    color: #888;
+                    text-transform: uppercase;
+                    background: #0d0d0d;
+                    border-bottom: 1px solid #2a2a2a;
+                }
+                .fin-concil-review-row {
+                    display: contents;
+                }
+                .fin-concil-review-row > div {
+                    padding: 10px 14px;
+                    font-size: 0.82rem;
+                    color: #E8E8E8;
+                    border-bottom: 1px solid #1a1a1a;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .fin-concil-review-row.match-auto > div { background: rgba(0,204,136,0.06); }
+                .fin-concil-review-row.match-manual > div { background: rgba(242,141,21,0.06); }
+                .fin-concil-review-row.match-sin > div { background: rgba(232,72,85,0.06); }
+                .fin-concil-review-row.match-lobby > div { background: rgba(74,144,217,0.06); }
+
+                .fin-concil-review-row .match-badge {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    white-space: nowrap;
+                }
+                .match-badge.auto { background: rgba(0,204,136,0.2); color: #00CC88; }
+                .match-badge.manual { background: rgba(242,141,21,0.2); color: #F28D15; }
+                .match-badge.sin_match { background: rgba(232,72,85,0.2); color: #E84855; }
+                .match-badge.ignorado { background: rgba(85,85,85,0.2); color: #888; }
+                .match-badge.lobby { background: rgba(74,144,217,0.2); color: #4A90D9; }
+
+                .fin-concil-btn-sm {
+                    padding: 3px 10px;
+                    border-radius: 3px;
+                    border: 1px solid #2a2a2a;
+                    background: transparent;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    cursor: pointer;
+                    transition: all 200ms;
+                }
+                .fin-concil-btn-sm:hover { border-color: #4A90D9; color: #4A90D9; }
+                .fin-concil-btn-sm.confirm { border-color: #00CC88; color: #00CC88; }
+                .fin-concil-btn-sm.confirm:hover { background: rgba(0,204,136,0.1); }
+                .fin-concil-btn-sm.danger { border-color: #E84855; color: #E84855; }
+                .fin-concil-btn-sm.danger:hover { background: rgba(232,72,85,0.1); }
+
+                /* Cierre */
+                .fin-concil-cierre {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr 1fr;
+                    gap: 16px;
+                    margin: 20px 0;
+                }
+                .fin-concil-cierre-card {
+                    background: #111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 16px;
+                    text-align: center;
+                }
+                .fin-concil-cierre-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #888;
+                    text-transform: uppercase;
+                    margin-bottom: 8px;
+                }
+                .fin-concil-cierre-value {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 1.4rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                }
+                .fin-concil-cierre-value.positive { color: #00CC88; }
+                .fin-concil-cierre-value.negative { color: #E84855; }
+                .fin-concil-cierre-value.zero { color: #00CC88; }
+
+                .fin-concil-actions {
+                    display: flex;
+                    gap: 12px;
+                    margin-top: 16px;
+                    justify-content: flex-end;
+                }
+                .fin-concil-tab-btns {
+                    display: flex;
+                    gap: 8px;
+                    margin-bottom: 12px;
+                }
+                .fin-concil-tab-btn {
+                    padding: 6px 14px;
+                    border-radius: 4px;
+                    border: 1px solid #2a2a2a;
+                    background: transparent;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    cursor: pointer;
+                    transition: all 200ms;
+                }
+                .fin-concil-tab-btn:hover { border-color: #4A90D9; color: #4A90D9; }
+                .fin-concil-tab-btn.active {
+                    border-color: #4A90D9;
+                    background: rgba(74,144,217,0.1);
+                    color: #4A90D9;
+                }
             </style>
 
             <div class="fin-wrapper">
@@ -1585,6 +1850,18 @@ const FinanzasModule = {
                     await this._loadCalendarioData(this._calYear, this._calMonth);
                     this._renderCalendarioGrid();
                     this._attachCalendarioEvents();
+                }
+                break;
+            case 'conciliacion':
+                await this._loadLookups();
+                if (this._conciliacionActiva) {
+                    container.innerHTML = this._buildConcilWizardHTML();
+                    await this._loadConcilData();
+                    this._attachConcilWizardEvents();
+                } else {
+                    container.innerHTML = this._buildConcilListHTML();
+                    await this._loadConciliaciones();
+                    this._attachConcilListEvents();
                 }
                 break;
             default:
@@ -7317,5 +7594,1039 @@ const FinanzasModule = {
 
         // Transfer button
         document.getElementById('finBtnTransfer')?.addEventListener('click', () => this._showTransferModal());
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CONCILIACIÓN — LISTA
+    // ═══════════════════════════════════════════
+
+    _buildConcilListHTML() {
+        return `
+            <div class="fin-body">
+                <div class="fin-main">
+                    <div class="fin-cuentas-toolbar">
+                        <button class="fin-btn-new" id="finBtnNewConcil">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Nueva conciliación
+                        </button>
+                    </div>
+                    <div id="finConcilList" class="fin-concil-list"></div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _loadConciliaciones() {
+        try {
+            const { data } = await supabaseClient
+                .from('conciliaciones')
+                .select('*')
+                .eq('_deleted', false)
+                .order('created_at', { ascending: false });
+            this._conciliaciones = data || [];
+        } catch (e) { this._conciliaciones = []; }
+        this._renderConcilList();
+    },
+
+    _renderConcilList() {
+        const el = document.getElementById('finConcilList');
+        if (!el) return;
+
+        if (!this._conciliaciones.length) {
+            el.innerHTML = `
+                <div class="fin-empty-state">
+                    <div class="fin-empty-icon">🔄</div>
+                    <div class="fin-empty-text">No hay conciliaciones. Creá la primera para empezar.</div>
+                    <button class="fin-btn-new" id="finBtnNewConcilEmpty">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Nueva conciliación
+                    </button>
+                </div>`;
+            document.getElementById('finBtnNewConcilEmpty')?.addEventListener('click', () => this._nuevaConciliacion());
+            return;
+        }
+
+        let html = `
+            <div class="fin-table-wrapper">
+                <table class="fin-table">
+                    <thead>
+                        <tr>
+                            <th class="fin-th">Cuenta</th>
+                            <th class="fin-th">Período</th>
+                            <th class="fin-th">Fecha</th>
+                            <th class="fin-th" style="text-align:right">Saldo Banco</th>
+                            <th class="fin-th" style="text-align:right">Saldo LOBBY</th>
+                            <th class="fin-th" style="text-align:right">Diferencia</th>
+                            <th class="fin-th">Estado</th>
+                            <th class="fin-th"></th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        for (const c of this._conciliaciones) {
+            const cuenta = this._cuentasMap[c.cuenta_id]?.nombre || '—';
+            const estadoLabel = { en_proceso: 'En proceso', conciliado: 'Conciliado', con_diferencia: 'Con diferencia' };
+            html += `
+                <tr class="fin-tr">
+                    <td class="fin-td">${cuenta}</td>
+                    <td class="fin-td">${c.periodo || '—'}</td>
+                    <td class="fin-td">${c.fecha_conciliacion ? new Date(c.fecha_conciliacion + 'T12:00:00').toLocaleDateString('es-AR') : '—'}</td>
+                    <td class="fin-td fin-money">${this._formatMoney(c.saldo_banco)}</td>
+                    <td class="fin-td fin-money">${this._formatMoney(c.saldo_lobby)}</td>
+                    <td class="fin-td fin-money" style="color: ${Math.abs(c.diferencia) < 0.01 ? '#00CC88' : '#E84855'}">${this._formatMoney(c.diferencia)}</td>
+                    <td class="fin-td"><span class="fin-concil-estado ${c.estado}">${estadoLabel[c.estado] || c.estado}</span></td>
+                    <td class="fin-td">
+                        <button class="fin-concil-btn-sm" data-open="${c.id}">Abrir</button>
+                    </td>
+                </tr>`;
+        }
+
+        html += `</tbody></table></div>`;
+        el.innerHTML = html;
+
+        // Open conciliacion
+        el.querySelectorAll('[data-open]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.open;
+                const concil = this._conciliaciones.find(c => c.id === id);
+                if (concil) {
+                    this._conciliacionActiva = concil;
+                    this._concilStep = concil.estado === 'en_proceso' ? 4 : 5; // go to review or cierre
+                    this._renderTabContent();
+                }
+            });
+        });
+    },
+
+    _attachConcilListEvents() {
+        document.getElementById('finBtnNewConcil')?.addEventListener('click', () => this._nuevaConciliacion());
+    },
+
+    _nuevaConciliacion() {
+        this._conciliacionActiva = { _isNew: true };
+        this._concilStep = 1;
+        this._concilLineas = [];
+        this._concilMovsLobby = [];
+        this._concilMovsSinExt = [];
+        this._renderTabContent();
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CONCILIACIÓN — WIZARD
+    // ═══════════════════════════════════════════
+
+    _buildConcilWizardHTML() {
+        const steps = [
+            { n: 1, label: 'Setup' },
+            { n: 2, label: 'Extracto' },
+            { n: 3, label: 'Matching' },
+            { n: 4, label: 'Revisión' },
+            { n: 5, label: 'Cierre' },
+        ];
+        const stepBar = steps.map(s => {
+            const cls = s.n === this._concilStep ? 'active' : (s.n < this._concilStep ? 'done' : '');
+            return `<div class="fin-concil-step-pill ${cls}">${s.n}. ${s.label}</div>`;
+        }).join('');
+
+        let content = '';
+        switch (this._concilStep) {
+            case 1: content = this._buildConcilStep1(); break;
+            case 2: content = this._buildConcilStep2(); break;
+            case 3: content = this._buildConcilStep3(); break;
+            case 4: content = this._buildConcilStep4(); break;
+            case 5: content = this._buildConcilStep5(); break;
+        }
+
+        return `
+            <div class="fin-body">
+                <div class="fin-main">
+                    <div style="margin-bottom:12px">
+                        <button class="fin-concil-btn-sm" id="finConcilBack">← Volver a lista</button>
+                    </div>
+                    <div class="fin-concil-step-bar">${stepBar}</div>
+                    <div class="fin-concil-wizard" id="finConcilWizard">
+                        ${content}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    // Step 1: Setup
+    _buildConcilStep1() {
+        const cuentas = Object.values(this._cuentasMap).filter(c => c.tipo === 'banco');
+        const allCuentas = Object.values(this._cuentasMap);
+        const cuentasList = cuentas.length ? cuentas : allCuentas; // fallback if tipo not loaded
+        const now = new Date();
+        const mesActual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        const selectedCuenta = this._conciliacionActiva.cuenta_id || '';
+        const selectedPeriodo = this._conciliacionActiva.periodo || mesActual;
+        const saldoBanco = this._conciliacionActiva.saldo_banco || '';
+
+        return `
+            <h3>Paso 1 — Configuración</h3>
+            <div class="fin-concil-form-row">
+                <div class="fin-concil-form-group">
+                    <label>Cuenta bancaria</label>
+                    <select id="concilCuenta">
+                        <option value="">Seleccionar cuenta…</option>
+                        ${cuentasList.map(c => `<option value="${c.id}" ${c.id === selectedCuenta ? 'selected' : ''}>${c.nombre}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="fin-concil-form-group">
+                    <label>Período (mes/año)</label>
+                    <input type="month" id="concilPeriodo" value="${selectedPeriodo}">
+                </div>
+            </div>
+            <div class="fin-concil-form-row">
+                <div class="fin-concil-form-group">
+                    <label>Saldo según extracto bancario</label>
+                    <input type="number" id="concilSaldoBanco" step="0.01" placeholder="Ej: 1500000.00" value="${saldoBanco}">
+                </div>
+            </div>
+            <div class="fin-concil-actions">
+                <button class="fin-btn-new" id="concilStep1Next">Siguiente →</button>
+            </div>
+        `;
+    },
+
+    // Step 2: Carga extracto
+    _buildConcilStep2() {
+        const lineasHTML = this._concilLineas.map((l, i) => `
+            <tr>
+                <td>${l.fecha ? new Date(l.fecha + 'T12:00:00').toLocaleDateString('es-AR') : '—'}</td>
+                <td>${l.descripcion || ''}</td>
+                <td style="text-align:right; color:#E84855">${l.debito ? this._formatMoney(l.debito) : '—'}</td>
+                <td style="text-align:right; color:#00CC88">${l.credito ? this._formatMoney(l.credito) : '—'}</td>
+                <td><button class="fin-concil-lineas-table .btn-remove btn-remove" data-idx="${i}">✕</button></td>
+            </tr>
+        `).join('');
+
+        return `
+            <h3>Paso 2 — Cargar extracto bancario</h3>
+            <div class="fin-concil-tab-btns">
+                <button class="fin-concil-tab-btn active" data-carga="manual">Carga manual</button>
+                <button class="fin-concil-tab-btn" data-carga="csv">Pegar CSV</button>
+                <button class="fin-concil-tab-btn" data-carga="file">Subir CSV</button>
+            </div>
+
+            <div id="concilCargaManual">
+                <div class="fin-concil-form-row">
+                    <div class="fin-concil-form-group" style="flex:0.8">
+                        <label>Fecha</label>
+                        <input type="date" id="concilLineaFecha">
+                    </div>
+                    <div class="fin-concil-form-group" style="flex:2">
+                        <label>Descripción</label>
+                        <input type="text" id="concilLineaDesc" placeholder="Ej: Transf. recibida CUIT 30-12345678-9">
+                    </div>
+                    <div class="fin-concil-form-group" style="flex:0.8">
+                        <label>Débito</label>
+                        <input type="number" id="concilLineaDeb" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="fin-concil-form-group" style="flex:0.8">
+                        <label>Crédito</label>
+                        <input type="number" id="concilLineaCred" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="fin-concil-form-group" style="flex:0 0 auto; justify-content:flex-end">
+                        <label>&nbsp;</label>
+                        <button class="fin-btn-new" id="concilAddLinea" style="margin-left:0">+ Agregar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="concilCargaCSV" style="display:none">
+                <div class="fin-concil-form-group">
+                    <label>Pegar líneas CSV (formato: fecha;descripción;débito;crédito)</label>
+                    <textarea id="concilCSVText" placeholder="15/04/2026;Transferencia recibida;0;500000&#10;14/04/2026;Débito automático;200000;0"></textarea>
+                </div>
+                <div style="margin-top:8px">
+                    <button class="fin-btn-new" id="concilParseCSV">Importar líneas</button>
+                </div>
+            </div>
+
+            <div id="concilCargaFile" style="display:none">
+                <div class="fin-concil-form-group">
+                    <label>Archivo CSV</label>
+                    <input type="file" id="concilFileInput" accept=".csv,.txt" style="color:#888">
+                </div>
+                <div style="margin-top:8px">
+                    <button class="fin-btn-new" id="concilParseFile">Importar archivo</button>
+                </div>
+            </div>
+
+            ${this._concilLineas.length ? `
+                <table class="fin-concil-lineas-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Descripción</th>
+                            <th style="text-align:right">Débito</th>
+                            <th style="text-align:right">Crédito</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>${lineasHTML}</tbody>
+                </table>
+                <div style="margin-top:8px; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.75rem; color:#888">
+                    ${this._concilLineas.length} líneas cargadas
+                </div>
+            ` : ''}
+
+            <div class="fin-concil-actions" style="margin-top:16px">
+                <button class="fin-concil-btn-sm" id="concilStep2Back">← Atrás</button>
+                <button class="fin-btn-new" id="concilStep2Next" ${!this._concilLineas.length ? 'disabled style="opacity:0.4"' : ''}>Siguiente →</button>
+            </div>
+        `;
+    },
+
+    // Step 3: Auto matching
+    _buildConcilStep3() {
+        return `
+            <h3>Paso 3 — Matching automático</h3>
+            <p style="color:#888; font-size:0.85rem; margin-bottom:16px">
+                Se compararán las ${this._concilLineas.length} líneas del extracto con los movimientos
+                registrados en LOBBY para esta cuenta y período.
+            </p>
+            <div class="fin-concil-actions">
+                <button class="fin-concil-btn-sm" id="concilStep3Back">← Atrás</button>
+                <button class="fin-btn-new" id="concilAutoMatch">🔄 Conciliar automáticamente</button>
+            </div>
+            <div id="concilMatchResult" style="margin-top:16px"></div>
+        `;
+    },
+
+    // Step 4: Review (3 columns)
+    _buildConcilStep4() {
+        let rowsHTML = '';
+
+        // Extracto lines
+        for (const linea of this._concilLineas) {
+            const monto = linea.credito > 0 ? linea.credito : linea.debito;
+            const tipo = linea.credito > 0 ? 'Crédito' : 'Débito';
+            const fecha = linea.fecha ? new Date(linea.fecha + 'T12:00:00').toLocaleDateString('es-AR') : '—';
+            let matchClass = 'match-sin';
+            let badgeClass = 'sin_match';
+            let badgeLabel = '✗ Sin reg';
+            let lobbyCol = `<button class="fin-concil-btn-sm" data-create-from="${linea.id || linea._idx}">+ Crear movimiento</button>`;
+
+            if (linea.match_tipo === 'auto') {
+                matchClass = 'match-auto';
+                badgeClass = 'auto';
+                badgeLabel = '✓ Auto';
+                lobbyCol = this._matchedLobbyLabel(linea);
+            } else if (linea.match_tipo === 'manual') {
+                matchClass = 'match-manual';
+                badgeClass = 'manual';
+                badgeLabel = '? Manual';
+                lobbyCol = `${this._matchedLobbyLabel(linea)} <button class="fin-concil-btn-sm confirm" data-confirm="${linea.id || linea._idx}">Confirmar</button> <button class="fin-concil-btn-sm danger" data-reject="${linea.id || linea._idx}">Rechazar</button>`;
+            } else if (linea.match_tipo === 'ignorado') {
+                matchClass = 'match-sin';
+                badgeClass = 'ignorado';
+                badgeLabel = '— Ignorado';
+                lobbyCol = '<span style="color:#555">Ignorado</span>';
+            }
+
+            rowsHTML += `
+                <div class="fin-concil-review-row ${matchClass}">
+                    <div>${fecha} ${linea.descripcion || ''} <span style="color:${linea.credito > 0 ? '#00CC88' : '#E84855'}; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; margin-left:8px">${tipo} ${this._formatMoney(monto)}</span></div>
+                    <div><span class="match-badge ${badgeClass}">${badgeLabel}</span></div>
+                    <div>${lobbyCol}</div>
+                </div>`;
+        }
+
+        // LOBBY movements without match in extracto
+        for (const mov of this._concilMovsSinExt) {
+            const fecha = mov.fecha ? new Date(mov.fecha + 'T12:00:00').toLocaleDateString('es-AR') : '—';
+            const esIngreso = mov._tipo === 'ingreso';
+            rowsHTML += `
+                <div class="fin-concil-review-row match-lobby">
+                    <div><span style="color:#555">Sin línea en extracto</span></div>
+                    <div><span class="match-badge lobby">✗ Sin ext</span></div>
+                    <div>${fecha} ${mov.concepto || mov.descripcion || ''} <span style="color:${esIngreso ? '#00CC88' : '#E84855'}; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; margin-left:8px">${this._formatMoney(mov.monto)}</span> <button class="fin-concil-btn-sm" data-ignorar-lobby="${mov.id}">Ignorar</button></div>
+                </div>`;
+        }
+
+        // Stats
+        const autoCount = this._concilLineas.filter(l => l.match_tipo === 'auto').length;
+        const manualCount = this._concilLineas.filter(l => l.match_tipo === 'manual').length;
+        const sinCount = this._concilLineas.filter(l => !l.match_tipo || l.match_tipo === 'sin_match').length;
+        const ignoradoCount = this._concilLineas.filter(l => l.match_tipo === 'ignorado').length;
+
+        return `
+            <h3>Paso 4 — Revisión</h3>
+            <div style="display:flex; gap:16px; margin-bottom:12px; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.72rem">
+                <span style="color:#00CC88">✓ Auto: ${autoCount}</span>
+                <span style="color:#F28D15">? Manual: ${manualCount}</span>
+                <span style="color:#E84855">✗ Sin match: ${sinCount}</span>
+                <span style="color:#888">— Ignorado: ${ignoradoCount}</span>
+                <span style="color:#4A90D9">✗ Sin extracto: ${this._concilMovsSinExt.length}</span>
+            </div>
+            <div class="fin-concil-review">
+                <div class="fin-concil-review-header">
+                    <div>Extracto Banco</div>
+                    <div>Estado</div>
+                    <div>Movimiento LOBBY</div>
+                </div>
+                ${rowsHTML || '<div style="grid-column:1/-1; padding:20px; text-align:center; color:#555">Sin líneas cargadas</div>'}
+            </div>
+            <div class="fin-concil-actions" style="margin-top:16px">
+                <button class="fin-concil-btn-sm" id="concilStep4Back">← Atrás</button>
+                <button class="fin-btn-new" id="concilStep4Next">Siguiente → Cierre</button>
+            </div>
+        `;
+    },
+
+    _matchedLobbyLabel(linea) {
+        if (linea.ingreso_id) {
+            const ing = this._concilMovsLobby.find(m => m.id === linea.ingreso_id);
+            return ing ? `${ing.concepto || ing.descripcion || 'Ingreso'} — ${this._formatMoney(ing.monto)}` : 'Ingreso vinculado';
+        }
+        if (linea.egreso_id) {
+            const eg = this._concilMovsLobby.find(m => m.id === linea.egreso_id);
+            return eg ? `${eg.concepto || eg.descripcion || 'Egreso'} — ${this._formatMoney(eg.monto)}` : 'Egreso vinculado';
+        }
+        return '—';
+    },
+
+    // Step 5: Cierre
+    _buildConcilStep5() {
+        const saldoBanco = parseFloat(this._conciliacionActiva.saldo_banco) || 0;
+        const saldoLobby = this._calcSaldoLobby();
+        const diferencia = saldoBanco - saldoLobby;
+        const difClass = Math.abs(diferencia) < 0.01 ? 'zero' : (diferencia > 0 ? 'positive' : 'negative');
+
+        return `
+            <h3>Paso 5 — Cierre de conciliación</h3>
+            <div class="fin-concil-cierre">
+                <div class="fin-concil-cierre-card">
+                    <div class="fin-concil-cierre-label">Saldo Banco</div>
+                    <div class="fin-concil-cierre-value">${this._formatMoney(saldoBanco)}</div>
+                </div>
+                <div class="fin-concil-cierre-card">
+                    <div class="fin-concil-cierre-label">Saldo LOBBY</div>
+                    <div class="fin-concil-cierre-value">${this._formatMoney(saldoLobby)}</div>
+                </div>
+                <div class="fin-concil-cierre-card">
+                    <div class="fin-concil-cierre-label">Diferencia</div>
+                    <div class="fin-concil-cierre-value ${difClass}">${this._formatMoney(diferencia)}</div>
+                </div>
+            </div>
+            <div class="fin-concil-form-group" style="max-width:400px; margin-bottom:16px">
+                <label>Notas de conciliación</label>
+                <textarea id="concilNotas" rows="3" placeholder="Observaciones opcionales…">${this._conciliacionActiva.notas || ''}</textarea>
+            </div>
+            <div class="fin-concil-actions">
+                <button class="fin-concil-btn-sm" id="concilStep5Back">← Atrás</button>
+                ${Math.abs(diferencia) < 0.01
+                    ? `<button class="fin-btn-new" id="concilCerrar" style="border-color:#00CC88; background:rgba(0,204,136,0.1); color:#00CC88">✓ Cerrar conciliación</button>`
+                    : `<button class="fin-btn-new" id="concilCerrarDif" style="border-color:#F28D15; background:rgba(242,141,21,0.1); color:#F28D15">⚠ Cerrar con diferencia</button>`
+                }
+            </div>
+        `;
+    },
+
+    _calcSaldoLobby() {
+        // Sum all ingresos - egresos for this cuenta in the period
+        let total = 0;
+        for (const mov of this._concilMovsLobby) {
+            if (mov._tipo === 'ingreso') total += parseFloat(mov.monto) || 0;
+            else total -= parseFloat(mov.monto) || 0;
+        }
+        return total;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CONCILIACIÓN — DATA
+    // ═══════════════════════════════════════════
+
+    async _loadConcilData() {
+        if (!this._conciliacionActiva || this._conciliacionActiva._isNew) return;
+
+        const id = this._conciliacionActiva.id;
+        if (!id) return;
+
+        // Load lineas
+        try {
+            const { data } = await supabaseClient
+                .from('extracto_bancario_lineas')
+                .select('*')
+                .eq('conciliacion_id', id)
+                .order('fecha');
+            this._concilLineas = (data || []).map((l, i) => ({ ...l, _idx: i }));
+        } catch (e) { this._concilLineas = []; }
+
+        // Load LOBBY movements for this cuenta/periodo
+        await this._loadConcilMovsLobby();
+    },
+
+    async _loadConcilMovsLobby() {
+        const concil = this._conciliacionActiva;
+        if (!concil || !concil.cuenta_id || !concil.periodo) return;
+
+        // Parse periodo (YYYY-MM)
+        const [year, month] = concil.periodo.split('-').map(Number);
+        const desde = `${year}-${String(month).padStart(2, '0')}-01`;
+        const hasta = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
+        const canal = this._getCanalFilter();
+
+        let ingresos = [];
+        let egresos = [];
+
+        try {
+            let q = supabaseClient.from('ingresos').select('*')
+                .eq('_deleted', false)
+                .eq('cuenta_id', concil.cuenta_id)
+                .gte('fecha', desde).lte('fecha', hasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            ingresos = (data || []).map(d => ({ ...d, _tipo: 'ingreso' }));
+        } catch (e) { /* ignore */ }
+
+        try {
+            let q = supabaseClient.from('egresos').select('*')
+                .eq('_deleted', false)
+                .eq('cuenta_id', concil.cuenta_id)
+                .gte('fecha', desde).lte('fecha', hasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            egresos = (data || []).map(d => ({ ...d, _tipo: 'egreso' }));
+        } catch (e) { /* ignore */ }
+
+        this._concilMovsLobby = [...ingresos, ...egresos];
+
+        // Find LOBBY movements not matched by any extracto line
+        const matchedIds = new Set();
+        for (const linea of this._concilLineas) {
+            if (linea.ingreso_id) matchedIds.add(linea.ingreso_id);
+            if (linea.egreso_id) matchedIds.add(linea.egreso_id);
+        }
+        this._concilMovsSinExt = this._concilMovsLobby.filter(m => !matchedIds.has(m.id));
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CONCILIACIÓN — AUTO MATCH
+    // ═══════════════════════════════════════════
+
+    async _autoMatch() {
+        const resultEl = document.getElementById('concilMatchResult');
+        if (resultEl) resultEl.innerHTML = '<div class="fin-loading"><div class="spinner"></div> Conciliando…</div>';
+
+        await this._loadConcilMovsLobby();
+
+        const movs = [...this._concilMovsLobby];
+        const used = new Set();
+        let autoCount = 0;
+        let manualCount = 0;
+
+        for (const linea of this._concilLineas) {
+            const montoExt = parseFloat(linea.credito) > 0 ? parseFloat(linea.credito) : parseFloat(linea.debito);
+            const esIngreso = parseFloat(linea.credito) > 0;
+            const fechaExt = linea.fecha ? new Date(linea.fecha + 'T12:00:00') : null;
+
+            // Search for exact amount match within ±2 days
+            let bestMatch = null;
+            let bestMatchType = null;
+
+            for (const mov of movs) {
+                if (used.has(mov.id)) continue;
+                const esMovIngreso = mov._tipo === 'ingreso';
+                if (esIngreso !== esMovIngreso) continue;
+
+                const montoMov = parseFloat(mov.monto) || 0;
+                if (Math.abs(montoMov - montoExt) > 0.01) continue;
+
+                // Amount matches — check date proximity
+                const fechaMov = mov.fecha ? new Date(mov.fecha + 'T12:00:00') : null;
+                if (fechaExt && fechaMov) {
+                    const diffDays = Math.abs((fechaExt - fechaMov) / (1000 * 60 * 60 * 24));
+                    if (diffDays <= 2) {
+                        bestMatch = mov;
+                        bestMatchType = 'auto';
+                        break;
+                    } else {
+                        // Amount match but date far — manual
+                        if (!bestMatch) {
+                            bestMatch = mov;
+                            bestMatchType = 'manual';
+                        }
+                    }
+                } else {
+                    // No date to compare, amount match → manual
+                    if (!bestMatch) {
+                        bestMatch = mov;
+                        bestMatchType = 'manual';
+                    }
+                }
+            }
+
+            if (bestMatch) {
+                used.add(bestMatch.id);
+                linea.match_tipo = bestMatchType;
+                if (bestMatch._tipo === 'ingreso') {
+                    linea.ingreso_id = bestMatch.id;
+                    linea.egreso_id = null;
+                } else {
+                    linea.egreso_id = bestMatch.id;
+                    linea.ingreso_id = null;
+                }
+                if (bestMatchType === 'auto') autoCount++;
+                else manualCount++;
+            } else {
+                linea.match_tipo = 'sin_match';
+                linea.ingreso_id = null;
+                linea.egreso_id = null;
+            }
+        }
+
+        // Update sin ext
+        const matchedIds = new Set();
+        for (const linea of this._concilLineas) {
+            if (linea.ingreso_id) matchedIds.add(linea.ingreso_id);
+            if (linea.egreso_id) matchedIds.add(linea.egreso_id);
+        }
+        this._concilMovsSinExt = this._concilMovsLobby.filter(m => !matchedIds.has(m.id));
+
+        const sinCount = this._concilLineas.filter(l => l.match_tipo === 'sin_match').length;
+
+        if (resultEl) {
+            resultEl.innerHTML = `
+                <div style="font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; color:#888; padding:12px; background:#111; border:1px solid #2a2a2a; border-radius:4px">
+                    <span style="color:#00CC88">✓ Auto: ${autoCount}</span> &nbsp;
+                    <span style="color:#F28D15">? Manual: ${manualCount}</span> &nbsp;
+                    <span style="color:#E84855">✗ Sin match: ${sinCount}</span> &nbsp;
+                    <span style="color:#4A90D9">✗ Sin extracto: ${this._concilMovsSinExt.length}</span>
+                    <div style="margin-top:8px">
+                        <button class="fin-btn-new" id="concilGoReview">Ver revisión →</button>
+                    </div>
+                </div>
+            `;
+            document.getElementById('concilGoReview')?.addEventListener('click', () => {
+                this._concilStep = 4;
+                this._renderTabContent();
+            });
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CONCILIACIÓN — SAVE / CLOSE
+    // ═══════════════════════════════════════════
+
+    async _saveConciliacion() {
+        const concil = this._conciliacionActiva;
+        if (!concil) return null;
+
+        const user = Auth.getUser();
+        const saldoLobby = this._calcSaldoLobby();
+        const saldoBanco = parseFloat(concil.saldo_banco) || 0;
+        const diferencia = saldoBanco - saldoLobby;
+
+        const payload = {
+            cuenta_id: concil.cuenta_id,
+            periodo: concil.periodo,
+            fecha_conciliacion: new Date().toISOString().split('T')[0],
+            saldo_banco: saldoBanco,
+            saldo_lobby: saldoLobby,
+            diferencia: diferencia,
+            estado: concil.estado || 'en_proceso',
+            conciliado_por: user?.id || null,
+            notas: concil.notas || null,
+        };
+
+        try {
+            if (concil._isNew || !concil.id) {
+                const { data, error } = await supabaseClient
+                    .from('conciliaciones')
+                    .insert(payload)
+                    .select()
+                    .single();
+                if (error) throw error;
+                this._conciliacionActiva = data;
+                return data;
+            } else {
+                const { data, error } = await supabaseClient
+                    .from('conciliaciones')
+                    .update(payload)
+                    .eq('id', concil.id)
+                    .select()
+                    .single();
+                if (error) throw error;
+                this._conciliacionActiva = data;
+                return data;
+            }
+        } catch (e) {
+            console.error('Error saving conciliacion:', e);
+            Toast.error('Error al guardar conciliación');
+            return null;
+        }
+    },
+
+    async _saveLineas() {
+        const concil = this._conciliacionActiva;
+        if (!concil?.id) return;
+
+        // Delete existing lineas for this conciliacion
+        try {
+            await supabaseClient
+                .from('extracto_bancario_lineas')
+                .delete()
+                .eq('conciliacion_id', concil.id);
+        } catch (e) { /* ignore */ }
+
+        // Insert all current lineas
+        if (!this._concilLineas.length) return;
+
+        const rows = this._concilLineas.map(l => ({
+            conciliacion_id: concil.id,
+            fecha: l.fecha,
+            descripcion: l.descripcion || '',
+            debito: parseFloat(l.debito) || 0,
+            credito: parseFloat(l.credito) || 0,
+            saldo: l.saldo || null,
+            match_tipo: l.match_tipo || null,
+            ingreso_id: l.ingreso_id || null,
+            egreso_id: l.egreso_id || null,
+        }));
+
+        try {
+            const { data, error } = await supabaseClient
+                .from('extracto_bancario_lineas')
+                .insert(rows)
+                .select();
+            if (error) throw error;
+            // Update local lineas with DB ids
+            if (data) this._concilLineas = data.map((l, i) => ({ ...l, _idx: i }));
+        } catch (e) {
+            console.error('Error saving lineas:', e);
+            Toast.error('Error al guardar líneas del extracto');
+        }
+    },
+
+    async _cerrarConciliacion(estado) {
+        this._conciliacionActiva.estado = estado;
+        this._conciliacionActiva.notas = document.getElementById('concilNotas')?.value || '';
+
+        const saved = await this._saveConciliacion();
+        if (!saved) return;
+
+        await this._saveLineas();
+
+        Toast.success(estado === 'conciliado' ? 'Conciliación cerrada ✓' : 'Conciliación cerrada con diferencia');
+        this._conciliacionActiva = null;
+        this._concilStep = 1;
+        this._renderTabContent();
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CONCILIACIÓN — CSV PARSERS
+    // ═══════════════════════════════════════════
+
+    _parseCSVText(text) {
+        const lines = text.trim().split('\n').filter(l => l.trim());
+        const parsed = [];
+        for (const line of lines) {
+            // Support both ; and , as delimiter
+            const sep = line.includes(';') ? ';' : ',';
+            const parts = line.split(sep).map(p => p.trim());
+            if (parts.length < 3) continue;
+
+            const fechaRaw = parts[0];
+            const descripcion = parts[1];
+            const debito = parseFloat(parts[2]?.replace(/[^\d.,\-]/g, '').replace(',', '.')) || 0;
+            const credito = parseFloat(parts[3]?.replace(/[^\d.,\-]/g, '').replace(',', '.')) || 0;
+
+            // Parse date (DD/MM/YYYY or YYYY-MM-DD)
+            let fecha = '';
+            if (fechaRaw.includes('/')) {
+                const dp = fechaRaw.split('/');
+                if (dp.length === 3) {
+                    const y = dp[2].length === 2 ? '20' + dp[2] : dp[2];
+                    fecha = `${y}-${dp[1].padStart(2, '0')}-${dp[0].padStart(2, '0')}`;
+                }
+            } else {
+                fecha = fechaRaw; // assume YYYY-MM-DD
+            }
+
+            parsed.push({ fecha, descripcion, debito, credito, match_tipo: null, _idx: this._concilLineas.length + parsed.length });
+        }
+        return parsed;
+    },
+
+    _parseCSVFile(content) {
+        // Skip header line if it looks like a header
+        const lines = content.trim().split('\n');
+        const firstLine = lines[0]?.toLowerCase() || '';
+        const startIdx = (firstLine.includes('fecha') || firstLine.includes('date')) ? 1 : 0;
+        return this._parseCSVText(lines.slice(startIdx).join('\n'));
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: CONCILIACIÓN — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachConcilWizardEvents() {
+        // Back to list
+        document.getElementById('finConcilBack')?.addEventListener('click', () => {
+            this._conciliacionActiva = null;
+            this._concilStep = 1;
+            this._renderTabContent();
+        });
+
+        // Step 1
+        document.getElementById('concilStep1Next')?.addEventListener('click', async () => {
+            const cuenta = document.getElementById('concilCuenta')?.value;
+            const periodo = document.getElementById('concilPeriodo')?.value;
+            const saldoBanco = document.getElementById('concilSaldoBanco')?.value;
+
+            if (!cuenta) { Toast.warning('Seleccioná una cuenta'); return; }
+            if (!periodo) { Toast.warning('Seleccioná un período'); return; }
+            if (!saldoBanco) { Toast.warning('Ingresá el saldo del banco'); return; }
+
+            this._conciliacionActiva.cuenta_id = cuenta;
+            this._conciliacionActiva.periodo = periodo;
+            this._conciliacionActiva.saldo_banco = parseFloat(saldoBanco);
+
+            // Save to get an ID
+            const saved = await this._saveConciliacion();
+            if (!saved) return;
+
+            this._concilStep = 2;
+            this._renderTabContent();
+        });
+
+        // Step 2: Carga tabs
+        document.querySelectorAll('.fin-concil-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.fin-concil-tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const mode = btn.dataset.carga;
+                document.getElementById('concilCargaManual').style.display = mode === 'manual' ? '' : 'none';
+                document.getElementById('concilCargaCSV').style.display = mode === 'csv' ? '' : 'none';
+                document.getElementById('concilCargaFile').style.display = mode === 'file' ? '' : 'none';
+            });
+        });
+
+        // Add manual line
+        document.getElementById('concilAddLinea')?.addEventListener('click', () => {
+            const fecha = document.getElementById('concilLineaFecha')?.value;
+            const desc = document.getElementById('concilLineaDesc')?.value;
+            const deb = parseFloat(document.getElementById('concilLineaDeb')?.value) || 0;
+            const cred = parseFloat(document.getElementById('concilLineaCred')?.value) || 0;
+
+            if (!fecha || !desc) { Toast.warning('Completá fecha y descripción'); return; }
+            if (!deb && !cred) { Toast.warning('Ingresá un débito o crédito'); return; }
+
+            this._concilLineas.push({ fecha, descripcion: desc, debito: deb, credito: cred, match_tipo: null, _idx: this._concilLineas.length });
+
+            // Re-render step 2
+            const wizard = document.getElementById('finConcilWizard');
+            if (wizard) {
+                wizard.innerHTML = this._buildConcilStep2();
+                this._attachConcilStep2InlineEvents();
+            }
+        });
+
+        this._attachConcilStep2InlineEvents();
+
+        // Parse CSV text
+        document.getElementById('concilParseCSV')?.addEventListener('click', () => {
+            const text = document.getElementById('concilCSVText')?.value;
+            if (!text?.trim()) { Toast.warning('Pegá las líneas CSV'); return; }
+            const parsed = this._parseCSVText(text);
+            if (!parsed.length) { Toast.warning('No se pudieron parsear líneas'); return; }
+            this._concilLineas.push(...parsed);
+            Toast.success(`${parsed.length} líneas importadas`);
+            const wizard = document.getElementById('finConcilWizard');
+            if (wizard) {
+                wizard.innerHTML = this._buildConcilStep2();
+                this._attachConcilStep2InlineEvents();
+            }
+        });
+
+        // Parse CSV file
+        document.getElementById('concilParseFile')?.addEventListener('click', () => {
+            const fileInput = document.getElementById('concilFileInput');
+            const file = fileInput?.files?.[0];
+            if (!file) { Toast.warning('Seleccioná un archivo'); return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const parsed = this._parseCSVFile(e.target.result);
+                if (!parsed.length) { Toast.warning('No se pudieron parsear líneas del archivo'); return; }
+                this._concilLineas.push(...parsed);
+                Toast.success(`${parsed.length} líneas importadas del archivo`);
+                const wizard = document.getElementById('finConcilWizard');
+                if (wizard) {
+                    wizard.innerHTML = this._buildConcilStep2();
+                    this._attachConcilStep2InlineEvents();
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Step 2 nav
+        document.getElementById('concilStep2Back')?.addEventListener('click', () => {
+            this._concilStep = 1;
+            this._renderTabContent();
+        });
+        document.getElementById('concilStep2Next')?.addEventListener('click', async () => {
+            if (!this._concilLineas.length) { Toast.warning('Cargá al menos una línea'); return; }
+            await this._saveLineas();
+            this._concilStep = 3;
+            this._renderTabContent();
+        });
+
+        // Step 3
+        document.getElementById('concilStep3Back')?.addEventListener('click', () => {
+            this._concilStep = 2;
+            this._renderTabContent();
+        });
+        document.getElementById('concilAutoMatch')?.addEventListener('click', () => this._autoMatch());
+
+        // Step 4
+        document.getElementById('concilStep4Back')?.addEventListener('click', () => {
+            this._concilStep = 3;
+            this._renderTabContent();
+        });
+        document.getElementById('concilStep4Next')?.addEventListener('click', async () => {
+            await this._saveLineas();
+            this._concilStep = 5;
+            this._renderTabContent();
+        });
+
+        // Step 4 inline actions
+        document.querySelectorAll('[data-confirm]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = btn.dataset.confirm;
+                const linea = this._concilLineas.find(l => String(l.id || l._idx) === idx);
+                if (linea) {
+                    linea.match_tipo = 'auto'; // confirm = promote to auto
+                    this._renderTabContent();
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-reject]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = btn.dataset.reject;
+                const linea = this._concilLineas.find(l => String(l.id || l._idx) === idx);
+                if (linea) {
+                    linea.match_tipo = 'sin_match';
+                    linea.ingreso_id = null;
+                    linea.egreso_id = null;
+                    this._renderTabContent();
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-create-from]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = btn.dataset.createFrom;
+                const linea = this._concilLineas.find(l => String(l.id || l._idx) === idx);
+                if (linea) this._showCreateFromExtracto(linea);
+            });
+        });
+
+        document.querySelectorAll('[data-ignorar-lobby]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.ignorarLobby;
+                this._concilMovsSinExt = this._concilMovsSinExt.filter(m => m.id !== id);
+                this._renderTabContent();
+            });
+        });
+
+        // Step 5
+        document.getElementById('concilStep5Back')?.addEventListener('click', () => {
+            this._concilStep = 4;
+            this._renderTabContent();
+        });
+        document.getElementById('concilCerrar')?.addEventListener('click', () => this._cerrarConciliacion('conciliado'));
+        document.getElementById('concilCerrarDif')?.addEventListener('click', () => this._cerrarConciliacion('con_diferencia'));
+    },
+
+    _attachConcilStep2InlineEvents() {
+        // Remove buttons on lineas table
+        document.querySelectorAll('.btn-remove[data-idx]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx);
+                this._concilLineas.splice(idx, 1);
+                // Reindex
+                this._concilLineas.forEach((l, i) => l._idx = i);
+                const wizard = document.getElementById('finConcilWizard');
+                if (wizard) {
+                    wizard.innerHTML = this._buildConcilStep2();
+                    this._attachConcilStep2InlineEvents();
+                }
+            });
+        });
+    },
+
+    // Create ingreso/egreso from extracto line
+    async _showCreateFromExtracto(linea) {
+        const esIngreso = parseFloat(linea.credito) > 0;
+        const monto = esIngreso ? linea.credito : linea.debito;
+        const cuentaId = this._conciliacionActiva.cuenta_id;
+
+        const title = esIngreso ? 'Crear Ingreso desde extracto' : 'Crear Egreso desde extracto';
+        const body = `
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <div style="font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; color:#888; padding:10px; background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px">
+                    ${linea.fecha ? new Date(linea.fecha + 'T12:00:00').toLocaleDateString('es-AR') : ''} — ${linea.descripcion} — ${this._formatMoney(monto)}
+                </div>
+                <div class="fin-concil-form-group">
+                    <label>Concepto</label>
+                    <input type="text" id="createFromExtConcepto" value="${linea.descripcion || ''}">
+                </div>
+                <div class="fin-concil-form-group">
+                    <label>Monto</label>
+                    <input type="number" id="createFromExtMonto" step="0.01" value="${monto}">
+                </div>
+            </div>
+        `;
+
+        const confirmed = await Modal.confirm({ title, message: body, confirmText: 'Crear', danger: false });
+        if (!confirmed) return;
+
+        const concepto = document.getElementById('createFromExtConcepto')?.value || linea.descripcion;
+        const montoFinal = parseFloat(document.getElementById('createFromExtMonto')?.value) || monto;
+
+        const table = esIngreso ? 'ingresos' : 'egresos';
+        const payload = {
+            fecha: linea.fecha,
+            concepto: concepto,
+            monto: montoFinal,
+            cuenta_id: cuentaId,
+            canal: this._getCanalFilter() || 'oficial',
+            _deleted: false,
+        };
+
+        if (!esIngreso) {
+            payload.descripcion = concepto;
+            payload.categoria_egreso = 'otros';
+        }
+
+        try {
+            const { data, error } = await supabaseClient
+                .from(table)
+                .insert(payload)
+                .select()
+                .single();
+            if (error) throw error;
+
+            // Link to extracto line
+            if (esIngreso) linea.ingreso_id = data.id;
+            else linea.egreso_id = data.id;
+            linea.match_tipo = 'auto';
+
+            // Add to local movs
+            this._concilMovsLobby.push({ ...data, _tipo: esIngreso ? 'ingreso' : 'egreso' });
+            this._concilMovsSinExt = this._concilMovsSinExt.filter(m => m.id !== data.id);
+
+            Toast.success(`${esIngreso ? 'Ingreso' : 'Egreso'} creado y vinculado`);
+            this._renderTabContent();
+        } catch (e) {
+            console.error('Error creating from extracto:', e);
+            Toast.error('Error al crear movimiento');
+        }
     },
 };
