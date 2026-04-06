@@ -47,6 +47,16 @@ const ContabilidadModule = {
     _diarioTotales: { debe: 0, haber: 0, count: 0 },
     _diarioSearchDebounce: null,
 
+    // Libro mayor state
+    _mayorCuentaId: null,
+    _mayorCuenta: null,
+    _mayorMovimientos: [],
+    _mayorSaldoAnterior: 0,
+    _mayorDesde: null,
+    _mayorHasta: null,
+    _mayorCuentasLista: [],
+    _mayorSearchText: '',
+
     // Panel state
     _activePanel: null,
     _activePanelData: null,
@@ -945,6 +955,200 @@ const ContabilidadModule = {
                     color: #E8E8E8;
                     font-weight: 700;
                 }
+
+                /* ─── Libro Mayor ─── */
+                .cont-mayor-selector {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 20px;
+                    flex-wrap: wrap;
+                }
+                .cont-mayor-selector-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .cont-mayor-cuenta-select {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.85rem;
+                    padding: 7px 12px;
+                    outline: none;
+                    min-width: 320px;
+                    transition: border-color 200ms ease;
+                }
+                .cont-mayor-cuenta-select:focus { border-color: #4A90D9; }
+                .cont-mayor-cuenta-select option { background: #111; color: #E8E8E8; }
+                .cont-mayor-periodo {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-left: auto;
+                }
+                .cont-mayor-periodo input[type="month"] {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.8rem;
+                    padding: 6px 10px;
+                    outline: none;
+                }
+                .cont-mayor-periodo input[type="month"]:focus { border-color: #4A90D9; }
+
+                .cont-mayor-header {
+                    padding: 16px 20px;
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    margin-bottom: 16px;
+                }
+                .cont-mayor-header-code {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 1.1rem;
+                    font-weight: 700;
+                    color: #00A9C1;
+                }
+                .cont-mayor-header-name {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1.1rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    margin-left: 8px;
+                }
+                .cont-mayor-header-meta {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-top: 8px;
+                    flex-wrap: wrap;
+                }
+
+                .cont-mayor-saldo-anterior {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 16px;
+                    background: rgba(255,255,255,0.02);
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    margin-bottom: 8px;
+                }
+                .cont-mayor-saldo-anterior-label {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.85rem;
+                    color: #888;
+                }
+                .cont-mayor-saldo-anterior-value {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.9rem;
+                    font-weight: 700;
+                }
+
+                .cont-mayor-table-wrapper { overflow-x: auto; }
+                .cont-mayor-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.85rem;
+                }
+                .cont-mayor-table th {
+                    padding: 8px 12px;
+                    text-align: left;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border-bottom: 1px solid #2a2a2a;
+                    white-space: nowrap;
+                }
+                .cont-mayor-table th.right { text-align: right; }
+                .cont-mayor-table td {
+                    padding: 7px 12px;
+                    color: #E8E8E8;
+                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                    white-space: nowrap;
+                }
+                .cont-mayor-table td.right {
+                    text-align: right;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.8rem;
+                }
+                .cont-mayor-table tr:nth-child(odd) { background: #0d0d0d; }
+                .cont-mayor-table tr:nth-child(even) { background: #111111; }
+                .cont-mayor-table tr:hover { background: rgba(74,144,217,0.04); }
+                .cont-mayor-debe { color: #4CAF50; }
+                .cont-mayor-haber { color: #E84855; }
+                .cont-mayor-saldo-neg { color: #E84855; }
+                .cont-mayor-asiento-link {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #00A9C1;
+                    cursor: pointer;
+                    transition: opacity 200ms ease;
+                }
+                .cont-mayor-asiento-link:hover { text-decoration: underline; opacity: 0.8; }
+                .cont-mayor-fecha {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #888;
+                }
+                .cont-mayor-concepto {
+                    max-width: 350px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .cont-mayor-total-row td {
+                    border-top: 2px solid #2a2a2a;
+                    border-bottom: none;
+                    font-weight: 700;
+                    padding-top: 10px;
+                }
+
+                .cont-mayor-summary {
+                    display: flex;
+                    align-items: center;
+                    gap: 32px;
+                    margin-top: 16px;
+                    padding: 14px 20px;
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                }
+                .cont-mayor-summary-item {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 8px;
+                }
+                .cont-mayor-summary-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .cont-mayor-summary-value {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.85rem;
+                    color: #E8E8E8;
+                    font-weight: 700;
+                }
+                .cont-mayor-saldo-final {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 1.1rem;
+                    font-weight: 700;
+                    margin-left: auto;
+                }
             </style>
 
             <div class="cont-wrapper">
@@ -1007,6 +1211,12 @@ const ContabilidadModule = {
                 container.innerHTML = this._buildDiarioHTML();
                 await this._loadAsientos();
                 this._attachDiarioEvents();
+                break;
+            case 'libro_mayor':
+                container.innerHTML = this._buildMayorHTML();
+                await this._loadMayorCuentasLista();
+                this._attachMayorEvents();
+                if (this._mayorCuentaId) await this._loadLibroMayor();
                 break;
             default:
                 container.innerHTML = this._buildPlaceholder();
@@ -2108,6 +2318,360 @@ const ContabilidadModule = {
             if (tipo) tipo.value = 'todos';
             if (search) search.value = '';
             this._loadAsientos();
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: LIBRO MAYOR
+    // ═══════════════════════════════════════════
+
+    _getMayorPeriodoDefault() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        return `${y}-${m}`;
+    },
+
+    _getMayorDesdeHasta() {
+        const periodo = this._mayorDesde || this._getMayorPeriodoDefault();
+        const [y, m] = periodo.split('-').map(Number);
+        const desde = `${y}-${String(m).padStart(2, '0')}-01`;
+        const lastDay = new Date(y, m, 0).getDate();
+        const hasta = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        return { desde, hasta, periodoLabel: new Date(y, m - 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }) };
+    },
+
+    _buildMayorHTML() {
+        const periodo = this._mayorDesde || this._getMayorPeriodoDefault();
+        return `
+            <div class="cont-mayor-selector">
+                <span class="cont-mayor-selector-label">Cuenta</span>
+                <select class="cont-mayor-cuenta-select" id="contMayorCuenta">
+                    <option value="">Seleccion\u00e1 una cuenta...</option>
+                </select>
+                <div class="cont-mayor-periodo">
+                    <span class="cont-mayor-selector-label">Per\u00edodo</span>
+                    <input type="month" id="contMayorPeriodo" value="${periodo}">
+                </div>
+            </div>
+            <div id="contMayorContent">
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u{1F4CB}</div>
+                    <div class="cont-empty-text">Seleccion\u00e1 una cuenta para ver su libro mayor.</div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _loadMayorCuentasLista() {
+        try {
+            const { data } = await supabaseClient
+                .from('plan_cuentas')
+                .select('id, codigo, nombre, tipo, naturaleza')
+                .eq('_deleted', false)
+                .eq('es_grupo', false)
+                .eq('activa', true)
+                .order('codigo');
+            this._mayorCuentasLista = data || [];
+        } catch (e) {
+            console.error('[Contabilidad] Error loading cuentas lista:', e);
+            this._mayorCuentasLista = [];
+        }
+
+        // Populate select
+        const select = document.getElementById('contMayorCuenta');
+        if (!select) return;
+
+        const optionsHtml = this._mayorCuentasLista.map(c =>
+            `<option value="${c.id}" ${this._mayorCuentaId === c.id ? 'selected' : ''}>${c.codigo} \u2014 ${c.nombre}</option>`
+        ).join('');
+        select.innerHTML = `<option value="">Seleccion\u00e1 una cuenta...</option>${optionsHtml}`;
+    },
+
+    async _loadLibroMayor() {
+        const container = document.getElementById('contMayorContent');
+        if (!container) return;
+
+        if (!this._mayorCuentaId) {
+            container.innerHTML = `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u{1F4CB}</div>
+                    <div class="cont-empty-text">Seleccion\u00e1 una cuenta para ver su libro mayor.</div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:#555"><div class="spinner"></div> Cargando libro mayor\u2026</div>';
+
+        try {
+            // 1. Load cuenta data
+            const cuenta = this._mayorCuentasLista.find(c => c.id === this._mayorCuentaId);
+            if (!cuenta) {
+                container.innerHTML = '<div class="cont-empty"><div class="cont-empty-text">Cuenta no encontrada.</div></div>';
+                return;
+            }
+            this._mayorCuenta = cuenta;
+
+            const { desde, hasta, periodoLabel } = this._getMayorDesdeHasta();
+            const canal = this._getCanalFilter();
+            const esDeudora = cuenta.naturaleza === 'deudora';
+
+            // 2. Fetch ALL asiento_lineas for this cuenta
+            const { data: allLineas } = await supabaseClient
+                .from('asiento_lineas')
+                .select('asiento_id, debe, haber, monto, tipo_movimiento, orden')
+                .eq('cuenta_id', this._mayorCuentaId);
+
+            if (!allLineas || allLineas.length === 0) {
+                this._mayorMovimientos = [];
+                this._mayorSaldoAnterior = 0;
+                this._renderMayorContent(cuenta, periodoLabel);
+                return;
+            }
+
+            // 3. Fetch all related asientos
+            const asientoIds = [...new Set(allLineas.map(l => l.asiento_id))];
+            let asientosQuery = supabaseClient
+                .from('asientos')
+                .select('id, numero, fecha, descripcion, concepto, tipo, origen_tipo, origen_id, canal')
+                .eq('_deleted', false)
+                .in('id', asientoIds);
+
+            if (canal) asientosQuery = asientosQuery.eq('canal', canal);
+
+            const { data: asientos } = await asientosQuery;
+            const asientosMap = {};
+            (asientos || []).forEach(a => { asientosMap[a.id] = a; });
+
+            // 4. Build joined list, split by period
+            const movimientosAntes = [];
+            const movimientosPeriodo = [];
+
+            for (const linea of allLineas) {
+                const asiento = asientosMap[linea.asiento_id];
+                if (!asiento) continue; // filtered out by canal or deleted
+
+                // Normalize debe/haber
+                let debe = parseFloat(linea.debe) || 0;
+                let haber = parseFloat(linea.haber) || 0;
+                if (debe === 0 && haber === 0 && linea.monto) {
+                    const monto = parseFloat(linea.monto) || 0;
+                    if (linea.tipo_movimiento === 'debe') debe = monto;
+                    else if (linea.tipo_movimiento === 'haber') haber = monto;
+                }
+
+                const entry = { ...linea, debe, haber, _asiento: asiento };
+
+                if (asiento.fecha < desde) {
+                    movimientosAntes.push(entry);
+                } else if (asiento.fecha >= desde && asiento.fecha <= hasta) {
+                    movimientosPeriodo.push(entry);
+                }
+                // after period: ignore
+            }
+
+            // 5. Calculate saldo anterior
+            this._mayorSaldoAnterior = 0;
+            for (const mov of movimientosAntes) {
+                if (esDeudora) {
+                    this._mayorSaldoAnterior += mov.debe - mov.haber;
+                } else {
+                    this._mayorSaldoAnterior += mov.haber - mov.debe;
+                }
+            }
+
+            // 6. Sort periodo by fecha asc, numero asc
+            movimientosPeriodo.sort((a, b) => {
+                const fA = a._asiento.fecha || '';
+                const fB = b._asiento.fecha || '';
+                if (fA !== fB) return fA.localeCompare(fB);
+                return (a._asiento.numero || 0) - (b._asiento.numero || 0);
+            });
+
+            this._mayorMovimientos = movimientosPeriodo;
+            this._renderMayorContent(cuenta, periodoLabel);
+        } catch (e) {
+            console.error('[Contabilidad] Error loading libro mayor:', e);
+            container.innerHTML = `<div class="cont-empty"><div class="cont-empty-text">Error al cargar: ${e.message}</div></div>`;
+        }
+    },
+
+    _renderMayorContent(cuenta, periodoLabel) {
+        const container = document.getElementById('contMayorContent');
+        if (!container) return;
+
+        const esDeudora = cuenta.naturaleza === 'deudora';
+        const tipoLabels = { activo: 'Activo', pasivo: 'Pasivo', patrimonio_neto: 'Patrimonio Neto', resultado_positivo: 'Resultado +', resultado_negativo: 'Resultado -', orden: 'Orden' };
+        const natLabels = { deudora: 'Deudora', acreedora: 'Acreedora' };
+
+        const { desde } = this._getMayorDesdeHasta();
+        const fechaAnterior = new Date(desde + 'T12:00:00');
+        fechaAnterior.setDate(fechaAnterior.getDate() - 1);
+        const fechaAntLabel = fechaAnterior.toLocaleDateString('es-AR');
+
+        // Header
+        let html = `
+            <div class="cont-mayor-header">
+                <div>
+                    <span class="cont-mayor-header-code">${cuenta.codigo}</span>
+                    <span class="cont-mayor-header-name">${cuenta.nombre}</span>
+                </div>
+                <div class="cont-mayor-header-meta">
+                    <span class="cont-badge cont-badge-${cuenta.naturaleza || 'deudora'}">${natLabels[cuenta.naturaleza] || cuenta.naturaleza}</span>
+                    <span class="cont-badge cont-badge-${cuenta.tipo?.split('_')[0] || 'activo'}">${tipoLabels[cuenta.tipo] || cuenta.tipo}</span>
+                    <span style="color:#666;font-size:0.82rem;">Per\u00edodo: ${periodoLabel}</span>
+                </div>
+            </div>
+        `;
+
+        // Saldo anterior
+        const saldoAntColor = this._mayorSaldoAnterior < 0 ? 'cont-mayor-saldo-neg' : '';
+        html += `
+            <div class="cont-mayor-saldo-anterior">
+                <span class="cont-mayor-saldo-anterior-label">Saldo anterior (${fechaAntLabel}):</span>
+                <span class="cont-mayor-saldo-anterior-value ${saldoAntColor}">${this._formatMoney(this._mayorSaldoAnterior)}</span>
+            </div>
+        `;
+
+        if (this._mayorMovimientos.length === 0) {
+            html += `
+                <div class="cont-empty">
+                    <div class="cont-empty-text">No hay movimientos para esta cuenta en el per\u00edodo seleccionado.</div>
+                </div>
+            `;
+            container.innerHTML = html;
+            return;
+        }
+
+        // Table
+        let totalDebe = 0;
+        let totalHaber = 0;
+        let saldoRunning = this._mayorSaldoAnterior;
+
+        let rowsHtml = '';
+        for (const mov of this._mayorMovimientos) {
+            const asiento = mov._asiento;
+            const fecha = asiento.fecha
+                ? new Date(asiento.fecha + 'T12:00:00').toLocaleDateString('es-AR')
+                : '\u2014';
+            const concepto = asiento.descripcion || asiento.concepto || '\u2014';
+            const conceptoTrunc = concepto.length > 60 ? concepto.substring(0, 60) + '\u2026' : concepto;
+
+            totalDebe += mov.debe;
+            totalHaber += mov.haber;
+
+            if (esDeudora) {
+                saldoRunning += mov.debe - mov.haber;
+            } else {
+                saldoRunning += mov.haber - mov.debe;
+            }
+
+            const saldoColor = saldoRunning < 0 ? ' cont-mayor-saldo-neg' : '';
+
+            rowsHtml += `
+                <tr>
+                    <td class="cont-mayor-fecha">${fecha}</td>
+                    <td><span class="cont-mayor-asiento-link" data-goto-asiento="${asiento.id}">#${asiento.numero || '\u2014'}</span></td>
+                    <td class="cont-mayor-concepto" title="${concepto}">${conceptoTrunc}</td>
+                    <td class="right${mov.debe > 0 ? ' cont-mayor-debe' : ''}">${mov.debe > 0 ? this._formatMoney(mov.debe) : ''}</td>
+                    <td class="right${mov.haber > 0 ? ' cont-mayor-haber' : ''}">${mov.haber > 0 ? this._formatMoney(mov.haber) : ''}</td>
+                    <td class="right${saldoColor}">${this._formatMoney(saldoRunning)}</td>
+                </tr>
+            `;
+        }
+
+        // Saldo final = saldoRunning
+        const saldoFinal = saldoRunning;
+        const saldoFinalColor = saldoFinal < 0 ? ' cont-mayor-saldo-neg' : '';
+
+        html += `
+            <div class="cont-mayor-table-wrapper">
+                <table class="cont-mayor-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Asiento</th>
+                            <th>Concepto</th>
+                            <th class="right">Debe</th>
+                            <th class="right">Haber</th>
+                            <th class="right">Saldo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                        <tr class="cont-mayor-total-row">
+                            <td colspan="3" style="text-align:right;color:#888;">Saldo final:</td>
+                            <td class="right cont-mayor-debe" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${totalDebe > 0 ? this._formatMoney(totalDebe) : ''}</td>
+                            <td class="right cont-mayor-haber" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${totalHaber > 0 ? this._formatMoney(totalHaber) : ''}</td>
+                            <td class="right${saldoFinalColor}" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${this._formatMoney(saldoFinal)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // Summary
+        html += `
+            <div class="cont-mayor-summary">
+                <div class="cont-mayor-summary-item">
+                    <span class="cont-mayor-summary-label">Total Debe</span>
+                    <span class="cont-mayor-summary-value cont-mayor-debe">${this._formatMoney(totalDebe)}</span>
+                </div>
+                <div class="cont-mayor-summary-item">
+                    <span class="cont-mayor-summary-label">Total Haber</span>
+                    <span class="cont-mayor-summary-value cont-mayor-haber">${this._formatMoney(totalHaber)}</span>
+                </div>
+                <div class="cont-mayor-summary-item cont-mayor-saldo-final${saldoFinalColor}" style="margin-left:auto">
+                    <span class="cont-mayor-summary-label">Saldo Final</span>
+                    <span class="cont-mayor-saldo-final${saldoFinalColor}">${this._formatMoney(saldoFinal)}</span>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
+
+        // Attach asiento links
+        container.querySelectorAll('[data-goto-asiento]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const asientoId = link.dataset.gotoAsiento;
+                this._activeTab = 'libro_diario';
+                this._diarioExpandedId = asientoId;
+                // Update tab UI
+                document.querySelectorAll('.cont-tab').forEach(b => b.classList.remove('active'));
+                const diarioTab = document.querySelector('.cont-tab[data-tab="libro_diario"]');
+                if (diarioTab) diarioTab.classList.add('active');
+                this._renderTabContent();
+            });
+        });
+    },
+
+    _attachMayorEvents() {
+        // Cuenta selector
+        document.getElementById('contMayorCuenta')?.addEventListener('change', (e) => {
+            this._mayorCuentaId = e.target.value || null;
+            this._mayorMovimientos = [];
+            this._mayorSaldoAnterior = 0;
+            if (this._mayorCuentaId) {
+                this._loadLibroMayor();
+            } else {
+                const container = document.getElementById('contMayorContent');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="cont-empty">
+                            <div class="cont-empty-icon">\u{1F4CB}</div>
+                            <div class="cont-empty-text">Seleccion\u00e1 una cuenta para ver su libro mayor.</div>
+                        </div>
+                    `;
+                }
+            }
+        });
+
+        // Periodo selector
+        document.getElementById('contMayorPeriodo')?.addEventListener('change', (e) => {
+            this._mayorDesde = e.target.value;
+            if (this._mayorCuentaId) this._loadLibroMayor();
         });
     },
 
