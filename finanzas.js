@@ -100,6 +100,16 @@ const FinanzasModule = {
     _calPlantillas: [],
     _calVencimientos: [],
 
+    // Panel (dashboard)
+    _charts: {},
+    _panelKPIs: {},
+
+    // Reportes
+    _repSubtab: 'estado', // 'estado' | 'proyecto' | 'cliente' | 'cashflow' | 'iva'
+    _repPeriodo: 'mes', // 'mes' | 'trimestre' | 'anio' | 'custom'
+    _repDesde: '',
+    _repHasta: '',
+
     // Lookup maps (graceful degradation)
     _proyectosMap: {},
     _clientesMap: {},
@@ -1282,6 +1292,174 @@ const FinanzasModule = {
                     background: rgba(74,144,217,0.1);
                     color: #4A90D9;
                 }
+
+                /* ─── Dashboard KPIs ─── */
+                .fin-kpis {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 12px;
+                    margin-bottom: 20px;
+                }
+                .fin-kpi-card {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 16px 18px;
+                    border-left: 3px solid #4A90D9;
+                }
+                .fin-kpi-label {
+                    font-size: 0.72rem;
+                    color: #888;
+                    text-transform: uppercase;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    letter-spacing: 0.3px;
+                    margin-bottom: 6px;
+                }
+                .fin-kpi-value {
+                    font-size: 1.35rem;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-weight: 700;
+                    color: #E8E8E8;
+                }
+                .fin-kpi-delta {
+                    font-size: 0.7rem;
+                    margin-top: 4px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                }
+                .fin-kpi-delta.up { color: #00CC88; }
+                .fin-kpi-delta.down { color: #E84855; }
+                .fin-kpi-delta.neutral { color: #555; }
+
+                /* ─── Dashboard Charts ─── */
+                .fin-charts-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 16px;
+                    margin-bottom: 20px;
+                }
+                .fin-chart-card {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 16px;
+                }
+                .fin-chart-title {
+                    font-size: 0.82rem;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    text-transform: uppercase;
+                    letter-spacing: 0.3px;
+                    margin-bottom: 12px;
+                }
+                .fin-chart-wrap { position: relative; height: 260px; }
+                .fin-chart-wrap-sm { position: relative; height: 200px; }
+
+                /* ─── Mini calendario widget ─── */
+                .fin-mini-cal-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 7px 10px;
+                    border-bottom: 1px solid #1a1a1a;
+                    font-size: 0.82rem;
+                }
+                .fin-mini-cal-item:last-child { border-bottom: none; }
+                .fin-mini-cal-date {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    color: #888;
+                    min-width: 50px;
+                }
+                .fin-mini-cal-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    flex-shrink: 0;
+                }
+                .fin-mini-cal-label {
+                    flex: 1;
+                    color: #E8E8E8;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+                .fin-mini-cal-amount {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #E8E8E8;
+                    flex-shrink: 0;
+                }
+
+                /* ─── Reportes ─── */
+                .fin-report {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 20px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.82rem;
+                }
+                .fin-report-section {
+                    margin-bottom: 16px;
+                }
+                .fin-report-section-title {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-weight: 700;
+                    color: #4A90D9;
+                    font-size: 0.85rem;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    padding-bottom: 6px;
+                    border-bottom: 1px solid #2a2a2a;
+                    margin-bottom: 8px;
+                }
+                .fin-report-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 4px 8px;
+                    color: #aaa;
+                }
+                .fin-report-row:hover { background: rgba(255,255,255,0.02); }
+                .fin-report-row-total {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 8px;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    border-top: 1px solid #2a2a2a;
+                    margin-top: 4px;
+                }
+                .fin-report-grand-total {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 12px 8px;
+                    font-weight: 700;
+                    font-size: 1rem;
+                    border-top: 2px solid #4A90D9;
+                    margin-top: 8px;
+                }
+                .fin-report-grand-total.positive { color: #00CC88; }
+                .fin-report-grand-total.negative { color: #E84855; }
+                .fin-report-toolbar {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 16px;
+                    flex-wrap: wrap;
+                }
+                .fin-export-btn {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    padding: 5px 14px;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    background: transparent;
+                    color: #888;
+                    cursor: pointer;
+                    transition: all 200ms;
+                    margin-left: auto;
+                }
+                .fin-export-btn:hover { border-color: #4A90D9; color: #4A90D9; }
             </style>
 
             <div class="fin-wrapper">
@@ -1334,7 +1512,23 @@ const FinanzasModule = {
 
         this._closePanel();
 
+        // Destroy charts when switching tabs
+        this._destroyCharts();
+
         switch (this._activeTab) {
+            case 'panel':
+                container.innerHTML = this._buildPanelHTML();
+                await this._loadLookups();
+                await this._loadPanelData();
+                this._renderPanelCharts();
+                this._attachPanelEvents();
+                break;
+            case 'reportes':
+                container.innerHTML = this._buildReportesHTML();
+                await this._loadLookups();
+                await this._loadReporteData();
+                this._attachReportesEvents();
+                break;
             case 'cuentas':
                 if (this._cuentaDetailId) {
                     container.innerHTML = '<div id="finCuentaDetail"><div class="fin-loading"><div class="spinner"></div> Cargando movimientos…</div></div>';
@@ -4088,6 +4282,843 @@ const FinanzasModule = {
             this._renderIngresosTable();
         });
     },
+
+    // ═══════════════════════════════════════════
+    //  CHART.JS HELPERS
+    // ═══════════════════════════════════════════
+
+    _destroyCharts() {
+        Object.values(this._charts).forEach(c => { try { c.destroy(); } catch (_) {} });
+        this._charts = {};
+    },
+
+    _chartColors: {
+        green: '#00CC88', red: '#E84855', blue: '#4A90D9',
+        orange: '#F28D15', purple: '#9B7DFF', teal: '#00A9C1', gray: '#888',
+    },
+
+    _chartDefaults() {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#E8E8E8', font: { family: 'Outfit', size: 11 } } },
+            },
+            scales: {
+                x: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: '#1a1a1a' } },
+                y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: '#1a1a1a' } },
+            },
+        };
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: PANEL — HTML
+    // ═══════════════════════════════════════════
+
+    _buildPanelHTML() {
+        return `
+            <div id="finPanelKPIs" class="fin-kpis"></div>
+            <div class="fin-charts-grid">
+                <div class="fin-chart-card" style="grid-column: span 2;">
+                    <div class="fin-chart-title">Cashflow mensual (12 meses)</div>
+                    <div class="fin-chart-wrap"><canvas id="finChartCashflow"></canvas></div>
+                </div>
+                <div class="fin-chart-card">
+                    <div class="fin-chart-title">Composición ingresos</div>
+                    <div class="fin-chart-wrap-sm"><canvas id="finChartDonut"></canvas></div>
+                </div>
+                <div class="fin-chart-card">
+                    <div class="fin-chart-title">Aging de cobranza</div>
+                    <div class="fin-chart-wrap-sm"><canvas id="finChartAging"></canvas></div>
+                </div>
+            </div>
+            <div class="fin-chart-card">
+                <div class="fin-chart-title">Próximos 7 días</div>
+                <div id="finMiniCal"></div>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: PANEL — DATA
+    // ═══════════════════════════════════════════
+
+    async _loadPanelData() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth() + 1;
+        const mesDesde = `${y}-${String(m).padStart(2, '0')}-01`;
+        const mesHasta = `${y}-${String(m).padStart(2, '0')}-${new Date(y, m, 0).getDate()}`;
+        const prevM = m === 1 ? 12 : m - 1;
+        const prevY = m === 1 ? y - 1 : y;
+        const prevDesde = `${prevY}-${String(prevM).padStart(2, '0')}-01`;
+        const prevHasta = `${prevY}-${String(prevM).padStart(2, '0')}-${new Date(prevY, prevM, 0).getDate()}`;
+
+        const canal = this._getCanalFilter();
+        const kpi = { facturado: 0, cobrado: 0, pagado: 0, saldo: 0, porCobrar: 0, porPagar: 0, prevCobrado: 0, prevPagado: 0 };
+
+        // Facturado del mes (comprobantes emitidas)
+        try {
+            let q = supabaseClient.from('comprobantes').select('total').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', mesDesde).lte('fecha', mesHasta);
+            const { data } = await q;
+            kpi.facturado = (data || []).reduce((s, r) => s + (Number(r.total) || 0), 0);
+        } catch (_) {}
+
+        // Cobrado del mes
+        try {
+            let q = supabaseClient.from('ingresos').select('monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', mesDesde).lte('fecha', mesHasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            kpi.cobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        } catch (_) {}
+
+        // Cobrado mes anterior
+        try {
+            let q = supabaseClient.from('ingresos').select('monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', prevDesde).lte('fecha', prevHasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            kpi.prevCobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        } catch (_) {}
+
+        // Pagado del mes
+        try {
+            let q = supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', mesDesde).lte('fecha', mesHasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            kpi.pagado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        } catch (_) {}
+
+        // Pagado mes anterior
+        try {
+            let q = supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', prevDesde).lte('fecha', prevHasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            kpi.prevPagado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        } catch (_) {}
+
+        // Saldo disponible (cuentas activas)
+        try {
+            // Simple: sum saldo_inicial + sum ingresos - sum egresos for each active account
+            const cuentasActivas = this._cuentas.length > 0 ? this._cuentas.filter(c => c.activa) : [];
+            let totalSaldo = 0;
+            for (const cuenta of cuentasActivas) {
+                let saldo = Number(cuenta.saldo_inicial) || 0;
+                try {
+                    const { data: ing } = await supabaseClient.from('ingresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'confirmado');
+                    saldo += (ing || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+                } catch (_) {}
+                try {
+                    const { data: egr } = await supabaseClient.from('egresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'pagado');
+                    saldo -= (egr || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+                } catch (_) {}
+                totalSaldo += saldo;
+            }
+            kpi.saldo = totalSaldo;
+        } catch (_) {}
+
+        // Por cobrar (plan_cobro_items pendientes)
+        try {
+            const { data } = await supabaseClient.from('plan_cobro_items').select('monto, monto_cobrado').eq('_deleted', false).in('estado', ['pendiente', 'parcial', 'vencido']);
+            kpi.porCobrar = (data || []).reduce((s, r) => s + ((Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0)), 0);
+        } catch (_) {}
+
+        // Por pagar (vencimientos pendientes próx 30 días)
+        try {
+            const in30 = new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+            const today = now.toISOString().slice(0, 10);
+            const { data } = await supabaseClient.from('vencimientos_generados').select('monto_estimado').eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', today).lte('fecha_vencimiento', in30);
+            kpi.porPagar = (data || []).reduce((s, r) => s + (Number(r.monto_estimado) || 0), 0);
+        } catch (_) {}
+
+        this._panelKPIs = kpi;
+        this._renderKPIs();
+        await this._loadMiniCal();
+    },
+
+    _renderKPIs() {
+        const container = document.getElementById('finPanelKPIs');
+        if (!container) return;
+        const k = this._panelKPIs;
+
+        const delta = (curr, prev) => {
+            if (!prev) return { text: '', cls: 'neutral' };
+            const pct = Math.round(((curr - prev) / (prev || 1)) * 100);
+            if (pct > 0) return { text: `+${pct}% vs anterior`, cls: 'up' };
+            if (pct < 0) return { text: `${pct}% vs anterior`, cls: 'down' };
+            return { text: '= vs anterior', cls: 'neutral' };
+        };
+
+        const cobDelta = delta(k.cobrado, k.prevCobrado);
+        const pagDelta = delta(k.pagado, k.prevPagado);
+
+        const cards = [
+            { label: 'Facturado del mes', value: k.facturado, color: '#00A9C1', delta: null },
+            { label: 'Cobrado del mes', value: k.cobrado, color: '#00CC88', delta: cobDelta },
+            { label: 'Pagado del mes', value: k.pagado, color: '#E84855', delta: pagDelta },
+            { label: 'Saldo disponible', value: k.saldo, color: '#4A90D9', delta: null },
+            { label: 'Por cobrar', value: k.porCobrar, color: '#F28D15', delta: null },
+            { label: 'Por pagar (30d)', value: k.porPagar, color: '#9B7DFF', delta: null },
+        ];
+
+        container.innerHTML = cards.map(c => `
+            <div class="fin-kpi-card" style="border-left-color:${c.color};">
+                <div class="fin-kpi-label">${c.label}</div>
+                <div class="fin-kpi-value" style="color:${c.color};">${this._formatMoney(c.value)}</div>
+                ${c.delta ? `<div class="fin-kpi-delta ${c.delta.cls}">${c.delta.text}</div>` : ''}
+            </div>
+        `).join('');
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: PANEL — CHARTS
+    // ═══════════════════════════════════════════
+
+    async _renderPanelCharts() {
+        if (typeof Chart === 'undefined') return;
+
+        await this._renderCashflowChart();
+        await this._renderDonutChart();
+        await this._renderAgingChart();
+    },
+
+    async _renderCashflowChart() {
+        const canvas = document.getElementById('finChartCashflow');
+        if (!canvas) return;
+
+        const canal = this._getCanalFilter();
+        const now = new Date();
+        const labels = [];
+        const ingData = [];
+        const egrData = [];
+        const netData = [];
+        const mNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const desde = `${y}-${String(m).padStart(2, '0')}-01`;
+            const hasta = `${y}-${String(m).padStart(2, '0')}-${new Date(y, m, 0).getDate()}`;
+            labels.push(`${mNames[m - 1]} ${String(y).slice(2)}`);
+
+            let ingSum = 0, egrSum = 0;
+            try {
+                let q = supabaseClient.from('ingresos').select('monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
+                if (canal) q = q.eq('canal', canal);
+                const { data } = await q;
+                ingSum = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            } catch (_) {}
+            try {
+                let q = supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
+                if (canal) q = q.eq('canal', canal);
+                const { data } = await q;
+                egrSum = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            } catch (_) {}
+
+            ingData.push(ingSum);
+            egrData.push(egrSum);
+            netData.push(ingSum - egrSum);
+        }
+
+        this._charts.cashflow = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Ingresos', data: ingData, backgroundColor: 'rgba(0,204,136,0.6)', borderColor: '#00CC88', borderWidth: 1, order: 2 },
+                    { label: 'Egresos', data: egrData, backgroundColor: 'rgba(232,72,85,0.6)', borderColor: '#E84855', borderWidth: 1, order: 2 },
+                    { label: 'Neto', data: netData, type: 'line', borderColor: '#4A90D9', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#4A90D9', order: 1 },
+                ],
+            },
+            options: {
+                ...this._chartDefaults(),
+                plugins: { legend: { labels: { color: '#E8E8E8', font: { family: 'Outfit', size: 11 } } } },
+            },
+        });
+    },
+
+    async _renderDonutChart() {
+        const canvas = document.getElementById('finChartDonut');
+        if (!canvas) return;
+
+        // Group ingresos by broad category
+        const cats = { 'Stands': 0, 'Alquileres': 0, 'Expo': 0, 'Adicionales': 0, 'Otros': 0 };
+        try {
+            const { data } = await supabaseClient.from('ingresos').select('concepto, monto').eq('_deleted', false).eq('estado', 'confirmado');
+            (data || []).forEach(r => {
+                const c = (r.concepto || '').toLowerCase();
+                if (c.includes('stand') || c.includes('montaje')) cats['Stands'] += Number(r.monto) || 0;
+                else if (c.includes('alquiler') || c.includes('equip')) cats['Alquileres'] += Number(r.monto) || 0;
+                else if (c.includes('expo') || c.includes('feria')) cats['Expo'] += Number(r.monto) || 0;
+                else if (c.includes('adic') || c.includes('extra')) cats['Adicionales'] += Number(r.monto) || 0;
+                else cats['Otros'] += Number(r.monto) || 0;
+            });
+        } catch (_) {}
+
+        const entries = Object.entries(cats).filter(([, v]) => v > 0);
+        if (entries.length === 0) entries.push(['Sin datos', 1]);
+
+        const colors = ['#00A9C1', '#F28D15', '#00CC88', '#9B7DFF', '#888'];
+
+        this._charts.donut = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: entries.map(([k]) => k),
+                datasets: [{
+                    data: entries.map(([, v]) => v),
+                    backgroundColor: colors.slice(0, entries.length),
+                    borderColor: '#111111',
+                    borderWidth: 2,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#E8E8E8', font: { family: 'Outfit', size: 11 }, padding: 12 } },
+                },
+            },
+        });
+    },
+
+    async _renderAgingChart() {
+        const canvas = document.getElementById('finChartAging');
+        if (!canvas) return;
+
+        const now = new Date();
+        const buckets = { '0-30 días': 0, '31-60 días': 0, '60+ días': 0 };
+
+        try {
+            const { data } = await supabaseClient.from('plan_cobro_items').select('monto, monto_cobrado, fecha_estimada').eq('_deleted', false).in('estado', ['pendiente', 'parcial', 'vencido']);
+            (data || []).forEach(item => {
+                if (!item.fecha_estimada) return;
+                const diff = Math.floor((now - new Date(item.fecha_estimada)) / 86400000);
+                const pending = (Number(item.monto) || 0) - (Number(item.monto_cobrado) || 0);
+                if (diff <= 30) buckets['0-30 días'] += pending;
+                else if (diff <= 60) buckets['31-60 días'] += pending;
+                else buckets['60+ días'] += pending;
+            });
+        } catch (_) {}
+
+        this._charts.aging = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(buckets),
+                datasets: [{
+                    data: Object.values(buckets),
+                    backgroundColor: ['rgba(0,204,136,0.6)', 'rgba(242,141,21,0.6)', 'rgba(232,72,85,0.6)'],
+                    borderColor: ['#00CC88', '#F28D15', '#E84855'],
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                ...this._chartDefaults(),
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+            },
+        });
+    },
+
+    async _loadMiniCal() {
+        const container = document.getElementById('finMiniCal');
+        if (!container) return;
+
+        const today = new Date();
+        const todayStr = today.toISOString().slice(0, 10);
+        const in7 = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+        const events = [];
+
+        try {
+            const { data } = await supabaseClient.from('vencimientos_generados').select('concepto, monto_estimado, fecha_vencimiento').eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', todayStr).lte('fecha_vencimiento', in7);
+            (data || []).forEach(v => events.push({ date: v.fecha_vencimiento, label: v.concepto, amount: v.monto_estimado, color: '#F28D15' }));
+        } catch (_) {}
+
+        try {
+            const { data } = await supabaseClient.from('plan_cobro_items').select('concepto, monto, fecha_estimada').eq('_deleted', false).neq('estado', 'cobrado').gte('fecha_estimada', todayStr).lte('fecha_estimada', in7);
+            (data || []).forEach(i => events.push({ date: i.fecha_estimada, label: i.concepto, amount: i.monto, color: '#00CC88' }));
+        } catch (_) {}
+
+        try {
+            const { data } = await supabaseClient.from('egresos').select('concepto, monto, fecha_programada').eq('_deleted', false).eq('estado', 'programado').gte('fecha_programada', todayStr).lte('fecha_programada', in7);
+            (data || []).forEach(e => events.push({ date: e.fecha_programada, label: e.concepto, amount: e.monto, color: '#E84855' }));
+        } catch (_) {}
+
+        events.sort((a, b) => a.date.localeCompare(b.date));
+
+        if (events.length === 0) {
+            container.innerHTML = '<div style="color:#555;font-size:0.82rem;padding:12px;">Sin eventos en los próximos 7 días</div>';
+            return;
+        }
+
+        container.innerHTML = events.map(ev => `
+            <div class="fin-mini-cal-item">
+                <span class="fin-mini-cal-date">${this._formatDate(ev.date)}</span>
+                <span class="fin-mini-cal-dot" style="background:${ev.color};"></span>
+                <span class="fin-mini-cal-label">${ev.label}</span>
+                ${ev.amount ? `<span class="fin-mini-cal-amount">${this._formatMoney(ev.amount)}</span>` : ''}
+            </div>
+        `).join('');
+    },
+
+    _attachPanelEvents() {
+        // Panel is read-only, no specific events needed
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: REPORTES — HTML
+    // ═══════════════════════════════════════════
+
+    _buildReportesHTML() {
+        return `
+            <div class="fin-subtabs">
+                <button class="fin-subtab ${this._repSubtab === 'estado' ? 'active' : ''}" data-reptab="estado">Estado de resultados</button>
+                <button class="fin-subtab ${this._repSubtab === 'proyecto' ? 'active' : ''}" data-reptab="proyecto">Rent. Proyecto</button>
+                <button class="fin-subtab ${this._repSubtab === 'cliente' ? 'active' : ''}" data-reptab="cliente">Rent. Cliente</button>
+                <button class="fin-subtab ${this._repSubtab === 'cashflow' ? 'active' : ''}" data-reptab="cashflow">Cashflow Proy.</button>
+                <button class="fin-subtab ${this._repSubtab === 'iva' ? 'active' : ''}" data-reptab="iva">IVA</button>
+            </div>
+            <div class="fin-report-toolbar">
+                <span class="fin-filter-label">Período</span>
+                <select class="fin-filter-select" id="finRepPeriodo">
+                    <option value="mes" ${this._repPeriodo === 'mes' ? 'selected' : ''}>Este mes</option>
+                    <option value="trimestre" ${this._repPeriodo === 'trimestre' ? 'selected' : ''}>Este trimestre</option>
+                    <option value="anio" ${this._repPeriodo === 'anio' ? 'selected' : ''}>Este año</option>
+                    <option value="custom" ${this._repPeriodo === 'custom' ? 'selected' : ''}>Personalizado</option>
+                </select>
+                <span id="finRepCustomDates" style="display:${this._repPeriodo === 'custom' ? 'flex' : 'none'};gap:8px;align-items:center;">
+                    <input type="date" class="fin-form-input" id="finRepDesde" value="${this._repDesde}" style="width:auto;">
+                    <span style="color:#555;">—</span>
+                    <input type="date" class="fin-form-input" id="finRepHasta" value="${this._repHasta}" style="width:auto;">
+                </span>
+                <button class="fin-export-btn" id="finRepExport">📥 Exportar CSV</button>
+            </div>
+            <div id="finReporteMain">
+                <div class="fin-loading"><div class="spinner"></div> Calculando…</div>
+            </div>
+        `;
+    },
+
+    _getRepDates() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        if (this._repPeriodo === 'mes') {
+            return { desde: `${y}-${String(m + 1).padStart(2, '0')}-01`, hasta: `${y}-${String(m + 1).padStart(2, '0')}-${new Date(y, m + 1, 0).getDate()}` };
+        }
+        if (this._repPeriodo === 'trimestre') {
+            const qStart = Math.floor(m / 3) * 3;
+            return { desde: `${y}-${String(qStart + 1).padStart(2, '0')}-01`, hasta: `${y}-${String(qStart + 3).padStart(2, '0')}-${new Date(y, qStart + 3, 0).getDate()}` };
+        }
+        if (this._repPeriodo === 'anio') {
+            return { desde: `${y}-01-01`, hasta: `${y}-12-31` };
+        }
+        return { desde: this._repDesde || `${y}-01-01`, hasta: this._repHasta || now.toISOString().slice(0, 10) };
+    },
+
+    async _loadReporteData() {
+        const { desde, hasta } = this._getRepDates();
+        const canal = this._getCanalFilter();
+        const main = document.getElementById('finReporteMain');
+        if (!main) return;
+
+        if (this._repSubtab === 'estado') await this._renderEstadoResultados(main, desde, hasta, canal);
+        else if (this._repSubtab === 'proyecto') await this._renderRentProyecto(main, desde, hasta, canal);
+        else if (this._repSubtab === 'cliente') await this._renderRentCliente(main, desde, hasta, canal);
+        else if (this._repSubtab === 'cashflow') await this._renderCashflowProy(main);
+        else if (this._repSubtab === 'iva') await this._renderReporteIVA(main, desde, hasta);
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTE: ESTADO DE RESULTADOS
+    // ═══════════════════════════════════════════
+
+    async _renderEstadoResultados(main, desde, hasta, canal) {
+        let ingresos = [], egresos = [];
+        try {
+            let q = supabaseClient.from('ingresos').select('concepto, monto, proyecto_id').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            ingresos = data || [];
+        } catch (_) {}
+        try {
+            let q = supabaseClient.from('egresos').select('categoria, concepto, monto, proyecto_id').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            egresos = data || [];
+        } catch (_) {}
+
+        // Group ingresos
+        const ingByType = {};
+        ingresos.forEach(r => {
+            const key = r.concepto?.split(' ')[0] || 'Otros';
+            ingByType[key] = (ingByType[key] || 0) + (Number(r.monto) || 0);
+        });
+        const totalIng = ingresos.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+
+        // Egresos operativos (con proyecto)
+        const egrOp = egresos.filter(e => e.proyecto_id);
+        const egrOpByCat = {};
+        egrOp.forEach(e => { egrOpByCat[e.categoria] = (egrOpByCat[e.categoria] || 0) + (Number(e.monto) || 0); });
+        const totalCostos = egrOp.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+
+        // Egresos administrativos (sin proyecto)
+        const egrAdmin = egresos.filter(e => !e.proyecto_id);
+        const egrAdByCat = {};
+        egrAdmin.forEach(e => { egrAdByCat[e.categoria] = (egrAdByCat[e.categoria] || 0) + (Number(e.monto) || 0); });
+        const totalGastos = egrAdmin.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+
+        const resultBruto = totalIng - totalCostos;
+        const resultNeto = resultBruto - totalGastos;
+
+        this._lastReportData = [
+            { seccion: 'INGRESOS', categoria: 'Total', monto: totalIng },
+            ...Object.entries(ingByType).map(([k, v]) => ({ seccion: 'Ingresos', categoria: k, monto: v })),
+            { seccion: 'COSTOS OPERATIVOS', categoria: 'Total', monto: totalCostos },
+            ...Object.entries(egrOpByCat).map(([k, v]) => ({ seccion: 'Costos', categoria: k, monto: v })),
+            { seccion: 'RESULTADO BRUTO', categoria: '', monto: resultBruto },
+            { seccion: 'GASTOS ADMIN', categoria: 'Total', monto: totalGastos },
+            ...Object.entries(egrAdByCat).map(([k, v]) => ({ seccion: 'Gastos', categoria: k, monto: v })),
+            { seccion: 'RESULTADO NETO', categoria: '', monto: resultNeto },
+        ];
+
+        const renderRows = (obj) => Object.entries(obj).map(([k, v]) =>
+            `<div class="fin-report-row"><span>${k}</span><span>${this._formatMoney(v)}</span></div>`
+        ).join('');
+
+        main.innerHTML = `
+            <div class="fin-report">
+                <div class="fin-report-section">
+                    <div class="fin-report-section-title">Ingresos Operativos</div>
+                    ${Object.keys(ingByType).length > 0 ? renderRows(ingByType) : '<div class="fin-report-row"><span style="color:#555;">Sin ingresos</span><span>—</span></div>'}
+                    <div class="fin-report-row-total"><span>TOTAL INGRESOS</span><span style="color:#00CC88;">${this._formatMoney(totalIng)}</span></div>
+                </div>
+                <div class="fin-report-section">
+                    <div class="fin-report-section-title">Costos Operativos (con proyecto)</div>
+                    ${Object.keys(egrOpByCat).length > 0 ? renderRows(egrOpByCat) : '<div class="fin-report-row"><span style="color:#555;">Sin costos</span><span>—</span></div>'}
+                    <div class="fin-report-row-total"><span>TOTAL COSTOS</span><span style="color:#E84855;">${this._formatMoney(totalCostos)}</span></div>
+                </div>
+                <div class="fin-report-grand-total ${resultBruto >= 0 ? 'positive' : 'negative'}">
+                    <span>RESULTADO BRUTO</span><span>${this._formatMoney(resultBruto)}</span>
+                </div>
+                <div class="fin-report-section" style="margin-top:16px;">
+                    <div class="fin-report-section-title">Gastos Administrativos (sin proyecto)</div>
+                    ${Object.keys(egrAdByCat).length > 0 ? renderRows(egrAdByCat) : '<div class="fin-report-row"><span style="color:#555;">Sin gastos</span><span>—</span></div>'}
+                    <div class="fin-report-row-total"><span>TOTAL GASTOS</span><span style="color:#E84855;">${this._formatMoney(totalGastos)}</span></div>
+                </div>
+                <div class="fin-report-grand-total ${resultNeto >= 0 ? 'positive' : 'negative'}" style="font-size:1.15rem;">
+                    <span>RESULTADO NETO</span><span>${this._formatMoney(resultNeto)}</span>
+                </div>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTE: RENTABILIDAD POR PROYECTO
+    // ═══════════════════════════════════════════
+
+    async _renderRentProyecto(main, desde, hasta, canal) {
+        const proyKeys = Object.keys(this._proyectosMap);
+        if (proyKeys.length === 0) {
+            main.innerHTML = '<div class="fin-empty"><div class="fin-empty-icon">📊</div><div class="fin-empty-text">Sin proyectos para analizar</div></div>';
+            return;
+        }
+
+        const rows = [];
+        for (const pid of proyKeys) {
+            let facturado = 0, cobrado = 0, costo = 0;
+            try {
+                const { data } = await supabaseClient.from('comprobantes').select('total').eq('proyecto_id', pid).eq('_deleted', false).eq('estado', 'emitida');
+                facturado = (data || []).reduce((s, r) => s + (Number(r.total) || 0), 0);
+            } catch (_) {}
+            try {
+                let q = supabaseClient.from('ingresos').select('monto').eq('proyecto_id', pid).eq('_deleted', false).eq('estado', 'confirmado');
+                if (canal) q = q.eq('canal', canal);
+                const { data } = await q;
+                cobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            } catch (_) {}
+            try {
+                let q = supabaseClient.from('egresos').select('monto').eq('proyecto_id', pid).eq('_deleted', false).eq('estado', 'pagado');
+                if (canal) q = q.eq('canal', canal);
+                const { data } = await q;
+                costo = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            } catch (_) {}
+
+            const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
+            rows.push({ nombre: this._proyectosMap[pid], facturado, cobrado, costo, rent });
+        }
+
+        rows.sort((a, b) => b.cobrado - a.cobrado);
+        this._lastReportData = rows.map(r => ({ proyecto: r.nombre, facturado: r.facturado, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent + '%' }));
+
+        main.innerHTML = `
+            <div class="fin-table-wrapper">
+                <table class="fin-table">
+                    <thead><tr>
+                        <th class="fin-th">Proyecto</th>
+                        <th class="fin-th" style="text-align:right;">Facturado</th>
+                        <th class="fin-th" style="text-align:right;">Cobrado</th>
+                        <th class="fin-th" style="text-align:right;">Costo</th>
+                        <th class="fin-th" style="text-align:right;">Rentab. %</th>
+                    </tr></thead>
+                    <tbody>
+                        ${rows.map(r => {
+                            const rentColor = r.rent > 20 ? '#00CC88' : r.rent > 0 ? '#F28D15' : '#E84855';
+                            return `<tr class="fin-row" style="cursor:default;">
+                                <td class="fin-td fin-td-name">${r.nombre}</td>
+                                <td class="fin-td fin-td-money">${this._formatMoney(r.facturado)}</td>
+                                <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
+                                <td class="fin-td fin-td-money" style="color:#E84855;">${this._formatMoney(r.costo)}</td>
+                                <td class="fin-td fin-td-money" style="color:${rentColor};font-weight:700;">${r.rent}%</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTE: RENTABILIDAD POR CLIENTE
+    // ═══════════════════════════════════════════
+
+    async _renderRentCliente(main, desde, hasta, canal) {
+        const cliKeys = Object.keys(this._clientesMap);
+        if (cliKeys.length === 0) {
+            main.innerHTML = '<div class="fin-empty"><div class="fin-empty-icon">👥</div><div class="fin-empty-text">Sin clientes para analizar</div></div>';
+            return;
+        }
+
+        const rows = [];
+        for (const cid of cliKeys) {
+            let cobrado = 0, costo = 0;
+            try {
+                let q = supabaseClient.from('ingresos').select('monto').eq('cliente_id', cid).eq('_deleted', false).eq('estado', 'confirmado');
+                if (canal) q = q.eq('canal', canal);
+                const { data } = await q;
+                cobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            } catch (_) {}
+
+            if (cobrado === 0) continue; // Skip clients with no revenue
+
+            const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
+            rows.push({ nombre: this._clientesMap[cid], cobrado, costo, rent });
+        }
+
+        rows.sort((a, b) => b.cobrado - a.cobrado);
+        this._lastReportData = rows.map(r => ({ cliente: r.nombre, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent + '%' }));
+
+        if (rows.length === 0) {
+            main.innerHTML = '<div class="fin-empty"><div class="fin-empty-icon">📊</div><div class="fin-empty-text">Sin datos de clientes en el período</div></div>';
+            return;
+        }
+
+        main.innerHTML = `
+            <div class="fin-table-wrapper">
+                <table class="fin-table">
+                    <thead><tr>
+                        <th class="fin-th">#</th>
+                        <th class="fin-th">Cliente</th>
+                        <th class="fin-th" style="text-align:right;">Cobrado</th>
+                        <th class="fin-th" style="text-align:right;">Rentab. %</th>
+                    </tr></thead>
+                    <tbody>
+                        ${rows.map((r, i) => `
+                            <tr class="fin-row" style="cursor:default;">
+                                <td class="fin-td" style="color:#555;">${i + 1}</td>
+                                <td class="fin-td fin-td-name">${r.nombre}</td>
+                                <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
+                                <td class="fin-td fin-td-money" style="color:${r.rent > 0 ? '#00CC88' : '#E84855'};">${r.rent}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTE: CASHFLOW PROYECTADO
+    // ═══════════════════════════════════════════
+
+    async _renderCashflowProy(main) {
+        this._destroyCharts();
+
+        const now = new Date();
+        const labels = [];
+        const cobrosData = [];
+        const pagosData = [];
+        const saldoData = [];
+        let saldoActual = this._panelKPIs.saldo || 0;
+
+        const mNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+        for (let i = 0; i < 3; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+            const y = d.getFullYear();
+            const m = d.getMonth() + 1;
+            const desde = `${y}-${String(m).padStart(2, '0')}-01`;
+            const hasta = `${y}-${String(m).padStart(2, '0')}-${new Date(y, m, 0).getDate()}`;
+            labels.push(`${mNames[m - 1]} ${y}`);
+
+            let cobros = 0, pagos = 0;
+            try {
+                const { data } = await supabaseClient.from('plan_cobro_items').select('monto, monto_cobrado').eq('_deleted', false).neq('estado', 'cobrado').gte('fecha_estimada', desde).lte('fecha_estimada', hasta);
+                cobros = (data || []).reduce((s, r) => s + ((Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0)), 0);
+            } catch (_) {}
+            try {
+                const { data } = await supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'programado').gte('fecha_programada', desde).lte('fecha_programada', hasta);
+                pagos += (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            } catch (_) {}
+            try {
+                const { data } = await supabaseClient.from('vencimientos_generados').select('monto_estimado').eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta);
+                pagos += (data || []).reduce((s, r) => s + (Number(r.monto_estimado) || 0), 0);
+            } catch (_) {}
+
+            cobrosData.push(cobros);
+            pagosData.push(pagos);
+            saldoActual += cobros - pagos;
+            saldoData.push(saldoActual);
+        }
+
+        const hasAlert = saldoData.some(s => s < 0);
+
+        main.innerHTML = `
+            ${hasAlert ? '<div style="background:rgba(232,72,85,0.08);border:1px solid rgba(232,72,85,0.2);border-radius:4px;padding:10px;color:#E84855;font-size:0.82rem;margin-bottom:12px;">⚠️ Alerta: el saldo proyectado es negativo en algún punto de los próximos 3 meses</div>' : ''}
+            <div class="fin-chart-card">
+                <div class="fin-chart-title">Cashflow proyectado — 3 meses</div>
+                <div class="fin-chart-wrap"><canvas id="finChartCashflowProy"></canvas></div>
+            </div>
+        `;
+
+        if (typeof Chart === 'undefined') return;
+
+        const canvas = document.getElementById('finChartCashflowProy');
+        if (!canvas) return;
+
+        this._charts.cashflowProy = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Cobros esperados', data: cobrosData, backgroundColor: 'rgba(0,204,136,0.6)', borderColor: '#00CC88', borderWidth: 1 },
+                    { label: 'Pagos estimados', data: pagosData, backgroundColor: 'rgba(232,72,85,0.6)', borderColor: '#E84855', borderWidth: 1 },
+                    { label: 'Saldo proyectado', data: saldoData, type: 'line', borderColor: '#4A90D9', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#4A90D9' },
+                ],
+            },
+            options: {
+                ...this._chartDefaults(),
+                plugins: { legend: { labels: { color: '#E8E8E8', font: { family: 'Outfit', size: 11 } } } },
+            },
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTE: IVA
+    // ═══════════════════════════════════════════
+
+    async _renderReporteIVA(main, desde, hasta) {
+        if (this._canalVista === 'interno') {
+            main.innerHTML = '<div class="fin-empty"><div class="fin-empty-icon">📋</div><div class="fin-empty-text">El reporte IVA solo aplica a operaciones oficiales. Cambiá a vista "Oficial" o "Total".</div></div>';
+            return;
+        }
+
+        let ivaDebito = 0, ivaCredito = 0;
+
+        try {
+            const { data } = await supabaseClient.from('comprobantes').select('iva').eq('_deleted', false).eq('estado', 'emitida').eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta);
+            ivaDebito = (data || []).reduce((s, r) => s + (Number(r.iva) || 0), 0);
+        } catch (_) {}
+
+        try {
+            const { data } = await supabaseClient.from('comprobantes_recibidos').select('iva').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta);
+            ivaCredito = (data || []).reduce((s, r) => s + (Number(r.iva) || 0), 0);
+        } catch (_) {}
+
+        const posicion = ivaDebito - ivaCredito;
+        this._lastReportData = [{ concepto: 'IVA Débito', monto: ivaDebito }, { concepto: 'IVA Crédito', monto: ivaCredito }, { concepto: 'Posición IVA', monto: posicion }];
+
+        main.innerHTML = `
+            <div class="fin-report">
+                <div class="fin-report-section">
+                    <div class="fin-report-section-title">IVA Débito Fiscal (emitidos)</div>
+                    <div class="fin-report-row-total"><span>Total IVA Débito</span><span style="color:#E84855;">${this._formatMoney(ivaDebito)}</span></div>
+                </div>
+                <div class="fin-report-section">
+                    <div class="fin-report-section-title">IVA Crédito Fiscal (recibidos)</div>
+                    <div class="fin-report-row-total"><span>Total IVA Crédito</span><span style="color:#00CC88;">${this._formatMoney(ivaCredito)}</span></div>
+                </div>
+                <div class="fin-report-grand-total ${posicion >= 0 ? 'negative' : 'positive'}">
+                    <span>POSICIÓN IVA</span>
+                    <span>${this._formatMoney(posicion)}</span>
+                </div>
+                <div style="color:#555;font-size:0.78rem;margin-top:12px;padding:0 8px;">
+                    ${posicion > 0 ? '→ Posición deudora: debés pagar la diferencia a AFIP' : posicion < 0 ? '→ Posición acreedora: tenés saldo a favor' : '→ Posición neutra'}
+                </div>
+            </div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTES — EXPORT CSV
+    // ═══════════════════════════════════════════
+
+    _exportCSV(data, filename) {
+        if (!data || data.length === 0) {
+            Toast.warning('No hay datos para exportar');
+            return;
+        }
+        const headers = Object.keys(data[0]).join(',');
+        const rows = data.map(r => Object.values(r).map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','));
+        const csv = '\uFEFF' + [headers, ...rows].join('\n'); // BOM for Excel
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        Toast.success('CSV exportado');
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTES — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachReportesEvents() {
+        // Subtab switching
+        document.querySelectorAll('.fin-subtab[data-reptab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._repSubtab = btn.dataset.reptab;
+                this._renderTabContent();
+            });
+        });
+
+        // Período
+        document.getElementById('finRepPeriodo')?.addEventListener('change', (e) => {
+            this._repPeriodo = e.target.value;
+            const customEl = document.getElementById('finRepCustomDates');
+            if (customEl) customEl.style.display = this._repPeriodo === 'custom' ? 'flex' : 'none';
+            this._loadReporteData();
+        });
+
+        document.getElementById('finRepDesde')?.addEventListener('change', (e) => {
+            this._repDesde = e.target.value;
+            if (this._repPeriodo === 'custom') this._loadReporteData();
+        });
+        document.getElementById('finRepHasta')?.addEventListener('change', (e) => {
+            this._repHasta = e.target.value;
+            if (this._repPeriodo === 'custom') this._loadReporteData();
+        });
+
+        // Export
+        document.getElementById('finRepExport')?.addEventListener('click', () => {
+            const filename = `finanzas_${this._repSubtab}_${new Date().toISOString().slice(0, 10)}.csv`;
+            this._exportCSV(this._lastReportData || [], filename);
+        });
+    },
+
+    _lastReportData: null,
 
     // ═══════════════════════════════════════════
     //  TAB: FACTURACIÓN — TYPES
