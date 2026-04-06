@@ -2446,7 +2446,7 @@ const ContabilidadModule = {
 
             let asientosQuery = supabaseClient
                 .from('asientos')
-                .select('id, numero, fecha, concepto, tipo, origen_tipo, origen_id, canal')
+                .select('*')
                 .eq('_deleted', false)
                 .in('id', asientoIds);
 
