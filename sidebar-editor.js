@@ -64,7 +64,7 @@ const SidebarEditor = {
 
     // ─── INIT ───
     // Config version — bump this to force sidebar reset on structure changes
-    _configVersion: 3,
+    _configVersion: 4,
 
     init() {
         const savedVersion = localStorage.getItem('mepex_sidebar_version');
