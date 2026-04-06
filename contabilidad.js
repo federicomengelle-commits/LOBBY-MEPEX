@@ -2442,15 +2442,21 @@ const ContabilidadModule = {
 
             // 3. Fetch all related asientos
             const asientoIds = [...new Set(allLineas.map(l => l.asiento_id))];
+            console.log('[Mayor DEBUG] canal filter:', JSON.stringify(canal), 'asientoIds:', asientoIds);
+
             let asientosQuery = supabaseClient
                 .from('asientos')
                 .select('id, numero, fecha, descripcion, concepto, tipo, origen_tipo, origen_id, canal')
                 .eq('_deleted', false)
                 .in('id', asientoIds);
 
-            if (canal) asientosQuery = asientosQuery.eq('canal', canal);
+            // Only apply canal filter if it's a clean string
+            if (canal && typeof canal === 'string' && (canal === 'oficial' || canal === 'interno')) {
+                asientosQuery = asientosQuery.eq('canal', canal);
+            }
 
-            const { data: asientos } = await asientosQuery;
+            const { data: asientos, error: asErr } = await asientosQuery;
+            console.log('[Mayor DEBUG] asientos result:', asientos?.length, asientos, 'error:', asErr);
             const asientosMap = {};
             (asientos || []).forEach(a => { asientosMap[a.id] = a; });
 
