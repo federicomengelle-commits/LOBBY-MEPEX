@@ -19,8 +19,8 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'costos'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
         pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
         taller:     ['proyectos', 'eventos', 'taller', 'logistica', 'inventario'],

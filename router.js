@@ -63,6 +63,7 @@ const Router = {
             'locaciones':       { render: () => LocacionesModule.render(), requiresAuth: true, module: 'locaciones' },
 
             // ── Admin & Finanzas ──
+            'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
             'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas' },
             'costos':           { render: () => CostosModule.render(), requiresAuth: true, module: 'costos', adminOnly: true },
         };
