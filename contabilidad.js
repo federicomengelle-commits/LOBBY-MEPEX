@@ -57,6 +57,20 @@ const ContabilidadModule = {
     _mayorCuentasLista: [],
     _mayorSearchText: '',
 
+    // Asiento manual state
+    _asientoFecha: new Date().toISOString().split('T')[0],
+    _asientoConcepto: '',
+    _asientoCanal: null,
+    _asientoNotas: '',
+    _lineas: [
+        { cuenta_id: null, debe: 0, haber: 0 },
+        { cuenta_id: null, debe: 0, haber: 0 },
+    ],
+    _cuentasImputables: [],
+    _asientoEditId: null,
+    _asientoEditNumero: null,
+    _asientosManuales: [],
+
     // Panel state
     _activePanel: null,
     _activePanelData: null,
@@ -1149,6 +1163,335 @@ const ContabilidadModule = {
                     font-weight: 700;
                     margin-left: auto;
                 }
+
+                /* ─── Asiento Manual ─── */
+                .cont-am-form {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 24px;
+                    margin-bottom: 24px;
+                }
+                .cont-am-form-title {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1.05rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    margin: 0 0 18px 0;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .cont-am-form-title .cont-am-edit-badge {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    background: rgba(242,141,21,0.15);
+                    color: #F28D15;
+                }
+                .cont-am-cabecera {
+                    display: grid;
+                    grid-template-columns: 160px 1fr 140px;
+                    gap: 12px;
+                    margin-bottom: 20px;
+                }
+                .cont-am-field { display: flex; flex-direction: column; gap: 4px; }
+                .cont-am-field-full { grid-column: 1 / -1; }
+                .cont-am-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .cont-am-input {
+                    background: #0a0a0a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.85rem;
+                    padding: 7px 10px;
+                    outline: none;
+                    transition: border-color 200ms ease;
+                }
+                .cont-am-input:focus { border-color: #4A90D9; }
+                .cont-am-input::placeholder { color: #444; }
+                .cont-am-select {
+                    background: #0a0a0a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    padding: 7px 10px;
+                    outline: none;
+                    transition: border-color 200ms ease;
+                }
+                .cont-am-select:focus { border-color: #4A90D9; }
+                .cont-am-select option { background: #111; color: #E8E8E8; }
+                .cont-am-textarea {
+                    background: #0a0a0a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.85rem;
+                    padding: 7px 10px;
+                    outline: none;
+                    resize: vertical;
+                    min-height: 48px;
+                    transition: border-color 200ms ease;
+                }
+                .cont-am-textarea:focus { border-color: #4A90D9; }
+                .cont-am-textarea::placeholder { color: #444; }
+
+                /* Lines table */
+                .cont-am-lines-wrapper { overflow-x: auto; }
+                .cont-am-lines {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .cont-am-lines th {
+                    padding: 8px 10px;
+                    text-align: left;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border-bottom: 1px solid #2a2a2a;
+                }
+                .cont-am-lines th.right { text-align: right; }
+                .cont-am-lines th.center { text-align: center; }
+                .cont-am-lines td {
+                    padding: 4px 6px;
+                    vertical-align: middle;
+                }
+                .cont-am-lines td.cont-am-num {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #555;
+                    text-align: center;
+                    width: 36px;
+                }
+                .cont-am-lines td .cont-am-select {
+                    width: 100%;
+                    min-width: 240px;
+                }
+                .cont-am-lines .cont-am-monto-input {
+                    background: #0a0a0a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #E8E8E8;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.82rem;
+                    padding: 6px 10px;
+                    outline: none;
+                    text-align: right;
+                    width: 130px;
+                    transition: border-color 200ms ease;
+                }
+                .cont-am-lines .cont-am-monto-input:focus { border-color: #4A90D9; }
+                .cont-am-lines .cont-am-monto-input::placeholder { color: #333; }
+                .cont-am-lines .cont-am-monto-input:disabled {
+                    background: #0d0d0d;
+                    color: #333;
+                    cursor: not-allowed;
+                }
+                .cont-am-remove-btn {
+                    background: transparent;
+                    border: 1px solid transparent;
+                    border-radius: 4px;
+                    color: #555;
+                    font-size: 1rem;
+                    cursor: pointer;
+                    padding: 4px 8px;
+                    transition: all 150ms ease;
+                }
+                .cont-am-remove-btn:hover { color: #E74C3C; border-color: rgba(231,76,60,0.3); }
+                .cont-am-remove-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+                .cont-am-remove-btn:disabled:hover { color: #555; border-color: transparent; }
+
+                /* Totals row */
+                .cont-am-totals-row td {
+                    border-top: 2px solid #2a2a2a;
+                    padding-top: 10px;
+                    font-weight: 700;
+                }
+                .cont-am-total-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #888;
+                    text-align: right;
+                    padding-right: 10px;
+                }
+                .cont-am-total-value {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.85rem;
+                    color: #E8E8E8;
+                    text-align: right;
+                    padding-right: 10px;
+                }
+
+                /* Difference row */
+                .cont-am-diff-row td {
+                    padding-top: 6px;
+                }
+                .cont-am-diff-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    font-weight: 700;
+                    padding: 3px 10px;
+                    border-radius: 3px;
+                }
+                .cont-am-diff-ok {
+                    background: rgba(76,175,80,0.12);
+                    color: #4CAF50;
+                }
+                .cont-am-diff-err {
+                    background: rgba(232,72,85,0.12);
+                    color: #E84855;
+                }
+
+                /* Add line button */
+                .cont-am-add-line {
+                    display: block;
+                    width: 100%;
+                    margin-top: 8px;
+                    padding: 8px;
+                    border: 1px dashed #2a2a2a;
+                    border-radius: 4px;
+                    background: transparent;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                }
+                .cont-am-add-line:hover {
+                    border-color: #4A90D9;
+                    color: #4A90D9;
+                    background: rgba(74,144,217,0.04);
+                }
+
+                /* Action buttons */
+                .cont-am-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-top: 18px;
+                }
+                .cont-am-btn-save {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 9px 22px;
+                    border-radius: 4px;
+                    border: none;
+                    background: #4A90D9;
+                    color: #fff;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                }
+                .cont-am-btn-save:hover { box-shadow: 0 0 16px rgba(74,144,217,0.3); }
+                .cont-am-btn-save:disabled {
+                    background: #333;
+                    color: #666;
+                    cursor: not-allowed;
+                    box-shadow: none;
+                }
+                .cont-am-btn-cancel {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 9px 18px;
+                    border-radius: 4px;
+                    border: 1px solid #2a2a2a;
+                    background: transparent;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                }
+                .cont-am-btn-cancel:hover { border-color: #888; color: #E8E8E8; }
+
+                /* Manual asientos list */
+                .cont-am-list-title {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    margin: 0 0 12px 0;
+                }
+                .cont-am-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .cont-am-table th {
+                    padding: 8px 12px;
+                    text-align: left;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border-bottom: 1px solid #2a2a2a;
+                }
+                .cont-am-table th.right { text-align: right; }
+                .cont-am-table th.center { text-align: center; }
+                .cont-am-table td {
+                    padding: 8px 12px;
+                    color: #E8E8E8;
+                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                    font-size: 0.85rem;
+                }
+                .cont-am-table tr:nth-child(odd) { background: #0d0d0d; }
+                .cont-am-table tr:nth-child(even) { background: #111111; }
+                .cont-am-table tr:hover { background: rgba(74,144,217,0.04); }
+                .cont-am-table td.right {
+                    text-align: right;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.8rem;
+                }
+                .cont-am-table td.center { text-align: center; }
+                .cont-am-table .cont-am-tbl-num {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #888;
+                }
+                .cont-am-table .cont-am-tbl-fecha {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #888;
+                }
+                .cont-am-action-btn {
+                    background: transparent;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 4px;
+                    color: #888;
+                    padding: 4px 8px;
+                    cursor: pointer;
+                    font-size: 0.82rem;
+                    transition: all 150ms ease;
+                    margin: 0 2px;
+                }
+                .cont-am-action-btn:hover { border-color: #4A90D9; color: #4A90D9; }
+                .cont-am-action-btn.danger:hover { border-color: #E74C3C; color: #E74C3C; }
             </style>
 
             <div class="cont-wrapper">
@@ -1217,6 +1560,14 @@ const ContabilidadModule = {
                 await this._loadMayorCuentasLista();
                 this._attachMayorEvents();
                 if (this._mayorCuentaId) await this._loadLibroMayor();
+                break;
+            case 'asiento_manual':
+                container.innerHTML = this._buildAsientoManualHTML();
+                await this._loadCuentasImputables();
+                await this._loadAsientosManuales();
+                this._renderAsientoManualForm();
+                this._renderAsientosManualesList();
+                this._attachAsientoManualEvents();
                 break;
             default:
                 container.innerHTML = this._buildPlaceholder();
@@ -2689,6 +3040,601 @@ const ContabilidadModule = {
             this._mayorDesde = e.target.value;
             if (this._mayorCuentaId) this._loadLibroMayor();
         });
+    },
+
+    // ═══════════════════════════════════════════
+    //  ASIENTO MANUAL — HTML
+    // ═══════════════════════════════════════════
+
+    _buildAsientoManualHTML() {
+        return `
+            <div id="cont-am-form-container"></div>
+            <div id="cont-am-list-container"></div>
+        `;
+    },
+
+    _renderAsientoManualForm() {
+        const container = document.getElementById('cont-am-form-container');
+        if (!container) return;
+
+        const isEdit = !!this._asientoEditId;
+        const totalDebe = this._lineas.reduce((s, l) => s + (parseFloat(l.debe) || 0), 0);
+        const totalHaber = this._lineas.reduce((s, l) => s + (parseFloat(l.haber) || 0), 0);
+        const diff = totalDebe - totalHaber;
+        const balanced = Math.abs(diff) < 0.01;
+
+        const canalDefault = this._asientoCanal || (this._canalVista === 'total' ? 'oficial' : this._canalVista);
+
+        const cuentaOptions = this._cuentasImputables.map(c =>
+            `<option value="${c.id}">${c.codigo} — ${c.nombre}</option>`
+        ).join('');
+
+        container.innerHTML = `
+            <div class="cont-am-form">
+                <div class="cont-am-form-title">
+                    ${isEdit ? '\u270F\uFE0F' : '\u2795'} ${isEdit ? 'Editar asiento #' + (this._asientoEditNumero || '') : 'Nuevo asiento manual'}
+                    ${isEdit ? '<span class="cont-am-edit-badge">EDITANDO</span>' : ''}
+                </div>
+
+                <!-- Cabecera -->
+                <div class="cont-am-cabecera">
+                    <div class="cont-am-field">
+                        <label class="cont-am-label">Fecha</label>
+                        <input type="date" class="cont-am-input" id="contAmFecha" value="${this._asientoFecha}">
+                    </div>
+                    <div class="cont-am-field">
+                        <label class="cont-am-label">Concepto</label>
+                        <input type="text" class="cont-am-input" id="contAmConcepto" value="${this._asientoConcepto}" placeholder="Ajuste de conciliaci\u00f3n, Amortizaci\u00f3n mensual...">
+                    </div>
+                    <div class="cont-am-field">
+                        <label class="cont-am-label">Canal</label>
+                        <select class="cont-am-select" id="contAmCanal">
+                            <option value="oficial" ${canalDefault === 'oficial' ? 'selected' : ''}>Oficial</option>
+                            <option value="interno" ${canalDefault === 'interno' ? 'selected' : ''}>Interno</option>
+                        </select>
+                    </div>
+                    <div class="cont-am-field cont-am-field-full">
+                        <label class="cont-am-label">Notas (opcional)</label>
+                        <textarea class="cont-am-textarea" id="contAmNotas" placeholder="Observaciones...">${this._asientoNotas}</textarea>
+                    </div>
+                </div>
+
+                <!-- Líneas -->
+                <div class="cont-am-lines-wrapper">
+                    <table class="cont-am-lines">
+                        <thead>
+                            <tr>
+                                <th class="center">#</th>
+                                <th>Cuenta</th>
+                                <th class="right">Debe</th>
+                                <th class="right">Haber</th>
+                                <th class="center"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="contAmLineasBody">
+                            ${this._lineas.map((l, i) => this._buildLineaRow(l, i, cuentaOptions)).join('')}
+                        </tbody>
+                        <tfoot>
+                            <tr class="cont-am-totals-row">
+                                <td></td>
+                                <td class="cont-am-total-label">TOTALES</td>
+                                <td class="cont-am-total-value" id="contAmTotalDebe">${this._formatMoney(totalDebe)}</td>
+                                <td class="cont-am-total-value" id="contAmTotalHaber">${this._formatMoney(totalHaber)}</td>
+                                <td></td>
+                            </tr>
+                            <tr class="cont-am-diff-row">
+                                <td></td>
+                                <td class="cont-am-total-label">DIFERENCIA</td>
+                                <td colspan="2" style="text-align:right; padding-right:10px;">
+                                    <span id="contAmDiffBadge" class="cont-am-diff-badge ${balanced ? 'cont-am-diff-ok' : 'cont-am-diff-err'}">
+                                        ${balanced ? '\u2713 $0' : '\u2717 ' + this._formatMoney(Math.abs(diff))}
+                                    </span>
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <button class="cont-am-add-line" id="contAmAddLine">+ Agregar l\u00ednea</button>
+
+                <div class="cont-am-actions">
+                    <button class="cont-am-btn-save" id="contAmSave" ${balanced && this._asientoConcepto.trim() ? '' : 'disabled'}>
+                        ${isEdit ? 'Actualizar asiento' : 'Guardar asiento'}
+                    </button>
+                    ${isEdit ? '<button class="cont-am-btn-cancel" id="contAmCancelEdit">Cancelar edici\u00f3n</button>' : ''}
+                </div>
+            </div>
+        `;
+
+        this._attachAsientoFormEvents();
+    },
+
+    _buildLineaRow(linea, index, cuentaOptions) {
+        const canRemove = this._lineas.length > 2;
+        return `
+            <tr data-linea-idx="${index}">
+                <td class="cont-am-num">${index + 1}</td>
+                <td>
+                    <select class="cont-am-select cont-am-cuenta-select" data-idx="${index}">
+                        <option value="">— Seleccionar cuenta —</option>
+                        ${cuentaOptions.replace(
+                            linea.cuenta_id ? `value="${linea.cuenta_id}"` : '___NOMATCH___',
+                            linea.cuenta_id ? `value="${linea.cuenta_id}" selected` : '___NOMATCH___'
+                        )}
+                    </select>
+                </td>
+                <td>
+                    <input type="text" class="cont-am-monto-input cont-am-debe-input" data-idx="${index}"
+                        value="${linea.debe ? this._formatMontoInput(linea.debe) : ''}"
+                        placeholder="$0"
+                        ${linea.haber > 0 ? 'disabled' : ''}>
+                </td>
+                <td>
+                    <input type="text" class="cont-am-monto-input cont-am-haber-input" data-idx="${index}"
+                        value="${linea.haber ? this._formatMontoInput(linea.haber) : ''}"
+                        placeholder="$0"
+                        ${linea.debe > 0 ? 'disabled' : ''}>
+                </td>
+                <td style="text-align:center">
+                    <button class="cont-am-remove-btn" data-idx="${index}" ${canRemove ? '' : 'disabled'}>\u2715</button>
+                </td>
+            </tr>
+        `;
+    },
+
+    _formatMontoInput(val) {
+        const n = parseFloat(val);
+        if (!n || n === 0) return '';
+        return new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    },
+
+    _parseMontoInput(str) {
+        if (!str) return 0;
+        // Remove currency symbol, dots as thousands sep, replace comma with dot
+        const cleaned = str.replace(/[^0-9.,-]/g, '').replace(/\./g, '').replace(',', '.');
+        return parseFloat(cleaned) || 0;
+    },
+
+    _renderAsientosManualesList() {
+        const container = document.getElementById('cont-am-list-container');
+        if (!container) return;
+
+        if (this._asientosManuales.length === 0) {
+            container.innerHTML = `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u{1F4DD}</div>
+                    <div class="cont-empty-text">No hay asientos manuales a\u00fan.</div>
+                </div>
+            `;
+            return;
+        }
+
+        const rows = this._asientosManuales.map(a => {
+            const fecha = a.fecha ? new Date(a.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+            return `
+                <tr>
+                    <td><span class="cont-am-tbl-num">#${a.numero || '—'}</span></td>
+                    <td><span class="cont-am-tbl-fecha">${fecha}</span></td>
+                    <td>${a.concepto || '—'}</td>
+                    <td class="right">${this._formatMoney(a.total_debe || 0)}</td>
+                    <td>
+                        <span class="cont-asiento-canal">${(a.canal || 'oficial').toUpperCase()}</span>
+                    </td>
+                    <td class="center">
+                        <button class="cont-am-action-btn cont-am-edit-btn" data-id="${a.id}" title="Editar">\u270F\uFE0F</button>
+                        <button class="cont-am-action-btn danger cont-am-delete-btn" data-id="${a.id}" data-num="${a.numero}" title="Anular">\u{1F5D1}\uFE0F</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <h3 class="cont-am-list-title">Asientos manuales registrados</h3>
+            <table class="cont-am-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Fecha</th>
+                        <th>Concepto</th>
+                        <th class="right">Total</th>
+                        <th>Canal</th>
+                        <th class="center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+
+        // Attach list events
+        container.querySelectorAll('.cont-am-edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => this._editarAsiento(btn.dataset.id));
+        });
+        container.querySelectorAll('.cont-am-delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => this._anularAsiento(btn.dataset.id, btn.dataset.num));
+        });
+    },
+
+    // ═══════════════════════════════════════════
+    //  ASIENTO MANUAL — DATA
+    // ═══════════════════════════════════════════
+
+    async _loadCuentasImputables() {
+        if (this._cuentasImputables.length > 0) return; // cache
+        const { data, error } = await supabaseClient
+            .from('plan_cuentas')
+            .select('id, codigo, nombre')
+            .eq('es_grupo', false)
+            .eq('activa', true)
+            .eq('_deleted', false)
+            .order('codigo');
+        if (!error && data) {
+            this._cuentasImputables = data;
+        }
+    },
+
+    async _loadAsientosManuales() {
+        const query = supabaseClient
+            .from('asientos')
+            .select('*')
+            .eq('tipo', 'manual')
+            .eq('_deleted', false)
+            .order('numero', { ascending: false });
+
+        const canal = this._getCanalFilter();
+        if (canal) query.eq('canal', canal);
+
+        const { data, error } = await query;
+        if (!error && data) {
+            this._asientosManuales = data;
+        }
+    },
+
+    async _guardarAsiento() {
+        const totalDebe = this._lineas.reduce((s, l) => s + (parseFloat(l.debe) || 0), 0);
+        const totalHaber = this._lineas.reduce((s, l) => s + (parseFloat(l.haber) || 0), 0);
+
+        if (Math.abs(totalDebe - totalHaber) > 0.01) {
+            Toast.error('El asiento no balancea');
+            return;
+        }
+        if (!this._asientoConcepto.trim()) {
+            Toast.error('El concepto es requerido');
+            return;
+        }
+
+        const lineasValidas = this._lineas.filter(l => l.cuenta_id && (parseFloat(l.debe) > 0 || parseFloat(l.haber) > 0));
+        if (lineasValidas.length < 2) {
+            Toast.error('Se necesitan al menos 2 l\u00edneas con cuenta y monto');
+            return;
+        }
+
+        const saveBtn = document.getElementById('contAmSave');
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
+
+        try {
+            if (this._asientoEditId) {
+                // UPDATE existing
+                const { error: errCab } = await supabaseClient
+                    .from('asientos')
+                    .update({
+                        fecha: this._asientoFecha,
+                        concepto: this._asientoConcepto.trim(),
+                        canal: this._asientoCanal || 'oficial',
+                        total_debe: totalDebe,
+                        total_haber: totalHaber,
+                        notas: this._asientoNotas.trim() || null,
+                    })
+                    .eq('id', this._asientoEditId);
+
+                if (errCab) throw errCab;
+
+                // Delete old lines
+                const { error: errDel } = await supabaseClient
+                    .from('asiento_lineas')
+                    .delete()
+                    .eq('asiento_id', this._asientoEditId);
+                if (errDel) throw errDel;
+
+                // Insert new lines
+                const lineas = lineasValidas.map((l, i) => ({
+                    asiento_id: this._asientoEditId,
+                    cuenta_id: l.cuenta_id,
+                    tipo_movimiento: parseFloat(l.debe) > 0 ? 'debe' : 'haber',
+                    monto: parseFloat(l.debe) > 0 ? parseFloat(l.debe) : parseFloat(l.haber),
+                    orden: i + 1,
+                }));
+
+                const { error: errLin } = await supabaseClient
+                    .from('asiento_lineas').insert(lineas);
+                if (errLin) throw errLin;
+
+                Toast.success('Asiento #' + (this._asientoEditNumero || '') + ' actualizado');
+            } else {
+                // INSERT new
+                const { data: asiento, error } = await supabaseClient
+                    .from('asientos')
+                    .insert({
+                        fecha: this._asientoFecha,
+                        concepto: this._asientoConcepto.trim(),
+                        tipo: 'manual',
+                        canal: this._asientoCanal || 'oficial',
+                        total_debe: totalDebe,
+                        total_haber: totalHaber,
+                        notas: this._asientoNotas.trim() || null,
+                        created_by: Auth.getUser().id,
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                // Insert lines
+                const lineas = lineasValidas.map((l, i) => ({
+                    asiento_id: asiento.id,
+                    cuenta_id: l.cuenta_id,
+                    tipo_movimiento: parseFloat(l.debe) > 0 ? 'debe' : 'haber',
+                    monto: parseFloat(l.debe) > 0 ? parseFloat(l.debe) : parseFloat(l.haber),
+                    orden: i + 1,
+                }));
+
+                const { error: errLineas } = await supabaseClient
+                    .from('asiento_lineas').insert(lineas);
+                if (errLineas) throw errLineas;
+
+                Toast.success('Asiento #' + asiento.numero + ' guardado');
+            }
+
+            this._resetFormulario();
+            await this._loadAsientosManuales();
+            this._renderAsientoManualForm();
+            this._renderAsientosManualesList();
+
+        } catch (e) {
+            Toast.error('Error al guardar: ' + (e.message || e));
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = this._asientoEditId ? 'Actualizar asiento' : 'Guardar asiento'; }
+        }
+    },
+
+    async _editarAsiento(id) {
+        // Load asiento + lines
+        const { data: asiento, error } = await supabaseClient
+            .from('asientos')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error || !asiento) {
+            Toast.error('Error al cargar asiento');
+            return;
+        }
+
+        const { data: lineas, error: errLin } = await supabaseClient
+            .from('asiento_lineas')
+            .select('*')
+            .eq('asiento_id', id)
+            .order('orden');
+
+        if (errLin) {
+            Toast.error('Error al cargar l\u00edneas');
+            return;
+        }
+
+        // Populate form state
+        this._asientoEditId = asiento.id;
+        this._asientoEditNumero = asiento.numero;
+        this._asientoFecha = asiento.fecha || new Date().toISOString().split('T')[0];
+        this._asientoConcepto = asiento.concepto || '';
+        this._asientoCanal = asiento.canal || 'oficial';
+        this._asientoNotas = asiento.notas || '';
+        this._lineas = (lineas || []).map(l => ({
+            cuenta_id: l.cuenta_id,
+            debe: l.tipo_movimiento === 'debe' ? l.monto : 0,
+            haber: l.tipo_movimiento === 'haber' ? l.monto : 0,
+        }));
+
+        if (this._lineas.length < 2) {
+            while (this._lineas.length < 2) {
+                this._lineas.push({ cuenta_id: null, debe: 0, haber: 0 });
+            }
+        }
+
+        this._renderAsientoManualForm();
+        // Scroll to top of form
+        document.querySelector('.cont-am-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+
+    async _anularAsiento(id, numero) {
+        const confirmed = await Modal.confirm({
+            title: 'Anular asiento',
+            message: `\u00bfSeguro que quer\u00e9s anular el asiento <strong>#${numero || ''}</strong>? Esta acci\u00f3n marca el asiento como eliminado.`,
+            confirmText: 'Anular',
+            danger: true,
+        });
+        if (!confirmed) return;
+
+        const { error } = await supabaseClient
+            .from('asientos')
+            .update({ _deleted: true })
+            .eq('id', id);
+
+        if (error) {
+            Toast.error('Error al anular');
+            return;
+        }
+
+        Toast.success('Asiento #' + (numero || '') + ' anulado');
+
+        // If we were editing this one, reset
+        if (this._asientoEditId === id) {
+            this._resetFormulario();
+            this._renderAsientoManualForm();
+        }
+
+        await this._loadAsientosManuales();
+        this._renderAsientosManualesList();
+    },
+
+    _resetFormulario() {
+        this._asientoFecha = new Date().toISOString().split('T')[0];
+        this._asientoConcepto = '';
+        this._asientoCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
+        this._asientoNotas = '';
+        this._lineas = [
+            { cuenta_id: null, debe: 0, haber: 0 },
+            { cuenta_id: null, debe: 0, haber: 0 },
+        ];
+        this._asientoEditId = null;
+        this._asientoEditNumero = null;
+    },
+
+    // ═══════════════════════════════════════════
+    //  ASIENTO MANUAL — EVENTS
+    // ═══════════════════════════════════════════
+
+    _attachAsientoManualEvents() {
+        // Toggle A/B (re-load list on canal change)
+        document.querySelectorAll('.cont-toggle-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                this._canalVista = pill.dataset.canal;
+                document.querySelectorAll('.cont-toggle-pill').forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                this._loadAsientosManuales().then(() => this._renderAsientosManualesList());
+            });
+        });
+    },
+
+    _attachAsientoFormEvents() {
+        // Cabecera inputs
+        document.getElementById('contAmFecha')?.addEventListener('change', (e) => {
+            this._asientoFecha = e.target.value;
+        });
+        document.getElementById('contAmConcepto')?.addEventListener('input', (e) => {
+            this._asientoConcepto = e.target.value;
+            this._updateSaveButtonState();
+        });
+        document.getElementById('contAmCanal')?.addEventListener('change', (e) => {
+            this._asientoCanal = e.target.value;
+        });
+        document.getElementById('contAmNotas')?.addEventListener('input', (e) => {
+            this._asientoNotas = e.target.value;
+        });
+
+        // Cuenta selects
+        document.querySelectorAll('.cont-am-cuenta-select').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                this._lineas[idx].cuenta_id = e.target.value || null;
+            });
+        });
+
+        // Debe inputs
+        document.querySelectorAll('.cont-am-debe-input').forEach(inp => {
+            inp.addEventListener('input', (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                const val = this._parseMontoInput(e.target.value);
+                this._lineas[idx].debe = val;
+                if (val > 0) {
+                    this._lineas[idx].haber = 0;
+                    const haberInput = document.querySelector(`.cont-am-haber-input[data-idx="${idx}"]`);
+                    if (haberInput) { haberInput.value = ''; haberInput.disabled = true; }
+                } else {
+                    const haberInput = document.querySelector(`.cont-am-haber-input[data-idx="${idx}"]`);
+                    if (haberInput) haberInput.disabled = false;
+                }
+                this._updateTotals();
+            });
+            inp.addEventListener('blur', (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                const val = parseFloat(this._lineas[idx].debe) || 0;
+                e.target.value = val > 0 ? this._formatMontoInput(val) : '';
+            });
+        });
+
+        // Haber inputs
+        document.querySelectorAll('.cont-am-haber-input').forEach(inp => {
+            inp.addEventListener('input', (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                const val = this._parseMontoInput(e.target.value);
+                this._lineas[idx].haber = val;
+                if (val > 0) {
+                    this._lineas[idx].debe = 0;
+                    const debeInput = document.querySelector(`.cont-am-debe-input[data-idx="${idx}"]`);
+                    if (debeInput) { debeInput.value = ''; debeInput.disabled = true; }
+                } else {
+                    const debeInput = document.querySelector(`.cont-am-debe-input[data-idx="${idx}"]`);
+                    if (debeInput) debeInput.disabled = false;
+                }
+                this._updateTotals();
+            });
+            inp.addEventListener('blur', (e) => {
+                const idx = parseInt(e.target.dataset.idx);
+                const val = parseFloat(this._lineas[idx].haber) || 0;
+                e.target.value = val > 0 ? this._formatMontoInput(val) : '';
+            });
+        });
+
+        // Remove line buttons
+        document.querySelectorAll('.cont-am-remove-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this._lineas.length <= 2) return;
+                const idx = parseInt(btn.dataset.idx);
+                this._lineas.splice(idx, 1);
+                this._renderAsientoManualForm();
+            });
+        });
+
+        // Add line button
+        document.getElementById('contAmAddLine')?.addEventListener('click', () => {
+            this._lineas.push({ cuenta_id: null, debe: 0, haber: 0 });
+            this._renderAsientoManualForm();
+            // Focus the new cuenta select
+            setTimeout(() => {
+                const selects = document.querySelectorAll('.cont-am-cuenta-select');
+                if (selects.length) selects[selects.length - 1].focus();
+            }, 50);
+        });
+
+        // Save button
+        document.getElementById('contAmSave')?.addEventListener('click', () => {
+            this._guardarAsiento();
+        });
+
+        // Cancel edit button
+        document.getElementById('contAmCancelEdit')?.addEventListener('click', () => {
+            this._resetFormulario();
+            this._renderAsientoManualForm();
+        });
+    },
+
+    _updateTotals() {
+        const totalDebe = this._lineas.reduce((s, l) => s + (parseFloat(l.debe) || 0), 0);
+        const totalHaber = this._lineas.reduce((s, l) => s + (parseFloat(l.haber) || 0), 0);
+        const diff = totalDebe - totalHaber;
+        const balanced = Math.abs(diff) < 0.01;
+
+        const elDebe = document.getElementById('contAmTotalDebe');
+        const elHaber = document.getElementById('contAmTotalHaber');
+        const elDiff = document.getElementById('contAmDiffBadge');
+
+        if (elDebe) elDebe.textContent = this._formatMoney(totalDebe);
+        if (elHaber) elHaber.textContent = this._formatMoney(totalHaber);
+        if (elDiff) {
+            elDiff.className = 'cont-am-diff-badge ' + (balanced ? 'cont-am-diff-ok' : 'cont-am-diff-err');
+            elDiff.textContent = balanced ? '\u2713 $0' : '\u2717 ' + this._formatMoney(Math.abs(diff));
+        }
+
+        this._updateSaveButtonState();
+    },
+
+    _updateSaveButtonState() {
+        const totalDebe = this._lineas.reduce((s, l) => s + (parseFloat(l.debe) || 0), 0);
+        const totalHaber = this._lineas.reduce((s, l) => s + (parseFloat(l.haber) || 0), 0);
+        const balanced = Math.abs(totalDebe - totalHaber) < 0.01;
+        const hasConcepto = !!this._asientoConcepto.trim();
+
+        const btn = document.getElementById('contAmSave');
+        if (btn) btn.disabled = !(balanced && hasConcepto);
     },
 
     // ═══════════════════════════════════════════
