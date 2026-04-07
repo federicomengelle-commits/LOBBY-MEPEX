@@ -97,9 +97,12 @@ const InventarioModule = {
             <style>
                 /* ─── Inventario Module Styles ─── */
                 .inv-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    height: 100%;
+                    min-height: calc(100vh - 56px);
                     padding: 24px 32px;
-                    max-width: 1400px;
-                    margin: 0 auto;
+                    background: var(--bg, #050505);
                 }
                 .inv-toolbar {
                     display: flex;
@@ -242,11 +245,12 @@ const InventarioModule = {
 
                 /* ─── Table ─── */
                 .inv-body {
-                    position: relative;
                     display: flex;
-                    gap: 0;
+                    flex: 1;
+                    overflow: hidden;
+                    position: relative;
                 }
-                .inv-main { flex: 1; min-width: 0; }
+                .inv-main { flex: 1; min-width: 0; overflow-y: auto; padding: 0; }
                 .inv-table-wrapper { overflow-x: auto; }
                 .inv-table {
                     width: 100%;
@@ -1460,6 +1464,17 @@ const InventarioModule = {
         const badgeTxt = stock > 5 ? 'OK' : stock >= 1 ? 'Bajo' : 'Crítico';
         const rc = this._rubroBadgeColor(item.rubro);
 
+        // Build info rows — only show fields that have data
+        const infoRows = [];
+        if (item.rubro) infoRows.push({ label: 'Rubro', value: `<span class="inv-rubro-badge" style="--rubro-color: ${rc}">${item.rubro}</span>` });
+        if (item.categoria) infoRows.push({ label: 'Categoría', value: item.categoria });
+        if (item.descripcion) infoRows.push({ label: 'Descripción', value: item.descripcion });
+        if (item.origen) infoRows.push({ label: 'Origen', value: item.origen });
+        if (item.unidad) infoRows.push({ label: 'Unidad', value: item.unidad });
+        // Stock always shows
+        infoRows.push({ label: 'Stock', value: `${stock} <span class="inv-badge ${badgeCls}" style="margin-left:6px">${badgeTxt}</span>` });
+        if (item.familia) infoRows.push({ label: 'Familia', value: item.familia });
+
         return `
             <div class="inv-panel-header">
                 <div class="inv-panel-color-bar" style="background: ${color}"></div>
@@ -1474,15 +1489,9 @@ const InventarioModule = {
             <div class="inv-panel-section">
                 <h3 class="inv-section-title">Información</h3>
                 <div class="inv-info-grid">
-                    <div class="inv-info-row"><span class="inv-info-label">Rubro</span><span class="inv-info-value">${v(item.rubro)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Categoría</span><span class="inv-info-value">${v(item.categoria)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Descripción</span><span class="inv-info-value">${v(item.descripcion)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Origen</span><span class="inv-info-value">${v(item.origen)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Unidad</span><span class="inv-info-value">${v(item.unidad)}</span></div>
-                    <div class="inv-info-row">
-                        <span class="inv-info-label">Stock</span>
-                        <span class="inv-info-value">${stock} <span class="inv-badge ${badgeCls}" style="margin-left:6px">${badgeTxt}</span></span>
-                    </div>
+                    ${infoRows.map(r => `
+                        <div class="inv-info-row"><span class="inv-info-label">${r.label}</span><span class="inv-info-value">${r.value}</span></div>
+                    `).join('')}
                 </div>
             </div>
 
@@ -1508,6 +1517,14 @@ const InventarioModule = {
     _buildMaterialPanelHTML(item, v, color) {
         const stock = item.stock || 0;
 
+        // Build info rows — only show fields that have data
+        const infoRows = [];
+        if (item.clasificacion) infoRows.push({ label: 'Clasificación', value: `<span class="inv-rubro-badge" style="--rubro-color: #9B7DFF">${item.clasificacion}</span>` });
+        if (item.categoria) infoRows.push({ label: 'Categoría', value: item.categoria });
+        if (item.unidadBase) infoRows.push({ label: 'Unidad', value: item.unidadBase });
+        // Stock always shows
+        infoRows.push({ label: 'Stock', value: `<span class="inv-td-code">${stock}</span> ${item.unidadBase || ''}` });
+
         return `
             <div class="inv-panel-header">
                 <div class="inv-panel-color-bar" style="background: ${color}"></div>
@@ -1522,10 +1539,9 @@ const InventarioModule = {
             <div class="inv-panel-section">
                 <h3 class="inv-section-title">Información</h3>
                 <div class="inv-info-grid">
-                    <div class="inv-info-row"><span class="inv-info-label">Clasificación</span><span class="inv-info-value">${v(item.clasificacion)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Categoría</span><span class="inv-info-value">${v(item.categoria)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Unidad</span><span class="inv-info-value">${v(item.unidadBase)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Stock</span><span class="inv-info-value inv-td-code">${stock}</span></div>
+                    ${infoRows.map(r => `
+                        <div class="inv-info-row"><span class="inv-info-label">${r.label}</span><span class="inv-info-value">${r.value}</span></div>
+                    `).join('')}
                 </div>
             </div>
 
