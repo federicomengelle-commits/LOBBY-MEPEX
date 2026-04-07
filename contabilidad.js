@@ -3362,7 +3362,7 @@ const ContabilidadModule = {
                         total_debe: totalDebe,
                         total_haber: totalHaber,
                         notas: this._asientoNotas.trim() || null,
-                        created_by: Auth.getUser().id,
+                        created_by: Auth.getUser().uid,
                     })
                     .select()
                     .single();
