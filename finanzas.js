@@ -1725,6 +1725,53 @@ const FinanzasModule = {
                     background: rgba(74,144,217,0.1);
                     color: #4A90D9;
                 }
+
+                /* ─── Proveedor Autocomplete ─── */
+                .fin-autocomplete-wrap {
+                    position: relative;
+                }
+                .fin-autocomplete-dropdown {
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    z-index: 1000;
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-top: none;
+                    border-radius: 0 0 4px 4px;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    display: none;
+                }
+                .fin-autocomplete-dropdown.open { display: block; }
+                .fin-autocomplete-option {
+                    padding: 8px 10px;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 0.85rem;
+                    color: #E8E8E8;
+                    transition: background 150ms;
+                }
+                .fin-autocomplete-option:hover { background: #1a1a1a; }
+                .fin-autocomplete-rubro {
+                    font-size: 0.72rem;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                }
+                .fin-proveedor-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 2px 8px;
+                    background: rgba(74,144,217,0.1);
+                    border: 1px solid rgba(74,144,217,0.25);
+                    border-radius: 3px;
+                    font-size: 0.8rem;
+                    color: #4A90D9;
+                }
             </style>
 
             <div class="fin-wrapper">
@@ -3471,7 +3518,7 @@ const FinanzasModule = {
                         ${egreso.destinatario ? `
                         <div class="fin-info-row">
                             <span class="fin-info-label">Destinatario</span>
-                            <span class="fin-info-value">${egreso.destinatario}</span>
+                            <span class="fin-info-value">${egreso.proveedor_id ? `<span class="fin-proveedor-badge">🏢 ${egreso.destinatario}</span>` : egreso.destinatario}</span>
                         </div>
                         ` : ''}
                         ${egreso.subcategoria ? `
@@ -3693,7 +3740,11 @@ const FinanzasModule = {
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Destinatario</label>
-                            <input type="text" class="fin-form-input" id="finEgrFormDest" value="${e.destinatario || ''}" placeholder="Nombre proveedor, empleado…">
+                            <div class="fin-autocomplete-wrap">
+                                <input type="text" class="fin-form-input" id="finEgrFormDest" value="${e.destinatario || ''}" placeholder="Buscar proveedor…" autocomplete="off">
+                                <input type="hidden" id="finEgrFormProvId" value="${e.proveedor_id || ''}">
+                                <div class="fin-autocomplete-dropdown" id="finEgrProvDropdown"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="fin-form-group">
@@ -3818,6 +3869,9 @@ const FinanzasModule = {
         document.getElementById('finEgrCFNeto')?.addEventListener('input', function() { this._userEdited = true; });
         document.getElementById('finEgrCFIva')?.addEventListener('input', function() { this._userEdited = true; });
 
+        // Proveedor autocomplete
+        this._initProveedorAutocomplete();
+
         // Save
         document.getElementById('finBtnSaveEgreso')?.addEventListener('click', async () => {
             const fecha = document.getElementById('finEgrFormFecha')?.value;
@@ -3855,10 +3909,11 @@ const FinanzasModule = {
                 notas = document.getElementById('finEgrFormNotas')?.value.trim() || null;
             }
 
+            const proveedor_id = document.getElementById('finEgrFormProvId')?.value || null;
             const payload = {
                 fecha, categoria, subcategoria, destinatario, concepto,
                 monto, medio, canal, cuenta_id, estado, fecha_programada,
-                proyecto_id, notas,
+                proyecto_id, proveedor_id, notas,
             };
 
             try {
@@ -7594,6 +7649,75 @@ const FinanzasModule = {
 
         // Transfer button
         document.getElementById('finBtnTransfer')?.addEventListener('click', () => this._showTransferModal());
+    },
+
+    // ═══════════════════════════════════════════
+    //  PROVEEDOR AUTOCOMPLETE
+    // ═══════════════════════════════════════════
+
+    _initProveedorAutocomplete() {
+        const input = document.getElementById('finEgrFormDest');
+        const hiddenId = document.getElementById('finEgrFormProvId');
+        const dropdown = document.getElementById('finEgrProvDropdown');
+        if (!input || !dropdown) return;
+
+        let debounce = null;
+
+        input.addEventListener('input', () => {
+            // Clear proveedor_id when user types (free text mode)
+            if (hiddenId) hiddenId.value = '';
+
+            clearTimeout(debounce);
+            const q = input.value.trim();
+            if (q.length < 2) { dropdown.classList.remove('open'); return; }
+
+            debounce = setTimeout(async () => {
+                try {
+                    const { data } = await supabaseClient
+                        .from('proveedor')
+                        .select('id, nombre, rubro')
+                        .ilike('nombre', `%${q}%`)
+                        .limit(10);
+
+                    if (!data || !data.length) { dropdown.classList.remove('open'); return; }
+
+                    dropdown.innerHTML = data.map(p => `
+                        <div class="fin-autocomplete-option" data-prov-id="${p.id}" data-prov-nombre="${p.nombre}" data-prov-rubro="${p.rubro || ''}">
+                            ${p.nombre}
+                            ${p.rubro ? `<span class="fin-autocomplete-rubro">${p.rubro}</span>` : ''}
+                        </div>
+                    `).join('');
+                    dropdown.classList.add('open');
+
+                    // Click on option
+                    dropdown.querySelectorAll('.fin-autocomplete-option').forEach(opt => {
+                        opt.addEventListener('click', () => {
+                            input.value = opt.dataset.provNombre;
+                            if (hiddenId) hiddenId.value = opt.dataset.provId;
+                            dropdown.classList.remove('open');
+
+                            // Auto-fill subcategoria with rubro
+                            const rubro = opt.dataset.provRubro;
+                            if (rubro) {
+                                const subcatInput = document.getElementById('finEgrFormSubcat');
+                                if (subcatInput && !subcatInput.value.trim()) {
+                                    subcatInput.value = rubro;
+                                }
+                            }
+                        });
+                    });
+                } catch (e) {
+                    dropdown.classList.remove('open');
+                }
+            }, 300);
+        });
+
+        // Close dropdown on click outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.fin-autocomplete-wrap')) {
+                dropdown.classList.remove('open');
+            }
+        });
     },
 
     // ═══════════════════════════════════════════
