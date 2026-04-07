@@ -1197,7 +1197,6 @@ const InventarioModule = {
     // ═══════════════════════════════════════════
 
     _buildMaterialesHTML() {
-        const showCost = this._userRole !== 'taller';
         return `
             <div class="inv-filters">
                 <div class="inv-filter-group">
@@ -1246,8 +1245,7 @@ const InventarioModule = {
                 (i.nombre || '').toLowerCase().includes(q) ||
                 (i.codigo || '').toLowerCase().includes(q) ||
                 (i.clasificacion || '').toLowerCase().includes(q) ||
-                (i.categoria || '').toLowerCase().includes(q) ||
-                (i.proveedor || '').toLowerCase().includes(q)
+                (i.categoria || '').toLowerCase().includes(q)
             );
         }
         if (this._materialesClasFilter) {
@@ -1265,7 +1263,6 @@ const InventarioModule = {
         if (!container) return;
 
         const data = this._materialesFiltered;
-        const showCost = this._userRole !== 'taller';
 
         if (countEl) countEl.textContent = `${data.length} material${data.length !== 1 ? 'es' : ''}`;
 
@@ -1286,12 +1283,6 @@ const InventarioModule = {
                 : '<span class="inv-sort-icon">↓</span>';
         };
 
-        const formatCost = (val, moneda) => {
-            if (!val) return '<span class="inv-td-muted">—</span>';
-            const prefix = (moneda || 'USD') === 'USD' ? 'US$' : '$';
-            return `${prefix} ${Number(val).toFixed(2)}`;
-        };
-
         const rows = data.map(item => {
             const stock = item.stock || 0;
             return `
@@ -1302,8 +1293,6 @@ const InventarioModule = {
                     <td class="inv-td">${item.categoria || '<span class="inv-td-muted">—</span>'}</td>
                     <td class="inv-td inv-td-code">${stock}</td>
                     <td class="inv-td">${item.unidadBase || '<span class="inv-td-muted">—</span>'}</td>
-                    ${showCost ? `<td class="inv-td inv-td-cost">${formatCost(item.costoUnitario, item.moneda)}</td>` : ''}
-                    <td class="inv-td">${item.proveedor || '<span class="inv-td-muted">—</span>'}</td>
                 </tr>`;
         }).join('');
 
@@ -1318,8 +1307,6 @@ const InventarioModule = {
                             <th class="inv-th sortable" data-sort="categoria" data-ctx="materiales">CATEGORÍA${sortIcon('categoria')}</th>
                             <th class="inv-th sortable" data-sort="stock" data-ctx="materiales">STOCK${sortIcon('stock')}</th>
                             <th class="inv-th">UNIDAD</th>
-                            ${showCost ? `<th class="inv-th sortable" data-sort="costoUnitario" data-ctx="materiales">COSTO UNIT.${sortIcon('costoUnitario')}</th>` : ''}
-                            <th class="inv-th sortable" data-sort="proveedor" data-ctx="materiales">PROVEEDOR${sortIcon('proveedor')}</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -1520,12 +1507,6 @@ const InventarioModule = {
 
     _buildMaterialPanelHTML(item, v, color) {
         const stock = item.stock || 0;
-        const showCost = this._userRole !== 'taller';
-        const formatCost = (val, moneda) => {
-            if (!val) return '<span style="color:#444">—</span>';
-            const prefix = (moneda || 'USD') === 'USD' ? 'US$' : '$';
-            return `${prefix} ${Number(val).toFixed(2)}`;
-        };
 
         return `
             <div class="inv-panel-header">
@@ -1545,9 +1526,6 @@ const InventarioModule = {
                     <div class="inv-info-row"><span class="inv-info-label">Categoría</span><span class="inv-info-value">${v(item.categoria)}</span></div>
                     <div class="inv-info-row"><span class="inv-info-label">Unidad</span><span class="inv-info-value">${v(item.unidadBase)}</span></div>
                     <div class="inv-info-row"><span class="inv-info-label">Stock</span><span class="inv-info-value inv-td-code">${stock}</span></div>
-                    ${showCost ? `<div class="inv-info-row"><span class="inv-info-label">Costo unitario</span><span class="inv-info-value inv-td-cost">${formatCost(item.costoUnitario, item.moneda)}</span></div>` : ''}
-                    <div class="inv-info-row"><span class="inv-info-label">Proveedor</span><span class="inv-info-value">${v(item.proveedor)}</span></div>
-                    <div class="inv-info-row"><span class="inv-info-label">Moneda</span><span class="inv-info-value">${v(item.moneda)}</span></div>
                 </div>
             </div>
 
