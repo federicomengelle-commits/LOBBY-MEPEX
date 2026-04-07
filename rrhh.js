@@ -679,10 +679,10 @@ const RRHHModule = {
         today.setHours(0, 0, 0, 0);
         const activeEvents = this._events
             .filter(e => {
-                const end = new Date(e.endDate || e.fecha_desarme_fin || e.fecha_fin || '2000-01-01');
+                const end = new Date(e.teardownEndDate || e.eventEndDate || '2000-01-01');
                 return end >= today;
             })
-            .sort((a, b) => new Date(a.startDate || a.fecha_armado_inicio || a.fecha_inicio) - new Date(b.startDate || b.fecha_armado_inicio || b.fecha_inicio));
+            .sort((a, b) => new Date(a.setupDate || a.eventStartDate) - new Date(b.setupDate || b.eventStartDate));
 
         // Detect conflicts
         const conflicts = this._detectConflicts();
@@ -716,9 +716,9 @@ const RRHHModule = {
                 <div class="rh-asign-list">
                     ${activeEvents.map(evt => {
                         const evtAsign = eventMap[evt.id] || [];
-                        const evtName = evt.name || evt.nombre || '—';
-                        const startDate = evt.startDate || evt.fecha_armado_inicio || evt.fecha_inicio || '';
-                        const endDate = evt.endDate || evt.fecha_desarme_fin || evt.fecha_fin || '';
+                        const evtName = evt.name || '—';
+                        const startDate = evt.setupDate || evt.eventStartDate || '';
+                        const endDate = evt.teardownEndDate || evt.eventEndDate || '';
                         return `
                             <div class="rh-asign-event-card">
                                 <div class="rh-asign-event-header">
@@ -801,7 +801,7 @@ const RRHHModule = {
 
     _showAsignacionModal() {
         const activeEvents = this._events.filter(e => {
-            const end = new Date(e.endDate || e.fecha_desarme_fin || e.fecha_fin || '2000-01-01');
+            const end = new Date(e.teardownEndDate || e.eventEndDate || '2000-01-01');
             return end >= new Date();
         });
         const activePeople = this._personal.filter(p => p.estado === 'activo');
@@ -865,8 +865,8 @@ const RRHHModule = {
             document.getElementById('rhAEvento')?.addEventListener('change', (e) => {
                 const evt = this._events.find(x => String(x.id) === e.target.value);
                 if (evt) {
-                    const desde = evt.startDate || evt.fecha_armado_inicio || evt.fecha_inicio || '';
-                    const hasta = evt.endDate || evt.fecha_desarme_fin || evt.fecha_fin || '';
+                    const desde = evt.setupDate || evt.eventStartDate || '';
+                    const hasta = evt.teardownEndDate || evt.eventEndDate || '';
                     if (desde) document.getElementById('rhADesde').value = desde;
                     if (hasta) document.getElementById('rhAHasta').value = hasta;
                 }
