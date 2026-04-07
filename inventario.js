@@ -1791,10 +1791,17 @@ const InventarioModule = {
             return;
         }
 
-        const tipoBadge = (tipo) => {
+        const subtipoLabels = {
+            compra: 'Compra', devolucion: 'Devolución', recupero: 'Recupero',
+            ajuste_positivo: 'Positivo', ajuste_negativo: 'Negativo',
+            corte: 'Corte', recorte: 'Recorte',
+        };
+        const tipoBadge = (tipo, subtipo) => {
             const cls = { entrada: 'inv-tipo-entrada', consumo: 'inv-tipo-consumo', transformacion: 'inv-tipo-transformacion', ajuste: 'inv-tipo-ajuste' };
             const labels = { entrada: 'Entrada', consumo: 'Consumo', transformacion: 'Transformación', ajuste: 'Ajuste' };
-            return `<span class="inv-tipo-badge ${cls[tipo] || 'inv-tipo-ajuste'}">${labels[tipo] || tipo}</span>`;
+            const mainLabel = labels[tipo] || tipo;
+            const subLabel = subtipo && subtipoLabels[subtipo] ? subtipoLabels[subtipo] : '';
+            return `<span class="inv-tipo-badge ${cls[tipo] || 'inv-tipo-ajuste'}">${mainLabel}</span>${subLabel ? `<span style="font-size:0.72rem; color:#888; margin-left:6px">${subLabel}</span>` : ''}`;
         };
 
         const rows = data.map(mov => {
@@ -1811,7 +1818,7 @@ const InventarioModule = {
             return `
                 <tr class="inv-row inv-mov-row" data-mov-id="${mov.id}">
                     <td class="inv-td" style="font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; color:#888">${fecha}</td>
-                    <td class="inv-td">${tipoBadge(mov.tipo)}</td>
+                    <td class="inv-td">${tipoBadge(mov.tipo, mov.subtipo)}</td>
                     <td class="inv-td" style="max-width:300px; white-space:normal; font-size:0.82rem">${itemsSummary}</td>
                     <td class="inv-td">${proy}</td>
                     <td class="inv-td">${mov.usuario || '<span class="inv-td-muted">—</span>'}</td>
@@ -1855,10 +1862,11 @@ const InventarioModule = {
                 const items = mov.inventario_movimiento_items || [];
                 if (items.length === 0) return;
 
+                const itemTipoLabel = (t) => t === 'catalogo' ? 'Pieza' : t === 'insumo' ? 'Material' : t;
                 const detailRows = items.map(i => `
                     <tr>
                         <td>${i.item_nombre || 'ID: ' + i.item_id}</td>
-                        <td><span class="inv-modal-item-tag">${i.item_tipo}</span></td>
+                        <td><span class="inv-modal-item-tag">${itemTipoLabel(i.item_tipo)}</span></td>
                         <td style="color: ${i.direccion === 'entrada' ? '#00CC88' : '#E74C3C'}; font-family:var(--font-mono,'Space Mono',monospace)">${i.direccion === 'entrada' ? '+' : '−'}${i.cantidad}</td>
                         <td>${i.unidad || '—'}</td>
                     </tr>`).join('');
