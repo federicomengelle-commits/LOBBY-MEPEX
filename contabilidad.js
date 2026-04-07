@@ -57,6 +57,16 @@ const ContabilidadModule = {
     _mayorCuentasLista: [],
     _mayorSearchText: '',
 
+    // Libros IVA state
+    _ivaSubtab: 'ventas',   // ventas | compras | posicion
+    _ivaPeriodo: new Date().toISOString().slice(0, 7), // YYYY-MM
+    _ivaVentas: [],
+    _ivaCompras: [],
+
+    // Reportes state
+    _reportePeriodo: new Date().toISOString().slice(0, 7),
+    _reporteData: null,
+
     // Asiento manual state
     _asientoFecha: new Date().toISOString().split('T')[0],
     _asientoConcepto: '',
@@ -1492,6 +1502,312 @@ const ContabilidadModule = {
                 }
                 .cont-am-action-btn:hover { border-color: #4A90D9; color: #4A90D9; }
                 .cont-am-action-btn.danger:hover { border-color: #E74C3C; color: #E74C3C; }
+
+                /* ─── Libros IVA ─── */
+                .cont-iva-toolbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    margin-bottom: 16px;
+                    flex-wrap: wrap;
+                }
+                .cont-iva-toolbar-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+                .cont-iva-subtabs {
+                    display: flex;
+                    gap: 0;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    overflow: hidden;
+                }
+                .cont-iva-subtab {
+                    padding: 6px 16px;
+                    background: #1a1a1a;
+                    border: none;
+                    color: #666;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                    letter-spacing: 0.3px;
+                }
+                .cont-iva-subtab:not(:last-child) { border-right: 1px solid #2a2a2a; }
+                .cont-iva-subtab:hover { color: #aaa; background: #222; }
+                .cont-iva-subtab.active {
+                    background: rgba(74,144,217,0.15);
+                    color: #4A90D9;
+                }
+                .cont-iva-nota {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.78rem;
+                    color: #888;
+                    font-style: italic;
+                    padding: 8px 12px;
+                    background: rgba(255,255,255,0.02);
+                    border: 1px solid #222;
+                    border-radius: 4px;
+                    margin-bottom: 16px;
+                }
+                .cont-iva-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .cont-iva-table th {
+                    padding: 8px 12px;
+                    text-align: left;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border-bottom: 1px solid #2a2a2a;
+                    white-space: nowrap;
+                }
+                .cont-iva-table th.right { text-align: right; }
+                .cont-iva-table td {
+                    padding: 7px 12px;
+                    color: #E8E8E8;
+                    border-bottom: 1px solid rgba(255,255,255,0.03);
+                    font-size: 0.85rem;
+                    white-space: nowrap;
+                }
+                .cont-iva-table tr:nth-child(odd) { background: #0d0d0d; }
+                .cont-iva-table tr:nth-child(even) { background: #111111; }
+                .cont-iva-table tr:hover { background: rgba(74,144,217,0.04); }
+                .cont-iva-table td.right {
+                    text-align: right;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.8rem;
+                }
+                .cont-iva-table td.mono {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #888;
+                }
+                .cont-iva-total-row td {
+                    border-top: 2px solid #2a2a2a;
+                    border-bottom: none;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    padding-top: 10px;
+                }
+                .cont-iva-cf-badge {
+                    display: inline-block;
+                    padding: 1px 6px;
+                    border-radius: 3px;
+                    background: rgba(76,175,80,0.12);
+                    color: #4CAF50;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.62rem;
+                    font-weight: 700;
+                    margin-left: 6px;
+                }
+
+                /* Posición IVA cards */
+                .cont-iva-pos-cards {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr 1fr;
+                    gap: 16px;
+                    margin-bottom: 20px;
+                }
+                .cont-iva-pos-card {
+                    background: #111111;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 24px;
+                    text-align: center;
+                }
+                .cont-iva-pos-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    color: #555;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    margin-bottom: 10px;
+                }
+                .cont-iva-pos-monto {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 1.3rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                }
+                .cont-iva-pos-card.resultado {
+                    border-color: #333;
+                }
+                .cont-iva-pos-card.resultado .cont-iva-pos-monto { font-size: 1.5rem; }
+                .cont-iva-pos-status {
+                    display: inline-block;
+                    margin-top: 10px;
+                    padding: 3px 12px;
+                    border-radius: 3px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                }
+                .cont-iva-pos-pagar {
+                    background: rgba(232,72,85,0.12);
+                    color: #E84855;
+                }
+                .cont-iva-pos-favor {
+                    background: rgba(76,175,80,0.12);
+                    color: #4CAF50;
+                }
+                .cont-iva-pos-neutro {
+                    background: rgba(255,255,255,0.05);
+                    color: #888;
+                }
+
+                /* ─── Export CSV button ─── */
+                .cont-btn-export {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 14px;
+                    border-radius: 4px;
+                    border: 1px solid #2a2a2a;
+                    background: transparent;
+                    color: #888;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    transition: all 200ms ease;
+                }
+                .cont-btn-export:hover {
+                    border-color: #00A9C1;
+                    color: #00A9C1;
+                }
+
+                /* ─── Reportes — EERR ─── */
+                .cont-rep-toolbar {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    margin-bottom: 16px;
+                    flex-wrap: wrap;
+                }
+                .cont-rep-toolbar-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+                .cont-eerr {
+                    background: #0a0a0a;
+                    border: 1px solid #2a2a2a;
+                    border-radius: 6px;
+                    padding: 24px 28px;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                }
+                .cont-eerr-title {
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 1.1rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    margin: 0 0 4px 0;
+                }
+                .cont-eerr-subtitle {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.72rem;
+                    color: #555;
+                    margin-bottom: 20px;
+                }
+                .cont-eerr-section {
+                    margin-bottom: 20px;
+                }
+                .cont-eerr-section-header {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    color: #00A9C1;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    padding-bottom: 6px;
+                    border-bottom: 2px double #2a2a2a;
+                    margin-bottom: 8px;
+                }
+                .cont-eerr-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: baseline;
+                    padding: 4px 0 4px 16px;
+                }
+                .cont-eerr-row-code {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    color: #00A9C1;
+                    margin-right: 8px;
+                }
+                .cont-eerr-row-name {
+                    font-size: 0.88rem;
+                    color: #ccc;
+                    flex: 1;
+                }
+                .cont-eerr-row-monto {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.85rem;
+                    color: #E8E8E8;
+                    text-align: right;
+                    min-width: 140px;
+                }
+                .cont-eerr-subtotal {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: baseline;
+                    padding: 8px 0 4px 0;
+                    border-top: 1px solid #2a2a2a;
+                    margin-top: 4px;
+                }
+                .cont-eerr-subtotal-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.78rem;
+                    font-weight: 700;
+                    color: #888;
+                    text-transform: uppercase;
+                }
+                .cont-eerr-subtotal-monto {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.9rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    min-width: 140px;
+                    text-align: right;
+                }
+                .cont-eerr-resultado {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: baseline;
+                    padding: 12px 0;
+                    border-top: 2px double #2a2a2a;
+                    border-bottom: 2px double #2a2a2a;
+                    margin: 8px 0;
+                }
+                .cont-eerr-resultado-label {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    color: #E8E8E8;
+                    text-transform: uppercase;
+                }
+                .cont-eerr-resultado-monto {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 1.3rem;
+                    font-weight: 700;
+                    min-width: 160px;
+                    text-align: right;
+                }
+                .cont-eerr-positivo { color: #4CAF50; }
+                .cont-eerr-negativo { color: #E84855; }
+                .cont-eerr-cero { color: #888; }
             </style>
 
             <div class="cont-wrapper">
@@ -1568,6 +1884,16 @@ const ContabilidadModule = {
                 this._renderAsientoManualForm();
                 this._renderAsientosManualesList();
                 this._attachAsientoManualEvents();
+                break;
+            case 'libros_iva':
+                container.innerHTML = this._buildLibrosIVAShell();
+                this._attachLibrosIVAEvents();
+                await this._renderIVASubtab();
+                break;
+            case 'reportes':
+                container.innerHTML = this._buildReportesShell();
+                this._attachReportesEvents();
+                await this._loadReporteEERR();
                 break;
             default:
                 container.innerHTML = this._buildPlaceholder();
@@ -3635,6 +3961,575 @@ const ContabilidadModule = {
 
         const btn = document.getElementById('contAmSave');
         if (btn) btn.disabled = !(balanced && hasConcepto);
+    },
+
+    // ═══════════════════════════════════════════
+    //  EXPORT CSV
+    // ═══════════════════════════════════════════
+
+    _exportCSV(rows, headers, filename) {
+        const headerRow = headers.map(h => h.label).join(',');
+        const dataRows = rows.map(r => headers.map(h => {
+            const val = r[h.key];
+            if (val == null) return '';
+            const str = String(val);
+            return str.includes(',') || str.includes('"') || str.includes('\n')
+                ? `"${str.replace(/"/g, '""')}"` : str;
+        }).join(','));
+        const csv = '\uFEFF' + [headerRow, ...dataRows].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+    },
+
+    // ═══════════════════════════════════════════
+    //  LIBROS IVA
+    // ═══════════════════════════════════════════
+
+    _getIVAPeriodoRange() {
+        const [y, m] = this._ivaPeriodo.split('-').map(Number);
+        const desde = `${y}-${String(m).padStart(2, '0')}-01`;
+        const lastDay = new Date(y, m, 0).getDate();
+        const hasta = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        return { desde, hasta };
+    },
+
+    _buildLibrosIVAShell() {
+        const subtabs = [
+            { key: 'ventas', label: 'IVA Ventas' },
+            { key: 'compras', label: 'IVA Compras' },
+            { key: 'posicion', label: 'Posici\u00f3n IVA' },
+        ];
+        return `
+            <div class="cont-iva-toolbar">
+                <div class="cont-iva-toolbar-left">
+                    <div class="cont-iva-subtabs">
+                        ${subtabs.map(s => `
+                            <button class="cont-iva-subtab ${this._ivaSubtab === s.key ? 'active' : ''}" data-subtab="${s.key}">
+                                ${s.label}
+                            </button>
+                        `).join('')}
+                    </div>
+                    <span class="cont-diario-filter-label">Per\u00edodo</span>
+                    <input type="month" class="cont-diario-filter-input" id="contIvaPeriodo" value="${this._ivaPeriodo}">
+                </div>
+                <div id="contIvaExportWrap"></div>
+            </div>
+            <div class="cont-iva-nota">\u{1F512} Los libros IVA reflejan solo operaciones oficiales (canal A).</div>
+            <div id="cont-iva-content"></div>
+        `;
+    },
+
+    _attachLibrosIVAEvents() {
+        // Subtab switching
+        document.querySelectorAll('.cont-iva-subtab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._ivaSubtab = btn.dataset.subtab;
+                document.querySelectorAll('.cont-iva-subtab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this._renderIVASubtab();
+            });
+        });
+
+        // Periodo
+        document.getElementById('contIvaPeriodo')?.addEventListener('change', (e) => {
+            this._ivaPeriodo = e.target.value;
+            this._renderIVASubtab();
+        });
+    },
+
+    async _renderIVASubtab() {
+        const container = document.getElementById('cont-iva-content');
+        if (!container) return;
+        container.innerHTML = '<div class="cont-placeholder"><div style="color:#555">Cargando...</div></div>';
+
+        const { desde, hasta } = this._getIVAPeriodoRange();
+
+        // Always load both for posicion subtab
+        if (this._ivaSubtab === 'posicion' || this._ivaSubtab === 'ventas') {
+            await this._loadIVAVentas(desde, hasta);
+        }
+        if (this._ivaSubtab === 'posicion' || this._ivaSubtab === 'compras') {
+            await this._loadIVACompras(desde, hasta);
+        }
+
+        switch (this._ivaSubtab) {
+            case 'ventas':
+                this._renderIVAVentas(container);
+                break;
+            case 'compras':
+                this._renderIVACompras(container);
+                break;
+            case 'posicion':
+                this._renderIVAPosicion(container);
+                break;
+        }
+    },
+
+    async _loadIVAVentas(desde, hasta) {
+        const { data, error } = await supabaseClient
+            .from('comprobantes')
+            .select('*')
+            .eq('canal', 'oficial')
+            .eq('_deleted', false)
+            .gte('fecha', desde)
+            .lte('fecha', hasta)
+            .order('fecha')
+            .order('numero');
+        this._ivaVentas = (!error && data) ? data : [];
+    },
+
+    async _loadIVACompras(desde, hasta) {
+        const { data, error } = await supabaseClient
+            .from('comprobantes_recibidos')
+            .select('*')
+            .eq('canal', 'oficial')
+            .eq('_deleted', false)
+            .gte('fecha', desde)
+            .lte('fecha', hasta)
+            .order('fecha');
+        this._ivaCompras = (!error && data) ? data : [];
+    },
+
+    _formatNumeroComprobante(pv, num) {
+        const pvStr = String(pv || 0).padStart(4, '0');
+        const numStr = String(num || 0).padStart(8, '0');
+        return `${pvStr}-${numStr}`;
+    },
+
+    _getPeriodoLabel() {
+        const [y, m] = this._ivaPeriodo.split('-').map(Number);
+        const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        return `${meses[m - 1]} ${y}`;
+    },
+
+    _renderIVAVentas(container) {
+        const exportWrap = document.getElementById('contIvaExportWrap');
+        if (this._ivaVentas.length === 0) {
+            container.innerHTML = `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u{1F9FE}</div>
+                    <div class="cont-empty-text">No hay comprobantes emitidos en el per\u00edodo.</div>
+                </div>`;
+            if (exportWrap) exportWrap.innerHTML = '';
+            return;
+        }
+
+        let totalNeto = 0, totalIva = 0, totalTotal = 0;
+        const rows = this._ivaVentas.map(c => {
+            const fecha = c.fecha ? new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '\u2014';
+            const tipo = c.tipo || c.tipo_comprobante || '\u2014';
+            const numero = this._formatNumeroComprobante(c.punto_venta, c.numero);
+            const cliente = c.cliente_nombre || c.razon_social || '\u2014';
+            const cuit = c.cuit || c.cuit_cliente || '\u2014';
+            const tipoUpper = tipo.toUpperCase();
+            const discriminaIVA = tipoUpper.includes('A') || tipoUpper.includes('M') || tipoUpper.includes('E');
+
+            const neto = discriminaIVA ? (c.neto || c.subtotal || 0) : null;
+            const iva = discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) : null;
+            const total = c.total || c.monto || 0;
+
+            if (neto !== null) totalNeto += neto;
+            if (iva !== null) totalIva += iva;
+            totalTotal += total;
+
+            return `<tr>
+                <td class="mono">${fecha}</td>
+                <td>${tipo}</td>
+                <td class="mono">${numero}</td>
+                <td>${cliente}</td>
+                <td class="mono">${cuit}</td>
+                <td class="right">${neto !== null ? this._formatMoney(neto) : '\u2014'}</td>
+                <td class="right">${iva !== null ? this._formatMoney(iva) : '\u2014'}</td>
+                <td class="right">${this._formatMoney(total)}</td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="cont-iva-table">
+                <thead><tr>
+                    <th>Fecha</th><th>Tipo</th><th>N\u00famero</th><th>Cliente</th><th>CUIT</th>
+                    <th class="right">Neto</th><th class="right">IVA 21%</th><th class="right">Total</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot><tr class="cont-iva-total-row">
+                    <td colspan="5" style="text-align:right;font-family:var(--font-mono);font-size:0.78rem;color:#888">TOTALES</td>
+                    <td class="right">${this._formatMoney(totalNeto)}</td>
+                    <td class="right">${this._formatMoney(totalIva)}</td>
+                    <td class="right">${this._formatMoney(totalTotal)}</td>
+                </tr></tfoot>
+            </table>`;
+
+        // Export button
+        if (exportWrap) {
+            exportWrap.innerHTML = '<button class="cont-btn-export" id="contIvaExportBtn">\u{1F4E5} Exportar CSV</button>';
+            document.getElementById('contIvaExportBtn')?.addEventListener('click', () => {
+                const csvRows = this._ivaVentas.map(c => ({
+                    fecha: c.fecha || '',
+                    tipo: c.tipo || c.tipo_comprobante || '',
+                    numero: this._formatNumeroComprobante(c.punto_venta, c.numero),
+                    cliente: c.cliente_nombre || c.razon_social || '',
+                    cuit: c.cuit || c.cuit_cliente || '',
+                    neto: c.neto || c.subtotal || 0,
+                    iva: c.iva || c.iva_21 || c.monto_iva || 0,
+                    total: c.total || c.monto || 0,
+                }));
+                this._exportCSV(csvRows, [
+                    { key: 'fecha', label: 'Fecha' }, { key: 'tipo', label: 'Tipo' },
+                    { key: 'numero', label: 'N\u00famero' }, { key: 'cliente', label: 'Cliente' },
+                    { key: 'cuit', label: 'CUIT' }, { key: 'neto', label: 'Neto' },
+                    { key: 'iva', label: 'IVA 21%' }, { key: 'total', label: 'Total' },
+                ], `libro_iva_ventas_${this._ivaPeriodo}.csv`);
+                Toast.success('CSV exportado');
+            });
+        }
+    },
+
+    _renderIVACompras(container) {
+        const exportWrap = document.getElementById('contIvaExportWrap');
+        if (this._ivaCompras.length === 0) {
+            container.innerHTML = `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u{1F9FE}</div>
+                    <div class="cont-empty-text">No hay comprobantes recibidos en el per\u00edodo.</div>
+                </div>`;
+            if (exportWrap) exportWrap.innerHTML = '';
+            return;
+        }
+
+        let totalNeto = 0, totalIva = 0, totalTotal = 0;
+        const rows = this._ivaCompras.map(c => {
+            const fecha = c.fecha ? new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '\u2014';
+            const tipo = c.tipo || c.tipo_comprobante || '\u2014';
+            const numero = c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero);
+            const proveedor = c.proveedor_nombre || c.razon_social || c.proveedor || '\u2014';
+            const cuit = c.cuit || c.cuit_proveedor || '\u2014';
+            const tipoUpper = (tipo || '').toUpperCase();
+            const discriminaIVA = tipoUpper.includes('A') || tipoUpper.includes('M');
+
+            const neto = discriminaIVA ? (c.neto || c.subtotal || 0) : null;
+            const iva = discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) : null;
+            const total = c.total || c.monto || 0;
+            const esCF = iva !== null && iva > 0;
+
+            if (neto !== null) totalNeto += neto;
+            if (iva !== null) totalIva += iva;
+            totalTotal += total;
+
+            return `<tr>
+                <td class="mono">${fecha}</td>
+                <td>${tipo}${esCF ? '<span class="cont-iva-cf-badge">CF</span>' : ''}</td>
+                <td class="mono">${numero}</td>
+                <td>${proveedor}</td>
+                <td class="mono">${cuit}</td>
+                <td class="right">${neto !== null ? this._formatMoney(neto) : '\u2014'}</td>
+                <td class="right">${iva !== null ? this._formatMoney(iva) : '\u2014'}</td>
+                <td class="right">${this._formatMoney(total)}</td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="cont-iva-table">
+                <thead><tr>
+                    <th>Fecha</th><th>Tipo</th><th>N\u00famero</th><th>Proveedor</th><th>CUIT</th>
+                    <th class="right">Neto</th><th class="right">IVA</th><th class="right">Total</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot><tr class="cont-iva-total-row">
+                    <td colspan="5" style="text-align:right;font-family:var(--font-mono);font-size:0.78rem;color:#888">TOTALES</td>
+                    <td class="right">${this._formatMoney(totalNeto)}</td>
+                    <td class="right">${this._formatMoney(totalIva)}</td>
+                    <td class="right">${this._formatMoney(totalTotal)}</td>
+                </tr></tfoot>
+            </table>`;
+
+        // Export button
+        if (exportWrap) {
+            exportWrap.innerHTML = '<button class="cont-btn-export" id="contIvaExportBtn">\u{1F4E5} Exportar CSV</button>';
+            document.getElementById('contIvaExportBtn')?.addEventListener('click', () => {
+                const csvRows = this._ivaCompras.map(c => ({
+                    fecha: c.fecha || '',
+                    tipo: c.tipo || c.tipo_comprobante || '',
+                    numero: c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero),
+                    proveedor: c.proveedor_nombre || c.razon_social || c.proveedor || '',
+                    cuit: c.cuit || c.cuit_proveedor || '',
+                    neto: c.neto || c.subtotal || 0,
+                    iva: c.iva || c.iva_21 || c.monto_iva || 0,
+                    total: c.total || c.monto || 0,
+                }));
+                this._exportCSV(csvRows, [
+                    { key: 'fecha', label: 'Fecha' }, { key: 'tipo', label: 'Tipo' },
+                    { key: 'numero', label: 'N\u00famero' }, { key: 'proveedor', label: 'Proveedor' },
+                    { key: 'cuit', label: 'CUIT' }, { key: 'neto', label: 'Neto' },
+                    { key: 'iva', label: 'IVA' }, { key: 'total', label: 'Total' },
+                ], `libro_iva_compras_${this._ivaPeriodo}.csv`);
+                Toast.success('CSV exportado');
+            });
+        }
+    },
+
+    _renderIVAPosicion(container) {
+        const exportWrap = document.getElementById('contIvaExportWrap');
+        if (exportWrap) exportWrap.innerHTML = '';
+
+        const debito = this._ivaVentas.reduce((s, c) => s + (c.iva || c.iva_21 || c.monto_iva || 0), 0);
+        const credito = this._ivaCompras.reduce((s, c) => s + (c.iva || c.iva_21 || c.monto_iva || 0), 0);
+        const posicion = debito - credito;
+
+        let statusClass, statusLabel;
+        if (posicion > 0.01) { statusClass = 'cont-iva-pos-pagar'; statusLabel = 'A pagar a ARCA'; }
+        else if (posicion < -0.01) { statusClass = 'cont-iva-pos-favor'; statusLabel = 'Saldo a favor'; }
+        else { statusClass = 'cont-iva-pos-neutro'; statusLabel = 'Neutro'; }
+
+        const montoClass = posicion > 0.01 ? 'cont-eerr-negativo' : posicion < -0.01 ? 'cont-eerr-positivo' : 'cont-eerr-cero';
+
+        container.innerHTML = `
+            <div class="cont-iva-pos-cards">
+                <div class="cont-iva-pos-card">
+                    <div class="cont-iva-pos-label">IVA D\u00e9bito Fiscal (ventas)</div>
+                    <div class="cont-iva-pos-monto">${this._formatMoney(debito)}</div>
+                </div>
+                <div class="cont-iva-pos-card">
+                    <div class="cont-iva-pos-label">IVA Cr\u00e9dito Fiscal (compras)</div>
+                    <div class="cont-iva-pos-monto">${this._formatMoney(credito)}</div>
+                </div>
+                <div class="cont-iva-pos-card resultado">
+                    <div class="cont-iva-pos-label">Posici\u00f3n Neta</div>
+                    <div class="cont-iva-pos-monto ${montoClass}">${this._formatMoney(Math.abs(posicion))}</div>
+                    <div class="cont-iva-pos-status ${statusClass}">${statusLabel}</div>
+                </div>
+            </div>
+            <div class="cont-iva-nota" style="margin-top:8px">Solo operaciones oficiales (canal A) \u2014 ${this._getPeriodoLabel()}</div>
+        `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTES — EERR CONTABLE
+    // ═══════════════════════════════════════════
+
+    _getReportePeriodoRange() {
+        const [y, m] = this._reportePeriodo.split('-').map(Number);
+        const desde = `${y}-${String(m).padStart(2, '0')}-01`;
+        const lastDay = new Date(y, m, 0).getDate();
+        const hasta = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        return { desde, hasta };
+    },
+
+    _getReportePeriodoLabel() {
+        const [y, m] = this._reportePeriodo.split('-').map(Number);
+        const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        return `${meses[m - 1]} ${y}`;
+    },
+
+    _buildReportesShell() {
+        const canal = this._getCanalFilter();
+        const canalLabel = canal ? (canal === 'oficial' ? 'Oficial' : 'Interno') : 'Total (A+B)';
+        return `
+            <div class="cont-rep-toolbar">
+                <div class="cont-rep-toolbar-left">
+                    <span class="cont-diario-filter-label">Per\u00edodo</span>
+                    <input type="month" class="cont-diario-filter-input" id="contRepPeriodo" value="${this._reportePeriodo}">
+                    <span class="cont-diario-filter-label" style="margin-left:8px">Modo: <strong style="color:#E8E8E8">${canalLabel}</strong></span>
+                </div>
+                <div id="contRepExportWrap"></div>
+            </div>
+            <div id="cont-rep-content"></div>
+        `;
+    },
+
+    _attachReportesEvents() {
+        document.getElementById('contRepPeriodo')?.addEventListener('change', (e) => {
+            this._reportePeriodo = e.target.value;
+            this._loadReporteEERR();
+        });
+
+        // Toggle A/B
+        document.querySelectorAll('.cont-toggle-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                this._canalVista = pill.dataset.canal;
+                document.querySelectorAll('.cont-toggle-pill').forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                // Re-render shell to update canal label, then reload
+                this._renderTabContent();
+            });
+        });
+    },
+
+    async _loadReporteEERR() {
+        const container = document.getElementById('cont-rep-content');
+        if (!container) return;
+        container.innerHTML = '<div class="cont-placeholder"><div style="color:#555">Cargando...</div></div>';
+
+        const { desde, hasta } = this._getReportePeriodoRange();
+
+        // Step 1: fetch asiento IDs
+        let query = supabaseClient.from('asientos').select('id')
+            .eq('_deleted', false)
+            .gte('fecha', desde).lte('fecha', hasta);
+        const canal = this._getCanalFilter();
+        if (canal) query = query.eq('canal', canal);
+        const { data: asientos, error: errA } = await query;
+
+        if (errA || !asientos || asientos.length === 0) {
+            container.innerHTML = `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u{1F4CA}</div>
+                    <div class="cont-empty-text">No hay movimientos contables en el per\u00edodo seleccionado.</div>
+                </div>`;
+            const exportWrap = document.getElementById('contRepExportWrap');
+            if (exportWrap) exportWrap.innerHTML = '';
+            return;
+        }
+
+        const ids = asientos.map(a => a.id);
+
+        // Step 2: fetch lines with plan_cuentas
+        const { data: lineas, error: errL } = await supabaseClient
+            .from('asiento_lineas')
+            .select('monto, tipo_movimiento, plan_cuentas(codigo, nombre, tipo, codigo_padre)')
+            .in('asiento_id', ids);
+
+        if (errL || !lineas) {
+            container.innerHTML = '<div class="cont-empty"><div class="cont-empty-text">Error al cargar datos.</div></div>';
+            return;
+        }
+
+        // Step 3: Group by cuenta
+        const cuentaMap = {};
+        lineas.forEach(l => {
+            const pc = l.plan_cuentas;
+            if (!pc) return;
+            const key = pc.codigo;
+            if (!cuentaMap[key]) {
+                cuentaMap[key] = { codigo: pc.codigo, nombre: pc.nombre, tipo: pc.tipo, codigo_padre: pc.codigo_padre, debe: 0, haber: 0 };
+            }
+            if (l.tipo_movimiento === 'debe') cuentaMap[key].debe += l.monto;
+            else cuentaMap[key].haber += l.monto;
+        });
+
+        // Classify
+        const ingresos = []; // tipo = 'ingreso' OR codigo_padre starts with '4'
+        const costosOp = []; // codigo_padre = '5.1'
+        const gastosAdmin = []; // codigo_padre = '5.2'
+
+        Object.values(cuentaMap).forEach(c => {
+            // Determine net amount for this account
+            let monto = 0;
+            if (c.tipo === 'ingreso' || (c.codigo_padre && c.codigo_padre.startsWith('4'))) {
+                monto = c.haber - c.debe; // ingresos son acreedores
+                if (Math.abs(monto) > 0.01) ingresos.push({ ...c, monto });
+            } else if (c.codigo_padre === '5.1') {
+                monto = c.debe - c.haber; // egresos son deudores
+                if (Math.abs(monto) > 0.01) costosOp.push({ ...c, monto });
+            } else if (c.codigo_padre === '5.2') {
+                monto = c.debe - c.haber;
+                if (Math.abs(monto) > 0.01) gastosAdmin.push({ ...c, monto });
+            } else if (c.tipo === 'egreso' || (c.codigo_padre && c.codigo_padre.startsWith('5'))) {
+                // Other expense categories under 5.x
+                monto = c.debe - c.haber;
+                if (Math.abs(monto) > 0.01) gastosAdmin.push({ ...c, monto });
+            }
+        });
+
+        // Sort by codigo
+        ingresos.sort((a, b) => a.codigo.localeCompare(b.codigo));
+        costosOp.sort((a, b) => a.codigo.localeCompare(b.codigo));
+        gastosAdmin.sort((a, b) => a.codigo.localeCompare(b.codigo));
+
+        const totalIngresos = ingresos.reduce((s, c) => s + c.monto, 0);
+        const totalCostosOp = costosOp.reduce((s, c) => s + c.monto, 0);
+        const resultadoBruto = totalIngresos - totalCostosOp;
+        const totalGastosAdmin = gastosAdmin.reduce((s, c) => s + c.monto, 0);
+        const resultadoNeto = resultadoBruto - totalGastosAdmin;
+
+        const canalLabel = canal ? (canal === 'oficial' ? 'Oficial' : 'Interno') : 'Total (A+B)';
+
+        const buildRows = (items) => items.map(c => `
+            <div class="cont-eerr-row">
+                <div><span class="cont-eerr-row-code">${c.codigo}</span><span class="cont-eerr-row-name">${c.nombre}</span></div>
+                <div class="cont-eerr-row-monto">${this._formatMoney(c.monto)}</div>
+            </div>
+        `).join('');
+
+        const montoClass = (v) => v > 0.01 ? 'cont-eerr-positivo' : v < -0.01 ? 'cont-eerr-negativo' : 'cont-eerr-cero';
+
+        container.innerHTML = `
+            <div class="cont-eerr">
+                <div class="cont-eerr-title">Estado de Resultados (Contable) \u2014 ${this._getReportePeriodoLabel()}</div>
+                <div class="cont-eerr-subtitle">Modo: ${canalLabel}</div>
+
+                ${ingresos.length > 0 ? `
+                <div class="cont-eerr-section">
+                    <div class="cont-eerr-section-header">Ingresos</div>
+                    ${buildRows(ingresos)}
+                    <div class="cont-eerr-subtotal">
+                        <span class="cont-eerr-subtotal-label">Total Ingresos</span>
+                        <span class="cont-eerr-subtotal-monto">${this._formatMoney(totalIngresos)}</span>
+                    </div>
+                </div>` : ''}
+
+                ${costosOp.length > 0 ? `
+                <div class="cont-eerr-section">
+                    <div class="cont-eerr-section-header">Costos Operativos (5.1.xx)</div>
+                    ${buildRows(costosOp)}
+                    <div class="cont-eerr-subtotal">
+                        <span class="cont-eerr-subtotal-label">Total Costos Operativos</span>
+                        <span class="cont-eerr-subtotal-monto">${this._formatMoney(totalCostosOp)}</span>
+                    </div>
+                </div>` : ''}
+
+                ${(ingresos.length > 0 || costosOp.length > 0) ? `
+                <div class="cont-eerr-resultado">
+                    <span class="cont-eerr-resultado-label">Resultado Bruto</span>
+                    <span class="cont-eerr-resultado-monto ${montoClass(resultadoBruto)}">${this._formatMoney(resultadoBruto)}</span>
+                </div>` : ''}
+
+                ${gastosAdmin.length > 0 ? `
+                <div class="cont-eerr-section">
+                    <div class="cont-eerr-section-header">Gastos Administrativos (5.2.xx)</div>
+                    ${buildRows(gastosAdmin)}
+                    <div class="cont-eerr-subtotal">
+                        <span class="cont-eerr-subtotal-label">Total Gastos Admin</span>
+                        <span class="cont-eerr-subtotal-monto">${this._formatMoney(totalGastosAdmin)}</span>
+                    </div>
+                </div>` : ''}
+
+                <div class="cont-eerr-resultado">
+                    <span class="cont-eerr-resultado-label">Resultado Neto</span>
+                    <span class="cont-eerr-resultado-monto ${montoClass(resultadoNeto)}">${this._formatMoney(resultadoNeto)}</span>
+                </div>
+            </div>
+        `;
+
+        // Export button
+        const exportWrap = document.getElementById('contRepExportWrap');
+        if (exportWrap) {
+            exportWrap.innerHTML = '<button class="cont-btn-export" id="contRepExportBtn">\u{1F4E5} Exportar CSV</button>';
+            document.getElementById('contRepExportBtn')?.addEventListener('click', () => {
+                const csvRows = [];
+                const addSection = (label, items, total) => {
+                    csvRows.push({ concepto: label, codigo: '', monto: '' });
+                    items.forEach(c => csvRows.push({ concepto: c.nombre, codigo: c.codigo, monto: c.monto }));
+                    csvRows.push({ concepto: 'TOTAL ' + label, codigo: '', monto: total });
+                    csvRows.push({ concepto: '', codigo: '', monto: '' });
+                };
+                if (ingresos.length) addSection('INGRESOS', ingresos, totalIngresos);
+                if (costosOp.length) addSection('COSTOS OPERATIVOS', costosOp, totalCostosOp);
+                csvRows.push({ concepto: 'RESULTADO BRUTO', codigo: '', monto: resultadoBruto });
+                csvRows.push({ concepto: '', codigo: '', monto: '' });
+                if (gastosAdmin.length) addSection('GASTOS ADMINISTRATIVOS', gastosAdmin, totalGastosAdmin);
+                csvRows.push({ concepto: 'RESULTADO NETO', codigo: '', monto: resultadoNeto });
+
+                this._exportCSV(csvRows, [
+                    { key: 'concepto', label: 'Concepto' },
+                    { key: 'codigo', label: 'C\u00f3digo' },
+                    { key: 'monto', label: 'Monto' },
+                ], `estado_resultados_contable_${this._reportePeriodo}.csv`);
+                Toast.success('CSV exportado');
+            });
+        }
     },
 
     // ═══════════════════════════════════════════
