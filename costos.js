@@ -38,6 +38,7 @@ const CostosModule = {
     _listaRubros: [],   // override por rubro for selected list
     _listaItems: [],    // override por item for selected list
     _listaSearchQuery: '',
+    _listaFilterRubro: '',
 
     // Options
     _clasificacionOpts: ['Logística', 'Sub alquiler', 'Materiales', 'Insumo', 'Mano de obra'],
@@ -317,22 +318,12 @@ const CostosModule = {
         const container = document.getElementById('costosMainContent');
         if (!container) return;
 
-        // Load overrides for this lista
-        const [rubros, items] = await Promise.all([
-            API.getListaRubros(lista.id),
-            API.getListaItems(lista.id),
-        ]);
-        this._listaRubros = rubros;
-        this._listaItems = items;
+        // Lista de Precios es SOLO LECTURA. Fuente única de verdad: Recetas y Costos.
+        // No se cargan overrides: precio = catalogo_items.precio_alquiler (o "SIN COSTEAR").
+        this._listaRubros = [];
+        this._listaItems = [];
 
-        // Build rubro overrides map
-        const rubroMap = {};
-        for (const r of rubros) rubroMap[r.rubro] = r;
-        // Build item overrides map
-        const itemMap = {};
-        for (const i of items) itemMap[i.itemId] = i;
-
-        // Filter items by search
+        // Filter items by search + rubro
         let catalogData = [...this._catalogoItems];
         const q = (this._listaSearchQuery || '').toLowerCase();
         if (q) {
@@ -342,88 +333,56 @@ const CostosModule = {
                 (i.rubro || '').toLowerCase().includes(q)
             );
         }
+        if (this._listaFilterRubro) {
+            catalogData = catalogData.filter(i => (i.rubro || '') === this._listaFilterRubro);
+        }
 
         // Sort by nombre
         catalogData.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
 
-        // Helper: resolve effective margin for an item
-        const getMargen = (item, listaObj, rMap, iMap) => {
-            // Item override > Rubro override > Global
-            if (iMap[item.id]) return { value: iMap[item.id].margen, level: 'item' };
-            if (item.rubro && rMap[item.rubro]) return { value: rMap[item.rubro].margen, level: 'rubro' };
-            return { value: listaObj.margenGlobal, level: 'global' };
-        };
+        // Rubros disponibles para el filtro
+        const rubrosDisponibles = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
 
         const rows = catalogData.map(item => {
-            const rs = this._getRecetaStatus(item.id);
-            const costo = rs.costoCalculado || 0;
-            const m = getMargen(item, lista, rubroMap, itemMap);
-
-            // Fase 1+2: pescar precio_alquiler si la receta esta costeada.
-            // Fallback al calculo viejo para items aun no migrados.
-            const tieneAlquiler = (item.precioAlquiler || 0) > 0;
-            const precio = tieneAlquiler ? item.precioAlquiler : API.calcPrecioCliente(costo, m.value);
-            const sinCostear = costo === 0 && !tieneAlquiler;
-
-            // Level indicator
-            const levelClass = `costos-margen-${m.level}`;
-            const levelTitle = m.level === 'item' ? 'Override item' : m.level === 'rubro' ? 'Override rubro' : 'Margen global';
-            const tipoBadge = item.tipoReceta === 'subalquilado'
-                ? '<span class="costos-tipo-badge costos-tipo-sub" title="Subalquilado">SUB</span>'
-                : '';
-            const alquilerBadge = tieneAlquiler
-                ? '<span class="costos-tipo-badge costos-tipo-alq" title="Precio de alquiler calculado">ALQ</span>'
-                : '';
+            const precio = item.precioAlquiler || 0;
+            const sinCostear = precio <= 0;
 
             return `
                 <tr class="costos-table-row costos-lista-item-row ${sinCostear ? 'costos-sin-costear' : ''}" data-item-id="${item.id}">
                     <td><span class="td-mono">${item.codigo || '—'}</span></td>
-                    <td><span class="td-primary">${item.nombre}</span> ${tipoBadge} ${alquilerBadge}</td>
+                    <td><span class="td-primary">${item.nombre}</span></td>
                     <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
-                    <td class="td-number">${sinCostear ? '—' : API.formatCurrency(costo)}</td>
-                    <td class="costos-margen-cell">
-                        <div class="costos-margen-inline ${levelClass}" title="${levelTitle}">
-                            <input type="number" class="costos-margen-input" data-item-id="${item.id}" value="${m.value}" step="0.5" min="0" max="999" ${tieneAlquiler ? 'disabled title="Margen viene de la receta"' : ''}>
-                            <span class="costos-margen-pct">%</span>
-                            <span class="costos-margen-level" title="${levelTitle}">${m.level === 'item' ? '●' : m.level === 'rubro' ? '◐' : '○'}</span>
-                        </div>
-                    </td>
                     <td class="td-number td-mono">
-                        ${sinCostear ? '<span class="costos-sin-costear-tag">SIN COSTEAR</span>' : `<strong>${API.formatCurrency(precio)}</strong>`}
+                        ${sinCostear ? '<span class="costos-sin-costear-tag">SIN COSTEAR</span> <span style="color:var(--text-dim);margin-left:6px;">—</span>' : `<strong>${API.formatCurrency(precio)}</strong>`}
                     </td>
                 </tr>
             `;
         }).join('');
+
+        const rubroOptions = rubrosDisponibles.map(r =>
+            `<option value="${r}" ${this._listaFilterRubro === r ? 'selected' : ''}>${r}</option>`
+        ).join('');
 
         container.innerHTML = `
             <div class="costos-lista-detail-header">
                 <div class="costos-lista-detail-title">
                     <h3>Lista Base</h3>
                     <span class="costos-lista-badge activa">Activa</span>
-                    <span class="costos-lista-detail-tipo" style="color:var(--text-dim); font-size:12px;">Precios de referencia para cotizar</span>
+                    <span class="costos-lista-badge-readonly" style="color:var(--text-muted);font-size:11px;background:#1a1a1a;border:1px solid var(--border);padding:3px 8px;border-radius:4px;letter-spacing:0.03em;">SOLO LECTURA</span>
                 </div>
-                <div class="costos-lista-detail-controls">
-                    <div class="costos-lista-global-margen">
-                        <label>Margen global:</label>
-                        <div class="costos-margen-inline costos-margen-global">
-                            <input type="number" class="costos-margen-input" id="costosGlobalMargenInput" value="${lista.margenGlobal}" step="0.5" min="0" max="999">
-                            <span class="costos-margen-pct">%</span>
-                        </div>
-                    </div>
+                <div class="costos-lista-detail-subtitle" style="color:var(--text-muted);font-size:12px;margin-top:4px;">
+                    Precios netos · No incluyen IVA · Fuente: <a href="#costos" onclick="event.preventDefault(); CostosModule._goToRecetasTab()" style="color:var(--primary);text-decoration:none;">Recetas y Costos</a>
+                </div>
+                <div class="costos-lista-detail-controls" style="margin-top:12px;">
                     <div class="costos-lista-search-box">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="costos-lista-search-input" id="costosListaSearchInput" placeholder="Filtrar items…" value="${this._listaSearchQuery || ''}" autocomplete="off">
+                        <input type="text" class="costos-lista-search-input" id="costosListaSearchInput" placeholder="Buscar por nombre o código…" value="${this._listaSearchQuery || ''}" autocomplete="off">
                     </div>
-                    <button class="costos-btn-rubro-overrides" id="costosRubroOverrides" title="Overrides por rubro">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
-                        Rubros (${rubros.length})
-                    </button>
+                    <select id="costosListaFilterRubro" class="costos-lista-filter-select" style="padding:7px 10px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:13px;min-width:160px;">
+                        <option value="">Todos los rubros</option>
+                        ${rubroOptions}
+                    </select>
                 </div>
-            </div>
-            <div class="costos-lista-detail-legend">
-                <span class="costos-legend-item"><span class="costos-margen-level">○</span> Global</span>
-                <span class="costos-legend-item"><span class="costos-margen-level" style="color:#F28D15">◐</span> Rubro</span>
-                <span class="costos-legend-item"><span class="costos-margen-level" style="color:#00A9C1">●</span> Item</span>
             </div>
             <div class="costos-lista-table-wrap">
                 ${catalogData.length === 0 ? `
@@ -438,9 +397,7 @@ const CostosModule = {
                                 <th>CÓDIGO</th>
                                 <th>ITEM</th>
                                 <th>RUBRO</th>
-                                <th>COSTO PROD.</th>
-                                <th>MARGEN (%)</th>
-                                <th>PRECIO FINAL</th>
+                                <th>PRECIO (NETO)</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
@@ -459,67 +416,10 @@ const CostosModule = {
             </div>
         `;
 
-        this._attachListaDetailEvents(lista, rubroMap, itemMap, catalogData);
+        this._attachListaDetailEvents(lista, catalogData);
     },
 
-    _attachListaDetailEvents(lista, rubroMap, itemMap, catalogData) {
-        // Global margin input
-        const globalInput = document.getElementById('costosGlobalMargenInput');
-        if (globalInput) {
-            const saveGlobal = async () => {
-                const val = parseFloat(globalInput.value) || 0;
-                if (val === lista.margenGlobal) return;
-                const result = await API.updateListaPrecio(lista.id, { margenGlobal: val });
-                if (result) {
-                    lista.margenGlobal = val;
-                    this._selectedLista = lista;
-                    Toast.success(`Margen global actualizado a ${val}%`);
-                    await this._refreshListaDetail();
-                }
-            };
-            globalInput.addEventListener('blur', saveGlobal);
-            globalInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); globalInput.blur(); }
-                if (e.key === 'Escape') { globalInput.value = lista.margenGlobal; globalInput.blur(); }
-            });
-        }
-
-        // Item margin inputs
-        document.querySelectorAll('.costos-margen-input[data-item-id]').forEach(input => {
-            const itemId = parseInt(input.dataset.itemId);
-            const originalVal = parseFloat(input.value);
-
-            const saveMargin = async () => {
-                const val = parseFloat(input.value) || 0;
-                if (val === originalVal) return;
-
-                // Determine if this creates/updates an item override
-                const item = this._catalogoItems.find(i => i.id === itemId);
-
-                // If value matches rubro or global, remove item override instead
-                const rubroMargen = item && item.rubro && rubroMap[item.rubro] ? rubroMap[item.rubro].margen : null;
-                const globalMargen = lista.margenGlobal;
-
-                if (rubroMargen !== null && val === rubroMargen) {
-                    const existing = itemMap[itemId];
-                    if (existing) await API.deleteListaItem(existing.id);
-                } else if (rubroMargen === null && val === globalMargen) {
-                    const existing = itemMap[itemId];
-                    if (existing) await API.deleteListaItem(existing.id);
-                } else {
-                    await API.upsertListaItem(lista.id, itemId, val);
-                }
-
-                await this._refreshListaDetail();
-            };
-
-            input.addEventListener('blur', saveMargin);
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-                if (e.key === 'Escape') { input.value = originalVal; input.blur(); }
-            });
-        });
-
+    _attachListaDetailEvents(lista, catalogData) {
         // Lista search input
         const searchInput = document.getElementById('costosListaSearchInput');
         if (searchInput) {
@@ -533,19 +433,28 @@ const CostosModule = {
             });
         }
 
-        // Rubro overrides button
-        const rubroBtn = document.getElementById('costosRubroOverrides');
-        if (rubroBtn) {
-            rubroBtn.addEventListener('click', () => this._openRubroOverridesModal(lista));
+        // Rubro filter
+        const rubroSelect = document.getElementById('costosListaFilterRubro');
+        if (rubroSelect) {
+            rubroSelect.addEventListener('change', () => {
+                this._listaFilterRubro = rubroSelect.value || '';
+                this._renderListaDetail(lista);
+            });
         }
 
-        // Actualizar precios Cotizador
+        // Actualizar precios Cotizador — escribe precio_alquiler en precio_cliente
         const updateBtn = document.getElementById('costosUpdateCotizador');
         if (updateBtn) {
             updateBtn.addEventListener('click', async () => {
+                const costeados = this._catalogoItems.filter(i => (i.precioAlquiler || 0) > 0);
+                const sinCostear = this._catalogoItems.length - costeados.length;
+                const msg = `Se escribirá precio_alquiler en catalogo_items.precio_cliente para ${costeados.length} items costeados.`
+                    + (sinCostear > 0 ? ` ${sinCostear} items sin costear quedarán con precio_cliente = 0.` : '')
+                    + ' El Cotizador leerá estos precios. ¿Continuar?';
+
                 const confirmed = await Modal.confirm({
                     title: 'Actualizar precios del Cotizador',
-                    message: `Se escribirá el precio calculado (costo + margen) en catalogo_items.precio_cliente para ${this._catalogoItems.length} items. El Cotizador leerá estos precios. ¿Continuar?`,
+                    message: msg,
                 });
                 if (!confirmed) return;
 
@@ -553,19 +462,9 @@ const CostosModule = {
                 updateBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;"></div> Actualizando…`;
 
                 let updated = 0;
-                const getMargen = (item) => {
-                    if (itemMap[item.id]) return itemMap[item.id].margen;
-                    if (item.rubro && rubroMap[item.rubro]) return rubroMap[item.rubro].margen;
-                    return lista.margenGlobal;
-                };
-
                 for (const item of this._catalogoItems) {
-                    const rs = this._getRecetaStatus(item.id);
-                    const costo = rs.costoCalculado || 0;
-                    const margen = getMargen(item);
-                    const precioCliente = API.calcPrecioCliente(costo, margen);
-
-                    const result = await API.updateCatalogoItem(item.id, { precio_cliente: precioCliente });
+                    const precio = item.precioAlquiler || 0;
+                    const result = await API.updateCatalogoItem(item.id, { precio_cliente: precio });
                     if (result) updated++;
                 }
 
@@ -662,104 +561,15 @@ const CostosModule = {
         }
     },
 
-    async _refreshListaDetail() {
-        if (!this._selectedLista) return;
-        API.clearCache();
-        const listas = await API.getListasPrecio();
-        this._listas = listas || [];
-        const updated = this._listas.find(l => l.id === this._selectedLista.id);
-        if (updated) this._selectedLista = updated;
-        await this._renderListaDetail(this._selectedLista);
-    },
-
-    _openRubroOverridesModal(lista) {
-        // Get all unique rubros from catalog
-        const rubros = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
-        const rubroMap = {};
-        for (const r of this._listaRubros) rubroMap[r.rubro] = r;
-
-        const rubroRows = rubros.map(rubro => {
-            const override = rubroMap[rubro];
-            const hasOverride = !!override;
-            const margen = hasOverride ? override.margen : lista.margenGlobal;
-            const itemCount = this._catalogoItems.filter(i => i.rubro === rubro).length;
-            return `
-                <div class="costos-rubro-override-row" data-rubro="${rubro}">
-                    <div class="costos-rubro-override-info">
-                        <span class="costos-rubro-override-name">${rubro}</span>
-                        <span class="costos-rubro-override-count">${itemCount} items</span>
-                    </div>
-                    <div class="costos-rubro-override-controls">
-                        <input type="number" class="costos-rubro-margen-input" data-rubro="${rubro}" value="${margen}" step="0.5" min="0" max="999" style="width:70px;padding:6px 8px;background:#1a1a1a;border:1px solid ${hasOverride ? '#F28D15' : 'var(--border)'};border-radius:4px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;text-align:right;">
-                        <span style="color:var(--text-muted);font-size:13px;">%</span>
-                        ${hasOverride ? `<button class="costos-rubro-remove-btn" data-rubro-id="${override.id}" title="Quitar override" style="background:none;border:none;color:#ff4444;cursor:pointer;padding:4px;">✕</button>` : '<span style="width:24px;"></span>'}
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        Modal.open({
-            title: `Overrides por Rubro — ${lista.nombre}`,
-            size: 'medium',
-            body: `
-                <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px 0;">
-                    Los márgenes por rubro sobreescriben el margen global (${lista.margenGlobal}%) para todos los items de ese rubro, salvo los que tengan override individual.
-                </p>
-                <div class="costos-rubro-overrides-list" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;">
-                    ${rubroRows || '<p style="color:var(--text-dim)">No hay rubros en el catálogo</p>'}
-                </div>
-            `,
-            footer: `
-                <button class="btn btn-ghost" onclick="Modal.close()">Cerrar</button>
-                <button class="btn btn-primary" id="saveRubroOverrides">Guardar cambios</button>
-            `,
+    _goToRecetasTab() {
+        this._activeTab = 'recetas';
+        this._searchQuery = '';
+        document.querySelectorAll('.costos-tab').forEach(tt => {
+            tt.classList.toggle('active', tt.dataset.tab === 'recetas');
         });
-
-        setTimeout(() => {
-            // Save all rubro overrides
-            const saveBtn = document.getElementById('saveRubroOverrides');
-            if (saveBtn) {
-                saveBtn.addEventListener('click', async () => {
-                    const inputs = document.querySelectorAll('.costos-rubro-margen-input');
-                    let changes = 0;
-                    for (const input of inputs) {
-                        const rubro = input.dataset.rubro;
-                        const val = parseFloat(input.value) || 0;
-                        const existing = rubroMap[rubro];
-                        const existingVal = existing ? existing.margen : lista.margenGlobal;
-
-                        if (val !== existingVal) {
-                            if (val === lista.margenGlobal && existing) {
-                                // Remove override — falls back to global
-                                await API.deleteListaRubro(existing.id);
-                            } else if (val !== lista.margenGlobal) {
-                                await API.upsertListaRubro(lista.id, rubro, val);
-                            }
-                            changes++;
-                        }
-                    }
-                    if (changes > 0) {
-                        Toast.success(`${changes} rubro${changes > 1 ? 's' : ''} actualizado${changes > 1 ? 's' : ''}`);
-                        Modal.close();
-                        await this._refreshListaDetail();
-                    } else {
-                        Modal.close();
-                    }
-                });
-            }
-
-            // Remove individual override buttons
-            document.querySelectorAll('.costos-rubro-remove-btn').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = parseInt(btn.dataset.rubroId);
-                    await API.deleteListaRubro(id);
-                    Toast.success('Override eliminado');
-                    Modal.close();
-                    this._openRubroOverridesModal(lista);
-                    await this._refreshListaDetail();
-                });
-            });
-        }, 100);
+        const searchInput = document.getElementById('costosSearchInput');
+        if (searchInput) searchInput.value = '';
+        this._renderActiveTab();
     },
 
     _clearFilters() {

@@ -2429,7 +2429,7 @@ const API = {
         try {
             const componentes = await this.getRecetaComponentes(item.id);
             // Hidratar costoUnit de cada componente
-            const insumos = await this.getInsumosBase();
+            const insumos = await this.getInsumos();
             const items = await this.getCatalogoItems();
             const compsConCosto = componentes.map(c => {
                 let costoUnit = 0;
