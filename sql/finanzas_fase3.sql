@@ -1,5 +1,5 @@
 -- =============================================
--- MEPEX Lobby — Finanzas Fase 3
+-- MEPEX Lobby - Finanzas Fase 3
 -- =============================================
 -- Tabla: egresos (pagos)
 -- Ejecutar manualmente en Supabase SQL Editor

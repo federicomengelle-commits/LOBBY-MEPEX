@@ -1,5 +1,5 @@
 -- =============================================
--- MEPEX Lobby — Finanzas Fase 4
+-- MEPEX Lobby - Finanzas Fase 4
 -- =============================================
 -- Tablas: plan_cobro, plan_cobro_items, transferencias_internas
 -- Ejecutar manualmente en Supabase SQL Editor

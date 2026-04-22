@@ -1,5 +1,5 @@
 -- =============================================
--- MEPEX Lobby — Finanzas Fase 2
+-- MEPEX Lobby - Finanzas Fase 2
 -- =============================================
 -- Tabla: ingresos (cobros)
 -- Ejecutar manualmente en Supabase SQL Editor

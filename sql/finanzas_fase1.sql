@@ -1,5 +1,5 @@
 -- =============================================
--- MEPEX Lobby — Finanzas Fase 1
+-- MEPEX Lobby - Finanzas Fase 1
 -- =============================================
 -- Tabla: cuentas_financieras
 -- Ejecutar manualmente en Supabase SQL Editor
