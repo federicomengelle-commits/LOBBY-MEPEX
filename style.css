@@ -10960,7 +10960,7 @@ body {
     background: rgba(74, 144, 217, 0.1);
 }
 
-/* ─── Side Panel ─── */
+/* ─── Side Panel (sticky: acompaña el scroll) ─── */
 .costos-side-panel {
     width: 0;
     overflow: hidden;
@@ -10968,6 +10968,10 @@ body {
     border-left: 1px solid transparent;
     background: #0a0a0a;
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    max-height: 100vh;
 }
 .costos-side-panel.open {
     width: 420px;

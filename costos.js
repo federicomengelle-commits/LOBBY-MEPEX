@@ -1197,27 +1197,51 @@ const CostosModule = {
             return this._sortDir === 'asc' ? '<span class="costos-sort-icon">↑</span>' : '<span class="costos-sort-icon">↓</span>';
         };
 
-        const estadoBadge = (status) => {
-            switch (status) {
-                case 'completa':
-                    return `<span class="badge costos-badge-completa">Completa</span>`;
-                case 'incompleta':
-                    return `<span class="badge costos-badge-incompleta">Incompleta</span>`;
-                default:
-                    return `<span class="badge costos-badge-sin-receta">Sin receta</span>`;
+        // Helper: describe real status for tooltip
+        const describeStatus = (item, rs) => {
+            if (rs.status === 'sin-receta') return 'Sin receta';
+            if ((item.precioAlquiler || 0) <= 0) {
+                if (rs.status === 'incompleta') return 'Receta con componentes sin costear';
+                return 'Sin costear (precio_alquiler = 0)';
             }
+            if (rs.status === 'incompleta') return 'Receta incompleta · precio calculado';
+            return 'Receta completa';
+        };
+
+        const estadoCircle = (item, rs) => {
+            const precio = item.precioAlquiler || 0;
+            const ok = rs.status === 'completa' && precio > 0;
+            const color = ok ? 'var(--color-success, #00CC88)' : 'var(--color-error, #ff4444)';
+            const tip = describeStatus(item, rs);
+            return `<span class="costos-status-dot" title="${tip}" aria-label="${tip}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};box-shadow:0 0 6px ${color}66;"></span>`;
+        };
+
+        const getMargenPct = (item) => {
+            const tipo = item.tipoReceta;
+            if (tipo === 'subalquilado' && item.margenSubalquiler != null) return item.margenSubalquiler;
+            if (tipo === 'propio' && item.margenPropio != null) return item.margenPropio;
+            return null;
         };
 
         const rows = data.map(item => {
             const rs = this._getRecetaStatus(item.id);
+            const margenPct = getMargenPct(item);
+            // margen persistido en decimal (0.40) → mostrar como 40%
+            const margenDisplay = (margenPct != null && (item.precioAlquiler || 0) > 0)
+                ? `${Math.round(margenPct * 100)}%`
+                : '—';
+            const precioAlquiler = item.precioAlquiler || 0;
+            const precioDisplay = precioAlquiler > 0 ? API.formatCurrency(precioAlquiler) : '—';
             return `
                 <tr class="costos-table-row costos-receta-row" data-id="${item.id}">
                     <td><span class="td-primary">${item.nombre}</span></td>
                     <td><span class="td-mono">${item.codigo || '—'}</span></td>
                     <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
                     <td><span class="td-number">${API.formatCurrency(rs.costoCalculado)}</span></td>
-                    <td>${estadoBadge(rs.status)}</td>
+                    <td><span class="td-number td-mono">${margenDisplay}</span></td>
+                    <td><span class="td-number td-mono"><strong>${precioDisplay}</strong></span></td>
                     <td><span class="td-number">${item.unidad || '—'}</span></td>
+                    <td style="text-align:center">${estadoCircle(item, rs)}</td>
                 </tr>
             `;
         }).join('');
@@ -1230,8 +1254,10 @@ const CostosModule = {
                         <th class="sortable" data-sort-col="codigo">CÓDIGO ${sortIcon('codigo')}</th>
                         <th class="sortable" data-sort-col="rubro">RUBRO ${sortIcon('rubro')}</th>
                         <th class="sortable" data-sort-col="costoCalculado">COSTO PROD. ${sortIcon('costoCalculado')}</th>
-                        <th class="sortable" data-sort-col="estadoReceta">ESTADO ${sortIcon('estadoReceta')}</th>
+                        <th class="sortable" data-sort-col="margen">MARGEN ${sortIcon('margen')}</th>
+                        <th class="sortable" data-sort-col="precioAlquiler">PRECIO ALQUILER ${sortIcon('precioAlquiler')}</th>
                         <th>UNIDAD</th>
+                        <th class="sortable" data-sort-col="estadoReceta" style="text-align:center">ESTADO ${sortIcon('estadoReceta')}</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -1842,6 +1868,18 @@ const CostosModule = {
                     va = order[this._getRecetaStatus(a.id).status] ?? 0;
                     vb = order[this._getRecetaStatus(b.id).status] ?? 0;
                     break;
+                case 'margen':
+                    va = (a.precioAlquiler || 0) > 0
+                        ? (a.tipoReceta === 'subalquilado' ? (a.margenSubalquiler || 0) : (a.margenPropio || 0))
+                        : -1;
+                    vb = (b.precioAlquiler || 0) > 0
+                        ? (b.tipoReceta === 'subalquilado' ? (b.margenSubalquiler || 0) : (b.margenPropio || 0))
+                        : -1;
+                    break;
+                case 'precioAlquiler':
+                    va = a.precioAlquiler || 0;
+                    vb = b.precioAlquiler || 0;
+                    break;
                 default:
                     va = (a[col] || '').toString().toLowerCase();
                     vb = (b[col] || '').toString().toLowerCase();
@@ -1905,19 +1943,27 @@ const CostosModule = {
             trigger.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const filterId = trigger.dataset.mfToggle;
+                const wrap = trigger.closest('.costos-multifilter');
                 const dropdown = container.querySelector(`[data-mf-dropdown="${filterId}"]`);
-                // Close others
+                // Close other dropdowns
+                container.querySelectorAll('.costos-multifilter').forEach(w => {
+                    if (w !== wrap) w.classList.remove('open');
+                });
                 container.querySelectorAll('.costos-mf-dropdown').forEach(d => {
                     if (d !== dropdown) d.classList.remove('open');
                 });
+                if (wrap) wrap.classList.toggle('open');
                 if (dropdown) dropdown.classList.toggle('open');
             });
         });
 
-        // Checkbox changes
+        // Checkbox changes — keep dropdown open, apply filter in place
         container.querySelectorAll('.costos-mf-option input').forEach(cb => {
-            cb.addEventListener('change', () => {
-                const filterId = cb.closest('.costos-multifilter')?.dataset.filterId;
+            cb.addEventListener('click', (e) => e.stopPropagation());
+            cb.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const wrap = cb.closest('.costos-multifilter');
+                const filterId = wrap?.dataset.filterId;
                 if (!filterId) return;
                 const dropdown = cb.closest('.costos-mf-dropdown');
                 const selected = [];
@@ -1925,13 +1971,29 @@ const CostosModule = {
                     dropdown.querySelectorAll('input:checked').forEach(c => selected.push(c.value));
                 }
                 this._setFilter(filterId, selected);
+                this._updateFilterTrigger(wrap, filterId, selected);
             });
         });
 
-        // Close dropdowns on click outside
-        document.addEventListener('click', () => {
-            container.querySelectorAll('.costos-mf-dropdown').forEach(d => d.classList.remove('open'));
+        // Prevent clicks inside dropdown from bubbling (keeps menu open)
+        container.querySelectorAll('.costos-mf-dropdown').forEach(d => {
+            d.addEventListener('click', (e) => e.stopPropagation());
         });
+
+        // Close dropdowns on outside click / ESC (global handler — attach once)
+        if (!this._mfGlobalHandlerAttached) {
+            document.addEventListener('click', () => {
+                document.querySelectorAll('.costos-mf-dropdown.open').forEach(d => d.classList.remove('open'));
+                document.querySelectorAll('.costos-multifilter.open').forEach(w => w.classList.remove('open'));
+            });
+            document.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape') {
+                    document.querySelectorAll('.costos-mf-dropdown.open').forEach(d => d.classList.remove('open'));
+                    document.querySelectorAll('.costos-multifilter.open').forEach(w => w.classList.remove('open'));
+                }
+            });
+            this._mfGlobalHandlerAttached = true;
+        }
 
         // Clear all
         const clearBtn = document.getElementById('costosClearFilters');
@@ -1942,6 +2004,7 @@ const CostosModule = {
                 this._filterProveedor = [];
                 this._filterRubro = [];
                 this._filterRecetaEstado = '';
+                // Re-render filters + table (needed para uncheck visual)
                 this._renderActiveTab();
             });
         }
@@ -1962,7 +2025,22 @@ const CostosModule = {
             case 'proveedor': this._filterProveedor = values; break;
             case 'rubro': this._filterRubro = values; break;
         }
-        this._renderActiveTab();
+        // Re-aplica solo la tabla, preservando dropdowns abiertos del filtro
+        if (this._activeTab === 'insumos') this._applyInsumosFilters();
+        else if (this._activeTab === 'recetas') this._applyRecetasFilters();
+        else this._renderActiveTab();
+    },
+
+    _updateFilterTrigger(wrap, filterId, selected) {
+        if (!wrap) return;
+        const trigger = wrap.querySelector('[data-mf-toggle]');
+        if (!trigger) return;
+        const labelMap = { clasificacion: 'Clasificación', categoria: 'Categoría', proveedor: 'Proveedor', rubro: 'Rubro' };
+        const label = labelMap[filterId] || filterId;
+        const count = selected ? selected.length : 0;
+        const span = trigger.querySelector('span');
+        if (span) span.textContent = count > 0 ? `${label} (${count})` : label;
+        trigger.classList.toggle('has-selection', count > 0);
     },
 
     // ═══════════════════════════════════════════
