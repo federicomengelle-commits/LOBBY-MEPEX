@@ -137,10 +137,11 @@ const ParametrosGlobales = {
 
                 Toast.success(`${clave} actualizado`);
                 input.dataset.original = displayVal;
-                // Nota: la Fase 1+2 no hace recalculo masivo automatico.
-                // Recetas propias lo necesitaran en Fase 3.
                 await this._loadData();
                 this._renderTable();
+
+                // Fase 3.D: ofrecer recálculo masivo en cascada
+                await this._offerMassRecalc(clave, originalVal, displayVal);
             };
 
             input.addEventListener('blur', save);
@@ -149,6 +150,79 @@ const ParametrosGlobales = {
                 if (e.key === 'Escape') { input.value = input.dataset.original; input.blur(); }
             });
         });
+    },
+
+    // Fase 3.D: ofrecer recálculo masivo en cascada al cambiar un parámetro
+    async _offerMassRecalc(clave, oldVal, newVal) {
+        if (typeof API.recetasQueDependenDeParametro !== 'function' || typeof API.recalcularEnCascada !== 'function') return;
+
+        let recetasIds = [];
+        try {
+            recetasIds = await API.recetasQueDependenDeParametro(clave);
+        } catch (e) {
+            console.warn('[ParamsGlobales] Error buscando dependencias:', e);
+            return;
+        }
+
+        if (!recetasIds.length) {
+            // No hay recetas que dependan: nada que ofrecer
+            return;
+        }
+
+        const confirmed = await Modal.confirm({
+            title: '🔄 Recalcular recetas afectadas',
+            message: `<p style="margin:0 0 8px 0">El parámetro <strong style="color:var(--primary)">${clave}</strong> cambió de <strong>${oldVal}</strong> a <strong>${newVal}</strong>.</p>
+                      <p style="margin:0 0 8px 0">Se detectaron <strong style="color:var(--accent)">${recetasIds.length} receta${recetasIds.length === 1 ? '' : 's'}</strong> que usan este valor (incluyendo padres en el árbol BOM).</p>
+                      <p style="margin:0; color:var(--text-muted); font-size:13px;">¿Recalcular precios ahora? Si decís que no, las recetas mantienen sus valores hasta editarse manualmente.</p>`,
+            confirmText: 'Recalcular',
+            cancelText: 'Más tarde',
+        });
+
+        if (!confirmed) return;
+
+        // Modal de progreso
+        const progressInstance = Modal.open({
+            title: '🔄 Recalculando recetas',
+            size: 'sm',
+            body: `<div style="text-align:center; padding:16px 0">
+                       <div class="spinner" style="margin:0 auto 12px"></div>
+                       <p id="paramsProgressText" style="color:var(--text-muted); font-size:13px; margin:0">Iniciando…</p>
+                       <div style="background:rgba(255,255,255,.05); border-radius:4px; height:6px; margin-top:12px; overflow:hidden">
+                           <div id="paramsProgressBar" style="background:var(--primary); height:100%; width:0%; transition:width .2s"></div>
+                       </div>
+                   </div>`,
+            footer: '',
+        });
+
+        const progressText = document.getElementById('paramsProgressText');
+        const progressBar = document.getElementById('paramsProgressBar');
+
+        let totalUpdated = 0, totalFailed = 0;
+        for (let i = 0; i < recetasIds.length; i++) {
+            const rid = recetasIds[i];
+            if (progressText) progressText.textContent = `Receta ${i + 1} de ${recetasIds.length}…`;
+            if (progressBar) progressBar.style.width = `${Math.round((i / recetasIds.length) * 100)}%`;
+            try {
+                const result = await API.recalcularEnCascada(rid);
+                if (result.ok) {
+                    totalUpdated += result.updated || 0;
+                } else {
+                    totalFailed += result.failed || 1;
+                }
+            } catch (e) {
+                console.warn('[ParamsGlobales] Error recalc cascada:', rid, e);
+                totalFailed++;
+            }
+        }
+        if (progressBar) progressBar.style.width = '100%';
+
+        Modal.close(progressInstance);
+
+        if (totalFailed === 0) {
+            Toast.success(`Recalculadas ${totalUpdated} recetas correctamente`);
+        } else {
+            Toast.warning(`${totalUpdated} recetas actualizadas, ${totalFailed} fallaron — revisá la consola`);
+        }
     },
 };
 

@@ -22,6 +22,12 @@ const CostosModule = {
     _activePanel: null,
     _activePanelData: null,
     _recetaCache: {},
+    _paramsCache: null,
+    _paramsCacheTs: 0,
+
+    // BOM jerárquico (Fase 3)
+    _expandedComps: new Set(),  // ids de componentes (string) tipo item que están expandidos
+    _subcompsCache: {},          // childItemId → array de subcomps hidratados
 
     // Filters
     _filterClasificacion: [],
@@ -114,6 +120,10 @@ const CostosModule = {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                             <input type="text" class="costos-search-input" id="costosSearchInput" placeholder="Buscar…" autocomplete="off">
                         </div>
+                        <a href="#parametros-globales" class="btn btn-ghost btn-sm costos-params-btn" title="Parámetros globales (hora taller, % defaults, vida útil…)" style="display:inline-flex; align-items:center; gap:6px; margin-left:8px;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            Parámetros
+                        </a>
                     </div>
                 </div>
 
@@ -732,11 +742,9 @@ const CostosModule = {
                     await API.logPrecioChange(parseInt(insumoId), currentPrice, newPrice, 'Edición inline — Costos');
                     await API.updateInsumo(parseInt(insumoId), { costoUnitario: newPrice });
                     Toast.success(`Precio actualizado: ${API.formatCurrency(newPrice)}`);
-                    // Cascada
-                    const result = await API.recalcularPorInsumo(parseInt(insumoId));
-                    if (result.ok && result.updated > 0) {
-                        Toast.info(`${result.updated} items recalculados`);
-                    }
+                    // Cascada con confirmación
+                    const insumo = this._insumos.find(i => String(i.id) === String(insumoId));
+                    await this._confirmAndCascadeInsumo(parseInt(insumoId), insumo?.nombre || `#${insumoId}`, currentPrice, newPrice);
                     await this._refreshData();
                 };
 
@@ -917,10 +925,7 @@ const CostosModule = {
                 if (result) {
                     if (costChanged) {
                         await API.logPrecioChange(item.id, oldCost, newCost, 'Edición ficha — Costos');
-                        const cascada = await API.recalcularPorInsumo(item.id);
-                        if (cascada.ok && cascada.updated > 0) {
-                            Toast.info(`${cascada.updated} items recalculados`);
-                        }
+                        await this._confirmAndCascadeInsumo(item.id, item.nombre, oldCost, newCost);
                     }
                     Toast.success('Insumo actualizado');
                     if (statusEl) statusEl.textContent = 'Guardado';
@@ -1358,36 +1363,66 @@ const CostosModule = {
         await this._loadRecetaContent(item);
     },
 
+    async _getParamsGlobales() {
+        // Cache por 60s
+        if (this._paramsCache && (Date.now() - this._paramsCacheTs) < 60000) {
+            return this._paramsCache;
+        }
+        this._paramsCache = await API.getParametrosGlobalesMap();
+        this._paramsCacheTs = Date.now();
+        return this._paramsCache;
+    },
+
+    _invalidateParamsCache() {
+        this._paramsCache = null;
+        this._paramsCacheTs = 0;
+    },
+
     async _loadRecetaContent(item) {
         const body = document.getElementById('costosRecetaBody');
         if (!body) return;
 
-        const componentes = await API.getRecetaComponentes(item.id);
+        const [componentes, params] = await Promise.all([
+            API.getRecetaComponentes(item.id),
+            this._getParamsGlobales(),
+        ]);
         this._recetaCache[item.id] = componentes;
 
         // Calculate total cost from recipe
         let costoTotal = 0;
         const compData = [];
         for (const comp of componentes) {
-            let nombre = '—', costoUnit = 0, unidad = '';
+            let nombre = '—', costoUnit = 0, unidad = '', codigo = '';
             if (comp.componenteType === 'insumo') {
                 const insumo = this._insumos.find(i => String(i.id) === String(comp.componenteId));
                 if (insumo) {
                     nombre = insumo.nombre;
                     costoUnit = insumo.costoUnitario;
                     unidad = insumo.unidadBase;
+                    codigo = insumo.codigo || '';
                 }
             } else if (comp.componenteType === 'item') {
                 const subItem = this._catalogoItems.find(i => String(i.id) === String(comp.componenteId));
                 if (subItem) {
                     nombre = subItem.nombre;
-                    costoUnit = subItem.costoProduccion;
+                    // Para items hijos: usar costoFabricacion (cost completo sin margen).
+                    // Fallback a costoProduccion (legacy).
+                    costoUnit = subItem.costoFabricacion || subItem.costoProduccion || 0;
                     unidad = subItem.unidad;
+                    codigo = subItem.codigo || '';
                 }
             }
             const subtotal = comp.cantidad * costoUnit;
             costoTotal += subtotal;
-            compData.push({ ...comp, nombre, costoUnit, unidad, subtotal });
+            compData.push({ ...comp, nombre, costoUnit, unidad, codigo, subtotal });
+        }
+
+        // Pre-cargar sub-componentes para items expandidos
+        const subcompsByCompId = {};
+        for (const c of compData) {
+            if (c.componenteType === 'item' && this._expandedComps.has(String(c.id))) {
+                subcompsByCompId[c.id] = await this._loadSubcomponents(c.componenteId);
+            }
         }
 
         body.innerHTML = `
@@ -1401,7 +1436,7 @@ const CostosModule = {
                         <table class="costos-receta-table">
                             <thead>
                                 <tr>
-                                    <th>Insumo / Item</th>
+                                    <th>Insumo / Receta</th>
                                     <th style="text-align:right; width:80px;">Cant.</th>
                                     <th style="width:60px;">Unidad</th>
                                     <th style="text-align:right; width:100px;">Costo Unit.</th>
@@ -1410,31 +1445,13 @@ const CostosModule = {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${compData.map(c => `
-                                    <tr class="costos-receta-comp-row" data-comp-id="${c.id}">
-                                        <td>
-                                            <span class="td-primary">${c.nombre}</span>
-                                            <span class="costos-comp-type-badge">${c.componenteType === 'insumo' ? '📦' : '🔩'}</span>
-                                        </td>
-                                        <td style="text-align:right">
-                                            <input type="number" class="costos-receta-qty-input" data-comp-id="${c.id}" value="${c.cantidad}" step="0.01" min="0">
-                                        </td>
-                                        <td><span class="td-mono">${c.unidadUso || c.unidad || '—'}</span></td>
-                                        <td style="text-align:right"><span class="td-number">${API.formatCurrency(c.costoUnit)}</span></td>
-                                        <td style="text-align:right"><span class="td-number" style="font-weight:600">${API.formatCurrency(c.subtotal)}</span></td>
-                                        <td>
-                                            <button class="costos-receta-remove-btn" data-comp-id="${c.id}" title="Quitar">
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
+                                ${compData.map(c => this._renderComponenteRow(c, subcompsByCompId[c.id])).join('')}
                             </tbody>
                         </table>
                     </div>
                 ` : `
                     <div class="costos-receta-empty">
-                        <p style="color:var(--text-muted); font-size:13px;">Sin componentes. Agregá insumos o cargá una receta base.</p>
+                        <p style="color:var(--text-muted); font-size:13px;">Sin componentes. Agregá insumos, recetas, o cargá una receta base.</p>
                     </div>
                 `}
             </div>
@@ -1454,6 +1471,10 @@ const CostosModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Agregar insumo
                 </button>
+                <button class="btn btn-primary btn-sm" id="costosRecetaAddReceta" style="background:#9B7DFF;border-color:#9B7DFF;color:#000;" title="Agregar otra receta como componente (BOM jerárquico)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Agregar receta
+                </button>
                 <button class="btn btn-ghost btn-sm" id="costosRecetaLoadBase" title="Copiar receta de otro item como base">
                     📋 Cargar receta base
                 </button>
@@ -1464,21 +1485,209 @@ const CostosModule = {
                 ` : ''}
             </div>
 
-            ${this._renderCascadaBlock(item, costoTotal)}
+            ${this._renderCascadaBlock(item, costoTotal, params)}
         `;
 
         this._attachRecetaEvents(item, compData);
-        this._attachCascadaEvents(item, compData, costoTotal);
+        this._attachCascadaEvents(item, compData, costoTotal, params);
+    },
+
+    // ═══════════════════════════════════════════
+    //  BOM JERÁRQUICO (Fase 3.C)
+    // ═══════════════════════════════════════════
+
+    // Renderiza una fila de componente. Si es tipo 'item' agrega chevron + sub-rows expandibles.
+    _renderComponenteRow(c, subcomps) {
+        const isItem = c.componenteType === 'item';
+        const isExpanded = isItem && this._expandedComps.has(String(c.id));
+        const badge = isItem ? '⚛️' : '🔹';
+        const badgeTitle = isItem ? 'Receta (subensamblaje)' : 'Insumo';
+        const badgeClass = isItem ? 'costos-comp-type-badge costos-comp-type-receta' : 'costos-comp-type-badge';
+        const chevron = isItem
+            ? `<button class="costos-comp-chevron${isExpanded ? ' expanded' : ''}" data-comp-id="${c.id}" data-child-id="${c.componenteId}" title="${isExpanded ? 'Colapsar' : 'Expandir'} composición">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+               </button>`
+            : `<span class="costos-comp-chevron-spacer"></span>`;
+        const nameClass = isItem ? 'td-primary costos-comp-name-link' : 'td-primary';
+        const nameAttrs = isItem ? `data-child-id="${c.componenteId}" title="Click: abrir receta"` : '';
+
+        let mainRow = `
+            <tr class="costos-receta-comp-row${isItem ? ' costos-receta-comp-row-item' : ''}" data-comp-id="${c.id}">
+                <td>
+                    <span class="costos-comp-name-cell">
+                        ${chevron}
+                        <span class="${nameClass}" ${nameAttrs}>${c.nombre}</span>
+                        <span class="${badgeClass}" title="${badgeTitle}">${badge}</span>
+                        ${c.codigo ? `<span class="costos-comp-code">${c.codigo}</span>` : ''}
+                    </span>
+                </td>
+                <td style="text-align:right">
+                    <input type="number" class="costos-receta-qty-input" data-comp-id="${c.id}" value="${c.cantidad}" step="0.01" min="0">
+                </td>
+                <td><span class="td-mono">${c.unidadUso || c.unidad || '—'}</span></td>
+                <td style="text-align:right"><span class="td-number">${API.formatCurrency(c.costoUnit)}</span></td>
+                <td style="text-align:right"><span class="td-number" style="font-weight:600">${API.formatCurrency(c.subtotal)}</span></td>
+                <td>
+                    <button class="costos-receta-remove-btn" data-comp-id="${c.id}" title="Quitar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </td>
+            </tr>
+        `;
+
+        // Sub-rows si está expandido
+        if (isExpanded && Array.isArray(subcomps)) {
+            const subRows = subcomps.length > 0
+                ? subcomps.map(sc => `
+                    <tr class="costos-receta-comp-subrow" data-parent-comp-id="${c.id}">
+                        <td>
+                            <span class="costos-comp-subrow-cell">
+                                <span class="costos-comp-subrow-indent"></span>
+                                <span class="costos-comp-subrow-bullet">└</span>
+                                <span class="td-primary" style="opacity:.85">${sc.nombre}</span>
+                                <span class="${sc.componenteType === 'item' ? 'costos-comp-type-badge costos-comp-type-receta' : 'costos-comp-type-badge'}" title="${sc.componenteType === 'item' ? 'Receta' : 'Insumo'}">${sc.componenteType === 'item' ? '⚛️' : '🔹'}</span>
+                            </span>
+                        </td>
+                        <td style="text-align:right"><span class="td-mono" style="opacity:.7">${sc.cantidad}</span></td>
+                        <td><span class="td-mono" style="opacity:.7">${sc.unidadUso || sc.unidad || '—'}</span></td>
+                        <td style="text-align:right"><span class="td-number" style="opacity:.7">${API.formatCurrency(sc.costoUnit)}</span></td>
+                        <td style="text-align:right"><span class="td-number" style="opacity:.7">${API.formatCurrency(sc.cantidad * sc.costoUnit)}</span></td>
+                        <td></td>
+                    </tr>
+                `).join('')
+                : `<tr class="costos-receta-comp-subrow" data-parent-comp-id="${c.id}">
+                       <td colspan="6" style="padding:8px 12px 8px 48px; color:var(--text-muted); font-size:12px; font-style:italic;">Esta receta no tiene componentes.</td>
+                   </tr>`;
+            mainRow += subRows;
+        }
+
+        return mainRow;
+    },
+
+    // Carga y hidrata sub-componentes de un item hijo (lazy + cached)
+    async _loadSubcomponents(childItemId) {
+        const key = String(childItemId);
+        if (this._subcompsCache[key]) return this._subcompsCache[key];
+
+        let comps = [];
+        try {
+            comps = await API.getRecetaComponentes(childItemId);
+        } catch (e) {
+            console.warn('[Costos] Error cargando subcomponentes:', e);
+            return [];
+        }
+
+        const hydrated = comps.map(sc => {
+            let nombre = '—', costoUnit = 0, unidad = '', codigo = '';
+            if (sc.componenteType === 'insumo') {
+                const ins = this._insumos.find(i => String(i.id) === String(sc.componenteId));
+                if (ins) { nombre = ins.nombre; costoUnit = ins.costoUnitario; unidad = ins.unidadBase; codigo = ins.codigo || ''; }
+            } else if (sc.componenteType === 'item') {
+                const it = this._catalogoItems.find(i => String(i.id) === String(sc.componenteId));
+                if (it) { nombre = it.nombre; costoUnit = it.costoFabricacion || it.costoProduccion || 0; unidad = it.unidad; codigo = it.codigo || ''; }
+            }
+            return { ...sc, nombre, costoUnit, unidad, codigo };
+        });
+
+        this._subcompsCache[key] = hydrated;
+        return hydrated;
+    },
+
+    _invalidateSubcompsCache(childItemId) {
+        if (childItemId == null) { this._subcompsCache = {}; return; }
+        delete this._subcompsCache[String(childItemId)];
+    },
+
+    // Fase 3.E: hook al cambiar precio de insumo — modal de confirmación + recálculo en cadena
+    async _confirmAndCascadeInsumo(insumoId, insumoNombre, oldPrice, newPrice) {
+        if (typeof API.recetasQueUsanInsumo !== 'function' || typeof API.recalcularEnCascada !== 'function') {
+            // Fallback al recálculo viejo si los helpers no están disponibles
+            const result = await API.recalcularPorInsumo(insumoId);
+            if (result.ok && result.updated > 0) Toast.info(`${result.updated} items recalculados`);
+            return;
+        }
+
+        let recetasIds = [];
+        try {
+            recetasIds = await API.recetasQueUsanInsumo(insumoId);
+        } catch (e) {
+            console.warn('[Costos] Error buscando recetas afectadas:', e);
+            return;
+        }
+
+        if (!recetasIds.length) return; // nada que recalcular, salida silenciosa
+
+        const delta = newPrice - oldPrice;
+        const deltaPct = oldPrice > 0 ? ((delta / oldPrice) * 100).toFixed(1) : '∞';
+        const deltaSign = delta >= 0 ? '+' : '';
+        const deltaColor = delta >= 0 ? 'var(--color-error, #ff6666)' : 'var(--color-success, #00CC88)';
+
+        const confirmed = await Modal.confirm({
+            title: '🔄 Recalcular recetas en cascada',
+            message: `<span style="display:block; margin-bottom:8px">El insumo <strong style="color:var(--primary)">${insumoNombre}</strong> cambió de <strong>${API.formatCurrency(oldPrice)}</strong> a <strong>${API.formatCurrency(newPrice)}</strong> <span style="color:${deltaColor}">(${deltaSign}${deltaPct}%)</span>.</span>
+                      <span style="display:block; margin-bottom:8px">Esto afecta <strong style="color:var(--accent)">${recetasIds.length} receta${recetasIds.length === 1 ? '' : 's'}</strong> (directas + padres en el árbol BOM).</span>
+                      <span style="display:block; color:var(--text-muted); font-size:13px">¿Recalcular precios ahora? Si decís que no, las recetas quedan con el costo viejo hasta que las edites manualmente.</span>`,
+            confirmText: 'Recalcular',
+            cancelText: 'Más tarde',
+        });
+
+        if (!confirmed) {
+            Toast.warning(`${recetasIds.length} receta${recetasIds.length === 1 ? ' quedó' : 's quedaron'} con el costo viejo`);
+            return;
+        }
+
+        // Modal de progreso para cascadas grandes (>5)
+        let progressInstance = null;
+        let progressText = null, progressBar = null;
+        if (recetasIds.length > 5) {
+            progressInstance = Modal.open({
+                title: '🔄 Recalculando recetas',
+                size: 'sm',
+                body: `<div style="text-align:center; padding:16px 0">
+                           <div class="spinner" style="margin:0 auto 12px"></div>
+                           <p id="cascadaInsumoText" style="color:var(--text-muted); font-size:13px; margin:0">Iniciando…</p>
+                           <div style="background:rgba(255,255,255,.05); border-radius:4px; height:6px; margin-top:12px; overflow:hidden">
+                               <div id="cascadaInsumoBar" style="background:var(--primary); height:100%; width:0%; transition:width .2s"></div>
+                           </div>
+                       </div>`,
+                footer: '',
+            });
+            progressText = document.getElementById('cascadaInsumoText');
+            progressBar = document.getElementById('cascadaInsumoBar');
+        }
+
+        let totalUpdated = 0, totalFailed = 0;
+        for (let i = 0; i < recetasIds.length; i++) {
+            const rid = recetasIds[i];
+            if (progressText) progressText.textContent = `Receta ${i + 1} de ${recetasIds.length}…`;
+            if (progressBar) progressBar.style.width = `${Math.round((i / recetasIds.length) * 100)}%`;
+            try {
+                const r = await API.recalcularEnCascada(rid);
+                if (r.ok) totalUpdated += r.updated || 0;
+                else totalFailed += r.failed || 1;
+            } catch (e) {
+                console.warn('[Costos] Error recalc cascada:', rid, e);
+                totalFailed++;
+            }
+        }
+        if (progressBar) progressBar.style.width = '100%';
+        if (progressInstance) Modal.close(progressInstance);
+
+        if (totalFailed === 0) {
+            Toast.success(`${totalUpdated} receta${totalUpdated === 1 ? '' : 's'} recalculada${totalUpdated === 1 ? '' : 's'}`);
+        } else {
+            Toast.warning(`${totalUpdated} ok, ${totalFailed} fallaron — revisá la consola`);
+        }
     },
 
     // ═══════════════════════════════════════════
     //  CASCADA DE COSTEO (Fase 1+2)
     // ═══════════════════════════════════════════
 
-    _renderCascadaBlock(item, costoMP) {
+    _renderCascadaBlock(item, costoMP, params) {
         const tipo = item.tipoReceta || 'propio';
         if (tipo === 'subalquilado') return this._renderCascadaSubalquilado(item, costoMP);
-        return this._renderCascadaPropioPlaceholder(item, costoMP);
+        return this._renderCascadaPropio(item, costoMP, params || {});
     },
 
     _renderCascadaSubalquilado(item, costoMP) {
@@ -1509,35 +1718,167 @@ const CostosModule = {
         `;
     },
 
-    _renderCascadaPropioPlaceholder(item, costoMP) {
+    // Cascada PROPIO — bloques MO / Indirectos / Amortización / Margen con preview en vivo
+    _renderCascadaPropio(item, costoMP, params) {
+        // Defaults globales
+        const horaTaller = parseFloat(params.hora_taller_ars) || 12000;
+        const dPctFabrica = parseFloat(params.pct_indirectos_fabrica) || 0.30;
+        const dPctComercial = parseFloat(params.pct_indirectos_comercial) || 0.20;
+        const dVidaUtil = parseInt(params.vida_util_default) || 20;
+        const dPctReacond = parseFloat(params.pct_reacondicionamiento) || 0.05;
+        const dMargen = parseFloat(params.pct_margen_default) || 0.50;
+
+        // Valores actuales del item (con fallback al global)
+        const minutos = item.manoObraMinutos || 0;
+        const pctFabrica = item.pctIndirectosFabrica != null ? item.pctIndirectosFabrica : dPctFabrica;
+        const pctComercial = item.pctIndirectosComercial != null ? item.pctIndirectosComercial : dPctComercial;
+        const vidaUtil = item.vidaUtilUsos || dVidaUtil;
+        const pctReacond = item.pctReacondicionamiento != null ? item.pctReacondicionamiento : dPctReacond;
+        const margen = item.margenPropio != null ? item.margenPropio : dMargen;
+
+        // Calcular cascada inicial usando el motor (para mostrar valores)
+        const r = window.CalculoReceta ? window.CalculoReceta.calcular(
+            { tipoReceta: 'propio', manoObraMinutos: minutos, pctIndirectosFabrica: pctFabrica,
+              pctIndirectosComercial: pctComercial, vidaUtilUsos: vidaUtil,
+              pctReacondicionamiento: pctReacond, margenPropio: margen },
+            // Le pasamos un único componente sintético con costoMP ya sumado
+            [{ cantidad: 1, costoUnit: costoMP }],
+            params
+        ) : { costoManoObra: 0, costoIndirectos: 0, costoFabricacion: costoMP, costoPorUso: 0, precioAlquiler: 0 };
+
+        // Helper: pinta indicador (global ↺) cuando difiere
+        const globalHint = (currentVal, defaultVal, suffix, targetId) => {
+            const isDefault = Math.abs(currentVal - defaultVal) < 0.0001;
+            if (isDefault) {
+                return `<span class="costos-cascada-hint" title="Coincide con el global">↻ global</span>`;
+            }
+            return `<button class="costos-cascada-reset" data-target="${targetId}" data-default="${defaultVal}" title="Volver al default global (${defaultVal}${suffix})">↺ ${defaultVal}${suffix}</button>`;
+        };
+
+        const persistedPrecio = item.precioAlquiler || 0;
         return `
-            <div class="costos-cascada costos-cascada-propio-placeholder">
-                <div class="costos-cascada-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                    Cascada de fabricación
+            <div class="costos-cascada costos-cascada-propio" data-item-id="${item.id}">
+                <!-- BLOQUE 1: MANO DE OBRA -->
+                <div class="costos-cascada-block">
+                    <div class="costos-cascada-block-title">⚙️ Mano de obra</div>
+                    <div class="costos-cascada-row">
+                        <label class="costos-cascada-label">Minutos</label>
+                        <div class="costos-cascada-input-wrap">
+                            <input type="number" class="costos-cascada-input" id="propMinutos" value="${minutos}" step="1" min="0">
+                            <span class="costos-cascada-suffix">min</span>
+                        </div>
+                    </div>
+                    <div class="costos-cascada-row costos-cascada-row-readonly">
+                        <label class="costos-cascada-label">Hora taller</label>
+                        <span class="costos-cascada-readonly-val">${API.formatCurrency(horaTaller)}/h <span class="costos-cascada-hint">↻ global</span></span>
+                    </div>
+                    <div class="costos-cascada-row costos-cascada-row-calc">
+                        <label class="costos-cascada-label">Costo MO</label>
+                        <span class="costos-cascada-calc-val" id="propCostoMO">${API.formatCurrency(r.costoManoObra)}</span>
+                    </div>
                 </div>
-                <p class="costos-cascada-empty">
-                    La cascada completa para recetas propias (MO, indirectos, amortización, margen) se habilita en <strong>Fase 3</strong>.
-                </p>
-                <p class="costos-cascada-empty-sub">
-                    Por ahora, el costo de producción se guarda como MP y el precio de alquiler queda en $0.
-                    Para obtener precio de alquiler ya mismo, cambiá el tipo de receta a <strong>Subalquilado</strong>.
-                </p>
+
+                <!-- BLOQUE 2: INDIRECTOS -->
+                <div class="costos-cascada-block">
+                    <div class="costos-cascada-block-title">📊 Indirectos</div>
+                    <div class="costos-cascada-row">
+                        <label class="costos-cascada-label">% Fábrica</label>
+                        <div class="costos-cascada-input-wrap">
+                            <input type="number" class="costos-cascada-input" id="propPctFabrica" value="${Math.round(pctFabrica * 100)}" step="1" min="0" max="500">
+                            <span class="costos-cascada-suffix">%</span>
+                        </div>
+                        ${globalHint(Math.round(pctFabrica * 100), Math.round(dPctFabrica * 100), '%', 'propPctFabrica')}
+                    </div>
+                    <div class="costos-cascada-row">
+                        <label class="costos-cascada-label">% Comercial</label>
+                        <div class="costos-cascada-input-wrap">
+                            <input type="number" class="costos-cascada-input" id="propPctComercial" value="${Math.round(pctComercial * 100)}" step="1" min="0" max="500">
+                            <span class="costos-cascada-suffix">%</span>
+                        </div>
+                        ${globalHint(Math.round(pctComercial * 100), Math.round(dPctComercial * 100), '%', 'propPctComercial')}
+                    </div>
+                    <div class="costos-cascada-row costos-cascada-row-calc">
+                        <label class="costos-cascada-label">Costo indirectos</label>
+                        <span class="costos-cascada-calc-val" id="propCostoIndirectos">${API.formatCurrency(r.costoIndirectos)}</span>
+                    </div>
+                </div>
+
+                <!-- COSTO FABRICACIÓN destacado -->
+                <div class="costos-cascada-section-result">
+                    <span class="costos-cascada-section-result-label">💰 Costo fabricación</span>
+                    <span class="costos-cascada-section-result-value" id="propCostoFab">${API.formatCurrency(r.costoFabricacion)}</span>
+                </div>
+
+                <!-- BLOQUE 3: AMORTIZACIÓN -->
+                <div class="costos-cascada-block">
+                    <div class="costos-cascada-block-title">🔁 Amortización</div>
+                    <div class="costos-cascada-row">
+                        <label class="costos-cascada-label">Vida útil</label>
+                        <div class="costos-cascada-input-wrap">
+                            <input type="number" class="costos-cascada-input" id="propVidaUtil" value="${vidaUtil}" step="1" min="1">
+                            <span class="costos-cascada-suffix">usos</span>
+                        </div>
+                        ${globalHint(vidaUtil, dVidaUtil, ' usos', 'propVidaUtil')}
+                    </div>
+                    <div class="costos-cascada-row">
+                        <label class="costos-cascada-label">Reacondicionamiento</label>
+                        <div class="costos-cascada-input-wrap">
+                            <input type="number" class="costos-cascada-input" id="propPctReacond" value="${Math.round(pctReacond * 100)}" step="1" min="0" max="100">
+                            <span class="costos-cascada-suffix">%</span>
+                        </div>
+                        ${globalHint(Math.round(pctReacond * 100), Math.round(dPctReacond * 100), '%', 'propPctReacond')}
+                    </div>
+                    <div class="costos-cascada-row costos-cascada-row-calc">
+                        <label class="costos-cascada-label">Costo por uso</label>
+                        <span class="costos-cascada-calc-val" id="propCostoPorUso">${API.formatCurrency(r.costoPorUso)}</span>
+                    </div>
+                </div>
+
+                <!-- BLOQUE 4: MARGEN -->
+                <div class="costos-cascada-block">
+                    <div class="costos-cascada-block-title">🎯 Margen y precio final</div>
+                    <div class="costos-cascada-row">
+                        <label class="costos-cascada-label">Margen</label>
+                        <div class="costos-cascada-input-wrap">
+                            <input type="number" class="costos-cascada-input" id="propMargen" value="${Math.round(margen * 100)}" step="1" min="0" max="500">
+                            <span class="costos-cascada-suffix">%</span>
+                        </div>
+                        ${globalHint(Math.round(margen * 100), Math.round(dMargen * 100), '%', 'propMargen')}
+                    </div>
+                </div>
+
+                <!-- PRECIO ALQUILER FINAL -->
+                <div class="costos-cascada-result costos-cascada-result-final">
+                    <span class="costos-cascada-result-label">Precio alquiler final</span>
+                    <span class="costos-cascada-result-value" id="propPrecioFinal">${API.formatCurrency(r.precioAlquiler)}</span>
+                </div>
+
+                <div class="costos-cascada-saved-hint" id="propSavedHint" style="${persistedPrecio > 0 ? '' : 'display:none;'}">
+                    <span class="costos-cascada-saved-hint-text">guardado: ${API.formatCurrency(persistedPrecio)}</span>
+                    <span class="costos-cascada-dirty-tag" id="propDirtyTag" style="display:none;">● cambios sin guardar</span>
+                </div>
+
+                <button class="btn btn-primary costos-cascada-save" id="propGuardar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Guardar y recalcular
+                </button>
             </div>
         `;
     },
 
-    _attachCascadaEvents(item, compData, costoMP) {
+    _attachCascadaEvents(item, compData, costoMP, params) {
         const tipo = item.tipoReceta || 'propio';
-        if (tipo !== 'subalquilado') return;
+        if (tipo === 'subalquilado') return this._attachCascadaSubalquilado(item, compData, costoMP);
+        return this._attachCascadaPropio(item, compData, costoMP, params || {});
+    },
 
+    _attachCascadaSubalquilado(item, compData, costoMP) {
         const margenInput = document.getElementById('cascadaMargenSubalquiler');
         const precioEl = document.getElementById('cascadaPrecioAlquiler');
         const saveBtn = document.getElementById('cascadaGuardar');
         if (!margenInput || !precioEl || !saveBtn) return;
 
         const recalcLive = () => {
-            // Re-sum MP from current inputs in the panel
             let mp = 0;
             document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
                 const compId = inp.dataset.compId;
@@ -1561,14 +1902,168 @@ const CostosModule = {
             const margenDecimal = (parseFloat(margenInput.value) || 0) / 100;
             await API.updateCatalogoItem(item.id, { margenSubalquiler: margenDecimal });
             item.margenSubalquiler = margenDecimal;
-            const result = await API.recalcularPrecioAlquiler(item);
-            if (result) {
-                Toast.success(`Precio alquiler: ${API.formatCurrency(result.precioAlquiler)}`);
+            const result = await API.recalcularEnCascada(item.id, {
+                onProgress: (cur, total, name) => {
+                    if (total > 1) saveBtn.textContent = `Recalculando ${cur}/${total}…`;
+                },
+            });
+            if (result.ok) {
+                Toast.success(result.total > 1
+                    ? `Recalculadas ${result.updated} recetas (esta + ${result.updated - 1} padres)`
+                    : 'Precio alquiler actualizado');
                 await this._refreshData();
                 const updated = this._catalogoItems.find(i => String(i.id) === String(item.id));
                 if (updated) await this._loadRecetaContent(updated);
             } else {
                 Toast.error('Error al recalcular');
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalHTML;
+            }
+        });
+    },
+
+    _attachCascadaPropio(item, compData, costoMP, params) {
+        const root = document.querySelector('.costos-cascada-propio');
+        if (!root) return;
+
+        const $ = (id) => document.getElementById(id);
+        const inputs = {
+            minutos: $('propMinutos'),
+            pctFabrica: $('propPctFabrica'),
+            pctComercial: $('propPctComercial'),
+            vidaUtil: $('propVidaUtil'),
+            pctReacond: $('propPctReacond'),
+            margen: $('propMargen'),
+        };
+        const outs = {
+            costoMO: $('propCostoMO'),
+            costoIndirectos: $('propCostoIndirectos'),
+            costoFab: $('propCostoFab'),
+            costoPorUso: $('propCostoPorUso'),
+            precioFinal: $('propPrecioFinal'),
+        };
+        const saveBtn = $('propGuardar');
+        const dirtyTag = $('propDirtyTag');
+        if (!saveBtn) return;
+
+        // Snapshot inicial para detectar cambios
+        const snapshot = JSON.stringify({
+            mp: costoMP,
+            min: parseFloat(inputs.minutos?.value) || 0,
+            pf: parseFloat(inputs.pctFabrica?.value) || 0,
+            pc: parseFloat(inputs.pctComercial?.value) || 0,
+            vu: parseFloat(inputs.vidaUtil?.value) || 0,
+            pr: parseFloat(inputs.pctReacond?.value) || 0,
+            mg: parseFloat(inputs.margen?.value) || 0,
+        });
+
+        const recomputeMP = () => {
+            let mp = 0;
+            document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
+                const compId = inp.dataset.compId;
+                const comp = compData.find(c => String(c.id) === String(compId));
+                if (!comp) return;
+                mp += (parseFloat(inp.value) || 0) * comp.costoUnit;
+            });
+            return mp;
+        };
+
+        const recalcLive = () => {
+            if (!window.CalculoReceta) return;
+            const mp = recomputeMP();
+            const recetaSintetica = {
+                tipoReceta: 'propio',
+                manoObraMinutos: parseFloat(inputs.minutos?.value) || 0,
+                pctIndirectosFabrica: (parseFloat(inputs.pctFabrica?.value) || 0) / 100,
+                pctIndirectosComercial: (parseFloat(inputs.pctComercial?.value) || 0) / 100,
+                vidaUtilUsos: Math.max(1, parseFloat(inputs.vidaUtil?.value) || 1),
+                pctReacondicionamiento: (parseFloat(inputs.pctReacond?.value) || 0) / 100,
+                margenPropio: (parseFloat(inputs.margen?.value) || 0) / 100,
+            };
+            const r = window.CalculoReceta.calcular(
+                recetaSintetica,
+                [{ cantidad: 1, costoUnit: mp }],
+                params
+            );
+            if (outs.costoMO) outs.costoMO.textContent = API.formatCurrency(r.costoManoObra);
+            if (outs.costoIndirectos) outs.costoIndirectos.textContent = API.formatCurrency(r.costoIndirectos);
+            if (outs.costoFab) outs.costoFab.textContent = API.formatCurrency(r.costoFabricacion);
+            if (outs.costoPorUso) outs.costoPorUso.textContent = API.formatCurrency(r.costoPorUso);
+            if (outs.precioFinal) outs.precioFinal.textContent = API.formatCurrency(r.precioAlquiler);
+
+            // Marcar dirty
+            const current = JSON.stringify({
+                mp,
+                min: recetaSintetica.manoObraMinutos,
+                pf: parseFloat(inputs.pctFabrica?.value) || 0,
+                pc: parseFloat(inputs.pctComercial?.value) || 0,
+                vu: parseFloat(inputs.vidaUtil?.value) || 0,
+                pr: parseFloat(inputs.pctReacond?.value) || 0,
+                mg: parseFloat(inputs.margen?.value) || 0,
+            });
+            if (dirtyTag) dirtyTag.style.display = (current !== snapshot) ? '' : 'none';
+        };
+
+        // Wire all inputs
+        Object.values(inputs).forEach(inp => {
+            if (inp) inp.addEventListener('input', recalcLive);
+        });
+        document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
+            inp.addEventListener('input', recalcLive);
+        });
+
+        // Reset to global default buttons
+        root.querySelectorAll('.costos-cascada-reset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetId = btn.dataset.target;
+                const def = btn.dataset.default;
+                const target = document.getElementById(targetId);
+                if (target && def != null) {
+                    target.value = def;
+                    recalcLive();
+                }
+            });
+        });
+
+        // Save & cascade
+        saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            const originalHTML = saveBtn.innerHTML;
+            saveBtn.textContent = 'Guardando…';
+
+            const payload = {
+                manoObraMinutos: parseInt(inputs.minutos?.value) || 0,
+                pctIndirectosFabrica: (parseFloat(inputs.pctFabrica?.value) || 0) / 100,
+                pctIndirectosComercial: (parseFloat(inputs.pctComercial?.value) || 0) / 100,
+                vidaUtilUsos: Math.max(1, parseInt(inputs.vidaUtil?.value) || 1),
+                pctReacondicionamiento: (parseFloat(inputs.pctReacond?.value) || 0) / 100,
+                margenPropio: (parseFloat(inputs.margen?.value) || 0) / 100,
+            };
+
+            try {
+                await API.updateCatalogoItem(item.id, payload);
+                Object.assign(item, payload);
+
+                const result = await API.recalcularEnCascada(item.id, {
+                    onProgress: (cur, total, name) => {
+                        if (total > 1) saveBtn.textContent = `Recalculando ${cur}/${total}…`;
+                    },
+                });
+                if (result.ok) {
+                    Toast.success(result.total > 1
+                        ? `Recalculadas ${result.updated} recetas (esta + ${result.updated - 1} padres)`
+                        : `Precio: ${API.formatCurrency(parseFloat(outs.precioFinal?.textContent.replace(/[^\d.,-]/g, '').replace('.', '').replace(',', '.')) || 0)}`);
+                    await this._refreshData();
+                    const updated = this._catalogoItems.find(i => String(i.id) === String(item.id));
+                    if (updated) await this._loadRecetaContent(updated);
+                } else {
+                    Toast.error(`Recalculadas ${result.updated} de ${result.total}; ${result.failed} fallaron`);
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalHTML;
+                }
+            } catch (e) {
+                console.warn('[Costos] Error guardando cascada propio:', e);
+                Toast.error('Error al guardar');
                 saveBtn.disabled = false;
                 saveBtn.innerHTML = originalHTML;
             }
@@ -1630,6 +2125,37 @@ const CostosModule = {
         if (addBtn) {
             addBtn.addEventListener('click', () => this._openAddInsumoModal(item));
         }
+
+        // Add receta (BOM jerárquico)
+        const addRecetaBtn = document.getElementById('costosRecetaAddReceta');
+        if (addRecetaBtn) {
+            addRecetaBtn.addEventListener('click', () => this._openAddRecetaModal(item));
+        }
+
+        // Chevron toggle (expandir/colapsar composición de receta hija)
+        document.querySelectorAll('.costos-comp-chevron').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const compId = String(btn.dataset.compId);
+                if (this._expandedComps.has(compId)) {
+                    this._expandedComps.delete(compId);
+                } else {
+                    this._expandedComps.add(compId);
+                }
+                await this._loadRecetaContent(item);
+            });
+        });
+
+        // Drill-down: click en nombre de receta hija → abrir su ficha
+        document.querySelectorAll('.costos-comp-name-link').forEach(el => {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const childId = el.dataset.childId;
+                if (!childId) return;
+                const childItem = this._catalogoItems.find(i => String(i.id) === String(childId));
+                if (childItem) this._openRecetaFicha(childItem);
+            });
+        });
 
         // Load base recipe
         const loadBaseBtn = document.getElementById('costosRecetaLoadBase');
@@ -1742,6 +2268,131 @@ const CostosModule = {
                         await this._loadRecetaContent(item);
                     } else {
                         Toast.error('Error al agregar insumo');
+                    }
+                });
+            }
+        }, 100);
+    },
+
+    // ─── Add receta hija (BOM jerárquico) ───
+
+    _openAddRecetaModal(item) {
+        // Excluir la propia receta. La validación de ciclo se hace al confirmar.
+        const candidatos = this._catalogoItems.filter(i => String(i.id) !== String(item.id));
+
+        const itemsList = candidatos.map(i => `
+            <div class="costos-add-insumo-row" data-child-id="${i.id}">
+                <span class="costos-add-insumo-name">${i.nombre}</span>
+                <span class="costos-add-insumo-code">${i.codigo || ''}</span>
+                <span class="costos-add-insumo-cost" title="Costo de fabricación (sin margen)">${API.formatCurrency(i.costoFabricacion || i.costoProduccion || 0)}</span>
+            </div>
+        `).join('');
+
+        const instance = Modal.open({
+            title: '⚛️ Agregar receta como componente',
+            size: 'md',
+            body: `
+                <div style="margin-bottom:8px; color:var(--text-muted); font-size:13px;">
+                    Las recetas hijas se costean al <strong style="color:#9B7DFF;">costo de fabricación</strong> (sin margen). El sistema valida que no se generen ciclos.
+                </div>
+                <div style="margin-bottom:12px;">
+                    <input type="text" id="costosAddRecetaSearch" class="costos-ficha-input" placeholder="Buscar receta…" style="width:100%;" autocomplete="off">
+                </div>
+                <div class="costos-add-insumo-list" id="costosAddRecetaList" style="max-height:300px; overflow-y:auto;">
+                    ${itemsList}
+                </div>
+                <div style="margin-top:12px;" id="costosAddRecetaQty"></div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="costosAddRecetaConfirm" disabled style="background:#9B7DFF;border-color:#9B7DFF;color:#000;">Agregar</button>
+            `,
+        });
+
+        setTimeout(() => {
+            let selectedChildId = null;
+
+            // Search
+            const searchInput = document.getElementById('costosAddRecetaSearch');
+            if (searchInput) {
+                searchInput.addEventListener('input', () => {
+                    const q = searchInput.value.toLowerCase();
+                    document.querySelectorAll('#costosAddRecetaList .costos-add-insumo-row').forEach(row => {
+                        const name = row.querySelector('.costos-add-insumo-name')?.textContent?.toLowerCase() || '';
+                        const code = row.querySelector('.costos-add-insumo-code')?.textContent?.toLowerCase() || '';
+                        row.style.display = (!q || name.includes(q) || code.includes(q)) ? '' : 'none';
+                    });
+                });
+                searchInput.focus();
+            }
+
+            // Selection
+            document.querySelectorAll('#costosAddRecetaList .costos-add-insumo-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    document.querySelectorAll('#costosAddRecetaList .costos-add-insumo-row').forEach(r => r.classList.remove('selected'));
+                    row.classList.add('selected');
+                    selectedChildId = row.dataset.childId;
+
+                    const qtyArea = document.getElementById('costosAddRecetaQty');
+                    if (qtyArea) {
+                        qtyArea.innerHTML = `
+                            <div style="display:flex; gap:12px; align-items:center;">
+                                <label style="font-size:12px; color:var(--text-muted);">Cantidad:</label>
+                                <input type="number" id="costosAddRecetaCantidad" class="costos-ficha-input" value="1" step="0.01" min="0" style="width:100px;">
+                            </div>
+                        `;
+                    }
+                    const confirmBtn = document.getElementById('costosAddRecetaConfirm');
+                    if (confirmBtn) confirmBtn.disabled = false;
+                });
+            });
+
+            // Confirm
+            const confirmBtn = document.getElementById('costosAddRecetaConfirm');
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', async () => {
+                    if (!selectedChildId) return;
+                    const cantidad = parseFloat(document.getElementById('costosAddRecetaCantidad')?.value) || 1;
+                    const childItem = this._catalogoItems.find(i => String(i.id) === String(selectedChildId));
+
+                    confirmBtn.disabled = true;
+                    confirmBtn.textContent = 'Validando…';
+
+                    // Validación anti-ciclo
+                    let validation = { ok: true };
+                    try {
+                        if (typeof API.validarNoCiclo === 'function') {
+                            validation = await API.validarNoCiclo(item.id, selectedChildId);
+                        }
+                    } catch (e) {
+                        console.warn('[Costos] Error validando ciclo:', e);
+                    }
+
+                    if (!validation.ok) {
+                        Toast.error(validation.message || 'Esta combinación generaría un ciclo');
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = 'Agregar';
+                        return;
+                    }
+
+                    confirmBtn.textContent = 'Agregando…';
+                    const result = await API.addRecetaComponente({
+                        itemId: item.id,
+                        componenteType: 'item',
+                        componenteId: parseInt(selectedChildId),
+                        cantidad,
+                        unidadUso: childItem?.unidad || 'u',
+                    });
+
+                    if (result) {
+                        Toast.success(`Receta "${childItem?.nombre}" agregada como componente`);
+                        Modal.close(instance);
+                        this._invalidateSubcompsCache(selectedChildId);
+                        await this._loadRecetaContent(item);
+                    } else {
+                        Toast.error('Error al agregar receta');
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = 'Agregar';
                     }
                 });
             }
@@ -1910,6 +2561,7 @@ const CostosModule = {
         this._insumos = insumos || [];
         this._catalogoItems = items || [];
         this._listas = listas || [];
+        this._invalidateSubcompsCache();
         await this._loadAllRecetaStatuses();
         this._updateTabCounts();
         this._renderActiveTab();

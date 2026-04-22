@@ -2421,6 +2421,8 @@ const API = {
 
     // ─── Recalcular precio_alquiler de un item usando el motor ────
     // Requiere que window.CalculoReceta este cargado.
+    // Para componentes tipo 'item' usa costoFabricacion (cost completo sin margen),
+    // que para subalquilados equivale a costoMP. Fallback a costoProduccion (legacy).
     async recalcularPrecioAlquiler(item) {
         if (!window.CalculoReceta) {
             console.warn('[API] CalculoReceta no cargado');
@@ -2428,7 +2430,6 @@ const API = {
         }
         try {
             const componentes = await this.getRecetaComponentes(item.id);
-            // Hidratar costoUnit de cada componente
             const insumos = await this.getInsumos();
             const items = await this.getCatalogoItems();
             const compsConCosto = componentes.map(c => {
@@ -2438,7 +2439,7 @@ const API = {
                     if (ins) costoUnit = ins.costoUnitario || 0;
                 } else if (c.componenteType === 'item') {
                     const sub = items?.find(i => String(i.id) === String(c.componenteId));
-                    if (sub) costoUnit = sub.costoProduccion || 0;
+                    if (sub) costoUnit = sub.costoFabricacion || sub.costoProduccion || 0;
                 }
                 return { cantidad: c.cantidad, costoUnit };
             });
@@ -2457,6 +2458,269 @@ const API = {
         } catch (e) {
             console.warn('[API] Error recalculando precio alquiler:', e.message);
             return null;
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    // COSTOS FASE 3 — BOM jerárquico + recálculo en cascada
+    // ═══════════════════════════════════════════
+
+    // Devuelve Set de itemIds (string) que esta receta consume directa o transitivamente.
+    // Solo recursa por componentes tipo 'item'. Insumos no cuentan.
+    async obtenerDescendientes(itemId, accumulator = null) {
+        const acc = accumulator || new Set();
+        const idStr = String(itemId);
+        if (acc.has(idStr)) return acc; // protección contra ciclos en BD
+        try {
+            const { data, error } = await supabaseClient
+                .from('receta_componentes')
+                .select('componente_id')
+                .eq('item_id', itemId)
+                .eq('componente_type', 'item')
+                .eq('_deleted', false);
+            if (error) throw error;
+            for (const row of (data || [])) {
+                const childId = String(row.componente_id);
+                if (!acc.has(childId)) {
+                    acc.add(childId);
+                    await this.obtenerDescendientes(row.componente_id, acc);
+                }
+            }
+        } catch (e) {
+            console.warn('[API] Error obteniendo descendientes:', e.message);
+        }
+        return acc;
+    },
+
+    // Devuelve Set de itemIds (string) que dependen de esta receta (padres transitivos).
+    async obtenerAscendientes(itemId, accumulator = null) {
+        const acc = accumulator || new Set();
+        try {
+            const { data, error } = await supabaseClient
+                .from('receta_componentes')
+                .select('item_id')
+                .eq('componente_type', 'item')
+                .eq('componente_id', itemId)
+                .eq('_deleted', false);
+            if (error) throw error;
+            for (const row of (data || [])) {
+                const parentId = String(row.item_id);
+                if (!acc.has(parentId)) {
+                    acc.add(parentId);
+                    await this.obtenerAscendientes(row.item_id, acc);
+                }
+            }
+        } catch (e) {
+            console.warn('[API] Error obteniendo ascendientes:', e.message);
+        }
+        return acc;
+    },
+
+    // Valida que agregar `hijaId` como componente de `padreId` no cree un ciclo.
+    // Returns { ok: bool, message?: string }
+    async validarNoCiclo(padreId, hijaId) {
+        const pId = String(padreId);
+        const hId = String(hijaId);
+        if (pId === hId) {
+            return { ok: false, message: 'Una receta no puede contenerse a sí misma' };
+        }
+        const descendientesDeHija = await this.obtenerDescendientes(hijaId);
+        if (descendientesDeHija.has(pId)) {
+            return {
+                ok: false,
+                message: 'Esta receta ya contiene (directa o indirectamente) a la receta padre en su árbol — agregarla crearía un ciclo.',
+            };
+        }
+        return { ok: true };
+    },
+
+    // Devuelve cuántas recetas (ascendientes) usan este insumo base, directa o transitivamente.
+    async recetasQueUsanInsumo(insumoId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('receta_componentes')
+                .select('item_id')
+                .eq('componente_type', 'insumo')
+                .eq('componente_id', insumoId)
+                .eq('_deleted', false);
+            if (error) throw error;
+            const directas = new Set((data || []).map(r => String(r.item_id)));
+            const todas = new Set(directas);
+            for (const id of directas) {
+                const asc = await this.obtenerAscendientes(id);
+                asc.forEach(a => todas.add(a));
+            }
+            return Array.from(todas);
+        } catch (e) {
+            console.warn('[API] Error recetasQueUsanInsumo:', e.message);
+            return [];
+        }
+    },
+
+    // Recalcula esta receta + todas las recetas padres que dependen de ella,
+    // en orden topológico (hijas primero) y persiste cada una.
+    // opts.onProgress(current, total, itemName) — callback opcional.
+    // Returns { ok, total, updated, failed }
+    async recalcularEnCascada(recetaIdInicial, opts = {}) {
+        if (!window.CalculoReceta) {
+            console.warn('[API] CalculoReceta no cargado');
+            return { ok: false, total: 0, updated: 0, failed: 0 };
+        }
+
+        // 1. Conjunto afectado = receta inicial + todos sus ascendientes
+        const affected = new Set([String(recetaIdInicial)]);
+        const asc = await this.obtenerAscendientes(recetaIdInicial);
+        asc.forEach(id => affected.add(id));
+
+        // 2. Construir mapa de dependencias DENTRO del conjunto afectado
+        const deps = {}; // id → Set(ids que deben procesarse antes)
+        for (const id of affected) {
+            deps[id] = new Set();
+            const comps = await this.getRecetaComponentes(id);
+            for (const c of comps) {
+                if (c.componenteType === 'item' && affected.has(String(c.componenteId))) {
+                    deps[id].add(String(c.componenteId));
+                }
+            }
+        }
+
+        // 3. Kahn topológico — nodes con zero deps primero
+        const ordered = [];
+        const remaining = new Set(affected);
+        while (remaining.size > 0) {
+            let progress = false;
+            for (const id of [...remaining]) {
+                const pendientes = [...deps[id]].filter(d => remaining.has(d));
+                if (pendientes.length === 0) {
+                    ordered.push(id);
+                    remaining.delete(id);
+                    progress = true;
+                }
+            }
+            if (!progress) {
+                console.warn('[API] Ciclo detectado en cascada. Procesando restantes en orden arbitrario.');
+                ordered.push(...remaining);
+                break;
+            }
+        }
+
+        // 4. Recalcular cada uno en orden, con item fresco (cache se invalida por updateCatalogoItem)
+        let updated = 0;
+        let failed = 0;
+        const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+        for (let i = 0; i < ordered.length; i++) {
+            const id = ordered[i];
+            try {
+                const items = await this.getCatalogoItems();
+                const item = (items || []).find(it => String(it.id) === id);
+                if (!item) { failed++; continue; }
+                if (onProgress) onProgress(i + 1, ordered.length, item.nombre);
+                const r = await this.recalcularPrecioAlquiler(item);
+                if (r) updated++; else failed++;
+            } catch (e) {
+                console.warn('[API] Error recalculando en cascada item', id, ':', e.message);
+                failed++;
+            }
+        }
+
+        this.clearCache();
+        return { ok: failed === 0, total: ordered.length, updated, failed };
+    },
+
+    // Recalcula TODAS las recetas que (directa o transitivamente) usan este insumo base.
+    // Útil cuando cambia el costo_unitario de un insumo.
+    async recalcularPorInsumo(insumoId, opts = {}) {
+        const recetaIds = await this.recetasQueUsanInsumo(insumoId);
+        if (recetaIds.length === 0) {
+            return { ok: true, total: 0, updated: 0, failed: 0 };
+        }
+
+        // Unir todos los ascendientes de cada raíz para evitar repetir trabajo
+        const affected = new Set();
+        for (const id of recetaIds) {
+            affected.add(String(id));
+            const asc = await this.obtenerAscendientes(id);
+            asc.forEach(a => affected.add(a));
+        }
+
+        // Construir deps + topo (mismo algoritmo que recalcularEnCascada)
+        const deps = {};
+        for (const id of affected) {
+            deps[id] = new Set();
+            const comps = await this.getRecetaComponentes(id);
+            for (const c of comps) {
+                if (c.componenteType === 'item' && affected.has(String(c.componenteId))) {
+                    deps[id].add(String(c.componenteId));
+                }
+            }
+        }
+        const ordered = [];
+        const remaining = new Set(affected);
+        while (remaining.size > 0) {
+            let progress = false;
+            for (const id of [...remaining]) {
+                const pendientes = [...deps[id]].filter(d => remaining.has(d));
+                if (pendientes.length === 0) { ordered.push(id); remaining.delete(id); progress = true; }
+            }
+            if (!progress) { ordered.push(...remaining); break; }
+        }
+
+        let updated = 0, failed = 0;
+        const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+        for (let i = 0; i < ordered.length; i++) {
+            const id = ordered[i];
+            try {
+                const items = await this.getCatalogoItems();
+                const item = (items || []).find(it => String(it.id) === id);
+                if (!item) { failed++; continue; }
+                if (onProgress) onProgress(i + 1, ordered.length, item.nombre);
+                const r = await this.recalcularPrecioAlquiler(item);
+                if (r) updated++; else failed++;
+            } catch (e) {
+                console.warn('[API] Error recalculando por insumo, item', id, ':', e.message);
+                failed++;
+            }
+        }
+        this.clearCache();
+        return { ok: failed === 0, total: ordered.length, updated, failed };
+    },
+
+    // Recalcula todas las recetas que NO tienen override sobre un parámetro global.
+    // Como no almacenamos un flag de override, asumimos que si el valor del item
+    // coincide con el global usaba el default. clave puede ser:
+    //  'hora_taller_ars', 'pct_indirectos_fabrica', 'pct_indirectos_comercial',
+    //  'vida_util_default', 'pct_reacondicionamiento', 'pct_margen_default'
+    async recetasQueDependenDeParametro(clave) {
+        try {
+            const items = await this.getCatalogoItems();
+            if (!items) return [];
+            const params = await this.getParametrosGlobalesMap();
+            const out = [];
+            for (const it of items) {
+                if (it.tipoReceta !== 'propio') continue;
+                let usa = false;
+                switch (clave) {
+                    case 'hora_taller_ars':
+                        usa = (it.manoObraMinutos || 0) > 0; break;
+                    case 'pct_indirectos_fabrica':
+                        usa = Math.abs((it.pctIndirectosFabrica ?? 0.30) - (params.pct_indirectos_fabrica ?? 0.30)) < 0.0001; break;
+                    case 'pct_indirectos_comercial':
+                        usa = Math.abs((it.pctIndirectosComercial ?? 0.20) - (params.pct_indirectos_comercial ?? 0.20)) < 0.0001; break;
+                    case 'vida_util_default':
+                        usa = (it.vidaUtilUsos || 20) === (params.vida_util_default || 20); break;
+                    case 'pct_reacondicionamiento':
+                        usa = Math.abs((it.pctReacondicionamiento ?? 0.05) - (params.pct_reacondicionamiento ?? 0.05)) < 0.0001; break;
+                    case 'pct_margen_default':
+                        usa = Math.abs((it.margenPropio ?? 0.50) - (params.pct_margen_default ?? 0.50)) < 0.0001; break;
+                    default:
+                        usa = false;
+                }
+                if (usa) out.push(String(it.id));
+            }
+            return out;
+        } catch (e) {
+            console.warn('[API] Error recetasQueDependenDeParametro:', e.message);
+            return [];
         }
     },
 };
