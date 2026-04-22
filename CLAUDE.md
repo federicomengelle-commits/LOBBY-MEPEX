@@ -283,7 +283,7 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 3. **Nunca borrar archivos sin preguntar.** Backup antes de reescribir.
 4. **Mostrar resultado antes de avanzar.** No encadenar cambios sin validacion.
 5. **Dark theme MEPEX siempre.**
-6. **Leer todos los .md de la raiz antes de empezar a codear.**
+6. **Leer `CLAUDE.md` (raiz) y los `.md` relevantes en `docs/` antes de empezar a codear.**
 7. **Actualizar "Estado actual" al final de cada sesion.**
 8. **Interfaces de rol Taller = ultra simples.**
 9. **NUNCA usar comandos Linux.** Solo Windows (type, dir, findstr, del, copy).
@@ -296,20 +296,39 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 
 ## 9. ARCHIVOS DE REFERENCIA
 
+> Solo `CLAUDE.md` y `deploy.md` viven en la raiz. Toda la documentacion historica
+> (blueprints, specs, prompts, briefs de marca/stack) se movio a `docs/` para
+> reducir ruido. Citar siempre con la ruta `docs/<archivo>.md`.
+
+### Raiz
 | Archivo | Contenido |
 |---------|-----------|
-| `MEPEX_CLAUDE.md` | Prompt base original para Claude (contexto empresa + cotizador) |
-| `MEPEX_BRAND.md` | Guia de marca visual completa (colores, tipografia, logo, iconos, botones) |
-| `MEPEX_STACK.md` | Stack tecnico, convenciones de codigo, patrones, tablas Supabase |
-| `BRIEF_VISUAL_STYLES.md` | Brief para aplicar diseno web MEPEX al dashboard |
-| `MEPEX_UNDO_SYSTEM.md` | Documentacion del sistema undo/redo |
-| `deploy.md` | Instrucciones de deploy (git push) |
-| `modulo-eventos-blueprint.md` | Blueprint del modulo Eventos |
-| `modulo-ventas-blueprint-v2.md` | Blueprint del modulo Ventas V2 |
-| `calendario-operativo-blueprint.md` | Blueprint del calendario operativo |
-| `calendario-prompts-ejecucion.md` | Prompts secuenciales para construir el calendario |
-| `perfiles-admin-roles-blueprint.md` | Blueprint de perfiles, admin panel y roles |
-| `PROMPT-SIDEBAR-EDITOR-INTEGRATION.md` | Instrucciones de integracion del sidebar editor |
+| `CLAUDE.md` | Este archivo. Instrucciones del proyecto para Claude Code. |
+| `deploy.md` | Instrucciones de deploy (git push). |
+
+### `docs/`
+| Archivo | Contenido |
+|---------|-----------|
+| `docs/MEPEX_CLAUDE.md` | Prompt base original para Claude (contexto empresa + cotizador) |
+| `docs/MEPEX_BRAND.md` | Guia de marca visual completa (colores, tipografia, logo, iconos, botones) |
+| `docs/MEPEX_STACK.md` | Stack tecnico, convenciones de codigo, patrones, tablas Supabase |
+| `docs/BRIEF_VISUAL_STYLES.md` | Brief para aplicar diseno web MEPEX al dashboard |
+| `docs/MEPEX_UNDO_SYSTEM.md` | Documentacion del sistema undo/redo |
+| `docs/modulo-eventos-blueprint.md` | Blueprint del modulo Eventos |
+| `docs/modulo-ventas-blueprint-v2.md` | Blueprint del modulo Ventas V2 |
+| `docs/calendario-operativo-blueprint.md` | Blueprint del calendario operativo |
+| `docs/calendario-prompts-ejecucion.md` | Prompts secuenciales para construir el calendario |
+| `docs/perfiles-admin-roles-blueprint.md` | Blueprint de perfiles, admin panel y roles |
+| `docs/cotizaciones-upgrade-blueprint.md` | Blueprint de upgrade de cotizaciones |
+| `docs/PROMPT-SIDEBAR-EDITOR-INTEGRATION.md` | Instrucciones de integracion del sidebar editor |
+| `docs/PROMPT-INVENTARIO-CLAUDE-CODE.md` | Prompts para el modulo Inventario |
+| `docs/LOBBY-POR-ROL-SPEC.md` | Spec del lobby segmentado por rol |
+| `docs/FASE-1-ESTRUCTURA-MACRO.md` | Spec de estructura macro (rediseno) |
+| `docs/FASE-2-SUBSECCIONES.md` | Spec de subsecciones (rediseno) |
+| `docs/FASE-3-ROLES-PERMISOS.md` | Spec de roles y permisos (rediseno) |
+| `docs/FASE-4-PRIORIDADES-EJECUCION.md` | Prioridades de ejecucion (rediseno) |
+| `docs/AUDITORIA_ESTRATEGICA_2026.md` | Auditoria estrategica 2026 |
+| `docs/CLAUDE.md.old` | Version anterior de CLAUDE.md (referencia historica) |
 
 ---
 
