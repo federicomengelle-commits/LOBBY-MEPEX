@@ -66,6 +66,7 @@ const Router = {
             'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
             'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas' },
             'costos':           { render: () => CostosModule.render(), requiresAuth: true, module: 'costos', adminOnly: true },
+            'parametros-globales': { render: () => ParametrosGlobales.render(), requiresAuth: true, adminOnly: true },
         };
 
         // Listen for hash changes

@@ -1188,6 +1188,21 @@ const API = {
                 stock: i.stock || 0,
                 familia: i.familia || '',
                 margenOverride: i.margen_override != null ? parseFloat(i.margen_override) : null,
+                // Costos fase 1+2
+                tipoReceta: i.tipo_receta || 'propio',
+                margenSubalquiler: i.margen_subalquiler != null ? parseFloat(i.margen_subalquiler) : 0.50,
+                manoObraMinutos: i.mano_obra_minutos || 0,
+                pctIndirectosFabrica: i.pct_indirectos_fabrica != null ? parseFloat(i.pct_indirectos_fabrica) : 0.30,
+                pctIndirectosComercial: i.pct_indirectos_comercial != null ? parseFloat(i.pct_indirectos_comercial) : 0.20,
+                vidaUtilUsos: i.vida_util_usos || 20,
+                pctReacondicionamiento: i.pct_reacondicionamiento != null ? parseFloat(i.pct_reacondicionamiento) : 0.05,
+                margenPropio: i.margen_propio != null ? parseFloat(i.margen_propio) : 0.50,
+                costoManoObra: parseFloat(i.costo_mano_obra) || 0,
+                costoIndirectos: parseFloat(i.costo_indirectos) || 0,
+                costoFabricacion: parseFloat(i.costo_fabricacion) || 0,
+                costoPorUso: parseFloat(i.costo_por_uso) || 0,
+                precioAlquiler: parseFloat(i.precio_alquiler) || 0,
+                ultimaRecalculacion: i.ultima_recalculacion || null,
             }));
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
@@ -1236,6 +1251,21 @@ const API = {
             if (data.nivel !== undefined) payload.nivel = data.nivel;
             if (data.familia !== undefined) payload.familia = data.familia;
             if (data.margenOverride !== undefined) payload.margen_override = data.margenOverride;
+            // Costos fase 1+2
+            if (data.tipoReceta !== undefined) payload.tipo_receta = data.tipoReceta;
+            if (data.margenSubalquiler !== undefined) payload.margen_subalquiler = data.margenSubalquiler;
+            if (data.manoObraMinutos !== undefined) payload.mano_obra_minutos = data.manoObraMinutos;
+            if (data.pctIndirectosFabrica !== undefined) payload.pct_indirectos_fabrica = data.pctIndirectosFabrica;
+            if (data.pctIndirectosComercial !== undefined) payload.pct_indirectos_comercial = data.pctIndirectosComercial;
+            if (data.vidaUtilUsos !== undefined) payload.vida_util_usos = data.vidaUtilUsos;
+            if (data.pctReacondicionamiento !== undefined) payload.pct_reacondicionamiento = data.pctReacondicionamiento;
+            if (data.margenPropio !== undefined) payload.margen_propio = data.margenPropio;
+            if (data.costoManoObra !== undefined) payload.costo_mano_obra = data.costoManoObra;
+            if (data.costoIndirectos !== undefined) payload.costo_indirectos = data.costoIndirectos;
+            if (data.costoFabricacion !== undefined) payload.costo_fabricacion = data.costoFabricacion;
+            if (data.costoPorUso !== undefined) payload.costo_por_uso = data.costoPorUso;
+            if (data.precioAlquiler !== undefined) payload.precio_alquiler = data.precioAlquiler;
+            if (data.ultimaRecalculacion !== undefined) payload.ultima_recalculacion = data.ultimaRecalculacion;
             await UndoHelpers.updateRecord('catalogo_items', id, payload, 'Edito item de catalogo');
             this.clearCache();
             return true;
@@ -2338,5 +2368,95 @@ const API = {
             .limit(1);
         if (error) throw error;
         return !data || data.length === 0;
+    },
+
+    // ─── Parametros Globales (Costos Fase 1+2) ────────────
+    async getParametrosGlobales() {
+        const cacheKey = 'parametros_globales';
+        const cached = this._cache[cacheKey];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) return cached.data;
+        try {
+            const { data, error } = await supabaseClient
+                .from('parametros_globales')
+                .select('*')
+                .order('clave', { ascending: true });
+            if (error) throw error;
+            const mapped = (data || []).map(p => ({
+                id: p.id,
+                clave: p.clave,
+                valor: parseFloat(p.valor),
+                descripcion: p.descripcion || '',
+                unidad: p.unidad || '',
+                actualizadoAt: p.actualizado_at,
+            }));
+            this._cache[cacheKey] = { data: mapped, ts: Date.now() };
+            return mapped;
+        } catch (e) {
+            console.warn('[API] Error fetching parametros globales:', e.message);
+            return [];
+        }
+    },
+
+    async getParametrosGlobalesMap() {
+        const list = await this.getParametrosGlobales();
+        const map = {};
+        for (const p of list) map[p.clave] = p.valor;
+        return map;
+    },
+
+    async updateParametroGlobal(clave, valor) {
+        try {
+            const { error } = await supabaseClient
+                .from('parametros_globales')
+                .update({ valor })
+                .eq('clave', clave);
+            if (error) throw error;
+            if (this._cache['parametros_globales']) delete this._cache['parametros_globales'];
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updating parametro global:', e.message);
+            return false;
+        }
+    },
+
+    // ─── Recalcular precio_alquiler de un item usando el motor ────
+    // Requiere que window.CalculoReceta este cargado.
+    async recalcularPrecioAlquiler(item) {
+        if (!window.CalculoReceta) {
+            console.warn('[API] CalculoReceta no cargado');
+            return null;
+        }
+        try {
+            const componentes = await this.getRecetaComponentes(item.id);
+            // Hidratar costoUnit de cada componente
+            const insumos = await this.getInsumosBase();
+            const items = await this.getCatalogoItems();
+            const compsConCosto = componentes.map(c => {
+                let costoUnit = 0;
+                if (c.componenteType === 'insumo') {
+                    const ins = insumos?.find(i => String(i.id) === String(c.componenteId));
+                    if (ins) costoUnit = ins.costoUnitario || 0;
+                } else if (c.componenteType === 'item') {
+                    const sub = items?.find(i => String(i.id) === String(c.componenteId));
+                    if (sub) costoUnit = sub.costoProduccion || 0;
+                }
+                return { cantidad: c.cantidad, costoUnit };
+            });
+            const params = await this.getParametrosGlobalesMap();
+            const r = window.CalculoReceta.calcular(item, compsConCosto, params);
+            await this.updateCatalogoItem(item.id, {
+                costoProduccion: r.costoMP,
+                costoManoObra: r.costoManoObra,
+                costoIndirectos: r.costoIndirectos,
+                costoFabricacion: r.costoFabricacion,
+                costoPorUso: r.costoPorUso,
+                precioAlquiler: r.precioAlquiler,
+                ultimaRecalculacion: new Date().toISOString(),
+            });
+            return r;
+        } catch (e) {
+            console.warn('[API] Error recalculando precio alquiler:', e.message);
+            return null;
+        }
     },
 };

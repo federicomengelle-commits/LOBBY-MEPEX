@@ -358,26 +358,39 @@ const CostosModule = {
             const rs = this._getRecetaStatus(item.id);
             const costo = rs.costoCalculado || 0;
             const m = getMargen(item, lista, rubroMap, itemMap);
-            const precio = API.calcPrecioCliente(costo, m.value);
+
+            // Fase 1+2: pescar precio_alquiler si la receta esta costeada.
+            // Fallback al calculo viejo para items aun no migrados.
+            const tieneAlquiler = (item.precioAlquiler || 0) > 0;
+            const precio = tieneAlquiler ? item.precioAlquiler : API.calcPrecioCliente(costo, m.value);
+            const sinCostear = costo === 0 && !tieneAlquiler;
 
             // Level indicator
             const levelClass = `costos-margen-${m.level}`;
             const levelTitle = m.level === 'item' ? 'Override item' : m.level === 'rubro' ? 'Override rubro' : 'Margen global';
+            const tipoBadge = item.tipoReceta === 'subalquilado'
+                ? '<span class="costos-tipo-badge costos-tipo-sub" title="Subalquilado">SUB</span>'
+                : '';
+            const alquilerBadge = tieneAlquiler
+                ? '<span class="costos-tipo-badge costos-tipo-alq" title="Precio de alquiler calculado">ALQ</span>'
+                : '';
 
             return `
-                <tr class="costos-table-row costos-lista-item-row" data-item-id="${item.id}">
+                <tr class="costos-table-row costos-lista-item-row ${sinCostear ? 'costos-sin-costear' : ''}" data-item-id="${item.id}">
                     <td><span class="td-mono">${item.codigo || '—'}</span></td>
-                    <td><span class="td-primary">${item.nombre}</span></td>
+                    <td><span class="td-primary">${item.nombre}</span> ${tipoBadge} ${alquilerBadge}</td>
                     <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
-                    <td class="td-number">${API.formatCurrency(costo)}</td>
+                    <td class="td-number">${sinCostear ? '—' : API.formatCurrency(costo)}</td>
                     <td class="costos-margen-cell">
                         <div class="costos-margen-inline ${levelClass}" title="${levelTitle}">
-                            <input type="number" class="costos-margen-input" data-item-id="${item.id}" value="${m.value}" step="0.5" min="0" max="999">
+                            <input type="number" class="costos-margen-input" data-item-id="${item.id}" value="${m.value}" step="0.5" min="0" max="999" ${tieneAlquiler ? 'disabled title="Margen viene de la receta"' : ''}>
                             <span class="costos-margen-pct">%</span>
                             <span class="costos-margen-level" title="${levelTitle}">${m.level === 'item' ? '●' : m.level === 'rubro' ? '◐' : '○'}</span>
                         </div>
                     </td>
-                    <td class="td-number td-mono"><strong>${API.formatCurrency(precio)}</strong></td>
+                    <td class="td-number td-mono">
+                        ${sinCostear ? '<span class="costos-sin-costear-tag">SIN COSTEAR</span>' : `<strong>${API.formatCurrency(precio)}</strong>`}
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -1459,6 +1472,7 @@ const CostosModule = {
         const row = document.querySelector(`.costos-receta-row[data-id="${item.id}"]`);
         if (row) row.classList.add('active');
 
+        const tipoReceta = item.tipoReceta || 'propio';
         inner.innerHTML = `
             <div class="costos-ficha">
                 <div class="costos-ficha-header">
@@ -1471,11 +1485,36 @@ const CostosModule = {
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                 </div>
+                <div class="costos-tipo-receta-bar">
+                    <span class="costos-tipo-receta-label">TIPO DE RECETA</span>
+                    <div class="costos-tipo-toggle" role="tablist">
+                        <button class="costos-tipo-opt ${tipoReceta === 'propio' ? 'active' : ''}" data-tipo="propio" role="tab">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                            Propio
+                        </button>
+                        <button class="costos-tipo-opt ${tipoReceta === 'subalquilado' ? 'active' : ''}" data-tipo="subalquilado" role="tab">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            Subalquilado
+                        </button>
+                    </div>
+                </div>
                 <div class="costos-ficha-body" id="costosRecetaBody">
                     <div class="costos-loading"><div class="spinner"></div>Cargando receta…</div>
                 </div>
             </div>
         `;
+
+        inner.querySelectorAll('.costos-tipo-opt').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const nuevoTipo = btn.dataset.tipo;
+                if (nuevoTipo === item.tipoReceta) return;
+                inner.querySelectorAll('.costos-tipo-opt').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                item.tipoReceta = nuevoTipo;
+                await API.updateCatalogoItem(item.id, { tipoReceta: nuevoTipo });
+                await this._loadRecetaContent(item);
+            });
+        });
 
         document.getElementById('costosFichaClose')?.addEventListener('click', () => this._closePanel());
 
@@ -1565,7 +1604,7 @@ const CostosModule = {
             </div>
 
             <div class="costos-receta-total-bar">
-                <span class="costos-receta-total-label">Costo de producción</span>
+                <span class="costos-receta-total-label">Costo MP</span>
                 <span class="costos-receta-total-value" id="costosRecetaTotalValue">${API.formatCurrency(costoTotal)}</span>
                 ${Math.abs(costoTotal - item.costoProduccion) > 0.01 ? `
                     <span class="costos-receta-total-diff" title="Diferencia con costo guardado">
@@ -1588,9 +1627,116 @@ const CostosModule = {
                     </button>
                 ` : ''}
             </div>
+
+            ${this._renderCascadaBlock(item, costoTotal)}
         `;
 
         this._attachRecetaEvents(item, compData);
+        this._attachCascadaEvents(item, compData, costoTotal);
+    },
+
+    // ═══════════════════════════════════════════
+    //  CASCADA DE COSTEO (Fase 1+2)
+    // ═══════════════════════════════════════════
+
+    _renderCascadaBlock(item, costoMP) {
+        const tipo = item.tipoReceta || 'propio';
+        if (tipo === 'subalquilado') return this._renderCascadaSubalquilado(item, costoMP);
+        return this._renderCascadaPropioPlaceholder(item, costoMP);
+    },
+
+    _renderCascadaSubalquilado(item, costoMP) {
+        const margenPct = Math.round((item.margenSubalquiler ?? 0.50) * 100);
+        const precio = costoMP * (1 + margenPct / 100);
+        return `
+            <div class="costos-cascada costos-cascada-subalquilado">
+                <div class="costos-cascada-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    Margen y precio
+                </div>
+                <div class="costos-cascada-row">
+                    <label class="costos-cascada-label">Margen sobre costo proveedor</label>
+                    <div class="costos-cascada-input-wrap">
+                        <input type="number" class="costos-cascada-input" id="cascadaMargenSubalquiler" value="${margenPct}" step="1" min="0" max="999">
+                        <span class="costos-cascada-suffix">%</span>
+                    </div>
+                </div>
+                <div class="costos-cascada-result">
+                    <span class="costos-cascada-result-label">PRECIO ALQUILER</span>
+                    <span class="costos-cascada-result-value" id="cascadaPrecioAlquiler">${API.formatCurrency(precio)}</span>
+                </div>
+                <button class="btn btn-primary costos-cascada-save" id="cascadaGuardar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Guardar y recalcular
+                </button>
+            </div>
+        `;
+    },
+
+    _renderCascadaPropioPlaceholder(item, costoMP) {
+        return `
+            <div class="costos-cascada costos-cascada-propio-placeholder">
+                <div class="costos-cascada-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                    Cascada de fabricación
+                </div>
+                <p class="costos-cascada-empty">
+                    La cascada completa para recetas propias (MO, indirectos, amortización, margen) se habilita en <strong>Fase 3</strong>.
+                </p>
+                <p class="costos-cascada-empty-sub">
+                    Por ahora, el costo de producción se guarda como MP y el precio de alquiler queda en $0.
+                    Para obtener precio de alquiler ya mismo, cambiá el tipo de receta a <strong>Subalquilado</strong>.
+                </p>
+            </div>
+        `;
+    },
+
+    _attachCascadaEvents(item, compData, costoMP) {
+        const tipo = item.tipoReceta || 'propio';
+        if (tipo !== 'subalquilado') return;
+
+        const margenInput = document.getElementById('cascadaMargenSubalquiler');
+        const precioEl = document.getElementById('cascadaPrecioAlquiler');
+        const saveBtn = document.getElementById('cascadaGuardar');
+        if (!margenInput || !precioEl || !saveBtn) return;
+
+        const recalcLive = () => {
+            // Re-sum MP from current inputs in the panel
+            let mp = 0;
+            document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
+                const compId = inp.dataset.compId;
+                const comp = compData.find(c => String(c.id) === String(compId));
+                if (!comp) return;
+                mp += (parseFloat(inp.value) || 0) * comp.costoUnit;
+            });
+            const pct = parseFloat(margenInput.value) || 0;
+            const precio = mp * (1 + pct / 100);
+            precioEl.textContent = API.formatCurrency(precio);
+        };
+        margenInput.addEventListener('input', recalcLive);
+        document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
+            inp.addEventListener('input', recalcLive);
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            const originalHTML = saveBtn.innerHTML;
+            saveBtn.textContent = 'Guardando…';
+            const margenDecimal = (parseFloat(margenInput.value) || 0) / 100;
+            await API.updateCatalogoItem(item.id, { margenSubalquiler: margenDecimal });
+            item.margenSubalquiler = margenDecimal;
+            const result = await API.recalcularPrecioAlquiler(item);
+            if (result) {
+                Toast.success(`Precio alquiler: ${API.formatCurrency(result.precioAlquiler)}`);
+                await this._refreshData();
+                const updated = this._catalogoItems.find(i => String(i.id) === String(item.id));
+                if (updated) await this._loadRecetaContent(updated);
+            } else {
+                Toast.error('Error al recalcular');
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalHTML;
+            }
+        });
     },
 
     _attachRecetaEvents(item, compData) {

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>MEPEX - Tests motor de calculo de receta</title>
+<style>
+    body {
+        font-family: 'Outfit', system-ui, sans-serif;
+        background: #050505;
+        color: #E8E8E8;
+        padding: 32px;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    h1 { color: #00A9C1; font-weight: 600; }
+    .test {
+        background: #111;
+        border: 1px solid #2a2a2a;
+        border-radius: 6px;
+        padding: 16px 20px;
+        margin: 12px 0;
+    }
+    .test.pass { border-left: 3px solid #00CC88; }
+    .test.fail { border-left: 3px solid #ff4444; }
+    .test h3 { margin: 0 0 8px 0; font-size: 15px; }
+    .test .result { font-family: 'Space Mono', monospace; font-size: 12px; color: #888; }
+    .test.pass h3::before { content: "OK  "; color: #00CC88; }
+    .test.fail h3::before { content: "FAIL  "; color: #ff4444; }
+    .test .detail {
+        margin-top: 8px;
+        padding: 8px;
+        background: #0a0a0a;
+        border-radius: 4px;
+        font-family: 'Space Mono', monospace;
+        font-size: 11px;
+        white-space: pre-wrap;
+        color: #888;
+    }
+    .summary {
+        background: #111;
+        padding: 16px 24px;
+        border-radius: 6px;
+        border-left: 3px solid #00A9C1;
+        margin-bottom: 24px;
+        font-family: 'Space Mono', monospace;
+    }
+    .summary.all-pass { border-left-color: #00CC88; }
+    .summary.any-fail { border-left-color: #ff4444; }
+</style>
+</head>
+<body>
+    <h1>MEPEX - Tests motor de calculo de receta</h1>
+    <p style="color:#888">Referencia: brief Fase 1+2, seccion 5 "Casos de prueba minimos".</p>
+
+    <div id="summary" class="summary">Corriendo tests...</div>
+    <div id="results"></div>
+
+    <script src="calculo-receta.js"></script>
+    <script>
+    const results = [];
+
+    function test(name, fn) {
+        try {
+            const detail = fn();
+            results.push({ name, pass: true, detail });
+        } catch (e) {
+            results.push({ name, pass: false, detail: e.message });
+        }
+    }
+
+    function assertEq(actual, expected, tolerance = 0.01) {
+        const diff = Math.abs(actual - expected);
+        if (diff > tolerance) {
+            throw new Error(`esperado ${expected}, recibido ${actual} (diff ${diff.toFixed(4)})`);
+        }
+    }
+
+    // ─── TEST 1: Subalquilado simple (caso Alfombra del brief) ───
+    test('Subalquilado - Alfombra 1m2 x $6.900 con margen 50% = $10.350', () => {
+        const receta = { tipoReceta: 'subalquilado', margenSubalquiler: 0.50 };
+        const componentes = [{ cantidad: 1, costoUnit: 6900 }];
+        const r = CalculoReceta.calcular(receta, componentes, {});
+        assertEq(r.costoMP, 6900);
+        assertEq(r.precioAlquiler, 10350);
+        assertEq(r.costoManoObra, 0);
+        assertEq(r.costoIndirectos, 0);
+        return `costoMP=${r.costoMP} precioAlquiler=${r.precioAlquiler}`;
+    });
+
+    // ─── TEST 2: Subalquilado con margen 80% ───
+    test('Subalquilado - mismo insumo con margen 80% = $12.420', () => {
+        const receta = { tipoReceta: 'subalquilado', margenSubalquiler: 0.80 };
+        const componentes = [{ cantidad: 1, costoUnit: 6900 }];
+        const r = CalculoReceta.calcular(receta, componentes, {});
+        assertEq(r.precioAlquiler, 12420);
+        return `precioAlquiler=${r.precioAlquiler}`;
+    });
+
+    // ─── TEST 3: Cambio de tipo a propio - no debe crashear ───
+    test('Propio - receta con campos de propio pero sin UI completa, no crashea', () => {
+        const receta = {
+            tipoReceta: 'propio',
+            manoObraMinutos: 60,
+            pctIndirectosFabrica: 0.30,
+            pctIndirectosComercial: 0.20,
+            vidaUtilUsos: 20,
+            pctReacondicionamiento: 0.05,
+            margenPropio: 0.50,
+        };
+        const componentes = [{ cantidad: 2, costoUnit: 500 }]; // costoMP=1000
+        const params = { hora_taller_ars: 12000 };
+        const r = CalculoReceta.calcular(receta, componentes, params);
+        // MO = 1h * 12000 = 12000
+        // Indirectos = 12000 * 0.50 = 6000
+        // CostoFab = 1000 + 12000 + 6000 = 19000
+        // CostoPorUso = 19000/20 + 19000*0.05 = 950 + 950 = 1900
+        // Precio = 1900 * 1.50 = 2850
+        assertEq(r.costoMP, 1000);
+        assertEq(r.costoManoObra, 12000);
+        assertEq(r.costoIndirectos, 6000);
+        assertEq(r.costoFabricacion, 19000);
+        assertEq(r.costoPorUso, 1900);
+        assertEq(r.precioAlquiler, 2850);
+        return `cascada completa: MP=${r.costoMP} MO=${r.costoManoObra} Ind=${r.costoIndirectos} Fab=${r.costoFabricacion} /uso=${r.costoPorUso} precio=${r.precioAlquiler}`;
+    });
+
+    // ─── TEST 4: Propio con vida util = 1 (no divide por cero) ───
+    test('Propio - vida util = 1 uso, amortizacion total', () => {
+        const receta = {
+            tipoReceta: 'propio',
+            manoObraMinutos: 0,
+            vidaUtilUsos: 1,
+            pctReacondicionamiento: 0,
+            pctIndirectosFabrica: 0,
+            pctIndirectosComercial: 0,
+            margenPropio: 0,
+        };
+        const componentes = [{ cantidad: 1, costoUnit: 5000 }];
+        const r = CalculoReceta.calcular(receta, componentes, { hora_taller_ars: 12000 });
+        // CostoFab = 5000, vidaUtil=1 -> amortizacion = 5000, reacond = 0
+        // CostoPorUso = 5000, precio = 5000 * 1.0 = 5000
+        assertEq(r.costoFabricacion, 5000);
+        assertEq(r.costoPorUso, 5000);
+        assertEq(r.precioAlquiler, 5000);
+        return `vidaUtil=1 costoPorUso=${r.costoPorUso}`;
+    });
+
+    // ─── TEST 5: Propio con MO = 0 (solo MP) ───
+    test('Propio - MO=0, sin indirectos, precio sale de solo MP', () => {
+        const receta = {
+            tipoReceta: 'propio',
+            manoObraMinutos: 0,
+            vidaUtilUsos: 10,
+            pctReacondicionamiento: 0,
+            pctIndirectosFabrica: 0.30,
+            pctIndirectosComercial: 0.20,
+            margenPropio: 0.50,
+        };
+        const componentes = [{ cantidad: 1, costoUnit: 2000 }];
+        const r = CalculoReceta.calcular(receta, componentes, { hora_taller_ars: 12000 });
+        // MO=0 -> Indirectos=0 -> CostoFab=2000 -> CostoPorUso=200 -> precio=300
+        assertEq(r.costoManoObra, 0);
+        assertEq(r.costoIndirectos, 0);
+        assertEq(r.costoFabricacion, 2000);
+        assertEq(r.costoPorUso, 200);
+        assertEq(r.precioAlquiler, 300);
+        return `MO=0 costoPorUso=${r.costoPorUso} precio=${r.precioAlquiler}`;
+    });
+
+    // ─── TEST 6: Receta vacia (0 componentes) ───
+    test('Subalquilado - 0 componentes = precio $0, no error', () => {
+        const receta = { tipoReceta: 'subalquilado', margenSubalquiler: 0.50 };
+        const r = CalculoReceta.calcular(receta, [], {});
+        assertEq(r.precioAlquiler, 0);
+        assertEq(r.costoMP, 0);
+        return `precio=${r.precioAlquiler}`;
+    });
+
+    // ─── TEST 7: Defaults ausentes ───
+    test('Subalquilado - margenSubalquiler undefined usa default 0.50', () => {
+        const receta = { tipoReceta: 'subalquilado' }; // sin margen
+        const componentes = [{ cantidad: 1, costoUnit: 1000 }];
+        const r = CalculoReceta.calcular(receta, componentes, {});
+        assertEq(r.precioAlquiler, 1500); // 1000 * 1.50
+        return `margen default aplicado, precio=${r.precioAlquiler}`;
+    });
+
+    // ─── RENDER ───
+    const container = document.getElementById('results');
+    const passed = results.filter(r => r.pass).length;
+    const total = results.length;
+
+    const summary = document.getElementById('summary');
+    summary.textContent = `${passed}/${total} tests OK`;
+    summary.classList.add(passed === total ? 'all-pass' : 'any-fail');
+
+    container.innerHTML = results.map(r => `
+        <div class="test ${r.pass ? 'pass' : 'fail'}">
+            <h3>${r.name}</h3>
+            <div class="detail">${r.detail}</div>
+        </div>
+    `).join('');
+    </script>
+</body>
+</html>
