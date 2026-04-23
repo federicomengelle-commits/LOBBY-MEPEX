@@ -116,11 +116,7 @@ const CostosModule = {
                         </h1>
                     </div>
                     <div class="costos-toolbar-right">
-                        <div class="costos-search-box">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            <input type="text" class="costos-search-input" id="costosSearchInput" placeholder="Buscar…" autocomplete="off">
-                        </div>
-                        <a href="#parametros-globales" class="btn btn-ghost btn-sm costos-params-btn" title="Parámetros globales (hora taller, % defaults, vida útil…)" style="display:inline-flex; align-items:center; gap:6px; margin-left:8px;">
+                        <a href="#parametros-globales" class="btn btn-ghost btn-sm costos-params-btn" title="Parámetros globales (hora taller, % defaults, vida útil…)" style="display:inline-flex; align-items:center; gap:6px;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                             Parámetros
                         </a>
@@ -149,6 +145,14 @@ const CostosModule = {
 
                 <!-- Filters (visible only for insumos/recetas) -->
                 <div class="costos-filters" id="costosFilters"></div>
+
+                <!-- Search row (debajo de los filtros, ancho completo) -->
+                <div class="costos-search-row" id="costosSearchRow">
+                    <div class="costos-search-box costos-search-box-wide">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="costos-search-input" id="costosSearchInput" placeholder="🔍 Buscar items…" autocomplete="off">
+                    </div>
+                </div>
 
                 <!-- Body -->
                 <div class="costos-body">
@@ -276,6 +280,11 @@ const CostosModule = {
         this._closePanel();
         const container = document.getElementById('costosMainContent');
         if (!container) return;
+
+        const searchRow = document.getElementById('costosSearchRow');
+        if (searchRow) {
+            searchRow.style.display = (this._activeTab === 'listas-precio') ? 'none' : '';
+        }
 
         switch (this._activeTab) {
             case 'insumos':

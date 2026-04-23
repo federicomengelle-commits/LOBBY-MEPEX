@@ -83,6 +83,17 @@ END $$;
 -- ------------------------------------------------
 -- Recorre el árbol de descendientes del componente (cuando es item) y
 -- aborta si encuentra al item padre.
+--
+-- IMPORTANTE: comparamos siempre con cast ::text. En esta tabla
+-- componente_id puede convivir con item_id que tienen tipos distintos
+-- según el origen (bigint vs text), y un comparador implícito
+-- bigint = text rompe la query con "operator does not exist".
+-- Castear a text cubre ambos casos sin perder semántica.
+--
+-- También: el trigger sólo valida si las columnas estructurales
+-- (item_id, componente_id, componente_type) cambiaron en un UPDATE.
+-- Sin esto, soft-deletes (UPDATE _deleted=true) volverían a correr
+-- la búsqueda recursiva y podrían fallar por la misma razón de tipos.
 CREATE OR REPLACE FUNCTION check_no_ciclo_receta()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -93,29 +104,39 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    -- En UPDATE, si las columnas relevantes no cambian (ej: soft-delete,
+    -- o cambio de cantidad/notas), saltarse la validación.
+    IF TG_OP = 'UPDATE' THEN
+        IF OLD.item_id IS NOT DISTINCT FROM NEW.item_id
+           AND OLD.componente_id IS NOT DISTINCT FROM NEW.componente_id
+           AND OLD.componente_type IS NOT DISTINCT FROM NEW.componente_type THEN
+            RETURN NEW;
+        END IF;
+    END IF;
+
     -- Auto-referencia
-    IF NEW.item_id = NEW.componente_id THEN
+    IF NEW.item_id::text = NEW.componente_id::text THEN
         RAISE EXCEPTION 'Una receta no puede contenerse a sí misma (item_id=%)', NEW.item_id
             USING ERRCODE = 'check_violation';
     END IF;
 
     -- Búsqueda recursiva: ¿el padre (item_id) está en los descendientes del hijo (componente_id)?
     WITH RECURSIVE descendientes AS (
-        SELECT componente_id
+        SELECT componente_id::text AS desc_id
         FROM receta_componentes
-        WHERE item_id = NEW.componente_id
+        WHERE item_id::text = NEW.componente_id::text
           AND componente_type = 'item'
           AND _deleted = false
 
         UNION
 
-        SELECT rc.componente_id
+        SELECT rc.componente_id::text
         FROM receta_componentes rc
-        JOIN descendientes d ON rc.item_id = d.componente_id
+        JOIN descendientes d ON rc.item_id::text = d.desc_id
         WHERE rc.componente_type = 'item'
           AND rc._deleted = false
     )
-    SELECT EXISTS(SELECT 1 FROM descendientes WHERE componente_id = NEW.item_id)
+    SELECT EXISTS(SELECT 1 FROM descendientes WHERE desc_id = NEW.item_id::text)
     INTO descendiente_existe;
 
     IF descendiente_existe THEN

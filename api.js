@@ -1310,11 +1310,42 @@ const API = {
 
     async addRecetaComponente(data) {
         try {
+            const itemId = parseInt(data.itemId, 10);
+            const componenteId = parseInt(data.componenteId, 10);
+            const cantidadNueva = parseFloat(data.cantidad) || 1;
+            const componenteType = data.componenteType;
+
+            if (!Number.isFinite(itemId) || !Number.isFinite(componenteId)) {
+                console.warn('[API] addRecetaComponente: IDs inválidos', { itemId: data.itemId, componenteId: data.componenteId });
+                return null;
+            }
+
+            // Dedupe acumulativo: si ya existe el mismo (item, tipo, componente)
+            // activo, sumamos a la cantidad existente en lugar de crear duplicado.
+            const { data: existing, error: selErr } = await supabaseClient
+                .from('receta_componentes')
+                .select('id, cantidad')
+                .eq('item_id', itemId)
+                .eq('componente_type', componenteType)
+                .eq('componente_id', componenteId)
+                .eq('_deleted', false)
+                .limit(1);
+            if (selErr) throw selErr;
+
+            if (existing && existing.length > 0) {
+                const fila = existing[0];
+                const nuevaCantidad = (parseFloat(fila.cantidad) || 0) + cantidadNueva;
+                await UndoHelpers.updateRecord('receta_componentes', fila.id,
+                    { cantidad: nuevaCantidad },
+                    'Acumulo cantidad en componente de receta');
+                return { id: fila.id, accumulated: true, cantidad: nuevaCantidad };
+            }
+
             const payload = {
-                item_id: data.itemId,
-                componente_type: data.componenteType,
-                componente_id: data.componenteId,
-                cantidad: data.cantidad || 1,
+                item_id: itemId,
+                componente_type: componenteType,
+                componente_id: componenteId,
+                cantidad: cantidadNueva,
                 unidad_uso: data.unidadUso || '',
                 notas: data.notas || '',
             };
@@ -1328,11 +1359,12 @@ const API = {
 
     async updateRecetaComponente(id, data) {
         try {
+            const idNum = parseInt(id, 10);
             const payload = {};
-            if (data.cantidad !== undefined) payload.cantidad = data.cantidad;
+            if (data.cantidad !== undefined) payload.cantidad = parseFloat(data.cantidad) || 0;
             if (data.unidadUso !== undefined) payload.unidad_uso = data.unidadUso;
             if (data.notas !== undefined) payload.notas = data.notas;
-            await UndoHelpers.updateRecord('receta_componentes', id, payload, 'Edito componente de receta');
+            await UndoHelpers.updateRecord('receta_componentes', idNum, payload, 'Edito componente de receta');
             return true;
         } catch (e) {
             console.warn('[API] Error updating receta componente:', e.message);
@@ -1342,7 +1374,8 @@ const API = {
 
     async deleteRecetaComponente(id) {
         try {
-            await UndoHelpers.deleteRecord('receta_componentes', id, 'Elimino componente de receta');
+            const idNum = parseInt(id, 10);
+            await UndoHelpers.deleteRecord('receta_componentes', idNum, 'Elimino componente de receta');
             return true;
         } catch (e) {
             console.warn('[API] Error deleting receta componente:', e.message);

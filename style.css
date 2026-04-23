@@ -309,8 +309,14 @@ body {
    ═══════════════════════════════════════════════ */
 
 /* ─── App Root ─── */
+/* IMPORTANTE: usar height (no min-height) y overflow:hidden para que #app
+   nunca exceda el viewport. Si crece, el window se vuelve el scroll
+   container y rompe position:sticky en módulos como Costos (panel lateral).
+   Constraído a 100vh: .app-main (overflow:auto) es el scroll container real. */
 #app {
-    min-height: 100vh;
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -10708,6 +10714,20 @@ body {
 }
 .costos-search-input::placeholder { color: #555; }
 
+/* ─── Search row (debajo de filtros, ancho completo) ─── */
+.costos-search-row {
+    padding: 0 24px 10px;
+}
+.costos-search-box-wide {
+    width: 100%;
+    padding: 8px 12px;
+}
+.costos-search-box-wide .costos-search-input {
+    width: 100%;
+    flex: 1;
+    font-size: 14px;
+}
+
 /* ─── Tabs ─── */
 .costos-tabs-bar {
     display: flex;
@@ -10849,15 +10869,22 @@ body {
 }
 
 /* ─── Body ─── */
+/* IMPORTANTE:
+   1. NO usar overflow:hidden/auto/scroll en .costos-body ni en .costos-main:
+      position:sticky se rompe en silencio si CUALQUIER ancestro tiene overflow
+      distinto de visible. .app-main (overflow:auto) es el único scroll container.
+   2. NO usar flex:1 en .costos-body: el panel sticky se ancla DENTRO del box
+      del padre. Si el padre se queda chico (~392px = espacio sobrante en el
+      wrapper), el panel sólo tiene 392px de rango antes de que el padre se
+      scrollee fuera del viewport. Con auto-height, .costos-body crece a la
+      altura de la tabla (16k+) y el panel acompaña todo el scroll. */
 .costos-body {
     display: flex;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
+    align-items: flex-start;
 }
 .costos-main {
     flex: 1;
-    overflow-y: auto;
+    min-width: 0;
     padding: 16px 24px;
 }
 .costos-loading {
@@ -10961,10 +10988,15 @@ body {
 }
 
 /* ─── Side Panel (sticky: acompaña el scroll) ─── */
+/* IMPORTANTE: el panel debe ser sticky para acompañar el scroll del módulo.
+   Para que sticky funcione, NINGÚN ancestro puede tener overflow distinto de
+   visible (ver .costos-body más arriba). Y NO usar transition:width acá: en
+   combinación con position:sticky + flex container, el navegador deja la
+   transición a mitad de camino (width queda en 1px) — es un bug clásico de
+   layout. Snap open/close es el comportamiento correcto. */
 .costos-side-panel {
     width: 0;
     overflow: hidden;
-    transition: width 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     border-left: 1px solid transparent;
     background: #0a0a0a;
     flex-shrink: 0;
