@@ -1018,6 +1018,61 @@ const CostosModule = {
         }, 100);
     },
 
+    _openNewRecetaModal() {
+        const rubroOpts = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
+        const rubrosAll = rubroOpts.length ? rubroOpts : ['OCTEXA', 'INFRAESTRUCTURA', 'MOBILIARIO', 'DISPLAY', 'ILUMINACION', 'AUDIOVISUAL'];
+
+        const fields = [
+            { key: 'nombre', label: 'Nombre', type: 'text', required: true, placeholder: 'Nombre del item' },
+            { key: 'codigo', label: 'Código', type: 'text', placeholder: 'Ej: IIC-950' },
+            { key: 'rubro', label: 'Rubro', type: 'select', options: ['', ...rubrosAll] },
+            { key: 'unidad', label: 'Unidad', type: 'select', options: ['Unidad', 'Metro', 'm²', 'Kg', 'Set', 'Par', 'Rollo', 'Día'] },
+            { key: 'descripcion', label: 'Descripción', type: 'text', placeholder: 'Descripción opcional' },
+        ];
+
+        const body = FormBuilder.render(fields, { unidad: 'Unidad' });
+
+        const instance = Modal.open({
+            title: '📐 Nueva receta',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="costosNewRecetaSave">Crear receta</button>
+            `,
+        });
+
+        setTimeout(() => {
+            const saveBtn = document.getElementById('costosNewRecetaSave');
+            if (!saveBtn) return;
+            saveBtn.addEventListener('click', async () => {
+                const form = document.querySelector('.modal-body form, .modal-body .form-builder');
+                const values = FormBuilder.getValues(form || document.querySelector('.modal-body'));
+                if (!values.nombre?.trim()) {
+                    Toast.warning('El nombre es obligatorio');
+                    return;
+                }
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Creando…';
+                const result = await API.createCatalogoItem(values);
+                if (result) {
+                    Toast.success(`Receta "${values.nombre}" creada`);
+                    Modal.close(instance);
+                    await this._refreshData();
+                    // Abrir ficha del nuevo item para cargarle la receta de inmediato
+                    if (result.id) {
+                        const newItem = this._catalogoItems.find(i => String(i.id) === String(result.id));
+                        if (newItem) this._openRecetaFicha(newItem);
+                    }
+                } else {
+                    Toast.error('Error al crear la receta');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Crear receta';
+                }
+            });
+        }, 100);
+    },
+
     // ─── Bulk price modal ───
 
     _openBulkPriceModal() {
@@ -1143,6 +1198,11 @@ const CostosModule = {
                     <button class="costos-estado-chip chip-sin-receta ${est === 'sin-receta' ? 'active' : ''}" data-estado="sin-receta">Sin receta</button>
                 </div>
                 <button class="costos-filter-clear" id="costosClearFilters">Limpiar</button>
+                <div style="flex:1"></div>
+                <button class="btn btn-primary btn-sm" id="costosBtnNewReceta">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Nueva receta
+                </button>
             </div>
         `;
         this._attachFilterListeners(filtersEl);
@@ -2674,6 +2734,10 @@ const CostosModule = {
         // New insumo
         const newBtn = document.getElementById('costosBtnNewInsumo');
         if (newBtn) newBtn.addEventListener('click', () => this._openNewInsumoModal());
+
+        // New receta
+        const newRecetaBtn = document.getElementById('costosBtnNewReceta');
+        if (newRecetaBtn) newRecetaBtn.addEventListener('click', () => this._openNewRecetaModal());
 
         // Bulk price
         const bulkBtn = document.getElementById('costosBtnBulkPrice');
