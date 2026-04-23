@@ -1359,12 +1359,11 @@ const API = {
 
     async updateRecetaComponente(id, data) {
         try {
-            const idNum = parseInt(id, 10);
             const payload = {};
             if (data.cantidad !== undefined) payload.cantidad = parseFloat(data.cantidad) || 0;
             if (data.unidadUso !== undefined) payload.unidad_uso = data.unidadUso;
             if (data.notas !== undefined) payload.notas = data.notas;
-            await UndoHelpers.updateRecord('receta_componentes', idNum, payload, 'Edito componente de receta');
+            await UndoHelpers.updateRecord('receta_componentes', id, payload, 'Edito componente de receta');
             return true;
         } catch (e) {
             console.warn('[API] Error updating receta componente:', e.message);
@@ -1374,8 +1373,7 @@ const API = {
 
     async deleteRecetaComponente(id) {
         try {
-            const idNum = parseInt(id, 10);
-            await UndoHelpers.deleteRecord('receta_componentes', idNum, 'Elimino componente de receta');
+            await UndoHelpers.deleteRecord('receta_componentes', id, 'Elimino componente de receta');
             return true;
         } catch (e) {
             console.warn('[API] Error deleting receta componente:', e.message);

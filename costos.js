@@ -2103,7 +2103,7 @@ const CostosModule = {
                 const compId = input.dataset.compId;
                 const newQty = parseFloat(input.value);
                 if (isNaN(newQty) || newQty < 0) return;
-                await API.updateRecetaComponente(parseInt(compId), { cantidad: newQty });
+                await API.updateRecetaComponente(compId, { cantidad: newQty });
                 await this._loadRecetaContent(item);
             };
             input.addEventListener('blur', save);
@@ -2123,7 +2123,8 @@ const CostosModule = {
                     danger: true,
                 });
                 if (!confirmed) return;
-                await API.deleteRecetaComponente(parseInt(compId));
+                const ok = await API.deleteRecetaComponente(compId);
+                if (!ok) { Toast.error('No se pudo eliminar el componente'); return; }
                 Toast.success('Componente eliminado');
                 await this._loadRecetaContent(item);
             });

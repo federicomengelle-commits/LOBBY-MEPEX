@@ -11006,12 +11006,12 @@ body {
     max-height: 100vh;
 }
 .costos-side-panel.open {
-    width: 420px;
+    width: 560px;
     border-left-color: rgba(255,255,255,0.06);
     overflow-y: auto;
 }
 .costos-panel-inner {
-    width: 420px;
+    width: 560px;
 }
 
 /* ─── Ficha ─── */
