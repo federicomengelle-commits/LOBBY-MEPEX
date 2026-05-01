@@ -110,24 +110,42 @@ app.post('/admin/users/create', requireSuperadmin, async (req, res) => {
 
         const uid = authData.user.id;
 
-        // 2) Upsert profile row (handles handle_new_user trigger that pre-creates the row)
-        const { error: profileError } = await supabaseAdmin
-            .from('profiles')
-            .upsert({
-                id: uid,
-                username,
-                name,
-                initials: initials.toUpperCase(),
-                role,
-                telefono: telefono || '',
-                active: true,
-                _deleted: false,
-            }, { onConflict: 'id' });
+        // 2) Try UPDATE first (handle_new_user trigger may have pre-created the row).
+        //    If 0 rows affected → no trigger / no row → INSERT.
+        const profileFields = {
+            username,
+            name,
+            initials: initials.toUpperCase(),
+            role,
+            telefono: telefono || '',
+            active: true,
+            _deleted: false,
+        };
 
-        if (profileError) {
-            // Rollback: delete the auth user
+        const { data: updateData, error: updateError } = await supabaseAdmin
+            .from('profiles')
+            .update(profileFields)
+            .eq('id', uid)
+            .select();
+
+        if (updateError) {
             await supabaseAdmin.auth.admin.deleteUser(uid);
-            throw profileError;
+            throw updateError;
+        }
+
+        if (!updateData || updateData.length === 0) {
+            // Trigger didn't pre-create the row — insert it
+            const { error: insertError } = await supabaseAdmin
+                .from('profiles')
+                .insert({ id: uid, ...profileFields });
+
+            if (insertError) {
+                await supabaseAdmin.auth.admin.deleteUser(uid);
+                throw insertError;
+            }
+            console.log(`[Create user] Inserted profile (no trigger): ${username}`);
+        } else {
+            console.log(`[Create user] Updated trigger-created profile: ${username}`);
         }
 
         console.log(`✅ Usuario creado: ${username} (${role})`);
