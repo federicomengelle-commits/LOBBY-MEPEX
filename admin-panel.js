@@ -1066,8 +1066,9 @@ const AdminPanel = {
         ]},
         { cat: 'ADMIN & FINANZAS', color: '#4A90D9', modules: [
             { id: 'finanzas', name: 'Finanzas', icon: '💰' },
+            { id: 'contabilidad', name: 'Contabilidad', icon: '📚' },
             { id: 'costos', name: 'Costos', icon: '🧮' },
-            { id: 'admin-panel', name: 'Admin Panel', icon: '⚙️' },
+            { id: 'parametros-globales', name: 'Parámetros', icon: '⚙️' },
         ]},
     ],
 
