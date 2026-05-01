@@ -94,8 +94,16 @@ const Modal = {
         // Close handlers
         if (closable) {
             overlay.querySelector('.modal-close')?.addEventListener('click', () => this.close(id));
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) this.close(id);
+            // Smart backdrop close: only close if BOTH mousedown AND mouseup happened on the
+            // overlay itself. Prevents closing when user drags from inside (e.g. text selection
+            // in an input) and releases outside the modal.
+            let _downOnOverlay = false;
+            overlay.addEventListener('mousedown', (e) => {
+                _downOnOverlay = (e.target === overlay);
+            });
+            overlay.addEventListener('mouseup', (e) => {
+                if (_downOnOverlay && e.target === overlay) this.close(id);
+                _downOnOverlay = false;
             });
         }
 

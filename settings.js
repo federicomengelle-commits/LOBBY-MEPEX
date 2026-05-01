@@ -435,13 +435,20 @@ const Settings = {
                 return;
             }
 
-            // Check duplicates
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Verificando…';
+
+            // Refrescar cache antes de validar (incluye usuarios inactivos / huérfanos)
+            const fresh = await API.getUsers();
+            if (fresh) this._usersCache = fresh;
+
             if (this._usersCache?.some(u => u.username === username)) {
-                errorEl.textContent = 'Ya existe un usuario con ese nombre';
+                errorEl.textContent = 'Ya existe un usuario con ese nombre (revisá la lista de inactivos)';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Crear usuario';
                 return;
             }
 
-            submitBtn.disabled = true;
             submitBtn.textContent = 'Creando…';
 
             const result = await API.createUser(username, password, { name, initials, role });
