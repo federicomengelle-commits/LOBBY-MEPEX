@@ -110,10 +110,10 @@ app.post('/admin/users/create', requireSuperadmin, async (req, res) => {
 
         const uid = authData.user.id;
 
-        // 2) Insert profile row
+        // 2) Upsert profile row (handles handle_new_user trigger that pre-creates the row)
         const { error: profileError } = await supabaseAdmin
             .from('profiles')
-            .insert({
+            .upsert({
                 id: uid,
                 username,
                 name,
@@ -122,7 +122,7 @@ app.post('/admin/users/create', requireSuperadmin, async (req, res) => {
                 telefono: telefono || '',
                 active: true,
                 _deleted: false,
-            });
+            }, { onConflict: 'id' });
 
         if (profileError) {
             // Rollback: delete the auth user
