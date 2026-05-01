@@ -110,8 +110,8 @@ app.post('/admin/users/create', requireSuperadmin, async (req, res) => {
 
         const uid = authData.user.id;
 
-        // 2) Try UPDATE first (handle_new_user trigger may have pre-created the row).
-        //    If 0 rows affected → no trigger / no row → INSERT.
+        // 2) INSERT-first; on duplicate (trigger/webhook pre-created it) → UPDATE.
+        //    Más robusto que UPDATE-first: evita race condition con auth hooks async.
         const profileFields = {
             username,
             name,
@@ -122,30 +122,32 @@ app.post('/admin/users/create', requireSuperadmin, async (req, res) => {
             _deleted: false,
         };
 
-        const { data: updateData, error: updateError } = await supabaseAdmin
+        const { error: insertError } = await supabaseAdmin
             .from('profiles')
-            .update(profileFields)
-            .eq('id', uid)
-            .select();
+            .insert({ id: uid, ...profileFields });
 
-        if (updateError) {
-            await supabaseAdmin.auth.admin.deleteUser(uid);
-            throw updateError;
-        }
+        if (insertError) {
+            const isDuplicate = insertError.code === '23505' ||
+                                /duplicate key|already exists/i.test(insertError.message || '');
+            if (isDuplicate) {
+                console.log(`[Create user] Profile pre-existed for ${username}, updating instead`);
+                const { error: updateError } = await supabaseAdmin
+                    .from('profiles')
+                    .update(profileFields)
+                    .eq('id', uid);
 
-        if (!updateData || updateData.length === 0) {
-            // Trigger didn't pre-create the row — insert it
-            const { error: insertError } = await supabaseAdmin
-                .from('profiles')
-                .insert({ id: uid, ...profileFields });
-
-            if (insertError) {
+                if (updateError) {
+                    console.error(`[Create user] Update fallback failed:`, updateError);
+                    await supabaseAdmin.auth.admin.deleteUser(uid);
+                    throw updateError;
+                }
+            } else {
+                console.error(`[Create user] Insert error (not duplicate):`, insertError);
                 await supabaseAdmin.auth.admin.deleteUser(uid);
                 throw insertError;
             }
-            console.log(`[Create user] Inserted profile (no trigger): ${username}`);
         } else {
-            console.log(`[Create user] Updated trigger-created profile: ${username}`);
+            console.log(`[Create user] Profile inserted fresh: ${username}`);
         }
 
         console.log(`✅ Usuario creado: ${username} (${role})`);
