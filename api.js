@@ -162,18 +162,18 @@ const API = {
             if (error) throw error;
             this.isConnected = true;
 
-            // Mapeo Supabase → formato interno
+            // Mapeo Supabase → formato interno (post-rename: predio, fecha_desarme_inicio)
+            // priority/status quedan vacíos: las columnas se removieron del schema nuevo.
             const mapped = (data || []).map(e => ({
                 id: e.id,
                 name: e.nombre || '',
-                venue: e.lugar || '',
+                venue: e.predio || '',
                 setupDate: e.fecha_armado_inicio || null,
                 setupEndDate: e.fecha_armado_fin || null,
                 eventStartDate: e.fecha_evento_inicio || null,
                 eventEndDate: e.fecha_evento_fin || null,
-                teardownDate: e.fecha_desarme || null,
-                teardownEndDate: e.fecha_desarme_fin || e.fecha_desarme || null,
-                // Horarios por fase
+                teardownDate: e.fecha_desarme_inicio || null,
+                teardownEndDate: e.fecha_desarme_fin || null,
                 setupTimeOpen: e.hora_armado_apertura || null,
                 setupTimeClose: e.hora_armado_cierre || null,
                 eventTimeOpen: e.hora_evento_apertura || null,
@@ -182,8 +182,8 @@ const API = {
                 teardownTimeClose: e.hora_desarme_cierre || null,
                 color: e.color || null,
                 notasOperativas: e.notas_operativas || '',
-                priority: e.prioridad || '',
-                status: e.estado || '',
+                priority: '',
+                status: '',
             }));
 
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -546,16 +546,17 @@ const API = {
     // ─── Events CRUD ─────────────────────────
     async createEvent(data) {
         try {
+            // Schema nuevo: predio (no lugar), fecha_desarme_inicio (no fecha_desarme).
+            // No se mandan prioridad ni estado: columnas removidas en el rename.
             const payload = {
                 nombre: data.name || '',
-                lugar: data.venue || '',
+                predio: data.venue || '',
                 fecha_armado_inicio: data.setupDate || null,
                 fecha_armado_fin: data.setupEndDate || null,
                 fecha_evento_inicio: data.eventStartDate || null,
                 fecha_evento_fin: data.eventEndDate || null,
-                fecha_desarme: data.teardownDate || null,
+                fecha_desarme_inicio: data.teardownDate || null,
                 fecha_desarme_fin: data.teardownEndDate || null,
-                // Horarios por fase
                 hora_armado_apertura: data.setupTimeOpen || null,
                 hora_armado_cierre: data.setupTimeClose || null,
                 hora_evento_apertura: data.eventTimeOpen || null,
@@ -564,8 +565,6 @@ const API = {
                 hora_desarme_cierre: data.teardownTimeClose || null,
                 color: data.color || null,
                 notas_operativas: data.notasOperativas || null,
-                prioridad: data.priority || '',
-                estado: data.status || 'Sin empezar',
             };
             const result = await UndoHelpers.createRecord('eventos', payload, `Nuevo evento: ${data.name || ''}`);
             this.clearCache();
@@ -580,14 +579,13 @@ const API = {
         try {
             const payload = {};
             if (data.name !== undefined) payload.nombre = data.name;
-            if (data.venue !== undefined) payload.lugar = data.venue;
+            if (data.venue !== undefined) payload.predio = data.venue;
             if (data.setupDate !== undefined) payload.fecha_armado_inicio = data.setupDate || null;
             if (data.setupEndDate !== undefined) payload.fecha_armado_fin = data.setupEndDate || null;
             if (data.eventStartDate !== undefined) payload.fecha_evento_inicio = data.eventStartDate || null;
             if (data.eventEndDate !== undefined) payload.fecha_evento_fin = data.eventEndDate || null;
-            if (data.teardownDate !== undefined) payload.fecha_desarme = data.teardownDate || null;
+            if (data.teardownDate !== undefined) payload.fecha_desarme_inicio = data.teardownDate || null;
             if (data.teardownEndDate !== undefined) payload.fecha_desarme_fin = data.teardownEndDate || null;
-            // Horarios por fase
             if (data.setupTimeOpen !== undefined) payload.hora_armado_apertura = data.setupTimeOpen || null;
             if (data.setupTimeClose !== undefined) payload.hora_armado_cierre = data.setupTimeClose || null;
             if (data.eventTimeOpen !== undefined) payload.hora_evento_apertura = data.eventTimeOpen || null;
@@ -596,8 +594,7 @@ const API = {
             if (data.teardownTimeClose !== undefined) payload.hora_desarme_cierre = data.teardownTimeClose || null;
             if (data.color !== undefined) payload.color = data.color;
             if (data.notasOperativas !== undefined) payload.notas_operativas = data.notasOperativas;
-            if (data.priority !== undefined) payload.prioridad = data.priority;
-            if (data.status !== undefined) payload.estado = data.status;
+            // priority/status: columnas removidas en el rename, se ignoran silenciosamente.
             await UndoHelpers.updateRecord('eventos', id, payload, `Edito evento: ${data.name || ''}`);
             this.clearCache();
             return true;
@@ -925,10 +922,10 @@ const API = {
             return (data || []).map(e => ({
                 id: e.id,
                 name: e.nombre || '',
-                venue: e.lugar || '',
+                venue: e.predio || '',
                 eventStartDate: e.fecha_evento_inicio || null,
                 eventEndDate: e.fecha_evento_fin || null,
-                status: e.estado || '',
+                status: '',
             }));
         } catch (e) {
             console.warn('[API] Error fetching events by names:', e.message);
