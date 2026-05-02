@@ -904,9 +904,9 @@ const CalendarioOperativo = {
 
     async _loadPanelData(event) {
         try {
-            const [equipo, transporte, docs, historial] = await Promise.all([
+            const [equipo, movimientos, docs, historial] = await Promise.all([
                 API.getEventoEquipo(event.id).catch(() => []),
-                Promise.resolve(null), // TODO Fase 4: API.getEventoTransporte(event.id)
+                API.getEventoTransporte(event.id).catch(() => []),
                 Promise.resolve(null), // TODO Fase 6: API.getEventDocumentos(event.id)
                 Promise.resolve(null), // TODO Fase 6: API.getEventHistorial(event.id)
             ]);
@@ -919,7 +919,20 @@ const CalendarioOperativo = {
                     id: `local-${i}`, name: t.name, role: t.role
                 }));
             }
-            event._transporte = transporte || {
+            // Fase 4: API.getEventoTransporte devuelve un array de movimientos.
+            // Para no romper la UI vieja del panel del calendario operativo (que
+            // espera {truck, driver, ...}), derivamos esos campos del primer
+            // movimiento. TODO: actualizar consumer al nuevo modelo (array).
+            event._movimientos = movimientos || [];
+            const primer = (movimientos && movimientos.length > 0) ? movimientos[0] : null;
+            event._transporte = primer ? {
+                truck: primer.vehiculoNombre || null,
+                driver: primer.choferNombre || null,
+                loadDate: null,
+                departureDate: primer.fecha || null,
+                returnDate: null,
+                notes: primer.notas || '',
+            } : {
                 truck: event.logistics?.truck || null,
                 driver: event.logistics?.driver || null,
                 loadDate: event.logistics?.loadDate || null,

@@ -28,6 +28,11 @@ const EventosModule = {
     _personalList: [],       // lista completa de rrhh_personal (para el modal Agregar persona)
     _personalLoaded: false,  // flag para no recargar innecesariamente
 
+    // Transporte (Fase 4 — vía logistica_movimientos)
+    _transporteCache: {},    // { [eventoId]: [...movimientos] }
+    _vehiculosList: [],      // caché de vehículos para el modal Agregar movimiento
+    _vehiculosLoaded: false,
+
     // ─── Color palette for events ───
     _palette: [
         '#00BCD4', '#FF9800', '#9C27B0', '#4CAF50', '#E91E63',
@@ -110,6 +115,20 @@ const EventosModule = {
                 .ev-persona-option-rol { font-size:11px; }
                 .ev-persona-option-tel { font-family:'Space Mono',monospace; font-size:10px; color:#666; white-space:nowrap; }
                 .ev-modal-persona-footer { padding-top:10px; border-top:1px solid #2a2a2a; }
+
+                /* Movimientos de transporte (Fase 4) */
+                .ev-mov-item { display:flex; flex-direction:column; gap:4px; padding:10px;
+                    background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px;
+                    border-left:3px solid #00CC88; }
+                .ev-mov-route { display:flex; align-items:center; gap:6px; font-family:'Outfit',sans-serif; }
+                .ev-mov-origen, .ev-mov-destino { color:#E8E8E8; font-weight:500; font-size:13px; }
+                .ev-mov-arrow { color:#666; font-size:14px; }
+                .ev-mov-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:#aaa; }
+                .ev-mov-vehiculo, .ev-mov-chofer { font-family:'Space Mono',monospace; }
+                .ev-mov-fecha { font-family:'Space Mono',monospace; color:#9B7DFF; }
+                .ev-mov-status { font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid; font-family:'Outfit',sans-serif; font-weight:500; }
+                .ev-mov-open-btn { color:#00A9C180; font-size:14px; font-weight:bold; }
+                .ev-mov-open-btn:hover { color:#00A9C1; background:#00A9C115; }
             </style>
             <div class="ev-wrapper">
                 <div class="ev-toolbar">
@@ -243,26 +262,6 @@ const EventosModule = {
             const merged = { ...existing, ...data };
             localStorage.setItem(`ev_ext_${eventId}`, JSON.stringify(merged));
         } catch { /* */ }
-    },
-
-    _getTransporte(eventId) {
-        try {
-            const raw = localStorage.getItem(`ev_transporte_${eventId}`);
-            return raw ? JSON.parse(raw) : null;
-        } catch { return null; }
-    },
-
-    _saveTransporte(eventId, data) {
-        localStorage.setItem(`ev_transporte_${eventId}`, JSON.stringify(data));
-        // TODO Fase 3/4: reemplazar por nueva API (addEventoMovimiento / removeEventoMovimiento)
-        // API.saveEventTransporte(eventId, {
-        //     truck: data.camion || data.truck || null,
-        //     driver: data.chofer || data.driver || null,
-        //     loadDate: data.fechaCarga || data.loadDate || null,
-        //     departureDate: data.fechaSalida || data.departureDate || null,
-        //     returnDate: data.fechaRetorno || data.returnDate || null,
-        //     notes: data.notas || data.notes || null,
-        // }).catch(() => {});
     },
 
     _getDocumentos(eventId) {
@@ -508,6 +507,7 @@ const EventosModule = {
 
         // Cargar secciones async después de renderizar el shell
         this._loadEquipoSection(eventId);
+        this._loadTransporteSection(eventId);
     },
 
     _closePanel() {
@@ -523,7 +523,6 @@ const EventosModule = {
 
     _renderPanel(ev) {
         const statusColor = this._getStatusColor(ev.estado);
-        const transporte = this._getTransporte(ev.id);
         const documentos = this._getDocumentos(ev.id);
         const notas = this._getNotas(ev.id);
         const proyectos = this._getProyectosVinculados(ev.id);
@@ -559,8 +558,15 @@ const EventosModule = {
                     </div>
                 </div>
 
-                <!-- Transporte -->
-                ${this._renderPanelTransporte(ev, transporte)}
+                <!-- Transporte (cargado async desde logistica_movimientos) -->
+                <div id="evTransporteContent">
+                    <div class="ev-panel-section">
+                        <div class="ev-section-header">
+                            <h3 class="ev-section-title">Transporte</h3>
+                        </div>
+                        <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
+                    </div>
+                </div>
 
                 <!-- Conflictos -->
                 ${conflicts.length > 0 ? this._renderPanelConflictos(conflicts) : ''}
@@ -967,67 +973,255 @@ const EventosModule = {
         });
     },
 
-    _renderPanelTransporte(ev, transporte) {
-        const isEditing = this._editingSections.has('transporte');
-        const t = transporte || {};
-
-        if (isEditing) {
-            return `
-                <div class="ev-panel-section ev-section-editing" id="evSecTransporte">
-                    <div class="ev-section-header">
-                        <h3 class="ev-section-title">Transporte</h3>
-                    </div>
-                    <div class="ev-section-form">
-                        <div class="ev-form-field">
-                            <label class="ev-form-label">Camión</label>
-                            <input type="text" class="ev-form-input" name="camion" value="${t.camion || ''}" placeholder="Ej: Sprinter Blanca">
-                        </div>
-                        <div class="ev-form-field">
-                            <label class="ev-form-label">Chofer</label>
-                            <input type="text" class="ev-form-input" name="chofer" value="${t.chofer || ''}" placeholder="Nombre del chofer">
-                        </div>
-                        <div class="ev-form-field">
-                            <label class="ev-form-label">Carga en depósito</label>
-                            <input type="datetime-local" class="ev-form-input" name="fechaCarga" value="${t.fechaCarga || ''}">
-                        </div>
-                        <div class="ev-form-field">
-                            <label class="ev-form-label">Salida a predio</label>
-                            <input type="datetime-local" class="ev-form-input" name="fechaSalida" value="${t.fechaSalida || ''}">
-                        </div>
-                        <div class="ev-form-field">
-                            <label class="ev-form-label">Retorno</label>
-                            <input type="datetime-local" class="ev-form-input" name="fechaRetorno" value="${t.fechaRetorno || ''}">
-                        </div>
-                        <div class="ev-section-btns">
-                            <button class="btn btn-primary btn-sm" data-save-section="transporte">Guardar</button>
-                            <button class="btn btn-ghost btn-sm" data-cancel-section="transporte">Cancelar</button>
-                        </div>
-                    </div>
-                </div>
-            `;
+    async _loadTransporteSection(eventoId) {
+        const container = document.getElementById('evTransporteContent');
+        if (!container) return;
+        try {
+            const movimientos = await API.getEventoTransporte(eventoId);
+            this._transporteCache[eventoId] = movimientos;
+            container.innerHTML = this._renderPanelTransporte(eventoId, movimientos);
+            this._attachTransporteEvents(eventoId, movimientos);
+        } catch (e) {
+            container.innerHTML = `<div class="ev-panel-section"><p class="ev-section-empty" style="color:#F28D15">Error cargando transporte</p></div>`;
         }
+    },
 
+    _renderPanelTransporte(eventoId, movimientos) {
+        const checkLabel = (m) => {
+            if (m.checkRetorno) return { label: 'Volvió', color: '#00CC88' };
+            if (m.checkDescarga) return { label: 'Descargado', color: '#00A9C1' };
+            if (m.checkLlegada) return { label: 'Llegó', color: '#9B7DFF' };
+            if (m.checkSalida) return { label: 'En viaje', color: '#F28D15' };
+            return { label: 'Pendiente', color: '#666' };
+        };
         return `
             <div class="ev-panel-section" id="evSecTransporte">
                 <div class="ev-section-header">
-                    <h3 class="ev-section-title">Transporte</h3>
-                    <button class="ev-edit-btn" data-edit-section="transporte" title="Editar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                    </button>
+                    <h3 class="ev-section-title">Transporte
+                        <span class="ev-equipo-count">${movimientos.length > 0 ? movimientos.length : ''}</span>
+                    </h3>
+                    ${!this._isRO ? `
+                        <button class="ev-add-persona-btn" data-add-movimiento="${eventoId}" title="Agregar movimiento">
+                            + Agregar
+                        </button>
+                    ` : ''}
                 </div>
-                ${t.camion || t.chofer ? `
-                    <div class="ev-transport-info">
-                        ${t.camion ? `<div class="ev-info-row"><span class="ev-info-label">Camión</span><span>${t.camion}</span></div>` : ''}
-                        ${t.chofer ? `<div class="ev-info-row"><span class="ev-info-label">Chofer</span><span>${t.chofer}</span></div>` : ''}
-                        ${t.fechaCarga ? `<div class="ev-info-row"><span class="ev-info-label">Carga</span><span>${this._fmtDatetime(t.fechaCarga)}</span></div>` : ''}
-                        ${t.fechaSalida ? `<div class="ev-info-row"><span class="ev-info-label">Salida</span><span>${this._fmtDatetime(t.fechaSalida)}</span></div>` : ''}
-                        ${t.fechaRetorno ? `<div class="ev-info-row"><span class="ev-info-label">Retorno</span><span>${this._fmtDatetime(t.fechaRetorno)}</span></div>` : ''}
+                ${movimientos.length > 0 ? `
+                    <div class="ev-equipo-list">
+                        ${movimientos.map(m => {
+                            const st = checkLabel(m);
+                            return `
+                            <div class="ev-mov-item" data-mov-id="${m.id}">
+                                <div class="ev-mov-route">
+                                    <span class="ev-mov-origen">${this._escAttr(m.origen)}</span>
+                                    <span class="ev-mov-arrow">→</span>
+                                    <span class="ev-mov-destino">${this._escAttr(m.destino)}</span>
+                                </div>
+                                <div class="ev-mov-meta">
+                                    <span class="ev-mov-vehiculo">🚚 ${this._escAttr(m.vehiculoNombre)}${m.vehiculoPatente ? ` · ${this._escAttr(m.vehiculoPatente)}` : ''}</span>
+                                    <span class="ev-mov-chofer">👤 ${this._escAttr(m.choferNombre)}</span>
+                                </div>
+                                <div class="ev-mov-meta">
+                                    <span class="ev-mov-fecha">${this._fmtDate(m.fecha)}${m.horaProgramada ? ' ' + m.horaProgramada : ''}</span>
+                                    <span class="ev-mov-status" style="color:${st.color};border-color:${st.color}40;background:${st.color}15;">${st.label}</span>
+                                </div>
+                                ${!this._isRO ? `
+                                <div class="ev-equipo-item-actions">
+                                    <button class="ev-icon-btn ev-mov-open-btn" data-open-mov="${m.id}" title="Abrir en Logística">↗</button>
+                                    <button class="ev-icon-btn ev-remove-persona-btn" data-remove-mov="${m.id}" title="Quitar movimiento">&times;</button>
+                                </div>
+                                ` : ''}
+                            </div>
+                            `;
+                        }).join('')}
                     </div>
                 ` : `
-                    <p class="ev-section-empty">Sin datos de transporte</p>
+                    <p class="ev-section-empty">Sin movimientos de transporte</p>
                 `}
             </div>
         `;
+    },
+
+    _attachTransporteEvents(eventoId, movimientos) {
+        // Botón Agregar movimiento
+        document.querySelector(`[data-add-movimiento="${eventoId}"]`)
+            ?.addEventListener('click', () => this._openAddMovimientoModal(eventoId));
+
+        // Abrir movimiento en módulo Logística (deep link)
+        document.querySelectorAll('[data-open-mov]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const movId = btn.dataset.openMov;
+                window.location.hash = `#logistica?tab=movimientos&id=${movId}`;
+            });
+        });
+
+        // Quitar movimiento
+        document.querySelectorAll('[data-remove-mov]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const movId = btn.dataset.removeMov;
+                const ok = await Modal.confirm({
+                    title: 'Quitar movimiento',
+                    message: `¿Quitar este movimiento del evento? El registro se marca como eliminado.`,
+                    confirmText: 'Quitar',
+                    cancelText: 'Cancelar',
+                });
+                if (!ok) return;
+                const result = await API.removeEventoMovimiento(movId);
+                if (result) {
+                    Toast.success('Movimiento quitado');
+                    delete this._transporteCache[eventoId];
+                    await this._loadTransporteSection(eventoId);
+                } else {
+                    Toast.error('Error al quitar movimiento');
+                }
+            });
+        });
+    },
+
+    async _openAddMovimientoModal(eventoId) {
+        // Cargar vehículos si no están en memoria
+        if (!this._vehiculosLoaded) {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('logistica_vehiculos')
+                    .select('id, nombre, tipo, patente, chofer_habitual_id, contacto, estado')
+                    .eq('_deleted', false)
+                    .order('nombre', { ascending: true });
+                if (error) throw error;
+                this._vehiculosList = data || [];
+                this._vehiculosLoaded = true;
+            } catch (e) {
+                Toast.error('Error al cargar vehículos');
+                return;
+            }
+        }
+        // Cargar personal si no está cargado (reusa Fase 3)
+        if (!this._personalLoaded) {
+            try {
+                const { data } = await supabaseClient
+                    .from('rrhh_personal')
+                    .select('id, nombre, rol, tipo, telefono, estado')
+                    .eq('_deleted', false)
+                    .eq('estado', 'activo')
+                    .order('nombre', { ascending: true });
+                this._personalList = data || [];
+                this._personalLoaded = true;
+            } catch { /* continue */ }
+        }
+
+        // Sugerencias de origen/destino: depósitos genéricos + venue del evento actual
+        const ev = this._events.find(e => e.id === eventoId);
+        const lugaresSug = ['Depósito', 'Taller', 'Oficina'];
+        if (ev?.venue && !lugaresSug.includes(ev.venue)) lugaresSug.push(ev.venue);
+
+        // Solo choferes activos (filtrar por rol "Chofer" pero permitir todos por si acaso)
+        const choferesPriority = this._personalList.filter(p => (p.rol || '').toLowerCase() === 'chofer');
+        const otrosPersonal = this._personalList.filter(p => (p.rol || '').toLowerCase() !== 'chofer');
+
+        const body = `
+            <div class="ev-modal-mov" style="display:flex;flex-direction:column;gap:14px;">
+                <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:end;">
+                    <div>
+                        <label class="ev-form-label">Origen</label>
+                        <input type="text" id="evMovOrigen" class="ev-form-input" list="evMovLugares" placeholder="Depósito">
+                    </div>
+                    <span style="color:#666;font-size:1.3rem;padding-bottom:8px;">→</span>
+                    <div>
+                        <label class="ev-form-label">Destino</label>
+                        <input type="text" id="evMovDestino" class="ev-form-input" list="evMovLugares" placeholder="${this._escAttr(ev?.venue || 'Predio')}" value="${this._escAttr(ev?.venue || '')}">
+                    </div>
+                    <datalist id="evMovLugares">
+                        ${lugaresSug.map(l => `<option value="${this._escAttr(l)}">`).join('')}
+                    </datalist>
+                </div>
+                <div>
+                    <label class="ev-form-label">Vehículo</label>
+                    <select id="evMovVehiculo" class="ev-form-input">
+                        <option value="">— Seleccionar —</option>
+                        ${this._vehiculosList.map(v => `<option value="${v.id}" data-chofer-habitual="${v.chofer_habitual_id || ''}">${this._escAttr(v.nombre)}${v.patente ? ` · ${this._escAttr(v.patente)}` : ''} (${v.tipo === 'propio' ? 'Propio' : 'Tercero'})</option>`).join('')}
+                    </select>
+                </div>
+                <div>
+                    <label class="ev-form-label">Chofer</label>
+                    <select id="evMovChofer" class="ev-form-input">
+                        <option value="">— Sin chofer asignado —</option>
+                        ${choferesPriority.length > 0 ? `<optgroup label="Choferes">${choferesPriority.map(p => `<option value="${p.id}">${this._escAttr(p.nombre)}${p.telefono ? ' · ' + this._escAttr(p.telefono) : ''}</option>`).join('')}</optgroup>` : ''}
+                        ${otrosPersonal.length > 0 ? `<optgroup label="Otros">${otrosPersonal.map(p => `<option value="${p.id}">${this._escAttr(p.nombre)} (${this._escAttr(p.rol || '')})</option>`).join('')}</optgroup>` : ''}
+                    </select>
+                    <small style="color:#666;font-size:11px;display:block;margin-top:4px;">Si el chofer no está en la lista (terceros), dejá vacío y completá abajo:</small>
+                    <input type="text" id="evMovChoferLibre" class="ev-form-input ev-input-sm" placeholder="Nombre del chofer (terceros)" style="margin-top:4px;">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div>
+                        <label class="ev-form-label">Fecha</label>
+                        <input type="date" id="evMovFecha" class="ev-form-input">
+                    </div>
+                    <div>
+                        <label class="ev-form-label">Hora programada</label>
+                        <input type="time" id="evMovHora" class="ev-form-input">
+                    </div>
+                </div>
+                <div>
+                    <label class="ev-form-label">Notas</label>
+                    <textarea id="evMovNotas" class="ev-form-input" rows="2" placeholder="Opcional"></textarea>
+                </div>
+            </div>
+        `;
+
+        Modal.open({
+            title: '🚚 Agregar movimiento de transporte',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="evMovSaveBtn">Agregar movimiento</button>
+            `,
+        });
+
+        // Auto-completar chofer al seleccionar vehículo (si tiene chofer_habitual_id)
+        const vehSelect = document.getElementById('evMovVehiculo');
+        const choferSelect = document.getElementById('evMovChofer');
+        vehSelect?.addEventListener('change', (e) => {
+            const opt = e.target.selectedOptions[0];
+            const choferHab = opt?.dataset?.choferHabitual;
+            if (choferHab && choferSelect && !choferSelect.value) {
+                choferSelect.value = choferHab;
+            }
+        });
+
+        document.getElementById('evMovSaveBtn')?.addEventListener('click', async () => {
+            const origen = document.getElementById('evMovOrigen')?.value.trim();
+            const destino = document.getElementById('evMovDestino')?.value.trim();
+            if (!origen || !destino) { Toast.warning('Ingresá origen y destino'); return; }
+
+            const choferId = document.getElementById('evMovChofer')?.value || null;
+            const choferLibre = document.getElementById('evMovChoferLibre')?.value.trim() || null;
+
+            const payload = {
+                origen,
+                destino,
+                vehiculoId: document.getElementById('evMovVehiculo')?.value || null,
+                choferId,
+                choferNombreLibre: choferId ? null : choferLibre,  // si hay chofer del staff, no usar texto libre
+                fecha: document.getElementById('evMovFecha')?.value || null,
+                horaProgramada: document.getElementById('evMovHora')?.value || null,
+                notas: document.getElementById('evMovNotas')?.value.trim() || null,
+            };
+
+            const btn = document.getElementById('evMovSaveBtn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+            const result = await API.addEventoMovimiento(eventoId, payload);
+            if (result) {
+                Toast.success('Movimiento agregado');
+                Modal.close();
+                delete this._transporteCache[eventoId];
+                await this._loadTransporteSection(eventoId);
+            } else {
+                Toast.error('Error al agregar movimiento');
+                if (btn) { btn.disabled = false; btn.textContent = 'Agregar movimiento'; }
+            }
+        });
     },
 
     _renderPanelConflictos(conflicts) {
@@ -1134,8 +1328,11 @@ const EventosModule = {
         // equipo se limita a comparar contra otros eventos cuyo cache también esté
         // cargado. Para alcance global se necesita una pre-carga de todos los
         // equipos (queda para una fase de polish).
+        // El conflict-check de transporte/camión se sacó en Fase 4 — el modelo nuevo
+        // (logistica_movimientos con FK a vehiculo_id) requiere data async para
+        // detectar overlaps cross-evento, lo cual rompe el patrón síncrono actual.
+        // TODO Fase futura: re-implementar con pre-carga de _transporteCache global.
         const equipo = this._equipoCache[ev.id] || [];
-        const transporte = this._getTransporte(ev.id);
 
         if (!ev.setupDate && !ev.eventStartDate) return conflicts;
 
@@ -1165,24 +1362,6 @@ const EventosModule = {
                 }
             });
         });
-
-        // Check truck conflict
-        if (transporte && transporte.camion) {
-            this._events.forEach(otherEv => {
-                if (otherEv.id === ev.id) return;
-                const otherTransporte = this._getTransporte(otherEv.id);
-                if (!otherTransporte || !otherTransporte.camion) return;
-
-                const otherStart = new Date(otherEv.setupDate || otherEv.eventStartDate);
-                const otherEnd = new Date(otherEv.teardownDate || otherEv.eventEndDate || otherEv.eventStartDate);
-
-                if (evStart <= otherEnd && evEnd >= otherStart) {
-                    if (transporte.camion.toLowerCase() === otherTransporte.camion.toLowerCase()) {
-                        conflicts.push(`Camión "${transporte.camion}" también asignado a ${otherEv.name}`);
-                    }
-                }
-            });
-        }
 
         return conflicts;
     },
@@ -1464,26 +1643,9 @@ const EventosModule = {
             }
         }
 
-        // Sección 'equipo' eliminada en Fase 3: el equipo se gestiona inline
-        // con los botones + Agregar / × en _renderPanelEquipo, no por save/cancel.
-
-        if (section === 'transporte') {
-            const getData = (name) => panel.querySelector(`[name="${name}"]`)?.value || '';
-            const transporte = {
-                camion: getData('camion'),
-                chofer: getData('chofer'),
-                fechaCarga: getData('fechaCarga'),
-                fechaSalida: getData('fechaSalida'),
-                fechaRetorno: getData('fechaRetorno'),
-            };
-            this._saveTransporte(ev.id, transporte);
-            // TODO Fase 6: reemplazar por nueva API (logEventChange queda comentada hasta rehacer evento_historial)
-            // const userTr = Auth.getUser()?.name || '';
-            // API.logEventChange(ev.id, 'transporte_cambio', 'Transporte actualizado', {
-            //     campo: 'transporte', camion: transporte.camion, chofer: transporte.chofer,
-            // }, userTr).catch(() => {});
-            Toast.success('Transporte actualizado');
-        }
+        // Secciones 'equipo' y 'transporte' eliminadas en Fase 3 y 4:
+        // se gestionan inline con + Agregar / × en _renderPanelEquipo y
+        // _renderPanelTransporte, no por save/cancel.
 
         this._editingSections.delete(section);
 
@@ -1821,7 +1983,7 @@ const EventosModule = {
         const result = await API.deleteEvent(eventId);
         if (result) {
             // Clean up localStorage data
-            ['ev_ext_', 'ev_transporte_', 'ev_docs_', 'ev_notas_', 'ev_proyectos_'].forEach(prefix => {
+            ['ev_ext_', 'ev_docs_', 'ev_notas_', 'ev_proyectos_'].forEach(prefix => {
                 localStorage.removeItem(prefix + eventId);
             });
             Toast.success('Evento eliminado');

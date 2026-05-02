@@ -471,17 +471,19 @@ const LogisticaModule = {
 
     async _loadMovimientos() {
         try {
-            const [movRes, vehRes, evRes, projRes] = await Promise.all([
+            const [movRes, vehRes, evRes, projRes, persRes] = await Promise.all([
                 supabaseClient.from('logistica_movimientos').select('*').eq('_deleted', false).order('fecha', { ascending: false }),
                 supabaseClient.from('logistica_vehiculos').select('*').eq('_deleted', false).order('nombre'),
                 API.getEvents(),
                 API.getProjects(),
+                supabaseClient.from('rrhh_personal').select('id, nombre, rol').eq('_deleted', false).eq('estado', 'activo').order('nombre'),
             ]);
             if (movRes.error) throw movRes.error;
             this._movimientos = movRes.data || [];
             this._vehiculos = vehRes.data || [];
             this._events = evRes || [];
             this._projects = projRes || [];
+            this._personalListChoferes = persRes.data || [];
         } catch (e) {
             console.warn('[Logistica] Error loading movimientos:', e);
             this._movimientos = [];
@@ -513,6 +515,16 @@ const LogisticaModule = {
         if (!vehiculoId) return '—';
         const v = this._vehiculos.find(x => String(x.id) === String(vehiculoId));
         return v ? v.nombre : '—';
+    },
+
+    _getChoferDisplay(m) {
+        // Post-Fase 1: chofer es FK a rrhh_personal (chofer_id) con fallback a
+        // texto libre (chofer_nombre_libre) para terceros.
+        if (m?.chofer_id && this._personalListChoferes) {
+            const p = this._personalListChoferes.find(x => x.id === m.chofer_id);
+            if (p) return p.nombre;
+        }
+        return m?.chofer_nombre_libre || '—';
     },
 
     _renderMovimientos() {
@@ -617,7 +629,7 @@ const LogisticaModule = {
                 <div class="log-mov-info">
                     <div class="log-mov-row"><span class="log-mov-label">Evento</span><span>${evento}</span></div>
                     <div class="log-mov-row"><span class="log-mov-label">Vehículo</span><span>${vehiculo}</span></div>
-                    <div class="log-mov-row"><span class="log-mov-label">Chofer</span><span>${m.chofer || '—'}</span></div>
+                    <div class="log-mov-row"><span class="log-mov-label">Chofer</span><span>${this._getChoferDisplay(m)}</span></div>
                 </div>
                 <div class="log-mov-checks">
                     <div class="log-check-mini ${m.check_salida ? 'done' : ''}">Salió</div>
@@ -687,7 +699,7 @@ const LogisticaModule = {
                     </div>
                     <div class="log-ficha-field">
                         <span class="log-field-label">Chofer</span>
-                        <span class="log-field-value">${m.chofer || '—'}</span>
+                        <span class="log-field-value">${this._getChoferDisplay(m)}</span>
                     </div>
                     <div class="log-ficha-field">
                         <span class="log-field-label">Fecha</span>
@@ -878,17 +890,19 @@ const LogisticaModule = {
         const item = editId ? this._movimientos.find(x => String(x.id) === String(editId)) : null;
         const title = item ? 'Editar Movimiento' : 'Nuevo Movimiento';
 
-        // Ensure vehicles and events are loaded
-        if (this._vehiculos.length === 0 || this._events.length === 0) {
+        // Ensure vehicles, events, projects and personal (choferes) are loaded
+        if (this._vehiculos.length === 0 || this._events.length === 0 || !this._personalListChoferes) {
             try {
-                const [vehRes, evRes, projRes] = await Promise.all([
+                const [vehRes, evRes, projRes, persRes] = await Promise.all([
                     supabaseClient.from('logistica_vehiculos').select('*').eq('_deleted', false).order('nombre'),
                     API.getEvents(),
                     API.getProjects(),
+                    supabaseClient.from('rrhh_personal').select('id, nombre, rol').eq('_deleted', false).eq('estado', 'activo').order('nombre'),
                 ]);
                 this._vehiculos = vehRes.data || [];
                 this._events = evRes || [];
                 this._projects = projRes || [];
+                this._personalListChoferes = persRes.data || [];
             } catch (e) { /* continue */ }
         }
 
@@ -943,8 +957,12 @@ const LogisticaModule = {
                             </select>
                         </div>
                         <div>
-                            <label class="form-label">Chofer / Responsable</label>
-                            <input type="text" id="logMChofer" class="form-input" value="${item?.chofer || ''}" placeholder="Nombre" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Chofer</label>
+                            <select id="logMChoferId" class="form-input form-select" style="font-size:1rem;padding:12px;">
+                                <option value="">— Sin asignar —</option>
+                                ${(this._personalListChoferes || []).map(p => `<option value="${p.id}" ${item?.chofer_id === p.id ? 'selected' : ''}>${p.nombre}${p.rol ? ' · ' + p.rol : ''}</option>`).join('')}
+                            </select>
+                            <input type="text" id="logMChoferLibre" class="form-input" value="${item?.chofer_nombre_libre || ''}" placeholder="Chofer externo (texto libre)" style="font-size:0.9rem;padding:8px;margin-top:6px;">
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -981,11 +999,14 @@ const LogisticaModule = {
                 const destino = document.getElementById('logMDestino')?.value?.trim();
                 if (!origen || !destino) { Toast.warning('Ingresá origen y destino'); return; }
 
+                const choferId = document.getElementById('logMChoferId')?.value || null;
+                const choferLibre = document.getElementById('logMChoferLibre')?.value?.trim() || null;
                 const payload = {
                     evento_id: document.getElementById('logMEvento')?.value || null,
                     proyecto_id: document.getElementById('logMProyecto')?.value || null,
                     vehiculo_id: document.getElementById('logMVehiculo')?.value || null,
-                    chofer: document.getElementById('logMChofer')?.value?.trim() || null,
+                    chofer_id: choferId,
+                    chofer_nombre_libre: choferId ? null : choferLibre,
                     origen,
                     destino,
                     fecha: document.getElementById('logMFecha')?.value || null,
