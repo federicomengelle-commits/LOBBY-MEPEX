@@ -12,9 +12,16 @@
 BEGIN;
 
 -- ─── 1. DROP tablas viejas con CASCADE ───
--- Esto elimina también las FKs entrantes desde tablas hijas.
+-- Drop explícito de hijas primero (por si quedaron sin FK al padre).
+-- Después drop de los padres con CASCADE.
+DROP TABLE IF EXISTS public.evento_historial CASCADE;
+DROP TABLE IF EXISTS public.evento_documentos CASCADE;
+DROP TABLE IF EXISTS public.evento_transporte CASCADE;
+DROP TABLE IF EXISTS public.evento_equipo CASCADE;
 DROP TABLE IF EXISTS public.proyectos_2026 CASCADE;
 DROP TABLE IF EXISTS public.eventos_2026 CASCADE;
+DROP TABLE IF EXISTS public.proyectos CASCADE;
+DROP TABLE IF EXISTS public.eventos CASCADE;
 
 -- ─── 2. CREATE eventos (limpia, sin sufijo) ───
 CREATE TABLE public.eventos (
