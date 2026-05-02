@@ -14,6 +14,7 @@ const ProyectosModule = {
     _filteredProjects: [],
     _events: [],
     _users: [],
+    _clients: [],
     _sortCol: 'name',
     _sortDir: 'asc',
     _searchQuery: '',
@@ -140,10 +141,11 @@ const ProyectosModule = {
 
     async _loadData() {
         try {
-            const [projects, events, users] = await Promise.all([
+            const [projects, events, users, clients] = await Promise.all([
                 API.getProjects(),
                 API.getEvents(),
                 API.getUsers(),
+                API.getClients(),
             ]);
 
             this._projects = (projects || []).map(p => ({
@@ -155,16 +157,22 @@ const ProyectosModule = {
 
             this._events = events || [];
             this._users = (users || []).filter(u => u.active !== false);
+            this._clients = (clients || []).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
         } catch (e) {
             console.warn('[Proyectos] Error loading data:', e.message);
             this._projects = [];
             this._events = [];
             this._users = [];
+            this._clients = [];
         }
 
         this._populateFilters();
         this._applyFilters();
         this._renderContent();
+    },
+
+    _escAttr(str) {
+        return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 
     _parseMulti(val) {
@@ -807,6 +815,7 @@ const ProyectosModule = {
     _showCreateModal() {
         const eventOptions = this._events.map(e => `<option value="${e.name}">${e.name}</option>`).join('');
         const userOptions = this._users.map(u => ({ value: u.name, label: u.name }));
+        const clientOptions = this._clients.map(c => `<option value="${this._escAttr(c.name)}"></option>`).join('');
 
         const body = `
             <form class="mepex-form" id="pjCreateForm" autocomplete="off">
@@ -817,7 +826,8 @@ const ProyectosModule = {
                     </div>
                     <div class="form-field">
                         <label class="form-label">Cliente</label>
-                        <input class="form-input" type="text" name="clientName" placeholder="Nombre del cliente">
+                        <input class="form-input" type="text" name="clientName" list="pjCreateClientList" placeholder="Buscar o escribir nombre…" autocomplete="off">
+                        <datalist id="pjCreateClientList">${clientOptions}</datalist>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Evento</label>
@@ -896,17 +906,19 @@ const ProyectosModule = {
     _showEditModal(p) {
         const eventOptions = this._events.map(e => `<option value="${e.name}" ${e.name === p.eventName ? 'selected' : ''}>${e.name}</option>`).join('');
         const userOptions = this._users.map(u => ({ value: u.name, label: u.name }));
+        const clientOptions = this._clients.map(c => `<option value="${this._escAttr(c.name)}"></option>`).join('');
 
         const body = `
             <form class="mepex-form" id="pjEditForm" autocomplete="off">
                 <div class="pj-form-grid">
                     <div class="form-field">
                         <label class="form-label">Nombre del proyecto <span class="form-required">*</span></label>
-                        <input class="form-input" type="text" name="name" value="${p.name || ''}" required>
+                        <input class="form-input" type="text" name="name" value="${this._escAttr(p.name || '')}" required>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Cliente</label>
-                        <input class="form-input" type="text" name="clientName" value="${p.clientName || ''}">
+                        <input class="form-input" type="text" name="clientName" list="pjEditClientList" value="${this._escAttr(p.clientName || '')}" placeholder="Buscar o escribir nombre…" autocomplete="off">
+                        <datalist id="pjEditClientList">${clientOptions}</datalist>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Evento</label>
