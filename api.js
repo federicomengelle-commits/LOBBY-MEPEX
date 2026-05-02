@@ -84,6 +84,73 @@ const API = {
         );
     },
 
+    // ─── Predios (locaciones) ─────────────────
+    async getVenues() {
+        const cacheKey = 'venues';
+        const cached = this._cache[cacheKey];
+        if (cached && Date.now() - cached.ts < this._cacheTimeout) {
+            return cached.data;
+        }
+        try {
+            const { data, error } = await supabaseClient
+                .from('predios')
+                .select('id, nombre, ciudad, direccion, notas')
+                .eq('_deleted', false)
+                .order('nombre', { ascending: true });
+            if (error) throw error;
+            const mapped = (data || []).map(p => ({
+                id: p.id,
+                name: p.nombre || '',
+                city: p.ciudad || '',
+                address: p.direccion || '',
+                notes: p.notas || '',
+            }));
+            this._cache[cacheKey] = { data: mapped, ts: Date.now() };
+            return mapped;
+        } catch (e) {
+            console.warn('[API] Error fetching venues:', e.message);
+            return [];
+        }
+    },
+
+    async createVenue(data) {
+        const nombre = (data?.name || data?.nombre || '').trim();
+        if (!nombre) return null;
+        try {
+            const row = {
+                nombre,
+                ciudad: data.city || data.ciudad || null,
+                direccion: data.address || data.direccion || null,
+                notas: data.notes || data.notas || null,
+            };
+            const { data: inserted, error } = await supabaseClient
+                .from('predios')
+                .insert([row])
+                .select()
+                .single();
+            if (error) {
+                // 23505 = unique_violation: el predio ya existe (case-insensitive).
+                if (error.code === '23505') {
+                    delete this._cache.venues;
+                    const all = await this.getVenues();
+                    return all.find(v => v.name.toLowerCase() === nombre.toLowerCase()) || null;
+                }
+                throw error;
+            }
+            delete this._cache.venues;
+            return {
+                id: inserted.id,
+                name: inserted.nombre,
+                city: inserted.ciudad || '',
+                address: inserted.direccion || '',
+                notes: inserted.notas || '',
+            };
+        } catch (e) {
+            console.warn('[API] Error creating venue:', e.message);
+            return null;
+        }
+    },
+
     // ─── Projects ─────────────────────────────
     async getProjects() {
         const cacheKey = 'projects';

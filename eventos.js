@@ -21,6 +21,7 @@ const EventosModule = {
     _activePanel: null,  // event id for open side panel
     _activePanelData: null,
     _editingSections: new Set(),
+    _venues: [],  // catalog from `predios` table (sugerencias para el datalist)
 
     // ─── Color palette for events ───
     _palette: [
@@ -131,7 +132,12 @@ const EventosModule = {
     async _loadEvents() {
         let events = null;
         try {
-            events = await API.getEvents();
+            const [evs, venues] = await Promise.all([
+                API.getEvents(),
+                API.getVenues ? API.getVenues() : Promise.resolve([]),
+            ]);
+            events = evs;
+            this._venues = venues || [];
         } catch (e) {
             console.warn('[Eventos] API error:', e.message);
         }
@@ -153,6 +159,10 @@ const EventosModule = {
         this._populateVenueFilter();
         this._applyFilters();
         this._renderContent();
+    },
+
+    _escAttr(str) {
+        return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 
     _normalizeStatus(raw) {
@@ -1262,7 +1272,11 @@ const EventosModule = {
                     </div>
                     <div class="form-field">
                         <label class="form-label">Locación / Predio</label>
-                        <input class="form-input" type="text" name="venue" placeholder="Ej: La Rural, Buenos Aires">
+                        <div class="ev-venue-row" style="display:flex; gap:6px; align-items:stretch;">
+                            <input class="form-input" type="text" name="venue" list="evVenueList" placeholder="Ej: La Rural" autocomplete="off" style="flex:1;">
+                            <button type="button" class="btn btn-ghost" id="evVenueAddBtn" title="Agregar predio nuevo" style="padding:0 12px; white-space:nowrap;">+ Nuevo</button>
+                        </div>
+                        <datalist id="evVenueList">${this._venues.map(v => `<option value="${this._escAttr(v.name)}"></option>`).join('')}</datalist>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Estado</label>
@@ -1305,6 +1319,33 @@ const EventosModule = {
             `,
         });
 
+        // Wire "+ Nuevo predio" button: prompts for name, persists, refreshes datalist.
+        const venueAddBtn = instance.overlay.querySelector('#evVenueAddBtn');
+        const venueInput = instance.overlay.querySelector('[name="venue"]');
+        venueAddBtn?.addEventListener('click', async () => {
+            const suggested = (venueInput?.value || '').trim();
+            const nombre = (window.prompt('Nombre del nuevo predio:', suggested) || '').trim();
+            if (!nombre) return;
+            venueAddBtn.disabled = true;
+            const created = await API.createVenue({ name: nombre });
+            venueAddBtn.disabled = false;
+            if (!created) {
+                Toast.error('No se pudo crear el predio');
+                return;
+            }
+            // Add to local catalog if not already present
+            if (!this._venues.some(v => v.name.toLowerCase() === created.name.toLowerCase())) {
+                this._venues.push(created);
+                this._venues.sort((a, b) => a.name.localeCompare(b.name));
+            }
+            // Refresh datalist
+            const dl = instance.overlay.querySelector('#evVenueList');
+            if (dl) dl.innerHTML = this._venues.map(v => `<option value="${this._escAttr(v.name)}"></option>`).join('');
+            // Set the input to the new venue
+            if (venueInput) venueInput.value = created.name;
+            Toast.success(`Predio "${created.name}" agregado`);
+        });
+
         const submitBtn = instance.overlay.querySelector('#evCreateSubmit');
         submitBtn?.addEventListener('click', async () => {
             const form = instance.overlay.querySelector('#evCreateForm');
@@ -1320,9 +1361,10 @@ const EventosModule = {
             const sEvStart = split('dtEventStart');
             const sEvEnd = split('dtEventEnd');
             const sTeardown = split('dtTeardown');
+            const venue = (getVal('venue') || '').trim();
             const data = {
                 name,
-                venue: (getVal('venue') || '').trim(),
+                venue,
                 status: getVal('estado'),
                 setupDate: sSetup.date,
                 setupEndDate: sSetup.date,
@@ -1340,6 +1382,16 @@ const EventosModule = {
 
             submitBtn.disabled = true;
             submitBtn.textContent = 'Creando…';
+
+            // If the typed venue isn't in the catalog yet, add it on the fly.
+            // Fire-and-forget: no bloquea la creación del evento si falla.
+            if (venue && !this._venues.some(v => v.name.toLowerCase() === venue.toLowerCase())) {
+                API.createVenue({ name: venue }).then(v => {
+                    if (v && !this._venues.some(x => x.name.toLowerCase() === v.name.toLowerCase())) {
+                        this._venues.push(v);
+                    }
+                }).catch(() => {});
+            }
 
             const result = await API.createEvent(data);
             if (result) {
