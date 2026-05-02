@@ -1914,10 +1914,10 @@ const API = {
                         pyme_last_sync: new Date().toISOString(),
                     };
 
-                    // If cotización is cerrada_ganada and now has invoice, move to facturada
-                    if (cot.estado === 'cerrada_ganada' || cot.estado === 'aprobada') {
-                        updatePayload.estado = 'facturada';
-                    }
+                    // La facturación se infiere de pyme_venta_id IS NOT NULL.
+                    // No mutar el estado del pipeline cuando se factura — la cotización
+                    // queda en 'aprobada' y el flag de facturada se deriva del pyme_venta_id.
+                    // (Bloque eliminado intencionalmente en migración a pipeline de 5 estados)
 
                     const { error } = await supabaseClient
                         .from('cotizaciones').update(updatePayload).eq('id', cot.id);
