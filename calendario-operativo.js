@@ -905,7 +905,7 @@ const CalendarioOperativo = {
     async _loadPanelData(event) {
         try {
             const [equipo, transporte, docs, historial] = await Promise.all([
-                Promise.resolve(null), // TODO Fase 3: API.getEventoEquipo(event.id)
+                API.getEventoEquipo(event.id).catch(() => []),
                 Promise.resolve(null), // TODO Fase 4: API.getEventoTransporte(event.id)
                 Promise.resolve(null), // TODO Fase 6: API.getEventDocumentos(event.id)
                 Promise.resolve(null), // TODO Fase 6: API.getEventHistorial(event.id)

@@ -23,6 +23,11 @@ const EventosModule = {
     _editingSections: new Set(),
     _venues: [],  // catalog from `predios` table (sugerencias para el datalist)
 
+    // Equipo asignado (Fase 3 — vía rrhh_asignaciones)
+    _equipoCache: {},        // { [eventoId]: [...asignaciones] }
+    _personalList: [],       // lista completa de rrhh_personal (para el modal Agregar persona)
+    _personalLoaded: false,  // flag para no recargar innecesariamente
+
     // ─── Color palette for events ───
     _palette: [
         '#00BCD4', '#FF9800', '#9C27B0', '#4CAF50', '#E91E63',
@@ -67,6 +72,45 @@ const EventosModule = {
 
     _buildShell() {
         return `
+            <style>
+                /* Equipo asignado — lista (Fase 3) */
+                .ev-equipo-list { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+                .ev-equipo-item { display:flex; flex-direction:column; gap:2px; padding:8px 10px;
+                    background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px; }
+                .ev-equipo-item-info { display:flex; align-items:center; gap:8px; }
+                .ev-equipo-nombre { font-family:'Outfit',sans-serif; font-weight:500; color:#E8E8E8; }
+                .ev-equipo-rol-base { font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid #2a2a2a; color:#9B7DFF; background:#9B7DFF15; border-color:#9B7DFF40; }
+                .ev-equipo-item-meta { display:flex; align-items:center; gap:10px; margin-top:2px; }
+                .ev-equipo-rol-evento { font-size:12px; color:#aaa; font-style:italic; }
+                .ev-equipo-tel { font-family:'Space Mono',monospace; font-size:11px; color:#666; }
+                .ev-equipo-item-actions { display:flex; gap:4px; justify-content:flex-end; margin-top:4px; }
+                .ev-equipo-count { font-family:'Space Mono',monospace; font-size:10px; color:#00A9C1;
+                    background:#00A9C115; border:1px solid #00A9C130; border-radius:4px;
+                    padding:1px 6px; margin-left:6px; vertical-align:middle; }
+                .ev-add-persona-btn { font-size:11px; padding:3px 8px; background:transparent;
+                    border:1px solid #00A9C150; border-radius:4px; color:#00A9C1; cursor:pointer; }
+                .ev-add-persona-btn:hover { background:#00A9C115; }
+                .ev-icon-btn { background:transparent; border:none; cursor:pointer; color:#666; padding:2px 4px; border-radius:3px; line-height:1; }
+                .ev-icon-btn:hover { color:#E8E8E8; background:#2a2a2a; }
+                .ev-remove-persona-btn { color:#F28D1580; }
+                .ev-remove-persona-btn:hover { color:#F28D15; background:#F28D1515; }
+                .ev-inline-rol-input { font-size:12px; padding:2px 6px; height:24px; min-width:120px; }
+
+                /* Modal agregar persona */
+                .ev-modal-persona { display:flex; flex-direction:column; gap:0; }
+                .ev-persona-list { max-height:240px; overflow-y:auto; border:1px solid #2a2a2a;
+                    border-radius:6px; background:#0d0d0d; }
+                .ev-persona-option { display:flex; align-items:center; justify-content:space-between;
+                    gap:8px; padding:8px 12px; cursor:pointer; border-bottom:1px solid #1a1a1a; }
+                .ev-persona-option:last-child { border-bottom:none; }
+                .ev-persona-option:hover { background:#1a1a1a; }
+                .ev-persona-selected { background:#00A9C110 !important; border-left:2px solid #00A9C1; }
+                .ev-persona-option-info { display:flex; flex-direction:column; flex:1; }
+                .ev-persona-option-nombre { font-size:13px; color:#E8E8E8; }
+                .ev-persona-option-rol { font-size:11px; }
+                .ev-persona-option-tel { font-family:'Space Mono',monospace; font-size:10px; color:#666; white-space:nowrap; }
+                .ev-modal-persona-footer { padding-top:10px; border-top:1px solid #2a2a2a; }
+            </style>
             <div class="ev-wrapper">
                 <div class="ev-toolbar">
                     <div class="ev-toolbar-left">
@@ -199,25 +243,6 @@ const EventosModule = {
             const merged = { ...existing, ...data };
             localStorage.setItem(`ev_ext_${eventId}`, JSON.stringify(merged));
         } catch { /* */ }
-    },
-
-    _getEquipo(eventId) {
-        try {
-            const raw = localStorage.getItem(`ev_equipo_${eventId}`);
-            return raw ? JSON.parse(raw) : [];
-        } catch { return []; }
-    },
-
-    _saveEquipo(eventId, equipo) {
-        localStorage.setItem(`ev_equipo_${eventId}`, JSON.stringify(equipo));
-        // Dual-write: persist to Supabase
-        const team = equipo.map(t => ({
-            nombre_manual: t.nombre || t.name,
-            rol_operativo: t.rol || t.role || 'auxiliar',
-            orden: t.orden ?? 0,
-        }));
-        // TODO Fase 3/4: reemplazar por nueva API (addEventoAsignacion / removeEventoAsignacion)
-        // API.saveEventEquipo(eventId, team).catch(() => {});
     },
 
     _getTransporte(eventId) {
@@ -480,6 +505,9 @@ const EventosModule = {
         panel.classList.add('open');
 
         this._attachPanelEvents(ev);
+
+        // Cargar secciones async después de renderizar el shell
+        this._loadEquipoSection(eventId);
     },
 
     _closePanel() {
@@ -495,7 +523,6 @@ const EventosModule = {
 
     _renderPanel(ev) {
         const statusColor = this._getStatusColor(ev.estado);
-        const equipo = this._getEquipo(ev.id);
         const transporte = this._getTransporte(ev.id);
         const documentos = this._getDocumentos(ev.id);
         const notas = this._getNotas(ev.id);
@@ -522,8 +549,15 @@ const EventosModule = {
                 <!-- Proyectos vinculados -->
                 ${this._renderPanelProyectos(ev, proyectos)}
 
-                <!-- Equipo asignado -->
-                ${this._renderPanelEquipo(ev, equipo)}
+                <!-- Equipo asignado (cargado async desde rrhh_asignaciones) -->
+                <div id="evEquipoContent">
+                    <div class="ev-panel-section">
+                        <div class="ev-section-header">
+                            <h3 class="ev-section-title">Equipo asignado</h3>
+                        </div>
+                        <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
+                    </div>
+                </div>
 
                 <!-- Transporte -->
                 ${this._renderPanelTransporte(ev, transporte)}
@@ -653,50 +687,55 @@ const EventosModule = {
         `;
     },
 
-    _renderPanelEquipo(ev, equipo) {
-        const isEditing = this._editingSections.has('equipo');
-
-        if (isEditing) {
-            return `
-                <div class="ev-panel-section ev-section-editing" id="evSecEquipo">
-                    <div class="ev-section-header">
-                        <h3 class="ev-section-title">Equipo asignado</h3>
-                    </div>
-                    <div class="ev-equipo-editor" id="evEquipoEditor">
-                        ${equipo.map((p, idx) => this._renderEquipoRow(p, idx)).join('')}
-                        <div class="ev-equipo-add-row">
-                            <button class="btn btn-ghost btn-sm" id="evAddPersona">+ Agregar persona</button>
-                            <button class="btn btn-ghost btn-sm" id="evAddEventual">+ Agregar eventual</button>
-                        </div>
-                        <div class="ev-section-btns">
-                            <button class="btn btn-primary btn-sm" data-save-section="equipo">Guardar</button>
-                            <button class="btn btn-ghost btn-sm" data-cancel-section="equipo">Cancelar</button>
-                        </div>
-                    </div>
-                </div>
-            `;
+    async _loadEquipoSection(eventoId) {
+        const container = document.getElementById('evEquipoContent');
+        if (!container) return;
+        try {
+            const equipo = await API.getEventoEquipo(eventoId);
+            this._equipoCache[eventoId] = equipo;
+            container.innerHTML = this._renderPanelEquipo(eventoId, equipo);
+            this._attachEquipoEvents(eventoId, equipo);
+        } catch (e) {
+            container.innerHTML = `<div class="ev-panel-section"><p class="ev-section-empty" style="color:#F28D15">Error cargando equipo</p></div>`;
         }
+    },
 
+    _renderPanelEquipo(eventoId, equipo) {
         return `
             <div class="ev-panel-section" id="evSecEquipo">
                 <div class="ev-section-header">
-                    <h3 class="ev-section-title">Equipo asignado</h3>
-                    <button class="ev-edit-btn" data-edit-section="equipo" title="Editar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                    </button>
+                    <h3 class="ev-section-title">Equipo asignado
+                        <span class="ev-equipo-count">${equipo.length > 0 ? equipo.length : ''}</span>
+                    </h3>
+                    ${!this._isRO ? `
+                        <button class="ev-add-persona-btn" data-add-persona="${eventoId}" title="Agregar persona">
+                            + Agregar
+                        </button>
+                    ` : ''}
                 </div>
                 ${equipo.length > 0 ? `
-                    <table class="ev-mini-table">
-                        <thead><tr><th>Nombre</th><th>Rol</th></tr></thead>
-                        <tbody>
-                            ${equipo.map(p => `
-                                <tr>
-                                    <td>${p.nombre}${p.esEventual ? ' <span class="ev-tag-eventual">eventual</span>' : ''}</td>
-                                    <td>${p.rol}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
+                    <div class="ev-equipo-list">
+                        ${equipo.map(a => `
+                            <div class="ev-equipo-item" data-asignacion-id="${a.id}">
+                                <div class="ev-equipo-item-info">
+                                    <span class="ev-equipo-nombre">${this._escAttr(a.nombre)}</span>
+                                    <span class="ev-equipo-rol-base rh-tipo-tag">${this._escAttr(a.rolBase || a.tipo || '')}</span>
+                                </div>
+                                <div class="ev-equipo-item-meta">
+                                    <span class="ev-equipo-rol-evento" data-rol-evento="${a.id}">${this._escAttr(a.rolEvento || '—')}</span>
+                                    ${a.telefono ? `<span class="ev-equipo-tel">📞 ${this._escAttr(a.telefono)}</span>` : ''}
+                                </div>
+                                ${!this._isRO ? `
+                                <div class="ev-equipo-item-actions">
+                                    <button class="ev-icon-btn ev-edit-rol-btn" data-edit-rol="${a.id}" data-current-rol="${this._escAttr(a.rolEvento || '')}" title="Editar rol">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                    </button>
+                                    <button class="ev-icon-btn ev-remove-persona-btn" data-remove-asignacion="${a.id}" data-nombre="${this._escAttr(a.nombre)}" title="Quitar del evento">&times;</button>
+                                </div>
+                                ` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
                 ` : `
                     <p class="ev-section-empty">Sin equipo asignado</p>
                 `}
@@ -704,16 +743,228 @@ const EventosModule = {
         `;
     },
 
-    _renderEquipoRow(persona, idx) {
-        return `
-            <div class="ev-equipo-row" data-idx="${idx}">
-                <input type="text" class="ev-form-input ev-input-sm" name="persona_nombre_${idx}" value="${persona.nombre || ''}" placeholder="Nombre">
-                <select class="ev-form-input ev-input-sm" name="persona_rol_${idx}">
-                    ${this._rolOptions.map(r => `<option value="${r}" ${persona.rol === r ? 'selected' : ''}>${r}</option>`).join('')}
+    _attachEquipoEvents(eventoId, equipo) {
+        // Botón Agregar persona
+        document.querySelector(`[data-add-persona="${eventoId}"]`)
+            ?.addEventListener('click', () => this._openAddPersonaModal(eventoId));
+
+        // Editar rol-evento (inline)
+        document.querySelectorAll('[data-edit-rol]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const asignacionId = btn.dataset.editRol;
+                const currentRol = btn.dataset.currentRol || '';
+                this._startEditRol(asignacionId, currentRol);
+            });
+        });
+
+        // Quitar persona
+        document.querySelectorAll('[data-remove-asignacion]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const asignacionId = btn.dataset.removeAsignacion;
+                const nombre = btn.dataset.nombre || 'esta persona';
+                const ok = await Modal.confirm({
+                    title: 'Quitar del evento',
+                    message: `¿Quitar a ${nombre} del equipo de este evento?`,
+                    confirmText: 'Quitar',
+                    cancelText: 'Cancelar',
+                });
+                if (!ok) return;
+                const result = await API.removeEventoAsignacion(asignacionId);
+                if (result) {
+                    Toast.success(`${nombre} quitado del evento`);
+                    delete this._equipoCache[eventoId];
+                    await this._loadEquipoSection(eventoId);
+                } else {
+                    Toast.error('Error al quitar persona');
+                }
+            });
+        });
+    },
+
+    _startEditRol(asignacionId, currentRol) {
+        const span = document.querySelector(`[data-rol-evento="${asignacionId}"]`);
+        if (!span) return;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentRol;
+        input.className = 'ev-form-input ev-input-sm ev-inline-rol-input';
+        input.placeholder = 'Rol en este evento…';
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const restoreSpan = (text) => {
+            const restored = document.createElement('span');
+            restored.className = 'ev-equipo-rol-evento';
+            restored.dataset.rolEvento = asignacionId;
+            restored.textContent = text || '—';
+            input.replaceWith(restored);
+        };
+
+        let cancelled = false;
+
+        const save = async () => {
+            if (cancelled) return;
+            const nuevoRol = input.value.trim();
+            const result = await API.updateEventoAsignacion(asignacionId, { rolEvento: nuevoRol });
+            if (result) {
+                delete this._equipoCache[this._activePanel]; // invalidar caché
+                await this._loadEquipoSection(this._activePanel);
+            } else {
+                Toast.error('Error al guardar rol');
+                restoreSpan(currentRol);
+            }
+        };
+
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') {
+                cancelled = true;
+                input.removeEventListener('blur', save);
+                restoreSpan(currentRol);
+            }
+        });
+    },
+
+    async _openAddPersonaModal(eventoId) {
+        // Cargar lista de personal si no está en memoria
+        if (!this._personalLoaded) {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('rrhh_personal')
+                    .select('id, nombre, rol, tipo, telefono, estado')
+                    .eq('_deleted', false)
+                    .eq('estado', 'activo')
+                    .order('nombre', { ascending: true });
+                if (error) throw error;
+                this._personalList = data || [];
+                this._personalLoaded = true;
+            } catch (e) {
+                Toast.error('Error al cargar personal');
+                return;
+            }
+        }
+
+        // IDs ya asignados al evento para excluirlos del selector
+        const asignados = new Set((this._equipoCache[eventoId] || []).map(a => String(a.personalId)));
+
+        // Roles únicos para el filtro
+        const rolesUnicos = [...new Set(this._personalList.map(p => p.rol).filter(Boolean))].sort();
+
+        // Colores de tipo (igual que rrhh.js)
+        const tipoColors = { fijo: '#00CC88', eventual: '#F28D15', cuadrilla: '#9B7DFF' };
+
+        const buildPersonaList = (filterRol, search, selected) => {
+            let lista = this._personalList.filter(p => !asignados.has(String(p.id)));
+            if (filterRol) lista = lista.filter(p => p.rol === filterRol);
+            if (search) lista = lista.filter(p => (p.nombre || '').toLowerCase().includes(search.toLowerCase()));
+            if (lista.length === 0) return `<p style="color:#666;padding:12px;text-align:center">Sin resultados</p>`;
+            return lista.map(p => {
+                const color = tipoColors[p.tipo] || '#666';
+                const checked = selected.has(String(p.id)) ? 'checked' : '';
+                return `
+                    <label class="ev-persona-option ${checked ? 'ev-persona-selected' : ''}" data-persona-id="${p.id}">
+                        <input type="checkbox" value="${p.id}" ${checked} style="display:none">
+                        <div class="ev-persona-option-info">
+                            <span class="ev-persona-option-nombre">${this._escAttr(p.nombre)}</span>
+                            <span class="ev-persona-option-rol" style="color:${color}">${this._escAttr(p.rol || '')}</span>
+                        </div>
+                        ${p.telefono ? `<span class="ev-persona-option-tel">📞 ${this._escAttr(p.telefono)}</span>` : ''}
+                    </label>
+                `;
+            }).join('');
+        };
+
+        const selected = new Set();
+        let filterRol = '';
+        let search = '';
+
+        const body = `
+            <div class="ev-modal-persona">
+                <input type="text" id="evPersonaSearch" class="ev-form-input" placeholder="🔍 Buscar por nombre…" style="margin-bottom:8px">
+                <select id="evPersonaFiltroRol" class="ev-form-input" style="margin-bottom:10px">
+                    <option value="">Todos los roles</option>
+                    ${rolesUnicos.map(r => `<option value="${this._escAttr(r)}">${this._escAttr(r)}</option>`).join('')}
                 </select>
-                <button class="ev-remove-row" data-remove-equipo="${idx}" title="Quitar">&times;</button>
+                <div class="ev-persona-list" id="evPersonaList">
+                    ${buildPersonaList('', '', selected)}
+                </div>
+                <div class="ev-modal-persona-footer" id="evPersonaFooter" style="margin-top:12px;display:none">
+                    <label class="ev-form-label">Rol en este evento (opcional, aplica a todas las seleccionadas):</label>
+                    <input type="text" id="evPersonaRolEvento" class="ev-form-input ev-input-sm"
+                        placeholder="Ej: Armador, Encargado de armado…"
+                        list="evRolEventoSuggestions">
+                    <datalist id="evRolEventoSuggestions">
+                        ${['Armador', 'Encargado de armado', 'Auxiliar', 'Chofer', 'Electricista', 'Carpintero', 'Supervisor'].map(r => `<option value="${r}">`).join('')}
+                    </datalist>
+                </div>
             </div>
         `;
+
+        Modal.open({
+            title: '👥 Agregar persona al evento',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="evPersonaSaveBtn" disabled>Agregar (0)</button>
+            `,
+        });
+
+        const listEl = document.getElementById('evPersonaList');
+        const searchEl = document.getElementById('evPersonaSearch');
+        const filtroRolEl = document.getElementById('evPersonaFiltroRol');
+        const footerEl = document.getElementById('evPersonaFooter');
+        const saveBtn = document.getElementById('evPersonaSaveBtn');
+
+        const refreshList = () => {
+            listEl.innerHTML = buildPersonaList(filterRol, search, selected);
+        };
+
+        refreshList();
+
+        // Event delegation: un único listener en el contenedor sobrevive a innerHTML re-renders
+        // y se registra antes de cualquier evento (más robusto que adjuntar listeners por label).
+        listEl.addEventListener('click', (e) => {
+            const label = e.target.closest('.ev-persona-option');
+            if (!label || !listEl.contains(label)) return;
+            e.preventDefault();
+            const pid = label.dataset.personaId;
+            if (!pid) return;
+            if (selected.has(pid)) { selected.delete(pid); label.classList.remove('ev-persona-selected'); }
+            else { selected.add(pid); label.classList.add('ev-persona-selected'); }
+            const count = selected.size;
+            saveBtn.disabled = count === 0;
+            saveBtn.textContent = count > 0 ? `Agregar (${count})` : 'Agregar (0)';
+            footerEl.style.display = count > 0 ? 'block' : 'none';
+        });
+
+        let searchTimer;
+        searchEl.addEventListener('input', (e) => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => { search = e.target.value; refreshList(); }, 200);
+        });
+        filtroRolEl.addEventListener('change', (e) => { filterRol = e.target.value; refreshList(); });
+
+        saveBtn.addEventListener('click', async () => {
+            if (selected.size === 0) return;
+            const rolEvento = document.getElementById('evPersonaRolEvento')?.value.trim() || null;
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Guardando…';
+            let ok = 0;
+            for (const pid of selected) {
+                const result = await API.addEventoAsignacion(eventoId, {
+                    personalId: pid,
+                    rolEvento,
+                });
+                if (result) ok++;
+            }
+            Modal.close();
+            delete this._equipoCache[eventoId];
+            await this._loadEquipoSection(eventoId);
+            Toast.success(`${ok} persona${ok !== 1 ? 's' : ''} agregada${ok !== 1 ? 's' : ''} al evento`);
+        });
     },
 
     _renderPanelTransporte(ev, transporte) {
@@ -1205,29 +1456,8 @@ const EventosModule = {
             }
         }
 
-        if (section === 'equipo') {
-            const rows = panel.querySelectorAll('.ev-equipo-row');
-            const equipo = [];
-            rows.forEach((row, idx) => {
-                const nombre = panel.querySelector(`[name="persona_nombre_${idx}"]`)?.value?.trim();
-                const rol = panel.querySelector(`[name="persona_rol_${idx}"]`)?.value || 'Auxiliar';
-                if (nombre) {
-                    equipo.push({
-                        nombre,
-                        rol,
-                        esEventual: row.dataset.eventual === 'true',
-                        orden: idx,
-                    });
-                }
-            });
-            this._saveEquipo(ev.id, equipo);
-            // TODO Fase 6: reemplazar por nueva API (logEventChange queda comentada hasta rehacer evento_historial)
-            // const userEq = Auth.getUser()?.name || '';
-            // API.logEventChange(ev.id, 'equipo_cambio', `Equipo actualizado (${equipo.length} personas)`, {
-            //     campo: 'equipo', count: equipo.length,
-            // }, userEq).catch(() => {});
-            Toast.success('Equipo actualizado');
-        }
+        // Sección 'equipo' eliminada en Fase 3: el equipo se gestiona inline
+        // con los botones + Agregar / × en _renderPanelEquipo, no por save/cancel.
 
         if (section === 'transporte') {
             const getData = (name) => panel.querySelector(`[name="${name}"]`)?.value || '';
@@ -1583,7 +1813,7 @@ const EventosModule = {
         const result = await API.deleteEvent(eventId);
         if (result) {
             // Clean up localStorage data
-            ['ev_ext_', 'ev_equipo_', 'ev_transporte_', 'ev_docs_', 'ev_notas_', 'ev_proyectos_'].forEach(prefix => {
+            ['ev_ext_', 'ev_transporte_', 'ev_docs_', 'ev_notas_', 'ev_proyectos_'].forEach(prefix => {
                 localStorage.removeItem(prefix + eventId);
             });
             Toast.success('Evento eliminado');
