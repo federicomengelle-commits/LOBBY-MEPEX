@@ -13,7 +13,13 @@
 
 BEGIN;
 
--- 1. Migrar valores existentes a los nuevos estados
+-- 1. Drop CHECK constraint viejo PRIMERO
+-- (si dejamos para después, el UPDATE del paso 2 falla porque
+--  intenta escribir 'rechazada', que el constraint viejo no permite)
+ALTER TABLE public.cotizaciones
+DROP CONSTRAINT IF EXISTS cotizaciones_estado_check;
+
+-- 2. Migrar valores existentes a los nuevos estados
 UPDATE public.cotizaciones
 SET estado = CASE estado
     WHEN 'vista' THEN 'enviada'
@@ -23,10 +29,6 @@ SET estado = CASE estado
     ELSE estado
 END
 WHERE estado IN ('vista', 'cerrada_ganada', 'cerrada_perdida', 'facturada');
-
--- 2. Drop CHECK constraint viejo
-ALTER TABLE public.cotizaciones
-DROP CONSTRAINT IF EXISTS cotizaciones_estado_check;
 
 -- 3. Crear CHECK constraint nuevo (5 estados)
 ALTER TABLE public.cotizaciones
