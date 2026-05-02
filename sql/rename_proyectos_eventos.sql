@@ -165,4 +165,7 @@ COMMIT;
 -- ═══════════════════════════════════════════════════════════════════
 -- IMPORTANTE: este SQL elimina DEFINITIVAMENTE proyectos_2026 y
 -- eventos_2026 con todas sus filas. Ejecutar solo si la data es dummy.
+--
+-- DESPUÉS de ejecutar esto, correr sql/rls_eventos_proyectos.sql
+-- para habilitar las políticas RLS. Sin eso, INSERT/UPDATE fallan.
 -- ═══════════════════════════════════════════════════════════════════
