@@ -127,7 +127,7 @@
 - **Impacto:** 3/5 · **Esfuerzo:** S
 
 ### 2.5 Búsqueda global — upgrades
-- **Estado:** existe (Ctrl+K en [app.js](app.js), busca `clientes/proyectos_2026/eventos_2026` vía `API.globalSearch()`).
+- **Estado:** existe (Ctrl+K en [app.js](app.js), busca `clientes/proyectos/eventos` vía `API.globalSearch()`).
 - **Falta:** fuzzy search (fuse.js, 8KB), incluir cotizaciones y documentos, atajos de navegación con flechas.
 - **Impacto:** 2/5 · **Esfuerzo:** S
 
@@ -244,7 +244,7 @@ CREATE OR REPLACE FUNCTION fn_crear_proyecto_desde_cotizacion()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.estado = 'aprobada' AND OLD.estado IS DISTINCT FROM 'aprobada' THEN
-    INSERT INTO proyectos_2026 (
+    INSERT INTO proyectos (
       cotizacion_id, cliente_id, nombre, fecha_inicio,
       responsable, created_at
     ) VALUES (
@@ -286,7 +286,7 @@ Requiere columna `costeo_dirty BOOLEAN` en `catalogo_items` + un refresh manual 
 Hoy no existe. Pseudo:
 ```sql
 CREATE TRIGGER trg_evento_finalizado_cierra_ots
-AFTER UPDATE OF estado ON eventos_2026
+AFTER UPDATE OF estado ON eventos
 FOR EACH ROW WHEN (NEW.estado = 'finalizado')
 EXECUTE FUNCTION fn_cerrar_ots_evento();
 ```
@@ -325,7 +325,7 @@ CREATE VIEW v_eventos_proximos_7d AS ...;         -- para notificaciones
 [contabilidad_fase1_tablas.sql:105](sql/contabilidad_fase1_tablas.sql) referencia una columna inexistente en el policy de `asiento_lineas`. Revisar y corregir.
 
 ### 4.11 Columnas rotadas en `clientes` — recomendación final
-Hoy el workaround está en [api.js:45-63](api.js). También aplica a `proyectos_2026` ([api.js:105-122](api.js)).
+Hoy el workaround está en [api.js:45-63](api.js). También aplica a `proyectos` ([api.js:105-122](api.js)).
 **Veredicto:** no vale la pena corregir en Supabase. El costo es alto (migración de datos, renames, 24 líneas de mapeo inverso por eliminar, regresión tests) y el beneficio es solo cosmético. Documentarlo explícitamente y seguir.
 
 ---

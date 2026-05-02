@@ -1,10 +1,15 @@
+-- ⚠️ La sección de proyectos (ADD updated_at + trigger) ya está
+-- incluida en sql/rename_proyectos_eventos.sql. Las secciones de
+-- clientes (ultimo_contacto) e insumos_base (stock_actual/minimo)
+-- siguen vigentes si aún no se aplicaron.
+
 -- =============================================
 -- Badges: columnas necesarias para alertas
 -- Fecha: 2026-04-04
 -- =============================================
 
--- 1. proyectos_2026: agregar updated_at para detectar proyectos estancados
-ALTER TABLE proyectos_2026
+-- 1. proyectos: agregar updated_at para detectar proyectos estancados
+ALTER TABLE proyectos
   ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
 -- Trigger para auto-actualizar updated_at en cada UPDATE
@@ -16,14 +21,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_proyectos_updated_at ON proyectos_2026;
+DROP TRIGGER IF EXISTS trg_proyectos_updated_at ON proyectos;
 CREATE TRIGGER trg_proyectos_updated_at
-  BEFORE UPDATE ON proyectos_2026
+  BEFORE UPDATE ON proyectos
   FOR EACH ROW
   EXECUTE FUNCTION update_proyectos_updated_at();
 
 -- Inicializar updated_at con created_at para filas existentes
-UPDATE proyectos_2026 SET updated_at = created_at WHERE updated_at IS NULL;
+UPDATE proyectos SET updated_at = created_at WHERE updated_at IS NULL;
 
 -- 2. clientes: agregar ultimo_contacto para badge CRM (follow-up)
 ALTER TABLE clientes

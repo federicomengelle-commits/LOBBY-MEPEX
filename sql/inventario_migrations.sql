@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS inventario_movimientos (
     created_at  timestamptz DEFAULT now(),
     tipo        text NOT NULL CHECK (tipo IN ('entrada', 'consumo', 'transformacion', 'ajuste')),
     subtipo     text CHECK (subtipo IN ('compra', 'devolucion', 'recupero', 'ajuste_positivo', 'ajuste_negativo', 'corte', 'recorte')),
-    proyecto_id uuid REFERENCES proyectos_2026(id),
+    proyecto_id uuid REFERENCES proyectos(id),
     usuario     text NOT NULL,
     notas       text,
     _deleted    boolean DEFAULT false

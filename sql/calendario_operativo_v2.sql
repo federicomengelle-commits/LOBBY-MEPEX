@@ -1,20 +1,28 @@
+-- ⚠️ DEPRECADO: este archivo fue ejecutado originalmente.
+-- Las tablas hijas (evento_equipo, evento_transporte, evento_documentos,
+-- evento_historial) se recrearon en sql/rename_proyectos_eventos.sql
+-- con schema estandarizado (created_at, updated_at, _deleted).
+-- Mantener como histórico, NO re-ejecutar.
+--
+-- Refs eventos_2026 → eventos ya actualizadas para coherencia documental.
+
 -- ============================================
 --  Calendario Operativo V2
 --  Tablas de logística, documentos e historial
---  + columnas nuevas en eventos_2026
+--  + columnas nuevas en eventos
 -- ============================================
 
--- ─── 1. ALTER eventos_2026: columnas nuevas ───
+-- ─── 1. ALTER eventos: columnas nuevas ───
 
-ALTER TABLE public.eventos_2026 ADD COLUMN IF NOT EXISTS color text;
-ALTER TABLE public.eventos_2026 ADD COLUMN IF NOT EXISTS fecha_desarme_fin date;
-ALTER TABLE public.eventos_2026 ADD COLUMN IF NOT EXISTS notas_operativas text;
+ALTER TABLE public.eventos ADD COLUMN IF NOT EXISTS color text;
+ALTER TABLE public.eventos ADD COLUMN IF NOT EXISTS fecha_desarme_fin date;
+ALTER TABLE public.eventos ADD COLUMN IF NOT EXISTS notas_operativas text;
 
 -- ─── 2. evento_equipo ───
 
 CREATE TABLE IF NOT EXISTS public.evento_equipo (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    evento_id       uuid NOT NULL REFERENCES public.eventos_2026(id) ON DELETE CASCADE,
+    evento_id       uuid NOT NULL REFERENCES public.eventos(id) ON DELETE CASCADE,
     persona_id      uuid,           -- FK a empleados, nullable para eventuales
     nombre_manual   text NOT NULL,
     rol_operativo   text NOT NULL,  -- supervisor | montajista | electricista | chofer | auxiliar
@@ -28,7 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_evento_equipo_evento ON public.evento_equipo(even
 
 CREATE TABLE IF NOT EXISTS public.evento_transporte (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    evento_id       uuid NOT NULL REFERENCES public.eventos_2026(id) ON DELETE CASCADE,
+    evento_id       uuid NOT NULL REFERENCES public.eventos(id) ON DELETE CASCADE,
     camion          text,
     chofer_nombre   text,
     chofer_id       uuid,           -- FK a empleados, nullable
@@ -55,7 +63,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS public.evento_documentos (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    evento_id       uuid NOT NULL REFERENCES public.eventos_2026(id) ON DELETE CASCADE,
+    evento_id       uuid NOT NULL REFERENCES public.eventos(id) ON DELETE CASCADE,
     tipo            text NOT NULL,  -- plano | reglamento | manual | seguro_acreditacion | otro
     nombre_archivo  text NOT NULL,
     storage_path    text,
@@ -69,7 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_evento_documentos_evento ON public.evento_documen
 
 CREATE TABLE IF NOT EXISTS public.evento_historial (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    evento_id       uuid NOT NULL REFERENCES public.eventos_2026(id) ON DELETE CASCADE,
+    evento_id       uuid NOT NULL REFERENCES public.eventos(id) ON DELETE CASCADE,
     tipo            text NOT NULL,
         -- campo_editado | estado_cambio | equipo_cambio | transporte_cambio | documento | nota
     descripcion     text NOT NULL,
@@ -81,7 +89,7 @@ CREATE TABLE IF NOT EXISTS public.evento_historial (
 CREATE INDEX IF NOT EXISTS idx_evento_historial_evento ON public.evento_historial(evento_id);
 CREATE INDEX IF NOT EXISTS idx_evento_historial_created ON public.evento_historial(created_at DESC);
 
--- ─── 6. Trigger: auto-log cambios en eventos_2026 ───
+-- ─── 6. Trigger: auto-log cambios en eventos ───
 
 CREATE OR REPLACE FUNCTION public.log_evento_cambio()
 RETURNS TRIGGER AS $$
@@ -147,9 +155,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS evento_auto_log ON public.eventos_2026;
+DROP TRIGGER IF EXISTS evento_auto_log ON public.eventos;
 CREATE TRIGGER evento_auto_log
-    AFTER UPDATE ON public.eventos_2026
+    AFTER UPDATE ON public.eventos
     FOR EACH ROW EXECUTE FUNCTION public.log_evento_cambio();
 
 -- ─── 7. RLS: policies para authenticated ───

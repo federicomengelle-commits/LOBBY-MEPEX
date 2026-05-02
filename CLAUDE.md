@@ -242,8 +242,8 @@ Permisos definidos en `Data.rolePermissions`, personalizables por usuario via `c
 |-------|-----|
 | `profiles` | Usuarios: name, role, initials, active, custom_permissions |
 | `clientes` | Base de clientes (NOTA: columnas rotadas — ver bug abajo) |
-| `proyectos_2026` | Proyectos por ano |
-| `eventos_2026` | Eventos feriales: fechas, venue, equipo, transporte, docs |
+| `proyectos` | Proyectos por ano |
+| `eventos` | Eventos feriales: fechas, venue, equipo, transporte, docs |
 | `insumos_base` | Materias primas con costos, clasificacion, categoria |
 | `catalogo_items` | Items fabricados con receta de insumos |
 | `cotizaciones` | Cotizaciones del pipeline comercial |

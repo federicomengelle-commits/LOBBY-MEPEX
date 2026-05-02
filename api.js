@@ -93,7 +93,7 @@ const API = {
         }
         try {
             const { data, error } = await supabaseClient
-                .from('proyectos_2026')
+                .from('proyectos')
                 .select('*')
                 .eq('_deleted', false)
                 .order('nombre', { ascending: true });
@@ -101,24 +101,19 @@ const API = {
             if (error) throw error;
             this.isConnected = true;
 
-            // Mapeo Supabase → formato interno
-            // NOTA: columnas rotadas en Supabase —
-            //   'estado' tiene nombre de cliente,
-            //   'responsable' tiene estado del proyecto,
-            //   'empresa' tiene nombre de evento,
-            //   'n_lote' tiene nombre del responsable.
             const mapped = (data || []).map(p => ({
                 id: p.id,
                 name: p.nombre || '',
-                clientName: p.estado || '',
-                status: p.responsable || '',
-                eventName: p.empresa || '',
-                responsible: p.n_lote || '',
-                type: p.tipo || '',
-                // Campos originales mayormente vacíos en la DB
-                lote: '',
-                number: '',
-                empresa: '',
+                clientId: p.cliente_id || null,
+                eventoId: p.evento_id || null,
+                responsableId: p.responsable_id || null,
+                estado: p.estado || '',
+                tipo: p.tipo || '',
+                fechaInicio: p.fecha_inicio || null,
+                fechaFin: p.fecha_fin || null,
+                notas: p.notas || '',
+                createdAt: p.created_at,
+                updatedAt: p.updated_at,
             }));
 
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -159,7 +154,7 @@ const API = {
         }
         try {
             const { data, error } = await supabaseClient
-                .from('eventos_2026')
+                .from('eventos')
                 .select('*')
                 .eq('_deleted', false)
                 .order('fecha_evento_inicio', { ascending: true });
@@ -321,13 +316,15 @@ const API = {
             console.log('🔄 Cargando métricas...');
 
             const [projects, clients, proveedores, events] = await Promise.all([
-                // Proyectos activos (excluyendo finalizado y rechazado)
-                // 'responsable' column has status (rotated columns)
+                // Proyectos activos (excluyendo finalizado y rechazado).
+                // Filtra por estado real (post-desrotación). Los valores aún
+                // pueden estar en mayúscula si quedaron registros viejos —
+                // ver TODO-POST-RENAME.md.
                 supabaseClient
-                    .from('proyectos_2026')
+                    .from('proyectos')
                     .select('*')
                     .eq('_deleted', false)
-                    .not('responsable', 'in', '("Finalizado","Rechazado")'),
+                    .not('estado', 'in', '("Finalizado","Rechazado","finalizado","rechazado")'),
                 // Clientes totales
                 supabaseClient
                     .from('clientes')
@@ -340,7 +337,7 @@ const API = {
                     .eq('_deleted', false),
                 // Eventos próximos
                 supabaseClient
-                    .from('eventos_2026')
+                    .from('eventos')
                     .select('*', { count: 'exact', head: true })
                     .eq('_deleted', false)
                     .gte('fecha_evento_inicio', new Date().toISOString().split('T')[0]),
@@ -485,17 +482,18 @@ const API = {
     // ─── Projects CRUD ───────────────────────
     async createProject(data) {
         try {
-            // NOTA: columnas rotadas en Supabase
-            // estado→clientName, responsable→status, empresa→eventName, n_lote→responsible
             const payload = {
-                nombre: data.name || '',
-                estado: data.clientName || '',
-                responsable: data.status || 'Ingreso',
-                empresa: data.eventName || '',
-                n_lote: data.responsible || '',
-                tipo: data.type || '',
+                nombre: data.name || data.nombre,
+                cliente_id: data.clientId || data.cliente_id || null,
+                evento_id: data.eventoId || data.evento_id || null,
+                responsable_id: data.responsableId || data.responsable_id || null,
+                estado: data.estado || data.status || null,
+                tipo: data.tipo || data.type || null,
+                fecha_inicio: data.fechaInicio || data.fecha_inicio || null,
+                fecha_fin: data.fechaFin || data.fecha_fin || null,
+                notas: data.notas || data.notes || null,
             };
-            const result = await UndoHelpers.createRecord('proyectos_2026', payload, `Nuevo proyecto: ${data.name || ''}`);
+            const result = await UndoHelpers.createRecord('proyectos', payload, `Nuevo proyecto: ${data.name || data.nombre || ''}`);
             this.clearCache();
             return result || true;
         } catch (e) {
@@ -506,15 +504,26 @@ const API = {
 
     async updateProject(id, data) {
         try {
-            // NOTA: columnas rotadas en Supabase
             const payload = {};
             if (data.name !== undefined) payload.nombre = data.name;
-            if (data.clientName !== undefined) payload.estado = data.clientName;
-            if (data.status !== undefined) payload.responsable = data.status;
-            if (data.eventName !== undefined) payload.empresa = data.eventName;
-            if (data.responsible !== undefined) payload.n_lote = data.responsible;
+            if (data.nombre !== undefined) payload.nombre = data.nombre;
+            if (data.clientId !== undefined) payload.cliente_id = data.clientId || null;
+            if (data.cliente_id !== undefined) payload.cliente_id = data.cliente_id || null;
+            if (data.eventoId !== undefined) payload.evento_id = data.eventoId || null;
+            if (data.evento_id !== undefined) payload.evento_id = data.evento_id || null;
+            if (data.responsableId !== undefined) payload.responsable_id = data.responsableId || null;
+            if (data.responsable_id !== undefined) payload.responsable_id = data.responsable_id || null;
+            if (data.estado !== undefined) payload.estado = data.estado;
+            if (data.status !== undefined) payload.estado = data.status;
+            if (data.tipo !== undefined) payload.tipo = data.tipo;
             if (data.type !== undefined) payload.tipo = data.type;
-            await UndoHelpers.updateRecord('proyectos_2026', id, payload, `Edito proyecto: ${data.name || ''}`);
+            if (data.fechaInicio !== undefined) payload.fecha_inicio = data.fechaInicio || null;
+            if (data.fecha_inicio !== undefined) payload.fecha_inicio = data.fecha_inicio || null;
+            if (data.fechaFin !== undefined) payload.fecha_fin = data.fechaFin || null;
+            if (data.fecha_fin !== undefined) payload.fecha_fin = data.fecha_fin || null;
+            if (data.notas !== undefined) payload.notas = data.notas;
+            if (data.notes !== undefined) payload.notas = data.notes;
+            await UndoHelpers.updateRecord('proyectos', id, payload, `Edito proyecto: ${data.name || data.nombre || ''}`);
             this.clearCache();
             return true;
         } catch (e) {
@@ -525,7 +534,7 @@ const API = {
 
     async deleteProject(id) {
         try {
-            await UndoHelpers.deleteRecord('proyectos_2026', id, 'Elimino proyecto');
+            await UndoHelpers.deleteRecord('proyectos', id, 'Elimino proyecto');
             this.clearCache();
             return true;
         } catch (e) {
@@ -558,7 +567,7 @@ const API = {
                 prioridad: data.priority || '',
                 estado: data.status || 'Sin empezar',
             };
-            const result = await UndoHelpers.createRecord('eventos_2026', payload, `Nuevo evento: ${data.name || ''}`);
+            const result = await UndoHelpers.createRecord('eventos', payload, `Nuevo evento: ${data.name || ''}`);
             this.clearCache();
             return result || true;
         } catch (e) {
@@ -589,7 +598,7 @@ const API = {
             if (data.notasOperativas !== undefined) payload.notas_operativas = data.notasOperativas;
             if (data.priority !== undefined) payload.prioridad = data.priority;
             if (data.status !== undefined) payload.estado = data.status;
-            await UndoHelpers.updateRecord('eventos_2026', id, payload, `Edito evento: ${data.name || ''}`);
+            await UndoHelpers.updateRecord('eventos', id, payload, `Edito evento: ${data.name || ''}`);
             this.clearCache();
             return true;
         } catch (e) {
@@ -600,7 +609,7 @@ const API = {
 
     async deleteEvent(id) {
         try {
-            await UndoHelpers.deleteRecord('eventos_2026', id, 'Elimino evento');
+            await UndoHelpers.deleteRecord('eventos', id, 'Elimino evento');
             this.clearCache();
             return true;
         } catch (e) {
@@ -867,31 +876,33 @@ const API = {
     },
 
     // ─── Projects by Client ──────────────────
-    async getProjectsByClient(clientName) {
-        if (!clientName) return [];
+    // Cambio de signature post-rename: ahora recibe uuid (cliente_id), no nombre.
+    // Callers pendientes de migrar listados en TODO-POST-RENAME.md.
+    async getProjectsByClient(clientId) {
+        if (!clientId) return [];
         try {
-            // 'estado' column has client names (rotated columns)
             const { data, error } = await supabaseClient
-                .from('proyectos_2026')
+                .from('proyectos')
                 .select('*')
                 .eq('_deleted', false)
-                .ilike('estado', `%${clientName}%`)
+                .eq('cliente_id', clientId)
                 .order('nombre', { ascending: true });
 
             if (error) throw error;
 
-            // Same rotated mapping as getProjects
             return (data || []).map(p => ({
                 id: p.id,
                 name: p.nombre || '',
-                clientName: p.estado || '',
-                status: p.responsable || '',
-                eventName: p.empresa || '',
-                responsible: p.n_lote || '',
-                type: p.tipo || '',
-                lote: '',
-                number: '',
-                empresa: '',
+                clientId: p.cliente_id || null,
+                eventoId: p.evento_id || null,
+                responsableId: p.responsable_id || null,
+                estado: p.estado || '',
+                tipo: p.tipo || '',
+                fechaInicio: p.fecha_inicio || null,
+                fechaFin: p.fecha_fin || null,
+                notas: p.notas || '',
+                createdAt: p.created_at,
+                updatedAt: p.updated_at,
             }));
         } catch (e) {
             console.warn('[API] Error fetching projects by client:', e.message);
@@ -904,7 +915,7 @@ const API = {
         if (!names || !names.length) return [];
         try {
             const { data, error } = await supabaseClient
-                .from('eventos_2026')
+                .from('eventos')
                 .select('*')
                 .eq('_deleted', false)
                 .in('nombre', names);

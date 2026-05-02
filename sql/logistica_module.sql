@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS logistica_vehiculos (
 -- ── Movimientos (viajes) ──
 CREATE TABLE IF NOT EXISTS logistica_movimientos (
     id              BIGSERIAL PRIMARY KEY,
-    evento_id       BIGINT REFERENCES eventos_2026(id) ON DELETE SET NULL,
-    proyecto_id     BIGINT REFERENCES proyectos_2026(id) ON DELETE SET NULL,
+    evento_id       BIGINT REFERENCES eventos(id) ON DELETE SET NULL,
+    proyecto_id     BIGINT REFERENCES proyectos(id) ON DELETE SET NULL,
     vehiculo_id     BIGINT REFERENCES logistica_vehiculos(id) ON DELETE SET NULL,
     chofer          TEXT,
     origen          TEXT NOT NULL,

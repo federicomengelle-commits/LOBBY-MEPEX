@@ -10,8 +10,8 @@
 
 ### Problema
 La tabla `cotizaciones` en Supabase tiene columnas que el código no lee:
-- `project_id` (uuid, FK a `proyectos_2026`)
-- `event_id` (uuid, FK a `eventos_2026`)
+- `project_id` (uuid, FK a `proyectos`)
+- `event_id` (uuid, FK a `eventos`)
 - `full_state` (jsonb, estado completo del Cotizador con items, params, totals)
 - `altura` (text)
 

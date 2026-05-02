@@ -42,7 +42,7 @@ CREATE TABLE inventario_movimientos (
   created_at timestamptz DEFAULT now(),
   tipo text NOT NULL, -- 'entrada' | 'consumo' | 'transformacion' | 'ajuste'
   subtipo text, -- 'compra' | 'devolucion' | 'recupero' | 'ajuste_positivo' | 'ajuste_negativo' | 'corte' | 'recorte'
-  proyecto_id uuid REFERENCES proyectos_2026(id),
+  proyecto_id uuid REFERENCES proyectos(id),
   usuario text NOT NULL,
   notas text,
   _deleted boolean DEFAULT false
@@ -105,7 +105,7 @@ CREATE TABLE inventario_fisico_conteo (
 
 - **Flow de materiales proyectado:**
   - Timeline visual (próximas 4 semanas)
-  - Cruzar eventos confirmados (eventos_2026 próximos) con materiales asignados (taller_materiales por proyecto)
+  - Cruzar eventos confirmados (eventos próximos) con materiales asignados (taller_materiales por proyecto)
   - Mostrar semana a semana: stock disponible proyectado
   - Si no hay data suficiente, mostrar placeholder "Sin proyecciones disponibles — asigná materiales a proyectos para ver el flow"
 
@@ -155,7 +155,7 @@ CREATE TABLE inventario_fisico_conteo (
   Modal con formulario:
   - Items: selector múltiple de insumos_base (los consumibles)
   - Cantidad por cada item
-  - Proyecto: select de proyectos activos (proyectos_2026)
+  - Proyecto: select de proyectos activos (proyectos)
   - Notas (ej: "5 placas MDF 3mm para corte de paneles")
   - Al guardar: crea movimiento + descuenta stock
 

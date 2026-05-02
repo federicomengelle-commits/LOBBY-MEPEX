@@ -51,8 +51,8 @@ const Modules = {
     // ─── Entity config ───
     _entityConfig: {
         clients:  { label: 'cliente',  labelPlural: 'clientes',  supabaseTable: 'clientes' },
-        projects: { label: 'proyecto', labelPlural: 'proyectos', supabaseTable: 'proyectos_2026' },
-        events:   { label: 'evento',   labelPlural: 'eventos',   supabaseTable: 'eventos_2026' },
+        projects: { label: 'proyecto', labelPlural: 'proyectos', supabaseTable: 'proyectos' },
+        events:   { label: 'evento',   labelPlural: 'eventos',   supabaseTable: 'eventos' },
         insumos:  { label: 'insumo',   labelPlural: 'insumos',   supabaseTable: 'insumos_base' },
         // catalogo removed — now handled by CatalogoModule
         cotizaciones: { label: 'cotización', labelPlural: 'cotizaciones', supabaseTable: 'cotizaciones' },

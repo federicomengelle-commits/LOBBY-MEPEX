@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS rrhh_personal (
 CREATE TABLE IF NOT EXISTS rrhh_asignaciones (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     personal_id BIGINT REFERENCES rrhh_personal(id),
-    evento_id BIGINT,       -- FK a eventos_2026
-    proyecto_id BIGINT,     -- FK a proyectos_2026
+    evento_id BIGINT,       -- FK a eventos
+    proyecto_id BIGINT,     -- FK a proyectos
     rol_evento TEXT,        -- rol específico en ese evento (armador, electricista, chofer, etc.)
     fecha_desde DATE,
     fecha_hasta DATE,

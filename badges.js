@@ -94,14 +94,6 @@ const Badges = {
     },
 
     // ─── CALCULATORS: una función por badge ───
-    //
-    // Schema verificado contra Supabase 2026-04-04.
-    // NOTA: proyectos_2026 tiene columnas rotadas:
-    //   'estado'       → contiene nombre de cliente
-    //   'responsable'  → contiene estado real del proyecto
-    //   'empresa'      → contiene nombre de evento
-    //   'n_lote'       → contiene responsable real
-    //
     _calculators: {
 
         // 1. CRM: cotizaciones activas con fecha_evento ≤ 3 días
@@ -136,18 +128,15 @@ const Badges = {
         },
 
         // 2. Proyectos: sin cambio ≥ 5 días (estados activos)
-        //    Columnas rotadas: 'responsable' = estado real del proyecto
-        //    Usa updated_at si existe, fallback a created_at
-        //    (ver sql/badges_schema_additions.sql para ALTER TABLE)
+        //    Filtra por estado real (post-desrotación).
         async proyectos() {
             try {
                 const limit5 = Badges._dateOffset(-5);
-                // Intentar con updated_at primero
                 let { data, error } = await supabaseClient
-                    .from('proyectos_2026')
+                    .from('proyectos')
                     .select('id, updated_at, created_at')
                     .eq('_deleted', false)
-                    .in('responsable', ['En proceso', 'En producción', 'Pendiente', 'En preparación']);
+                    .in('estado', ['en_proceso', 'en_produccion', 'pendiente', 'en_preparacion', 'En proceso', 'En producción', 'Pendiente', 'En preparación']);
                 if (error || !data) return 0;
                 // Filtrar los que no se actualizaron hace ≥ 5 días
                 return data.filter(p => {
@@ -158,14 +147,13 @@ const Badges = {
         },
 
         // 3. Eventos: armado ≤ 7 días — contar todos los próximos
-        //    No existe columna equipo_montaje en eventos_2026, así que contamos
-        //    eventos con armado próximo que no tengan proyectos vinculados (sin stands asignados)
+        //    Contamos eventos con armado próximo que no tengan proyectos vinculados (sin stands asignados)
         async eventos() {
             try {
                 const hoy = Badges._dateOffset(0);
                 const limit7 = Badges._dateOffset(7);
                 const { data: eventos, error } = await supabaseClient
-                    .from('eventos_2026')
+                    .from('eventos')
                     .select('id')
                     .eq('_deleted', false)
                     .gte('fecha_armado_inicio', hoy)
@@ -174,7 +162,7 @@ const Badges = {
                 // Verificar cuáles no tienen proyectos vinculados (= sin equipo/stands)
                 const eventoIds = eventos.map(e => e.id);
                 const { data: proyectos } = await supabaseClient
-                    .from('proyectos_2026')
+                    .from('proyectos')
                     .select('evento_id')
                     .eq('_deleted', false)
                     .in('evento_id', eventoIds);
@@ -184,14 +172,14 @@ const Badges = {
         },
 
         // 4. Taller: proyectos con checklist incompleto y armado ≤ 3 días
-        //    Columnas: eventos_2026.fecha_armado_inicio, proyectos_2026.evento_id,
+        //    Columnas: eventos.fecha_armado_inicio, proyectos.evento_id (FK real),
         //    taller_checklist.proyecto_id, taller_checklist.checked
         async taller() {
             try {
                 const hoy = Badges._dateOffset(0);
                 const limit3 = Badges._dateOffset(3);
                 const { data: eventos, error: evErr } = await supabaseClient
-                    .from('eventos_2026')
+                    .from('eventos')
                     .select('id')
                     .eq('_deleted', false)
                     .gte('fecha_armado_inicio', hoy)
@@ -199,7 +187,7 @@ const Badges = {
                 if (evErr || !eventos || eventos.length === 0) return 0;
                 const eventoIds = eventos.map(e => e.id);
                 const { data: proyectos, error: prErr } = await supabaseClient
-                    .from('proyectos_2026')
+                    .from('proyectos')
                     .select('id')
                     .eq('_deleted', false)
                     .in('evento_id', eventoIds);

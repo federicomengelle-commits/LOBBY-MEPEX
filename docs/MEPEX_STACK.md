@@ -99,8 +99,8 @@ LOBBY-MEPEX/
 |-------|-----|
 | `profiles` | Usuarios del sistema: name, role, initials, active, custom_permissions |
 | `clientes` | Base de clientes (columnas rotadas: ver nota abajo) |
-| `proyectos_2026` | Proyectos por año |
-| `eventos_2026` | Eventos feriales: fechas, venue, equipo, transporte, docs |
+| `proyectos` | Proyectos por año |
+| `eventos` | Eventos feriales: fechas, venue, equipo, transporte, docs |
 | `insumos_base` | Materias primas con costos, clasificación, categoría |
 | `catalogo_items` | Items fabricados con receta de insumos |
 | `cotizaciones` | Cotizaciones del pipeline comercial |

@@ -1724,7 +1724,7 @@ const InventarioModule = {
         // Load proyectos for filter + modals
         try {
             const { data } = await supabaseClient
-                .from('proyectos_2026')
+                .from('proyectos')
                 .select('id, nombre')
                 .eq('_deleted', false)
                 .order('nombre', { ascending: true });

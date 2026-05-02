@@ -630,7 +630,7 @@ async function handleClientNameEdit(clientId, newName) {
 async function handleStatusChange(projectId, newStatus, projectName) {
     try {
         await UndoHelpers.changeStatus(
-            'proyectos_2026',
+            'proyectos',
             projectId,
             newStatus,
             projectName
@@ -673,7 +673,7 @@ async function handleDeleteEvent(eventId, eventName) {
 
     try {
         await UndoHelpers.deleteRecord(
-            'eventos_2026',
+            'eventos',
             eventId,
             `Eliminó evento: ${eventName}`
         );
@@ -692,7 +692,7 @@ async function handleDeleteEvent(eventId, eventName) {
 async function handleProjectFormSave(projectId, formData) {
     try {
         await UndoHelpers.updateRecord(
-            'proyectos_2026',
+            'proyectos',
             projectId,
             {
                 nombre: formData.nombre,
@@ -786,14 +786,14 @@ Para que el soft delete funcione, agregar esta columna a cada tabla:
 -- Agregar columna _deleted a todas las tablas que soporten undo
 ALTER TABLE clientes        ADD COLUMN IF NOT EXISTS _deleted BOOLEAN DEFAULT false;
 ALTER TABLE proveedor       ADD COLUMN IF NOT EXISTS _deleted BOOLEAN DEFAULT false;
-ALTER TABLE eventos_2026    ADD COLUMN IF NOT EXISTS _deleted BOOLEAN DEFAULT false;
-ALTER TABLE proyectos_2026  ADD COLUMN IF NOT EXISTS _deleted BOOLEAN DEFAULT false;
+ALTER TABLE eventos    ADD COLUMN IF NOT EXISTS _deleted BOOLEAN DEFAULT false;
+ALTER TABLE proyectos  ADD COLUMN IF NOT EXISTS _deleted BOOLEAN DEFAULT false;
 
 -- Crear índices para filtrar registros no eliminados
 CREATE INDEX IF NOT EXISTS idx_clientes_active     ON clientes(_deleted) WHERE _deleted = false;
 CREATE INDEX IF NOT EXISTS idx_proveedor_active    ON proveedor(_deleted) WHERE _deleted = false;
-CREATE INDEX IF NOT EXISTS idx_eventos_active      ON eventos_2026(_deleted) WHERE _deleted = false;
-CREATE INDEX IF NOT EXISTS idx_proyectos_active    ON proyectos_2026(_deleted) WHERE _deleted = false;
+CREATE INDEX IF NOT EXISTS idx_eventos_active      ON eventos(_deleted) WHERE _deleted = false;
+CREATE INDEX IF NOT EXISTS idx_proyectos_active    ON proyectos(_deleted) WHERE _deleted = false;
 ```
 
 **IMPORTANTE:** Después de agregar `_deleted`, TODAS las queries del lobby deben filtrar:
