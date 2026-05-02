@@ -1036,7 +1036,29 @@ const CalendarioOperativo = {
             </div>
         `).join('');
 
-        const tr = event._transporte || event.logistics || {};
+        // Fase 5: lista completa de movimientos (1-a-N) en vez de un solo {truck, driver}.
+        const movimientos = event._movimientos || [];
+        const movsHTML = movimientos.length > 0
+            ? movimientos.map(m => {
+                const veh = `${m.vehiculoNombre || '—'}${m.vehiculoPatente ? ` · ${m.vehiculoPatente}` : ''}`;
+                const fechaHora = `${m.fecha || ''}${m.horaProgramada ? ' ' + m.horaProgramada : ''}`.trim() || '—';
+                return `
+                    <div class="co-sp-mov-item">
+                        <div class="co-sp-mov-route">
+                            <span>${m.origen || '?'}</span>
+                            <span class="co-sp-mov-arrow">→</span>
+                            <span>${m.destino || '?'}</span>
+                        </div>
+                        <div class="co-sp-mov-meta">
+                            <span>🚚 ${veh}</span>
+                            <span>👤 ${m.choferNombre || '—'}</span>
+                            <span class="co-sp-mov-date">${fechaHora}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('')
+            : '<span class="co-sp-empty">Sin movimientos de transporte</span>';
+
         const docs = event._documentos || event.documents?.items || [];
         const docsHTML = docs.length > 0
             ? docs.map(d => `
@@ -1048,39 +1070,23 @@ const CalendarioOperativo = {
             : '<span class="co-sp-empty">Sin documentos</span>';
 
         return `
+            <style>
+                /* Fase 5 — lista de movimientos en panel del calendario operativo */
+                .co-sp-mov-item { display:flex; flex-direction:column; gap:3px; padding:8px 10px;
+                    background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px;
+                    border-left:3px solid #00CC88; margin-bottom:6px; }
+                .co-sp-mov-route { display:flex; align-items:center; gap:6px; font-family:'Outfit',sans-serif; font-size:13px; color:#E8E8E8; font-weight:500; }
+                .co-sp-mov-arrow { color:#666; }
+                .co-sp-mov-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:#aaa; font-family:'Space Mono',monospace; }
+                .co-sp-mov-date { color:#9B7DFF; }
+            </style>
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Equipo asignado</h3>
                 <div class="co-sp-team">${teamRows || '<span class="co-sp-empty">Sin asignar</span>'}</div>
             </div>
             <div class="co-sp-section">
-                <h3 class="co-sp-section-title">Transporte</h3>
-                <div class="co-sp-logistics">
-                    <div class="co-sp-log-row">
-                        <div class="co-sp-log-group">
-                            <label>Camión</label>
-                            <span>${tr.truck || '—'}</span>
-                        </div>
-                        <div class="co-sp-log-group">
-                            <label>Chofer</label>
-                            <span>${tr.driver || '—'}</span>
-                        </div>
-                    </div>
-                    <div class="co-sp-log-row co-sp-times">
-                        <div class="co-sp-log-group">
-                            <label>Carga</label>
-                            <span>${tr.loadDate || '—'}</span>
-                        </div>
-                        <div class="co-sp-log-group">
-                            <label>Salida</label>
-                            <span>${tr.departureDate || '—'}</span>
-                        </div>
-                        <div class="co-sp-log-group">
-                            <label>Retorno</label>
-                            <span>${tr.returnDate || '—'}</span>
-                        </div>
-                    </div>
-                    ${tr.notes ? `<div class="co-sp-log-group"><label>Notas</label><div class="co-sp-notes">${tr.notes}</div></div>` : ''}
-                </div>
+                <h3 class="co-sp-section-title">Transporte ${movimientos.length > 0 ? `<span style="color:#00CC88;font-size:11px;font-family:'Space Mono',monospace;">(${movimientos.length})</span>` : ''}</h3>
+                <div class="co-sp-movs-list">${movsHTML}</div>
             </div>
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Documentos</h3>

@@ -31,6 +31,18 @@ const LogisticaModule = {
         const content = document.getElementById('mainContent');
         if (!content) return;
 
+        // Fase 5 — deep link: #logistica?tab=movimientos&id=<uuid>
+        const params = this._parseHashParams();
+        if (params.tab === 'movimientos') {
+            this._activeTab = 'movimientos';
+            this._selectedVehiculoId = null;
+            if (params.id) this._selectedMovimientoId = params.id;
+        } else if (params.tab === 'vehiculos') {
+            this._activeTab = 'vehiculos';
+            this._selectedMovimientoId = null;
+            if (params.id) this._selectedVehiculoId = params.id;
+        }
+
         content.innerHTML = this._buildShell();
         this._attachTabEvents();
 
@@ -41,8 +53,26 @@ const LogisticaModule = {
         }
     },
 
+    _parseHashParams() {
+        const hash = window.location.hash || '';
+        const idx = hash.indexOf('?');
+        if (idx === -1) return {};
+        try {
+            const params = new URLSearchParams(hash.substring(idx + 1));
+            return Object.fromEntries(params.entries());
+        } catch { return {}; }
+    },
+
     _buildShell() {
         return `
+            <style>
+                /* Fase 5 — vista inversa de movimientos en ficha vehículo */
+                .log-section-count { font-family:'Space Mono',monospace; font-size:10px; color:#00A9C1;
+                    background:#00A9C115; border:1px solid #00A9C130; border-radius:4px;
+                    padding:1px 6px; margin-left:6px; vertical-align:middle; }
+                .log-mov-row { transition: background 150ms ease; }
+                .log-mov-row:hover { background:#1a1a1a; }
+            </style>
             <div class="module-view logistica-module">
                 <div class="module-subheader">
                     <div class="module-subheader-top">
@@ -263,12 +293,15 @@ const LogisticaModule = {
 
     // ─── Ficha Vehículo ───
 
-    _renderFichaVehiculo() {
+    async _renderFichaVehiculo() {
         const lc = document.getElementById('logisticaContent');
         if (!lc) return;
 
         const v = this._vehiculos.find(x => String(x.id) === String(this._selectedVehiculoId));
         if (!v) { this._selectedVehiculoId = null; this._renderVehiculos(); return; }
+
+        // Spinner mientras lazy-loadeamos personal + movimientos (Fase 5)
+        lc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
 
         const readOnly = this._isReadOnly();
         const estadoColor = this._getEstadoVehiculoColor(v.estado);
@@ -276,6 +309,25 @@ const LogisticaModule = {
         const segClass = this._getVencimientoClass(v.seguro_vencimiento);
         const vtvLabel = this._getVencimientoLabel(v.vtv_vencimiento);
         const segLabel = this._getVencimientoLabel(v.seguro_vencimiento);
+
+        // Lazy-load personal para resolver chofer habitual (Fase 5)
+        if (!this._personalListChoferes) {
+            try {
+                const { data } = await supabaseClient
+                    .from('rrhh_personal')
+                    .select('id, nombre, rol')
+                    .eq('_deleted', false)
+                    .eq('estado', 'activo')
+                    .order('nombre');
+                this._personalListChoferes = data || [];
+            } catch { this._personalListChoferes = []; }
+        }
+
+        // Load movimientos del vehículo (vista inversa, Fase 5)
+        let movimientos = [];
+        try {
+            movimientos = await API.getMovimientosDeVehiculo(v.id);
+        } catch (e) { /* continue */ }
 
         lc.innerHTML = `
             <div class="log-ficha">
@@ -308,9 +360,15 @@ const LogisticaModule = {
                         <span class="log-field-value log-mono">${v.patente || '—'}</span>
                     </div>
                     <div class="log-ficha-field">
-                        <span class="log-field-label">Contacto / Chofer</span>
-                        <span class="log-field-value">${v.contacto || '—'}</span>
+                        <span class="log-field-label">Chofer habitual</span>
+                        <span class="log-field-value">${this._getChoferHabitualName(v)}</span>
                     </div>
+                    ${v.contacto ? `
+                    <div class="log-ficha-field">
+                        <span class="log-field-label">Contacto adicional</span>
+                        <span class="log-field-value">${v.contacto}</span>
+                    </div>
+                    ` : ''}
                     <div class="log-ficha-field ${vtvClass}">
                         <span class="log-field-label">VTV Vencimiento ${vtvLabel ? `<span class="log-alert-tag ${vtvClass}">${vtvLabel}</span>` : ''}</span>
                         <span class="log-field-value">${this._formatDate(v.vtv_vencimiento)}</span>
@@ -331,6 +389,31 @@ const LogisticaModule = {
                         <p>${v.notas}</p>
                     </div>
                 ` : ''}
+
+                <!-- Movimientos del vehículo (vista inversa, Fase 5) -->
+                <div class="log-section">
+                    <h3 class="log-section-title">
+                        Movimientos
+                        <span class="log-section-count">${movimientos.length > 0 ? movimientos.length : ''}</span>
+                    </h3>
+                    ${movimientos.length === 0 ? '<p class="log-empty-small">Sin movimientos registrados</p>' : `
+                        <table class="log-table log-table-compact">
+                            <thead><tr><th>Fecha</th><th>Hora</th><th>Origen → Destino</th><th>Evento</th><th>Estado</th></tr></thead>
+                            <tbody>
+                                ${movimientos.slice(0, 20).map(m => `
+                                    <tr class="log-mov-row" data-mov-id="${m.id}" style="cursor:pointer" title="Abrir movimiento">
+                                        <td class="log-mono">${this._formatDate(m.fecha)}</td>
+                                        <td class="log-mono">${m.horaProgramada || '—'}</td>
+                                        <td>${m.origen} → ${m.destino}</td>
+                                        <td>${m.eventoNombre || '—'}</td>
+                                        <td>${m.estado || 'pendiente'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        ${movimientos.length > 20 ? `<p class="log-empty-small" style="margin-top:6px;font-size:11px;">Mostrando 20 más recientes de ${movimientos.length}</p>` : ''}
+                    `}
+                </div>
             </div>
         `;
 
@@ -343,13 +426,45 @@ const LogisticaModule = {
             document.getElementById('logEditVehiculo')?.addEventListener('click', () => this._showVehiculoModal(v.id));
             document.getElementById('logDeleteVehiculo')?.addEventListener('click', () => this._deleteVehiculo(v.id));
         }
+
+        // Click en fila de movimiento → abrir ficha del movimiento
+        document.querySelectorAll('.log-mov-row[data-mov-id]').forEach(row => {
+            row.addEventListener('click', () => {
+                const movId = row.dataset.movId;
+                if (!movId) return;
+                this._activeView = 'movimientos';
+                this._selectedVehiculoId = null;
+                this._selectedMovimientoId = movId;
+                // Forzar re-render del shell para que muestre la pestaña Movimientos
+                if (typeof this.render === 'function') {
+                    this.render();
+                } else {
+                    this._renderMovimientos();
+                }
+            });
+        });
     },
 
     // ─── Modal Vehículo ───
 
-    _showVehiculoModal(editId) {
+    async _showVehiculoModal(editId) {
         const item = editId ? this._vehiculos.find(v => String(v.id) === String(editId)) : null;
         const title = item ? 'Editar Vehículo' : 'Nuevo Vehículo';
+
+        // Cargar personal para selector de chofer habitual (Fase 5)
+        if (!this._personalListChoferes) {
+            try {
+                const { data } = await supabaseClient
+                    .from('rrhh_personal')
+                    .select('id, nombre, rol')
+                    .eq('_deleted', false)
+                    .eq('estado', 'activo')
+                    .order('nombre');
+                this._personalListChoferes = data || [];
+            } catch { this._personalListChoferes = []; }
+        }
+        const choferes = (this._personalListChoferes || []).filter(p => (p.rol || '').toLowerCase() === 'chofer');
+        const otrosPers = (this._personalListChoferes || []).filter(p => (p.rol || '').toLowerCase() !== 'chofer');
 
         Modal.open({
             title,
@@ -375,9 +490,17 @@ const LogisticaModule = {
                             <input type="text" id="logVPatente" class="form-input" value="${item?.patente || ''}" placeholder="Ej: AB 123 CD" style="font-size:1rem;padding:12px;">
                         </div>
                         <div>
-                            <label class="form-label">Contacto / Chofer</label>
-                            <input type="text" id="logVContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Nombre y teléfono" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Chofer habitual</label>
+                            <select id="logVChoferHabitual" class="form-input form-select" style="font-size:1rem;padding:12px;">
+                                <option value="">— Sin asignar (o tercero) —</option>
+                                ${choferes.length > 0 ? `<optgroup label="Choferes">${choferes.map(p => `<option value="${p.id}" ${item?.chofer_habitual_id === p.id ? 'selected' : ''}>${p.nombre}</option>`).join('')}</optgroup>` : ''}
+                                ${otrosPers.length > 0 ? `<optgroup label="Otros">${otrosPers.map(p => `<option value="${p.id}" ${item?.chofer_habitual_id === p.id ? 'selected' : ''}>${p.nombre} (${p.rol || ''})</option>`).join('')}</optgroup>` : ''}
+                            </select>
                         </div>
+                    </div>
+                    <div>
+                        <label class="form-label">Contacto adicional</label>
+                        <input type="text" id="logVContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Teléfono, email u otro contacto (opcional)" style="font-size:1rem;padding:12px;">
                     </div>
                     <div>
                         <label class="form-label">Estado</label>
@@ -423,6 +546,7 @@ const LogisticaModule = {
                     nombre,
                     tipo: document.getElementById('logVTipo')?.value || 'propio',
                     patente: document.getElementById('logVPatente')?.value?.trim() || null,
+                    chofer_habitual_id: document.getElementById('logVChoferHabitual')?.value || null,
                     contacto: document.getElementById('logVContacto')?.value?.trim() || null,
                     estado: document.getElementById('logVEstado')?.value || 'disponible',
                     vtv_vencimiento: document.getElementById('logVVtv')?.value || null,
@@ -525,6 +649,14 @@ const LogisticaModule = {
             if (p) return p.nombre;
         }
         return m?.chofer_nombre_libre || '—';
+    },
+
+    _getChoferHabitualName(v) {
+        // Fase 5: vehículos con FK chofer_habitual_id → rrhh_personal.
+        if (!v?.chofer_habitual_id) return '—';
+        const list = this._personalListChoferes || [];
+        const p = list.find(x => x.id === v.chofer_habitual_id);
+        return p ? p.nombre : '(no encontrado)';
     },
 
     _renderMovimientos() {

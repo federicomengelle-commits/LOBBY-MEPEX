@@ -45,6 +45,14 @@ const RRHHModule = {
 
     _buildShell() {
         return `
+            <style>
+                /* Fase 5 — vistas inversas */
+                .rh-section-count { font-family:'Space Mono',monospace; font-size:10px; color:#9B7DFF;
+                    background:#9B7DFF15; border:1px solid #9B7DFF30; border-radius:4px;
+                    padding:1px 6px; margin-left:6px; vertical-align:middle; }
+                .rh-event-row { transition: background 150ms ease; }
+                .rh-event-row:hover { background:#1a1a1a; }
+            </style>
             <div class="module-view rrhh-module">
                 <div class="module-subheader">
                     <div class="module-subheader-top">
@@ -340,26 +348,11 @@ const RRHHModule = {
         const p = this._personal.find(x => String(x.id) === String(this._selectedPersonId));
         if (!p) { this._selectedPersonId = null; this._renderNomina(); return; }
 
-        // Load asignaciones for this person
-        let asignaciones = [];
+        // Load eventos asignados (vista inversa, vía Fase 2 API con join a eventos)
+        let eventosAsignados = [];
         try {
-            const { data } = await supabaseClient
-                .from('rrhh_asignaciones')
-                .select('*')
-                .eq('personal_id', p.id)
-                .eq('_deleted', false)
-                .order('fecha_desde', { ascending: false })
-                .limit(10);
-            asignaciones = data || [];
+            eventosAsignados = await API.getEventosDePersona(p.id);
         } catch (e) { /* continue */ }
-
-        // Load events for names
-        if (this._events.length === 0) {
-            try {
-                const events = await API.getEvents();
-                this._events = events || [];
-            } catch (e) { /* continue */ }
-        }
 
         // Load vacaciones info
         let vacInfo = null;
@@ -456,19 +449,23 @@ const RRHHModule = {
                     ` : '<p class="rh-empty-small">Sin datos de vacaciones configurados</p>'}
                 </div>
 
-                <!-- Asignaciones recientes -->
+                <!-- Eventos asignados (vista inversa Fase 5) -->
                 <div class="rh-section">
-                    <h3 class="rh-section-title">Asignaciones Recientes</h3>
-                    ${asignaciones.length === 0 ? '<p class="rh-empty-small">Sin asignaciones</p>' : `
+                    <h3 class="rh-section-title">
+                        Eventos asignados
+                        <span class="rh-section-count">${eventosAsignados.length > 0 ? eventosAsignados.length : ''}</span>
+                    </h3>
+                    ${eventosAsignados.length === 0 ? '<p class="rh-empty-small">Sin eventos asignados</p>' : `
                         <table class="rh-table rh-table-compact">
-                            <thead><tr><th>Evento</th><th>Rol</th><th>Desde</th><th>Hasta</th></tr></thead>
+                            <thead><tr><th>Evento</th><th>Predio</th><th>Rol</th><th>Inicio</th><th>Fin</th></tr></thead>
                             <tbody>
-                                ${asignaciones.map(a => `
-                                    <tr>
-                                        <td>${this._getEventName(a.evento_id)}</td>
-                                        <td>${a.rol_evento || '—'}</td>
-                                        <td class="rh-mono">${this._formatDateShort(a.fecha_desde)}</td>
-                                        <td class="rh-mono">${this._formatDateShort(a.fecha_hasta)}</td>
+                                ${eventosAsignados.map(e => `
+                                    <tr class="rh-event-row" data-evento-id="${e.eventoId}" style="cursor:pointer" title="Abrir evento">
+                                        <td>${e.eventoNombre || '—'}</td>
+                                        <td>${e.eventoPredio || '—'}</td>
+                                        <td>${e.rolEvento || '—'}</td>
+                                        <td class="rh-mono">${this._formatDateShort(e.eventoInicio)}</td>
+                                        <td class="rh-mono">${this._formatDateShort(e.eventoFin)}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -482,6 +479,14 @@ const RRHHModule = {
         document.getElementById('rhBack')?.addEventListener('click', () => { this._selectedPersonId = null; this._renderNomina(); });
         document.getElementById('rhEditPerson')?.addEventListener('click', () => this._showPersonModal(p.id));
         document.getElementById('rhDeletePerson')?.addEventListener('click', () => this._deletePerson(p.id));
+
+        // Click en fila de evento → deep link al módulo Eventos
+        cc.querySelectorAll('.rh-event-row[data-evento-id]').forEach(row => {
+            row.addEventListener('click', () => {
+                const eventoId = row.dataset.eventoId;
+                if (eventoId) window.location.hash = `#eventos?id=${eventoId}`;
+            });
+        });
     },
 
     // ─── Modal Personal ───
