@@ -197,12 +197,8 @@ const CRM = {
                             <h2 class="title-2">CRM</h2>
                             ${isReadOnly ? '<span class="badge badge-ghost">Solo lectura</span>' : ''}
                         </div>
-                        <div class="crm-header-actions">
-                            ${!isReadOnly ? `
-                            <button class="btn btn-primary" id="crmBtnNew">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                Nuevo cliente
-                            </button>` : ''}
+                        <div class="crm-header-actions" id="crmHeaderActions">
+                            ${!isReadOnly ? this._renderHeaderActionBtn() : ''}
                         </div>
                     </div>
                 </div>
@@ -419,11 +415,68 @@ const CRM = {
         // Show/hide toolbar (only for clientes — pipeline/cotizaciones have their own)
         const toolbar = document.getElementById('crmToolbar');
         if (toolbar) toolbar.style.display = tab === 'clientes' ? '' : 'none';
+        // Re-render contextual action button
+        this._refreshHeaderActionBtn();
         // Close panels
         this._closePanel();
         this._closeCotPanel();
         // Render content
         this._renderTabContent();
+    },
+
+    _renderHeaderActionBtn() {
+        const cfg = this._headerActionConfig();
+        if (!cfg) return '';
+        return `
+            <button class="btn btn-primary" id="crmBtnNew" data-action="${cfg.action}" ${cfg.url ? `data-url="${cfg.url}"` : ''}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                ${cfg.label}
+            </button>
+        `;
+    },
+
+    _headerActionConfig() {
+        switch (this._activeTab) {
+            case 'clientes':      return { action: 'new-cliente', label: 'Nuevo cliente' };
+            case 'pipeline':
+            case 'cotizaciones':  return { action: 'open-cotizador', label: 'Abrir cotizador', url: 'http://195.200.1.250/cotizador/' };
+            case 'interacciones': return { action: 'new-interaccion', label: 'Nueva interacción' };
+            case 'analitica':     return null; // sin botón
+            case 'marketing':     return { action: 'new-campania', label: 'Nueva campaña' };
+            default:              return null;
+        }
+    },
+
+    _refreshHeaderActionBtn() {
+        const wrap = document.getElementById('crmHeaderActions');
+        if (!wrap) return;
+        const user = Auth.getUser();
+        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : false;
+        wrap.innerHTML = isReadOnly ? '' : this._renderHeaderActionBtn();
+        this._attachHeaderActionBtn();
+    },
+
+    _attachHeaderActionBtn() {
+        const btn = document.getElementById('crmBtnNew');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            const action = btn.dataset.action;
+            switch (action) {
+                case 'new-cliente':
+                    this._openCreateModal();
+                    break;
+                case 'open-cotizador':
+                    window.open(btn.dataset.url || 'http://195.200.1.250/cotizador/', '_blank', 'noopener');
+                    break;
+                case 'new-interaccion':
+                    Toast.info('Abrí una cotización para registrar una interacción.');
+                    break;
+                case 'new-campania':
+                    if (typeof this._openCampaniaModal === 'function') this._openCampaniaModal();
+                    else Toast.info('Marketing en desarrollo.');
+                    break;
+            }
+        });
     },
 
     _renderTabContent() {
@@ -585,9 +638,8 @@ const CRM = {
             btn.addEventListener('click', () => this._switchTab(btn.dataset.tab));
         });
 
-        // New client button
-        const btnNew = document.getElementById('crmBtnNew');
-        if (btnNew) btnNew.addEventListener('click', () => this._openCreateModal());
+        // Contextual "+ Nuevo" button (re-renders al cambiar de tab)
+        this._attachHeaderActionBtn();
 
         // Search
         const search = document.getElementById('crmSearch');
@@ -1292,7 +1344,7 @@ const CRM = {
                     ${temp ? `<span class="pip-card-temp" style="color:${temp.color}" title="${temp.label}">${temp.icon}</span>` : ''}
                 </div>
                 <div class="pip-card-cliente">${cot.clienteNombre || '\u2014'}</div>
-                <div class="pip-card-evento">${cot.nombreEvento || '\u2014'}</div>
+                ${this._renderVinculosChips(cot)}
                 ${cot.tipoEvento ? `<span class="pip-card-tipo">${cot.tipoEvento}</span>` : ''}
                 <div class="pip-card-bottom">
                     ${monto ? `<span class="pip-card-monto">${monto}</span>` : '<span></span>'}
@@ -1302,6 +1354,29 @@ const CRM = {
                     </div>
                 </div>
                 ${cot.notasInternas ? `<div class="pip-card-notas" title="${this._escHtml(cot.notasInternas)}">${cot.notasInternas.substring(0, 60)}${cot.notasInternas.length > 60 ? '...' : ''}</div>` : ''}
+            </div>
+        `;
+    },
+
+    _renderVinculosChips(cot) {
+        const hasEvent   = !!(cot.eventId && cot.eventoNombre);
+        const hasProject = !!(cot.projectId && cot.proyectoNombre);
+        const hasFreeText = !hasEvent && !hasProject && cot.nombreEvento;
+        if (!hasEvent && !hasProject && !hasFreeText) return '';
+        return `
+            <div class="crm-card-vinculos">
+                ${hasEvent ? `
+                    <span class="crm-chip crm-chip-evento" title="Evento vinculado">
+                        \ud83c\udfaa ${this._escHtml(cot.eventoNombre)}
+                    </span>` : ''}
+                ${hasProject ? `
+                    <span class="crm-chip crm-chip-proyecto" title="Proyecto vinculado">
+                        \ud83d\udcc1 ${this._escHtml(cot.proyectoNombre)}
+                    </span>` : ''}
+                ${hasFreeText ? `
+                    <span class="crm-chip crm-chip-libre" title="Texto libre del cotizador">
+                        \ud83d\udcdd ${this._escHtml(cot.nombreEvento)}
+                    </span>` : ''}
             </div>
         `;
     },
@@ -1378,7 +1453,7 @@ const CRM = {
                                 <tr class="crm-row pip-tbl-row" data-id="${cot.id}" data-cliente-id="${cot.clienteId || ''}">
                                     <td class="pip-tbl-code">${cot.numero || 'COT-???'} ${temp ? `<span style="color:${temp.color}">${temp.icon}</span>` : ''}</td>
                                     <td class="crm-td-empresa">${cot.clienteNombre || '\u2014'}</td>
-                                    <td>${cot.nombreEvento || '\u2014'}</td>
+                                    <td>${this._renderVinculosChips(cot) || (cot.nombreEvento ? this._escHtml(cot.nombreEvento) : '\u2014')}</td>
                                     <td class="crm-td-rubro">${cot.tipoEvento || '\u2014'}</td>
                                     <td class="pip-tbl-monto">${monto}</td>
                                     <td><span class="crm-badge-tipo" style="background:${colCfg ? colCfg.color + '18' : 'transparent'}; color:${colCfg ? colCfg.color : '#888'}; border:1px solid ${colCfg ? colCfg.color + '30' : 'transparent'}">${this._formatEstadoCot(cot.estado)}</span></td>
@@ -1767,7 +1842,7 @@ const CRM = {
             <tr class="crm-row cot-row ${isActive ? 'crm-row-active' : ''}" data-cot-id="${cot.id}" data-cliente-id="${cot.clienteId || ''}">
                 <td class="cot-td-code">${cot.numero || 'COT-???'}</td>
                 <td class="cot-td-cliente" data-action="open-client">${cot.clienteNombre || '\u2014'}</td>
-                <td>${cot.nombreEvento || '\u2014'}</td>
+                <td>${this._renderVinculosChips(cot) || (cot.nombreEvento ? this._escHtml(cot.nombreEvento) : '\u2014')}</td>
                 <td class="crm-td-rubro">${fecha}</td>
                 <td><span class="crm-badge-tipo" style="background:${est.color}18; color:${est.color}; border:1px solid ${est.color}30">${est.label}</span></td>
                 <td class="pip-tbl-monto">${monto}</td>
@@ -1886,9 +1961,6 @@ const CRM = {
         const iva = cot.iva || Math.round(subtotal * 0.21);
         const total = subtotal + iva;
 
-        // Find linked project
-        const project = cot.projectId ? this._projects.find(p => String(p.id) === String(cot.projectId)) : null;
-
         return `
             <!-- Datos cotizaci\u00F3n -->
             <div class="crm-panel-section">
@@ -1923,17 +1995,45 @@ const CRM = {
                 </div>
             </div>
 
-            <!-- Proyecto vinculado -->
-            ${project ? `
+            <!-- Evento vinculado -->
             <div class="crm-panel-section">
-                <h4 class="crm-panel-section-title">Proyecto vinculado</h4>
-                <div class="crm-panel-list">
-                    <div class="crm-panel-list-item crm-panel-list-link" data-nav="proyectos">
-                        <span class="crm-panel-list-detail">${project.name || '\u2014'}</span>
-                        <span class="crm-badge-estado-sm">${project.status || '\u2014'}</span>
+                <h4 class="crm-panel-section-title">EVENTO VINCULADO</h4>
+                ${cot.eventId && cot.eventoNombre ? `
+                    <div class="crm-vinculo-card">
+                        <span class="crm-vinculo-icon">\ud83c\udfaa</span>
+                        <div class="crm-vinculo-info">
+                            <div class="crm-vinculo-name">${this._escHtml(cot.eventoNombre)}</div>
+                            <a href="#eventos" class="crm-vinculo-link" data-action="goto-evento" data-id="${cot.eventId}">Ver evento \u2192</a>
+                        </div>
+                        <button class="crm-vinculo-unlink" data-action="unlink-evento" title="Desvincular">\u00d7</button>
                     </div>
-                </div>
-            </div>` : ''}
+                ` : `
+                    <div class="crm-vinculo-empty">
+                        <span class="crm-vinculo-empty-text">Sin evento vinculado</span>
+                        <button class="crm-btn-secondary" data-action="link-evento">+ Vincular evento</button>
+                    </div>
+                `}
+            </div>
+
+            <!-- Proyecto vinculado -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">PROYECTO VINCULADO</h4>
+                ${cot.projectId && cot.proyectoNombre ? `
+                    <div class="crm-vinculo-card">
+                        <span class="crm-vinculo-icon">\ud83d\udcc1</span>
+                        <div class="crm-vinculo-info">
+                            <div class="crm-vinculo-name">${this._escHtml(cot.proyectoNombre)}</div>
+                            <a href="#proyectos" class="crm-vinculo-link" data-action="goto-proyecto" data-id="${cot.projectId}">Ver proyecto \u2192</a>
+                        </div>
+                        <button class="crm-vinculo-unlink" data-action="unlink-proyecto" title="Desvincular">\u00d7</button>
+                    </div>
+                ` : `
+                    <div class="crm-vinculo-empty">
+                        <span class="crm-vinculo-empty-text">Sin proyecto vinculado</span>
+                        <button class="crm-btn-secondary" data-action="link-proyecto">+ Vincular proyecto</button>
+                    </div>
+                `}
+            </div>
 
             <!-- Presupuesto -->
             <div class="crm-panel-section">
@@ -2317,6 +2417,139 @@ const CRM = {
                     addBtn.textContent = 'Agregar';
                 }
             });
+        }
+
+        // Resumen: link / unlink evento + proyecto
+        const body = document.getElementById('cotPanelBody');
+        if (body) {
+            body.querySelectorAll('[data-action="link-evento"]').forEach(b => {
+                b.addEventListener('click', () => this._openLinkPicker(cot, 'evento'));
+            });
+            body.querySelectorAll('[data-action="link-proyecto"]').forEach(b => {
+                b.addEventListener('click', () => this._openLinkPicker(cot, 'proyecto'));
+            });
+            body.querySelectorAll('[data-action="unlink-evento"]').forEach(b => {
+                b.addEventListener('click', () => this._unlinkVinculo(cot, 'evento'));
+            });
+            body.querySelectorAll('[data-action="unlink-proyecto"]').forEach(b => {
+                b.addEventListener('click', () => this._unlinkVinculo(cot, 'proyecto'));
+            });
+            body.querySelectorAll('[data-action="goto-evento"]').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    Router.navigate('eventos');
+                });
+            });
+            body.querySelectorAll('[data-action="goto-proyecto"]').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    Router.navigate('proyectos');
+                });
+            });
+        }
+    },
+
+    async _openLinkPicker(cot, kind) {
+        const isEvento = kind === 'evento';
+        const items = isEvento
+            ? (await API.getEvents() || [])
+            : (await API.getProjects() || []);
+        const label = isEvento ? 'evento' : 'proyecto';
+        const titulo = isEvento ? 'Vincular evento' : 'Vincular proyecto';
+
+        const renderList = (filterText) => {
+            const q = (filterText || '').toLowerCase().trim();
+            const filtered = q
+                ? items.filter(i => (i.name || '').toLowerCase().includes(q))
+                : items;
+            if (!filtered.length) {
+                return '<div class="crm-link-empty">Sin resultados</div>';
+            }
+            return filtered.slice(0, 50).map(i => `
+                <button class="crm-link-item" data-id="${i.id}">
+                    <span class="crm-link-item-name">${this._escHtml(i.name || '(sin nombre)')}</span>
+                </button>
+            `).join('');
+        };
+
+        const body = `
+            <div class="crm-link-picker">
+                <input type="text" class="crm-form-input" id="crmLinkSearch" placeholder="Buscar ${label}..." autocomplete="off" />
+                <div class="crm-link-list" id="crmLinkList">${renderList('')}</div>
+            </div>
+        `;
+        const instance = Modal.open({
+            title: titulo,
+            body,
+            size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button>`,
+        });
+        const overlay = instance.overlay;
+        const search  = overlay.querySelector('#crmLinkSearch');
+        const list    = overlay.querySelector('#crmLinkList');
+
+        const attachItemListeners = () => {
+            list.querySelectorAll('.crm-link-item').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    const payload = isEvento ? { event_id: id } : { project_id: id };
+                    const result = await API.updateCotizacion(cot.id, payload);
+                    if (result) {
+                        Toast.success(`${isEvento ? 'Evento' : 'Proyecto'} vinculado`);
+                        Modal.close(instance.id);
+                        await this._reloadCotPanel(cot.id);
+                    } else {
+                        Toast.error(`Error al vincular ${label}`);
+                    }
+                });
+            });
+        };
+        attachItemListeners();
+
+        if (search) {
+            search.addEventListener('input', () => {
+                list.innerHTML = renderList(search.value);
+                attachItemListeners();
+            });
+            setTimeout(() => search.focus(), 50);
+        }
+    },
+
+    async _unlinkVinculo(cot, kind) {
+        const isEvento = kind === 'evento';
+        const payload = isEvento ? { event_id: null } : { project_id: null };
+        const result = await API.updateCotizacion(cot.id, payload);
+        if (result) {
+            Toast.success(`${isEvento ? 'Evento' : 'Proyecto'} desvinculado`);
+            await this._reloadCotPanel(cot.id);
+        } else {
+            Toast.error(`Error al desvincular ${kind}`);
+        }
+    },
+
+    async _reloadCotPanel(cotId) {
+        // Re-fetch cotizaciones para tener eventoNombre/proyectoNombre frescos
+        const cotizaciones = await API.getCotizaciones() || [];
+        this._cotizaciones = cotizaciones;
+        this._applyCotFilters();
+        const fresh = cotizaciones.find(c => String(c.id) === String(cotId));
+        if (!fresh) { this._closeCotPanel(); return; }
+        this._cotPanelData = fresh;
+        const panel = document.getElementById('crmPanel');
+        if (panel && this._cotPanelId === fresh.id) {
+            panel.innerHTML = this._buildCotPanelContent(fresh);
+            this._attachCotPanelEvents(fresh);
+        }
+        // Re-render content sin perder filtros
+        const main = document.getElementById('crmMainContent');
+        if (main) {
+            if (this._activeTab === 'pipeline') {
+                main.innerHTML = this._renderPipeline();
+                this._attachPipelineListeners();
+            } else if (this._activeTab === 'cotizaciones') {
+                main.innerHTML = this._renderCotizacionesTab();
+                this._attachCotListeners();
+            }
         }
     },
 
@@ -3872,6 +4105,128 @@ const CRM = {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.crm-card-vinculos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 6px 0;
+}
+.crm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+.crm-chip-evento   { background: rgba(74, 144, 217, 0.15); color: #4A90D9; }
+.crm-chip-proyecto { background: rgba(0, 204, 136, 0.15);  color: #00CC88; }
+.crm-chip-libre    { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); opacity: 0.85; }
+
+.crm-vinculo-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.crm-vinculo-icon { font-size: 1.1rem; line-height: 1; }
+.crm-vinculo-info { flex: 1; min-width: 0; }
+.crm-vinculo-name {
+    font-family: var(--font-main);
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.crm-vinculo-link {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--primary);
+    text-decoration: none;
+    margin-top: 2px;
+}
+.crm-vinculo-link:hover { text-decoration: underline; }
+.crm-vinculo-unlink {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+.crm-vinculo-unlink:hover { color: var(--color-error); background: rgba(255,68,68,0.08); }
+.crm-vinculo-empty {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+}
+.crm-vinculo-empty-text {
+    font-family: var(--font-main);
+    font-size: 0.8rem;
+    color: var(--text-dim);
+}
+.crm-btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.crm-btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+
+.crm-link-picker { display: flex; flex-direction: column; gap: 10px; }
+.crm-link-list {
+    max-height: 320px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 4px;
+}
+.crm-link-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    transition: all 0.15s;
+}
+.crm-link-item:hover { border-color: var(--primary); background: rgba(0,169,193,0.08); }
+.crm-link-item-name { color: var(--text-primary); }
+.crm-link-empty {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    padding: 20px;
 }
 .pip-card-tipo {
     display: inline-block;

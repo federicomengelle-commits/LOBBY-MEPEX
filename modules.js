@@ -22,8 +22,6 @@ const Modules = {
     _activeClasificacionFilter: [],  // multi-select
     _activeCategoriaFilter: [],      // multi-select
     _activeProveedorFilter: [],      // multi-select
-    _activeCotClienteFilter: [],
-    _activeCotEventoFilter: [],
 
     // ─── Insumos color maps ───
     _clasificacionColors: {
@@ -124,20 +122,14 @@ const Modules = {
         { key: 'notas', label: 'Notas', type: 'text', required: false, placeholder: 'Observaciones' },
     ],
 
-    _cotizacionFormFields: [
-        { key: 'nombreEvento', label: 'Evento', type: 'text', required: true, placeholder: 'Ej: Expo Alimentek 2026' },
-        { key: 'tipoEvento', label: 'Tipo de evento', type: 'select', required: false, options: ['', 'feria', 'congreso', 'corporativo', 'social', 'festival', 'boda'] },
-        { key: 'fechaEvento', label: 'Fecha del evento', type: 'date', required: false },
-        { key: 'montoTotal', label: 'Monto total', type: 'number', required: false, placeholder: '0' },
-        { key: 'notasInternas', label: 'Notas internas', type: 'text', required: false, placeholder: 'Observaciones...' },
-    ],
+    // Form de cotización eliminado: las cotizaciones nacen en el cotizador
+    // externo (http://195.200.1.250/cotizador/), no en el LOBBY.
 
     _getFormFields(type) {
         if (type === 'clients') return this._clientFormFields;
         if (type === 'projects') return this._projectFormFields;
         if (type === 'events') return this._eventFormFields;
         if (type === 'insumos') return this._insumoFormFields;
-        if (type === 'cotizaciones') return this._cotizacionFormFields;
         return [];
     },
 
@@ -612,7 +604,6 @@ const Modules = {
             else if (type === 'projects') result = await API.createProject(values);
             else if (type === 'events') result = await API.createEvent(values);
             else if (type === 'insumos') result = await API.createInsumo(values);
-            else if (type === 'cotizaciones') result = await API.createCotizacion(values);
 
             if (result) {
                 Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} creado exitosamente`);
@@ -660,7 +651,6 @@ const Modules = {
             else if (type === 'projects') result = await API.updateProject(item.id, values);
             else if (type === 'events') result = await API.updateEvent(item.id, values);
             else if (type === 'insumos') result = await API.updateInsumo(item.id, values);
-            else if (type === 'cotizaciones') result = await API.updateCotizacion(item.id, values);
 
             if (result) {
                 Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} actualizado`);
@@ -688,7 +678,6 @@ const Modules = {
         else if (type === 'projects') result = await API.deleteProject(item.id);
         else if (type === 'events') result = await API.deleteEvent(item.id);
         else if (type === 'insumos') result = await API.deleteInsumo(item.id);
-        else if (type === 'cotizaciones') result = await API.deleteCotizacion(item.id);
 
         if (result) {
             Toast.success(`${config.label.charAt(0).toUpperCase() + config.label.slice(1)} eliminado`);
@@ -4045,8 +4034,6 @@ const Modules = {
         if (filterId === 'clasificacion') return this._activeClasificacionFilter;
         if (filterId === 'categoria') return this._activeCategoriaFilter;
         if (filterId === 'proveedor') return this._activeProveedorFilter;
-        if (filterId === 'cot_cliente') return this._activeCotClienteFilter;
-        if (filterId === 'cot_evento') return this._activeCotEventoFilter;
         return [];
     },
 
@@ -4054,8 +4041,6 @@ const Modules = {
         if (filterId === 'clasificacion') this._activeClasificacionFilter = arr;
         if (filterId === 'categoria') this._activeCategoriaFilter = arr;
         if (filterId === 'proveedor') this._activeProveedorFilter = arr;
-        if (filterId === 'cot_cliente') this._activeCotClienteFilter = arr;
-        if (filterId === 'cot_evento') this._activeCotEventoFilter = arr;
     },
 
     _attachInsumosListeners(data) {

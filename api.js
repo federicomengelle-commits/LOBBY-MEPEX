@@ -1768,6 +1768,30 @@ const API = {
                 }
             }
 
+            // Buscar nombres de eventos vinculados
+            const eventIds = [...new Set((data || []).map(c => c.event_id).filter(Boolean))];
+            const eventoMap = {};
+            if (eventIds.length > 0) {
+                const { data: eventos } = await supabaseClient
+                    .from('eventos')
+                    .select('id, nombre')
+                    .eq('_deleted', false)
+                    .in('id', eventIds);
+                if (eventos) eventos.forEach(e => { eventoMap[e.id] = e.nombre || ''; });
+            }
+
+            // Buscar nombres de proyectos vinculados
+            const projectIds = [...new Set((data || []).map(c => c.project_id).filter(Boolean))];
+            const proyectoMap = {};
+            if (projectIds.length > 0) {
+                const { data: proyectos } = await supabaseClient
+                    .from('proyectos')
+                    .select('id, nombre')
+                    .eq('_deleted', false)
+                    .in('id', projectIds);
+                if (proyectos) proyectos.forEach(p => { proyectoMap[p.id] = p.nombre || ''; });
+            }
+
             const mapped = (data || []).map(c => {
                 const cli = clientMap[c.cliente_id] || {};
                 return {
@@ -1792,6 +1816,8 @@ const API = {
                     tipoStand: c.tipo_stand || '',
                     projectId: c.project_id || null,
                     eventId: c.event_id || null,
+                    eventoNombre: c.event_id ? (eventoMap[c.event_id] || null) : null,
+                    proyectoNombre: c.project_id ? (proyectoMap[c.project_id] || null) : null,
                     fullState: c.full_state || null,
                     altura: c.altura || '',
                     superficie: parseFloat(c.superficie) || 0,
@@ -1846,6 +1872,9 @@ const API = {
                 vendedor_id: data.vendedorId || null,
                 notas_internas: data.notasInternas || '',
             };
+            // Aceptar null explícito para desvincular (no usar || null)
+            if ('event_id' in data) payload.event_id = data.event_id;
+            if ('project_id' in data) payload.project_id = data.project_id;
             const result = await UndoHelpers.createRecord('cotizaciones', payload, `Nueva cotizacion: ${numero}`);
             this.clearCache();
             return result || true;
@@ -1946,6 +1975,9 @@ const API = {
             if (data.pdfUrl !== undefined) payload.pdf_url = data.pdfUrl;
             if (data.subtotal !== undefined) payload.subtotal = parseFloat(data.subtotal) || 0;
             if (data.iva !== undefined) payload.iva = parseFloat(data.iva) || 0;
+            // Vínculos a evento/proyecto: aceptar null explícito (no usar || null)
+            if ('event_id' in data) payload.event_id = data.event_id;
+            if ('project_id' in data) payload.project_id = data.project_id;
             await UndoHelpers.updateRecord('cotizaciones', id, payload, 'Edito cotizacion');
             this.clearCache();
             return true;
