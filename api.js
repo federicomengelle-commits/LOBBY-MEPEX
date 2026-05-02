@@ -1975,9 +1975,12 @@ const API = {
             if (data.pdfUrl !== undefined) payload.pdf_url = data.pdfUrl;
             if (data.subtotal !== undefined) payload.subtotal = parseFloat(data.subtotal) || 0;
             if (data.iva !== undefined) payload.iva = parseFloat(data.iva) || 0;
-            // Vínculos a evento/proyecto: aceptar null explícito (no usar || null)
+            // Vínculos: aceptar null explícito (no usar || null)
+            if ('cliente_id' in data) payload.cliente_id = data.cliente_id;
             if ('event_id' in data) payload.event_id = data.event_id;
             if ('project_id' in data) payload.project_id = data.project_id;
+            // Estado (para flujo Aprobar)
+            if ('estado' in data) payload.estado = data.estado;
             await UndoHelpers.updateRecord('cotizaciones', id, payload, 'Edito cotizacion');
             this.clearCache();
             return true;

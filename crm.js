@@ -1602,17 +1602,35 @@ const CRM = {
                 const { id, estado: oldEstado } = this._dragData;
                 if (newEstado === oldEstado) return;
 
-                // Optimistic update
                 const cot = this._cotizaciones.find(c => String(c.id) === String(id));
-                if (cot) {
-                    cot.estado = newEstado;
+                if (!cot) return;
+
+                // Pre-check: transici\u00F3n a 'aprobada' dispara modal o bloqueo
+                const allowed = await this._handleEstadoChange(cot, oldEstado, newEstado);
+                if (!allowed) {
+                    // Revert visual: card vuelve a su columna original
                     this._applyPipelineFilters();
-                    this._counts.pipeline = this._cotizaciones.filter(c =>
-                        !['aprobada', 'rechazada'].includes(c.estado)
-                    ).length;
-                    this._updateTabCounts();
                     this._rerenderPipelineContent();
+                    return;
                 }
+                // Si _handleEstadoChange devolvi\u00F3 true y la transici\u00F3n es a 'aprobada',
+                // ya se hizo el update completo (estado + project_id) dentro del modal.
+                // Para otros estados, hacemos el update simple.
+                if (newEstado === 'aprobada') {
+                    await this._reloadCotPanel(cot.id);
+                    this._applyPipelineFilters();
+                    this._rerenderPipelineContent();
+                    return;
+                }
+
+                // Optimistic update
+                cot.estado = newEstado;
+                this._applyPipelineFilters();
+                this._counts.pipeline = this._cotizaciones.filter(c =>
+                    !['aprobada', 'rechazada'].includes(c.estado)
+                ).length;
+                this._updateTabCounts();
+                this._rerenderPipelineContent();
 
                 // Persist
                 const result = await API.updateCotizacionEstado(id, newEstado);
@@ -1620,7 +1638,7 @@ const CRM = {
                     Toast.success(`Cotizaci\u00F3n movida a ${this._formatEstadoCot(newEstado)}`);
                 } else {
                     // Revert
-                    if (cot) cot.estado = oldEstado;
+                    cot.estado = oldEstado;
                     this._applyPipelineFilters();
                     this._rerenderPipelineContent();
                     Toast.error('Error al actualizar estado');
@@ -1628,6 +1646,317 @@ const CRM = {
             });
         });
     },
+
+    // ─── Aprobación: handler de transición a 'aprobada' ───
+    async _handleEstadoChange(cot, oldEstado, newEstado) {
+        if (newEstado !== 'aprobada' || oldEstado === 'aprobada') return true;
+
+        // Pre-check: bloquear si falta cliente vinculado
+        if (!cot.clienteId) {
+            Toast.error('Vinculá un cliente antes de aprobar');
+            // Si la cot está abierta en el panel, hacer pulse del bloque cliente
+            if (this._cotPanelId === cot.id) {
+                this._highlightClienteBlock();
+            } else {
+                // Abrir el panel para que el usuario vea el bloque cliente
+                await this._openCotPanel(cot);
+                setTimeout(() => this._highlightClienteBlock(), 100);
+            }
+            return false;
+        }
+
+        // OK: abrir modal de aprobación
+        const result = await this._openAprobarModal(cot);
+        return !!result; // true si confirmó, false si canceló
+    },
+
+    _highlightClienteBlock() {
+        const block = document.getElementById('crm-panel-cliente-block');
+        if (!block) return;
+        block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        block.classList.add('crm-pulse-warning');
+        setTimeout(() => block.classList.remove('crm-pulse-warning'), 2000);
+    },
+
+    async _openAprobarModal(cot) {
+        // Pre-llenado
+        const prefillNombre = cot.eventoNombre
+            ? `${cot.eventoNombre} — ${cot.clienteNombre}`
+            : (cot.nombreEvento || `Proyecto ${cot.numero}`);
+        const prefillFechaInicio = cot.fechaEvento || '';
+        const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '$0';
+
+        // Cargar paralelo: proyectos del cliente + eventos + profiles
+        let proyectosCliente = [], eventos = [], profiles = [];
+        try {
+            [proyectosCliente, eventos, profiles] = await Promise.all([
+                API.getProjectsByClient(cot.clienteId),
+                API.getEvents(),
+                (typeof API.getProfiles === 'function' ? API.getProfiles().catch(() => []) : Promise.resolve([])),
+            ]);
+        } catch (e) { /* fallback a vacíos */ }
+        proyectosCliente = proyectosCliente || [];
+        eventos = eventos || [];
+        profiles = (profiles || []).filter(p => p.active !== false);
+
+        // Pre-conteo de cotizaciones por proyecto (lookup local sobre this._cotizaciones)
+        const cotsPorProyecto = {};
+        (this._cotizaciones || []).forEach(c => {
+            if (c.projectId) {
+                cotsPorProyecto[c.projectId] = (cotsPorProyecto[c.projectId] || 0) + 1;
+            }
+        });
+
+        const renderProyectoList = (filterText) => {
+            const q = (filterText || '').toLowerCase().trim();
+            const filtered = q
+                ? proyectosCliente.filter(p => (p.name || '').toLowerCase().includes(q))
+                : proyectosCliente;
+            if (!proyectosCliente.length) {
+                return `<div class="crm-link-empty">Este cliente no tiene proyectos.<br><small>Cambiá a "Crear nuevo" para generar uno.</small></div>`;
+            }
+            if (!filtered.length) {
+                return '<div class="crm-link-empty">Sin resultados</div>';
+            }
+            return filtered.map(p => {
+                const count = cotsPorProyecto[p.id] || 0;
+                return `
+                    <div class="crm-aprobar-list-item" data-id="${p.id}" data-count="${count}">
+                        <span class="crm-aprobar-list-item-name">${this._escHtml(p.name || '(sin nombre)')}</span>
+                        <span class="crm-aprobar-list-item-meta">${count} cot${count === 1 ? '' : 's'}.</span>
+                    </div>
+                `;
+            }).join('');
+        };
+
+        const profilesDisabled = profiles.length === 0;
+        const profilesNote = profilesDisabled
+            ? '<small class="crm-help" style="color:#FF9800">Pendiente: integración con RRHH (sin profiles disponibles)</small>'
+            : '';
+
+        const body = `
+            <div class="crm-aprobar">
+                <div class="crm-modal-summary">
+                    <strong>${this._escHtml(cot.clienteNombre || '')}</strong>
+                    ${cot.eventoNombre ? ` · 🎪 ${this._escHtml(cot.eventoNombre)}` : ''}
+                    · ${monto}
+                </div>
+
+                <div class="crm-aprobar-tabs">
+                    <button class="crm-aprobar-tab active" data-tab="vincular" type="button">Vincular a proyecto existente</button>
+                    <button class="crm-aprobar-tab" data-tab="crear" type="button">Crear proyecto nuevo</button>
+                </div>
+
+                <div class="crm-aprobar-content">
+                    <div class="crm-aprobar-pane active" data-pane="vincular">
+                        <input type="text" class="crm-form-input" placeholder="Buscar proyecto..." id="aprobarSearchProyecto" autocomplete="off"/>
+                        <div class="crm-aprobar-list" id="aprobarProyectosList">${renderProyectoList('')}</div>
+                        <div class="crm-aprobar-warning-soft" id="aprobarWarning"></div>
+                    </div>
+
+                    <div class="crm-aprobar-pane" data-pane="crear">
+                        <label class="crm-aprobar-label">
+                            <span>Nombre del proyecto *</span>
+                            <input type="text" class="crm-form-input" id="aprobarNombre" value="${this._escHtml(prefillNombre)}"/>
+                        </label>
+                        <label class="crm-aprobar-label">
+                            <span>Cliente</span>
+                            <input type="text" class="crm-form-input" disabled value="${this._escHtml(cot.clienteNombre || '')}"/>
+                            <small class="crm-help">Heredado de la cotización</small>
+                        </label>
+                        <label class="crm-aprobar-label">
+                            <span>Evento (opcional)</span>
+                            <select class="crm-form-input" id="aprobarEvento">
+                                <option value="">Sin evento</option>
+                                ${eventos.map(e => `<option value="${e.id}" ${cot.eventId === e.id ? 'selected' : ''}>${this._escHtml(e.name || '')}</option>`).join('')}
+                            </select>
+                        </label>
+                        <label class="crm-aprobar-label">
+                            <span>Responsable (opcional)</span>
+                            <select class="crm-form-input" id="aprobarResponsable" ${profilesDisabled ? 'disabled' : ''}>
+                                <option value="">Sin responsable</option>
+                                ${profiles.map(p => `<option value="${p.id}">${this._escHtml(p.name || '')}</option>`).join('')}
+                            </select>
+                            ${profilesNote}
+                        </label>
+                        <label class="crm-aprobar-label">
+                            <span>Fecha inicio (opcional)</span>
+                            <input type="date" class="crm-form-input" id="aprobarFechaInicio" value="${prefillFechaInicio || ''}"/>
+                        </label>
+                        <label class="crm-aprobar-label">
+                            <span>Fecha fin (opcional)</span>
+                            <input type="date" class="crm-form-input" id="aprobarFechaFin"/>
+                        </label>
+                        <label class="crm-aprobar-label">
+                            <span>Notas (opcional)</span>
+                            <textarea class="crm-form-input" id="aprobarNotas" rows="3"></textarea>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        return new Promise((resolve) => {
+            const instance = Modal.open({
+                title: `Aprobar Cotización ${cot.numero || ''}`,
+                body,
+                size: 'md',
+                footer: `
+                    <button class="btn btn-ghost" id="aprobarCancel">Cancelar</button>
+                    <button class="btn btn-primary" id="aprobarConfirm">Aprobar y vincular</button>
+                `,
+            });
+            const overlay = instance.overlay;
+
+            // Estado interno del modal
+            let activeTab = 'vincular';
+            let selectedProjectId = null;
+            let resolved = false;
+
+            const cleanup = (val) => {
+                if (resolved) return;
+                resolved = true;
+                Modal.close(instance.id);
+                resolve(val);
+            };
+
+            // Tabs
+            overlay.querySelectorAll('.crm-aprobar-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    activeTab = tab.dataset.tab;
+                    overlay.querySelectorAll('.crm-aprobar-tab').forEach(t => t.classList.toggle('active', t === tab));
+                    overlay.querySelectorAll('.crm-aprobar-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === activeTab));
+                });
+            });
+
+            // Lista de proyectos: search + selección + soft warning
+            const list = overlay.querySelector('#aprobarProyectosList');
+            const search = overlay.querySelector('#aprobarSearchProyecto');
+            const warningEl = overlay.querySelector('#aprobarWarning');
+
+            const attachItemListeners = () => {
+                list.querySelectorAll('.crm-aprobar-list-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        list.querySelectorAll('.crm-aprobar-list-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        selectedProjectId = item.dataset.id;
+                        const count = parseInt(item.dataset.count || '0', 10);
+                        if (count >= 1) {
+                            warningEl.textContent = `⚠️ Este proyecto ya tiene ${count} cotización${count === 1 ? '' : 'es'} vinculada${count === 1 ? '' : 's'}.`;
+                            warningEl.classList.add('visible');
+                        } else {
+                            warningEl.classList.remove('visible');
+                        }
+                    });
+                });
+            };
+            attachItemListeners();
+
+            if (search) {
+                search.addEventListener('input', () => {
+                    list.innerHTML = renderProyectoList(search.value);
+                    selectedProjectId = null;
+                    warningEl.classList.remove('visible');
+                    attachItemListeners();
+                });
+            }
+
+            // Cancel
+            overlay.querySelector('#aprobarCancel').addEventListener('click', () => cleanup(null));
+            // Modal close (X) también cancela
+            overlay.querySelectorAll('[data-modal-close]').forEach(b => {
+                b.addEventListener('click', () => cleanup(null));
+            });
+
+            // Confirm
+            overlay.querySelector('#aprobarConfirm').addEventListener('click', async () => {
+                const confirmBtn = overlay.querySelector('#aprobarConfirm');
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = 'Procesando...';
+
+                try {
+                    let projectId = null;
+
+                    if (activeTab === 'vincular') {
+                        if (!selectedProjectId) {
+                            Toast.warning('Seleccioná un proyecto o cambiá a "Crear nuevo"');
+                            confirmBtn.disabled = false;
+                            confirmBtn.textContent = 'Aprobar y vincular';
+                            return;
+                        }
+                        projectId = selectedProjectId;
+                    } else {
+                        // Crear nuevo
+                        const nombre = (overlay.querySelector('#aprobarNombre')?.value || '').trim();
+                        if (!nombre) {
+                            Toast.warning('El nombre del proyecto es obligatorio');
+                            confirmBtn.disabled = false;
+                            confirmBtn.textContent = 'Aprobar y vincular';
+                            return;
+                        }
+                        const eventoId      = overlay.querySelector('#aprobarEvento')?.value || null;
+                        const responsableId = overlay.querySelector('#aprobarResponsable')?.value || null;
+                        const fechaInicio   = overlay.querySelector('#aprobarFechaInicio')?.value || null;
+                        const fechaFin      = overlay.querySelector('#aprobarFechaFin')?.value || null;
+                        const notas         = (overlay.querySelector('#aprobarNotas')?.value || '').trim() || null;
+
+                        const newProject = await API.createProject({
+                            name: nombre,
+                            clientId: cot.clienteId,
+                            eventoId,
+                            responsableId,
+                            estado: 'en_curso',
+                            fechaInicio,
+                            fechaFin,
+                            notas,
+                        });
+                        if (!newProject || (typeof newProject === 'object' && !newProject.id)) {
+                            Toast.error('Error al crear el proyecto');
+                            confirmBtn.disabled = false;
+                            confirmBtn.textContent = 'Aprobar y vincular';
+                            return;
+                        }
+                        projectId = (typeof newProject === 'object') ? newProject.id : null;
+                        // Si createProject devolvió true, refetch para obtener el id
+                        if (!projectId) {
+                            const updatedList = await API.getProjectsByClient(cot.clienteId);
+                            const match = (updatedList || []).find(p => p.name === nombre);
+                            projectId = match ? match.id : null;
+                        }
+                        if (!projectId) {
+                            Toast.error('Proyecto creado pero no se pudo obtener su ID');
+                            confirmBtn.disabled = false;
+                            confirmBtn.textContent = 'Aprobar y vincular';
+                            return;
+                        }
+                    }
+
+                    // Update atómico: estado + project_id
+                    const ok = await API.updateCotizacion(cot.id, {
+                        estado: 'aprobada',
+                        project_id: projectId,
+                    });
+                    if (!ok) {
+                        Toast.error('Error al actualizar la cotización');
+                        confirmBtn.disabled = false;
+                        confirmBtn.textContent = 'Aprobar y vincular';
+                        return;
+                    }
+
+                    Toast.success(activeTab === 'vincular'
+                        ? 'Cotización aprobada y vinculada al proyecto'
+                        : 'Proyecto creado y cotización aprobada');
+                    cleanup({ projectId, mode: activeTab });
+                } catch (e) {
+                    console.warn('[CRM] _openAprobarModal error:', e);
+                    Toast.error('Error inesperado: ' + (e.message || ''));
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Aprobar y vincular';
+                }
+            });
+        });
+    },
+
 
     // ─── Kanban card clicks → open client panel ───
     _attachKanbanCardClicks() {
@@ -1974,15 +2303,31 @@ const CRM = {
                 </div>
             </div>
 
-            <!-- Cliente -->
-            <div class="crm-panel-section">
-                <h4 class="crm-panel-section-title">Cliente</h4>
-                <div class="crm-panel-fields">
-                    <div class="cot-field-row"><span class="cot-field-label">Empresa</span><span class="cot-field-val">${cot.clienteNombre || '\u2014'}</span></div>
-                    ${cot.clienteContacto ? `<div class="cot-field-row"><span class="cot-field-label">Contacto</span><span class="cot-field-val">${cot.clienteContacto}</span></div>` : ''}
-                    ${cot.clienteTelefono ? `<div class="cot-field-row"><span class="cot-field-label">Tel\u00E9fono</span><span class="cot-field-val">${cot.clienteTelefono}</span></div>` : ''}
-                    ${cot.clienteEmail ? `<div class="cot-field-row"><span class="cot-field-label">Email</span><span class="cot-field-val">${cot.clienteEmail}</span></div>` : ''}
-                </div>
+            <!-- Cliente vinculado -->
+            <div class="crm-panel-section" id="crm-panel-cliente-block">
+                <h4 class="crm-panel-section-title">CLIENTE VINCULADO</h4>
+                ${cot.clienteId && cot.clienteNombre ? `
+                    <div class="crm-vinculo-card">
+                        <span class="crm-vinculo-icon">\uD83D\uDC64</span>
+                        <div class="crm-vinculo-info">
+                            <div class="crm-vinculo-name">${this._escHtml(cot.clienteNombre)}</div>
+                            <a href="#crm" class="crm-vinculo-link" data-action="goto-cliente" data-id="${cot.clienteId}">Ver cliente \u2192</a>
+                        </div>
+                        <button class="crm-vinculo-unlink" data-action="unlink-cliente" title="Desvincular">\u00D7</button>
+                    </div>
+                    ${cot.clienteContacto || cot.clienteTelefono || cot.clienteEmail ? `
+                        <div class="crm-panel-fields" style="margin-top:8px">
+                            ${cot.clienteContacto ? `<div class="cot-field-row"><span class="cot-field-label">Contacto</span><span class="cot-field-val">${this._escHtml(cot.clienteContacto)}</span></div>` : ''}
+                            ${cot.clienteTelefono ? `<div class="cot-field-row"><span class="cot-field-label">Tel\u00E9fono</span><span class="cot-field-val">${this._escHtml(cot.clienteTelefono)}</span></div>` : ''}
+                            ${cot.clienteEmail ? `<div class="cot-field-row"><span class="cot-field-label">Email</span><span class="cot-field-val">${this._escHtml(cot.clienteEmail)}</span></div>` : ''}
+                        </div>
+                    ` : ''}
+                ` : `
+                    <div class="crm-vinculo-empty crm-vinculo-empty-warning">
+                        <span class="crm-vinculo-empty-text">\u26A0\uFE0F Sin cliente vinculado</span>
+                        <button class="crm-btn-secondary" data-action="link-cliente">+ Vincular cliente</button>
+                    </div>
+                `}
             </div>
 
             <!-- Evento -->
@@ -2422,17 +2767,30 @@ const CRM = {
         // Resumen: link / unlink evento + proyecto
         const body = document.getElementById('cotPanelBody');
         if (body) {
+            body.querySelectorAll('[data-action="link-cliente"]').forEach(b => {
+                b.addEventListener('click', () => this._openLinkPicker(cot, 'cliente'));
+            });
             body.querySelectorAll('[data-action="link-evento"]').forEach(b => {
                 b.addEventListener('click', () => this._openLinkPicker(cot, 'evento'));
             });
             body.querySelectorAll('[data-action="link-proyecto"]').forEach(b => {
                 b.addEventListener('click', () => this._openLinkPicker(cot, 'proyecto'));
             });
+            body.querySelectorAll('[data-action="unlink-cliente"]').forEach(b => {
+                b.addEventListener('click', () => this._unlinkVinculo(cot, 'cliente'));
+            });
             body.querySelectorAll('[data-action="unlink-evento"]').forEach(b => {
                 b.addEventListener('click', () => this._unlinkVinculo(cot, 'evento'));
             });
             body.querySelectorAll('[data-action="unlink-proyecto"]').forEach(b => {
                 b.addEventListener('click', () => this._unlinkVinculo(cot, 'proyecto'));
+            });
+            body.querySelectorAll('[data-action="goto-cliente"]').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this._activeTab = 'clientes';
+                    this._switchTab('clientes');
+                });
             });
             body.querySelectorAll('[data-action="goto-evento"]').forEach(a => {
                 a.addEventListener('click', (e) => {
@@ -2450,12 +2808,18 @@ const CRM = {
     },
 
     async _openLinkPicker(cot, kind) {
-        const isEvento = kind === 'evento';
-        const items = isEvento
-            ? (await API.getEvents() || [])
-            : (await API.getProjects() || []);
-        const label = isEvento ? 'evento' : 'proyecto';
-        const titulo = isEvento ? 'Vincular evento' : 'Vincular proyecto';
+        let items = [];
+        let label, titulo;
+        if (kind === 'evento') {
+            items = (await API.getEvents() || []);
+            label = 'evento'; titulo = 'Vincular evento';
+        } else if (kind === 'proyecto') {
+            items = (await API.getProjects() || []);
+            label = 'proyecto'; titulo = 'Vincular proyecto';
+        } else if (kind === 'cliente') {
+            items = (await API.getClients() || []);
+            label = 'cliente'; titulo = 'Vincular cliente';
+        }
 
         const renderList = (filterText) => {
             const q = (filterText || '').toLowerCase().trim();
@@ -2488,14 +2852,17 @@ const CRM = {
         const search  = overlay.querySelector('#crmLinkSearch');
         const list    = overlay.querySelector('#crmLinkList');
 
+        const fieldByKind = { evento: 'event_id', proyecto: 'project_id', cliente: 'cliente_id' };
+        const labelByKind = { evento: 'Evento',  proyecto: 'Proyecto',  cliente: 'Cliente' };
+
         const attachItemListeners = () => {
             list.querySelectorAll('.crm-link-item').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const id = btn.dataset.id;
-                    const payload = isEvento ? { event_id: id } : { project_id: id };
+                    const payload = { [fieldByKind[kind]]: id };
                     const result = await API.updateCotizacion(cot.id, payload);
                     if (result) {
-                        Toast.success(`${isEvento ? 'Evento' : 'Proyecto'} vinculado`);
+                        Toast.success(`${labelByKind[kind]} vinculado`);
                         Modal.close(instance.id);
                         await this._reloadCotPanel(cot.id);
                     } else {
@@ -2516,11 +2883,14 @@ const CRM = {
     },
 
     async _unlinkVinculo(cot, kind) {
-        const isEvento = kind === 'evento';
-        const payload = isEvento ? { event_id: null } : { project_id: null };
+        const fieldByKind = { evento: 'event_id', proyecto: 'project_id', cliente: 'cliente_id' };
+        const labelByKind = { evento: 'Evento',  proyecto: 'Proyecto',  cliente: 'Cliente' };
+        const field = fieldByKind[kind];
+        if (!field) return;
+        const payload = { [field]: null };
         const result = await API.updateCotizacion(cot.id, payload);
         if (result) {
-            Toast.success(`${isEvento ? 'Evento' : 'Proyecto'} desvinculado`);
+            Toast.success(`${labelByKind[kind]} desvinculado`);
             await this._reloadCotPanel(cot.id);
         } else {
             Toast.error(`Error al desvincular ${kind}`);
@@ -4227,6 +4597,115 @@ const CRM = {
     color: var(--text-dim);
     font-size: 0.8rem;
     padding: 20px;
+}
+
+/* ── Fase 3: Cliente vinculado warning + Aprobar modal ── */
+.crm-vinculo-empty-warning {
+    border: 1px dashed #FF9800 !important;
+    background: rgba(255, 152, 0, 0.05) !important;
+}
+.crm-vinculo-empty-warning .crm-vinculo-empty-text { color: #FF9800; }
+
+@keyframes crm-pulse-warning {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
+    50%      { box-shadow: 0 0 0 8px rgba(255, 152, 0, 0.3); }
+}
+.crm-pulse-warning { animation: crm-pulse-warning 0.6s ease 3; border-radius: 6px; }
+
+.crm-aprobar { display: flex; flex-direction: column; gap: 14px; }
+.crm-modal-summary {
+    background: rgba(255,255,255,0.03);
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    border-left: 3px solid #00CC88;
+}
+.crm-modal-summary strong { color: var(--text-primary); }
+.crm-aprobar-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin: 0 -16px;
+    padding: 0 16px;
+}
+.crm-aprobar-tab {
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s;
+}
+.crm-aprobar-tab.active { color: #00CC88; border-bottom-color: #00CC88; }
+.crm-aprobar-tab:hover:not(.active) { color: var(--text-primary); }
+.crm-aprobar-content { min-height: 280px; }
+.crm-aprobar-pane { display: none; flex-direction: column; gap: 10px; }
+.crm-aprobar-pane.active { display: flex; }
+.crm-aprobar-list {
+    max-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 4px 0;
+    padding-right: 4px;
+}
+.crm-aprobar-list-item {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255,255,255,0.02);
+    font-family: var(--font-main);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    transition: all 0.15s;
+}
+.crm-aprobar-list-item:hover { border-color: #00CC88; background: rgba(0,204,136,0.05); }
+.crm-aprobar-list-item.selected {
+    border-color: #00CC88;
+    background: rgba(0, 204, 136, 0.08);
+}
+.crm-aprobar-list-item-meta {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+.crm-aprobar-warning-soft {
+    padding: 8px 12px;
+    background: rgba(255, 152, 0, 0.08);
+    border-left: 3px solid #FF9800;
+    color: #FF9800;
+    font-size: 0.78rem;
+    margin-top: 4px;
+    display: none;
+    border-radius: 0 4px 4px 0;
+}
+.crm-aprobar-warning-soft.visible { display: block; }
+.crm-aprobar-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.crm-aprobar-label > span {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.crm-help {
+    font-family: var(--font-main);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 2px;
 }
 .pip-card-tipo {
     display: inline-block;
