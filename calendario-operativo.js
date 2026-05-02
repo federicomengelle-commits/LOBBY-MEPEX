@@ -919,38 +919,17 @@ const CalendarioOperativo = {
                     id: `local-${i}`, name: t.name, role: t.role
                 }));
             }
-            // Fase 4: API.getEventoTransporte devuelve un array de movimientos.
-            // Para no romper la UI vieja del panel del calendario operativo (que
-            // espera {truck, driver, ...}), derivamos esos campos del primer
-            // movimiento. TODO: actualizar consumer al nuevo modelo (array).
+            // Fase 5: el render del tab logística itera sobre event._movimientos
+            // directamente. Ya no derivamos {truck, driver, ...} porque no hay
+            // consumer que lo lea (verificado con grep `event._transporte`).
             event._movimientos = movimientos || [];
-            const primer = (movimientos && movimientos.length > 0) ? movimientos[0] : null;
-            event._transporte = primer ? {
-                truck: primer.vehiculoNombre || null,
-                driver: primer.choferNombre || null,
-                loadDate: null,
-                departureDate: primer.fecha || null,
-                returnDate: null,
-                notes: primer.notas || '',
-            } : {
-                truck: event.logistics?.truck || null,
-                driver: event.logistics?.driver || null,
-                loadDate: event.logistics?.loadDate || null,
-                departureDate: event.logistics?.departureDate || null,
-                returnDate: event.logistics?.returnDate || null,
-                notes: event.logistics?.notes || '',
-            };
             event._documentos = docs || (event.documents?.items || []);
             event._historial = historial || [];
         } catch {
             event._equipo = (event.logistics?.team || []).map((t, i) => ({
                 id: `local-${i}`, name: t.name, role: t.role
             }));
-            event._transporte = {
-                truck: event.logistics?.truck || null,
-                driver: event.logistics?.driver || null,
-                notes: event.logistics?.notes || '',
-            };
+            event._movimientos = [];
             event._documentos = event.documents?.items || [];
             event._historial = [];
         }
@@ -1029,12 +1008,19 @@ const CalendarioOperativo = {
         const equipo = event._equipo || (event.logistics?.team || []).map((t, i) => ({
             id: `local-${i}`, name: t.name, role: t.role
         }));
-        const teamRows = equipo.map(t => `
-            <div class="co-sp-team-row">
-                <span class="co-sp-team-name">${t.name}</span>
-                <span class="co-sp-team-role">${t.role}</span>
-            </div>
-        `).join('');
+        // Soporte dual: shape nuevo de API.getEventoEquipo (nombre/rolEvento/rolBase)
+        // + fallback al shape viejo de localStorage (name/role) que aún se mapea
+        // en el catch de _loadPanelData cuando la API falla.
+        const teamRows = equipo.map(t => {
+            const nombre = t.nombre || t.name || '—';
+            const rol = t.rolEvento || t.rolBase || t.role || '—';
+            return `
+                <div class="co-sp-team-row">
+                    <span class="co-sp-team-name">${nombre}</span>
+                    <span class="co-sp-team-role">${rol}</span>
+                </div>
+            `;
+        }).join('');
 
         // Fase 5: lista completa de movimientos (1-a-N) en vez de un solo {truck, driver}.
         const movimientos = event._movimientos || [];
