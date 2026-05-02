@@ -148,6 +148,7 @@ const CRM = {
         { id: 'pipeline',       label: 'Pipeline',       icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>' },
         { id: 'cotizaciones',   label: 'Cotizaciones',   icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' },
         { id: 'interacciones',  label: 'Interacciones',  icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
+        { id: 'analitica',      label: 'Analítica',      icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/><line x1="3" x2="21" y1="20" y2="20"/></svg>' },
         { id: 'marketing',      label: 'Marketing',      icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>' },
     ],
 
@@ -442,6 +443,9 @@ const CRM = {
         } else if (this._activeTab === 'interacciones') {
             main.innerHTML = this._renderInteraccionesTab();
             this._attachInterListeners();
+        } else if (this._activeTab === 'analitica') {
+            main.innerHTML = this._renderAnaliticaTab();
+            this._initAnaliticaCharts();
         } else if (this._activeTab === 'marketing') {
             main.innerHTML = this._renderMarketingTab();
             this._attachMarketingListeners();
@@ -4811,7 +4815,502 @@ const CRM = {
     background-position: right 10px center;
     padding-right: 30px;
 }
+
+/* ═══ TAB ANALÍTICA — Charts + Analytics ═══ */
+.ana-root { display: flex; flex-direction: column; gap: 16px; padding: 0; }
+.ana-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.ana-kpi-card {
+    display: flex; flex-direction: column; align-items: center; padding: 16px 8px;
+    background: #111; border-radius: 10px; border: 1px solid #2a2a2a;
+}
+.ana-kpi-value {
+    font-size: 1.35rem; font-weight: 700; line-height: 1;
+    font-family: var(--font-mono, 'Space Mono', monospace);
+}
+.ana-kpi-label {
+    font-size: 0.6rem; color: #888; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-top: 5px;
+}
+.ana-period-bar { display: flex; gap: 6px; }
+.ana-period-btn {
+    padding: 5px 14px; border-radius: 20px; font-size: 12px; cursor: pointer;
+    border: 1px solid #2a2a2a; background: transparent; color: #888; transition: all 0.2s;
+}
+.ana-period-btn:hover { border-color: #555; color: #ccc; }
+.ana-period-btn.active { background: #00ACC9; border-color: #00ACC9; color: #000; font-weight: 600; }
+.ana-charts-row { display: flex; gap: 16px; }
+.ana-panel-40 { flex: 0 0 40%; }
+.ana-panel-50 { flex: 0 0 calc(50% - 8px); }
+.ana-panel-60 { flex: 1 1 60%; }
+.ana-panel-full { width: 100%; }
+.ana-chart-panel {
+    background: #111; border: 1px solid #2a2a2a; border-radius: 10px;
+    padding: 16px; overflow: hidden;
+}
+.ana-chart-title {
+    font-size: 0.72rem; color: #888; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 12px; font-weight: 600;
+}
+.ana-chart-body { position: relative; }
+.ana-chart-body canvas { display: block; width: 100%; }
+.ana-top-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ana-top-table th {
+    text-align: left; padding: 6px 10px; color: #888; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #2a2a2a;
+}
+.ana-top-table td { padding: 8px 10px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+.ana-top-table tr:hover td { background: rgba(0,172,201,0.04); }
+@media (max-width: 900px) {
+    .ana-kpi-row { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 600px) {
+    .ana-kpi-row { grid-template-columns: repeat(2, 1fr) !important; }
+    .ana-charts-row { flex-direction: column !important; }
+    .ana-panel-40, .ana-panel-50, .ana-panel-60 { flex: 1 1 100% !important; }
+}
         `;
         document.head.appendChild(style);
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB ANALÍTICA — Charts + Analytics
+    //  Migrado desde modules.js Dashboard V3 (eliminado).
+    //  Pipeline post-rename: 5 estados (aprobada absorbe cerrada_ganada,
+    //  rechazada reemplaza cerrada_perdida, facturada se infiere de
+    //  pyme_venta_id y no es estado del pipeline).
+    // ═══════════════════════════════════════════
+
+    _anaPeriod: 'all',
+    _anaData: null,
+
+    _renderAnaliticaTab() {
+        return `
+            <div class="ana-root">
+                <div class="ana-kpi-row" id="anaKpis"></div>
+                <div class="ana-period-bar">
+                    <button class="ana-period-btn ${this._anaPeriod === '30' ? 'active' : ''}" data-period="30">30 días</button>
+                    <button class="ana-period-btn ${this._anaPeriod === '90' ? 'active' : ''}" data-period="90">90 días</button>
+                    <button class="ana-period-btn ${this._anaPeriod === 'ytd' ? 'active' : ''}" data-period="ytd">YTD</button>
+                    <button class="ana-period-btn ${this._anaPeriod === 'all' ? 'active' : ''}" data-period="all">Todo</button>
+                </div>
+                <div class="ana-charts-row">
+                    <div class="ana-chart-panel ana-panel-40">
+                        <div class="ana-chart-title">Embudo de conversión</div>
+                        <div id="anaFunnel" class="ana-chart-body"></div>
+                    </div>
+                    <div class="ana-chart-panel ana-panel-60">
+                        <div class="ana-chart-title">Revenue mensual</div>
+                        <div class="ana-chart-body"><canvas id="anaRevenue"></canvas></div>
+                    </div>
+                </div>
+                <div class="ana-chart-panel ana-panel-full">
+                    <div class="ana-chart-title">Cotizaciones por mes</div>
+                    <div class="ana-chart-body"><canvas id="anaMonthly"></canvas></div>
+                </div>
+                <div class="ana-charts-row">
+                    <div class="ana-chart-panel ana-panel-50">
+                        <div class="ana-chart-title">Por vendedor</div>
+                        <div class="ana-chart-body"><canvas id="anaVendedor"></canvas></div>
+                    </div>
+                    <div class="ana-chart-panel ana-panel-50">
+                        <div class="ana-chart-title">Por tipo de evento</div>
+                        <div class="ana-chart-body"><canvas id="anaTipoEvento"></canvas></div>
+                    </div>
+                </div>
+                <div class="ana-chart-panel ana-panel-full">
+                    <div class="ana-chart-title">Top 10 clientes por revenue</div>
+                    <div id="anaTopClientes" class="ana-chart-body"></div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _initAnaliticaCharts() {
+        try {
+            const data = this._cotizaciones && this._cotizaciones.length ? this._cotizaciones : await API.getCotizaciones();
+            if (!data || !data.length) {
+                const el = document.getElementById('anaKpis');
+                if (el) el.innerHTML = '<p class="api-empty-inline">Sin datos de cotizaciones</p>';
+                return;
+            }
+            this._anaData = data;
+            this._renderAnaliticaAll();
+            this._attachAnaliticaListeners();
+        } catch (e) {
+            console.warn('[Analítica] Init error:', e);
+        }
+    },
+
+    _anaFilterByPeriod(data) {
+        if (this._anaPeriod === 'all') return data;
+        const now = new Date();
+        let since;
+        if (this._anaPeriod === '30') since = new Date(now.getTime() - 30 * 86400000);
+        else if (this._anaPeriod === '90') since = new Date(now.getTime() - 90 * 86400000);
+        else if (this._anaPeriod === 'ytd') since = new Date(now.getFullYear(), 0, 1);
+        else return data;
+        return data.filter(c => new Date(c.createdAt) >= since);
+    },
+
+    _renderAnaliticaAll() {
+        const data = this._anaFilterByPeriod(this._anaData || []);
+        this._renderAnaKpis(data);
+        this._renderAnaFunnel(data);
+        this._drawAnaRevenue(data);
+        this._drawAnaMonthly(data);
+        this._drawAnaVendedor(data);
+        this._drawAnaTipoEvento(data);
+        this._renderAnaTopClientes(data);
+    },
+
+    _attachAnaliticaListeners() {
+        document.querySelectorAll('.ana-period-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._anaPeriod = btn.dataset.period;
+                document.querySelectorAll('.ana-period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === this._anaPeriod));
+                this._renderAnaliticaAll();
+            });
+        });
+    },
+
+    // Estados terminales (post-rename a 5 estados): aprobada y rechazada.
+    _anaIsTerminal(estado) {
+        return estado === 'aprobada' || estado === 'rechazada';
+    },
+
+    _renderAnaKpis(data) {
+        const el = document.getElementById('anaKpis');
+        if (!el) return;
+        const activas = data.filter(c => !this._anaIsTerminal(c.estado));
+        const aprobadas = data.filter(c => c.estado === 'aprobada');
+        const cerradas = data.filter(c => this._anaIsTerminal(c.estado));
+        const totalPipeline = activas.reduce((s, c) => s + (c.montoTotal || 0), 0);
+        const totalAprobadas = aprobadas.reduce((s, c) => s + (c.montoTotal || 0), 0);
+        const ticketProm = aprobadas.length ? Math.round(totalAprobadas / aprobadas.length) : 0;
+        const now = new Date();
+        const mesActual = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+        const facturaMes = aprobadas
+            .filter(c => c.pymeVentaId && c.updatedAt && c.updatedAt.substring(0, 7) === mesActual)
+            .reduce((s, c) => s + (c.montoTotal || 0), 0);
+        const convRate = cerradas.length ? Math.round((aprobadas.length / cerradas.length) * 100) : 0;
+        let avgCierre = 0;
+        if (aprobadas.length) {
+            avgCierre = Math.round(aprobadas.reduce((s, c) => s + Math.max(1, Math.round((new Date(c.updatedAt) - new Date(c.createdAt)) / 86400000)), 0) / aprobadas.length);
+        }
+        const kpis = [
+            { value: API.formatCurrency(totalPipeline), label: 'Total pipeline', color: '#00d4aa' },
+            { value: API.formatCurrency(totalAprobadas), label: 'Aprobadas', color: '#10B981' },
+            { value: API.formatCurrency(ticketProm), label: 'Ticket promedio', color: '#3B82F6' },
+            { value: API.formatCurrency(facturaMes), label: 'Facturado mes', color: '#F59E0B' },
+            { value: convRate + '%', label: 'Tasa conversión', color: '#8B5CF6' },
+            { value: avgCierre + 'd', label: 'Prom. cierre', color: '#00ACC9' },
+        ];
+        el.innerHTML = kpis.map(k => `
+            <div class="ana-kpi-card">
+                <span class="ana-kpi-value" style="color:${k.color}">${k.value}</span>
+                <span class="ana-kpi-label">${k.label}</span>
+            </div>
+        `).join('');
+    },
+
+    _renderAnaFunnel(data) {
+        const el = document.getElementById('anaFunnel');
+        if (!el) return;
+        // 4 stages cumulativas (rechazada se muestra aparte como salida).
+        const stages = [
+            { id: 'borrador',       label: 'Borrador',       color: '#888888' },
+            { id: 'enviada',        label: 'Enviada',        color: '#4A90D9' },
+            { id: 'en_negociacion', label: 'En Negociación', color: '#F28D15' },
+            { id: 'aprobada',       label: 'Aprobada',       color: '#00CC88' },
+        ];
+        const simpleCounts = stages.map(s => data.filter(c => c.estado === s.id).length);
+        const rechazadasCount = data.filter(c => c.estado === 'rechazada').length;
+        const total = data.length || 1;
+        const W = 320, H = stages.length * 56 + 30;
+        const rows = stages.map((s, i) => {
+            const cnt = simpleCounts[i];
+            const pct = Math.round((cnt / total) * 100);
+            const wRatio = Math.max(0.25, 1 - (i * 0.15));
+            const nextRatio = Math.max(0.25, 1 - ((i + 1) * 0.15));
+            const y = i * 56;
+            const x1 = (W - W * wRatio) / 2;
+            const x2 = (W + W * wRatio) / 2;
+            const x3 = (W + W * nextRatio) / 2;
+            const x4 = (W - W * nextRatio) / 2;
+            const convPct = i < stages.length - 1 ? (simpleCounts[i + 1] && cnt ? Math.round((simpleCounts[i + 1] / cnt) * 100) + '%' : '—') : '';
+            return `<polygon points="${x1},${y} ${x2},${y} ${x3},${y + 50} ${x4},${y + 50}" fill="${s.color}" opacity="0.85"/>
+                <text x="${W / 2}" y="${y + 22}" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">${s.label}</text>
+                <text x="${W / 2}" y="${y + 38}" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="11">${cnt} (${pct}%)</text>
+                ${convPct ? `<text x="${W - 8}" y="${y + 48}" text-anchor="end" fill="#888" font-size="9">→${convPct}</text>` : ''}`;
+        }).join('');
+        const rechazadasRow = `<text x="${W / 2}" y="${H - 8}" text-anchor="middle" fill="#E94B4B" font-size="11" font-weight="600">Rechazadas: ${rechazadasCount}</text>`;
+        el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">${rows}${rechazadasRow}</svg>`;
+    },
+
+    _anaCanvasCtx(id, h) {
+        const canvas = document.getElementById(id);
+        if (!canvas) return null;
+        const parent = canvas.parentElement;
+        const w = parent.clientWidth || 500;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = w * dpr;
+        canvas.height = (h || 220) * dpr;
+        canvas.style.width = w + 'px';
+        canvas.style.height = (h || 220) + 'px';
+        const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        ctx.W = w;
+        ctx.H = h || 220;
+        return ctx;
+    },
+
+    _anaShortNum(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+        return String(n);
+    },
+
+    _anaDrawLineChart(ctx, series, labels) {
+        if (!ctx || !labels.length) return;
+        const W = ctx.W, H = ctx.H;
+        const pad = { t: 20, r: 16, b: 40, l: 60 };
+        const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+        ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.t + (cH / 4) * i;
+            ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+        }
+        let maxVal = 0;
+        series.forEach(s => s.data.forEach(v => { if (v > maxVal) maxVal = v; }));
+        if (maxVal === 0) maxVal = 1;
+        ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+        for (let i = 0; i <= 4; i++) {
+            const val = Math.round(maxVal - (maxVal / 4) * i);
+            ctx.fillText(this._anaShortNum(val), pad.l - 6, pad.t + (cH / 4) * i + 4);
+        }
+        ctx.textAlign = 'center';
+        const step = cW / Math.max(1, labels.length - 1);
+        labels.forEach((l, i) => {
+            if (labels.length > 12 && i % 2 !== 0) return;
+            ctx.fillText(l, pad.l + step * i, H - pad.b + 16);
+        });
+        series.forEach(s => {
+            ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath();
+            s.data.forEach((v, i) => {
+                const x = pad.l + step * i;
+                const y = pad.t + cH - (v / maxVal) * cH;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.fillStyle = s.color;
+            s.data.forEach((v, i) => {
+                const x = pad.l + step * i;
+                const y = pad.t + cH - (v / maxVal) * cH;
+                ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+            });
+        });
+    },
+
+    _anaDrawBarChart(ctx, groups, labels, colors, horizontal) {
+        if (!ctx || !labels.length) return;
+        const W = ctx.W, H = ctx.H;
+        if (horizontal) {
+            const pad = { t: 10, r: 16, b: 20, l: 80 };
+            const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+            let maxVal = 0;
+            groups.forEach(g => g.forEach(v => { if (v > maxVal) maxVal = v; }));
+            if (maxVal === 0) maxVal = 1;
+            const barH = Math.min(20, (cH / labels.length) * 0.7);
+            const gap = (cH / labels.length);
+            ctx.font = '10px sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#888';
+            labels.forEach((l, i) => {
+                const y = pad.t + gap * i + gap / 2;
+                ctx.fillText(l, pad.l - 6, y + 4);
+                groups.forEach((g, gi) => {
+                    const bW = (g[i] / maxVal) * cW;
+                    const bY = y - (groups.length * barH / 2) + gi * barH;
+                    ctx.fillStyle = colors[gi];
+                    ctx.beginPath();
+                    ctx.roundRect(pad.l, bY, Math.max(2, bW), barH - 2, 3);
+                    ctx.fill();
+                    if (g[i] > 0) {
+                        ctx.fillStyle = '#ccc'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+                        ctx.fillText(this._anaShortNum(g[i]), pad.l + bW + 4, bY + barH / 2 + 3);
+                    }
+                });
+                ctx.fillStyle = '#888'; ctx.textAlign = 'right'; ctx.font = '10px sans-serif';
+            });
+            return;
+        }
+        const pad = { t: 20, r: 16, b: 40, l: 50 };
+        const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+        let maxVal = 0;
+        groups.forEach(g => g.forEach(v => { if (v > maxVal) maxVal = v; }));
+        if (maxVal === 0) maxVal = 1;
+        ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+            const y = pad.t + (cH / 4) * i;
+            ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+        }
+        ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+        for (let i = 0; i <= 4; i++) {
+            ctx.fillText(Math.round(maxVal - (maxVal / 4) * i), pad.l - 6, pad.t + (cH / 4) * i + 4);
+        }
+        const groupW = cW / labels.length;
+        const barW = Math.min(16, (groupW / groups.length) * 0.7);
+        labels.forEach((l, i) => {
+            const gx = pad.l + groupW * i + groupW / 2;
+            ctx.fillStyle = '#888'; ctx.textAlign = 'center'; ctx.font = '10px sans-serif';
+            ctx.fillText(l, gx, H - pad.b + 16);
+            groups.forEach((g, gi) => {
+                const bH = (g[i] / maxVal) * cH;
+                const bx = gx - (groups.length * barW / 2) + gi * barW;
+                ctx.fillStyle = colors[gi];
+                ctx.beginPath();
+                ctx.roundRect(bx, pad.t + cH - bH, barW, bH, [3, 3, 0, 0]);
+                ctx.fill();
+            });
+        });
+    },
+
+    _anaDrawDonutChart(ctx, segments) {
+        if (!ctx || !segments.length) return;
+        const W = ctx.W, H = ctx.H;
+        const cx = W * 0.35, cy = H / 2;
+        const R = Math.min(cx - 10, cy - 10, 80);
+        const r = R * 0.55;
+        const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+        let angle = -Math.PI / 2;
+        segments.forEach(seg => {
+            const slice = (seg.value / total) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, R, angle, angle + slice);
+            ctx.arc(cx, cy, r, angle + slice, angle, true);
+            ctx.closePath();
+            ctx.fillStyle = seg.color;
+            ctx.fill();
+            angle += slice;
+        });
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(total, cx, cy + 6);
+        ctx.fillStyle = '#888'; ctx.font = '9px sans-serif';
+        ctx.fillText('total', cx, cy + 20);
+        const lx = W * 0.65;
+        let ly = 16;
+        ctx.textAlign = 'left'; ctx.font = '11px sans-serif';
+        segments.forEach(seg => {
+            ctx.fillStyle = seg.color;
+            ctx.fillRect(lx, ly, 10, 10);
+            ctx.fillStyle = '#ccc';
+            ctx.fillText(`${seg.label} (${seg.value})`, lx + 16, ly + 9);
+            ly += 18;
+        });
+    },
+
+    _drawAnaRevenue(data) {
+        const ctx = this._anaCanvasCtx('anaRevenue', 200);
+        if (!ctx) return;
+        const byMonth = {};
+        data.forEach(c => {
+            const m = (c.createdAt || '').substring(0, 7);
+            if (!m) return;
+            if (!byMonth[m]) byMonth[m] = { revenue: 0, pipeline: 0 };
+            if (c.estado === 'aprobada') byMonth[m].revenue += c.montoTotal || 0;
+            if (!this._anaIsTerminal(c.estado)) byMonth[m].pipeline += c.montoTotal || 0;
+        });
+        const months = Object.keys(byMonth).sort();
+        if (!months.length) return;
+        this._anaDrawLineChart(ctx, [
+            { data: months.map(m => byMonth[m].revenue), color: '#00ACC9', label: 'Revenue' },
+            { data: months.map(m => byMonth[m].pipeline), color: '#FF7200', label: 'Pipeline' },
+        ], months.map(m => m.substring(5)));
+    },
+
+    _drawAnaMonthly(data) {
+        const ctx = this._anaCanvasCtx('anaMonthly', 200);
+        if (!ctx) return;
+        const byMonth = {};
+        data.forEach(c => {
+            const m = (c.createdAt || '').substring(0, 7);
+            if (!m) return;
+            if (!byMonth[m]) byMonth[m] = { creadas: 0, aprobadas: 0, rechazadas: 0 };
+            byMonth[m].creadas++;
+            if (c.estado === 'aprobada') byMonth[m].aprobadas++;
+            if (c.estado === 'rechazada') byMonth[m].rechazadas++;
+        });
+        const months = Object.keys(byMonth).sort();
+        if (!months.length) return;
+        this._anaDrawBarChart(ctx,
+            [months.map(m => byMonth[m].creadas), months.map(m => byMonth[m].aprobadas), months.map(m => byMonth[m].rechazadas)],
+            months.map(m => m.substring(5)),
+            ['#3B82F6', '#10B981', '#E94B4B']
+        );
+    },
+
+    _drawAnaVendedor(data) {
+        const ctx = this._anaCanvasCtx('anaVendedor', 180);
+        if (!ctx) return;
+        const byVend = {};
+        data.forEach(c => {
+            const v = c.vendedorId || 'sin asignar';
+            if (!byVend[v]) byVend[v] = { total: 0, aprobadas: 0, revenue: 0 };
+            byVend[v].total++;
+            if (c.estado === 'aprobada') { byVend[v].aprobadas++; byVend[v].revenue += c.montoTotal || 0; }
+        });
+        const vends = Object.keys(byVend).sort((a, b) => byVend[b].total - byVend[a].total);
+        if (!vends.length) return;
+        const labels = vends.map(v => {
+            const map = { 'fede': 'Federico', 'lelean': 'Lelean', 'noe': 'Noelia' };
+            return map[v.toLowerCase()] || v;
+        });
+        this._anaDrawBarChart(ctx,
+            [vends.map(v => byVend[v].total), vends.map(v => byVend[v].aprobadas)],
+            labels, ['#3B82F6', '#10B981'], true
+        );
+    },
+
+    _drawAnaTipoEvento(data) {
+        const ctx = this._anaCanvasCtx('anaTipoEvento', 180);
+        if (!ctx) return;
+        const byTipo = {};
+        const tipoColors = { feria: '#3B82F6', congreso: '#F59E0B', corporativo: '#10B981', social: '#8B5CF6', festival: '#EF4444', boda: '#EC4899' };
+        data.forEach(c => {
+            const t = c.tipoEvento || 'otro';
+            byTipo[t] = (byTipo[t] || 0) + 1;
+        });
+        const segments = Object.entries(byTipo).map(([label, value]) => ({
+            label: label.charAt(0).toUpperCase() + label.slice(1),
+            value,
+            color: tipoColors[label] || '#888',
+        })).sort((a, b) => b.value - a.value);
+        if (!segments.length) return;
+        this._anaDrawDonutChart(ctx, segments);
+    },
+
+    _renderAnaTopClientes(data) {
+        const el = document.getElementById('anaTopClientes');
+        if (!el) return;
+        const byCli = {};
+        data.forEach(c => {
+            const cli = c.clienteNombre || 'Sin cliente';
+            if (!byCli[cli]) byCli[cli] = { total: 0, aprobadas: 0, revenue: 0 };
+            byCli[cli].total++;
+            if (c.estado === 'aprobada') { byCli[cli].aprobadas++; byCli[cli].revenue += c.montoTotal || 0; }
+        });
+        const sorted = Object.entries(byCli).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 10);
+        if (!sorted.length) { el.innerHTML = '<p class="api-empty-inline">Sin datos</p>'; return; }
+        el.innerHTML = `
+            <table class="ana-top-table">
+                <thead><tr><th>Cliente</th><th>Cotizaciones</th><th>Aprobadas</th><th>Revenue</th></tr></thead>
+                <tbody>${sorted.map(([cli, d]) => `
+                    <tr>
+                        <td>${cli}</td>
+                        <td style="text-align:center">${d.total}</td>
+                        <td style="text-align:center;color:#10B981">${d.aprobadas}</td>
+                        <td style="text-align:right;color:#00ACC9;font-weight:600">${API.formatCurrency(d.revenue)}</td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+        `;
     },
 };
