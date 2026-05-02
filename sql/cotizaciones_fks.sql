@@ -8,8 +8,8 @@
 -- Hay project_id huérfanos (apuntan a proyectos inexistentes tras el
 -- rename de Fase 1). Se setean a NULL antes de agregar la FK.
 --
--- Idempotente parcial: las CONSTRAINTS no usan IF NOT EXISTS (Postgres
--- no lo soporta), así que re-ejecución requiere DROP CONSTRAINT previo.
+-- Idempotente: DROP CONSTRAINT IF EXISTS antes de cada ADD CONSTRAINT
+-- (Postgres no soporta ADD CONSTRAINT IF NOT EXISTS).
 -- ═══════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -26,14 +26,18 @@ UPDATE public.cotizaciones
  WHERE project_id IS NOT NULL
    AND project_id NOT IN (SELECT id FROM public.proyectos);
 
--- 3. Agregar FK event_id → eventos.id
+-- 3. Agregar FK event_id → eventos.id (idempotente)
+ALTER TABLE public.cotizaciones
+  DROP CONSTRAINT IF EXISTS fk_cotizaciones_evento;
 ALTER TABLE public.cotizaciones
   ADD CONSTRAINT fk_cotizaciones_evento
   FOREIGN KEY (event_id)
   REFERENCES public.eventos(id)
   ON DELETE SET NULL;
 
--- 4. Agregar FK project_id → proyectos.id
+-- 4. Agregar FK project_id → proyectos.id (idempotente)
+ALTER TABLE public.cotizaciones
+  DROP CONSTRAINT IF EXISTS fk_cotizaciones_proyecto;
 ALTER TABLE public.cotizaciones
   ADD CONSTRAINT fk_cotizaciones_proyecto
   FOREIGN KEY (project_id)
