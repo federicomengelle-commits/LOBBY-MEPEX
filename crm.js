@@ -80,15 +80,13 @@ const CRM = {
         { value: 'inactivo', label: 'Inactivo', color: '#555555' },
     ],
 
-    // ─── Pipeline columns config ───
+    // ─── Pipeline columns config (5 estados) ───
     _pipelineColumns: [
         { id: 'borrador',        label: 'Borrador',         color: '#888888', icon: '\u270F\uFE0F' },
         { id: 'enviada',         label: 'Enviada',          color: '#4A90D9', icon: '\uD83D\uDCE4' },
         { id: 'en_negociacion',  label: 'En Negociaci\u00F3n', color: '#F28D15', icon: '\uD83E\uDD1D' },
         { id: 'aprobada',        label: 'Aprobada',         color: '#00CC88', icon: '\u2705' },
-        { id: 'cerrada_ganada',  label: 'Cerrada Ganada',   color: '#00CC88', icon: '\uD83C\uDFC6' },
-        { id: 'cerrada_perdida', label: 'Cerrada Perdida',  color: '#EF5350', icon: '\u274C' },
-        { id: 'facturada',       label: 'Facturada',        color: '#9B7DFF', icon: '\uD83D\uDCB0' },
+        { id: 'rechazada',       label: 'Rechazada',        color: '#E94B4B', icon: '\u274C' },
     ],
 
     // ─── Temperatura config ───
@@ -98,15 +96,13 @@ const CRM = {
         cold: { label: 'Cold', icon: '\u2744\uFE0F', color: '#4A90D9' },
     },
 
-    // ─── Cotización estado config (para tab cotizaciones) ───
+    // ─── Cotización estado config (5 estados) ───
     _cotEstados: [
         { value: 'borrador',        label: 'Borrador',       color: '#888888' },
         { value: 'enviada',         label: 'Enviada',        color: '#4A90D9' },
-        { value: 'en_negociacion',  label: 'En revisi\u00F3n',  color: '#F28D15' },
-        { value: 'aprobada',        label: 'Aprobada',       color: '#00CC88' },
-        { value: 'cerrada_ganada',  label: 'Aprobada',       color: '#00CC88' },
-        { value: 'cerrada_perdida', label: 'Rechazada',      color: '#EF5350' },
-        { value: 'facturada',       label: 'Facturada',      color: '#9B7DFF' },
+        { value: 'en_negociacion', label: 'En Negociaci\u00F3n', color: '#F28D15' },
+        { value: 'aprobada',       label: 'Aprobada',       color: '#00CC88' },
+        { value: 'rechazada',       label: 'Rechazada',      color: '#E94B4B' },
     ],
 
     // ─── Cotización filter chips ───
@@ -116,7 +112,7 @@ const CRM = {
         { value: 'enviada',         label: 'Enviada' },
         { value: 'en_negociacion',  label: 'En revisi\u00F3n' },
         { value: 'aprobada',        label: 'Aprobada' },
-        { value: 'cerrada_perdida', label: 'Rechazada' },
+        { value: 'rechazada',      label: 'Rechazada' },
     ],
 
     // ─── Timeline interaction types ───
@@ -293,7 +289,7 @@ const CRM = {
             this._counts.clientes = this._clients.length;
             this._counts.cotizaciones = this._cotizaciones.length;
             this._counts.pipeline = this._cotizaciones.filter(c =>
-                !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+                !['aprobada', 'rechazada'].includes(c.estado)
             ).length;
             this._counts.interacciones = this._allTimeline.length;
 
@@ -728,7 +724,7 @@ const CRM = {
 
         // Pipeline activo (cotizaciones no cerradas)
         const activePipeline = clientCots.filter(cot =>
-            !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(cot.estado)
+            !['aprobada', 'rechazada'].includes(cot.estado)
         );
 
         const user = Auth.getUser();
@@ -863,9 +859,7 @@ const CRM = {
             'enviada': 'Enviada',
             'en_negociacion': 'Negociaci\u00F3n',
             'aprobada': 'Aprobada',
-            'cerrada_ganada': 'Ganada',
-            'cerrada_perdida': 'Perdida',
-            'facturada': 'Facturada',
+            'rechazada': 'Rechazada',
         };
         return map[estado] || estado || '\u2014';
     },
@@ -1079,14 +1073,14 @@ const CRM = {
 
     _calcPipelineKPIs() {
         const cots = this._cotizaciones;
-        // Tasa de conversión: ganadas / (ganadas + perdidas)
-        const ganadas = cots.filter(c => c.estado === 'cerrada_ganada').length;
-        const perdidas = cots.filter(c => c.estado === 'cerrada_perdida').length;
+        // Tasa de conversión: aprobadas / (aprobadas + rechazadas)
+        const ganadas = cots.filter(c => c.estado === 'aprobada').length;
+        const perdidas = cots.filter(c => c.estado === 'rechazada').length;
         const totalCerradas = ganadas + perdidas;
         const tasaConversion = totalCerradas > 0 ? Math.round((ganadas / totalCerradas) * 100) : 0;
 
-        // Tiempo promedio de cierre (días entre creación y estado cerrada_ganada)
-        const ganadaItems = cots.filter(c => c.estado === 'cerrada_ganada' && c.createdAt && c.updatedAt);
+        // Tiempo promedio de cierre (días entre creación y aprobación)
+        const ganadaItems = cots.filter(c => c.estado === 'aprobada' && c.createdAt && c.updatedAt);
         let tiempoPromedio = 0;
         if (ganadaItems.length > 0) {
             const totalDias = ganadaItems.reduce((sum, c) => {
@@ -1099,18 +1093,18 @@ const CRM = {
 
         // Cotizaciones activas (no cerradas ni facturadas)
         const activas = cots.filter(c =>
-            !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+            !['aprobada', 'rechazada'].includes(c.estado)
         ).length;
 
         // Hot leads (temperatura hot o monto alto)
         const hotLeads = cots.filter(c =>
-            c.temperatura === 'hot' && !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+            c.temperatura === 'hot' && !['aprobada', 'rechazada'].includes(c.estado)
         ).length;
 
         // Por vencer (creadas hace más de 15 días y aún activas)
         const now = new Date();
         const porVencer = cots.filter(c => {
-            if (['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)) return false;
+            if (['aprobada', 'rechazada'].includes(c.estado)) return false;
             if (!c.createdAt) return false;
             const dias = Math.round((now - new Date(c.createdAt)) / (1000 * 60 * 60 * 24));
             return dias >= 15;
@@ -1535,7 +1529,7 @@ const CRM = {
                     cot.estado = newEstado;
                     this._applyPipelineFilters();
                     this._counts.pipeline = this._cotizaciones.filter(c =>
-                        !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(c.estado)
+                        !['aprobada', 'rechazada'].includes(c.estado)
                     ).length;
                     this._updateTabCounts();
                     this._rerenderPipelineContent();
@@ -1632,14 +1626,7 @@ const CRM = {
         }
 
         if (this._cotFilterEstado) {
-            // Map 'aprobada' chip to include cerrada_ganada, 'rechazada' to cerrada_perdida
-            if (this._cotFilterEstado === 'aprobada') {
-                filtered = filtered.filter(c => c.estado === 'aprobada' || c.estado === 'cerrada_ganada');
-            } else if (this._cotFilterEstado === 'cerrada_perdida') {
-                filtered = filtered.filter(c => c.estado === 'cerrada_perdida');
-            } else {
-                filtered = filtered.filter(c => c.estado === this._cotFilterEstado);
-            }
+            filtered = filtered.filter(c => c.estado === this._cotFilterEstado);
         }
 
         // Sort
@@ -1669,7 +1656,7 @@ const CRM = {
 
     _isCotVencida(cot) {
         if (!cot.fechaEvento) return false;
-        if (['aprobada', 'cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(cot.estado)) return false;
+        if (['aprobada', 'rechazada'].includes(cot.estado)) return false;
         const eventDate = new Date(cot.fechaEvento);
         return eventDate < new Date();
     },
@@ -2061,7 +2048,7 @@ const CRM = {
         if (this._isCotVencida(cot)) {
             alerts.push({ icon: '\u26A0\uFE0F', text: 'Cotizaci\u00F3n vencida \u2014 evento ya pas\u00F3', color: '#EF5350' });
         }
-        if (daysSinceInteraction !== null && daysSinceInteraction > 5 && !['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(cot.estado)) {
+        if (daysSinceInteraction !== null && daysSinceInteraction > 5 && !['aprobada', 'rechazada'].includes(cot.estado)) {
             alerts.push({ icon: '\u23F0', text: `${daysSinceInteraction} d\u00EDas sin respuesta`, color: '#F28D15' });
         }
         if (cot.estado === 'enviada' && days > 3) {
@@ -2116,7 +2103,7 @@ const CRM = {
     },
 
     _getSuggestedAction(cot, days, daysSinceInteraction) {
-        if (['cerrada_ganada', 'cerrada_perdida', 'facturada'].includes(cot.estado)) {
+        if (['aprobada', 'rechazada'].includes(cot.estado)) {
             return '<p class="crm-panel-empty">Cotizaci\u00F3n cerrada \u2014 sin acciones pendientes</p>';
         }
         if (cot.estado === 'borrador') {

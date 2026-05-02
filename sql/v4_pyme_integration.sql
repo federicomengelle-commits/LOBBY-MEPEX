@@ -1,3 +1,9 @@
+-- ⚠️ DEPRECADO en parte: la sección que extiende cotizaciones_estado_check
+-- con 'facturada' fue revertida en sql/pipeline_5_estados.sql.
+-- El estado 'facturada' ya no existe — la facturación se infiere de
+-- cotizaciones.pyme_venta_id IS NOT NULL.
+-- Las columnas pyme_* siguen vigentes.
+
 -- ═══════════════════════════════════════════
 -- V4 — Integración La PyME
 -- Ejecutar DESPUÉS de pipeline_comercial.sql
