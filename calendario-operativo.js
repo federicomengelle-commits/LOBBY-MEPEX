@@ -905,10 +905,10 @@ const CalendarioOperativo = {
     async _loadPanelData(event) {
         try {
             const [equipo, transporte, docs, historial] = await Promise.all([
-                API.getEventEquipo(event.id).catch(() => null),
-                API.getEventTransporte(event.id).catch(() => null),
-                API.getEventDocumentos(event.id).catch(() => null),
-                API.getEventHistorial(event.id).catch(() => null),
+                Promise.resolve(null), // TODO Fase 3: API.getEventoEquipo(event.id)
+                Promise.resolve(null), // TODO Fase 4: API.getEventoTransporte(event.id)
+                Promise.resolve(null), // TODO Fase 6: API.getEventDocumentos(event.id)
+                Promise.resolve(null), // TODO Fase 6: API.getEventHistorial(event.id)
             ]);
 
             // Merge API data if available, otherwise keep localStorage enrichment

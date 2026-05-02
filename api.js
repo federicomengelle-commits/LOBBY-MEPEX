@@ -682,109 +682,274 @@ const API = {
         }
     },
 
-    // ─── Evento Equipo ────────────────────────
-    async getEventEquipo(eventoId) {
+    // ─── Evento → Equipo (vía rrhh_asignaciones) ────────────────
+    // Reemplaza el viejo getEventEquipo/saveEventEquipo (Fase 2).
+    // El "equipo" de un evento son las personas asignadas en rrhh_asignaciones.
+
+    async getEventoEquipo(eventoId) {
         if (!eventoId) return [];
         try {
             const { data, error } = await supabaseClient
-                .from('evento_equipo')
-                .select('*')
+                .from('rrhh_asignaciones')
+                .select(`
+                    id,
+                    personal_id,
+                    rol_evento,
+                    fecha_desde,
+                    fecha_hasta,
+                    notas,
+                    created_at,
+                    persona:rrhh_personal!personal_id (
+                        id, nombre, rol, tipo, telefono
+                    )
+                `)
                 .eq('evento_id', eventoId)
-                .order('orden', { ascending: true });
+                .eq('_deleted', false)
+                .order('created_at', { ascending: true });
             if (error) throw error;
-            return (data || []).map(e => ({
-                id: e.id,
-                name: e.nombre_manual,
-                role: e.rol_operativo,
-                personaId: e.persona_id,
-                orden: e.orden,
+            return (data || []).map(a => ({
+                id: a.id,
+                personalId: a.personal_id,
+                nombre: a.persona?.nombre || '(persona eliminada)',
+                rolBase: a.persona?.rol || '',
+                tipo: a.persona?.tipo || '',
+                telefono: a.persona?.telefono || '',
+                rolEvento: a.rol_evento || '',
+                fechaDesde: a.fecha_desde || null,
+                fechaHasta: a.fecha_hasta || null,
+                notas: a.notas || '',
             }));
         } catch (e) {
-            console.warn('[API] Error fetching event equipo:', e.message);
+            console.warn('[API] Error fetching evento equipo:', e.message);
             return [];
         }
     },
 
-    async saveEventEquipo(eventoId, team) {
-        if (!eventoId) return null;
+    async addEventoAsignacion(eventoId, payload) {
+        if (!eventoId || !payload?.personalId) return null;
         try {
-            // Delete existing
-            await supabaseClient.from('evento_equipo').delete().eq('evento_id', eventoId);
-            // Insert new
-            if (team && team.length > 0) {
-                const rows = team.map((t, i) => ({
-                    evento_id: eventoId,
-                    nombre_manual: t.name || t.nombre || '',
-                    rol_operativo: t.role || t.rol || 'auxiliar',
-                    persona_id: t.personaId || null,
-                    orden: i,
-                }));
-                const { error } = await supabaseClient.from('evento_equipo').insert(rows);
-                if (error) throw error;
-            }
-            return true;
+            const row = {
+                evento_id: eventoId,
+                personal_id: payload.personalId,
+                rol_evento: payload.rolEvento || null,
+                fecha_desde: payload.fechaDesde || null,
+                fecha_hasta: payload.fechaHasta || null,
+                notas: payload.notas || null,
+            };
+            const { data, error } = await supabaseClient
+                .from('rrhh_asignaciones')
+                .insert([row])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
         } catch (e) {
-            console.warn('[API] Error saving event equipo:', e.message);
+            console.warn('[API] Error adding evento asignacion:', e.message);
             return null;
         }
     },
 
-    // ─── Evento Transporte ──────────────────────
-    async getEventTransporte(eventoId) {
-        if (!eventoId) return null;
+    async updateEventoAsignacion(asignacionId, payload) {
+        if (!asignacionId) return null;
+        try {
+            const updates = {};
+            if (payload.rolEvento !== undefined) updates.rol_evento = payload.rolEvento || null;
+            if (payload.fechaDesde !== undefined) updates.fecha_desde = payload.fechaDesde || null;
+            if (payload.fechaHasta !== undefined) updates.fecha_hasta = payload.fechaHasta || null;
+            if (payload.notas !== undefined) updates.notas = payload.notas || null;
+            const { error } = await supabaseClient
+                .from('rrhh_asignaciones')
+                .update(updates)
+                .eq('id', asignacionId);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updating evento asignacion:', e.message);
+            return null;
+        }
+    },
+
+    async removeEventoAsignacion(asignacionId) {
+        if (!asignacionId) return null;
+        try {
+            const { error } = await supabaseClient
+                .from('rrhh_asignaciones')
+                .update({ _deleted: true })
+                .eq('id', asignacionId);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error removing evento asignacion:', e.message);
+            return null;
+        }
+    },
+
+    // Vista inversa: eventos asignados a una persona (para módulo RRHH).
+    async getEventosDePersona(personalId) {
+        if (!personalId) return [];
         try {
             const { data, error } = await supabaseClient
-                .from('evento_transporte')
-                .select('*')
-                .eq('evento_id', eventoId)
-                .limit(1)
-                .maybeSingle();
+                .from('rrhh_asignaciones')
+                .select(`
+                    id, rol_evento, fecha_desde, fecha_hasta,
+                    evento:eventos!evento_id (
+                        id, nombre, predio,
+                        fecha_evento_inicio, fecha_evento_fin
+                    )
+                `)
+                .eq('personal_id', personalId)
+                .eq('_deleted', false)
+                .not('evento_id', 'is', null)
+                .order('fecha_desde', { ascending: false });
             if (error) throw error;
-            if (!data) return null;
-            return {
-                id: data.id,
-                truck: data.camion,
-                driver: data.chofer_nombre,
-                driverId: data.chofer_id,
-                loadDate: data.fecha_carga,
-                departureDate: data.fecha_salida,
-                returnDate: data.fecha_retorno,
-                notes: data.notas,
-            };
+            return (data || []).filter(a => a.evento).map(a => ({
+                asignacionId: a.id,
+                rolEvento: a.rol_evento || '',
+                fechaDesde: a.fecha_desde,
+                fechaHasta: a.fecha_hasta,
+                eventoId: a.evento.id,
+                eventoNombre: a.evento.nombre,
+                eventoPredio: a.evento.predio,
+                eventoInicio: a.evento.fecha_evento_inicio,
+                eventoFin: a.evento.fecha_evento_fin,
+            }));
         } catch (e) {
-            console.warn('[API] Error fetching event transporte:', e.message);
+            console.warn('[API] Error fetching eventos de persona:', e.message);
+            return [];
+        }
+    },
+
+    // ─── Evento → Transporte (vía logistica_movimientos) ────────
+    // Reemplaza el viejo getEventTransporte/saveEventTransporte (Fase 2).
+    // El "transporte" de un evento son los movimientos de logística vinculados.
+
+    async getEventoTransporte(eventoId) {
+        if (!eventoId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('logistica_movimientos')
+                .select(`
+                    id, origen, destino, fecha, hora_programada,
+                    check_salida, check_llegada, check_descarga, check_retorno,
+                    estado, notas, chofer_nombre_libre,
+                    vehiculo:logistica_vehiculos!vehiculo_id (
+                        id, nombre, patente, tipo
+                    ),
+                    chofer:rrhh_personal!chofer_id (
+                        id, nombre, telefono
+                    )
+                `)
+                .eq('evento_id', eventoId)
+                .eq('_deleted', false)
+                .order('fecha', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(m => ({
+                id: m.id,
+                origen: m.origen,
+                destino: m.destino,
+                fecha: m.fecha,
+                horaProgramada: m.hora_programada || '',
+                vehiculoId: m.vehiculo?.id || null,
+                vehiculoNombre: m.vehiculo?.nombre || '(sin vehículo)',
+                vehiculoPatente: m.vehiculo?.patente || '',
+                vehiculoTipo: m.vehiculo?.tipo || '',
+                choferId: m.chofer?.id || null,
+                choferNombre: m.chofer?.nombre || m.chofer_nombre_libre || '(sin chofer)',
+                choferTelefono: m.chofer?.telefono || '',
+                checkSalida: m.check_salida,
+                checkLlegada: m.check_llegada,
+                checkDescarga: m.check_descarga,
+                checkRetorno: m.check_retorno,
+                estado: m.estado || '',
+                notas: m.notas || '',
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching evento transporte:', e.message);
+            return [];
+        }
+    },
+
+    async addEventoMovimiento(eventoId, payload) {
+        if (!eventoId || !payload?.origen || !payload?.destino) return null;
+        try {
+            const row = {
+                evento_id: eventoId,
+                vehiculo_id: payload.vehiculoId || null,
+                chofer_id: payload.choferId || null,
+                chofer_nombre_libre: payload.choferNombreLibre || null,
+                origen: payload.origen,
+                destino: payload.destino,
+                fecha: payload.fecha || null,
+                hora_programada: payload.horaProgramada || null,
+                notas: payload.notas || null,
+            };
+            const { data, error } = await supabaseClient
+                .from('logistica_movimientos')
+                .insert([row])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        } catch (e) {
+            console.warn('[API] Error adding evento movimiento:', e.message);
             return null;
         }
     },
 
-    async saveEventTransporte(eventoId, data) {
-        if (!eventoId) return null;
+    async removeEventoMovimiento(movimientoId) {
+        if (!movimientoId) return null;
         try {
-            // Delete existing
-            await supabaseClient.from('evento_transporte').delete().eq('evento_id', eventoId);
-            // Insert new if data provided
-            if (data && (data.truck || data.driver || data.camion || data.chofer_nombre)) {
-                const row = {
-                    evento_id: eventoId,
-                    camion: data.truck || data.camion || null,
-                    chofer_nombre: data.driver || data.chofer_nombre || null,
-                    chofer_id: data.driverId || data.chofer_id || null,
-                    fecha_carga: data.loadDate || data.fecha_carga || null,
-                    fecha_salida: data.departureDate || data.fecha_salida || null,
-                    fecha_retorno: data.returnDate || data.fecha_retorno || null,
-                    notas: data.notes || data.notas || null,
-                };
-                const { error } = await supabaseClient.from('evento_transporte').insert([row]);
-                if (error) throw error;
-            }
+            const { error } = await supabaseClient
+                .from('logistica_movimientos')
+                .update({ _deleted: true })
+                .eq('id', movimientoId);
+            if (error) throw error;
             return true;
         } catch (e) {
-            console.warn('[API] Error saving event transporte:', e.message);
+            console.warn('[API] Error removing evento movimiento:', e.message);
             return null;
         }
     },
 
-    // ─── Evento Documentos ──────────────────────
+    // Vista inversa: movimientos de un vehículo (para módulo Logística).
+    async getMovimientosDeVehiculo(vehiculoId) {
+        if (!vehiculoId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('logistica_movimientos')
+                .select(`
+                    id, fecha, hora_programada, origen, destino, estado,
+                    evento:eventos!evento_id (id, nombre, predio)
+                `)
+                .eq('vehiculo_id', vehiculoId)
+                .eq('_deleted', false)
+                .order('fecha', { ascending: false });
+            if (error) throw error;
+            return (data || []).map(m => ({
+                id: m.id,
+                fecha: m.fecha,
+                horaProgramada: m.hora_programada,
+                origen: m.origen,
+                destino: m.destino,
+                estado: m.estado,
+                eventoId: m.evento?.id || null,
+                eventoNombre: m.evento?.nombre || '(sin evento)',
+                eventoPredio: m.evento?.predio || '',
+            }));
+        } catch (e) {
+            console.warn('[API] Error fetching movimientos de vehiculo:', e.message);
+            return [];
+        }
+    },
+
+    /* ═══════════════════════════════════════════════════════════════
+     * Fase 6 — reactivar cuando se rehaga el módulo de documentos/historial.
+     * Las tablas evento_documentos y evento_historial siguen vivas en la DB
+     * pero su schema actual NO matchea estas funciones (mismatch documentado
+     * en AUDITORIA-EVENTOS-INTEGRACIONES.md). Cuando se aborde Fase 6 hay
+     * que decidir: alinear schema a la API o reescribir API al schema.
+     * ═══════════════════════════════════════════════════════════════ */
+    /*
     async getEventDocumentos(eventoId) {
         if (!eventoId) return [];
         try {
@@ -837,7 +1002,6 @@ const API = {
         }
     },
 
-    // ─── Evento Historial ───────────────────────
     async getEventHistorial(eventoId) {
         if (!eventoId) return [];
         try {
@@ -881,6 +1045,7 @@ const API = {
             return null;
         }
     },
+    */
 
     // ─── Interacciones (Timeline CRM) ────────
     async getInteracciones(clienteId) {

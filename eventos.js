@@ -216,7 +216,8 @@ const EventosModule = {
             rol_operativo: t.rol || t.role || 'auxiliar',
             orden: t.orden ?? 0,
         }));
-        API.saveEventEquipo(eventId, team).catch(() => {});
+        // TODO Fase 3/4: reemplazar por nueva API (addEventoAsignacion / removeEventoAsignacion)
+        // API.saveEventEquipo(eventId, team).catch(() => {});
     },
 
     _getTransporte(eventId) {
@@ -228,15 +229,15 @@ const EventosModule = {
 
     _saveTransporte(eventId, data) {
         localStorage.setItem(`ev_transporte_${eventId}`, JSON.stringify(data));
-        // Dual-write: persist to Supabase
-        API.saveEventTransporte(eventId, {
-            truck: data.camion || data.truck || null,
-            driver: data.chofer || data.driver || null,
-            loadDate: data.fechaCarga || data.loadDate || null,
-            departureDate: data.fechaSalida || data.departureDate || null,
-            returnDate: data.fechaRetorno || data.returnDate || null,
-            notes: data.notas || data.notes || null,
-        }).catch(() => {});
+        // TODO Fase 3/4: reemplazar por nueva API (addEventoMovimiento / removeEventoMovimiento)
+        // API.saveEventTransporte(eventId, {
+        //     truck: data.camion || data.truck || null,
+        //     driver: data.chofer || data.driver || null,
+        //     loadDate: data.fechaCarga || data.loadDate || null,
+        //     departureDate: data.fechaSalida || data.departureDate || null,
+        //     returnDate: data.fechaRetorno || data.returnDate || null,
+        //     notes: data.notas || data.notes || null,
+        // }).catch(() => {});
     },
 
     _getDocumentos(eventId) {
@@ -1187,13 +1188,13 @@ const EventosModule = {
             // Update via API
             const result = await API.updateEvent(ev.id, update);
             if (result) {
-                // Log date changes
-                const user = Auth.getUser()?.name || '';
-                API.logEventChange(ev.id, 'campo_editado', 'Fechas y horarios actualizados', {
-                    campo: 'fechas',
-                    anterior: { setup: ev.setupDate, event: ev.eventStartDate, teardown: ev.teardownDate },
-                    nuevo: { setup: update.setupDate, event: update.eventStartDate, teardown: update.teardownDate },
-                }, user).catch(() => {});
+                // TODO Fase 6: reemplazar por nueva API (logEventChange queda comentada hasta rehacer evento_historial)
+                // const user = Auth.getUser()?.name || '';
+                // API.logEventChange(ev.id, 'campo_editado', 'Fechas y horarios actualizados', {
+                //     campo: 'fechas',
+                //     anterior: { setup: ev.setupDate, event: ev.eventStartDate, teardown: ev.teardownDate },
+                //     nuevo: { setup: update.setupDate, event: update.eventStartDate, teardown: update.teardownDate },
+                // }, user).catch(() => {});
                 Object.assign(ev, update);
                 // Save teardownEndDate to localStorage (not in Supabase schema)
                 this._saveLocalData(ev.id, { teardownEndDate });
@@ -1220,11 +1221,11 @@ const EventosModule = {
                 }
             });
             this._saveEquipo(ev.id, equipo);
-            // Log equipo change
-            const userEq = Auth.getUser()?.name || '';
-            API.logEventChange(ev.id, 'equipo_cambio', `Equipo actualizado (${equipo.length} personas)`, {
-                campo: 'equipo', count: equipo.length,
-            }, userEq).catch(() => {});
+            // TODO Fase 6: reemplazar por nueva API (logEventChange queda comentada hasta rehacer evento_historial)
+            // const userEq = Auth.getUser()?.name || '';
+            // API.logEventChange(ev.id, 'equipo_cambio', `Equipo actualizado (${equipo.length} personas)`, {
+            //     campo: 'equipo', count: equipo.length,
+            // }, userEq).catch(() => {});
             Toast.success('Equipo actualizado');
         }
 
@@ -1238,11 +1239,11 @@ const EventosModule = {
                 fechaRetorno: getData('fechaRetorno'),
             };
             this._saveTransporte(ev.id, transporte);
-            // Log transporte change
-            const userTr = Auth.getUser()?.name || '';
-            API.logEventChange(ev.id, 'transporte_cambio', 'Transporte actualizado', {
-                campo: 'transporte', camion: transporte.camion, chofer: transporte.chofer,
-            }, userTr).catch(() => {});
+            // TODO Fase 6: reemplazar por nueva API (logEventChange queda comentada hasta rehacer evento_historial)
+            // const userTr = Auth.getUser()?.name || '';
+            // API.logEventChange(ev.id, 'transporte_cambio', 'Transporte actualizado', {
+            //     campo: 'transporte', camion: transporte.camion, chofer: transporte.chofer,
+            // }, userTr).catch(() => {});
             Toast.success('Transporte actualizado');
         }
 
