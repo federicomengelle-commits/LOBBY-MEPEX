@@ -1129,7 +1129,12 @@ const EventosModule = {
 
     _detectConflicts(ev) {
         const conflicts = [];
-        const equipo = this._getEquipo(ev.id);
+        // Equipo viene del cache poblado por _loadEquipoSection (Fase 3).
+        // Solo está disponible para el evento activo, así que el conflict-check de
+        // equipo se limita a comparar contra otros eventos cuyo cache también esté
+        // cargado. Para alcance global se necesita una pre-carga de todos los
+        // equipos (queda para una fase de polish).
+        const equipo = this._equipoCache[ev.id] || [];
         const transporte = this._getTransporte(ev.id);
 
         if (!ev.setupDate && !ev.eventStartDate) return conflicts;
@@ -1142,14 +1147,17 @@ const EventosModule = {
             if (!persona.nombre) return;
             this._events.forEach(otherEv => {
                 if (otherEv.id === ev.id) return;
-                const otherEquipo = this._getEquipo(otherEv.id);
+                const otherEquipo = this._equipoCache[otherEv.id] || [];
                 const otherStart = new Date(otherEv.setupDate || otherEv.eventStartDate);
                 const otherEnd = new Date(otherEv.teardownDate || otherEv.eventEndDate || otherEv.eventStartDate);
 
                 if (!otherStart || !otherEnd) return;
                 if (evStart <= otherEnd && evEnd >= otherStart) {
-                    // Date overlap — check if same person
-                    const match = otherEquipo.find(p => p.nombre && p.nombre.toLowerCase() === persona.nombre.toLowerCase());
+                    // Date overlap — check if same person (match por personalId si existe, sino por nombre)
+                    const match = otherEquipo.find(p =>
+                        (persona.personalId && p.personalId && p.personalId === persona.personalId) ||
+                        (p.nombre && persona.nombre && p.nombre.toLowerCase() === persona.nombre.toLowerCase())
+                    );
                     if (match) {
                         const otherDates = `${this._fmtDate(otherEv.setupDate || otherEv.eventStartDate)}–${this._fmtDate(otherEv.teardownDate || otherEv.eventEndDate)}`;
                         conflicts.push(`${persona.nombre} también asignado a ${otherEv.name} (${otherDates})`);
