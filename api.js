@@ -1275,51 +1275,9 @@ const API = {
         }
     },
 
-    async updateProfile(userId, updates) {
-        try {
-            const payload = {};
-            if (updates.name !== undefined) payload.name = updates.name;
-            if (updates.initials !== undefined) payload.initials = updates.initials;
-            if (updates.role !== undefined) payload.role = updates.role;
-            if (updates.custom_permissions !== undefined) payload.custom_permissions = updates.custom_permissions;
-            if (updates.telefono !== undefined) payload.telefono = updates.telefono;
-
-            const doUpdate = async (p) => {
-                const { data, error } = await supabaseClient
-                    .from('profiles')
-                    .update(p)
-                    .eq('id', userId)
-                    .select()
-                    .single();
-                return { data, error };
-            };
-
-            let { data, error } = await doUpdate(payload);
-
-            // If column doesn't exist, retry without it
-            if (error && error.message?.includes('schema cache')) {
-                const safePayload = {};
-                if (payload.name !== undefined) safePayload.name = payload.name;
-                if (payload.initials !== undefined) safePayload.initials = payload.initials;
-                if (payload.role !== undefined) safePayload.role = payload.role;
-                if (Object.keys(safePayload).length > 0) {
-                    const retry = await doUpdate(safePayload);
-                    data = retry.data;
-                    error = retry.error;
-                    if (!error) console.warn('[API] updateProfile: saved core fields only (missing columns in DB)');
-                }
-            }
-
-            if (error) {
-                console.error('[API] Supabase updateProfile error:', error.code, error.message, error.details, error.hint);
-                throw error;
-            }
-            return { success: true, data };
-        } catch (e) {
-            console.warn('[API] Error updating profile:', e.message);
-            return { success: false, error: e.message };
-        }
-    },
+    // NOTA: updateProfile vive abajo (cerca de getProfiles/getRoles). El que
+    // existia aca fue removido por ser duplicado — JS pisaba este con el de
+    // abajo (mismo key en el object literal), asi que era codigo muerto.
 
     // ═══════════════════════════════════════════
     // CASCADA DE COSTOS — Insumos, Catálogo, Recetas
@@ -2646,27 +2604,31 @@ const API = {
         if (updates.telefono !== undefined) payload.telefono = updates.telefono;
         if (updates.active !== undefined) payload.active = updates.active;
 
-        const { data, error } = await client
-            .from('profiles')
-            .update(payload)
-            .eq('id', uid)
-            .select()
-            .single();
+        // NOTA: No usamos .select().single() porque RLS puede bloquear el SELECT
+        // de vuelta y disparar PGRST116 ("Cannot coerce..."). El UPDATE en sí
+        // funciona; la pantalla refresca con _loadUsuariosTab() despues.
+        const doUpdate = async (p) => client.from('profiles').update(p).eq('id', uid);
+
+        let { error } = await doUpdate(payload);
+
+        // Retry con fields core si una columna no existe en la BD (schema cache)
+        if (error && error.message?.includes('schema cache')) {
+            const safe = {};
+            if (payload.name !== undefined) safe.name = payload.name;
+            if (payload.initials !== undefined) safe.initials = payload.initials;
+            if (payload.role !== undefined) safe.role = payload.role;
+            if (Object.keys(safe).length > 0) {
+                const retry = await doUpdate(safe);
+                error = retry.error;
+                if (!error) console.warn('[API] updateProfile: solo se guardaron campos core (faltan columnas en BD)');
+            }
+        }
 
         if (error) {
-            // Retry with safe fields only if schema cache issue
-            if (error.message?.includes('schema cache')) {
-                const safe = {};
-                if (payload.name) safe.name = payload.name;
-                if (payload.initials) safe.initials = payload.initials;
-                if (payload.role) safe.role = payload.role;
-                const { error: e2 } = await client.from('profiles').update(safe).eq('id', uid);
-                if (e2) throw e2;
-                return { success: true };
-            }
+            console.error('[API] Supabase updateProfile error:', error.code, error.message, error.details, error.hint);
             throw error;
         }
-        return { success: true, data };
+        return { success: true };
     },
 
     async getRoles() {
