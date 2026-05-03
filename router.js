@@ -52,6 +52,7 @@ const Router = {
 
             // ── Operaciones ──
             'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },
+            'proyectos/:id':    { render: (params) => ProyectoDetalle.render(params.id), requiresAuth: true, module: 'proyectos' },
             'eventos':          { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos' },
             'taller':           { render: () => TallerModule.render(), requiresAuth: true, module: 'taller' },
             'logistica':        { render: () => LogisticaModule.render(), requiresAuth: true, module: 'logistica' },
@@ -95,7 +96,23 @@ const Router = {
             return;
         }
 
-        const route = this.routes[hash];
+        // Match static route first; fall back to dynamic patterns (e.g. proyectos/:id)
+        let route = this.routes[hash];
+        let routeParams = {};
+
+        if (!route) {
+            for (const [pattern, def] of Object.entries(this.routes)) {
+                if (!pattern.includes(':')) continue;
+                const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
+                const match = hash.match(regex);
+                if (match) {
+                    route = def;
+                    const paramNames = [...pattern.matchAll(/:(\w+)/g)].map(m => m[1]);
+                    paramNames.forEach((name, i) => { routeParams[name] = match[i + 1]; });
+                    break;
+                }
+            }
+        }
 
         // Unknown route → go to default route or login
         if (!route) {
@@ -166,7 +183,7 @@ const Router = {
         }
 
         // Render the route
-        route.render();
+        route.render(routeParams);
 
         // Update sidebar active state + refresh badges
         if (this.shellRendered) {
