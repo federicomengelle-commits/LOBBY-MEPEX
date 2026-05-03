@@ -205,7 +205,7 @@ const CRM = {
 
                 <!-- Tabs -->
                 <div class="crm-tabs">
-                    ${this._tabs.map(t => `
+                    ${this._visibleTabs().map(t => `
                         <button class="crm-tab ${t.id === this._activeTab ? 'active' : ''}" data-tab="${t.id}">
                             <span class="crm-tab-icon">${t.icon}</span>
                             <span class="crm-tab-label">${t.label}</span>
@@ -406,7 +406,16 @@ const CRM = {
     //  TABS
     // ═══════════════════════════════════════════
 
+    _visibleTabs() {
+        const isSuper = Auth.isSuperAdmin?.() || false;
+        return this._tabs.filter(t => t.id !== 'analitica' || isSuper);
+    },
+
     _switchTab(tab) {
+        // Guard: tabs restringidos por rol no se pueden activar via URL
+        if (!this._visibleTabs().some(t => t.id === tab)) {
+            tab = 'clientes';
+        }
         this._activeTab = tab;
         // Update tab buttons
         document.querySelectorAll('.crm-tab').forEach(btn => {
@@ -2754,7 +2763,9 @@ const CRM = {
 
                 addBtn.disabled = true;
                 addBtn.textContent = '...';
-                const result = await API.addCotizacionTimeline(cot.id, tipo, desc);
+                const me = Auth.getUser?.();
+                const meta = { usuario: me?.name || me?.username || 'Sistema' };
+                const result = await API.addCotizacionTimeline(cot.id, tipo, desc, meta);
                 if (result) {
                     Toast.success('Interacci\u00F3n registrada');
                     // Reload timeline
@@ -3061,6 +3072,7 @@ const CRM = {
                     const time = new Date(entry.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
                     const duration = entry.metadata && entry.metadata.duracion ? `<span class="inter-duration">⏱ ${entry.metadata.duracion} min</span>` : '';
 
+                    const witness = entry.user || 'Sistema';
                     feedHTML += `
                         <div class="inter-item" data-id="${entry.id}">
                             <div class="inter-item-icon" style="background: ${tCfg.color}15; color: ${tCfg.color}; border-color: ${tCfg.color}30">
@@ -3076,7 +3088,10 @@ const CRM = {
                                     ${duration}
                                 </div>
                                 <div class="inter-item-desc">${entry.descripcion || ''}</div>
-                                ${entry.user ? `<div class="inter-item-user">por ${entry.user}</div>` : ''}
+                                <div class="inter-item-user" title="Usuario que registró la interacción">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                    por <strong>${witness}</strong>
+                                </div>
                             </div>
                         </div>`;
                 });
