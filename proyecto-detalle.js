@@ -604,8 +604,7 @@ const ProyectoDetalle = {
                         </div>
                     </div>
                     <div class="pjd-cot-footer">
-                        <a href="#crm" class="btn btn-ghost">Ver cotización completa en CRM →</a>
-                        <p class="pjd-section-helper">La información económica (montos, totales, balance) se gestiona desde el módulo CRM.</p>
+                        <p class="pjd-section-helper">La información económica (montos, totales, balance) se gestiona desde el módulo CRM y no se muestra acá.</p>
                     </div>
                 </div>
             </div>
