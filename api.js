@@ -547,18 +547,25 @@ const API = {
     },
 
     // ─── Projects CRUD ───────────────────────
+    // Schema nuevo (Fase 1): columnas `tipo` y `responsable_id` eliminadas
+    // (los tipos van en proyecto_tipos y los responsables en
+    // proyecto_responsables). `fecha_fin` renombrada a `fecha_entrega`.
+    // Nuevas columnas: `created_from`, `cotizacion_id`, `drive_folder_url`,
+    // `drive_folder_id`.
     async createProject(data) {
         try {
             const payload = {
                 nombre: data.name || data.nombre,
                 cliente_id: data.clientId || data.cliente_id || null,
                 evento_id: data.eventoId || data.evento_id || null,
-                responsable_id: data.responsableId || data.responsable_id || null,
                 estado: data.estado || data.status || null,
-                tipo: data.tipo || data.type || null,
                 fecha_inicio: data.fechaInicio || data.fecha_inicio || null,
-                fecha_fin: data.fechaFin || data.fecha_fin || null,
+                fecha_entrega: data.fechaEntrega || data.fecha_entrega || null,
                 notas: data.notas || data.notes || null,
+                created_from: data.createdFrom || data.created_from || null,
+                cotizacion_id: data.cotizacionId || data.cotizacion_id || null,
+                drive_folder_url: data.driveFolderUrl || data.drive_folder_url || null,
+                drive_folder_id: data.driveFolderId || data.drive_folder_id || null,
             };
             const result = await UndoHelpers.createRecord('proyectos', payload, `Nuevo proyecto: ${data.name || data.nombre || ''}`);
             this.clearCache();
@@ -578,18 +585,23 @@ const API = {
             if (data.cliente_id !== undefined) payload.cliente_id = data.cliente_id || null;
             if (data.eventoId !== undefined) payload.evento_id = data.eventoId || null;
             if (data.evento_id !== undefined) payload.evento_id = data.evento_id || null;
-            if (data.responsableId !== undefined) payload.responsable_id = data.responsableId || null;
-            if (data.responsable_id !== undefined) payload.responsable_id = data.responsable_id || null;
             if (data.estado !== undefined) payload.estado = data.estado;
             if (data.status !== undefined) payload.estado = data.status;
-            if (data.tipo !== undefined) payload.tipo = data.tipo;
-            if (data.type !== undefined) payload.tipo = data.type;
             if (data.fechaInicio !== undefined) payload.fecha_inicio = data.fechaInicio || null;
             if (data.fecha_inicio !== undefined) payload.fecha_inicio = data.fecha_inicio || null;
-            if (data.fechaFin !== undefined) payload.fecha_fin = data.fechaFin || null;
-            if (data.fecha_fin !== undefined) payload.fecha_fin = data.fecha_fin || null;
+            if (data.fechaEntrega !== undefined) payload.fecha_entrega = data.fechaEntrega || null;
+            if (data.fecha_entrega !== undefined) payload.fecha_entrega = data.fecha_entrega || null;
             if (data.notas !== undefined) payload.notas = data.notas;
             if (data.notes !== undefined) payload.notas = data.notes;
+            if (data.createdFrom !== undefined) payload.created_from = data.createdFrom;
+            if (data.created_from !== undefined) payload.created_from = data.created_from;
+            if (data.cotizacionId !== undefined) payload.cotizacion_id = data.cotizacionId || null;
+            if (data.cotizacion_id !== undefined) payload.cotizacion_id = data.cotizacion_id || null;
+            if (data.driveFolderUrl !== undefined) payload.drive_folder_url = data.driveFolderUrl || null;
+            if (data.drive_folder_url !== undefined) payload.drive_folder_url = data.drive_folder_url || null;
+            if (data.driveFolderId !== undefined) payload.drive_folder_id = data.driveFolderId || null;
+            if (data.drive_folder_id !== undefined) payload.drive_folder_id = data.drive_folder_id || null;
+            if (data._deleted !== undefined) payload._deleted = data._deleted;
             await UndoHelpers.updateRecord('proyectos', id, payload, `Edito proyecto: ${data.name || data.nombre || ''}`);
             this.clearCache();
             return true;

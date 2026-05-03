@@ -1784,8 +1784,8 @@ const CRM = {
                             <input type="date" class="crm-form-input" id="aprobarFechaInicio" value="${prefillFechaInicio || ''}"/>
                         </label>
                         <label class="crm-aprobar-label">
-                            <span>Fecha fin (opcional)</span>
-                            <input type="date" class="crm-form-input" id="aprobarFechaFin"/>
+                            <span>Fecha entrega (opcional)</span>
+                            <input type="date" class="crm-form-input" id="aprobarFechaEntrega"/>
                         </label>
                         <label class="crm-aprobar-label">
                             <span>Notas (opcional)</span>
@@ -1897,18 +1897,19 @@ const CRM = {
                         const eventoId      = overlay.querySelector('#aprobarEvento')?.value || null;
                         const responsableId = overlay.querySelector('#aprobarResponsable')?.value || null;
                         const fechaInicio   = overlay.querySelector('#aprobarFechaInicio')?.value || null;
-                        const fechaFin      = overlay.querySelector('#aprobarFechaFin')?.value || null;
+                        const fechaEntrega  = overlay.querySelector('#aprobarFechaEntrega')?.value || null;
                         const notas         = (overlay.querySelector('#aprobarNotas')?.value || '').trim() || null;
 
                         const newProject = await API.createProject({
                             name: nombre,
                             clientId: cot.clienteId,
                             eventoId,
-                            responsableId,
-                            estado: 'en_curso',
+                            estado: 'por_iniciar',
                             fechaInicio,
-                            fechaFin,
+                            fechaEntrega,
                             notas,
+                            createdFrom: 'crm',
+                            cotizacionId: cot.id,
                         });
                         if (!newProject || (typeof newProject === 'object' && !newProject.id)) {
                             Toast.error('Error al crear el proyecto');
@@ -1928,6 +1929,13 @@ const CRM = {
                             confirmBtn.disabled = false;
                             confirmBtn.textContent = 'Aprobar y vincular';
                             return;
+                        }
+                        // Insertar responsable como child (es_principal=true) si fue seleccionado
+                        if (responsableId) {
+                            const { error: respErr } = await supabaseClient
+                                .from('proyecto_responsables')
+                                .insert([{ proyecto_id: projectId, profile_id: responsableId, es_principal: true }]);
+                            if (respErr) console.warn('[CRM] Error insertando responsable:', respErr.message);
                         }
                     }
 
