@@ -33,6 +33,18 @@ const EventosModule = {
     _vehiculosList: [],      // caché de vehículos para el modal Agregar movimiento
     _vehiculosLoaded: false,
 
+    // Proyectos vinculados (vía proyectos.evento_id)
+    _proyectosCache: {},     // { [eventoId]: [...proyectos] }
+    _proyectoCounts: {},     // { [eventoId]: number } — contador para columna de la tabla
+
+    _proyectoStatusMap: {
+        por_iniciar: { label: 'Por iniciar', color: '#F28D15' },
+        en_proceso:  { label: 'En proceso',  color: '#00A9C1' },
+        en_taller:   { label: 'En taller',   color: '#9B7DFF' },
+        finalizado:  { label: 'Finalizado',  color: '#666666' },
+        rechazado:   { label: 'Rechazado',   color: '#ff4444' },
+    },
+
     // ─── Color palette for events ───
     _palette: [
         '#00BCD4', '#FF9800', '#9C27B0', '#4CAF50', '#E91E63',
@@ -129,6 +141,28 @@ const EventosModule = {
                 .ev-mov-status { font-size:10px; padding:2px 6px; border-radius:4px; border:1px solid; font-family:'Outfit',sans-serif; font-weight:500; }
                 .ev-mov-open-btn { color:#00A9C180; font-size:14px; font-weight:bold; }
                 .ev-mov-open-btn:hover { color:#00A9C1; background:#00A9C115; }
+
+                /* Proyectos vinculados — lista en panel del evento */
+                .ev-proyectos-list { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+                .ev-proyecto-row { display:flex; flex-direction:column; gap:3px; padding:8px 10px;
+                    background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px; }
+                .ev-proyecto-row:hover { border-color:#00A9C140; }
+                .ev-proyecto-row-main { display:flex; align-items:center; gap:6px; }
+                .ev-proyecto-row-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:11px; color:#888; }
+                .ev-proyecto-name { font-family:'Outfit',sans-serif; font-weight:500; color:#E8E8E8;
+                    text-decoration:none; cursor:pointer; }
+                .ev-proyecto-name:hover { color:#00A9C1; text-decoration:underline; }
+                .ev-proyecto-client { font-size:11px; color:#888; }
+                .ev-pj-origin { display:inline-flex; align-items:center; justify-content:center; color:#666; }
+                .ev-pj-origin.crm { color:#F28D15; }
+                .ev-pj-origin.manual { color:#555; }
+                .ev-pj-status-badge { display:inline-block; padding:2px 8px; border-radius:4px;
+                    font-family:'Space Mono',monospace; font-size:10px; font-weight:700;
+                    color: var(--st-color, #888);
+                    background: color-mix(in srgb, var(--st-color, #888) 14%, transparent);
+                    border: 1px solid color-mix(in srgb, var(--st-color, #888) 35%, transparent); }
+                .ev-proyectos-actions { display:flex; flex-direction:column; gap:4px; margin-top:10px; }
+                .ev-proyectos-actions .btn { font-size:11px; }
             </style>
             <div class="ev-wrapper">
                 <div class="ev-toolbar">
@@ -219,9 +253,31 @@ const EventosModule = {
             this._events = this._getDummyEvents();
         }
 
+        await this._loadProyectoCounts();
+
         this._populateVenueFilter();
         this._applyFilters();
         this._renderContent();
+    },
+
+    async _loadProyectoCounts() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('proyectos')
+                .select('evento_id')
+                .not('evento_id', 'is', null)
+                .eq('_deleted', false);
+            if (error) throw error;
+            const counts = {};
+            (data || []).forEach(p => {
+                if (!p.evento_id) return;
+                counts[p.evento_id] = (counts[p.evento_id] || 0) + 1;
+            });
+            this._proyectoCounts = counts;
+        } catch (e) {
+            console.warn('[Eventos] Error cargando contadores de proyectos:', e.message);
+            this._proyectoCounts = {};
+        }
     },
 
     _escAttr(str) {
@@ -287,15 +343,23 @@ const EventosModule = {
         API.updateEvent(eventId, { notasOperativas: notas }).catch(() => {});
     },
 
-    _getProyectosVinculados(eventId) {
+    async _loadProyectosVinculados(eventoId) {
         try {
-            const raw = localStorage.getItem(`ev_proyectos_${eventId}`);
-            return raw ? JSON.parse(raw) : [];
-        } catch { return []; }
-    },
-
-    _saveProyectosVinculados(eventId, ids) {
-        localStorage.setItem(`ev_proyectos_${eventId}`, JSON.stringify(ids));
+            const { data, error } = await supabaseClient
+                .from('proyectos')
+                .select(`
+                    id, nombre, estado, created_from, evento_id,
+                    cliente:clientes(id, nombre_empresa)
+                `)
+                .eq('evento_id', eventoId)
+                .eq('_deleted', false)
+                .order('created_at', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[Eventos] Error cargando proyectos vinculados:', e.message);
+            return [];
+        }
     },
 
     // ═══════════════════════════════════════════
@@ -422,7 +486,7 @@ const EventosModule = {
     _renderTableRow(ev) {
         const statusColor = this._getStatusColor(ev.estado);
         const statusLabel = this._getStatusLabel(ev.estado);
-        const proyCount = this._getProyectosVinculados(ev.id).length;
+        const proyCount = this._proyectoCounts[ev.id] || 0;
 
         return `
             <tr class="ev-row ev-row--${ev.estado}" data-event-id="${ev.id}" style="--row-color: ${ev.color || statusColor}">
@@ -462,7 +526,6 @@ const EventosModule = {
                 ${events.map(ev => {
                     const statusColor = this._getStatusColor(ev.estado);
                     const statusLabel = this._getStatusLabel(ev.estado);
-                    const proyCount = this._getProyectosVinculados(ev.id).length;
 
                     return `
                         <div class="ev-card" data-event-id="${ev.id}" style="--card-color: ${ev.color || statusColor}">
@@ -476,7 +539,6 @@ const EventosModule = {
                                 ${ev.eventStartDate ? `<span class="ev-card-date">📅 ${this._fmtDate(ev.eventStartDate)}${ev.eventEndDate ? ` — ${this._fmtDate(ev.eventEndDate)}` : ''}</span>` : ''}
                                 ${ev.setupDate ? `<span class="ev-card-date">🔧 Armado: ${this._fmtDate(ev.setupDate)}</span>` : ''}
                             </div>
-                            ${proyCount > 0 ? `<div class="ev-card-proyectos">${proyCount} proyecto${proyCount !== 1 ? 's' : ''} vinculado${proyCount !== 1 ? 's' : ''}</div>` : ''}
                         </div>
                     `;
                 }).join('')}
@@ -508,6 +570,7 @@ const EventosModule = {
         // Cargar secciones async después de renderizar el shell
         this._loadEquipoSection(eventId);
         this._loadTransporteSection(eventId);
+        this._loadProyectosSection(eventId);
     },
 
     _closePanel() {
@@ -525,7 +588,6 @@ const EventosModule = {
         const statusColor = this._getStatusColor(ev.estado);
         const documentos = this._getDocumentos(ev.id);
         const notas = this._getNotas(ev.id);
-        const proyectos = this._getProyectosVinculados(ev.id);
         const conflicts = this._detectConflicts(ev);
 
         return `
@@ -545,8 +607,15 @@ const EventosModule = {
                 <!-- Fechas -->
                 ${this._renderPanelFechas(ev)}
 
-                <!-- Proyectos vinculados -->
-                ${this._renderPanelProyectos(ev, proyectos)}
+                <!-- Proyectos vinculados (cargados async desde proyectos.evento_id) -->
+                <div id="evProyectosContent">
+                    <div class="ev-panel-section">
+                        <div class="ev-section-header">
+                            <h3 class="ev-section-title">Proyectos del evento</h3>
+                        </div>
+                        <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
+                    </div>
+                </div>
 
                 <!-- Equipo asignado (cargado async desde rrhh_asignaciones) -->
                 <div id="evEquipoContent">
@@ -666,31 +735,113 @@ const EventosModule = {
         `;
     },
 
-    _renderPanelProyectos(ev, proyectoIds) {
+    async _loadProyectosSection(eventoId) {
+        const container = document.getElementById('evProyectosContent');
+        if (!container) return;
+        const proyectos = await this._loadProyectosVinculados(eventoId);
+        this._proyectosCache[eventoId] = proyectos;
+        container.innerHTML = this._renderPanelProyectos(eventoId, proyectos);
+        this._attachProyectosEvents(eventoId);
+    },
+
+    _renderPanelProyectos(eventoId, proyectos) {
+        const canWrite = this._canWriteProyectos();
+        const count = proyectos.length;
+
+        const itemsHTML = count > 0 ? `
+            <div class="ev-proyectos-list">
+                ${proyectos.map(p => {
+                    const st = this._proyectoStatusMap[p.estado] || { label: p.estado || '—', color: '#666' };
+                    const cliente = p.cliente?.nombre_empresa || '';
+                    const isCRM = p.created_from === 'crm';
+                    const originIcon = isCRM
+                        ? `<span class="ev-pj-origin crm" title="Origen: CRM (cotización)">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                           </span>`
+                        : `<span class="ev-pj-origin manual" title="Origen: manual">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                           </span>`;
+                    return `
+                        <div class="ev-proyecto-row" data-proyecto-id="${this._escAttr(p.id)}">
+                            <div class="ev-proyecto-row-main">
+                                <a href="#proyectos/${this._escAttr(p.id)}" class="ev-proyecto-name" data-goto-proyecto="${this._escAttr(p.id)}">${this._escAttr(p.nombre || 'Sin nombre')}</a>
+                                ${originIcon}
+                            </div>
+                            <div class="ev-proyecto-row-meta">
+                                ${cliente ? `<span class="ev-proyecto-client">${this._escAttr(cliente)}</span>` : ''}
+                                <span class="ev-pj-status-badge" style="--st-color: ${st.color}">${this._escAttr(st.label)}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        ` : `<p class="ev-section-empty">Sin proyectos vinculados</p>`;
+
+        const actionsHTML = canWrite ? `
+            <div class="ev-proyectos-actions">
+                <button class="btn btn-ghost btn-sm ev-btn-new-proyecto-evento" type="button">
+                    + Nuevo proyecto para este evento
+                </button>
+                <button class="btn btn-ghost btn-sm ev-btn-link-proyecto-existing" type="button">
+                    Vincular proyecto existente
+                </button>
+            </div>
+        ` : '';
+
         return `
             <div class="ev-panel-section" id="evSecProyectos">
                 <div class="ev-section-header">
-                    <h3 class="ev-section-title">Proyectos MEPEX</h3>
-                    <button class="ev-edit-btn ev-btn-link-proyecto" title="Vincular proyecto">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    </button>
+                    <h3 class="ev-section-title">Proyectos del evento
+                        ${count > 0 ? `<span class="ev-equipo-count">${count}</span>` : ''}
+                    </h3>
                 </div>
-                ${proyectoIds.length > 0 ? `
-                    <div class="ev-proyectos-list" id="evProyectosList">
-                        ${proyectoIds.map(p => `
-                            <div class="ev-proyecto-row">
-                                <span class="ev-proyecto-name">${p.name || 'Proyecto'}</span>
-                                <span class="ev-proyecto-client">${p.client || ''}</span>
-                                <span class="ev-proyecto-status badge badge-ghost">${p.status || ''}</span>
-                                <button class="ev-unlink-btn" data-unlink-proyecto="${p.id}" title="Desvincular">&times;</button>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : `
-                    <p class="ev-section-empty">Sin proyectos vinculados</p>
-                `}
+                ${itemsHTML}
+                ${actionsHTML}
             </div>
         `;
+    },
+
+    _canWriteProyectos() {
+        const user = Auth.getUser();
+        if (!user) return false;
+        try {
+            return !Data.isReadOnly(user.role, 'proyectos');
+        } catch {
+            return false;
+        }
+    },
+
+    _attachProyectosEvents(eventoId) {
+        const container = document.getElementById('evProyectosContent');
+        if (!container) return;
+
+        // Click en nombre del proyecto → navega al detalle
+        container.querySelectorAll('[data-goto-proyecto]').forEach(a => {
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pid = a.dataset.gotoProyecto;
+                if (!pid) return;
+                this._closePanel();
+                Router.navigate('proyectos/' + pid);
+            });
+        });
+
+        // Nuevo proyecto para este evento
+        container.querySelector('.ev-btn-new-proyecto-evento')?.addEventListener('click', () => {
+            if (typeof ProyectosModule?._openNewProjectModal !== 'function') {
+                Toast.error('Módulo de proyectos no disponible');
+                return;
+            }
+            ProyectosModule._openNewProjectModal({
+                evento_id: eventoId,
+                onSuccess: () => this._loadProyectosSection(eventoId),
+            });
+        });
+
+        // Vincular proyecto existente (proyectos huérfanos sin evento_id)
+        container.querySelector('.ev-btn-link-proyecto-existing')?.addEventListener('click', () => {
+            this._showLinkOrphanProyectoModal(eventoId);
+        });
     },
 
     async _loadEquipoSection(eventoId) {
@@ -1443,7 +1594,7 @@ const EventosModule = {
 
         // Hide all edit/delete buttons when read-only
         if (this._isRO) {
-            document.querySelectorAll('.ev-edit-btn, .ev-btn-link-proyecto, .ev-btn-add-doc, .ev-btn-add-seguro, .ev-btn-delete-event, .ev-doc-remove').forEach(btn => {
+            document.querySelectorAll('.ev-edit-btn, .ev-btn-add-doc, .ev-btn-add-seguro, .ev-btn-delete-event, .ev-doc-remove').forEach(btn => {
                 btn.style.display = 'none';
             });
             // Make notas textarea read-only
@@ -1508,31 +1659,6 @@ const EventosModule = {
                 }, 600);
             });
         }
-
-        // Link proyecto
-        document.querySelector('.ev-btn-link-proyecto')?.addEventListener('click', () => {
-            this._showLinkProyectoModal(ev);
-        });
-
-        // Unlink proyecto
-        document.querySelectorAll('[data-unlink-proyecto]').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const pId = btn.dataset.unlinkProyecto;
-                const confirmed = await Modal.confirm({
-                    title: 'Desvincular proyecto',
-                    message: '¿Desvincular este proyecto del evento?',
-                    confirmText: 'Desvincular',
-                });
-                if (confirmed) {
-                    let linked = this._getProyectosVinculados(ev.id);
-                    linked = linked.filter(p => p.id !== pId);
-                    this._saveProyectosVinculados(ev.id, linked);
-                    this._refreshPanel();
-                    this._renderContent();
-                }
-            });
-        });
 
         // Add equipo rows
         document.getElementById('evAddPersona')?.addEventListener('click', () => {
@@ -1807,86 +1933,95 @@ const EventosModule = {
         });
     },
 
-    _showLinkProyectoModal(ev) {
+    async _showLinkOrphanProyectoModal(eventoId) {
         const body = `
             <div class="ev-link-proyecto-search">
-                <input type="text" class="form-input" id="evProyectoSearch" placeholder="Buscar proyecto por nombre…" autocomplete="off">
-                <div class="ev-link-results" id="evLinkResults">
-                    <p class="ev-section-empty">Escribí para buscar proyectos</p>
+                <input type="text" class="form-input" id="evOrphanSearch" placeholder="Buscar por nombre de proyecto o cliente…" autocomplete="off">
+                <div class="ev-link-results" id="evOrphanResults">
+                    <p class="ev-section-empty">Cargando proyectos sin evento…</p>
                 </div>
             </div>
         `;
 
         const instance = Modal.open({
-            title: 'Vincular proyecto',
+            title: 'Vincular proyecto existente',
             body,
             size: 'sm',
             footer: '<button class="btn btn-ghost" data-modal-close>Cerrar</button>',
         });
 
-        const searchInput = instance.overlay.querySelector('#evProyectoSearch');
-        const resultsEl = instance.overlay.querySelector('#evLinkResults');
-        let debounce = null;
+        const searchInput = instance.overlay.querySelector('#evOrphanSearch');
+        const resultsEl = instance.overlay.querySelector('#evOrphanResults');
+
+        // Carga inicial: proyectos sin evento_id
+        let orphans = [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('proyectos')
+                .select(`
+                    id, nombre, estado, created_from,
+                    cliente:clientes(id, nombre_empresa)
+                `)
+                .is('evento_id', null)
+                .eq('_deleted', false)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            orphans = data || [];
+        } catch (e) {
+            console.warn('[Eventos] Error cargando proyectos huérfanos:', e.message);
+            resultsEl.innerHTML = '<p class="ev-section-empty">No se pudo conectar</p>';
+            return;
+        }
+
+        const renderResults = (list) => {
+            if (list.length === 0) {
+                resultsEl.innerHTML = '<p class="ev-section-empty">No hay proyectos sin evento asignado</p>';
+                return;
+            }
+            resultsEl.innerHTML = list.map(p => {
+                const st = this._proyectoStatusMap[p.estado] || { label: p.estado || '—', color: '#666' };
+                const cliente = p.cliente?.nombre_empresa || '';
+                return `
+                    <button class="ev-link-result-item" data-link-orphan="${this._escAttr(p.id)}" data-nombre="${this._escAttr(p.nombre || '')}">
+                        <span class="ev-link-name">${this._escAttr(p.nombre || 'Sin nombre')}</span>
+                        ${cliente ? `<span class="ev-link-client">${this._escAttr(cliente)}</span>` : ''}
+                        <span class="ev-pj-status-badge" style="--st-color: ${st.color}">${this._escAttr(st.label)}</span>
+                    </button>
+                `;
+            }).join('');
+
+            resultsEl.querySelectorAll('[data-link-orphan]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const pid = btn.dataset.linkOrphan;
+                    const nombre = btn.dataset.nombre;
+                    btn.disabled = true;
+                    const { error } = await supabaseClient
+                        .from('proyectos')
+                        .update({ evento_id: eventoId })
+                        .eq('id', pid);
+                    if (error) {
+                        console.warn('[Eventos] Error vinculando proyecto:', error.message);
+                        Toast.error('No se pudo vincular el proyecto');
+                        btn.disabled = false;
+                        return;
+                    }
+                    Toast.success(`Proyecto "${nombre}" vinculado`);
+                    Modal.close(instance.id);
+                    await this._loadProyectosSection(eventoId);
+                });
+            });
+        };
+
+        renderResults(orphans);
 
         searchInput?.addEventListener('input', () => {
-            clearTimeout(debounce);
-            debounce = setTimeout(async () => {
-                const q = searchInput.value.trim();
-                if (q.length < 2) {
-                    resultsEl.innerHTML = '<p class="ev-section-empty">Escribí para buscar proyectos</p>';
-                    return;
-                }
-
-                let projects = await API.getProjects();
-                if (!projects) {
-                    resultsEl.innerHTML = '<p class="ev-section-empty">No se pudo conectar</p>';
-                    return;
-                }
-
-                const qq = q.toLowerCase();
-                projects = projects.filter(p =>
-                    (p.name || '').toLowerCase().includes(qq) ||
-                    (p.clientName || '').toLowerCase().includes(qq)
-                ).slice(0, 10);
-
-                const linked = this._getProyectosVinculados(ev.id);
-                const linkedIds = linked.map(l => l.id);
-
-                if (projects.length === 0) {
-                    resultsEl.innerHTML = '<p class="ev-section-empty">Sin resultados</p>';
-                    return;
-                }
-
-                resultsEl.innerHTML = projects.map(p => `
-                    <button class="ev-link-result-item ${linkedIds.includes(p.id) ? 'linked' : ''}" data-proyecto-id="${p.id}" data-proyecto-name="${p.name}" data-proyecto-client="${p.clientName || ''}" data-proyecto-status="${p.status || ''}">
-                        <span class="ev-link-name">${p.name}</span>
-                        <span class="ev-link-client">${p.clientName || ''}</span>
-                        ${linkedIds.includes(p.id) ? '<span class="badge badge-success">Vinculado</span>' : '<span class="badge badge-ghost">Vincular</span>'}
-                    </button>
-                `).join('');
-
-                resultsEl.querySelectorAll('.ev-link-result-item:not(.linked)').forEach(item => {
-                    item.addEventListener('click', () => {
-                        const pData = {
-                            id: item.dataset.proyectoId,
-                            name: item.dataset.proyectoName,
-                            client: item.dataset.proyectoClient,
-                            status: item.dataset.proyectoStatus,
-                        };
-                        let current = this._getProyectosVinculados(ev.id);
-                        if (!current.find(c => c.id === pData.id)) {
-                            current.push(pData);
-                            this._saveProyectosVinculados(ev.id, current);
-                            Toast.success(`Proyecto "${pData.name}" vinculado`);
-                            item.classList.add('linked');
-                            item.querySelector('.badge').className = 'badge badge-success';
-                            item.querySelector('.badge').textContent = 'Vinculado';
-                            this._refreshPanel();
-                            this._renderContent();
-                        }
-                    });
-                });
-            }, 300);
+            const q = searchInput.value.trim().toLowerCase();
+            if (!q) return renderResults(orphans);
+            const filtered = orphans.filter(p =>
+                (p.nombre || '').toLowerCase().includes(q) ||
+                (p.cliente?.nombre_empresa || '').toLowerCase().includes(q)
+            );
+            renderResults(filtered);
         });
     },
 
@@ -1983,7 +2118,7 @@ const EventosModule = {
         const result = await API.deleteEvent(eventId);
         if (result) {
             // Clean up localStorage data
-            ['ev_ext_', 'ev_docs_', 'ev_notas_', 'ev_proyectos_'].forEach(prefix => {
+            ['ev_ext_', 'ev_docs_', 'ev_notas_'].forEach(prefix => {
                 localStorage.removeItem(prefix + eventId);
             });
             Toast.success('Evento eliminado');

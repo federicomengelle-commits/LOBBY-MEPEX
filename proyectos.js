@@ -722,11 +722,46 @@ const ProyectosModule = {
     // ═══════════════════════════════════════════
 
     _showCreateModal() {
+        return this._openNewProjectModal();
+    },
+
+    /**
+     * Abre el modal de "Nuevo Proyecto". Acepta opciones:
+     *   - prefill.evento_id: pre-selecciona el evento en el dropdown
+     *   - prefill.cliente_id: pre-selecciona el cliente
+     *   - onSuccess(): callback luego de crear el proyecto exitosamente
+     *
+     * Carga catálogos perezosamente si _loadData no fue llamado todavía
+     * (caso típico: invocado desde otro módulo como Eventos).
+     */
+    async _openNewProjectModal(prefill = {}) {
+        const opts = prefill || {};
+        const onSuccess = typeof opts.onSuccess === 'function' ? opts.onSuccess : null;
+
+        // Si no se cargaron catálogos (caso: invocado desde otro módulo), cargarlos
+        if (!this._events.length || !this._clients.length || !this._users.length) {
+            try {
+                const [events, users, clients] = await Promise.all([
+                    API.getEvents(),
+                    API.getUsers(),
+                    API.getClients(),
+                ]);
+                this._events = (events || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                this._users = (users || []).filter(u => u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                this._clients = (clients || []).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
+            } catch (e) {
+                console.warn('[Proyectos] No se pudieron cargar catálogos para Nuevo Proyecto:', e.message);
+            }
+        }
+
+        const preEvento = opts.evento_id ? String(opts.evento_id) : '';
+        const preCliente = opts.cliente_id ? String(opts.cliente_id) : '';
+
         const clientOptions = this._clients.map(c =>
-            `<option value="${c.id}">${this._escAttr(c.name)}</option>`
+            `<option value="${c.id}" ${String(c.id) === preCliente ? 'selected' : ''}>${this._escAttr(c.name)}</option>`
         ).join('');
         const eventOptions = this._events.map(e =>
-            `<option value="${e.id}">${this._escAttr(e.name)}</option>`
+            `<option value="${e.id}" ${String(e.id) === preEvento ? 'selected' : ''}>${this._escAttr(e.name)}</option>`
         ).join('');
         const userOptions = this._users.map(u => ({
             value: String(u.uid),
@@ -797,11 +832,11 @@ const ProyectosModule = {
         this._initMultiSelectHandlers(instance.overlay);
 
         instance.overlay.querySelector('#pjCreateSubmit')?.addEventListener('click', async () => {
-            await this._submitCreate(instance);
+            await this._submitCreate(instance, onSuccess);
         });
     },
 
-    async _submitCreate(instance) {
+    async _submitCreate(instance, onSuccess) {
         const form = instance.overlay.querySelector('#pjCreateForm');
         const nombre = form.querySelector('[name="nombre"]').value.trim();
         if (!nombre) {
@@ -863,7 +898,18 @@ const ProyectosModule = {
 
             Toast.success(`Proyecto "${nombre}" creado`);
             Modal.close(instance.id);
-            await this._loadData();
+
+            // Si el modal se invocó desde otro módulo, no recargamos la lista de Proyectos
+            // (no estamos viendo esa pantalla). Sólo refrescamos si el shell está montado.
+            if (document.getElementById('pjMainContent')) {
+                await this._loadData();
+            }
+
+            if (typeof onSuccess === 'function') {
+                try { await onSuccess(created); } catch (cbErr) {
+                    console.warn('[Proyectos] onSuccess callback falló:', cbErr.message);
+                }
+            }
         } catch (e) {
             console.warn('[Proyectos] Error al crear proyecto:', e.message);
             Toast.error('Error al crear proyecto');
