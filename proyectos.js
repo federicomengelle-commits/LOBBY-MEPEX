@@ -1,10 +1,12 @@
 /* =============================================
-   MEPEX Lobby — Módulo Proyectos
+   MEPEX Lobby — Módulo Proyectos (refactor schema nuevo)
    =============================================
-   Gestión de proyectos: stands, alquileres,
-   servicios vinculados a eventos y clientes.
-   Tabla + ficha lateral + vista por evento.
-   Multi-select para responsables y tipos.
+   Listado de proyectos contra el modelo nuevo:
+   - proyectos (estado slug, fecha_entrega, drive_folder_*,
+     cotizacion_id, created_from)
+   - proyecto_responsables (multi, es_principal)
+   - proyecto_tipos (multi, slug del CHECK)
+   La vista detalle full-page se implementa en Fase 3.
    ============================================= */
 
 const ProyectosModule = {
@@ -15,37 +17,34 @@ const ProyectosModule = {
     _events: [],
     _users: [],
     _clients: [],
-    _sortCol: 'name',
-    _sortDir: 'asc',
+    _sortCol: 'created_at',
+    _sortDir: 'desc',
     _searchQuery: '',
     _statusFilter: null,
     _eventFilter: null,
     _responsibleFilter: null,
     _typeFilter: null,
-    _viewMode: 'table', // 'table' | 'cards' | 'by_event'
-    _activePanel: null,
-    _activePanelData: null,
+    _viewMode: 'table', // 'table' | 'cards' | 'calendar'
+    _isRO: false,
 
-    // ─── Options ───
+    // ─── Options (alineadas a CHECK constraints de DB) ───
     _statusOptions: [
-        { value: 'Pendiente',            label: 'Pendiente',            color: '#F28D15' },
-        { value: 'Aguarda respuesta',    label: 'Aguarda respuesta',    color: '#FFCA28' },
-        { value: 'Aprobado',             label: 'Aprobado',             color: '#00CC88' },
-        { value: 'En proceso',           label: 'En proceso',           color: '#00A9C1' },
-        { value: 'Entregado a taller',   label: 'Entregado a taller',   color: '#9B7DFF' },
-        { value: 'Finalizado',           label: 'Finalizado',           color: '#666666' },
-        { value: 'Rechazado',            label: 'Rechazado',            color: '#ff4444' },
+        { value: 'por_iniciar', label: 'Por iniciar', color: '#F28D15' },
+        { value: 'en_proceso',  label: 'En proceso',  color: '#00A9C1' },
+        { value: 'en_taller',   label: 'En taller',   color: '#9B7DFF' },
+        { value: 'finalizado',  label: 'Finalizado',  color: '#666666' },
+        { value: 'rechazado',   label: 'Rechazado',   color: '#ff4444' },
     ],
 
     _typeOptions: [
-        { value: 'Stand full',               label: 'Stand full',               color: '#00A9C1' },
-        { value: 'Alquiler de equipamiento', label: 'Alquiler de equipamiento', color: '#F28D15' },
-        { value: 'Iluminación',              label: 'Iluminación',              color: '#FFCA28' },
-        { value: 'Infraestructura',          label: 'Infraestructura',          color: '#9B7DFF' },
-        { value: 'Gráfica',                  label: 'Gráfica',                  color: '#E91E63' },
-        { value: 'Pisos',                    label: 'Pisos',                    color: '#607D8B' },
-        { value: 'Camarín',                  label: 'Camarín',                  color: '#FF5722' },
-        { value: 'Más servicios',            label: 'Más servicios',            color: '#4CAF50' },
+        { value: 'stand_full',            label: 'Stand full',               color: '#00A9C1' },
+        { value: 'alquiler_equipamiento', label: 'Alquiler de equipamiento', color: '#F28D15' },
+        { value: 'iluminacion',           label: 'Iluminación',              color: '#FFCA28' },
+        { value: 'infraestructura',       label: 'Infraestructura',          color: '#9B7DFF' },
+        { value: 'grafica',               label: 'Gráfica',                  color: '#E91E63' },
+        { value: 'pisos',                 label: 'Pisos',                    color: '#607D8B' },
+        { value: 'camarin',               label: 'Camarín',                  color: '#FF5722' },
+        { value: 'mas_servicios',         label: 'Más servicios',            color: '#4CAF50' },
     ],
 
     // ═══════════════════════════════════════════
@@ -56,7 +55,6 @@ const ProyectosModule = {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
-        // Check read-only for this module
         this._isRO = Data.isReadOnly(user.role, 'proyectos');
 
         const content = document.getElementById('mainContent');
@@ -69,6 +67,165 @@ const ProyectosModule = {
 
     _buildShell() {
         return `
+            <style>
+                /* ─── Proyectos Module — estilos para columnas/widgets nuevos ─── */
+                .pj-origin-icon {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 16px;
+                    height: 16px;
+                    margin-left: 6px;
+                    color: #666;
+                    flex-shrink: 0;
+                    cursor: help;
+                }
+                .pj-origin-icon.crm { color: #F28D15; }
+                .pj-origin-icon.manual { color: #555; }
+
+                .pj-event-link {
+                    color: #00A9C1;
+                    text-decoration: none;
+                    border-bottom: 1px dashed transparent;
+                    transition: border-color 200ms ease;
+                }
+                .pj-event-link:hover { border-bottom-color: #00A9C1; }
+
+                /* ─── Avatar stack ─── */
+                .pj-avatar-stack {
+                    display: inline-flex;
+                    align-items: center;
+                }
+                .pj-avatar {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 50%;
+                    background: #1a1a1a;
+                    border: 2px solid #050505;
+                    color: #00A9C1;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    margin-left: -6px;
+                    text-transform: uppercase;
+                    flex-shrink: 0;
+                }
+                .pj-avatar:first-child { margin-left: 0; }
+                .pj-avatar.principal {
+                    border-color: #00A9C1;
+                    box-shadow: 0 0 0 1px #00A9C1;
+                }
+                .pj-avatar-more {
+                    background: #2a2a2a;
+                    color: #888;
+                    font-size: 0.6rem;
+                }
+
+                /* ─── Tipo chips compactos ─── */
+                .pj-type-chip {
+                    display: inline-block;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    color: var(--type-color, #888);
+                    background: color-mix(in srgb, var(--type-color, #888) 12%, transparent);
+                    border: 1px solid color-mix(in srgb, var(--type-color, #888) 30%, transparent);
+                    margin-right: 4px;
+                    white-space: nowrap;
+                }
+                .pj-type-more {
+                    display: inline-block;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.65rem;
+                    color: #888;
+                    background: #1a1a1a;
+                    border: 1px solid #2a2a2a;
+                }
+
+                /* ─── Días badge ─── */
+                .pj-days {
+                    display: inline-block;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    font-weight: 700;
+                    background: rgba(255, 255, 255, 0.04);
+                    border: 1px solid #2a2a2a;
+                }
+                .pj-days.green   { color: #00CC88; border-color: rgba(0, 204, 136, 0.25); }
+                .pj-days.yellow  { color: #FFCA28; border-color: rgba(255, 202, 40, 0.25); }
+                .pj-days.orange  { color: #F28D15; border-color: rgba(242, 141, 21, 0.25); }
+                .pj-days.red     { color: #ff4444; border-color: rgba(255, 68, 68, 0.30); background: rgba(255, 68, 68, 0.08); }
+                .pj-days.muted   { color: #555; }
+
+                /* ─── Drive icon ─── */
+                .pj-drive-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 4px;
+                    color: #888;
+                    background: transparent;
+                    border: 1px solid #2a2a2a;
+                    cursor: pointer;
+                    transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+                }
+                .pj-drive-btn:hover {
+                    color: #00A9C1;
+                    border-color: #00A9C1;
+                    background: rgba(0, 169, 193, 0.08);
+                }
+
+                /* Tooltip ligero para avatars */
+                .pj-avatar[data-tooltip]:hover::after {
+                    content: attr(data-tooltip);
+                    position: absolute;
+                    transform: translate(-50%, calc(-100% - 6px));
+                    background: #1a1a1a;
+                    color: #E8E8E8;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.7rem;
+                    border: 1px solid #2a2a2a;
+                    white-space: nowrap;
+                    z-index: 100;
+                    pointer-events: none;
+                }
+
+                /* ─── Placeholder views ─── */
+                .pj-placeholder {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 360px;
+                    color: #555;
+                    gap: 12px;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                }
+                .pj-placeholder-icon { font-size: 2.4rem; opacity: 0.5; }
+                .pj-placeholder-title { color: #888; font-size: 1rem; font-weight: 600; }
+                .pj-placeholder-sub   { color: #555; font-size: 0.85rem; }
+
+                /* Drive input helper */
+                .pj-form-helper {
+                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    font-size: 0.7rem;
+                    color: #555;
+                    margin-top: 4px;
+                }
+            </style>
             <div class="pj-wrapper">
                 <div class="pj-toolbar">
                     <div class="pj-toolbar-left">
@@ -107,10 +264,10 @@ const ProyectosModule = {
                             <button class="pj-view-btn ${this._viewMode === 'table' ? 'active' : ''}" data-view="table" title="Vista tabla">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                             </button>
-                            <button class="pj-view-btn ${this._viewMode === 'cards' ? 'active' : ''}" data-view="cards" title="Vista tarjetas">
+                            <button class="pj-view-btn ${this._viewMode === 'cards' ? 'active' : ''}" data-view="cards" title="Vista tarjetas (próximamente)">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                             </button>
-                            <button class="pj-view-btn ${this._viewMode === 'by_event' ? 'active' : ''}" data-view="by_event" title="Vista por evento">
+                            <button class="pj-view-btn ${this._viewMode === 'calendar' ? 'active' : ''}" data-view="calendar" title="Vista calendario (próximamente)">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                             </button>
                         </div>
@@ -127,9 +284,6 @@ const ProyectosModule = {
                             <span>Cargando proyectos…</span>
                         </div>
                     </div>
-                    <div class="pj-side-panel" id="pjSidePanel">
-                        <!-- ficha renders here -->
-                    </div>
                 </div>
             </div>
         `;
@@ -141,22 +295,31 @@ const ProyectosModule = {
 
     async _loadData() {
         try {
-            const [projects, events, users, clients] = await Promise.all([
-                API.getProjects(),
+            const [{ data: projects, error }, events, users, clients] = await Promise.all([
+                supabaseClient
+                    .from('proyectos')
+                    .select(`
+                        *,
+                        cliente:clientes(id, nombre_empresa),
+                        evento:eventos(id, nombre, fecha_evento_inicio),
+                        responsables:proyecto_responsables(
+                            profile_id, es_principal,
+                            profile:profiles(id, name, initials)
+                        ),
+                        tipos:proyecto_tipos(tipo)
+                    `)
+                    .eq('_deleted', false)
+                    .order('created_at', { ascending: false }),
                 API.getEvents(),
                 API.getUsers(),
                 API.getClients(),
             ]);
 
-            this._projects = (projects || []).map(p => ({
-                ...p,
-                // Parse multi-value fields (comma-separated)
-                responsibles: this._parseMulti(p.responsible),
-                types: this._parseMulti(p.type),
-            }));
+            if (error) throw error;
 
-            this._events = events || [];
-            this._users = (users || []).filter(u => u.active !== false);
+            this._projects = projects || [];
+            this._events = (events || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            this._users = (users || []).filter(u => u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             this._clients = (clients || []).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
         } catch (e) {
             console.warn('[Proyectos] Error loading data:', e.message);
@@ -171,47 +334,22 @@ const ProyectosModule = {
         this._renderContent();
     },
 
-    _escAttr(str) {
-        return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    },
-
-    _parseMulti(val) {
-        if (!val) return [];
-        return val.split(',').map(v => v.trim()).filter(Boolean);
-    },
-
-    _serializeMulti(arr) {
-        return (arr || []).join(', ');
-    },
-
     // ═══════════════════════════════════════════
     //  FILTERS & SORT
     // ═══════════════════════════════════════════
 
     _populateFilters() {
-        // Events filter
-        const eventNames = [...new Set(this._projects.map(p => p.eventName).filter(Boolean))].sort();
+        // Eventos
         const evSel = document.getElementById('pjFilterEvent');
         if (evSel) {
-            eventNames.forEach(name => {
-                const opt = document.createElement('option');
-                opt.value = name;
-                opt.textContent = name;
-                evSel.appendChild(opt);
-            });
+            evSel.innerHTML = '<option value="">Todos los eventos</option>'
+                + this._events.map(e => `<option value="${e.id}">${this._escAttr(e.name)}</option>`).join('');
         }
-
-        // Responsible filter
-        const allResponsibles = new Set();
-        this._projects.forEach(p => p.responsibles.forEach(r => allResponsibles.add(r)));
+        // Responsables (profiles activos)
         const respSel = document.getElementById('pjFilterResponsible');
         if (respSel) {
-            [...allResponsibles].sort().forEach(name => {
-                const opt = document.createElement('option');
-                opt.value = name;
-                opt.textContent = name;
-                respSel.appendChild(opt);
-            });
+            respSel.innerHTML = '<option value="">Todos los responsables</option>'
+                + this._users.map(u => `<option value="${u.uid}">${this._escAttr(u.name)}</option>`).join('');
         }
     },
 
@@ -219,39 +357,52 @@ const ProyectosModule = {
         let list = [...this._projects];
 
         if (this._statusFilter) {
-            list = list.filter(p => p.status === this._statusFilter);
+            list = list.filter(p => p.estado === this._statusFilter);
         }
         if (this._eventFilter) {
-            list = list.filter(p => p.eventName === this._eventFilter);
+            list = list.filter(p => String(p.evento_id || '') === String(this._eventFilter));
         }
         if (this._responsibleFilter) {
-            list = list.filter(p => p.responsibles.includes(this._responsibleFilter));
+            list = list.filter(p => (p.responsables || []).some(r => String(r.profile_id) === String(this._responsibleFilter)));
         }
         if (this._typeFilter) {
-            list = list.filter(p => p.types.includes(this._typeFilter));
+            list = list.filter(p => (p.tipos || []).some(t => t.tipo === this._typeFilter));
         }
         if (this._searchQuery) {
             const q = this._searchQuery.toLowerCase();
-            list = list.filter(p =>
-                (p.name || '').toLowerCase().includes(q) ||
-                (p.clientName || '').toLowerCase().includes(q) ||
-                (p.eventName || '').toLowerCase().includes(q) ||
-                (p.responsible || '').toLowerCase().includes(q) ||
-                (p.type || '').toLowerCase().includes(q)
-            );
+            list = list.filter(p => {
+                const nombre = (p.nombre || '').toLowerCase();
+                const clienteName = (p.cliente?.nombre_empresa || '').toLowerCase();
+                const eventoName = (p.evento?.nombre || '').toLowerCase();
+                const responsablesNames = (p.responsables || []).map(r => r.profile?.name || '').join(' ').toLowerCase();
+                return nombre.includes(q) || clienteName.includes(q) || eventoName.includes(q) || responsablesNames.includes(q);
+            });
         }
 
         list.sort((a, b) => {
-            let va = a[this._sortCol] || '';
-            let vb = b[this._sortCol] || '';
-            if (typeof va === 'string') va = va.toLowerCase();
-            if (typeof vb === 'string') vb = vb.toLowerCase();
+            const va = this._sortValue(a, this._sortCol);
+            const vb = this._sortValue(b, this._sortCol);
+            if (va == null && vb == null) return 0;
+            if (va == null) return 1;
+            if (vb == null) return -1;
             if (va < vb) return this._sortDir === 'asc' ? -1 : 1;
             if (va > vb) return this._sortDir === 'asc' ? 1 : -1;
             return 0;
         });
 
         this._filteredProjects = list;
+    },
+
+    _sortValue(p, col) {
+        switch (col) {
+            case 'nombre':        return (p.nombre || '').toLowerCase();
+            case 'cliente':       return (p.cliente?.nombre_empresa || '').toLowerCase();
+            case 'evento':        return (p.evento?.nombre || '').toLowerCase();
+            case 'estado':        return p.estado || '';
+            case 'fecha_entrega': return p.fecha_entrega || null;
+            case 'created_at':    return p.created_at || null;
+            default:              return p[col] ?? '';
+        }
     },
 
     // ═══════════════════════════════════════════
@@ -262,46 +413,132 @@ const ProyectosModule = {
         const container = document.getElementById('pjMainContent');
         if (!container) return;
 
-        if (this._viewMode === 'by_event') {
-            container.innerHTML = this._renderByEventView();
-        } else if (this._viewMode === 'cards') {
-            container.innerHTML = this._renderCardsView();
-        } else {
-            container.innerHTML = this._renderTableView();
+        if (this._viewMode === 'cards' || this._viewMode === 'calendar') {
+            container.innerHTML = this._renderPlaceholder(this._viewMode);
+            return;
         }
-
+        container.innerHTML = this._renderTableView();
         this._attachContentEvents();
     },
 
-    // ─── Status helpers ───
-    _getStatusColor(status) {
-        const opt = this._statusOptions.find(s => s.value === status);
-        return opt ? opt.color : '#666';
+    _renderPlaceholder(mode) {
+        const config = mode === 'cards'
+            ? { icon: '🗂️', title: 'Vista tarjetas', sub: 'Próximamente' }
+            : { icon: '📅', title: 'Vista calendario', sub: 'Próximamente' };
+        return `
+            <div class="pj-placeholder">
+                <div class="pj-placeholder-icon">${config.icon}</div>
+                <div class="pj-placeholder-title">${config.title}</div>
+                <div class="pj-placeholder-sub">${config.sub}</div>
+            </div>
+        `;
     },
 
-    _getTypeColor(type) {
-        const opt = this._typeOptions.find(t => t.value === type);
-        return opt ? opt.color : '#666';
+    // ─── Helpers de status / tipo ───
+    _getStatusOption(value) {
+        return this._statusOptions.find(s => s.value === value);
+    },
+    _getStatusColor(value) {
+        return this._getStatusOption(value)?.color || '#666';
+    },
+    _getStatusLabel(value) {
+        return this._getStatusOption(value)?.label || (value || '—');
+    },
+    _getTypeOption(value) {
+        return this._typeOptions.find(t => t.value === value);
+    },
+    _getTypeColor(value) {
+        return this._getTypeOption(value)?.color || '#666';
+    },
+    _getTypeLabel(value) {
+        return this._getTypeOption(value)?.label || (value || '—');
     },
 
     _renderStatusBadge(status) {
         const color = this._getStatusColor(status);
-        return `<span class="pj-status-badge" style="--status-color: ${color}">${status || '—'}</span>`;
+        const label = this._getStatusLabel(status);
+        return `<span class="pj-status-badge" style="--status-color: ${color}">${label}</span>`;
     },
 
-    _renderTypeBadges(types) {
-        if (!types || types.length === 0) return '<span class="pj-td-muted">—</span>';
-        return types.map(t => {
-            const color = this._getTypeColor(t);
-            return `<span class="pj-type-badge" style="--type-color: ${color}">${t}</span>`;
+    _renderTypeChips(tipos) {
+        if (!tipos || tipos.length === 0) return '<span class="pj-td-muted">—</span>';
+        const slugs = tipos.map(t => t.tipo);
+        const visible = slugs.slice(0, 2);
+        const extra = slugs.length - visible.length;
+        let html = visible.map(slug => {
+            const color = this._getTypeColor(slug);
+            const label = this._getTypeLabel(slug);
+            return `<span class="pj-type-chip" style="--type-color: ${color}" title="${this._escAttr(label)}">${this._escAttr(label)}</span>`;
         }).join('');
+        if (extra > 0) {
+            const restLabels = slugs.slice(2).map(s => this._getTypeLabel(s)).join(', ');
+            html += `<span class="pj-type-more" title="${this._escAttr(restLabels)}">+${extra}</span>`;
+        }
+        return html;
     },
 
-    _renderResponsibleBadges(responsibles) {
-        if (!responsibles || responsibles.length === 0) return '<span class="pj-td-muted">—</span>';
-        return `<div class="pj-resp-stack">${responsibles.map(r =>
-            `<span class="pj-resp-badge">${r}</span>`
-        ).join('')}</div>`;
+    _renderAvatarStack(responsables) {
+        if (!responsables || responsables.length === 0) return '<span class="pj-td-muted">—</span>';
+        const sorted = [...responsables].sort((a, b) => (b.es_principal ? 1 : 0) - (a.es_principal ? 1 : 0));
+        const visible = sorted.slice(0, 3);
+        const extra = sorted.length - visible.length;
+        let html = '<span class="pj-avatar-stack">';
+        for (const r of visible) {
+            const name = r.profile?.name || '—';
+            const initials = r.profile?.initials || this._initialsFromName(name);
+            const principalClass = r.es_principal ? ' principal' : '';
+            html += `<span class="pj-avatar${principalClass}" data-tooltip="${this._escAttr(name)}${r.es_principal ? ' (principal)' : ''}">${this._escAttr(initials)}</span>`;
+        }
+        if (extra > 0) {
+            const restNames = sorted.slice(3).map(r => r.profile?.name || '—').join(', ');
+            html += `<span class="pj-avatar pj-avatar-more" data-tooltip="${this._escAttr(restNames)}">+${extra}</span>`;
+        }
+        html += '</span>';
+        return html;
+    },
+
+    _renderDaysCell(fechaEntrega) {
+        if (!fechaEntrega) return '<span class="pj-days muted">—</span>';
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const target = new Date(fechaEntrega + 'T00:00:00');
+        const diff = Math.round((target - today) / 86400000);
+        let cls, label;
+        if (diff < 0) {
+            cls = 'red';
+            label = `Vencido (${Math.abs(diff)}d)`;
+        } else if (diff === 0) {
+            cls = 'red';
+            label = 'Hoy';
+        } else if (diff < 15) {
+            cls = 'orange';
+            label = `${diff}d`;
+        } else if (diff <= 30) {
+            cls = 'yellow';
+            label = `${diff}d`;
+        } else {
+            cls = 'green';
+            label = `${diff}d`;
+        }
+        return `<span class="pj-days ${cls}" title="Entrega: ${fechaEntrega}">${label}</span>`;
+    },
+
+    _renderDriveCell(url) {
+        if (!url) return '<span class="pj-td-muted">—</span>';
+        return `<button class="pj-drive-btn" data-drive-url="${this._escAttr(url)}" title="Abrir carpeta de Drive">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </button>`;
+    },
+
+    _renderOriginIcon(createdFrom) {
+        if (createdFrom === 'crm') {
+            return `<span class="pj-origin-icon crm" title="Origen: CRM (cotización)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </span>`;
+        }
+        return `<span class="pj-origin-icon manual" title="Origen: manual">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </span>`;
     },
 
     // ─── TABLE VIEW ───
@@ -310,12 +547,14 @@ const ProyectosModule = {
         const projects = this._filteredProjects;
 
         const columns = [
-            { id: 'name',        label: 'Proyecto',      sortable: true },
-            { id: 'clientName',  label: 'Cliente',       sortable: true },
-            { id: 'eventName',   label: 'Evento',        sortable: true },
-            { id: 'status',      label: 'Estado',        sortable: true },
-            { id: 'responsible', label: 'Responsables',  sortable: true },
-            { id: 'type',        label: 'Tipo',          sortable: true },
+            { id: 'nombre',        label: 'Proyecto',     sortable: true  },
+            { id: 'cliente',       label: 'Cliente',      sortable: true  },
+            { id: 'evento',        label: 'Evento',       sortable: true  },
+            { id: 'estado',        label: 'Estado',       sortable: true  },
+            { id: 'responsables',  label: 'Responsables', sortable: false },
+            { id: 'tipos',         label: 'Tipos',        sortable: false },
+            { id: 'fecha_entrega', label: 'Días',         sortable: true  },
+            { id: 'drive',         label: 'Drive',        sortable: false },
         ];
 
         const sortIcon = (col) => {
@@ -326,10 +565,11 @@ const ProyectosModule = {
         };
 
         if (projects.length === 0) {
+            const filtered = this._searchQuery || this._statusFilter || this._eventFilter || this._responsibleFilter || this._typeFilter;
             return `
                 <div class="pj-empty">
                     <div class="pj-empty-icon">🏗️</div>
-                    <p>No hay proyectos${this._searchQuery || this._statusFilter || this._eventFilter || this._responsibleFilter || this._typeFilter ? ' con estos filtros' : ''}</p>
+                    <p>No hay proyectos${filtered ? ' con estos filtros' : ''}</p>
                 </div>
             `;
         }
@@ -340,7 +580,7 @@ const ProyectosModule = {
                     <thead>
                         <tr>
                             ${columns.map(col => `
-                                <th class="pj-th ${col.sortable ? 'sortable' : ''} ${this._sortCol === col.id ? 'sorted' : ''}" data-sort="${col.id}">
+                                <th class="pj-th ${col.sortable ? 'sortable' : ''} ${this._sortCol === col.id ? 'sorted' : ''}" ${col.sortable ? `data-sort="${col.id}"` : ''}>
                                     <span>${col.label}</span>
                                     ${col.sortable ? `<span class="pj-sort-icon">${sortIcon(col.id)}</span>` : ''}
                                 </th>
@@ -357,310 +597,28 @@ const ProyectosModule = {
     },
 
     _renderTableRow(p) {
-        const statusColor = this._getStatusColor(p.status);
+        const statusColor = this._getStatusColor(p.estado);
+        const eventoName = p.evento?.nombre;
+        const eventoCell = eventoName
+            ? `<a href="#eventos" class="pj-event-link" data-stop-row>${this._escAttr(eventoName)}</a>`
+            : '<span class="pj-td-muted">—</span>';
 
         return `
             <tr class="pj-row" data-project-id="${p.id}" style="--row-color: ${statusColor}">
                 <td class="pj-td pj-td-name">
                     <span class="pj-color-dot" style="background: ${statusColor}"></span>
-                    <span class="pj-name-text">${p.name || 'Sin nombre'}</span>
+                    <span class="pj-name-text">${this._escAttr(p.nombre || 'Sin nombre')}</span>
+                    ${this._renderOriginIcon(p.created_from)}
                 </td>
-                <td class="pj-td">${p.clientName || '<span class="pj-td-muted">—</span>'}</td>
-                <td class="pj-td">${p.eventName || '<span class="pj-td-muted">—</span>'}</td>
-                <td class="pj-td">${this._renderStatusBadge(p.status)}</td>
-                <td class="pj-td">${this._renderResponsibleBadges(p.responsibles)}</td>
-                <td class="pj-td pj-td-types">${this._renderTypeBadges(p.types)}</td>
+                <td class="pj-td">${p.cliente ? this._escAttr(p.cliente.nombre_empresa || '—') : '<span class="pj-td-muted">—</span>'}</td>
+                <td class="pj-td">${eventoCell}</td>
+                <td class="pj-td">${this._renderStatusBadge(p.estado)}</td>
+                <td class="pj-td">${this._renderAvatarStack(p.responsables)}</td>
+                <td class="pj-td">${this._renderTypeChips(p.tipos)}</td>
+                <td class="pj-td">${this._renderDaysCell(p.fecha_entrega)}</td>
+                <td class="pj-td" data-stop-row>${this._renderDriveCell(p.drive_folder_url)}</td>
             </tr>
         `;
-    },
-
-    // ─── CARDS VIEW ───
-
-    _renderCardsView() {
-        const projects = this._filteredProjects;
-
-        if (projects.length === 0) {
-            return `
-                <div class="pj-empty">
-                    <div class="pj-empty-icon">🏗️</div>
-                    <p>No hay proyectos${this._searchQuery || this._statusFilter ? ' con estos filtros' : ''}</p>
-                </div>
-            `;
-        }
-
-        return `
-            <div class="pj-cards-grid">
-                ${projects.map(p => {
-                    const statusColor = this._getStatusColor(p.status);
-                    return `
-                        <div class="pj-card" data-project-id="${p.id}" style="--card-color: ${statusColor}">
-                            <div class="pj-card-color-bar"></div>
-                            <div class="pj-card-header">
-                                <h3 class="pj-card-name">${p.name || 'Sin nombre'}</h3>
-                                ${this._renderStatusBadge(p.status)}
-                            </div>
-                            ${p.clientName ? `<div class="pj-card-client">${p.clientName}</div>` : ''}
-                            ${p.eventName ? `<div class="pj-card-event">📅 ${p.eventName}</div>` : ''}
-                            <div class="pj-card-meta">
-                                ${this._renderResponsibleBadges(p.responsibles)}
-                            </div>
-                            ${p.types.length > 0 ? `
-                                <div class="pj-card-types">${this._renderTypeBadges(p.types)}</div>
-                            ` : ''}
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-            <div class="pj-record-count">${projects.length} proyecto${projects.length !== 1 ? 's' : ''}</div>
-        `;
-    },
-
-    // ─── BY EVENT VIEW ───
-
-    _renderByEventView() {
-        const projects = this._filteredProjects;
-
-        // Group by eventName
-        const eventMap = {};
-        const sinEvento = [];
-
-        for (const p of projects) {
-            const evName = (p.eventName || '').trim();
-            if (!evName) { sinEvento.push(p); continue; }
-            if (!eventMap[evName]) eventMap[evName] = { event: null, projects: [] };
-            eventMap[evName].projects.push(p);
-        }
-
-        // Match with event data
-        for (const ev of this._events) {
-            const name = (ev.name || '').trim();
-            if (eventMap[name]) eventMap[name].event = ev;
-        }
-
-        // Sort by event start date
-        const sortedNames = Object.keys(eventMap).sort((a, b) => {
-            const ea = eventMap[a].event;
-            const eb = eventMap[b].event;
-            const da = ea?.eventStartDate || '9999';
-            const db = eb?.eventStartDate || '9999';
-            return da < db ? -1 : da > db ? 1 : 0;
-        });
-
-        if (!sortedNames.length && !sinEvento.length) {
-            return `
-                <div class="pj-empty">
-                    <div class="pj-empty-icon">🏗️</div>
-                    <p>No hay proyectos cargados</p>
-                </div>
-            `;
-        }
-
-        let html = '<div class="pj-byevent-container">';
-
-        for (const evName of sortedNames) {
-            const group = eventMap[evName];
-            const ev = group.event;
-            const count = group.projects.length;
-            const dateStr = ev?.eventStartDate ? this._fmtDate(ev.eventStartDate) : '';
-            const venueStr = ev?.venue || '';
-
-            html += `
-                <div class="pj-event-group" data-event-name="${evName}">
-                    <div class="pj-event-header" data-pj-toggle>
-                        <div class="pj-event-toggle">
-                            <svg class="pj-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </div>
-                        <div class="pj-event-info">
-                            <span class="pj-event-name">${evName}</span>
-                            ${venueStr ? `<span class="pj-event-venue">${venueStr}</span>` : ''}
-                        </div>
-                        <div class="pj-event-badges">
-                            ${dateStr ? `<span class="pj-event-date">${dateStr}</span>` : ''}
-                            <span class="pj-event-count">${count} proyecto${count !== 1 ? 's' : ''}</span>
-                        </div>
-                    </div>
-                    <div class="pj-event-body">
-                        ${group.projects.map(p => this._renderEventProjectCard(p)).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        if (sinEvento.length) {
-            html += `
-                <div class="pj-event-group pj-no-event">
-                    <div class="pj-event-header" data-pj-toggle>
-                        <div class="pj-event-toggle">
-                            <svg class="pj-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </div>
-                        <div class="pj-event-info">
-                            <span class="pj-event-name" style="opacity:0.5;">Sin evento asignado</span>
-                        </div>
-                        <div class="pj-event-badges">
-                            <span class="pj-event-count">${sinEvento.length} proyecto${sinEvento.length !== 1 ? 's' : ''}</span>
-                        </div>
-                    </div>
-                    <div class="pj-event-body">
-                        ${sinEvento.map(p => this._renderEventProjectCard(p)).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        html += '</div>';
-        html += `<div class="pj-record-count">${projects.length} proyecto${projects.length !== 1 ? 's' : ''}</div>`;
-        return html;
-    },
-
-    _renderEventProjectCard(p) {
-        const statusColor = this._getStatusColor(p.status);
-        return `
-            <div class="pj-project-card" data-project-id="${p.id}">
-                <div class="pj-project-main">
-                    <span class="pj-color-dot" style="background: ${statusColor}"></span>
-                    <span class="pj-project-name">${p.name || 'Sin nombre'}</span>
-                    <span class="pj-project-client">${p.clientName || ''}</span>
-                </div>
-                <div class="pj-project-meta">
-                    ${this._renderTypeBadges(p.types)}
-                    ${this._renderStatusBadge(p.status)}
-                </div>
-            </div>
-        `;
-    },
-
-    // ═══════════════════════════════════════════
-    //  SIDE PANEL (FICHA)
-    // ═══════════════════════════════════════════
-
-    _openPanel(projectId) {
-        const p = this._projects.find(pr => String(pr.id) === String(projectId));
-        if (!p) return;
-
-        this._activePanel = projectId;
-        this._activePanelData = p;
-
-        const panel = document.getElementById('pjSidePanel');
-        if (!panel) return;
-
-        panel.innerHTML = this._renderPanel(p);
-        panel.classList.add('open');
-        this._attachPanelEvents(p);
-    },
-
-    _closePanel() {
-        this._activePanel = null;
-        this._activePanelData = null;
-        const panel = document.getElementById('pjSidePanel');
-        if (panel) {
-            panel.classList.remove('open');
-            setTimeout(() => { panel.innerHTML = ''; }, 250);
-        }
-    },
-
-    _renderPanel(p) {
-        const statusColor = this._getStatusColor(p.status);
-        const event = this._events.find(e => (e.name || '').trim() === (p.eventName || '').trim());
-
-        return `
-            <div class="pj-panel-inner" style="--project-color: ${statusColor}">
-                <!-- Header -->
-                <div class="pj-panel-header">
-                    <div class="pj-panel-color-bar"></div>
-                    <button class="pj-panel-close" id="pjPanelClose">&times;</button>
-                    <h2 class="pj-panel-name">${p.name || 'Sin nombre'}</h2>
-                    <div class="pj-panel-status-row">
-                        ${this._renderStatusBadge(p.status)}
-                    </div>
-                </div>
-
-                <!-- Datos básicos -->
-                <div class="pj-panel-section">
-                    <div class="pj-section-header">
-                        <h3 class="pj-section-title">Datos del proyecto</h3>
-                        ${!this._isRO ? `<button class="pj-edit-btn" id="pjBtnEditProject" title="Editar">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                        </button>` : ''}
-                    </div>
-                    <div class="pj-info-grid">
-                        <div class="pj-info-row">
-                            <span class="pj-info-label">Cliente</span>
-                            <span class="pj-info-value">${p.clientName || '—'}</span>
-                        </div>
-                        <div class="pj-info-row">
-                            <span class="pj-info-label">Estado</span>
-                            <span class="pj-info-value">${this._renderStatusBadge(p.status)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Evento vinculado -->
-                <div class="pj-panel-section">
-                    <div class="pj-section-header">
-                        <h3 class="pj-section-title">Evento vinculado</h3>
-                    </div>
-                    ${event ? `
-                        <div class="pj-linked-event" data-goto-event="${event.id}">
-                            <div class="pj-linked-name">${event.name}</div>
-                            <div class="pj-linked-detail">
-                                ${event.venue ? `<span>${event.venue}</span>` : ''}
-                                ${event.eventStartDate ? `<span>📅 ${this._fmtDate(event.eventStartDate)}${event.eventEndDate ? ` — ${this._fmtDate(event.eventEndDate)}` : ''}</span>` : ''}
-                            </div>
-                            <span class="pj-linked-arrow">→</span>
-                        </div>
-                    ` : `
-                        <p class="pj-section-empty">${p.eventName ? p.eventName + ' (no encontrado)' : 'Sin evento asignado'}</p>
-                    `}
-                </div>
-
-                <!-- Equipo asignado (responsables) -->
-                <div class="pj-panel-section">
-                    <div class="pj-section-header">
-                        <h3 class="pj-section-title">Equipo asignado</h3>
-                    </div>
-                    ${p.responsibles.length > 0 ? `
-                        <div class="pj-team-list">
-                            ${p.responsibles.map(r => `
-                                <div class="pj-team-member">
-                                    <span class="pj-team-avatar">${this._getInitials(r)}</span>
-                                    <span class="pj-team-name">${r}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    ` : `
-                        <p class="pj-section-empty">Sin responsables asignados</p>
-                    `}
-                </div>
-
-                <!-- Tipos de servicio -->
-                <div class="pj-panel-section">
-                    <div class="pj-section-header">
-                        <h3 class="pj-section-title">Tipos de servicio</h3>
-                    </div>
-                    ${p.types.length > 0 ? `
-                        <div class="pj-panel-types">
-                            ${this._renderTypeBadges(p.types)}
-                        </div>
-                    ` : `
-                        <p class="pj-section-empty">Sin tipos definidos</p>
-                    `}
-                </div>
-
-                <!-- Actions -->
-                ${!this._isRO ? `
-                <div class="pj-panel-section pj-panel-actions">
-                    <button class="btn btn-ghost pj-btn-delete" data-project-id="${p.id}">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                        Eliminar proyecto
-                    </button>
-                </div>
-                ` : ''}
-            </div>
-        `;
-    },
-
-    _getInitials(name) {
-        return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
     },
 
     // ═══════════════════════════════════════════
@@ -668,14 +626,12 @@ const ProyectosModule = {
     // ═══════════════════════════════════════════
 
     _attachEvents() {
-        // Search
         document.getElementById('pjSearchInput')?.addEventListener('input', (e) => {
             this._searchQuery = e.target.value;
             this._applyFilters();
             this._renderContent();
         });
 
-        // Filters
         document.getElementById('pjFilterStatus')?.addEventListener('change', (e) => {
             this._statusFilter = e.target.value || null;
             this._applyFilters();
@@ -697,7 +653,6 @@ const ProyectosModule = {
             this._renderContent();
         });
 
-        // View toggle
         document.querySelectorAll('.pj-view-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 this._viewMode = btn.dataset.view;
@@ -707,7 +662,6 @@ const ProyectosModule = {
             });
         });
 
-        // New project
         document.getElementById('pjBtnNew')?.addEventListener('click', () => {
             this._showCreateModal();
         });
@@ -718,15 +672,22 @@ const ProyectosModule = {
         if (!container) return;
 
         container.addEventListener('click', (e) => {
-            // Row / card click → open panel
-            const row = e.target.closest('.pj-row, .pj-card, .pj-project-card');
-            if (row) {
-                const id = row.dataset.projectId;
-                if (id) this._openPanel(id);
+            // Drive link
+            const driveBtn = e.target.closest('[data-drive-url]');
+            if (driveBtn) {
+                e.stopPropagation();
+                const url = driveBtn.dataset.driveUrl;
+                if (url) window.open(url, '_blank', 'noopener');
                 return;
             }
 
-            // Sort header click
+            // Stop-row zones (links en celdas que no deben abrir detalle)
+            if (e.target.closest('[data-stop-row]') && !e.target.closest('.pj-event-link')) {
+                e.stopPropagation();
+                return;
+            }
+
+            // Sort header
             const th = e.target.closest('.pj-th.sortable');
             if (th) {
                 const col = th.dataset.sort;
@@ -741,114 +702,83 @@ const ProyectosModule = {
                 return;
             }
 
-            // Toggle by-event groups
-            const toggle = e.target.closest('[data-pj-toggle]');
-            if (toggle) {
-                const group = toggle.closest('.pj-event-group');
-                if (group) group.classList.toggle('collapsed');
+            // Event link → navigate to eventos
+            if (e.target.closest('.pj-event-link')) {
+                // Default link behavior navega; no abrimos detalle del proyecto.
+                return;
             }
-        });
-    },
 
-    _attachPanelEvents(p) {
-        // Close panel
-        document.getElementById('pjPanelClose')?.addEventListener('click', () => this._closePanel());
-
-        // Edit project
-        document.getElementById('pjBtnEditProject')?.addEventListener('click', () => {
-            this._showEditModal(p);
-        });
-
-        // Go to event
-        document.querySelector('[data-goto-event]')?.addEventListener('click', () => {
-            Router.navigate('eventos');
-        });
-
-        // Delete
-        document.querySelector('.pj-btn-delete')?.addEventListener('click', async () => {
-            const confirmed = await Modal.confirm({
-                title: 'Eliminar proyecto',
-                message: `¿Seguro que querés eliminar <strong>"${p.name}"</strong>? Se puede deshacer con Ctrl+Z.`,
-                confirmText: 'Eliminar',
-                danger: true,
-            });
-            if (confirmed) {
-                const result = await API.deleteProject(p.id);
-                if (result) {
-                    Toast.success('Proyecto eliminado');
-                    this._closePanel();
-                    await this._loadData();
-                } else {
-                    Toast.error('Error al eliminar proyecto');
-                }
+            // Row click → vista detalle (Fase 3)
+            const row = e.target.closest('.pj-row');
+            if (row) {
+                const id = row.dataset.projectId;
+                if (id) Router.navigate('proyectos/' + id);
             }
         });
     },
 
     // ═══════════════════════════════════════════
-    //  MODALS — CREATE / EDIT
+    //  MODAL — NUEVO PROYECTO
     // ═══════════════════════════════════════════
-
-    _buildMultiSelect(name, options, selected, colorFn) {
-        return `
-            <div class="pj-multiselect" data-multiselect="${name}">
-                <div class="pj-multiselect-selected" id="pjSelected_${name}">
-                    ${(selected || []).map(v => `
-                        <span class="pj-multiselect-tag" data-value="${v}" style="--tag-color: ${colorFn ? colorFn(v) : '#666'}">
-                            ${v}
-                            <button class="pj-multiselect-remove" data-remove-tag="${v}">&times;</button>
-                        </span>
-                    `).join('')}
-                </div>
-                <select class="form-input form-select pj-multiselect-add" data-add-to="${name}">
-                    <option value="">+ Agregar…</option>
-                    ${options.filter(o => !(selected || []).includes(o.value || o)).map(o => {
-                        const val = o.value || o;
-                        const label = o.label || o;
-                        return `<option value="${val}">${label}</option>`;
-                    }).join('')}
-                </select>
-            </div>
-        `;
-    },
 
     _showCreateModal() {
-        const eventOptions = this._events.map(e => `<option value="${e.name}">${e.name}</option>`).join('');
-        const userOptions = this._users.map(u => ({ value: u.name, label: u.name }));
-        const clientOptions = this._clients.map(c => `<option value="${this._escAttr(c.name)}"></option>`).join('');
+        const clientOptions = this._clients.map(c =>
+            `<option value="${c.id}">${this._escAttr(c.name)}</option>`
+        ).join('');
+        const eventOptions = this._events.map(e =>
+            `<option value="${e.id}">${this._escAttr(e.name)}</option>`
+        ).join('');
+        const userOptions = this._users.map(u => ({
+            value: String(u.uid),
+            label: u.name,
+        }));
+        const typeOptions = this._typeOptions.map(t => ({
+            value: t.value,
+            label: t.label,
+        }));
 
         const body = `
             <form class="mepex-form" id="pjCreateForm" autocomplete="off">
                 <div class="pj-form-grid">
-                    <div class="form-field">
+                    <div class="form-field form-field-full">
                         <label class="form-label">Nombre del proyecto <span class="form-required">*</span></label>
-                        <input class="form-input" type="text" name="name" placeholder="Ej: Stand Arcor — Expo Alimentek" required>
+                        <input class="form-input" type="text" name="nombre" placeholder="Ej: Stand Arcor — Expo Alimentek" required>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Cliente</label>
-                        <input class="form-input" type="text" name="clientName" list="pjCreateClientList" placeholder="Buscar o escribir nombre…" autocomplete="off">
-                        <datalist id="pjCreateClientList">${clientOptions}</datalist>
+                        <select class="form-input form-select" name="cliente_id">
+                            <option value="">— Sin cliente —</option>
+                            ${clientOptions}
+                        </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Evento</label>
-                        <select class="form-input form-select" name="eventName">
+                        <select class="form-input form-select" name="evento_id">
                             <option value="">— Sin evento —</option>
                             ${eventOptions}
                         </select>
                     </div>
                     <div class="form-field">
                         <label class="form-label">Estado</label>
-                        <select class="form-input form-select" name="status">
-                            ${this._statusOptions.map(s => `<option value="${s.value}" ${s.value === 'Pendiente' ? 'selected' : ''}>${s.label}</option>`).join('')}
+                        <select class="form-input form-select" name="estado">
+                            ${this._statusOptions.map(s => `<option value="${s.value}" ${s.value === 'por_iniciar' ? 'selected' : ''}>${s.label}</option>`).join('')}
                         </select>
                     </div>
+                    <div class="form-field">
+                        <label class="form-label">Fecha de entrega</label>
+                        <input class="form-input" type="date" name="fecha_entrega">
+                    </div>
                     <div class="form-field form-field-full">
-                        <label class="form-label">Responsables</label>
-                        ${this._buildMultiSelect('responsibles', userOptions, [], (v) => '#00A9C1')}
+                        <label class="form-label">Responsables <span class="pj-form-helper">(el primero queda como principal)</span></label>
+                        ${this._buildMultiSelect('responsibles', userOptions, [], () => '#00A9C1')}
                     </div>
                     <div class="form-field form-field-full">
                         <label class="form-label">Tipos de servicio</label>
-                        ${this._buildMultiSelect('types', this._typeOptions, [], (v) => this._getTypeColor(v))}
+                        ${this._buildMultiSelect('types', typeOptions, [], (v) => this._getTypeColor(v))}
+                    </div>
+                    <div class="form-field form-field-full">
+                        <label class="form-label">URL carpeta Drive</label>
+                        <input class="form-input" type="url" name="drive_folder_url" placeholder="https://drive.google.com/drive/folders/…">
                     </div>
                 </div>
             </form>
@@ -867,135 +797,116 @@ const ProyectosModule = {
         this._initMultiSelectHandlers(instance.overlay);
 
         instance.overlay.querySelector('#pjCreateSubmit')?.addEventListener('click', async () => {
-            const form = instance.overlay.querySelector('#pjCreateForm');
-            const name = form.querySelector('[name="name"]').value.trim();
-            if (!name) {
-                Toast.warning('El nombre es obligatorio');
-                return;
-            }
-
-            const responsibles = this._getMultiSelectValues(instance.overlay, 'responsibles');
-            const types = this._getMultiSelectValues(instance.overlay, 'types');
-
-            const data = {
-                name,
-                clientName: form.querySelector('[name="clientName"]').value.trim(),
-                eventName: form.querySelector('[name="eventName"]').value,
-                status: form.querySelector('[name="status"]').value,
-                responsible: this._serializeMulti(responsibles),
-                type: this._serializeMulti(types),
-            };
-
-            const submitBtn = instance.overlay.querySelector('#pjCreateSubmit');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Creando…';
-
-            const result = await API.createProject(data);
-            if (result) {
-                Toast.success(`Proyecto "${name}" creado`);
-                Modal.close(instance.id);
-                await this._loadData();
-            } else {
-                Toast.error('Error al crear proyecto');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Crear proyecto';
-            }
+            await this._submitCreate(instance);
         });
     },
 
-    _showEditModal(p) {
-        const eventOptions = this._events.map(e => `<option value="${e.name}" ${e.name === p.eventName ? 'selected' : ''}>${e.name}</option>`).join('');
-        const userOptions = this._users.map(u => ({ value: u.name, label: u.name }));
-        const clientOptions = this._clients.map(c => `<option value="${this._escAttr(c.name)}"></option>`).join('');
+    async _submitCreate(instance) {
+        const form = instance.overlay.querySelector('#pjCreateForm');
+        const nombre = form.querySelector('[name="nombre"]').value.trim();
+        if (!nombre) {
+            Toast.warning('El nombre es obligatorio');
+            return;
+        }
 
-        const body = `
-            <form class="mepex-form" id="pjEditForm" autocomplete="off">
-                <div class="pj-form-grid">
-                    <div class="form-field">
-                        <label class="form-label">Nombre del proyecto <span class="form-required">*</span></label>
-                        <input class="form-input" type="text" name="name" value="${this._escAttr(p.name || '')}" required>
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Cliente</label>
-                        <input class="form-input" type="text" name="clientName" list="pjEditClientList" value="${this._escAttr(p.clientName || '')}" placeholder="Buscar o escribir nombre…" autocomplete="off">
-                        <datalist id="pjEditClientList">${clientOptions}</datalist>
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Evento</label>
-                        <select class="form-input form-select" name="eventName">
-                            <option value="">— Sin evento —</option>
-                            ${eventOptions}
-                        </select>
-                    </div>
-                    <div class="form-field">
-                        <label class="form-label">Estado</label>
-                        <select class="form-input form-select" name="status">
-                            ${this._statusOptions.map(s => `<option value="${s.value}" ${s.value === p.status ? 'selected' : ''}>${s.label}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-field form-field-full">
-                        <label class="form-label">Responsables</label>
-                        ${this._buildMultiSelect('responsibles', userOptions, p.responsibles, (v) => '#00A9C1')}
-                    </div>
-                    <div class="form-field form-field-full">
-                        <label class="form-label">Tipos de servicio</label>
-                        ${this._buildMultiSelect('types', this._typeOptions, p.types, (v) => this._getTypeColor(v))}
-                    </div>
+        const cliente_id = form.querySelector('[name="cliente_id"]').value || null;
+        const evento_id = form.querySelector('[name="evento_id"]').value || null;
+        const estado = form.querySelector('[name="estado"]').value || 'por_iniciar';
+        const fecha_entrega = form.querySelector('[name="fecha_entrega"]').value || null;
+        const drive_folder_url = form.querySelector('[name="drive_folder_url"]').value.trim() || null;
+
+        const responsableIds = this._getMultiSelectValues(instance.overlay, 'responsibles');
+        const tipoSlugs = this._getMultiSelectValues(instance.overlay, 'types');
+
+        const submitBtn = instance.overlay.querySelector('#pjCreateSubmit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creando…';
+
+        try {
+            const payload = {
+                nombre,
+                cliente_id,
+                evento_id,
+                estado,
+                fecha_entrega,
+                drive_folder_url,
+                drive_folder_id: this._extractDriveFolderId(drive_folder_url),
+                created_from: 'manual',
+            };
+
+            const created = await UndoHelpers.createRecord('proyectos', payload, `Nuevo proyecto: ${nombre}`);
+            const projectId = created?.id;
+            if (!projectId) throw new Error('No se obtuvo ID del proyecto creado');
+
+            // Insert children: responsables
+            if (responsableIds.length) {
+                const respRows = responsableIds.map((profileId, idx) => ({
+                    proyecto_id: projectId,
+                    profile_id: profileId,
+                    es_principal: idx === 0,
+                }));
+                const { error: respErr } = await supabaseClient.from('proyecto_responsables').insert(respRows);
+                if (respErr) console.warn('[Proyectos] Error insertando responsables:', respErr.message);
+            }
+
+            // Insert children: tipos
+            if (tipoSlugs.length) {
+                const tipoRows = tipoSlugs.map(slug => ({
+                    proyecto_id: projectId,
+                    tipo: slug,
+                }));
+                const { error: tipoErr } = await supabaseClient.from('proyecto_tipos').insert(tipoRows);
+                if (tipoErr) console.warn('[Proyectos] Error insertando tipos:', tipoErr.message);
+            }
+
+            if (typeof API?.clearCache === 'function') API.clearCache();
+
+            Toast.success(`Proyecto "${nombre}" creado`);
+            Modal.close(instance.id);
+            await this._loadData();
+        } catch (e) {
+            console.warn('[Proyectos] Error al crear proyecto:', e.message);
+            Toast.error('Error al crear proyecto');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Crear proyecto';
+        }
+    },
+
+    _extractDriveFolderId(url) {
+        if (!url) return null;
+        const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+        return m ? m[1] : null;
+    },
+
+    // ─── Multi-select helpers (mismo patrón que la versión previa) ───
+
+    _buildMultiSelect(name, options, selected, colorFn) {
+        const selectedValues = (selected || []).map(s => typeof s === 'object' ? s.value : s);
+        const labelOf = (val) => {
+            const opt = options.find(o => (o.value || o) === val);
+            return opt ? (opt.label || opt.value || opt) : val;
+        };
+        return `
+            <div class="pj-multiselect" data-multiselect="${name}">
+                <div class="pj-multiselect-selected" id="pjSelected_${name}">
+                    ${selectedValues.map(v => `
+                        <span class="pj-multiselect-tag" data-value="${this._escAttr(v)}" style="--tag-color: ${colorFn ? colorFn(v) : '#666'}">
+                            ${this._escAttr(labelOf(v))}
+                            <button class="pj-multiselect-remove" data-remove-tag="${this._escAttr(v)}">&times;</button>
+                        </span>
+                    `).join('')}
                 </div>
-            </form>
+                <select class="form-input form-select pj-multiselect-add" data-add-to="${name}">
+                    <option value="">+ Agregar…</option>
+                    ${options.filter(o => !selectedValues.includes(o.value || o)).map(o => {
+                        const val = o.value || o;
+                        const label = o.label || o;
+                        return `<option value="${this._escAttr(val)}">${this._escAttr(label)}</option>`;
+                    }).join('')}
+                </select>
+            </div>
         `;
-
-        const instance = Modal.open({
-            title: 'Editar proyecto',
-            body,
-            size: 'md',
-            footer: `
-                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
-                <button class="btn btn-primary" id="pjEditSubmit">Guardar cambios</button>
-            `,
-        });
-
-        this._initMultiSelectHandlers(instance.overlay);
-
-        instance.overlay.querySelector('#pjEditSubmit')?.addEventListener('click', async () => {
-            const form = instance.overlay.querySelector('#pjEditForm');
-            const name = form.querySelector('[name="name"]').value.trim();
-            if (!name) {
-                Toast.warning('El nombre es obligatorio');
-                return;
-            }
-
-            const responsibles = this._getMultiSelectValues(instance.overlay, 'responsibles');
-            const types = this._getMultiSelectValues(instance.overlay, 'types');
-
-            const data = {
-                name,
-                clientName: form.querySelector('[name="clientName"]').value.trim(),
-                eventName: form.querySelector('[name="eventName"]').value,
-                status: form.querySelector('[name="status"]').value,
-                responsible: this._serializeMulti(responsibles),
-                type: this._serializeMulti(types),
-            };
-
-            const submitBtn = instance.overlay.querySelector('#pjEditSubmit');
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Guardando…';
-
-            const result = await API.updateProject(p.id, data);
-            if (result) {
-                Toast.success(`Proyecto "${name}" actualizado`);
-                Modal.close(instance.id);
-                this._closePanel();
-                await this._loadData();
-            } else {
-                Toast.error('Error al guardar proyecto');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Guardar cambios';
-            }
-        });
     },
-
-    // ─── Multi-select helpers ───
 
     _initMultiSelectHandlers(container) {
         container.querySelectorAll('.pj-multiselect-add').forEach(select => {
@@ -1006,57 +917,51 @@ const ProyectosModule = {
                 const wrapper = container.querySelector(`[data-multiselect="${name}"]`);
                 const selectedEl = wrapper.querySelector('.pj-multiselect-selected');
 
-                // Check if already added
                 if (selectedEl.querySelector(`[data-value="${val}"]`)) {
                     e.target.value = '';
                     return;
                 }
 
-                // Determine color
+                const optionEl = e.target.querySelector(`option[value="${val}"]`);
+                const label = optionEl ? optionEl.textContent : val;
+
                 let color = '#666';
-                if (name === 'types') {
-                    color = this._getTypeColor(val);
-                } else if (name === 'responsibles') {
-                    color = '#00A9C1';
-                }
+                if (name === 'types') color = this._getTypeColor(val);
+                else if (name === 'responsibles') color = '#00A9C1';
 
                 const tag = document.createElement('span');
                 tag.className = 'pj-multiselect-tag';
                 tag.dataset.value = val;
                 tag.style.setProperty('--tag-color', color);
-                tag.innerHTML = `${val}<button class="pj-multiselect-remove" data-remove-tag="${val}">&times;</button>`;
+                tag.innerHTML = `${this._escAttr(label)}<button class="pj-multiselect-remove" data-remove-tag="${this._escAttr(val)}">&times;</button>`;
 
                 tag.querySelector('.pj-multiselect-remove').addEventListener('click', () => {
                     tag.remove();
-                    // Re-add option to select
                     const option = document.createElement('option');
                     option.value = val;
-                    option.textContent = val;
+                    option.textContent = label;
                     e.target.appendChild(option);
                 });
 
                 selectedEl.appendChild(tag);
-
-                // Remove from select options
-                const opt = e.target.querySelector(`option[value="${val}"]`);
-                if (opt) opt.remove();
+                if (optionEl) optionEl.remove();
                 e.target.value = '';
             });
         });
 
-        // Handle initial remove buttons
         container.querySelectorAll('.pj-multiselect-remove').forEach(btn => {
             btn.addEventListener('click', () => {
                 const val = btn.dataset.removeTag;
                 const tag = btn.closest('.pj-multiselect-tag');
                 const wrapper = btn.closest('.pj-multiselect');
                 const select = wrapper.querySelector('.pj-multiselect-add');
+                const labelText = tag.textContent.replace('×', '').trim();
 
                 tag.remove();
 
                 const option = document.createElement('option');
                 option.value = val;
-                option.textContent = val;
+                option.textContent = labelText;
                 select.appendChild(option);
             });
         });
@@ -1073,11 +978,16 @@ const ProyectosModule = {
     //  HELPERS
     // ═══════════════════════════════════════════
 
-    _fmtDate(dateStr) {
-        if (!dateStr) return '—';
-        try {
-            const d = new Date(dateStr + 'T00:00:00');
-            return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-        } catch { return dateStr; }
+    _escAttr(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    },
+
+    _initialsFromName(name) {
+        if (!name) return '—';
+        return name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2);
     },
 };
