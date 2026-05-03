@@ -3,45 +3,83 @@
 -- ═══════════════════════════════════════════
 -- CONTEXTO:
 --   Editar usuario desde Admin Panel no actualizaba el name (silent fail).
---   Causa: la tabla profiles tiene RLS habilitado, SELECT policy presente
---   (por eso la lista carga), pero UPDATE/INSERT/DELETE policies no existen
---   o estan mal definidas. Supabase devuelve data=[] sin error cuando RLS
---   bloquea UPDATE => la app no detectaba el fallo.
+--   Causa: la policy de UPDATE existente "Usuario edita su propio perfil"
+--   solo permite UPDATE cuando auth.uid() = id. Cuando Fede (superadmin)
+--   intenta editar a Noelia, la condicion no matchea -> 0 filas afectadas
+--   sin error. La app creia que habia guardado.
 --
--- DECISION: policies abiertas a authenticated (todo usuario logueado puede
--- leer/escribir profiles). El control fino de "solo superadmin puede crear/
--- borrar usuarios" se hace en el backend lobby-api con service-role, asi
--- que aca no necesitamos restricciones por rol.
+-- POLICIES EXISTENTES (no las tocamos):
+--   "Usuarios autenticados leen perfiles" -> SELECT
+--   "Usuario edita su propio perfil"      -> UPDATE (auth.uid() = id)
+--
+-- AGREGADO:
+--   - Funcion SECURITY DEFINER is_admin_or_super() que chequea si el
+--     auth.uid() actual tiene role admin/superadmin SIN disparar
+--     recursion RLS sobre profiles.
+--   - Policy adicional de UPDATE para que superadmin/admin edite a cualquiera.
+--   - Policy de INSERT (necesaria si alguna vez se inserta desde el cliente;
+--     el lobby-api usa service-role asi que la bypassea).
+--   - Policy de DELETE (idem; soft delete via UPDATE _deleted ya cubre el
+--     caso real, asi que esta es solo para admins).
 --
 -- IDEMPOTENTE: drop si existe + create.
 -- ═══════════════════════════════════════════
 
--- Asegurar RLS habilitado
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+-- ─── Helper: chequea si auth.uid() es admin o superadmin ──────
+-- SECURITY DEFINER => corre con permisos del owner (postgres) y bypassea
+-- RLS de profiles, evitando recursion infinita.
+CREATE OR REPLACE FUNCTION public.is_admin_or_super()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.profiles
+        WHERE id = auth.uid()
+          AND role IN ('superadmin', 'admin')
+    );
+$$;
 
--- ─── SELECT (leer todos los profiles) ──────
-DROP POLICY IF EXISTS "profiles_auth_select" ON public.profiles;
-CREATE POLICY "profiles_auth_select" ON public.profiles
-    FOR SELECT TO authenticated USING (true);
+GRANT EXECUTE ON FUNCTION public.is_admin_or_super() TO authenticated;
 
--- ─── INSERT (crear profile propio o ajeno desde admin) ──
-DROP POLICY IF EXISTS "profiles_auth_insert" ON public.profiles;
-CREATE POLICY "profiles_auth_insert" ON public.profiles
-    FOR INSERT TO authenticated WITH CHECK (true);
+-- ─── UPDATE: superadmin/admin edita cualquier perfil ──
+-- (la policy existente "Usuario edita su propio perfil" ya cubre el caso
+--  de un usuario editandose a si mismo, asi que NO la tocamos)
+DROP POLICY IF EXISTS "profiles_admin_update_any" ON public.profiles;
+CREATE POLICY "profiles_admin_update_any" ON public.profiles
+    FOR UPDATE TO authenticated
+    USING (public.is_admin_or_super())
+    WITH CHECK (public.is_admin_or_super());
 
--- ─── UPDATE (editar nombre, role, telefono, etc.) ──
-DROP POLICY IF EXISTS "profiles_auth_update" ON public.profiles;
-CREATE POLICY "profiles_auth_update" ON public.profiles
-    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+-- ─── INSERT: superadmin/admin crea perfiles ──
+-- (en la practica el lobby-api usa service-role y bypassea RLS; esto es
+--  por si alguna vez se hace desde el cliente directo)
+DROP POLICY IF EXISTS "profiles_admin_insert" ON public.profiles;
+CREATE POLICY "profiles_admin_insert" ON public.profiles
+    FOR INSERT TO authenticated
+    WITH CHECK (public.is_admin_or_super());
 
--- ─── DELETE (soft delete real, aunque normalmente solo marcamos _deleted) ──
-DROP POLICY IF EXISTS "profiles_auth_delete" ON public.profiles;
-CREATE POLICY "profiles_auth_delete" ON public.profiles
-    FOR DELETE TO authenticated USING (true);
+-- ─── DELETE: superadmin/admin borra perfiles ──
+-- (el flujo real usa soft delete via UPDATE _deleted=true, asi que esto
+--  es para casos extremos)
+DROP POLICY IF EXISTS "profiles_admin_delete" ON public.profiles;
+CREATE POLICY "profiles_admin_delete" ON public.profiles
+    FOR DELETE TO authenticated
+    USING (public.is_admin_or_super());
 
 -- ═══════════════════════════════════════════
 -- VERIFICACION:
--- Despues de correr este SQL, ejecutar en SQL Editor:
+-- Despues de correr este SQL, en SQL Editor:
 --   SELECT policyname, cmd FROM pg_policies WHERE tablename = 'profiles';
--- Deberian aparecer 4 rows: profiles_auth_select / insert / update / delete.
+-- Deberian aparecer 5 rows:
+--   "Usuarios autenticados leen perfiles"  SELECT
+--   "Usuario edita su propio perfil"       UPDATE
+--   "profiles_admin_update_any"            UPDATE
+--   "profiles_admin_insert"                INSERT
+--   "profiles_admin_delete"                DELETE
+--
+-- Y verificar que la funcion exista:
+--   SELECT public.is_admin_or_super();  -- te tiene que devolver true (sos superadmin)
 -- ═══════════════════════════════════════════
