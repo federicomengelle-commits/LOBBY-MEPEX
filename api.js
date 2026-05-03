@@ -2604,12 +2604,13 @@ const API = {
         if (updates.telefono !== undefined) payload.telefono = updates.telefono;
         if (updates.active !== undefined) payload.active = updates.active;
 
-        // NOTA: No usamos .select().single() porque RLS puede bloquear el SELECT
-        // de vuelta y disparar PGRST116 ("Cannot coerce..."). El UPDATE en sí
-        // funciona; la pantalla refresca con _loadUsuariosTab() despues.
-        const doUpdate = async (p) => client.from('profiles').update(p).eq('id', uid);
+        // Usamos .select() (sin .single()) para detectar silent-fail por RLS:
+        // - Sin policy de UPDATE, Supabase devuelve data=[] sin error.
+        // - .single() tiraba PGRST116 con mensaje confuso. Con array
+        //   verificamos length > 0 y damos un mensaje util.
+        const doUpdate = async (p) => client.from('profiles').update(p).eq('id', uid).select();
 
-        let { error } = await doUpdate(payload);
+        let { data, error } = await doUpdate(payload);
 
         // Retry con fields core si una columna no existe en la BD (schema cache)
         if (error && error.message?.includes('schema cache')) {
@@ -2619,7 +2620,7 @@ const API = {
             if (payload.role !== undefined) safe.role = payload.role;
             if (Object.keys(safe).length > 0) {
                 const retry = await doUpdate(safe);
-                error = retry.error;
+                data = retry.data; error = retry.error;
                 if (!error) console.warn('[API] updateProfile: solo se guardaron campos core (faltan columnas en BD)');
             }
         }
@@ -2628,7 +2629,15 @@ const API = {
             console.error('[API] Supabase updateProfile error:', error.code, error.message, error.details, error.hint);
             throw error;
         }
-        return { success: true };
+
+        // Silent-fail por RLS: el UPDATE no afecto ninguna fila.
+        if (!data || data.length === 0) {
+            const msg = 'No se actualizo ninguna fila. Falta policy RLS de UPDATE en profiles (correr sql/fix_rls_profiles.sql) o el usuario no existe.';
+            console.error('[API] updateProfile silent-fail:', { uid, payload });
+            throw new Error(msg);
+        }
+
+        return { success: true, data: data[0] };
     },
 
     async getRoles() {
