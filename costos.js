@@ -29,10 +29,15 @@ const CostosModule = {
     _expandedComps: new Set(),  // ids de componentes (string) tipo item que están expandidos
     _subcompsCache: {},          // childItemId → array de subcomps hidratados
 
+    // Tipos de amortización (catálogo costos_tipo_amortizacion)
+    _tiposAmortizacion: [],
+    _tiposAmortizacionMap: {},
+
     // Filters
     _filterClasificacion: [],
     _filterCategoria: [],
     _filterProveedor: [],
+    _filterTipoAmortizacion: [],
     _filterRecetaEstado: '',  // '', 'completa', 'incompleta', 'sin-receta'
 
     // Receta status cache (item.id → { status, comps })
@@ -178,19 +183,24 @@ const CostosModule = {
 
     async _loadData() {
         try {
-            const [insumos, items, listas] = await Promise.all([
+            const [insumos, items, listas, tipos] = await Promise.all([
                 API.getInsumos(),
                 API.getCatalogoItems(),
                 API.getListasPrecio(),
+                this._loadTiposAmortizacion(),
             ]);
             this._insumos = insumos || [];
             this._catalogoItems = items || [];
             this._listas = listas || [];
+            this._tiposAmortizacion = tipos || [];
+            this._tiposAmortizacionMap = {};
+            for (const t of this._tiposAmortizacion) this._tiposAmortizacionMap[t.codigo] = t;
         } catch (e) {
             console.warn('[Costos] Error loading data:', e.message);
             this._insumos = [];
             this._catalogoItems = [];
             this._listas = [];
+            this._tiposAmortizacion = this._tiposAmortizacion || [];
         }
 
         // Pre-load recipe statuses for all catalog items
@@ -199,6 +209,24 @@ const CostosModule = {
         // Update tab counts
         this._updateTabCounts();
         this._renderActiveTab();
+    },
+
+    async _loadTiposAmortizacion() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('costos_tipo_amortizacion').select('*').order('orden', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[Costos] Error loading tipos amortización:', e.message);
+            return [];
+        }
+    },
+
+    _getVuEfectiva(insumo) {
+        if (insumo?.vidaUtilOverride != null) return insumo.vidaUtilOverride;
+        const tipo = this._tiposAmortizacionMap[insumo?.tipoAmortizacion];
+        return tipo?.vida_util ?? null;
     },
 
     async _loadAllRecetaStatuses() {
@@ -605,12 +633,14 @@ const CostosModule = {
         if (!filtersEl) return;
 
         const proveedorOpts = [...new Set(this._insumos.map(i => i.proveedor).filter(Boolean))].sort();
+        const tipoAmortOpts = this._tiposAmortizacion.map(t => t.codigo);
 
         filtersEl.innerHTML = `
             <div class="costos-filter-bar">
                 ${this._renderMultiFilter('clasificacion', 'Clasificación', this._clasificacionOpts, this._filterClasificacion)}
                 ${this._renderMultiFilter('categoria', 'Categoría', this._categoriaOpts, this._filterCategoria)}
                 ${this._renderMultiFilter('proveedor', 'Proveedor', proveedorOpts, this._filterProveedor)}
+                ${this._renderMultiFilter('tipoAmortizacion', 'Tipo amort.', tipoAmortOpts, this._filterTipoAmortizacion)}
                 <button class="costos-filter-clear" id="costosClearFilters">Limpiar</button>
                 <div style="flex:1"></div>
                 <button class="btn btn-primary btn-sm" id="costosBtnNewInsumo">
@@ -647,6 +677,9 @@ const CostosModule = {
         }
         if (this._filterProveedor.length) {
             data = data.filter(i => this._filterProveedor.includes(i.proveedor));
+        }
+        if (this._filterTipoAmortizacion.length) {
+            data = data.filter(i => this._filterTipoAmortizacion.includes(i.tipoAmortizacion));
         }
 
         // Sort
@@ -686,7 +719,14 @@ const CostosModule = {
                 : `<span class="badge badge-ghost">${val || '—'}</span>`;
         };
 
-        const rows = data.map(item => `
+        const rows = data.map(item => {
+            const vu = this._getVuEfectiva(item);
+            const hasOverride = item.vidaUtilOverride != null;
+            const vuLabel = vu != null ? `${vu}${hasOverride ? '*' : ''}` : '—';
+            const tipoBadge = item.tipoAmortizacion
+                ? `<span class="badge costos-tipo-badge" style="background:rgba(0,169,193,0.08); color:#7dd3df; border:1px solid rgba(0,169,193,0.25); font-family:var(--font-mono); font-size:11px;">${item.tipoAmortizacion}</span>`
+                : `<span class="badge badge-ghost">—</span>`;
+            return `
             <tr class="costos-table-row" data-id="${item.id}">
                 <td><span class="td-primary">${item.nombre}</span></td>
                 <td><span class="td-mono">${item.codigo || '—'}</span></td>
@@ -697,8 +737,11 @@ const CostosModule = {
                 </td>
                 <td>${item.moneda || '—'}</td>
                 <td>${item.proveedor || '—'}</td>
+                <td>${tipoBadge}</td>
+                <td class="td-number" title="${hasOverride ? 'VU override · default tipo: ' + (this._tiposAmortizacionMap[item.tipoAmortizacion]?.vida_util ?? '—') : 'Heredada del tipo'}"><span class="td-mono">${vuLabel}</span></td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
 
         container.innerHTML = `
             <table class="costos-table">
@@ -711,6 +754,8 @@ const CostosModule = {
                         <th class="sortable" data-sort-col="costoUnitario">COSTO UNIT. ${sortIcon('costoUnitario')}</th>
                         <th>MONEDA</th>
                         <th class="sortable" data-sort-col="proveedor">PROVEEDOR ${sortIcon('proveedor')}</th>
+                        <th class="sortable" data-sort-col="tipoAmortizacion">TIPO AMORT. ${sortIcon('tipoAmortizacion')}</th>
+                        <th class="sortable" data-sort-col="vuEfectiva" title="Vida útil efectiva (override o heredada)">VU EFECT. ${sortIcon('vuEfectiva')}</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -883,6 +928,8 @@ const CostosModule = {
                         ${item.fechaUltimoPrecio ? `<div class="costos-ficha-row"><span class="costos-ficha-label">Último precio</span><span class="costos-ficha-value-static">${API.formatDate(item.fechaUltimoPrecio)}</span></div>` : ''}
                     </div>
 
+                    ${this._renderAmortizacionSection(item)}
+
                     <div class="costos-ficha-section">
                         <div class="costos-ficha-section-title">Notas</div>
                         <textarea class="costos-ficha-textarea" data-field="notas" placeholder="Observaciones…">${item.notas || ''}</textarea>
@@ -902,7 +949,87 @@ const CostosModule = {
         this._attachFichaEvents(item);
     },
 
+    _renderAmortizacionSection(item) {
+        const tipos = this._tiposAmortizacion;
+        const currentCodigo = item.tipoAmortizacion || '';
+        const currentTipo = this._tiposAmortizacionMap[currentCodigo];
+        const phVU = currentTipo ? `Default: ${currentTipo.vida_util}` : 'Default: —';
+        const phReac = currentTipo && currentTipo.pct_reacond != null ? `Default: ${currentTipo.pct_reacond}%` : 'Default: —';
+        const phDesp = currentTipo && currentTipo.pct_desperdicio != null ? `Default: ${currentTipo.pct_desperdicio}%` : 'Default: —';
+
+        const optionsHtml = tipos.map(t =>
+            `<option value="${t.codigo}" ${t.codigo === currentCodigo ? 'selected' : ''}>${t.codigo} — ${t.nombre}</option>`
+        ).join('');
+
+        const vuOv = item.vidaUtilOverride != null ? item.vidaUtilOverride : '';
+        const reacOv = item.pctReacondOverride != null ? item.pctReacondOverride : '';
+        const despOv = item.pctDesperdicioOverride != null ? item.pctDesperdicioOverride : '';
+        const hasAnyOverride = vuOv !== '' || reacOv !== '' || despOv !== '';
+
+        return `
+            <div class="costos-ficha-section">
+                <div class="costos-ficha-section-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Amortización
+                </div>
+                <div class="costos-ficha-row">
+                    <span class="costos-ficha-label">Tipo</span>
+                    <select class="costos-ficha-select" data-field="tipoAmortizacion" id="costosFichaTipoAmort" required>
+                        ${currentCodigo ? '' : '<option value="" disabled selected>— Seleccionar —</option>'}
+                        ${optionsHtml}
+                    </select>
+                </div>
+                <div class="costos-ficha-overrides-toggle" id="costosFichaOverridesToggle"
+                    style="cursor:pointer; padding:6px 0; font-size:12px; color:var(--text-muted); user-select:none;">
+                    <span id="costosFichaOverridesArrow">${hasAnyOverride ? '▾' : '▸'}</span>
+                    Overrides ${hasAnyOverride ? '<span style="color:#F28D15">·</span> activos' : '(avanzado)'}
+                </div>
+                <div class="costos-ficha-overrides" id="costosFichaOverrides" style="display:${hasAnyOverride ? 'block' : 'none'}; padding-left:8px; border-left:2px solid rgba(0,169,193,0.2);">
+                    <div class="costos-ficha-row">
+                        <span class="costos-ficha-label">Vida útil</span>
+                        <input class="costos-ficha-input" data-field="vidaUtilOverride" id="costosFichaVuOv" type="number" min="0" step="1" value="${vuOv}" placeholder="${phVU}" spellcheck="false">
+                    </div>
+                    <div class="costos-ficha-row">
+                        <span class="costos-ficha-label">% reacond.</span>
+                        <input class="costos-ficha-input" data-field="pctReacondOverride" id="costosFichaReacOv" type="number" min="0" step="0.01" value="${reacOv}" placeholder="${phReac}" spellcheck="false">
+                    </div>
+                    <div class="costos-ficha-row">
+                        <span class="costos-ficha-label">% desperdicio</span>
+                        <input class="costos-ficha-input" data-field="pctDesperdicioOverride" id="costosFichaDespOv" type="number" min="0" step="0.01" value="${despOv}" placeholder="${phDesp}" spellcheck="false">
+                    </div>
+                    <div style="font-size:11px; color:var(--text-dim); padding:4px 0 2px;">Dejá en blanco para usar el default del tipo.</div>
+                </div>
+            </div>
+        `;
+    },
+
     _attachFichaEvents(item) {
+        // Toggle overrides collapsible
+        const toggle = document.getElementById('costosFichaOverridesToggle');
+        const overridesBox = document.getElementById('costosFichaOverrides');
+        const arrow = document.getElementById('costosFichaOverridesArrow');
+        if (toggle && overridesBox) {
+            toggle.addEventListener('click', () => {
+                const isOpen = overridesBox.style.display !== 'none';
+                overridesBox.style.display = isOpen ? 'none' : 'block';
+                if (arrow) arrow.textContent = isOpen ? '▸' : '▾';
+            });
+        }
+
+        // Tipo amortización change → update placeholders of overrides
+        const tipoSelect = document.getElementById('costosFichaTipoAmort');
+        if (tipoSelect) {
+            tipoSelect.addEventListener('change', () => {
+                const t = this._tiposAmortizacionMap[tipoSelect.value];
+                const vuEl = document.getElementById('costosFichaVuOv');
+                const reacEl = document.getElementById('costosFichaReacOv');
+                const despEl = document.getElementById('costosFichaDespOv');
+                if (vuEl) vuEl.placeholder = t ? `Default: ${t.vida_util}` : 'Default: —';
+                if (reacEl) reacEl.placeholder = t && t.pct_reacond != null ? `Default: ${t.pct_reacond}%` : 'Default: —';
+                if (despEl) despEl.placeholder = t && t.pct_desperdicio != null ? `Default: ${t.pct_desperdicio}%` : 'Default: —';
+            });
+        }
+
         // Close
         const closeBtn = document.getElementById('costosFichaClose');
         if (closeBtn) closeBtn.addEventListener('click', () => this._closePanel());
@@ -912,13 +1039,18 @@ const CostosModule = {
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
                 const data = {};
+                const overrideFields = new Set(['vidaUtilOverride', 'pctReacondOverride', 'pctDesperdicioOverride']);
                 document.querySelectorAll('.costos-ficha-input, .costos-ficha-select, .costos-ficha-textarea').forEach(el => {
                     const field = el.dataset.field;
                     if (!field) return;
-                    if (el.type === 'number') {
-                        data[field] = parseFloat(el.value) || 0;
+                    const raw = el.value;
+                    if (overrideFields.has(field)) {
+                        // Override vacío → null (NO 0). Caso contrario → número.
+                        data[field] = (raw === '' || raw == null) ? null : Number(raw);
+                    } else if (el.type === 'number') {
+                        data[field] = parseFloat(raw) || 0;
                     } else {
-                        data[field] = el.value;
+                        data[field] = raw;
                     }
                 });
 
@@ -972,6 +1104,7 @@ const CostosModule = {
     // ─── New insumo ───
 
     _openNewInsumoModal() {
+        const tipoOpts = this._tiposAmortizacion.map(t => `${t.codigo} — ${t.nombre}`);
         const fields = [
             { key: 'nombre', label: 'Nombre', type: 'text', required: true, placeholder: 'Nombre del insumo' },
             { key: 'codigo', label: 'Código', type: 'text', placeholder: 'Ej: MAT-ALB' },
@@ -981,9 +1114,10 @@ const CostosModule = {
             { key: 'moneda', label: 'Moneda', type: 'select', options: ['USD', 'ARS'] },
             { key: 'unidadBase', label: 'Unidad', type: 'select', options: ['unidad', 'metro', 'm²', 'kg', 'litro', 'hora', 'día', 'viaje', 'rollo', 'balde'] },
             { key: 'proveedor', label: 'Proveedor', type: 'text', placeholder: 'Nombre del proveedor' },
+            { key: 'tipoAmortizacion', label: 'Tipo amortización', type: 'select', required: true, options: tipoOpts },
         ];
 
-        const body = FormBuilder.render(fields, {});
+        const body = FormBuilder.render(fields, { tipoAmortizacion: 'OTRO — Otros' });
 
         const instance = Modal.open({
             title: '📦 Nuevo insumo',
@@ -1005,6 +1139,11 @@ const CostosModule = {
                         Toast.warning('El nombre es obligatorio');
                         return;
                     }
+                    // El select de tipoAmortización muestra "CODIGO — Nombre". Extraer el código.
+                    if (values.tipoAmortizacion && values.tipoAmortizacion.includes('—')) {
+                        values.tipoAmortizacion = values.tipoAmortizacion.split('—')[0].trim();
+                    }
+                    if (!values.tipoAmortizacion) values.tipoAmortizacion = 'OTRO';
                     const result = await API.createInsumo(values);
                     if (result) {
                         Toast.success(`Insumo "${values.nombre}" creado`);
@@ -2601,6 +2740,14 @@ const CostosModule = {
                     va = a.precioAlquiler || 0;
                     vb = b.precioAlquiler || 0;
                     break;
+                case 'tipoAmortizacion':
+                    va = (a.tipoAmortizacion || '').toString().toLowerCase();
+                    vb = (b.tipoAmortizacion || '').toString().toLowerCase();
+                    break;
+                case 'vuEfectiva':
+                    va = this._getVuEfectiva(a) ?? -1;
+                    vb = this._getVuEfectiva(b) ?? -1;
+                    break;
                 default:
                     va = (a[col] || '').toString().toLowerCase();
                     vb = (b[col] || '').toString().toLowerCase();
@@ -2725,6 +2872,7 @@ const CostosModule = {
                 this._filterCategoria = [];
                 this._filterProveedor = [];
                 this._filterRubro = [];
+                this._filterTipoAmortizacion = [];
                 this._filterRecetaEstado = '';
                 // Re-render filters + table (needed para uncheck visual)
                 this._renderActiveTab();
@@ -2750,6 +2898,7 @@ const CostosModule = {
             case 'categoria': this._filterCategoria = values; break;
             case 'proveedor': this._filterProveedor = values; break;
             case 'rubro': this._filterRubro = values; break;
+            case 'tipoAmortizacion': this._filterTipoAmortizacion = values; break;
         }
         // Re-aplica solo la tabla, preservando dropdowns abiertos del filtro
         if (this._activeTab === 'insumos') this._applyInsumosFilters();
@@ -2761,7 +2910,7 @@ const CostosModule = {
         if (!wrap) return;
         const trigger = wrap.querySelector('[data-mf-toggle]');
         if (!trigger) return;
-        const labelMap = { clasificacion: 'Clasificación', categoria: 'Categoría', proveedor: 'Proveedor', rubro: 'Rubro' };
+        const labelMap = { clasificacion: 'Clasificación', categoria: 'Categoría', proveedor: 'Proveedor', rubro: 'Rubro', tipoAmortizacion: 'Tipo amort.' };
         const label = labelMap[filterId] || filterId;
         const count = selected ? selected.length : 0;
         const span = trigger.querySelector('span');

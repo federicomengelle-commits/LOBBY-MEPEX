@@ -1308,6 +1308,10 @@ const API = {
                 fechaUltimoPrecio: i.fecha_ultimo_precio || null,
                 activo: i.activo !== false,
                 updatedAt: i.updated_at,
+                tipoAmortizacion: i.tipo_amortizacion || null,
+                vidaUtilOverride: i.vida_util_override != null ? Number(i.vida_util_override) : null,
+                pctReacondOverride: i.pct_reacond_override != null ? Number(i.pct_reacond_override) : null,
+                pctDesperdicioOverride: i.pct_desperdicio_override != null ? Number(i.pct_desperdicio_override) : null,
             }));
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
@@ -1328,7 +1332,17 @@ const API = {
                 unidad: data.unidadBase || 'unidad',
                 proveedor: data.proveedor || '',
                 notas: data.notas || '',
+                tipo_amortizacion: data.tipoAmortizacion || 'OTRO',
             };
+            if (data.vidaUtilOverride !== undefined && data.vidaUtilOverride !== null && data.vidaUtilOverride !== '') {
+                payload.vida_util_override = Number(data.vidaUtilOverride);
+            }
+            if (data.pctReacondOverride !== undefined && data.pctReacondOverride !== null && data.pctReacondOverride !== '') {
+                payload.pct_reacond_override = Number(data.pctReacondOverride);
+            }
+            if (data.pctDesperdicioOverride !== undefined && data.pctDesperdicioOverride !== null && data.pctDesperdicioOverride !== '') {
+                payload.pct_desperdicio_override = Number(data.pctDesperdicioOverride);
+            }
             const result = await UndoHelpers.createRecord('insumos_base', payload, `Nuevo insumo: ${data.nombre || ''}`);
             this.clearCache();
             return result || true;
@@ -1350,6 +1364,16 @@ const API = {
             if (data.unidadBase !== undefined) payload.unidad = data.unidadBase;
             if (data.proveedor !== undefined) payload.proveedor = data.proveedor;
             if (data.notas !== undefined) payload.notas = data.notas;
+            if (data.tipoAmortizacion !== undefined) payload.tipo_amortizacion = data.tipoAmortizacion || 'OTRO';
+            if (data.vidaUtilOverride !== undefined) {
+                payload.vida_util_override = (data.vidaUtilOverride === '' || data.vidaUtilOverride === null) ? null : Number(data.vidaUtilOverride);
+            }
+            if (data.pctReacondOverride !== undefined) {
+                payload.pct_reacond_override = (data.pctReacondOverride === '' || data.pctReacondOverride === null) ? null : Number(data.pctReacondOverride);
+            }
+            if (data.pctDesperdicioOverride !== undefined) {
+                payload.pct_desperdicio_override = (data.pctDesperdicioOverride === '' || data.pctDesperdicioOverride === null) ? null : Number(data.pctDesperdicioOverride);
+            }
             payload.updated_at = new Date().toISOString();
             await UndoHelpers.updateRecord('insumos_base', id, payload, 'Edito insumo');
             this.clearCache();
