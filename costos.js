@@ -41,10 +41,10 @@ const CostosModule = {
     _proveedoresByName: {},
     _proveedoresById: {},
 
-    // F.3 — Parámetros globales del modelo de costeo nuevo (singleton id=1)
-    _paramsGlobales: null,
+    // F.3 — Parámetros globales del modelo de costeo (tabla parametros_globales,
+    // key-value. Reemplaza la pantalla legacy #parametros-globales).
+    _paramsGlobales: [],          // array de { clave, valor, unidad, descripcion, actualizadoAt }
     _paramsGlobalesDirty: false,
-    _staleSnapshotCount: 0,
 
     // Filters
     _filterClasificacion: [],
@@ -3176,37 +3176,11 @@ const CostosModule = {
 
     async _loadParamsGlobales() {
         try {
-            const { data, error } = await supabaseClient
-                .from('costos_params_globales')
-                .select('*')
-                .eq('id', 1)
-                .single();
-            if (error) throw error;
-            this._paramsGlobales = data;
+            const list = await API.getParametrosGlobales();
+            this._paramsGlobales = Array.isArray(list) ? list : [];
         } catch (e) {
-            console.warn('[Costos] Error loading costos_params_globales:', e?.message || e);
-            this._paramsGlobales = null;
-        }
-        await this._countStaleParamsSnapshots();
-    },
-
-    async _countStaleParamsSnapshots() {
-        if (!this._paramsGlobales?.updated_at) {
-            this._staleSnapshotCount = 0;
-            return;
-        }
-        try {
-            const { count, error } = await supabaseClient
-                .from('catalogo_items')
-                .select('id', { count: 'exact', head: true })
-                .lt('snapshot_costos_at', this._paramsGlobales.updated_at)
-                .not('tipo_receta', 'is', null)
-                .or('_deleted.is.null,_deleted.eq.false');
-            if (error) throw error;
-            this._staleSnapshotCount = count || 0;
-        } catch (e) {
-            console.warn('[Costos] Error contando stale snapshots:', e?.message || e);
-            this._staleSnapshotCount = 0;
+            console.warn('[Costos] Error loading parametros_globales:', e?.message || e);
+            this._paramsGlobales = [];
         }
     },
 
@@ -3216,114 +3190,82 @@ const CostosModule = {
         const countEl = document.getElementById('costosRecordCount');
         if (countEl) countEl.textContent = '';
 
-        const p = this._paramsGlobales;
-        if (!p) {
+        const params = this._paramsGlobales;
+        if (!params || !params.length) {
             container.innerHTML = `
                 <div class="costos-empty">
                     <div class="costos-empty-icon">⚙️</div>
-                    <p>No se pudo cargar la fila id=1 de <code>costos_params_globales</code>.</p>
-                    <p style="color:#555; font-size:13px;">Verificá la migración SQL del modelo de costeo nuevo.</p>
+                    <p>No se pudo cargar <code>parametros_globales</code>.</p>
+                    <p style="color:#555; font-size:13px;">Verificá que la tabla exista en Supabase y tenga RLS de SELECT para authenticated.</p>
                 </div>`;
             return;
         }
 
-        // Conversión: en la UI los % se ven como entero (30) y se persisten como factor (0.30)
-        const pct = (factor) => factor != null ? String(Math.round(parseFloat(factor) * 1000) / 10) : '';
-        const num = (v) => v != null ? String(v) : '';
+        // Agrupar por unidad: ARS/usos por un lado, % por otro, USD aparte.
+        const grupoEconomico = params.filter(p => ['ARS', 'usos'].includes(p.unidad));
+        const grupoPct = params.filter(p => p.unidad === '%');
+        const grupoOtros = params.filter(p => !['ARS', '%', 'usos'].includes(p.unidad));
+
         const fmtDate = (iso) => {
             if (!iso) return '—';
             try { return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
             catch (_) { return iso; }
         };
+        const lastUpdate = params
+            .map(p => p.actualizadoAt)
+            .filter(Boolean)
+            .sort()
+            .pop();
 
-        const updatedAtStr = fmtDate(p.updated_at);
-        const stale = this._staleSnapshotCount;
+        const renderRow = (p) => {
+            const esPct = p.unidad === '%';
+            // En % el valor se persiste como factor (0.30) pero en UI se ve como entero (30)
+            const displayVal = esPct ? Math.round(p.valor * 1000) / 10 : p.valor;
+            return `
+                <div class="costos-params-row">
+                    <label class="costos-params-label" title="${p.descripcion || ''}">
+                        <span class="costos-params-clave">${p.clave}</span>
+                        ${p.descripcion ? `<span class="costos-params-desc">${p.descripcion}</span>` : ''}
+                    </label>
+                    <div class="costos-params-input-wrap">
+                        <input class="costos-params-input"
+                            data-clave="${p.clave}"
+                            data-pct="${esPct}"
+                            data-original="${displayVal}"
+                            type="number"
+                            step="${esPct ? '0.1' : '0.01'}"
+                            min="0"
+                            value="${displayVal}">
+                        <span class="costos-params-suffix">${p.unidad || ''}</span>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderCard = (titulo, icono, items) => items.length ? `
+            <div class="costos-params-card">
+                <div class="costos-params-card-title">${icono} ${titulo}</div>
+                ${items.map(renderRow).join('')}
+            </div>
+        ` : '';
 
         container.innerHTML = `
             <div class="costos-params-wrap">
                 <div class="costos-params-header">
-                    <h2 class="costos-params-title">⚙️ Parámetros del modelo de costeo</h2>
+                    <h2 class="costos-params-title">⚙️ Parámetros globales del modelo de costeo</h2>
                     <p class="costos-params-subtitle">
-                        Singleton <code>costos_params_globales</code>. La RPC <code>calcular_receta()</code>
-                        lee estos valores. Los porcentajes se ingresan como enteros (30 = 30%) y se
-                        persisten como factor decimal (0.30).
+                        Tabla <code>parametros_globales</code> · valores base que el motor de costos usa
+                        como default. Cambiar acá afecta a recetas <strong>nuevas o recalculadas</strong>.
+                        Las existentes conservan sus snapshots hasta recalcularlas.
+                        Los porcentajes se ingresan como enteros (30 = 30%) y se persisten como decimal (0.30).
                     </p>
-                    <p class="costos-params-meta">Última actualización: <strong>${updatedAtStr}</strong></p>
+                    <p class="costos-params-meta">Última actualización del set: <strong>${fmtDate(lastUpdate)}</strong></p>
                 </div>
 
                 <div class="costos-params-grid">
-                    <div class="costos-params-card">
-                        <div class="costos-params-card-title">💰 Valores económicos</div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramHoraTaller">Hora taller</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramHoraTaller" data-field="hora_taller_ars" data-pct="false" type="number" step="0.01" min="0" class="costos-params-input" value="${num(p.hora_taller_ars)}">
-                                <span class="costos-params-suffix">ARS/h</span>
-                            </div>
-                        </div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramHoraMontajista">Hora montajista</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramHoraMontajista" data-field="hora_montajista_ars" data-pct="false" type="number" step="0.01" min="0" class="costos-params-input" value="${num(p.hora_montajista_ars)}">
-                                <span class="costos-params-suffix">ARS/h</span>
-                            </div>
-                        </div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramTipoCambio">Tipo de cambio USD</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramTipoCambio" data-field="tipo_cambio_usd" data-pct="false" type="number" step="0.01" min="0" class="costos-params-input" value="${num(p.tipo_cambio_usd)}">
-                                <span class="costos-params-suffix">ARS/USD</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="costos-params-card">
-                        <div class="costos-params-card-title">📊 Porcentajes y defaults</div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramPctIndirectos">% Indirectos fábrica</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramPctIndirectos" data-field="pct_indirectos_fabrica" data-pct="true" type="number" step="0.1" min="0" max="500" class="costos-params-input" value="${pct(p.pct_indirectos_fabrica)}">
-                                <span class="costos-params-suffix">%</span>
-                            </div>
-                        </div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramPctMarkup">% Markup estructura</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramPctMarkup" data-field="pct_markup_estructura" data-pct="true" type="number" step="0.1" min="0" max="500" class="costos-params-input" value="${pct(p.pct_markup_estructura)}">
-                                <span class="costos-params-suffix">%</span>
-                            </div>
-                        </div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramPctMargen">% Margen default</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramPctMargen" data-field="pct_margen_default" data-pct="true" type="number" step="0.1" min="0" max="500" class="costos-params-input" value="${pct(p.pct_margen_default)}">
-                                <span class="costos-params-suffix">%</span>
-                            </div>
-                        </div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramVidaUtil">Vida útil default</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramVidaUtil" data-field="vida_util_default" data-pct="false" type="number" step="1" min="1" class="costos-params-input" value="${num(p.vida_util_default)}">
-                                <span class="costos-params-suffix">usos</span>
-                            </div>
-                        </div>
-                        <div class="costos-params-row">
-                            <label class="costos-params-label" for="paramPctReacond">% Reacondicionamiento</label>
-                            <div class="costos-params-input-wrap">
-                                <input id="paramPctReacond" data-field="pct_reacond_default" data-pct="true" type="number" step="0.1" min="0" max="100" class="costos-params-input" value="${pct(p.pct_reacond_default)}">
-                                <span class="costos-params-suffix">%</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="costos-params-impact">
-                    <div class="costos-params-impact-icon">${stale > 0 ? '⚠' : '✓'}</div>
-                    <div class="costos-params-impact-text">
-                        ${stale > 0
-                            ? `<strong>${stale} receta${stale === 1 ? '' : 's'}</strong> con snapshot anterior a la última edición de parámetros. Recalculá masivo para alinear precios.`
-                            : `Todas las recetas tienen snapshot al día.`}
-                    </div>
+                    ${renderCard('Valores económicos', '💰', grupoEconomico)}
+                    ${renderCard('Porcentajes', '📊', grupoPct)}
+                    ${renderCard('Otros', '🔧', grupoOtros)}
                 </div>
 
                 <div class="costos-params-actions">
@@ -3350,9 +3292,7 @@ const CostosModule = {
             this._paramsGlobalesDirty = true;
             if (dirtyTag) dirtyTag.style.display = 'inline-block';
         };
-        inputs.forEach(inp => {
-            inp.addEventListener('input', setDirty);
-        });
+        inputs.forEach(inp => inp.addEventListener('input', setDirty));
 
         const saveBtn = document.getElementById('costosParamsSave');
         if (saveBtn) saveBtn.addEventListener('click', () => this._saveParamsGlobales());
@@ -3362,28 +3302,29 @@ const CostosModule = {
     },
 
     async _saveParamsGlobales() {
-        if (!this._paramsGlobales) return;
-
-        // Construir payload con conversión % → factor
-        const payload = {};
+        // Construir lista de cambios: por cada input, comparar con su data-original
+        const changes = [];
         document.querySelectorAll('.costos-params-input').forEach(inp => {
-            const field = inp.dataset.field;
+            const clave = inp.dataset.clave;
             const isPct = inp.dataset.pct === 'true';
-            const raw = inp.value;
-            if (raw === '' || raw == null) {
-                payload[field] = null;
-                return;
-            }
-            const num = parseFloat(raw);
-            if (isNaN(num)) return;
-            payload[field] = isPct ? (num / 100) : num;
+            const original = parseFloat(inp.dataset.original);
+            const display = parseFloat(inp.value);
+            if (isNaN(display) || display === original) return;
+            // En UI los % se ingresan como entero (30), se persisten como factor (0.30)
+            const persistedVal = isPct ? display / 100 : display;
+            changes.push({ clave, persistedVal });
         });
+
+        if (!changes.length) {
+            Toast.info('No hay cambios para guardar');
+            return;
+        }
 
         const confirmed = await Modal.confirm({
             title: '⚙️ Guardar parámetros globales',
-            message: `<p style="margin:0 0 8px 0">Estos cambios afectarán los snapshots de recetas <strong>nuevas o recalculadas</strong>.</p>
-                      <p style="margin:0 0 8px 0">Recetas existentes mantienen su snapshot actual hasta ser recalculadas individualmente.</p>
-                      <p style="margin:0; color:var(--text-muted); font-size:13px;">Después de guardar, vas a poder usar el botón <strong>Recalcular todas las recetas</strong> para alinear todos los precios con estos params.</p>`,
+            message: `<p style="margin:0 0 8px 0"><strong>${changes.length} parámetro${changes.length === 1 ? '' : 's'}</strong> con cambios.</p>
+                      <p style="margin:0 0 8px 0">Esto afecta a recetas <strong>nuevas o recalculadas</strong>. Las existentes mantienen sus snapshots hasta recalcularlas.</p>
+                      <p style="margin:0; color:var(--text-muted); font-size:13px;">Después de guardar, podés usar <strong>Recalcular todas las recetas</strong> para alinear precios.</p>`,
             confirmText: 'Guardar',
             cancelText: 'Cancelar',
         });
@@ -3395,29 +3336,22 @@ const CostosModule = {
             saveBtn.textContent = 'Guardando…';
         }
 
-        try {
-            payload.updated_at = new Date().toISOString();
-            const { error } = await supabaseClient
-                .from('costos_params_globales')
-                .update(payload)
-                .eq('id', 1);
-            if (error) throw error;
-
-            Toast.success('Parámetros actualizados');
-            this._paramsGlobalesDirty = false;
-            // Recargar y re-renderizar
-            await this._loadParamsGlobales();
-            // También invalidar cache de params del modelo legacy (key-value) por las dudas
-            this._invalidateParamsCache?.();
-            this._renderParamsTab();
-        } catch (e) {
-            console.warn('[Costos] Error guardando params globales:', e);
-            Toast.error(`Error al guardar: ${e?.message || 'desconocido'}`);
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Guardar cambios`;
-            }
+        let ok = 0, failed = 0;
+        for (const c of changes) {
+            const r = await API.updateParametroGlobal(c.clave, c.persistedVal);
+            if (r) ok++; else failed++;
         }
+
+        if (failed === 0) {
+            Toast.success(`${ok} parámetro${ok === 1 ? '' : 's'} actualizado${ok === 1 ? '' : 's'}`);
+        } else {
+            Toast.warning(`${ok} guardado${ok === 1 ? '' : 's'} · ${failed} fallaron`);
+        }
+
+        this._paramsGlobalesDirty = false;
+        this._invalidateParamsCache?.();
+        await this._loadParamsGlobales();
+        this._renderParamsTab();
     },
 
     _attachEvents() {

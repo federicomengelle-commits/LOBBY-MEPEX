@@ -19,8 +19,8 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos', 'parametros-globales', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos', 'parametros-globales'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
         pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
         taller:     ['proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
@@ -89,7 +89,7 @@ const Data = {
             name: 'ADMIN & FINANZAS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',
             color: '#4A90D9',
-            moduleIds: ['finanzas', 'contabilidad', 'costos', 'parametros-globales'],
+            moduleIds: ['finanzas', 'contabilidad', 'costos'],
         },
     ],
 
@@ -440,10 +440,12 @@ const Data = {
             connections: [
                 { to: 'catalogo', label: 'Ver Catálogo', context: 'Items publicados para clientes' },
                 { to: 'inventario', label: 'Ver Insumos', context: 'Costos de materias primas' },
-                { to: 'parametros-globales', label: 'Parámetros Globales', context: 'Defaults del motor de costeo' },
             ],
         },
 
+        // Deprecado: Parámetros Globales ahora vive como tab dentro del módulo
+        // Costos. Esta entrada queda como compat para que data.modules['parametros-globales']
+        // siga existiendo si algún otro código lo busca por id.
         'parametros-globales': {
             id: 'parametros-globales',
             name: 'Parámetros Globales',

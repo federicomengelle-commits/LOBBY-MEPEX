@@ -67,7 +67,16 @@ const Router = {
             'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
             'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas' },
             'costos':           { render: () => CostosModule.render(), requiresAuth: true, module: 'costos', adminOnly: true },
-            'parametros-globales': { render: () => ParametrosGlobales.render(), requiresAuth: true, adminOnly: true },
+            // Deprecado: Parámetros ahora vive como tab dentro del módulo Costos.
+            // Redirección para bookmarks viejos.
+            'parametros-globales': {
+                render: () => {
+                    if (typeof CostosModule !== 'undefined') CostosModule._activeTab = 'params';
+                    Router.navigate('costos');
+                },
+                requiresAuth: true,
+                adminOnly: true,
+            },
         };
 
         // Listen for hash changes
