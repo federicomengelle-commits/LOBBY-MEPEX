@@ -2007,17 +2007,27 @@ const CostosModule = {
     _renderSubalquiladoBlock(item) {
         const cpd = item.costoProveedorDirecto != null ? item.costoProveedorDirecto : '';
         const pid = item.proveedorIdDirecto != null ? item.proveedorIdDirecto : '';
+        // Margen subalquilado: default 50%, persistido como decimal (0.50)
+        const margenDecimal = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
+        const margenPct = Math.round(margenDecimal * 100);
         return `
             <div class="costos-receta-config-block costos-receta-config-block-subalq">
                 <div class="costos-receta-config-title">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                    Costo de proveedor (subalquilado)
+                    Subalquilado · costo proveedor + margen
                 </div>
                 <div class="costos-receta-config-row">
-                    <label class="costos-receta-config-label">Costo proveedor directo</label>
+                    <label class="costos-receta-config-label">Costo proveedor</label>
                     <div class="costos-receta-config-input-wrap">
                         <span class="costos-receta-config-prefix">$</span>
                         <input type="number" class="costos-receta-config-input" id="costosRecetaCostoProv" data-field="costoProveedorDirecto" value="${cpd}" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="costos-receta-config-row">
+                    <label class="costos-receta-config-label">Margen sobre costo</label>
+                    <div class="costos-receta-config-input-wrap">
+                        <input type="number" class="costos-receta-config-input" id="costosRecetaMargenSubalq" data-field="margenSubalquiler" value="${margenPct}" step="1" min="0" max="500">
+                        <span class="costos-receta-config-suffix">%</span>
                     </div>
                 </div>
                 <div class="costos-receta-config-row">
@@ -2027,15 +2037,47 @@ const CostosModule = {
                     </div>
                 </div>
                 <div class="costos-receta-config-hint">
-                    Editá y salí del campo para guardar. Apretá <strong>Recalcular precio</strong> para refrescar el cache.
+                    Editá y salí del campo (blur) para guardar. Apretá <strong>Recalcular precio</strong> para aplicar.
+                    <br>Fórmula: <code>precio = costo proveedor × (1 + margen)</code>
                 </div>
             </div>
         `;
     },
 
     _renderSnapshotsBlock(item, params) {
+        const isSubalq = item.tipoReceta === 'subalquilado';
         const fmtPct = (v) => v != null ? `${(v * 100).toFixed(1)}%` : '—';
         const fmtCur = (v) => v != null ? API.formatCurrency(v) : '—';
+
+        // Subalquilado: snapshot mínimo, solo margen aplicado al recalcular
+        if (isSubalq) {
+            const fmtDate = (iso) => {
+                if (!iso) return null;
+                try { return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
+                catch (_) { return iso; }
+            };
+            const stale = !item.snapshotCostosAt;
+            const dateStr = fmtDate(item.snapshotCostosAt);
+            const margenSnap = item.snapshotPctMargen;
+            return `
+                <div class="costos-receta-config-block costos-receta-snapshots">
+                    <div class="costos-receta-config-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+                        Snapshot al recalcular
+                        ${stale ? `<span style="color:#F28D15; font-size:11px; margin-left:8px;">⚠ sin snapshot</span>` : `<span style="color:var(--text-dim); font-size:11px; margin-left:8px;">${dateStr}</span>`}
+                    </div>
+                    <div class="costos-receta-snapshot-grid" style="grid-template-columns: 1fr;">
+                        <div class="costos-receta-snapshot-item">
+                            <span class="costos-receta-snapshot-label">% Margen aplicado</span>
+                            <span class="costos-receta-snapshot-value">${fmtPct(margenSnap)}</span>
+                        </div>
+                    </div>
+                    <div class="costos-receta-config-hint">
+                        Subalquilado no usa hora taller, indirectos ni markup. Solo costo proveedor × (1 + margen).
+                    </div>
+                </div>
+            `;
+        }
         const fmtDate = (iso) => {
             if (!iso) return null;
             try { return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
@@ -2083,10 +2125,11 @@ const CostosModule = {
                         <span class="costos-receta-snapshot-label">% Margen</span>
                         <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_margen)}${diffMark(snap.pct_margen, cur.pct_margen)}</span>
                     </div>
+                    ${isSubalq ? '' : `
                     <div class="costos-receta-snapshot-item">
                         <span class="costos-receta-snapshot-label">Hora taller</span>
                         <span class="costos-receta-snapshot-value">${fmtCur(snap.hora_taller)}/h${diffMark(snap.hora_taller, cur.hora_taller)}</span>
-                    </div>
+                    </div>`}
                 </div>
                 <div class="costos-receta-config-hint">
                     Estos valores se snapshotean al apretar <strong>Recalcular precio</strong>. Marcador ● = difiere del global actual.
@@ -2097,6 +2140,39 @@ const CostosModule = {
 
     _renderCacheResultBlock(item) {
         const fmtCur = (v) => API.formatCurrency(v || 0);
+        const isSubalq = item.tipoReceta === 'subalquilado';
+
+        if (isSubalq) {
+            // Subalquilado: solo costo proveedor + margen.
+            const margenDecimal = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
+            const margenPct = `${Math.round(margenDecimal * 100)}%`;
+            const costoProv = item.costoProveedorDirecto != null && item.costoProveedorDirecto > 0
+                ? item.costoProveedorDirecto
+                : item.costoFabricacion; // fallback si no se cargó costo directo
+            return `
+                <div class="costos-receta-config-block costos-receta-result-block">
+                    <div class="costos-receta-config-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        Resultado actual
+                    </div>
+                    <div class="costos-receta-result-grid">
+                        <div class="costos-receta-result-item">
+                            <span class="costos-receta-result-label">Costo proveedor</span>
+                            <span class="costos-receta-result-value" id="costosRecetaResCostoFab">${fmtCur(costoProv)}</span>
+                        </div>
+                        <div class="costos-receta-result-item">
+                            <span class="costos-receta-result-label">Margen</span>
+                            <span class="costos-receta-result-value">${margenPct}</span>
+                        </div>
+                        <div class="costos-receta-result-item costos-receta-result-item-final">
+                            <span class="costos-receta-result-label">Precio alquiler</span>
+                            <span class="costos-receta-result-value" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
         return `
             <div class="costos-receta-config-block costos-receta-result-block">
                 <div class="costos-receta-config-title">
@@ -2142,12 +2218,18 @@ const CostosModule = {
             }
         };
 
-        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaCostoProv', 'costosRecetaProvId'].forEach(id => {
+        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaCostoProv', 'costosRecetaProvId', 'costosRecetaMargenSubalq'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
             const original = el.value;
             el.addEventListener('blur', () => {
                 if (el.value === original) return;
+                // Margen subalquilado se ingresa como entero (50) y se persiste como decimal (0.50)
+                if (el.dataset.field === 'margenSubalquiler') {
+                    const pct = parseFloat(el.value) || 0;
+                    persist('margenSubalquiler', pct / 100);
+                    return;
+                }
                 persist(el.dataset.field, el.value);
             });
             el.addEventListener('keydown', (ev) => {
@@ -2163,6 +2245,53 @@ const CostosModule = {
         }
     },
 
+    // Subalquilado: precio = costo proveedor × (1 + margen). Sin markup, sin amortización.
+    // Si no hay costo_proveedor_directo cargado, fallback a la suma de costos de componentes.
+    async _recalcularSubalquilado(item) {
+        try {
+            let costoProv = item.costoProveedorDirecto;
+            if (costoProv == null || costoProv <= 0) {
+                // Fallback: sumar costos de componentes (insumos + sub-items)
+                const comps = await API.getRecetaComponentes(item.id);
+                let total = 0;
+                for (const c of comps) {
+                    if (c.componenteType === 'insumo') {
+                        const ins = this._insumos.find(i => String(i.id) === String(c.componenteId));
+                        if (ins) total += c.cantidad * (ins.costoUnitario || 0);
+                    } else if (c.componenteType === 'item') {
+                        const sub = this._catalogoItems.find(i => String(i.id) === String(c.componenteId));
+                        if (sub) total += c.cantidad * (sub.costoFabricacion || 0);
+                    }
+                }
+                costoProv = total;
+            }
+            const margen = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
+            const precioAlquiler = costoProv * (1 + margen);
+
+            await API.updateCatalogoItem(item.id, {
+                costoFabricacion: costoProv,    // passthrough — para tabla y exports
+                costoPorUso: costoProv,          // passthrough
+                precioAlquiler,
+                snapshotPctIndirectosFabrica: null,
+                snapshotPctMarkupEstructura: null,
+                snapshotPctMargen: margen,
+                snapshotHoraTallerArs: null,
+                snapshotCostosAt: new Date().toISOString(),
+            });
+            API.clearCache();
+            return {
+                ok: true,
+                costoMp: costoProv,
+                costoFabricacion: costoProv,
+                costoPorUso: costoProv,
+                precioAlquiler,
+            };
+        } catch (e) {
+            console.warn('[Costos] Error recalculando subalquilado:', e);
+            return { ok: false, error: e?.message || String(e) };
+        }
+    },
+
     async _recalcularUnaReceta(item) {
         if (this._recalcInProgress) return;
         this._recalcInProgress = true;
@@ -2174,7 +2303,14 @@ const CostosModule = {
         }
 
         const oldPrecio = item.precioAlquiler || 0;
-        const result = await API.recalcularRecetaRPC(item.id);
+
+        // Bifurcación por tipo: subalquilado tiene fórmula simple (no RPC).
+        let result;
+        if (item.tipoReceta === 'subalquilado') {
+            result = await this._recalcularSubalquilado(item);
+        } else {
+            result = await API.recalcularRecetaRPC(item.id);
+        }
         this._recalcInProgress = false;
 
         if (!result.ok) {
@@ -2225,12 +2361,27 @@ const CostosModule = {
             footer: '',
         });
 
-        const result = await API.recalcularTodasRecetasRPC((cur, total, item) => {
+        // Loop manual para bifurcar por tipo (propio → RPC, subalquilado → fórmula simple)
+        const items = this._catalogoItems || [];
+        // Filtramos a items con componentes activos para evitar items vacíos
+        const compsResp = await supabaseClient.from('receta_componentes').select('item_id').eq('_deleted', false);
+        const itemsConReceta = new Set((compsResp.data || []).map(r => String(r.item_id)));
+        const targets = items.filter(i => itemsConReceta.has(String(i.id)) || i.tipoReceta === 'subalquilado');
+
+        let updated = 0, failed = 0;
+        for (let i = 0; i < targets.length; i++) {
+            const item = targets[i];
             const text = document.getElementById('costosRecalcAllText');
             const bar = document.getElementById('costosRecalcAllBar');
-            if (text) text.textContent = `Recalculando ${cur} de ${total}: ${item.nombre}`;
-            if (bar) bar.style.width = `${Math.round((cur / total) * 100)}%`;
-        });
+            if (text) text.textContent = `Recalculando ${i + 1} de ${targets.length}: ${item.nombre}`;
+            if (bar) bar.style.width = `${Math.round((i / targets.length) * 100)}%`;
+
+            const r = item.tipoReceta === 'subalquilado'
+                ? await this._recalcularSubalquilado(item)
+                : await API.recalcularRecetaRPC(item.id);
+            if (r.ok) updated++; else failed++;
+        }
+        const result = { ok: failed === 0, total: targets.length, updated, failed };
 
         Modal.close(progressInstance);
         this._recalcInProgress = false;
@@ -2240,7 +2391,7 @@ const CostosModule = {
         } else if (result.updated > 0) {
             Toast.warning(`${result.updated} ok · ${result.failed} fallaron`);
         } else {
-            Toast.error(`Error: ${result.error || 'no se pudo recalcular'}`);
+            Toast.error(`Error al recalcular masivo`);
         }
         await this._refreshData();
     },
