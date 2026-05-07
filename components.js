@@ -295,6 +295,7 @@ const FormBuilder = {
             const val = values[f.key] !== undefined ? values[f.key] : '';
             const required = f.required ? ' required' : '';
             const requiredMark = f.required ? '<span class="form-required">*</span>' : '';
+            const listAttr = f.list ? ` list="${f.list}" autocomplete="off"` : '';
             let input;
 
             switch (f.type) {
@@ -312,7 +313,7 @@ const FormBuilder = {
                     input = `<input class="form-input" type="date" name="${f.key}" value="${val}"${required}>`;
                     break;
                 case 'number':
-                    input = `<input class="form-input" type="number" name="${f.key}" value="${val}" placeholder="${f.placeholder || ''}"${required}>`;
+                    input = `<input class="form-input" type="number" name="${f.key}" value="${val}" placeholder="${f.placeholder || ''}"${required}${listAttr}>`;
                     break;
                 case 'email':
                     input = `<input class="form-input" type="email" name="${f.key}" value="${val}" placeholder="${f.placeholder || ''}"${required}>`;
@@ -321,7 +322,7 @@ const FormBuilder = {
                     input = `<input class="form-input" type="tel" name="${f.key}" value="${val}" placeholder="${f.placeholder || ''}"${required}>`;
                     break;
                 default:
-                    input = `<input class="form-input" type="text" name="${f.key}" value="${val}" placeholder="${f.placeholder || ''}"${required}>`;
+                    input = `<input class="form-input" type="text" name="${f.key}" value="${val}" placeholder="${f.placeholder || ''}"${required}${listAttr}>`;
             }
 
             return `

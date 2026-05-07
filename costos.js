@@ -36,6 +36,11 @@ const CostosModule = {
     _tiposAmortizacion: [],
     _tiposAmortizacionMap: {},
 
+    // Proveedores (catálogo completo — para combobox y filtros)
+    _proveedores: [],
+    _proveedoresByName: {},
+    _proveedoresById: {},
+
     // Filters
     _filterClasificacion: [],
     _filterCategoria: [],
@@ -176,6 +181,11 @@ const CostosModule = {
                 </div>
 
                 <div class="costos-record-count" id="costosRecordCount"></div>
+
+                <!-- Datalist global compartido: alimenta todos los inputs con
+                     list="costosProveedoresList" en el módulo (filtros, ficha
+                     insumo, panel subalquilado). -->
+                <datalist id="costosProveedoresList"></datalist>
             </div>
         `;
     },
@@ -188,6 +198,8 @@ const CostosModule = {
         // 1) Tipos de amortización — aislado del resto. Si alguna otra query falla,
         //    el state de tipos igual queda poblado para el render del panel/tabla.
         await this._populateTiposAmortizacion();
+        // 1b) Proveedores — catálogo completo desde tabla `proveedor`
+        await this._populateProveedores();
 
         // 2) Resto de datos
         try {
@@ -212,6 +224,33 @@ const CostosModule = {
         // Update tab counts
         this._updateTabCounts();
         this._renderActiveTab();
+    },
+
+    async _populateProveedores() {
+        try {
+            const list = await API.getProveedores();
+            this._proveedores = Array.isArray(list) ? list : [];
+        } catch (e) {
+            console.warn('[Costos] Error loading proveedores:', e?.message || e);
+            this._proveedores = [];
+        }
+        this._proveedoresByName = {};
+        this._proveedoresById = {};
+        for (const p of this._proveedores) {
+            if (!p) continue;
+            if (p.name) this._proveedoresByName[p.name.trim().toLowerCase()] = p;
+            if (p.id != null) this._proveedoresById[String(p.id)] = p;
+        }
+        console.log('[Costos] Proveedores cargados:', this._proveedores.length);
+        // Re-render del datalist si ya está en DOM
+        const dl = document.getElementById('costosProveedoresList');
+        if (dl) dl.innerHTML = this._buildProveedoresOptions();
+    },
+
+    _buildProveedoresOptions() {
+        return this._proveedores
+            .map(p => `<option value="${(p.name || '').replace(/"/g, '&quot;')}">${p.cuit ? `CUIT ${p.cuit}` : (p.rubro || '')}</option>`)
+            .join('');
     },
 
     async _populateTiposAmortizacion() {
@@ -650,7 +689,12 @@ const CostosModule = {
         const filtersEl = document.getElementById('costosFilters');
         if (!filtersEl) return;
 
-        const proveedorOpts = [...new Set(this._insumos.map(i => i.proveedor).filter(Boolean))].sort();
+        // F.6 — el filtro de Proveedor usa el catálogo completo de la tabla
+        // `proveedor` en Supabase, no sólo los proveedores ya asignados a algún
+        // insumo. Si no hay catálogo cargado, fallback al Set de los actuales.
+        const proveedorOpts = this._proveedores.length
+            ? this._proveedores.map(p => p.name).filter(Boolean).sort()
+            : [...new Set(this._insumos.map(i => i.proveedor).filter(Boolean))].sort();
         const tipoAmortOpts = this._tiposAmortizacion.map(t => t.codigo);
 
         filtersEl.innerHTML = `
@@ -942,7 +986,7 @@ const CostosModule = {
                             </div>
                         </div>
                         <div class="costos-ficha-row"><span class="costos-ficha-label">Moneda</span>${mkSelect('moneda', ['USD', 'ARS'], item.moneda)}</div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Proveedor</span>${mkInput('proveedor', item.proveedor, 'text', 'Nombre del proveedor')}</div>
+                        <div class="costos-ficha-row"><span class="costos-ficha-label">Proveedor</span><input class="costos-ficha-input" data-field="proveedor" type="text" value="${item.proveedor != null ? item.proveedor : ''}" placeholder="Buscar o escribir proveedor…" list="costosProveedoresList" spellcheck="false" autocomplete="off"></div>
                         ${item.fechaUltimoPrecio ? `<div class="costos-ficha-row"><span class="costos-ficha-label">Último precio</span><span class="costos-ficha-value-static">${API.formatDate(item.fechaUltimoPrecio)}</span></div>` : ''}
                     </div>
 
@@ -1131,7 +1175,7 @@ const CostosModule = {
             { key: 'costoUnitario', label: 'Costo unitario', type: 'number', placeholder: '0.00' },
             { key: 'moneda', label: 'Moneda', type: 'select', options: ['USD', 'ARS'] },
             { key: 'unidadBase', label: 'Unidad', type: 'select', options: ['unidad', 'metro', 'm²', 'kg', 'litro', 'hora', 'día', 'viaje', 'rollo', 'balde'] },
-            { key: 'proveedor', label: 'Proveedor', type: 'text', placeholder: 'Nombre del proveedor' },
+            { key: 'proveedor', label: 'Proveedor', type: 'text', placeholder: 'Buscar o escribir proveedor…', list: 'costosProveedoresList' },
             { key: 'tipoAmortizacion', label: 'Tipo amortización', type: 'select', required: true, options: tipoOpts },
         ];
 
@@ -2006,7 +2050,10 @@ const CostosModule = {
 
     _renderSubalquiladoBlock(item) {
         const cpd = item.costoProveedorDirecto != null ? item.costoProveedorDirecto : '';
-        const pid = item.proveedorIdDirecto != null ? item.proveedorIdDirecto : '';
+        const pid = item.proveedorIdDirecto;
+        // Resolver nombre desde el id actual para precargar el input
+        const provActual = pid != null ? this._proveedoresById[String(pid)] : null;
+        const provNombre = provActual ? provActual.name : '';
         // Margen subalquilado: default 50%, persistido como decimal (0.50)
         const margenDecimal = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
         const margenPct = Math.round(margenDecimal * 100);
@@ -2031,9 +2078,9 @@ const CostosModule = {
                     </div>
                 </div>
                 <div class="costos-receta-config-row">
-                    <label class="costos-receta-config-label">Proveedor ID</label>
-                    <div class="costos-receta-config-input-wrap">
-                        <input type="number" class="costos-receta-config-input" id="costosRecetaProvId" data-field="proveedorIdDirecto" value="${pid}" step="1" min="0" placeholder="ID numérico">
+                    <label class="costos-receta-config-label">Proveedor</label>
+                    <div class="costos-receta-config-input-wrap" style="width:auto; min-width:200px;">
+                        <input type="text" class="costos-receta-config-input" id="costosRecetaProvNombre" data-field="proveedorNombreSubalq" value="${provNombre.replace(/"/g, '&quot;')}" list="costosProveedoresList" placeholder="Buscar proveedor…" autocomplete="off" style="width:100%; text-align:left;">
                     </div>
                 </div>
                 <div class="costos-receta-config-hint">
@@ -2218,7 +2265,7 @@ const CostosModule = {
             }
         };
 
-        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaCostoProv', 'costosRecetaProvId', 'costosRecetaMargenSubalq'].forEach(id => {
+        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaCostoProv', 'costosRecetaProvNombre', 'costosRecetaMargenSubalq'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
             const original = el.value;
@@ -2228,6 +2275,22 @@ const CostosModule = {
                 if (el.dataset.field === 'margenSubalquiler') {
                     const pct = parseFloat(el.value) || 0;
                     persist('margenSubalquiler', pct / 100);
+                    return;
+                }
+                // Proveedor subalquilado: nombre → buscar en _proveedoresByName → persistir id
+                if (el.dataset.field === 'proveedorNombreSubalq') {
+                    const trimmed = el.value.trim();
+                    if (!trimmed) {
+                        persist('proveedorIdDirecto', null);
+                        return;
+                    }
+                    const match = this._proveedoresByName[trimmed.toLowerCase()];
+                    if (match) {
+                        persist('proveedorIdDirecto', match.id);
+                    } else {
+                        Toast.warning(`Proveedor "${trimmed}" no existe en el catálogo. Cargalo primero en Proveedores.`);
+                        el.value = original;
+                    }
                     return;
                 }
                 persist(el.dataset.field, el.value);
