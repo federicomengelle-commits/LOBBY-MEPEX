@@ -1437,6 +1437,15 @@ const API = {
                 costoPorUso: parseFloat(i.costo_por_uso) || 0,
                 precioAlquiler: parseFloat(i.precio_alquiler) || 0,
                 ultimaRecalculacion: i.ultima_recalculacion || null,
+                // F.2 — campos del modelo nuevo
+                vidaUtilArmadoOverride: i.vida_util_armado_override != null ? parseInt(i.vida_util_armado_override) : null,
+                costoProveedorDirecto: i.costo_proveedor_directo != null ? parseFloat(i.costo_proveedor_directo) : null,
+                proveedorIdDirecto: i.proveedor_id_directo != null ? Number(i.proveedor_id_directo) : null,
+                snapshotPctIndirectosFabrica: i.snapshot_pct_indirectos_fabrica != null ? parseFloat(i.snapshot_pct_indirectos_fabrica) : null,
+                snapshotPctMarkupEstructura: i.snapshot_pct_markup_estructura != null ? parseFloat(i.snapshot_pct_markup_estructura) : null,
+                snapshotPctMargen: i.snapshot_pct_margen != null ? parseFloat(i.snapshot_pct_margen) : null,
+                snapshotHoraTallerArs: i.snapshot_hora_taller_ars != null ? parseFloat(i.snapshot_hora_taller_ars) : null,
+                snapshotCostosAt: i.snapshot_costos_at || null,
             }));
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
@@ -1500,6 +1509,21 @@ const API = {
             if (data.costoPorUso !== undefined) payload.costo_por_uso = data.costoPorUso;
             if (data.precioAlquiler !== undefined) payload.precio_alquiler = data.precioAlquiler;
             if (data.ultimaRecalculacion !== undefined) payload.ultima_recalculacion = data.ultimaRecalculacion;
+            // F.2 — campos del modelo nuevo
+            if (data.vidaUtilArmadoOverride !== undefined) {
+                payload.vida_util_armado_override = (data.vidaUtilArmadoOverride === '' || data.vidaUtilArmadoOverride === null) ? null : parseInt(data.vidaUtilArmadoOverride);
+            }
+            if (data.costoProveedorDirecto !== undefined) {
+                payload.costo_proveedor_directo = (data.costoProveedorDirecto === '' || data.costoProveedorDirecto === null) ? null : parseFloat(data.costoProveedorDirecto);
+            }
+            if (data.proveedorIdDirecto !== undefined) {
+                payload.proveedor_id_directo = (data.proveedorIdDirecto === '' || data.proveedorIdDirecto === null) ? null : Number(data.proveedorIdDirecto);
+            }
+            if (data.snapshotPctIndirectosFabrica !== undefined) payload.snapshot_pct_indirectos_fabrica = data.snapshotPctIndirectosFabrica;
+            if (data.snapshotPctMarkupEstructura !== undefined) payload.snapshot_pct_markup_estructura = data.snapshotPctMarkupEstructura;
+            if (data.snapshotPctMargen !== undefined) payload.snapshot_pct_margen = data.snapshotPctMargen;
+            if (data.snapshotHoraTallerArs !== undefined) payload.snapshot_hora_taller_ars = data.snapshotHoraTallerArs;
+            if (data.snapshotCostosAt !== undefined) payload.snapshot_costos_at = data.snapshotCostosAt;
             await UndoHelpers.updateRecord('catalogo_items', id, payload, 'Edito item de catalogo');
             this.clearCache();
             return true;
@@ -1535,6 +1559,10 @@ const API = {
                 componenteType: r.componente_type, componenteId: r.componente_id,
                 cantidad: parseFloat(r.cantidad) || 0, unidadUso: r.unidad_uso || '',
                 notas: r.notas || '',
+                // F.2 — modelo polimórfico parametrizable
+                esParametrico: r.es_parametrico === true,
+                factor: r.factor != null ? parseFloat(r.factor) : null,
+                cantidadFija: r.cantidad_fija != null ? parseFloat(r.cantidad_fija) : null,
             }));
         } catch (e) {
             console.warn('[API] Error fetching receta:', e.message);
@@ -3035,5 +3063,81 @@ const API = {
             console.warn('[API] Error recetasQueDependenDeParametro:', e.message);
             return [];
         }
+    },
+
+    // ─── F.2 — RPC calcular_receta (fuente de verdad SQL) ─────────
+    // Invoca la función PL/pgSQL `calcular_receta(p_item_id BIGINT)`
+    // que devuelve { costo_mp, costo_fabricacion, costo_por_uso, precio_alquiler }.
+    // Después persiste los 3 valores cacheados + snapshots de params globales en
+    // catalogo_items para que el frontend pueda leerlos sin tener que recalcular.
+    async recalcularRecetaRPC(itemId) {
+        try {
+            const { data, error } = await supabaseClient.rpc('calcular_receta', { p_item_id: itemId });
+            if (error) throw error;
+            const row = Array.isArray(data) ? data[0] : data;
+            if (!row) {
+                return { ok: false, error: 'RPC sin resultado' };
+            }
+            const costoMp = parseFloat(row.costo_mp) || 0;
+            const costoFabricacion = parseFloat(row.costo_fabricacion) || 0;
+            const costoPorUso = parseFloat(row.costo_por_uso) || 0;
+            const precioAlquiler = parseFloat(row.precio_alquiler) || 0;
+
+            // Snapshot de params globales actuales
+            const params = await this.getParametrosGlobalesMap();
+            const snapshotPayload = {
+                costoFabricacion,
+                costoPorUso,
+                precioAlquiler,
+                snapshotPctIndirectosFabrica: parseFloat(params.pct_indirectos_fabrica) || null,
+                snapshotPctMarkupEstructura: parseFloat(params.pct_markup_estructura) || null,
+                snapshotPctMargen: parseFloat(params.pct_margen_default) || null,
+                snapshotHoraTallerArs: parseFloat(params.hora_taller_ars) || null,
+                snapshotCostosAt: new Date().toISOString(),
+            };
+
+            await this.updateCatalogoItem(itemId, snapshotPayload);
+            this.clearCache();
+            return {
+                ok: true,
+                costoMp,
+                costoFabricacion,
+                costoPorUso,
+                precioAlquiler,
+            };
+        } catch (e) {
+            console.warn('[API] Error recalcularRecetaRPC:', e?.message || e);
+            return { ok: false, error: e?.message || String(e) };
+        }
+    },
+
+    // F.2 — recalcular masivo: itera por items con receta y llama RPC en cada uno.
+    // onProgress(cur, total, item) opcional para feedback al UI.
+    async recalcularTodasRecetasRPC(onProgress) {
+        const items = await this.getCatalogoItems();
+        if (!items) return { ok: false, error: 'No se pudo leer catálogo' };
+
+        // Items que tienen al menos un componente activo
+        const { data: compRows, error: compErr } = await supabaseClient
+            .from('receta_componentes').select('item_id')
+            .eq('_deleted', false);
+        if (compErr) {
+            console.warn('[API] Error leyendo componentes para recalcular masivo:', compErr.message);
+            return { ok: false, error: compErr.message };
+        }
+        const itemsConReceta = new Set((compRows || []).map(r => String(r.item_id)));
+        const targets = items.filter(i => itemsConReceta.has(String(i.id)));
+
+        let updated = 0, failed = 0;
+        for (let i = 0; i < targets.length; i++) {
+            const item = targets[i];
+            if (typeof onProgress === 'function') {
+                try { onProgress(i + 1, targets.length, item); } catch (_) {}
+            }
+            const r = await this.recalcularRecetaRPC(item.id);
+            if (r.ok) updated++; else failed++;
+        }
+        this.clearCache();
+        return { ok: failed === 0, total: targets.length, updated, failed };
     },
 };

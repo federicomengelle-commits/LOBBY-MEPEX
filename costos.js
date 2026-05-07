@@ -1,4 +1,4 @@
-/* =============================================
+﻿/* =============================================
    MEPEX Lobby — Módulo Costos
    =============================================
    Fuente de verdad de costos: insumos editables,
@@ -28,6 +28,9 @@ const CostosModule = {
     // BOM jerárquico (Fase 3)
     _expandedComps: new Set(),  // ids de componentes (string) tipo item que están expandidos
     _subcompsCache: {},          // childItemId → array de subcomps hidratados
+
+    // F.2 — lock para evitar dobles clicks en recalcular
+    _recalcInProgress: false,
 
     // Tipos de amortización (catálogo costos_tipo_amortizacion)
     _tiposAmortizacion: [],
@@ -403,6 +406,10 @@ const CostosModule = {
         const rows = catalogData.map(item => {
             const precio = item.precioAlquiler || 0;
             const sinCostear = precio <= 0;
+            const stale = !item.snapshotCostosAt && !sinCostear;
+            const staleIcon = stale
+                ? `<span title="Precio sin snapshot · recalculá desde Recetas para refrescar" style="color:#F28D15; margin-right:4px;">⚠</span>`
+                : '';
 
             return `
                 <tr class="costos-table-row costos-lista-item-row ${sinCostear ? 'costos-sin-costear' : ''}" data-item-id="${item.id}">
@@ -410,7 +417,7 @@ const CostosModule = {
                     <td><span class="td-primary">${item.nombre}</span></td>
                     <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
                     <td class="td-number td-mono">
-                        ${sinCostear ? '<span class="costos-sin-costear-tag">SIN COSTEAR</span> <span style="color:var(--text-dim);margin-left:6px;">—</span>' : `<strong>${API.formatCurrency(precio)}</strong>`}
+                        ${sinCostear ? '<span class="costos-sin-costear-tag">SIN COSTEAR</span> <span style="color:var(--text-dim);margin-left:6px;">—</span>' : `${staleIcon}<strong>${API.formatCurrency(precio)}</strong>`}
                     </td>
                 </tr>
             `;
@@ -521,7 +528,8 @@ const CostosModule = {
                 let updated = 0;
                 for (const item of this._catalogoItems) {
                     const precio = item.precioAlquiler || 0;
-                    const result = await API.updateCatalogoItem(item.id, { precio_cliente: precio });
+                    // Bug fix: updateCatalogoItem espera camelCase
+                    const result = await API.updateCatalogoItem(item.id, { precioCliente: precio });
                     if (result) updated++;
                 }
 
@@ -1352,9 +1360,17 @@ const CostosModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Nueva receta
                 </button>
+                ${Auth.getUser()?.role === 'superadmin' ? `
+                    <button class="btn btn-ghost btn-sm" id="costosBtnRecalcAll" title="Recalcular precios de todas las recetas (RPC calcular_receta)">
+                        🔄 Recalcular todos
+                    </button>
+                ` : ''}
             </div>
         `;
         this._attachFilterListeners(filtersEl);
+
+        const recalcAllBtn = document.getElementById('costosBtnRecalcAll');
+        if (recalcAllBtn) recalcAllBtn.addEventListener('click', () => this._recalcularTodasRecetas());
 
         // Estado chip clicks
         filtersEl.querySelectorAll('.costos-estado-chip').forEach(chip => {
@@ -1439,30 +1455,31 @@ const CostosModule = {
             return `<span class="costos-status-dot" title="${tip}" aria-label="${tip}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};box-shadow:0 0 6px ${color}66;"></span>`;
         };
 
-        const getMargenPct = (item) => {
-            const tipo = item.tipoReceta;
-            if (tipo === 'subalquilado' && item.margenSubalquiler != null) return item.margenSubalquiler;
-            if (tipo === 'propio' && item.margenPropio != null) return item.margenPropio;
-            return null;
-        };
-
         const rows = data.map(item => {
             const rs = this._getRecetaStatus(item.id);
-            const margenPct = getMargenPct(item);
-            // margen persistido en decimal (0.40) → mostrar como 40%
-            const margenDisplay = (margenPct != null && (item.precioAlquiler || 0) > 0)
-                ? `${Math.round(margenPct * 100)}%`
-                : '—';
             const precioAlquiler = item.precioAlquiler || 0;
+            const stale = !item.snapshotCostosAt;
+            const staleIcon = stale && precioAlquiler > 0
+                ? `<span class="costos-snapshot-stale" title="Precio cacheado sin snapshot. Recalculá para refrescar." style="color:#F28D15; margin-right:4px;">⚠</span>`
+                : '';
             const precioDisplay = precioAlquiler > 0 ? API.formatCurrency(precioAlquiler) : '—';
+            const moMin = item.manoObraMinutos || 0;
+            const moDisplay = moMin > 0
+                ? `<span class="badge" style="background:rgba(155,125,255,0.10); color:#9B7DFF; border:1px solid rgba(155,125,255,0.30); font-family:var(--font-mono); font-size:11px;">${moMin}'</span>`
+                : '<span style="color:var(--text-dim)">—</span>';
+            const costoFab = item.costoFabricacion || 0;
+            const costoFabDisplay = costoFab > 0 ? API.formatCurrency(costoFab) : '—';
+            const costoPorUso = item.costoPorUso || 0;
+            const costoPorUsoDisplay = costoPorUso > 0 ? API.formatCurrency(costoPorUso) : '—';
             return `
                 <tr class="costos-table-row costos-receta-row" data-id="${item.id}">
                     <td><span class="td-primary">${item.nombre}</span></td>
                     <td><span class="td-mono">${item.codigo || '—'}</span></td>
                     <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
-                    <td><span class="td-number">${API.formatCurrency(rs.costoCalculado)}</span></td>
-                    <td><span class="td-number td-mono">${margenDisplay}</span></td>
-                    <td><span class="td-number td-mono"><strong>${precioDisplay}</strong></span></td>
+                    <td style="text-align:center">${moDisplay}</td>
+                    <td><span class="td-number">${costoFabDisplay}</span></td>
+                    <td><span class="td-number">${costoPorUsoDisplay}</span></td>
+                    <td><span class="td-number td-mono">${staleIcon}<strong>${precioDisplay}</strong></span></td>
                     <td><span class="td-number">${item.unidad || '—'}</span></td>
                     <td style="text-align:center">${estadoCircle(item, rs)}</td>
                 </tr>
@@ -1476,9 +1493,10 @@ const CostosModule = {
                         <th class="sortable" data-sort-col="nombre">ITEM ${sortIcon('nombre')}</th>
                         <th class="sortable" data-sort-col="codigo">CÓDIGO ${sortIcon('codigo')}</th>
                         <th class="sortable" data-sort-col="rubro">RUBRO ${sortIcon('rubro')}</th>
-                        <th class="sortable" data-sort-col="costoCalculado">COSTO PROD. ${sortIcon('costoCalculado')}</th>
-                        <th class="sortable" data-sort-col="margen">MARGEN ${sortIcon('margen')}</th>
-                        <th class="sortable" data-sort-col="precioAlquiler">PRECIO ALQUILER ${sortIcon('precioAlquiler')}</th>
+                        <th class="sortable" data-sort-col="manoObraMinutos" style="text-align:center" title="Mano de obra en minutos">MO (min) ${sortIcon('manoObraMinutos')}</th>
+                        <th class="sortable" data-sort-col="costoFabricacion" title="Costo de fabricación cacheado">COSTO FAB. ${sortIcon('costoFabricacion')}</th>
+                        <th class="sortable" data-sort-col="costoPorUso" title="Costo por uso cacheado">COSTO/USO ${sortIcon('costoPorUso')}</th>
+                        <th class="sortable" data-sort-col="precioAlquiler">PRECIO ${sortIcon('precioAlquiler')}</th>
                         <th>UNIDAD</th>
                         <th class="sortable" data-sort-col="estadoReceta" style="text-align:center">ESTADO ${sortIcon('estadoReceta')}</th>
                     </tr>
@@ -1696,18 +1714,13 @@ const CostosModule = {
                 <button class="btn btn-ghost btn-sm" id="costosRecetaLoadBase" title="Copiar receta de otro item como base">
                     📋 Cargar receta base
                 </button>
-                ${compData.length > 0 ? `
-                    <button class="btn btn-ghost btn-sm" id="costosRecetaRecalc" title="Recalcular costo de producción">
-                        🔄 Recalcular
-                    </button>
-                ` : ''}
             </div>
 
-            ${this._renderCascadaBlock(item, costoTotal, params)}
+            ${this._renderRecetaConfigBlocks(item, compData, params)}
         `;
 
         this._attachRecetaEvents(item, compData);
-        this._attachCascadaEvents(item, compData, costoTotal, params);
+        this._attachRecetaConfigEvents(item, compData, params);
     },
 
     // ═══════════════════════════════════════════
@@ -1729,6 +1742,30 @@ const CostosModule = {
         const nameClass = isItem ? 'td-primary costos-comp-name-link' : 'td-primary';
         const nameAttrs = isItem ? `data-child-id="${c.componenteId}" title="Click: abrir receta"` : '';
 
+        // F.2 — badge "param" si el componente es paramétrico
+        const paramBadge = c.esParametrico
+            ? `<span class="costos-comp-param-badge" title="Componente paramétrico · factor=${c.factor ?? '—'} · cantidad fija=${c.cantidadFija ?? '—'}" style="background:rgba(242,141,21,0.15); color:#F2A94B; border:1px solid rgba(242,141,21,0.40); padding:1px 5px; border-radius:3px; font-size:10px; font-family:var(--font-mono); margin-left:4px;">param</span>`
+            : '';
+
+        // F.2 — meta-info para componentes insumo (VU/desp/reac heredado de tipo_amortizacion)
+        let insumoMeta = '';
+        if (!isItem) {
+            const ins = this._insumos.find(i => String(i.id) === String(c.componenteId));
+            if (ins) {
+                const vu = this._getVuEfectiva(ins);
+                const tipo = this._tiposAmortizacionMap[ins.tipoAmortizacion];
+                const pctDesp = ins.pctDesperdicioOverride != null ? ins.pctDesperdicioOverride : (tipo?.pct_desperdicio ?? null);
+                const pctReac = ins.pctReacondOverride != null ? ins.pctReacondOverride : (tipo?.pct_reacond ?? null);
+                const parts = [];
+                if (vu != null) parts.push(`VU=${vu}`);
+                if (pctDesp != null) parts.push(`d=${pctDesp}%`);
+                if (pctReac != null) parts.push(`r=${pctReac}%`);
+                if (parts.length > 0) {
+                    insumoMeta = `<span class="costos-comp-insumo-meta" title="Heredado del tipo ${ins.tipoAmortizacion || '—'}" style="margin-left:6px; color:var(--text-dim); font-size:10px; font-family:var(--font-mono);">${parts.join(' · ')}</span>`;
+                }
+            }
+        }
+
         let mainRow = `
             <tr class="costos-receta-comp-row${isItem ? ' costos-receta-comp-row-item' : ''}" data-comp-id="${c.id}">
                 <td>
@@ -1736,7 +1773,9 @@ const CostosModule = {
                         ${chevron}
                         <span class="${nameClass}" ${nameAttrs}>${c.nombre}</span>
                         <span class="${badgeClass}" title="${badgeTitle}">${badge}</span>
+                        ${paramBadge}
                         ${c.codigo ? `<span class="costos-comp-code">${c.codigo}</span>` : ''}
+                        ${insumoMeta}
                     </span>
                 </td>
                 <td style="text-align:right">
@@ -1899,394 +1938,322 @@ const CostosModule = {
     },
 
     // ═══════════════════════════════════════════
-    //  CASCADA DE COSTEO (Fase 1+2)
+    //  F.2 — CONFIG DE RECETA (modelo nuevo, RPC calcular_receta)
+    // ═══════════════════════════════════════════
+
+    _renderRecetaConfigBlocks(item, compData, params) {
+        const tipo = item.tipoReceta || 'propio';
+        return `
+            ${tipo === 'subalquilado'
+                ? this._renderSubalquiladoBlock(item)
+                : this._renderMOAmortizacionBlock(item, compData)}
+            ${this._renderSnapshotsBlock(item, params)}
+            ${this._renderCacheResultBlock(item)}
+            <div class="costos-receta-recalc-wrap">
+                <button class="btn btn-primary costos-receta-recalc-btn" id="costosRecetaRecalcBtn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Recalcular precio
+                </button>
+                <span class="costos-receta-recalc-hint" id="costosRecetaRecalcHint" style="margin-left:10px; color:var(--text-muted); font-size:12px;">
+                    Invoca <code>calcular_receta(${item.id})</code> y persiste el resultado.
+                </span>
+            </div>
+        `;
+    },
+
+    _renderMOAmortizacionBlock(item, compData) {
+        const moMin = item.manoObraMinutos || 0;
+        const vuArmadoOv = item.vidaUtilArmadoOverride;
+        const vuArmadoOvDisplay = vuArmadoOv != null ? vuArmadoOv : '';
+
+        // Default heredado: VU mínima de los componentes (insumos vía tipo_amortizacion)
+        let vuMinComp = null;
+        for (const c of (compData || [])) {
+            if (c.componenteType !== 'insumo') continue;
+            const ins = this._insumos.find(i => String(i.id) === String(c.componenteId));
+            if (!ins) continue;
+            const vu = this._getVuEfectiva(ins);
+            if (vu != null && (vuMinComp == null || vu < vuMinComp)) vuMinComp = vu;
+        }
+        const phVU = vuMinComp != null ? `Default: ${vuMinComp} (VU mín componentes)` : 'Default: —';
+
+        return `
+            <div class="costos-receta-config-block">
+                <div class="costos-receta-config-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Mano de obra y amortización
+                </div>
+                <div class="costos-receta-config-row">
+                    <label class="costos-receta-config-label">Minutos de fabricación</label>
+                    <div class="costos-receta-config-input-wrap">
+                        <input type="number" class="costos-receta-config-input" id="costosRecetaMOMin" data-field="manoObraMinutos" value="${moMin}" step="1" min="0">
+                        <span class="costos-receta-config-suffix">min</span>
+                    </div>
+                </div>
+                <div class="costos-receta-config-row">
+                    <label class="costos-receta-config-label">VU armado (override)</label>
+                    <div class="costos-receta-config-input-wrap">
+                        <input type="number" class="costos-receta-config-input" id="costosRecetaVUArmadoOv" data-field="vidaUtilArmadoOverride" value="${vuArmadoOvDisplay}" step="1" min="0" placeholder="${phVU}">
+                        <span class="costos-receta-config-suffix">usos</span>
+                    </div>
+                </div>
+                <div class="costos-receta-config-hint">
+                    Editá y salí del campo (blur) para guardar. Apretá <strong>Recalcular precio</strong> para refrescar el cache.
+                </div>
+            </div>
+        `;
+    },
+
+    _renderSubalquiladoBlock(item) {
+        const cpd = item.costoProveedorDirecto != null ? item.costoProveedorDirecto : '';
+        const pid = item.proveedorIdDirecto != null ? item.proveedorIdDirecto : '';
+        return `
+            <div class="costos-receta-config-block costos-receta-config-block-subalq">
+                <div class="costos-receta-config-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    Costo de proveedor (subalquilado)
+                </div>
+                <div class="costos-receta-config-row">
+                    <label class="costos-receta-config-label">Costo proveedor directo</label>
+                    <div class="costos-receta-config-input-wrap">
+                        <span class="costos-receta-config-prefix">$</span>
+                        <input type="number" class="costos-receta-config-input" id="costosRecetaCostoProv" data-field="costoProveedorDirecto" value="${cpd}" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="costos-receta-config-row">
+                    <label class="costos-receta-config-label">Proveedor ID</label>
+                    <div class="costos-receta-config-input-wrap">
+                        <input type="number" class="costos-receta-config-input" id="costosRecetaProvId" data-field="proveedorIdDirecto" value="${pid}" step="1" min="0" placeholder="ID numérico">
+                    </div>
+                </div>
+                <div class="costos-receta-config-hint">
+                    Editá y salí del campo para guardar. Apretá <strong>Recalcular precio</strong> para refrescar el cache.
+                </div>
+            </div>
+        `;
+    },
+
+    _renderSnapshotsBlock(item, params) {
+        const fmtPct = (v) => v != null ? `${(v * 100).toFixed(1)}%` : '—';
+        const fmtCur = (v) => v != null ? API.formatCurrency(v) : '—';
+        const fmtDate = (iso) => {
+            if (!iso) return null;
+            try { return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }); }
+            catch (_) { return iso; }
+        };
+        const snap = {
+            pct_indirectos: item.snapshotPctIndirectosFabrica,
+            pct_markup: item.snapshotPctMarkupEstructura,
+            pct_margen: item.snapshotPctMargen,
+            hora_taller: item.snapshotHoraTallerArs,
+            at: item.snapshotCostosAt,
+        };
+        const stale = !snap.at;
+        const dateStr = fmtDate(snap.at);
+
+        // Comparación con params actuales (read-only)
+        const cur = {
+            pct_indirectos: parseFloat(params?.pct_indirectos_fabrica) || null,
+            pct_markup: parseFloat(params?.pct_markup_estructura) || null,
+            pct_margen: parseFloat(params?.pct_margen_default) || null,
+            hora_taller: parseFloat(params?.hora_taller_ars) || null,
+        };
+        const diff = (a, b) => (a != null && b != null && Math.abs(a - b) > 0.0001);
+        const diffMark = (snapVal, curVal) => diff(snapVal, curVal)
+            ? `<span title="Snapshot difiere del global actual" style="color:#F28D15; margin-left:4px;">●</span>`
+            : '';
+
+        return `
+            <div class="costos-receta-config-block costos-receta-snapshots">
+                <div class="costos-receta-config-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                    Snapshot al recalcular
+                    ${stale ? `<span style="color:#F28D15; font-size:11px; margin-left:8px;">⚠ sin snapshot</span>` : `<span style="color:var(--text-dim); font-size:11px; margin-left:8px;">${dateStr}</span>`}
+                </div>
+                <div class="costos-receta-snapshot-grid">
+                    <div class="costos-receta-snapshot-item">
+                        <span class="costos-receta-snapshot-label">% Indirectos fábrica</span>
+                        <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_indirectos)}${diffMark(snap.pct_indirectos, cur.pct_indirectos)}</span>
+                    </div>
+                    <div class="costos-receta-snapshot-item">
+                        <span class="costos-receta-snapshot-label">% Markup estructura</span>
+                        <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_markup)}${diffMark(snap.pct_markup, cur.pct_markup)}</span>
+                    </div>
+                    <div class="costos-receta-snapshot-item">
+                        <span class="costos-receta-snapshot-label">% Margen</span>
+                        <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_margen)}${diffMark(snap.pct_margen, cur.pct_margen)}</span>
+                    </div>
+                    <div class="costos-receta-snapshot-item">
+                        <span class="costos-receta-snapshot-label">Hora taller</span>
+                        <span class="costos-receta-snapshot-value">${fmtCur(snap.hora_taller)}/h${diffMark(snap.hora_taller, cur.hora_taller)}</span>
+                    </div>
+                </div>
+                <div class="costos-receta-config-hint">
+                    Estos valores se snapshotean al apretar <strong>Recalcular precio</strong>. Marcador ● = difiere del global actual.
+                </div>
+            </div>
+        `;
+    },
+
+    _renderCacheResultBlock(item) {
+        const fmtCur = (v) => API.formatCurrency(v || 0);
+        return `
+            <div class="costos-receta-config-block costos-receta-result-block">
+                <div class="costos-receta-config-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Resultado actual (cache)
+                </div>
+                <div class="costos-receta-result-grid">
+                    <div class="costos-receta-result-item">
+                        <span class="costos-receta-result-label">Costo fabricación</span>
+                        <span class="costos-receta-result-value" id="costosRecetaResCostoFab">${fmtCur(item.costoFabricacion)}</span>
+                    </div>
+                    <div class="costos-receta-result-item">
+                        <span class="costos-receta-result-label">Costo por uso</span>
+                        <span class="costos-receta-result-value" id="costosRecetaResCostoPorUso">${fmtCur(item.costoPorUso)}</span>
+                    </div>
+                    <div class="costos-receta-result-item costos-receta-result-item-final">
+                        <span class="costos-receta-result-label">Precio alquiler</span>
+                        <span class="costos-receta-result-value" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    _attachRecetaConfigEvents(item, compData, params) {
+        // Persistir inputs en blur
+        const persist = async (field, raw) => {
+            const isOverride = field === 'vidaUtilArmadoOverride' || field === 'costoProveedorDirecto' || field === 'proveedorIdDirecto';
+            let value;
+            if (isOverride) {
+                value = (raw === '' || raw == null) ? null : (field === 'vidaUtilArmadoOverride' || field === 'proveedorIdDirecto' ? parseInt(raw) : parseFloat(raw));
+            } else if (field === 'manoObraMinutos') {
+                value = parseInt(raw) || 0;
+            } else {
+                value = raw;
+            }
+            const ok = await API.updateCatalogoItem(item.id, { [field]: value });
+            if (ok) {
+                Toast.success('Cambio guardado · recalculá para actualizar precio', 2500);
+                item[field] = value;
+            } else {
+                Toast.error('Error al guardar');
+            }
+        };
+
+        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaCostoProv', 'costosRecetaProvId'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const original = el.value;
+            el.addEventListener('blur', () => {
+                if (el.value === original) return;
+                persist(el.dataset.field, el.value);
+            });
+            el.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
+                if (ev.key === 'Escape') { el.value = original; el.blur(); }
+            });
+        });
+
+        // Botón Recalcular precio
+        const btn = document.getElementById('costosRecetaRecalcBtn');
+        if (btn) {
+            btn.addEventListener('click', () => this._recalcularUnaReceta(item));
+        }
+    },
+
+    async _recalcularUnaReceta(item) {
+        if (this._recalcInProgress) return;
+        this._recalcInProgress = true;
+        const btn = document.getElementById('costosRecetaRecalcBtn');
+        const originalHtml = btn?.innerHTML;
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle"></div> Recalculando…';
+        }
+
+        const oldPrecio = item.precioAlquiler || 0;
+        const result = await API.recalcularRecetaRPC(item.id);
+        this._recalcInProgress = false;
+
+        if (!result.ok) {
+            Toast.error(`No se pudo recalcular: ${result.error || 'error desconocido'}`);
+            if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+            return;
+        }
+
+        // Toast con delta
+        const newPrecio = result.precioAlquiler;
+        let deltaTxt = '';
+        if (oldPrecio > 0 && Math.abs(newPrecio - oldPrecio) > 0.01) {
+            const pct = ((newPrecio - oldPrecio) / oldPrecio) * 100;
+            const sign = pct >= 0 ? '+' : '';
+            deltaTxt = ` (${sign}${pct.toFixed(1)}% vs anterior)`;
+        }
+        Toast.success(`Precio: ${API.formatCurrency(newPrecio)}${deltaTxt}`);
+
+        // Refrescar data y reabrir el panel
+        await this._refreshData();
+        const updated = this._catalogoItems.find(i => String(i.id) === String(item.id));
+        if (updated) await this._loadRecetaContent(updated);
+    },
+
+    async _recalcularTodasRecetas() {
+        if (this._recalcInProgress) return;
+        const confirmed = await Modal.confirm({
+            title: '🔄 Recalcular todas las recetas',
+            message: `<p style="margin:0 0 8px 0">Se va a invocar la RPC <code>calcular_receta()</code> para <strong>todos los items con receta</strong>.</p>
+                      <p style="margin:0; color:var(--text-muted); font-size:13px;">Esto sobreescribe <code>costo_fabricacion</code>, <code>costo_por_uso</code>, <code>precio_alquiler</code> y los snapshots. Puede tardar varios segundos según cuántos items haya.</p>`,
+            confirmText: 'Recalcular todos',
+            cancelText: 'Cancelar',
+        });
+        if (!confirmed) return;
+
+        this._recalcInProgress = true;
+
+        const progressInstance = Modal.open({
+            title: '🔄 Recalculando recetas',
+            size: 'sm',
+            body: `<div style="text-align:center; padding:16px 0">
+                       <div class="spinner" style="margin:0 auto 12px"></div>
+                       <p id="costosRecalcAllText" style="color:var(--text-muted); font-size:13px; margin:0">Iniciando…</p>
+                       <div style="background:rgba(255,255,255,.05); border-radius:4px; height:6px; margin-top:12px; overflow:hidden">
+                           <div id="costosRecalcAllBar" style="background:var(--primary); height:100%; width:0%; transition:width .2s"></div>
+                       </div>
+                   </div>`,
+            footer: '',
+        });
+
+        const result = await API.recalcularTodasRecetasRPC((cur, total, item) => {
+            const text = document.getElementById('costosRecalcAllText');
+            const bar = document.getElementById('costosRecalcAllBar');
+            if (text) text.textContent = `Recalculando ${cur} de ${total}: ${item.nombre}`;
+            if (bar) bar.style.width = `${Math.round((cur / total) * 100)}%`;
+        });
+
+        Modal.close(progressInstance);
+        this._recalcInProgress = false;
+
+        if (result.ok) {
+            Toast.success(`${result.updated} recetas recalculadas`);
+        } else if (result.updated > 0) {
+            Toast.warning(`${result.updated} ok · ${result.failed} fallaron`);
+        } else {
+            Toast.error(`Error: ${result.error || 'no se pudo recalcular'}`);
+        }
+        await this._refreshData();
+    },
+
+    // ═══════════════════════════════════════════
+    //  CASCADA LEGACY (queda como compat shim — no se usa más desde Recetas)
     // ═══════════════════════════════════════════
 
     _renderCascadaBlock(item, costoMP, params) {
-        const tipo = item.tipoReceta || 'propio';
-        if (tipo === 'subalquilado') return this._renderCascadaSubalquilado(item, costoMP);
-        return this._renderCascadaPropio(item, costoMP, params || {});
+        // Compat: si algún caller externo aún la invoca, devuelve string vacío.
+        return '';
     },
 
-    _renderCascadaSubalquilado(item, costoMP) {
-        const margenPct = Math.round((item.margenSubalquiler ?? 0.50) * 100);
-        const precio = costoMP * (1 + margenPct / 100);
-        return `
-            <div class="costos-cascada costos-cascada-subalquilado">
-                <div class="costos-cascada-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                    Margen y precio
-                </div>
-                <div class="costos-cascada-row">
-                    <label class="costos-cascada-label">Margen sobre costo proveedor</label>
-                    <div class="costos-cascada-input-wrap">
-                        <input type="number" class="costos-cascada-input" id="cascadaMargenSubalquiler" value="${margenPct}" step="1" min="0" max="999">
-                        <span class="costos-cascada-suffix">%</span>
-                    </div>
-                </div>
-                <div class="costos-cascada-result">
-                    <span class="costos-cascada-result-label">PRECIO ALQUILER</span>
-                    <span class="costos-cascada-result-value" id="cascadaPrecioAlquiler">${API.formatCurrency(precio)}</span>
-                </div>
-                <button class="btn btn-primary costos-cascada-save" id="cascadaGuardar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    Guardar y recalcular
-                </button>
-            </div>
-        `;
-    },
-
-    // Cascada PROPIO — bloques MO / Indirectos / Amortización / Margen con preview en vivo
-    _renderCascadaPropio(item, costoMP, params) {
-        // Defaults globales
-        const horaTaller = parseFloat(params.hora_taller_ars) || 12000;
-        const dPctFabrica = parseFloat(params.pct_indirectos_fabrica) || 0.30;
-        const dPctComercial = parseFloat(params.pct_indirectos_comercial) || 0.20;
-        const dVidaUtil = parseInt(params.vida_util_default) || 20;
-        const dPctReacond = parseFloat(params.pct_reacondicionamiento) || 0.05;
-        const dMargen = parseFloat(params.pct_margen_default) || 0.50;
-
-        // Valores actuales del item (con fallback al global)
-        const minutos = item.manoObraMinutos || 0;
-        const pctFabrica = item.pctIndirectosFabrica != null ? item.pctIndirectosFabrica : dPctFabrica;
-        const pctComercial = item.pctIndirectosComercial != null ? item.pctIndirectosComercial : dPctComercial;
-        const vidaUtil = item.vidaUtilUsos || dVidaUtil;
-        const pctReacond = item.pctReacondicionamiento != null ? item.pctReacondicionamiento : dPctReacond;
-        const margen = item.margenPropio != null ? item.margenPropio : dMargen;
-
-        // Calcular cascada inicial usando el motor (para mostrar valores)
-        const r = window.CalculoReceta ? window.CalculoReceta.calcular(
-            { tipoReceta: 'propio', manoObraMinutos: minutos, pctIndirectosFabrica: pctFabrica,
-              pctIndirectosComercial: pctComercial, vidaUtilUsos: vidaUtil,
-              pctReacondicionamiento: pctReacond, margenPropio: margen },
-            // Le pasamos un único componente sintético con costoMP ya sumado
-            [{ cantidad: 1, costoUnit: costoMP }],
-            params
-        ) : { costoManoObra: 0, costoIndirectos: 0, costoFabricacion: costoMP, costoPorUso: 0, precioAlquiler: 0 };
-
-        // Helper: pinta indicador (global ↺) cuando difiere
-        const globalHint = (currentVal, defaultVal, suffix, targetId) => {
-            const isDefault = Math.abs(currentVal - defaultVal) < 0.0001;
-            if (isDefault) {
-                return `<span class="costos-cascada-hint" title="Coincide con el global">↻ global</span>`;
-            }
-            return `<button class="costos-cascada-reset" data-target="${targetId}" data-default="${defaultVal}" title="Volver al default global (${defaultVal}${suffix})">↺ ${defaultVal}${suffix}</button>`;
-        };
-
-        const persistedPrecio = item.precioAlquiler || 0;
-        return `
-            <div class="costos-cascada costos-cascada-propio" data-item-id="${item.id}">
-                <!-- BLOQUE 1: MANO DE OBRA -->
-                <div class="costos-cascada-block">
-                    <div class="costos-cascada-block-title">⚙️ Mano de obra</div>
-                    <div class="costos-cascada-row">
-                        <label class="costos-cascada-label">Minutos</label>
-                        <div class="costos-cascada-input-wrap">
-                            <input type="number" class="costos-cascada-input" id="propMinutos" value="${minutos}" step="1" min="0">
-                            <span class="costos-cascada-suffix">min</span>
-                        </div>
-                    </div>
-                    <div class="costos-cascada-row costos-cascada-row-readonly">
-                        <label class="costos-cascada-label">Hora taller</label>
-                        <span class="costos-cascada-readonly-val">${API.formatCurrency(horaTaller)}/h <span class="costos-cascada-hint">↻ global</span></span>
-                    </div>
-                    <div class="costos-cascada-row costos-cascada-row-calc">
-                        <label class="costos-cascada-label">Costo MO</label>
-                        <span class="costos-cascada-calc-val" id="propCostoMO">${API.formatCurrency(r.costoManoObra)}</span>
-                    </div>
-                </div>
-
-                <!-- BLOQUE 2: INDIRECTOS -->
-                <div class="costos-cascada-block">
-                    <div class="costos-cascada-block-title">📊 Indirectos</div>
-                    <div class="costos-cascada-row">
-                        <label class="costos-cascada-label">% Fábrica</label>
-                        <div class="costos-cascada-input-wrap">
-                            <input type="number" class="costos-cascada-input" id="propPctFabrica" value="${Math.round(pctFabrica * 100)}" step="1" min="0" max="500">
-                            <span class="costos-cascada-suffix">%</span>
-                        </div>
-                        ${globalHint(Math.round(pctFabrica * 100), Math.round(dPctFabrica * 100), '%', 'propPctFabrica')}
-                    </div>
-                    <div class="costos-cascada-row">
-                        <label class="costos-cascada-label">% Comercial</label>
-                        <div class="costos-cascada-input-wrap">
-                            <input type="number" class="costos-cascada-input" id="propPctComercial" value="${Math.round(pctComercial * 100)}" step="1" min="0" max="500">
-                            <span class="costos-cascada-suffix">%</span>
-                        </div>
-                        ${globalHint(Math.round(pctComercial * 100), Math.round(dPctComercial * 100), '%', 'propPctComercial')}
-                    </div>
-                    <div class="costos-cascada-row costos-cascada-row-calc">
-                        <label class="costos-cascada-label">Costo indirectos</label>
-                        <span class="costos-cascada-calc-val" id="propCostoIndirectos">${API.formatCurrency(r.costoIndirectos)}</span>
-                    </div>
-                </div>
-
-                <!-- COSTO FABRICACIÓN destacado -->
-                <div class="costos-cascada-section-result">
-                    <span class="costos-cascada-section-result-label">💰 Costo fabricación</span>
-                    <span class="costos-cascada-section-result-value" id="propCostoFab">${API.formatCurrency(r.costoFabricacion)}</span>
-                </div>
-
-                <!-- BLOQUE 3: AMORTIZACIÓN -->
-                <div class="costos-cascada-block">
-                    <div class="costos-cascada-block-title">🔁 Amortización</div>
-                    <div class="costos-cascada-row">
-                        <label class="costos-cascada-label">Vida útil</label>
-                        <div class="costos-cascada-input-wrap">
-                            <input type="number" class="costos-cascada-input" id="propVidaUtil" value="${vidaUtil}" step="1" min="1">
-                            <span class="costos-cascada-suffix">usos</span>
-                        </div>
-                        ${globalHint(vidaUtil, dVidaUtil, ' usos', 'propVidaUtil')}
-                    </div>
-                    <div class="costos-cascada-row">
-                        <label class="costos-cascada-label">Reacondicionamiento</label>
-                        <div class="costos-cascada-input-wrap">
-                            <input type="number" class="costos-cascada-input" id="propPctReacond" value="${Math.round(pctReacond * 100)}" step="1" min="0" max="100">
-                            <span class="costos-cascada-suffix">%</span>
-                        </div>
-                        ${globalHint(Math.round(pctReacond * 100), Math.round(dPctReacond * 100), '%', 'propPctReacond')}
-                    </div>
-                    <div class="costos-cascada-row costos-cascada-row-calc">
-                        <label class="costos-cascada-label">Costo por uso</label>
-                        <span class="costos-cascada-calc-val" id="propCostoPorUso">${API.formatCurrency(r.costoPorUso)}</span>
-                    </div>
-                </div>
-
-                <!-- BLOQUE 4: MARGEN -->
-                <div class="costos-cascada-block">
-                    <div class="costos-cascada-block-title">🎯 Margen y precio final</div>
-                    <div class="costos-cascada-row">
-                        <label class="costos-cascada-label">Margen</label>
-                        <div class="costos-cascada-input-wrap">
-                            <input type="number" class="costos-cascada-input" id="propMargen" value="${Math.round(margen * 100)}" step="1" min="0" max="500">
-                            <span class="costos-cascada-suffix">%</span>
-                        </div>
-                        ${globalHint(Math.round(margen * 100), Math.round(dMargen * 100), '%', 'propMargen')}
-                    </div>
-                </div>
-
-                <!-- PRECIO ALQUILER FINAL -->
-                <div class="costos-cascada-result costos-cascada-result-final">
-                    <span class="costos-cascada-result-label">Precio alquiler final</span>
-                    <span class="costos-cascada-result-value" id="propPrecioFinal">${API.formatCurrency(r.precioAlquiler)}</span>
-                </div>
-
-                <div class="costos-cascada-saved-hint" id="propSavedHint" style="${persistedPrecio > 0 ? '' : 'display:none;'}">
-                    <span class="costos-cascada-saved-hint-text">guardado: ${API.formatCurrency(persistedPrecio)}</span>
-                    <span class="costos-cascada-dirty-tag" id="propDirtyTag" style="display:none;">● cambios sin guardar</span>
-                </div>
-
-                <button class="btn btn-primary costos-cascada-save" id="propGuardar">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    Guardar y recalcular
-                </button>
-            </div>
-        `;
-    },
-
-    _attachCascadaEvents(item, compData, costoMP, params) {
-        const tipo = item.tipoReceta || 'propio';
-        if (tipo === 'subalquilado') return this._attachCascadaSubalquilado(item, compData, costoMP);
-        return this._attachCascadaPropio(item, compData, costoMP, params || {});
-    },
-
-    _attachCascadaSubalquilado(item, compData, costoMP) {
-        const margenInput = document.getElementById('cascadaMargenSubalquiler');
-        const precioEl = document.getElementById('cascadaPrecioAlquiler');
-        const saveBtn = document.getElementById('cascadaGuardar');
-        if (!margenInput || !precioEl || !saveBtn) return;
-
-        const recalcLive = () => {
-            let mp = 0;
-            document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
-                const compId = inp.dataset.compId;
-                const comp = compData.find(c => String(c.id) === String(compId));
-                if (!comp) return;
-                mp += (parseFloat(inp.value) || 0) * comp.costoUnit;
-            });
-            const pct = parseFloat(margenInput.value) || 0;
-            const precio = mp * (1 + pct / 100);
-            precioEl.textContent = API.formatCurrency(precio);
-        };
-        margenInput.addEventListener('input', recalcLive);
-        document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
-            inp.addEventListener('input', recalcLive);
-        });
-
-        saveBtn.addEventListener('click', async () => {
-            saveBtn.disabled = true;
-            const originalHTML = saveBtn.innerHTML;
-            saveBtn.textContent = 'Guardando…';
-            const margenDecimal = (parseFloat(margenInput.value) || 0) / 100;
-            await API.updateCatalogoItem(item.id, { margenSubalquiler: margenDecimal });
-            item.margenSubalquiler = margenDecimal;
-            const result = await API.recalcularEnCascada(item.id, {
-                onProgress: (cur, total, name) => {
-                    if (total > 1) saveBtn.textContent = `Recalculando ${cur}/${total}…`;
-                },
-            });
-            if (result.ok) {
-                Toast.success(result.total > 1
-                    ? `Recalculadas ${result.updated} recetas (esta + ${result.updated - 1} padres)`
-                    : 'Precio alquiler actualizado');
-                await this._refreshData();
-                const updated = this._catalogoItems.find(i => String(i.id) === String(item.id));
-                if (updated) await this._loadRecetaContent(updated);
-            } else {
-                Toast.error('Error al recalcular');
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalHTML;
-            }
-        });
-    },
-
-    _attachCascadaPropio(item, compData, costoMP, params) {
-        const root = document.querySelector('.costos-cascada-propio');
-        if (!root) return;
-
-        const $ = (id) => document.getElementById(id);
-        const inputs = {
-            minutos: $('propMinutos'),
-            pctFabrica: $('propPctFabrica'),
-            pctComercial: $('propPctComercial'),
-            vidaUtil: $('propVidaUtil'),
-            pctReacond: $('propPctReacond'),
-            margen: $('propMargen'),
-        };
-        const outs = {
-            costoMO: $('propCostoMO'),
-            costoIndirectos: $('propCostoIndirectos'),
-            costoFab: $('propCostoFab'),
-            costoPorUso: $('propCostoPorUso'),
-            precioFinal: $('propPrecioFinal'),
-        };
-        const saveBtn = $('propGuardar');
-        const dirtyTag = $('propDirtyTag');
-        if (!saveBtn) return;
-
-        // Snapshot inicial para detectar cambios
-        const snapshot = JSON.stringify({
-            mp: costoMP,
-            min: parseFloat(inputs.minutos?.value) || 0,
-            pf: parseFloat(inputs.pctFabrica?.value) || 0,
-            pc: parseFloat(inputs.pctComercial?.value) || 0,
-            vu: parseFloat(inputs.vidaUtil?.value) || 0,
-            pr: parseFloat(inputs.pctReacond?.value) || 0,
-            mg: parseFloat(inputs.margen?.value) || 0,
-        });
-
-        const recomputeMP = () => {
-            let mp = 0;
-            document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
-                const compId = inp.dataset.compId;
-                const comp = compData.find(c => String(c.id) === String(compId));
-                if (!comp) return;
-                mp += (parseFloat(inp.value) || 0) * comp.costoUnit;
-            });
-            return mp;
-        };
-
-        const recalcLive = () => {
-            if (!window.CalculoReceta) return;
-            const mp = recomputeMP();
-            const recetaSintetica = {
-                tipoReceta: 'propio',
-                manoObraMinutos: parseFloat(inputs.minutos?.value) || 0,
-                pctIndirectosFabrica: (parseFloat(inputs.pctFabrica?.value) || 0) / 100,
-                pctIndirectosComercial: (parseFloat(inputs.pctComercial?.value) || 0) / 100,
-                vidaUtilUsos: Math.max(1, parseFloat(inputs.vidaUtil?.value) || 1),
-                pctReacondicionamiento: (parseFloat(inputs.pctReacond?.value) || 0) / 100,
-                margenPropio: (parseFloat(inputs.margen?.value) || 0) / 100,
-            };
-            const r = window.CalculoReceta.calcular(
-                recetaSintetica,
-                [{ cantidad: 1, costoUnit: mp }],
-                params
-            );
-            if (outs.costoMO) outs.costoMO.textContent = API.formatCurrency(r.costoManoObra);
-            if (outs.costoIndirectos) outs.costoIndirectos.textContent = API.formatCurrency(r.costoIndirectos);
-            if (outs.costoFab) outs.costoFab.textContent = API.formatCurrency(r.costoFabricacion);
-            if (outs.costoPorUso) outs.costoPorUso.textContent = API.formatCurrency(r.costoPorUso);
-            if (outs.precioFinal) outs.precioFinal.textContent = API.formatCurrency(r.precioAlquiler);
-
-            // Marcar dirty
-            const current = JSON.stringify({
-                mp,
-                min: recetaSintetica.manoObraMinutos,
-                pf: parseFloat(inputs.pctFabrica?.value) || 0,
-                pc: parseFloat(inputs.pctComercial?.value) || 0,
-                vu: parseFloat(inputs.vidaUtil?.value) || 0,
-                pr: parseFloat(inputs.pctReacond?.value) || 0,
-                mg: parseFloat(inputs.margen?.value) || 0,
-            });
-            if (dirtyTag) dirtyTag.style.display = (current !== snapshot) ? '' : 'none';
-        };
-
-        // Wire all inputs
-        Object.values(inputs).forEach(inp => {
-            if (inp) inp.addEventListener('input', recalcLive);
-        });
-        document.querySelectorAll('.costos-receta-qty-input').forEach(inp => {
-            inp.addEventListener('input', recalcLive);
-        });
-
-        // Reset to global default buttons
-        root.querySelectorAll('.costos-cascada-reset').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const targetId = btn.dataset.target;
-                const def = btn.dataset.default;
-                const target = document.getElementById(targetId);
-                if (target && def != null) {
-                    target.value = def;
-                    recalcLive();
-                }
-            });
-        });
-
-        // Save & cascade
-        saveBtn.addEventListener('click', async () => {
-            saveBtn.disabled = true;
-            const originalHTML = saveBtn.innerHTML;
-            saveBtn.textContent = 'Guardando…';
-
-            const payload = {
-                manoObraMinutos: parseInt(inputs.minutos?.value) || 0,
-                pctIndirectosFabrica: (parseFloat(inputs.pctFabrica?.value) || 0) / 100,
-                pctIndirectosComercial: (parseFloat(inputs.pctComercial?.value) || 0) / 100,
-                vidaUtilUsos: Math.max(1, parseInt(inputs.vidaUtil?.value) || 1),
-                pctReacondicionamiento: (parseFloat(inputs.pctReacond?.value) || 0) / 100,
-                margenPropio: (parseFloat(inputs.margen?.value) || 0) / 100,
-            };
-
-            try {
-                await API.updateCatalogoItem(item.id, payload);
-                Object.assign(item, payload);
-
-                const result = await API.recalcularEnCascada(item.id, {
-                    onProgress: (cur, total, name) => {
-                        if (total > 1) saveBtn.textContent = `Recalculando ${cur}/${total}…`;
-                    },
-                });
-                if (result.ok) {
-                    Toast.success(result.total > 1
-                        ? `Recalculadas ${result.updated} recetas (esta + ${result.updated - 1} padres)`
-                        : `Precio: ${API.formatCurrency(parseFloat(outs.precioFinal?.textContent.replace(/[^\d.,-]/g, '').replace('.', '').replace(',', '.')) || 0)}`);
-                    await this._refreshData();
-                    const updated = this._catalogoItems.find(i => String(i.id) === String(item.id));
-                    if (updated) await this._loadRecetaContent(updated);
-                } else {
-                    Toast.error(`Recalculadas ${result.updated} de ${result.total}; ${result.failed} fallaron`);
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = originalHTML;
-                }
-            } catch (e) {
-                console.warn('[Costos] Error guardando cascada propio:', e);
-                Toast.error('Error al guardar');
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = originalHTML;
-            }
-        });
-    },
 
     _attachRecetaEvents(item, compData) {
         // Real-time cost recalculation on quantity input
@@ -2749,6 +2716,18 @@ const CostosModule = {
                 case 'precioAlquiler':
                     va = a.precioAlquiler || 0;
                     vb = b.precioAlquiler || 0;
+                    break;
+                case 'manoObraMinutos':
+                    va = a.manoObraMinutos || 0;
+                    vb = b.manoObraMinutos || 0;
+                    break;
+                case 'costoFabricacion':
+                    va = a.costoFabricacion || 0;
+                    vb = b.costoFabricacion || 0;
+                    break;
+                case 'costoPorUso':
+                    va = a.costoPorUso || 0;
+                    vb = b.costoPorUso || 0;
                     break;
                 case 'tipoAmortizacion':
                     va = (a.tipoAmortizacion || '').toString().toLowerCase();

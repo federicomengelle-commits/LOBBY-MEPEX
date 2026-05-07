@@ -152,35 +152,25 @@ const ParametrosGlobales = {
         });
     },
 
-    // Fase 3.D: ofrecer recálculo masivo en cascada al cambiar un parámetro
+    // F.3 — Ofrecer recálculo masivo via RPC `calcular_receta` al cambiar un parámetro
     async _offerMassRecalc(clave, oldVal, newVal) {
-        if (typeof API.recetasQueDependenDeParametro !== 'function' || typeof API.recalcularEnCascada !== 'function') return;
-
-        let recetasIds = [];
-        try {
-            recetasIds = await API.recetasQueDependenDeParametro(clave);
-        } catch (e) {
-            console.warn('[ParamsGlobales] Error buscando dependencias:', e);
-            return;
-        }
-
-        if (!recetasIds.length) {
-            // No hay recetas que dependan: nada que ofrecer
-            return;
-        }
+        // Las claves snapshoteadas afectan a TODAS las recetas que se hayan recalculado
+        // antes con el valor viejo. Como detectar dependencias precisas requiere la RPC,
+        // ofrecemos recalcular TODO si la clave es una de las globales del modelo nuevo.
+        const clavesGlobales = ['hora_taller_ars', 'pct_indirectos_fabrica', 'pct_markup_estructura', 'pct_margen_default', 'pct_indirectos_comercial', 'vida_util_default', 'pct_reacondicionamiento'];
+        if (!clavesGlobales.includes(clave)) return;
 
         const confirmed = await Modal.confirm({
-            title: '🔄 Recalcular recetas afectadas',
+            title: '🔄 Recalcular todas las recetas',
             message: `<p style="margin:0 0 8px 0">El parámetro <strong style="color:var(--primary)">${clave}</strong> cambió de <strong>${oldVal}</strong> a <strong>${newVal}</strong>.</p>
-                      <p style="margin:0 0 8px 0">Se detectaron <strong style="color:var(--accent)">${recetasIds.length} receta${recetasIds.length === 1 ? '' : 's'}</strong> que usan este valor (incluyendo padres en el árbol BOM).</p>
-                      <p style="margin:0; color:var(--text-muted); font-size:13px;">¿Recalcular precios ahora? Si decís que no, las recetas mantienen sus valores hasta editarse manualmente.</p>`,
-            confirmText: 'Recalcular',
+                      <p style="margin:0 0 8px 0">Este parámetro afecta el cálculo de todas las recetas. ¿Querés correr <code>calcular_receta()</code> sobre todos los items con receta ahora?</p>
+                      <p style="margin:0; color:var(--text-muted); font-size:13px;">Si decís que no, las recetas mantienen su precio cacheado hasta que las recalculen manualmente desde Costos · Recetas.</p>`,
+            confirmText: 'Recalcular todos',
             cancelText: 'Más tarde',
         });
 
         if (!confirmed) return;
 
-        // Modal de progreso
         const progressInstance = Modal.open({
             title: '🔄 Recalculando recetas',
             size: 'sm',
@@ -194,34 +184,21 @@ const ParametrosGlobales = {
             footer: '',
         });
 
-        const progressText = document.getElementById('paramsProgressText');
-        const progressBar = document.getElementById('paramsProgressBar');
-
-        let totalUpdated = 0, totalFailed = 0;
-        for (let i = 0; i < recetasIds.length; i++) {
-            const rid = recetasIds[i];
-            if (progressText) progressText.textContent = `Receta ${i + 1} de ${recetasIds.length}…`;
-            if (progressBar) progressBar.style.width = `${Math.round((i / recetasIds.length) * 100)}%`;
-            try {
-                const result = await API.recalcularEnCascada(rid);
-                if (result.ok) {
-                    totalUpdated += result.updated || 0;
-                } else {
-                    totalFailed += result.failed || 1;
-                }
-            } catch (e) {
-                console.warn('[ParamsGlobales] Error recalc cascada:', rid, e);
-                totalFailed++;
-            }
-        }
-        if (progressBar) progressBar.style.width = '100%';
+        const result = await API.recalcularTodasRecetasRPC((cur, total, item) => {
+            const text = document.getElementById('paramsProgressText');
+            const bar = document.getElementById('paramsProgressBar');
+            if (text) text.textContent = `Recalculando ${cur} de ${total}: ${item.nombre}`;
+            if (bar) bar.style.width = `${Math.round((cur / total) * 100)}%`;
+        });
 
         Modal.close(progressInstance);
 
-        if (totalFailed === 0) {
-            Toast.success(`Recalculadas ${totalUpdated} recetas correctamente`);
+        if (result.ok) {
+            Toast.success(`${result.updated} recetas recalculadas`);
+        } else if (result.updated > 0) {
+            Toast.warning(`${result.updated} ok · ${result.failed} fallaron`);
         } else {
-            Toast.warning(`${totalUpdated} recetas actualizadas, ${totalFailed} fallaron — revisá la consola`);
+            Toast.error(`Error: ${result.error || 'no se pudo recalcular'}`);
         }
     },
 };

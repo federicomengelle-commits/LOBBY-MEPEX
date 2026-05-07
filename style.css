@@ -14479,3 +14479,154 @@ tr.cmp-proximo td { color: #F28D15; }
 .rh-conflict-item { font-family: var(--font-main); font-size: 0.85rem; color: var(--text-primary); margin-bottom: 4px; }
 .rh-conflict-events { color: #F28D15; }
 .rh-conflict-date { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); }
+
+/* ============================================
+   F.2 — Receta config blocks (modelo nuevo)
+   ============================================ */
+.costos-receta-config-block {
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.costos-receta-config-block-subalq {
+    background: rgba(155,125,255,0.04);
+    border-color: rgba(155,125,255,0.20);
+}
+.costos-receta-config-title {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+.costos-receta-config-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 6px 0;
+}
+.costos-receta-config-label {
+    font-size: 13px; color: var(--text-primary);
+}
+.costos-receta-config-input-wrap {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    transition: border-color 180ms ease;
+}
+.costos-receta-config-input-wrap:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(0,169,193,0.15);
+}
+.costos-receta-config-input {
+    width: 80px;
+    background: transparent;
+    border: none; outline: none;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 13px; font-weight: 600;
+    text-align: right;
+    padding: 4px 0;
+}
+.costos-receta-config-input[id="costosRecetaCostoProv"],
+.costos-receta-config-input[placeholder*="Default"] {
+    text-align: right;
+    width: 110px;
+}
+.costos-receta-config-suffix,
+.costos-receta-config-prefix {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    user-select: none;
+}
+.costos-receta-config-hint {
+    margin-top: 8px;
+    color: var(--text-dim);
+    font-size: 11px;
+    line-height: 1.5;
+}
+.costos-receta-snapshots {
+    background: rgba(255,255,255,0.015);
+}
+.costos-receta-snapshot-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    margin-bottom: 6px;
+}
+.costos-receta-snapshot-item {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 6px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.04);
+}
+.costos-receta-snapshot-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-family: var(--font-mono);
+}
+.costos-receta-snapshot-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.costos-receta-result-block {
+    background: rgba(0,169,193,0.04);
+    border-color: rgba(0,169,193,0.25);
+}
+.costos-receta-result-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px 16px;
+}
+.costos-receta-result-item {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.18);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    text-align: center;
+}
+.costos-receta-result-item-final {
+    border-color: rgba(0,169,193,0.45);
+    background: rgba(0,169,193,0.10);
+}
+.costos-receta-result-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.costos-receta-result-value {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary);
+}
+.costos-receta-result-item-final .costos-receta-result-value {
+    font-size: 16px;
+}
+.costos-receta-recalc-wrap {
+    margin-top: 16px;
+    padding: 12px 0 4px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    border-top: 1px solid var(--border);
+}
+.costos-receta-recalc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.costos-receta-recalc-btn .spinner {
+    border-width: 2px !important;
+}
