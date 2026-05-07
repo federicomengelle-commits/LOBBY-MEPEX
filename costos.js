@@ -182,25 +182,25 @@ const CostosModule = {
     // ═══════════════════════════════════════════
 
     async _loadData() {
+        // 1) Tipos de amortización — aislado del resto. Si alguna otra query falla,
+        //    el state de tipos igual queda poblado para el render del panel/tabla.
+        await this._populateTiposAmortizacion();
+
+        // 2) Resto de datos
         try {
-            const [insumos, items, listas, tipos] = await Promise.all([
+            const [insumos, items, listas] = await Promise.all([
                 API.getInsumos(),
                 API.getCatalogoItems(),
                 API.getListasPrecio(),
-                this._loadTiposAmortizacion(),
             ]);
             this._insumos = insumos || [];
             this._catalogoItems = items || [];
             this._listas = listas || [];
-            this._tiposAmortizacion = tipos || [];
-            this._tiposAmortizacionMap = {};
-            for (const t of this._tiposAmortizacion) this._tiposAmortizacionMap[t.codigo] = t;
         } catch (e) {
             console.warn('[Costos] Error loading data:', e.message);
             this._insumos = [];
             this._catalogoItems = [];
             this._listas = [];
-            this._tiposAmortizacion = this._tiposAmortizacion || [];
         }
 
         // Pre-load recipe statuses for all catalog items
@@ -209,6 +209,16 @@ const CostosModule = {
         // Update tab counts
         this._updateTabCounts();
         this._renderActiveTab();
+    },
+
+    async _populateTiposAmortizacion() {
+        const tipos = await this._loadTiposAmortizacion();
+        this._tiposAmortizacion = Array.isArray(tipos) ? tipos : [];
+        this._tiposAmortizacionMap = {};
+        for (const t of this._tiposAmortizacion) {
+            if (t && t.codigo) this._tiposAmortizacionMap[t.codigo] = t;
+        }
+        console.log('[Costos] Tipos amortización cargados:', this._tiposAmortizacion.length);
     },
 
     async _loadTiposAmortizacion() {
@@ -2770,6 +2780,10 @@ const CostosModule = {
 
     async _refreshData() {
         API.clearCache();
+        // Re-cargar tipos también, por si quedaron vacíos en la primera carga
+        if (!this._tiposAmortizacion || this._tiposAmortizacion.length === 0) {
+            await this._populateTiposAmortizacion();
+        }
         const [insumos, items, listas] = await Promise.all([
             API.getInsumos(),
             API.getCatalogoItems(),
