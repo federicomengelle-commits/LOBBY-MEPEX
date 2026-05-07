@@ -10923,7 +10923,10 @@ body {
 /* ─── Table ─── */
 .costos-table {
     width: 100%;
-    border-collapse: collapse;
+    /* border-separate para que position:sticky funcione en thead.
+       border-collapse:collapse rompe el sticky en silencio. */
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 13px;
 }
 .costos-table thead th {
