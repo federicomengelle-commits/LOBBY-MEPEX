@@ -10883,7 +10883,9 @@ body {
 .costos-main {
     flex: 1;
     min-width: 0;
-    padding: 16px 24px;
+    /* sin padding-top: el thead sticky se pega al top del scroll container.
+       El espacio de respiro lo da .costos-table { margin-top:16px } */
+    padding: 0 24px 16px;
     overflow-y: auto;       /* scroll interno de la tabla */
     overflow-x: auto;
 }
@@ -10928,6 +10930,7 @@ body {
     border-collapse: separate;
     border-spacing: 0;
     font-size: 13px;
+    margin-top: 16px;       /* respiro arriba; scrollea junto con la tabla */
 }
 .costos-table thead th {
     font-family: var(--font-mono, 'Space Mono', monospace);
