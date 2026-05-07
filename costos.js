@@ -133,12 +133,7 @@ const CostosModule = {
                             Costos
                         </h1>
                     </div>
-                    <div class="costos-toolbar-right">
-                        <a href="#parametros-globales" class="btn btn-ghost btn-sm costos-params-btn" title="Parámetros globales (hora taller, % defaults, vida útil…)" style="display:inline-flex; align-items:center; gap:6px;">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                            Parámetros
-                        </a>
-                    </div>
+                    <div class="costos-toolbar-right"></div>
                 </div>
 
                 <!-- Tabs -->
@@ -920,28 +915,42 @@ const CostosModule = {
             ? new Date(this._proximaRevisionLista).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
             : '—';
 
-        // Header con logo
-        const tryDrawLogo = async () => {
-            const tryUrl = async (url, w, h) => {
-                try {
-                    const resp = await fetch(url);
-                    if (!resp.ok) return false;
-                    const blob = await resp.blob();
-                    const dataUrl = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.readAsDataURL(blob);
-                    });
-                    doc.addImage(dataUrl, 'PNG', 14, 12, w, h);
-                    return true;
-                } catch (_) { return false; }
-            };
-            if (await tryUrl('assets/logo_full.png', 38, 12)) return true;
-            if (await tryUrl('assets/mepex_iso.png', 14, 14)) return true;
-            return false;
+        // Helper: cargar imagen como dataURL + sus dimensiones reales (para
+        // preservar aspect ratio en addImage)
+        const loadImage = async (url) => {
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) return null;
+                const blob = await resp.blob();
+                const dataUrl = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                });
+                const dims = await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+                    img.onerror = () => resolve(null);
+                    img.src = dataUrl;
+                });
+                if (!dims || !dims.w) return null;
+                return { dataUrl, ...dims };
+            } catch (_) { return null; }
         };
-        const logoOk = await tryDrawLogo();
-        if (!logoOk) {
+
+        const logoFull = await loadImage('assets/logo_full.png');
+        const logoIso = await loadImage('assets/mepex_iso.png');
+
+        // Header: logo principal con aspect ratio preservado
+        if (logoFull) {
+            const targetW = 38;     // mm
+            const targetH = targetW * (logoFull.h / logoFull.w);
+            doc.addImage(logoFull.dataUrl, 'PNG', 14, 12, targetW, targetH);
+        } else if (logoIso) {
+            const targetH = 14;
+            const targetW = targetH * (logoIso.w / logoIso.h);
+            doc.addImage(logoIso.dataUrl, 'PNG', 14, 12, targetW, targetH);
+        } else {
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(18);
             doc.setTextColor('#00ACC9');
@@ -1011,18 +1020,43 @@ const CostosModule = {
                 // Precio numérico alineado a la derecha (siempre es la última de las primeras 3)
             },
             didDrawPage: (data) => {
-                // Footer
+                // Footer con isologo + leyenda + web + paginación
                 const pageHeight = doc.internal.pageSize.getHeight();
                 const pageWidth = doc.internal.pageSize.getWidth();
+                const footerY = pageHeight - 14;
+
+                // Línea separadora naranja
                 doc.setDrawColor('#FF7200');
                 doc.setLineWidth(0.4);
-                doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
+                doc.line(14, pageHeight - 18, pageWidth - 14, pageHeight - 18);
+
+                // Isologo (X de MEPEX) a la izquierda con aspect ratio preservado
+                let textXStart = 14;
+                if (logoIso) {
+                    const isoH = 6;
+                    const isoW = isoH * (logoIso.w / logoIso.h);
+                    doc.addImage(logoIso.dataUrl, 'PNG', 14, footerY - 4, isoW, isoH);
+                    textXStart = 14 + isoW + 4;
+                }
+
+                // Leyenda elegante: "Precios sin IVA" + web
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(8);
-                doc.setTextColor('#666666');
-                doc.text('MEPEX · Buenos Aires, Argentina · mepex.com.ar', 14, pageHeight - 10);
+                doc.setTextColor('#888888');
+
+                doc.setFont('helvetica', 'italic');
+                doc.text('Precios expresados sin IVA', textXStart, footerY);
+
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor('#00ACC9');
+                const webText = 'mepex.com.ar';
+                const centerX = pageWidth / 2;
+                doc.text(webText, centerX, footerY, { align: 'center' });
+
+                // Paginación a la derecha
+                doc.setTextColor('#888888');
                 const pageNum = `Página ${doc.internal.getNumberOfPages()}`;
-                doc.text(pageNum, pageWidth - 14, pageHeight - 10, { align: 'right' });
+                doc.text(pageNum, pageWidth - 14, footerY, { align: 'right' });
             },
         });
 
