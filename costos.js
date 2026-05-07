@@ -2072,7 +2072,6 @@ const CostosModule = {
     },
 
     _renderSubalquiladoBlock(item) {
-        const cpd = item.costoProveedorDirecto != null ? item.costoProveedorDirecto : '';
         const pid = item.proveedorIdDirecto;
         // Resolver nombre desde el id actual para precargar el input
         const provActual = pid != null ? this._proveedoresById[String(pid)] : null;
@@ -2084,14 +2083,7 @@ const CostosModule = {
             <div class="costos-receta-config-block costos-receta-config-block-subalq">
                 <div class="costos-receta-config-title">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                    Subalquilado · costo proveedor + margen
-                </div>
-                <div class="costos-receta-config-row">
-                    <label class="costos-receta-config-label">Costo proveedor</label>
-                    <div class="costos-receta-config-input-wrap">
-                        <span class="costos-receta-config-prefix">$</span>
-                        <input type="number" class="costos-receta-config-input" id="costosRecetaCostoProv" data-field="costoProveedorDirecto" value="${cpd}" step="0.01" min="0">
-                    </div>
+                    Subalquilado · margen + proveedor
                 </div>
                 <div class="costos-receta-config-row">
                     <label class="costos-receta-config-label">Margen sobre costo</label>
@@ -2107,8 +2099,8 @@ const CostosModule = {
                     </div>
                 </div>
                 <div class="costos-receta-config-hint">
-                    Editá y salí del campo (blur) para guardar. Apretá <strong>Recalcular precio</strong> para aplicar.
-                    <br>Fórmula: <code>precio = costo proveedor × (1 + margen)</code>
+                    El <strong>costo</strong> se hereda de los componentes de la receta (suma de insumos arriba). Acá editás solo margen y proveedor.
+                    <br>Fórmula: <code>precio = costo MP × (1 + margen)</code>
                 </div>
             </div>
         `;
@@ -2213,12 +2205,12 @@ const CostosModule = {
         const isSubalq = item.tipoReceta === 'subalquilado';
 
         if (isSubalq) {
-            // Subalquilado: solo costo proveedor + margen.
+            // Subalquilado: costo siempre heredado de los componentes (Costo MP).
+            // costo_proveedor_directo es legacy/null. costoFabricacion del cache
+            // es el valor más reciente de la suma de componentes (snapshoteado al
+            // último Recalcular).
             const margenDecimal = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
             const margenPct = `${Math.round(margenDecimal * 100)}%`;
-            const costoProv = item.costoProveedorDirecto != null && item.costoProveedorDirecto > 0
-                ? item.costoProveedorDirecto
-                : item.costoFabricacion; // fallback si no se cargó costo directo
             return `
                 <div class="costos-receta-config-block costos-receta-result-block">
                     <div class="costos-receta-config-title">
@@ -2227,8 +2219,8 @@ const CostosModule = {
                     </div>
                     <div class="costos-receta-result-grid">
                         <div class="costos-receta-result-item">
-                            <span class="costos-receta-result-label">Costo proveedor</span>
-                            <span class="costos-receta-result-value" id="costosRecetaResCostoFab">${fmtCur(costoProv)}</span>
+                            <span class="costos-receta-result-label" title="Costo materia prima — heredado de los componentes de la receta">Costo MP</span>
+                            <span class="costos-receta-result-value" id="costosRecetaResCostoFab">${fmtCur(item.costoFabricacion)}</span>
                         </div>
                         <div class="costos-receta-result-item">
                             <span class="costos-receta-result-label">Margen</span>
@@ -2288,39 +2280,52 @@ const CostosModule = {
             }
         };
 
-        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaCostoProv', 'costosRecetaProvNombre', 'costosRecetaMargenSubalq'].forEach(id => {
+        // Handler que persiste un input. Se llama desde blur Y change (datalist
+        // dispara change al seleccionar una sugerencia, blur a veces no se dispara
+        // si el usuario va directo a apretar otro botón).
+        const handleFieldChange = async (el, original) => {
+            if (el.value === original) return;
+            // Margen subalquilado: entero (50) → decimal (0.50)
+            if (el.dataset.field === 'margenSubalquiler') {
+                const pct = parseFloat(el.value) || 0;
+                await persist('margenSubalquiler', pct / 100);
+                return;
+            }
+            // Proveedor subalquilado: nombre → lookup → id
+            if (el.dataset.field === 'proveedorNombreSubalq') {
+                const trimmed = el.value.trim();
+                if (!trimmed) {
+                    await persist('proveedorIdDirecto', null);
+                    return;
+                }
+                const match = this._proveedoresByName[trimmed.toLowerCase()];
+                if (match) {
+                    await persist('proveedorIdDirecto', match.id);
+                } else {
+                    Toast.warning(`Proveedor "${trimmed}" no existe en el catálogo. Cargalo primero en Proveedores.`);
+                    el.value = original;
+                }
+                return;
+            }
+            await persist(el.dataset.field, el.value);
+        };
+
+        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaProvNombre', 'costosRecetaMargenSubalq'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
             const original = el.value;
-            el.addEventListener('blur', () => {
-                if (el.value === original) return;
-                // Margen subalquilado se ingresa como entero (50) y se persiste como decimal (0.50)
-                if (el.dataset.field === 'margenSubalquiler') {
-                    const pct = parseFloat(el.value) || 0;
-                    persist('margenSubalquiler', pct / 100);
-                    return;
-                }
-                // Proveedor subalquilado: nombre → buscar en _proveedoresByName → persistir id
-                if (el.dataset.field === 'proveedorNombreSubalq') {
-                    const trimmed = el.value.trim();
-                    if (!trimmed) {
-                        persist('proveedorIdDirecto', null);
-                        return;
-                    }
-                    const match = this._proveedoresByName[trimmed.toLowerCase()];
-                    if (match) {
-                        persist('proveedorIdDirecto', match.id);
-                    } else {
-                        Toast.warning(`Proveedor "${trimmed}" no existe en el catálogo. Cargalo primero en Proveedores.`);
-                        el.value = original;
-                    }
-                    return;
-                }
-                persist(el.dataset.field, el.value);
-            });
+            // Lock de re-entrada: blur + change pueden disparar dos veces. Si ya guardamos, ignoramos.
+            let lastSavedValue = original;
+            const guardedHandle = async () => {
+                if (el.value === lastSavedValue) return;
+                await handleFieldChange(el, lastSavedValue);
+                lastSavedValue = el.value;
+            };
+            el.addEventListener('blur', guardedHandle);
+            el.addEventListener('change', guardedHandle);
             el.addEventListener('keydown', (ev) => {
                 if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
-                if (ev.key === 'Escape') { el.value = original; el.blur(); }
+                if (ev.key === 'Escape') { el.value = lastSavedValue; el.blur(); }
             });
         });
 
@@ -2331,33 +2336,31 @@ const CostosModule = {
         }
     },
 
-    // Subalquilado: precio = costo proveedor × (1 + margen). Sin markup, sin amortización.
-    // Si no hay costo_proveedor_directo cargado, fallback a la suma de costos de componentes.
+    // Subalquilado: precio = costo MP (suma componentes) × (1 + margen).
+    // Sin markup, sin amortización. costo_proveedor_directo queda DEPRECADO:
+    // siempre se suma de la receta para que sea consistente con Insumos.
     async _recalcularSubalquilado(item) {
         try {
-            let costoProv = item.costoProveedorDirecto;
-            if (costoProv == null || costoProv <= 0) {
-                // Fallback: sumar costos de componentes (insumos + sub-items)
-                const comps = await API.getRecetaComponentes(item.id);
-                let total = 0;
-                for (const c of comps) {
-                    if (c.componenteType === 'insumo') {
-                        const ins = this._insumos.find(i => String(i.id) === String(c.componenteId));
-                        if (ins) total += c.cantidad * (ins.costoUnitario || 0);
-                    } else if (c.componenteType === 'item') {
-                        const sub = this._catalogoItems.find(i => String(i.id) === String(c.componenteId));
-                        if (sub) total += c.cantidad * (sub.costoFabricacion || 0);
-                    }
+            // Sumar costos de componentes (insumos + sub-items) — fuente de verdad
+            const comps = await API.getRecetaComponentes(item.id);
+            let costoMP = 0;
+            for (const c of comps) {
+                if (c.componenteType === 'insumo') {
+                    const ins = this._insumos.find(i => String(i.id) === String(c.componenteId));
+                    if (ins) costoMP += c.cantidad * (ins.costoUnitario || 0);
+                } else if (c.componenteType === 'item') {
+                    const sub = this._catalogoItems.find(i => String(i.id) === String(c.componenteId));
+                    if (sub) costoMP += c.cantidad * (sub.costoFabricacion || 0);
                 }
-                costoProv = total;
             }
             const margen = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
-            const precioAlquiler = costoProv * (1 + margen);
+            const precioAlquiler = costoMP * (1 + margen);
 
             await API.updateCatalogoItem(item.id, {
-                costoFabricacion: costoProv,    // passthrough — para tabla y exports
-                costoPorUso: costoProv,          // passthrough
+                costoFabricacion: costoMP,       // passthrough — costo MP = costo proveedor
+                costoPorUso: costoMP,             // passthrough — no se amortiza
                 precioAlquiler,
+                costoProveedorDirecto: null,      // depreciado — siempre suma de componentes
                 snapshotPctIndirectosFabrica: null,
                 snapshotPctMarkupEstructura: null,
                 snapshotPctMargen: margen,
@@ -2367,9 +2370,9 @@ const CostosModule = {
             API.clearCache();
             return {
                 ok: true,
-                costoMp: costoProv,
-                costoFabricacion: costoProv,
-                costoPorUso: costoProv,
+                costoMp: costoMP,
+                costoFabricacion: costoMP,
+                costoPorUso: costoMP,
                 precioAlquiler,
             };
         } catch (e) {
@@ -2381,6 +2384,20 @@ const CostosModule = {
     async _recalcularUnaReceta(item) {
         if (this._recalcInProgress) return;
         this._recalcInProgress = true;
+
+        // Forzar blur de cualquier input enfocado para que sus handlers persistan
+        // antes de recalcular. Sino el usuario podría editar margen/proveedor y
+        // apretar Recalcular con valores stale en memoria.
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+            // Tick para que el handler async del blur termine
+            await new Promise(r => setTimeout(r, 80));
+        }
+        // Refrescar el item desde el cache de _catalogoItems (que se actualiza
+        // en cada persist via item[field] = value) por si el blur acaba de tocarlo
+        const fresh = this._catalogoItems.find(i => String(i.id) === String(item.id));
+        if (fresh) Object.assign(item, fresh);
+
         const btn = document.getElementById('costosRecetaRecalcBtn');
         const originalHtml = btn?.innerHTML;
         if (btn) {
