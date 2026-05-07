@@ -10869,23 +10869,23 @@ body {
 }
 
 /* ─── Body ─── */
-/* IMPORTANTE:
-   1. NO usar overflow:hidden/auto/scroll en .costos-body ni en .costos-main:
-      position:sticky se rompe en silencio si CUALQUIER ancestro tiene overflow
-      distinto de visible. .app-main (overflow:auto) es el único scroll container.
-   2. NO usar flex:1 en .costos-body: el panel sticky se ancla DENTRO del box
-      del padre. Si el padre se queda chico (~392px = espacio sobrante en el
-      wrapper), el panel sólo tiene 392px de rango antes de que el padre se
-      scrollee fuera del viewport. Con auto-height, .costos-body crece a la
-      altura de la tabla (16k+) y el panel acompaña todo el scroll. */
+/* Shell autocontenido: la tabla y el panel scrollean DENTRO del viewport
+   independientemente. Toolbar, tabs y filtros quedan fijos arriba; el body
+   ocupa el alto restante. Esto reemplaza el approach anterior con position:sticky
+   que se rompía en tablas largas. */
 .costos-body {
     display: flex;
-    align-items: flex-start;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;          /* clave: permite que los hijos respeten overflow */
+    overflow: hidden;
 }
 .costos-main {
     flex: 1;
     min-width: 0;
     padding: 16px 24px;
+    overflow-y: auto;       /* scroll interno de la tabla */
+    overflow-x: auto;
 }
 .costos-loading {
     display: flex;
@@ -10916,6 +10916,8 @@ body {
     font-size: 11px;
     color: #555;
     border-top: 1px solid rgba(255,255,255,0.04);
+    flex-shrink: 0;     /* fijo abajo, no scrollea */
+    background: var(--bg);
 }
 
 /* ─── Table ─── */
@@ -10935,6 +10937,10 @@ body {
     border-bottom: 1px solid rgba(255,255,255,0.06);
     white-space: nowrap;
     user-select: none;
+    position: sticky;       /* header fijo al scrollear la tabla */
+    top: 0;
+    background: var(--bg, #050505);
+    z-index: 2;
 }
 .costos-table thead th.sortable {
     cursor: pointer;
@@ -10987,31 +10993,27 @@ body {
     background: rgba(74, 144, 217, 0.1);
 }
 
-/* ─── Side Panel (sticky: acompaña el scroll) ─── */
-/* IMPORTANTE: el panel debe ser sticky para acompañar el scroll del módulo.
-   Para que sticky funcione, NINGÚN ancestro puede tener overflow distinto de
-   visible (ver .costos-body más arriba). Y NO usar transition:width acá: en
-   combinación con position:sticky + flex container, el navegador deja la
-   transición a mitad de camino (width queda en 1px) — es un bug clásico de
-   layout. Snap open/close es el comportamiento correcto. */
+/* ─── Side Panel (scroll interno autocontenido) ─── */
+/* Pegado al lado derecho del body (que ocupa el viewport). Scroll vertical
+   propio: el botón "Guardar" / "Recalcular" siempre está accesible al final
+   sin scrollear la tabla. */
 .costos-side-panel {
     width: 0;
     overflow: hidden;
     border-left: 1px solid transparent;
     background: #0a0a0a;
     flex-shrink: 0;
-    position: sticky;
-    top: 0;
-    align-self: flex-start;
-    max-height: 100vh;
+    height: 100%;           /* ocupa todo el alto del body */
 }
 .costos-side-panel.open {
     width: 560px;
     border-left-color: rgba(255,255,255,0.06);
-    overflow-y: auto;
+    overflow-y: auto;       /* scroll propio del panel */
 }
 .costos-panel-inner {
     width: 560px;
+    min-height: 100%;
+    padding-bottom: 24px;
 }
 
 /* ─── Ficha ─── */
@@ -11166,8 +11168,14 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding-top: 12px;
+    padding: 12px 20px;
     border-top: 1px solid rgba(255,255,255,0.04);
+    /* Sticky al fondo del panel: siempre visible al scrollear */
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(0deg, #0a0a0a 80%, rgba(10,10,10,0.92));
+    z-index: 5;
+    margin: 12px -20px 0;
 }
 .costos-ficha-save-status {
     font-size: 12px;
@@ -14615,12 +14623,21 @@ tr.cmp-proximo td { color: #F28D15; }
 }
 .costos-receta-recalc-wrap {
     margin-top: 16px;
-    padding: 12px 0 4px;
+    padding: 12px 16px;
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
     border-top: 1px solid var(--border);
+    /* Sticky al fondo del panel: siempre visible al scrollear */
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(0deg, #0a0a0a 80%, rgba(10,10,10,0.92));
+    z-index: 5;
+    margin-left: -20px;
+    margin-right: -20px;
+    padding-left: 20px;
+    padding-right: 20px;
 }
 .costos-receta-recalc-btn {
     display: inline-flex;

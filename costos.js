@@ -3096,5 +3096,33 @@ const CostosModule = {
                 }, 200);
             });
         }
+
+        // ESC cierra el panel lateral (sólo si no estás escribiendo en un input/textarea
+        // editable distinto del search global, para no chocar con el "ESC=cancelar edit").
+        if (!this._escHandlerAttached) {
+            document.addEventListener('keydown', (ev) => {
+                if (ev.key !== 'Escape') return;
+                if (!this._activePanel) return;
+                const tag = ev.target?.tagName;
+                const isEditing = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')
+                    && ev.target.id !== 'costosSearchInput';
+                if (isEditing) return; // dejar que el input local maneje el ESC
+                this._closePanel();
+            });
+            this._escHandlerAttached = true;
+        }
+
+        // Ctrl/Cmd + S desde el panel: dispara el botón de guardar/recalcular si existe
+        if (!this._saveHandlerAttached) {
+            document.addEventListener('keydown', (ev) => {
+                if (!this._activePanel) return;
+                if (!(ev.ctrlKey || ev.metaKey) || ev.key !== 's') return;
+                ev.preventDefault();
+                const btn = document.getElementById('costosFichaSave')
+                         || document.getElementById('costosRecetaRecalcBtn');
+                if (btn) btn.click();
+            });
+            this._saveHandlerAttached = true;
+        }
     },
 };
