@@ -406,286 +406,635 @@ const CostosModule = {
     },
 
     // ═══════════════════════════════════════════
-    //  TAB: LISTAS DE PRECIO (Lista Base única)
+    //  F.4 — TAB LISTAS DE PRECIO (read-only sobre catalogo_items)
     // ═══════════════════════════════════════════
 
-    _getListaBase() {
-        // Always use the "general" lista as the single Lista Base
-        return this._listas.find(l => l.tipo === 'general') || this._listas[0] || null;
+    _listasFilters: {
+        search: '',
+        rubros: [],
+        cotizableMode: 'todos',     // 'todos' | 'cotizables' | 'no-cotizables'
+        actUpdate: { op: '>=', dias: null },
+        sinReceta: false,
     },
+    _listasSort: { col: 'nombre', dir: 'asc' },
+    _filteredListaItems: [],
+    _recetaItemIds: new Set(),
+    _proximaRevisionLista: null,
 
     async _renderListasPrecioTab() {
         const container = document.getElementById('costosMainContent');
         if (!container) return;
 
-        const lista = this._getListaBase();
-        if (!lista) {
-            container.innerHTML = `
-                <div class="costos-empty">
-                    <div class="costos-empty-icon">💲</div>
-                    <p>No hay lista de precios configurada</p>
-                    <p style="color:#555; font-size:13px;">Creá una lista tipo "general" en Supabase para comenzar</p>
-                </div>`;
-            return;
-        }
+        // Loading state
+        container.innerHTML = `<div class="costos-loading"><div class="spinner"></div>Cargando lista de precios…</div>`;
 
-        this._selectedLista = lista;
-        await this._renderListaDetail(lista);
-
-        const countEl = document.getElementById('costosRecordCount');
-        if (countEl) countEl.textContent = `${this._catalogoItems.length} item${this._catalogoItems.length !== 1 ? 's' : ''}`;
+        await this._loadListasMeta();
+        this._applyListasFilters();
     },
 
-    async _renderListaDetail(lista) {
-        const container = document.getElementById('costosMainContent');
-        if (!container) return;
+    async _loadListasMeta() {
+        // 1) Items con receta activa (Set de ids) — para filtro "cotizables sin receta"
+        try {
+            const { data, error } = await supabaseClient
+                .from('receta_componentes').select('item_id').eq('_deleted', false);
+            if (error) throw error;
+            this._recetaItemIds = new Set((data || []).map(r => String(r.item_id)));
+        } catch (e) {
+            console.warn('[Costos] Error cargando ids de receta:', e?.message || e);
+            this._recetaItemIds = new Set();
+        }
 
-        // Lista de Precios es SOLO LECTURA. Fuente única de verdad: Recetas y Costos.
-        // No se cargan overrides: precio = catalogo_items.precio_alquiler (o "SIN COSTEAR").
-        this._listaRubros = [];
-        this._listaItems = [];
+        // 2) Próxima revisión: parametros_globales con clave 'proxima_revision_lista'
+        try {
+            const found = (this._paramsGlobales || []).find(p => p.clave === 'proxima_revision_lista');
+            this._proximaRevisionLista = found?.valor || null;
+        } catch (_) {
+            this._proximaRevisionLista = null;
+        }
+    },
 
-        // Filter items by search + rubro
-        let catalogData = [...this._catalogoItems];
-        const q = (this._listaSearchQuery || '').toLowerCase();
-        if (q) {
-            catalogData = catalogData.filter(i =>
+    _applyListasFilters() {
+        const f = this._listasFilters;
+        let data = [...this._catalogoItems];
+
+        // Search
+        if (f.search) {
+            const q = f.search.toLowerCase();
+            data = data.filter(i =>
                 (i.nombre || '').toLowerCase().includes(q) ||
                 (i.codigo || '').toLowerCase().includes(q) ||
                 (i.rubro || '').toLowerCase().includes(q)
             );
         }
-        if (this._listaFilterRubro) {
-            catalogData = catalogData.filter(i => (i.rubro || '') === this._listaFilterRubro);
+        // Rubros
+        if (f.rubros && f.rubros.length) {
+            data = data.filter(i => f.rubros.includes(i.rubro));
+        }
+        // Cotizable
+        if (f.cotizableMode === 'cotizables') data = data.filter(i => i.esCotizable === true);
+        else if (f.cotizableMode === 'no-cotizables') data = data.filter(i => i.esCotizable !== true);
+
+        // Última actualización (días desde snapshot_costos_at)
+        if (f.actUpdate.dias != null && f.actUpdate.dias !== '') {
+            const dias = parseInt(f.actUpdate.dias);
+            const op = f.actUpdate.op;
+            const now = Date.now();
+            data = data.filter(i => {
+                if (!i.snapshotCostosAt) return op === '>='; // sin snapshot = "muy desactualizado"
+                const ts = new Date(i.snapshotCostosAt).getTime();
+                if (isNaN(ts)) return op === '>=';
+                const diasReales = Math.floor((now - ts) / (1000 * 60 * 60 * 24));
+                return op === '>=' ? diasReales >= dias : diasReales <= dias;
+            });
+        }
+        // Cotizables sin receta
+        if (f.sinReceta) {
+            data = data.filter(i => i.esCotizable === true && !this._recetaItemIds.has(String(i.id)));
         }
 
-        // Sort by nombre
-        catalogData.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        // Sort
+        const col = this._listasSort.col;
+        const dir = this._listasSort.dir === 'asc' ? 1 : -1;
+        data.sort((a, b) => {
+            let va, vb;
+            switch (col) {
+                case 'precioAlquiler':
+                    va = a.precioAlquiler || 0; vb = b.precioAlquiler || 0; break;
+                case 'snapshotCostosAt':
+                    va = a.snapshotCostosAt ? new Date(a.snapshotCostosAt).getTime() : 0;
+                    vb = b.snapshotCostosAt ? new Date(b.snapshotCostosAt).getTime() : 0;
+                    break;
+                default:
+                    va = (a[col] || '').toString().toLowerCase();
+                    vb = (b[col] || '').toString().toLowerCase();
+            }
+            if (va < vb) return -1 * dir;
+            if (va > vb) return 1 * dir;
+            return 0;
+        });
 
-        // Rubros disponibles para el filtro
-        const rubrosDisponibles = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
+        this._filteredListaItems = data;
+        this._renderListasView();
+    },
 
-        const rows = catalogData.map(item => {
-            const precio = item.precioAlquiler || 0;
-            const sinCostear = precio <= 0;
-            const stale = !item.snapshotCostosAt && !sinCostear;
-            const staleIcon = stale
-                ? `<span title="Precio sin snapshot · recalculá desde Recetas para refrescar" style="color:#F28D15; margin-right:4px;">⚠</span>`
-                : '';
+    _renderListasView() {
+        const container = document.getElementById('costosMainContent');
+        if (!container) return;
 
-            return `
-                <tr class="costos-table-row costos-lista-item-row ${sinCostear ? 'costos-sin-costear' : ''}" data-item-id="${item.id}">
-                    <td><span class="td-mono">${item.codigo || '—'}</span></td>
-                    <td><span class="td-primary">${item.nombre}</span></td>
-                    <td><span class="badge badge-ghost">${item.rubro || '—'}</span></td>
-                    <td class="td-number td-mono">
-                        ${sinCostear ? '<span class="costos-sin-costear-tag">SIN COSTEAR</span> <span style="color:var(--text-dim);margin-left:6px;">—</span>' : `${staleIcon}<strong>${API.formatCurrency(precio)}</strong>`}
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        const items = this._filteredListaItems;
+        const allItems = this._catalogoItems || [];
 
-        const rubroOptions = rubrosDisponibles.map(r =>
-            `<option value="${r}" ${this._listaFilterRubro === r ? 'selected' : ''}>${r}</option>`
-        ).join('');
+        // KPIs
+        const cotizables = allItems.filter(i => i.esCotizable === true);
+        const sinPrecio = cotizables.filter(i => !i.precioAlquiler || i.precioAlquiler <= 0);
+        const totalActivos = allItems.length;
+
+        // Última actualización general (max snapshot_costos_at de cotizables)
+        let ultimaAct = null;
+        for (const i of cotizables) {
+            if (!i.snapshotCostosAt) continue;
+            const t = new Date(i.snapshotCostosAt).getTime();
+            if (!isNaN(t) && (ultimaAct == null || t > ultimaAct)) ultimaAct = t;
+        }
+        const fmtDate = (input) => {
+            if (!input) return '—';
+            try {
+                const d = typeof input === 'number' ? new Date(input) : new Date(input);
+                return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch (_) { return '—'; }
+        };
+
+        const rubrosOpts = [...new Set(allItems.map(i => i.rubro).filter(Boolean))].sort();
+        const f = this._listasFilters;
+        const sortIcon = (col) => {
+            if (this._listasSort.col !== col) return '';
+            return this._listasSort.dir === 'asc'
+                ? '<span class="costos-sort-icon">↑</span>'
+                : '<span class="costos-sort-icon">↓</span>';
+        };
 
         container.innerHTML = `
-            <div class="costos-lista-detail-header">
-                <div class="costos-lista-detail-title">
-                    <h3>Lista Base</h3>
-                    <span class="costos-lista-badge activa">Activa</span>
-                    <span class="costos-lista-badge-readonly" style="color:var(--text-muted);font-size:11px;background:#1a1a1a;border:1px solid var(--border);padding:3px 8px;border-radius:4px;letter-spacing:0.03em;">SOLO LECTURA</span>
+            <div class="costos-listas-wrap">
+                <!-- HEADER STICKY -->
+                <div class="costos-listas-header">
+                    <div class="costos-listas-header-left">
+                        <h2 class="costos-listas-title">Lista de Precios</h2>
+                        <div class="costos-listas-kpis">
+                            <div class="costos-listas-kpi">
+                                <span class="costos-listas-kpi-num">${cotizables.length}</span>
+                                <span class="costos-listas-kpi-label">cotizables</span>
+                            </div>
+                            <div class="costos-listas-kpi">
+                                <span class="costos-listas-kpi-num">${totalActivos}</span>
+                                <span class="costos-listas-kpi-label">totales</span>
+                            </div>
+                            <div class="costos-listas-kpi ${sinPrecio.length > 0 ? 'costos-listas-kpi-warn' : ''}">
+                                <span class="costos-listas-kpi-num">${sinPrecio.length}</span>
+                                <span class="costos-listas-kpi-label">sin precio</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="costos-listas-header-right">
+                        <div class="costos-listas-meta">
+                            <div class="costos-listas-meta-row">
+                                <span class="costos-listas-meta-label">Última actualización general:</span>
+                                <strong>${fmtDate(ultimaAct)}</strong>
+                            </div>
+                            <div class="costos-listas-meta-row">
+                                <span class="costos-listas-meta-label">Próxima revisión:</span>
+                                <span id="costosListasPrxView">${this._proximaRevisionLista ? fmtDate(this._proximaRevisionLista) : '—'}</span>
+                                <button class="costos-listas-prx-edit" id="costosListasPrxEdit" title="Editar fecha">✏️</button>
+                                <input type="date" class="costos-listas-prx-input" id="costosListasPrxInput" value="${this._proximaRevisionLista || ''}" style="display:none;">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="costosListasExportBtn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            Exportar PDF
+                        </button>
+                    </div>
                 </div>
-                <div class="costos-lista-detail-subtitle" style="color:var(--text-muted);font-size:12px;margin-top:4px;">
-                    Precios netos · No incluyen IVA · Fuente: <a href="#costos" onclick="event.preventDefault(); CostosModule._goToRecetasTab()" style="color:var(--primary);text-decoration:none;">Recetas y Costos</a>
-                </div>
-                <div class="costos-lista-detail-controls" style="margin-top:12px;">
-                    <div class="costos-lista-search-box">
+
+                <!-- FILTROS -->
+                <div class="costos-listas-filters">
+                    <div class="costos-listas-filter-search">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="costos-lista-search-input" id="costosListaSearchInput" placeholder="Buscar por nombre o código…" value="${this._listaSearchQuery || ''}" autocomplete="off">
+                        <input type="text" id="costosListasSearch" placeholder="Buscar por nombre, código o rubro…" value="${f.search}" autocomplete="off">
                     </div>
-                    <select id="costosListaFilterRubro" class="costos-lista-filter-select" style="padding:7px 10px;background:#1a1a1a;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:var(--font-main);font-size:13px;min-width:160px;">
-                        <option value="">Todos los rubros</option>
-                        ${rubroOptions}
+                    <div id="costosListasRubrosFilter" class="costos-listas-filter-inline"></div>
+                    <select class="costos-listas-filter-select" id="costosListasCotizableMode">
+                        <option value="todos" ${f.cotizableMode==='todos'?'selected':''}>Todos</option>
+                        <option value="cotizables" ${f.cotizableMode==='cotizables'?'selected':''}>Solo cotizables</option>
+                        <option value="no-cotizables" ${f.cotizableMode==='no-cotizables'?'selected':''}>No cotizables</option>
                     </select>
-                </div>
-            </div>
-            <div class="costos-lista-table-wrap">
-                ${catalogData.length === 0 ? `
-                    <div class="costos-empty">
-                        <div class="costos-empty-icon">💲</div>
-                        <p>No se encontraron items</p>
+                    <div class="costos-listas-filter-act">
+                        <span class="costos-listas-filter-label">Última act.</span>
+                        <select class="costos-listas-filter-select" id="costosListasActOp" style="width:60px;">
+                            <option value=">=" ${f.actUpdate.op==='>='?'selected':''}>≥</option>
+                            <option value="<=" ${f.actUpdate.op==='<='?'selected':''}>≤</option>
+                        </select>
+                        <input type="number" id="costosListasActDias" placeholder="días" min="0" step="1" value="${f.actUpdate.dias ?? ''}" class="costos-listas-filter-num">
+                        <span class="costos-listas-filter-label">días</span>
                     </div>
-                ` : `
-                    <table class="costos-table costos-lista-table">
+                    <label class="costos-listas-filter-toggle">
+                        <input type="checkbox" id="costosListasSinReceta" ${f.sinReceta ? 'checked' : ''}>
+                        <span>Cotizables sin receta</span>
+                    </label>
+                </div>
+
+                <!-- TABLA -->
+                <div class="costos-listas-table-wrap">
+                    <table class="costos-table costos-listas-table">
                         <thead>
+                            <tr class="costos-listas-supheader">
+                                <th colspan="3" class="costos-listas-supheader-precio">PRECIO</th>
+                                <th colspan="2" class="costos-listas-supheader-estado">ESTADO</th>
+                            </tr>
                             <tr>
-                                <th>CÓDIGO</th>
-                                <th>ITEM</th>
-                                <th>RUBRO</th>
-                                <th>PRECIO (NETO)</th>
+                                <th class="sortable" data-sort-col="codigo">CÓDIGO ${sortIcon('codigo')}</th>
+                                <th class="sortable" data-sort-col="nombre">NOMBRE ${sortIcon('nombre')}</th>
+                                <th class="sortable" data-sort-col="precioAlquiler">PRECIO ${sortIcon('precioAlquiler')}</th>
+                                <th class="sortable costos-listas-cell-estado" data-sort-col="snapshotCostosAt">ÚLTIMA ACTUALIZACIÓN ${sortIcon('snapshotCostosAt')}</th>
+                                <th class="costos-listas-cell-estado">COTIZABLE</th>
                             </tr>
                         </thead>
-                        <tbody>${rows}</tbody>
+                        <tbody>
+                            ${items.length === 0 ? `
+                                <tr><td colspan="5">
+                                    <div class="costos-empty">
+                                        <div class="costos-empty-icon">💲</div>
+                                        <p>Sin resultados con los filtros actuales</p>
+                                    </div>
+                                </td></tr>
+                            ` : items.map(it => this._renderListaRow(it)).join('')}
+                        </tbody>
                     </table>
-                `}
-            </div>
-            <div class="costos-lista-action-bar">
-                <button class="btn btn-primary" id="costosUpdateCotizador">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    Actualizar precios Cotizador
-                </button>
-                <button class="btn btn-ghost" id="costosExportPDF">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    Exportar PDF catálogo
-                </button>
+                </div>
+                <div class="costos-listas-footnote">${items.length} item${items.length===1?'':'s'} visible${items.length===1?'':'s'} de ${totalActivos} totales</div>
             </div>
         `;
 
-        this._attachListaDetailEvents(lista, catalogData);
+        // Render rubros filter
+        const rubrosBox = document.getElementById('costosListasRubrosFilter');
+        if (rubrosBox) {
+            rubrosBox.innerHTML = this._renderMultiFilter('listasRubros', 'Rubro', rubrosOpts, f.rubros);
+        }
+
+        this._attachListasEvents();
     },
 
-    _attachListaDetailEvents(lista, catalogData) {
-        // Lista search input
-        const searchInput = document.getElementById('costosListaSearchInput');
-        if (searchInput) {
+    _renderListaRow(it) {
+        const precio = it.precioAlquiler || 0;
+        const sinPrecio = !precio && it.esCotizable;
+        const sinPrecioBadge = sinPrecio ? `<span class="costos-listas-row-warn" title="Cotizable sin precio">⚠</span>` : '';
+        const precioStr = precio > 0 ? API.formatCurrency(precio) : '<span style="color:var(--text-dim)">—</span>';
+
+        // Última actualización en días
+        let actStr, actClass = '';
+        if (it.snapshotCostosAt) {
+            const ts = new Date(it.snapshotCostosAt).getTime();
+            if (!isNaN(ts)) {
+                const dias = Math.floor((Date.now() - ts) / (1000 * 60 * 60 * 24));
+                actStr = dias === 0 ? 'hoy' : `hace ${dias} día${dias === 1 ? '' : 's'}`;
+                if (dias > 90) actClass = 'costos-listas-act-stale';
+            } else {
+                actStr = '—';
+            }
+        } else {
+            actStr = '<span style="color:var(--text-dim)">—</span>';
+        }
+
+        const cotizable = it.esCotizable === true;
+        return `
+            <tr class="costos-table-row costos-listas-row" data-id="${it.id}">
+                <td><span class="td-mono">${it.codigo || '—'}</span></td>
+                <td><span class="td-primary">${it.nombre || '—'}</span></td>
+                <td class="td-number">${sinPrecioBadge}<strong>${precioStr}</strong></td>
+                <td class="costos-listas-cell-estado"><span class="${actClass}">${actStr}</span></td>
+                <td class="costos-listas-cell-estado">
+                    <label class="costos-listas-toggle ${cotizable ? 'is-on' : ''}" title="${cotizable ? 'Quitar de cotizables' : 'Marcar como cotizable'}">
+                        <input type="checkbox" data-toggle-id="${it.id}" ${cotizable ? 'checked' : ''}>
+                        <span class="costos-listas-toggle-track">
+                            <span class="costos-listas-toggle-thumb"></span>
+                        </span>
+                    </label>
+                </td>
+            </tr>
+        `;
+    },
+
+    _attachListasEvents() {
+        // Search debounced
+        const search = document.getElementById('costosListasSearch');
+        if (search) {
             let debounce;
-            searchInput.addEventListener('input', () => {
+            search.addEventListener('input', () => {
                 clearTimeout(debounce);
                 debounce = setTimeout(() => {
-                    this._listaSearchQuery = searchInput.value.trim();
-                    this._renderListaDetail(lista);
-                }, 200);
+                    this._listasFilters.search = search.value.trim();
+                    this._applyListasFilters();
+                }, 300);
             });
         }
 
-        // Rubro filter
-        const rubroSelect = document.getElementById('costosListaFilterRubro');
-        if (rubroSelect) {
-            rubroSelect.addEventListener('change', () => {
-                this._listaFilterRubro = rubroSelect.value || '';
-                this._renderListaDetail(lista);
+        // Rubros multi-filter
+        const rubrosBox = document.getElementById('costosListasRubrosFilter');
+        if (rubrosBox) this._attachFilterListeners(rubrosBox);
+
+        // Cotizable mode
+        const cotMode = document.getElementById('costosListasCotizableMode');
+        if (cotMode) cotMode.addEventListener('change', () => {
+            this._listasFilters.cotizableMode = cotMode.value;
+            this._applyListasFilters();
+        });
+
+        // Última actualización
+        const actOp = document.getElementById('costosListasActOp');
+        const actDias = document.getElementById('costosListasActDias');
+        const refreshAct = () => {
+            this._listasFilters.actUpdate.op = actOp.value;
+            this._listasFilters.actUpdate.dias = actDias.value === '' ? null : parseInt(actDias.value);
+            this._applyListasFilters();
+        };
+        if (actOp) actOp.addEventListener('change', refreshAct);
+        if (actDias) {
+            let debounce;
+            actDias.addEventListener('input', () => {
+                clearTimeout(debounce);
+                debounce = setTimeout(refreshAct, 300);
             });
         }
 
-        // Actualizar precios Cotizador — escribe precio_alquiler en precio_cliente
-        const updateBtn = document.getElementById('costosUpdateCotizador');
-        if (updateBtn) {
-            updateBtn.addEventListener('click', async () => {
-                const costeados = this._catalogoItems.filter(i => (i.precioAlquiler || 0) > 0);
-                const sinCostear = this._catalogoItems.length - costeados.length;
-                const msg = `Se escribirá precio_alquiler en catalogo_items.precio_cliente para ${costeados.length} items costeados.`
-                    + (sinCostear > 0 ? ` ${sinCostear} items sin costear quedarán con precio_cliente = 0.` : '')
-                    + ' El Cotizador leerá estos precios. ¿Continuar?';
+        // Cotizables sin receta
+        const sinReceta = document.getElementById('costosListasSinReceta');
+        if (sinReceta) sinReceta.addEventListener('change', () => {
+            this._listasFilters.sinReceta = sinReceta.checked;
+            this._applyListasFilters();
+        });
 
-                const confirmed = await Modal.confirm({
-                    title: 'Actualizar precios del Cotizador',
-                    message: msg,
-                });
-                if (!confirmed) return;
-
-                updateBtn.disabled = true;
-                updateBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;"></div> Actualizando…`;
-
-                let updated = 0;
-                for (const item of this._catalogoItems) {
-                    const precio = item.precioAlquiler || 0;
-                    // Bug fix: updateCatalogoItem espera camelCase
-                    const result = await API.updateCatalogoItem(item.id, { precioCliente: precio });
-                    if (result) updated++;
+        // Sort headers
+        document.querySelectorAll('.costos-listas-table .sortable').forEach(th => {
+            th.addEventListener('click', () => {
+                const col = th.dataset.sortCol;
+                if (this._listasSort.col === col) {
+                    this._listasSort.dir = this._listasSort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this._listasSort.col = col;
+                    this._listasSort.dir = 'asc';
                 }
+                this._applyListasFilters();
+            });
+        });
 
-                Toast.success(`${updated} precios actualizados en catalogo_items`);
-                updateBtn.disabled = false;
-                updateBtn.innerHTML = `
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    Actualizar precios Cotizador`;
+        // Toggle cotizable
+        document.querySelectorAll('input[data-toggle-id]').forEach(cb => {
+            cb.addEventListener('change', async (ev) => {
+                const id = parseInt(cb.dataset.toggleId);
+                const newVal = cb.checked;
+                cb.disabled = true;
+                const ok = await API.updateCatalogoItem(id, { esCotizable: newVal });
+                cb.disabled = false;
+                if (ok) {
+                    // Update in-memory para no re-fetchear
+                    const item = this._catalogoItems.find(i => String(i.id) === String(id));
+                    if (item) item.esCotizable = newVal;
+                    // Toggle visual
+                    cb.closest('.costos-listas-toggle')?.classList.toggle('is-on', newVal);
+                    Toast.success(newVal ? 'Marcado como cotizable' : 'Quitado de cotizables', 1500);
+                    // Re-render solo el header (KPIs cambian)
+                    this._applyListasFilters();
+                } else {
+                    cb.checked = !newVal;
+                    Toast.error('No se pudo actualizar');
+                }
+            });
+        });
+
+        // Próxima revisión inline edit
+        const prxView = document.getElementById('costosListasPrxView');
+        const prxEdit = document.getElementById('costosListasPrxEdit');
+        const prxInput = document.getElementById('costosListasPrxInput');
+        if (prxEdit && prxInput && prxView) {
+            prxEdit.addEventListener('click', () => {
+                prxView.style.display = 'none';
+                prxEdit.style.display = 'none';
+                prxInput.style.display = 'inline-block';
+                prxInput.focus();
+            });
+            const save = async () => {
+                const newVal = prxInput.value || null;
+                if (newVal === this._proximaRevisionLista) {
+                    prxInput.style.display = 'none';
+                    prxView.style.display = '';
+                    prxEdit.style.display = '';
+                    return;
+                }
+                prxInput.disabled = true;
+                const ok = await API.updateParametroGlobal('proxima_revision_lista', newVal);
+                prxInput.disabled = false;
+                if (ok) {
+                    this._proximaRevisionLista = newVal;
+                    // Asegurar que esté en _paramsGlobales
+                    const idx = (this._paramsGlobales || []).findIndex(p => p.clave === 'proxima_revision_lista');
+                    if (idx >= 0) {
+                        this._paramsGlobales[idx].valor = newVal;
+                    } else {
+                        this._paramsGlobales = this._paramsGlobales || [];
+                        this._paramsGlobales.push({ clave: 'proxima_revision_lista', valor: newVal, unidad: 'fecha' });
+                    }
+                    Toast.success('Próxima revisión actualizada', 1500);
+                    this._applyListasFilters();
+                } else {
+                    Toast.error('No se pudo guardar');
+                    prxInput.style.display = 'none';
+                    prxView.style.display = '';
+                    prxEdit.style.display = '';
+                }
+            };
+            prxInput.addEventListener('blur', save);
+            prxInput.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); prxInput.blur(); }
+                if (ev.key === 'Escape') {
+                    prxInput.value = this._proximaRevisionLista || '';
+                    prxInput.style.display = 'none';
+                    prxView.style.display = '';
+                    prxEdit.style.display = '';
+                }
             });
         }
 
-        // Exportar PDF catálogo (sin precios)
-        const pdfBtn = document.getElementById('costosExportPDF');
-        if (pdfBtn) {
-            pdfBtn.addEventListener('click', () => this._exportCatalogoPDF());
-        }
+        // Export PDF
+        const exportBtn = document.getElementById('costosListasExportBtn');
+        if (exportBtn) exportBtn.addEventListener('click', () => this._openExportPdfModal());
     },
 
-    async _exportCatalogoPDF() {
-        // Generate a printable catalog PDF without prices
-        const items = [...this._catalogoItems].sort((a, b) => (a.rubro || '').localeCompare(b.rubro || '') || (a.nombre || '').localeCompare(b.nombre || ''));
+    _openExportPdfModal() {
+        const instance = Modal.open({
+            title: '📄 Exportar lista de precios',
+            size: 'md',
+            body: `
+                <div style="padding:8px 4px;">
+                    <p style="color:var(--text-muted); font-size:13px; margin:0 0 14px;">
+                        Se exportan <strong>${this._filteredListaItems.length} items</strong> con los filtros actuales aplicados.
+                    </p>
+                    <div class="costos-listas-pdf-modes">
+                        <label class="costos-listas-pdf-mode">
+                            <input type="radio" name="pdfMode" value="cliente" checked>
+                            <div class="costos-listas-pdf-mode-content">
+                                <strong>Cliente final</strong>
+                                <span>Código + Nombre + Precio</span>
+                            </div>
+                        </label>
+                        <label class="costos-listas-pdf-mode">
+                            <input type="radio" name="pdfMode" value="socio">
+                            <div class="costos-listas-pdf-mode-content">
+                                <strong>Socio comercial</strong>
+                                <span>+ Rubro + Validez</span>
+                            </div>
+                        </label>
+                        <label class="costos-listas-pdf-mode">
+                            <input type="radio" name="pdfMode" value="interno">
+                            <div class="costos-listas-pdf-mode-content">
+                                <strong>Interno</strong>
+                                <span>+ Costo/uso + Snapshot + Próxima revisión</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="costosListasPdfGenerate">Generar</button>
+            `,
+        });
+        setTimeout(() => {
+            const btn = document.getElementById('costosListasPdfGenerate');
+            if (!btn) return;
+            btn.addEventListener('click', async () => {
+                const mode = document.querySelector('input[name="pdfMode"]:checked')?.value || 'cliente';
+                btn.disabled = true;
+                btn.textContent = 'Generando…';
+                try {
+                    await this._generatePdf(mode);
+                    Modal.close(instance);
+                } catch (e) {
+                    console.warn('[Costos] Error generando PDF:', e);
+                    Toast.error('Error al generar PDF: ' + (e?.message || 'desconocido'));
+                    btn.disabled = false;
+                    btn.textContent = 'Generar';
+                }
+            });
+        }, 80);
+    },
 
-        if (items.length === 0) {
-            Toast.warning('No hay items en el catálogo para exportar');
+    async _generatePdf(mode) {
+        if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+            Toast.error('jsPDF no está cargado. Refrescá la página.');
+            return;
+        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+        const items = this._filteredListaItems;
+        const today = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const prxRev = this._proximaRevisionLista
+            ? new Date(this._proximaRevisionLista).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : '—';
+
+        // Header con logo
+        const tryDrawLogo = async () => {
+            const tryUrl = async (url, w, h) => {
+                try {
+                    const resp = await fetch(url);
+                    if (!resp.ok) return false;
+                    const blob = await resp.blob();
+                    const dataUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                    doc.addImage(dataUrl, 'PNG', 14, 12, w, h);
+                    return true;
+                } catch (_) { return false; }
+            };
+            if (await tryUrl('assets/logo_full.png', 38, 12)) return true;
+            if (await tryUrl('assets/mepex_iso.png', 14, 14)) return true;
+            return false;
+        };
+        const logoOk = await tryDrawLogo();
+        if (!logoOk) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(18);
+            doc.setTextColor('#00ACC9');
+            doc.text('MEPEX', 14, 22);
+        }
+
+        // Título
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.setTextColor('#00ACC9');
+        doc.text('Lista de Precios', 14, 36);
+
+        const subTitleByMode = {
+            cliente: 'Cliente final',
+            socio: 'Socio comercial',
+            interno: 'Interno',
+        };
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor('#444444');
+        doc.text(`Versión: ${subTitleByMode[mode]} · Generado: ${today} · Próxima revisión: ${prxRev}`, 14, 42);
+
+        // Línea separadora
+        doc.setDrawColor('#00ACC9');
+        doc.setLineWidth(0.6);
+        doc.line(14, 45, 196, 45);
+
+        // Datos según modo
+        const fmtMoney = (v) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v || 0);
+        let head, rows;
+        if (mode === 'cliente') {
+            head = [['Código', 'Nombre', 'Precio']];
+            rows = items.map(i => [i.codigo || '', i.nombre || '', fmtMoney(i.precioAlquiler)]);
+        } else if (mode === 'socio') {
+            head = [['Código', 'Nombre', 'Rubro', 'Precio', 'Validez']];
+            rows = items.map(i => [i.codigo || '', i.nombre || '', i.rubro || '', fmtMoney(i.precioAlquiler), prxRev]);
+        } else { // interno
+            head = [['Código', 'Nombre', 'Rubro', 'Precio', 'Costo/uso', 'Snapshot', 'Próx. rev.']];
+            rows = items.map(i => [
+                i.codigo || '',
+                i.nombre || '',
+                i.rubro || '',
+                fmtMoney(i.precioAlquiler),
+                fmtMoney(i.costoPorUso),
+                i.snapshotCostosAt ? new Date(i.snapshotCostosAt).toLocaleDateString('es-AR') : '—',
+                prxRev,
+            ]);
+        }
+
+        if (typeof doc.autoTable !== 'function') {
+            Toast.error('jspdf-autotable no está cargado.');
             return;
         }
 
-        // Group by rubro
-        const byRubro = {};
-        for (const item of items) {
-            const rubro = item.rubro || 'Sin rubro';
-            if (!byRubro[rubro]) byRubro[rubro] = [];
-            byRubro[rubro].push(item);
-        }
+        doc.autoTable({
+            head,
+            body: rows,
+            startY: 50,
+            theme: 'grid',
+            headStyles: { fillColor: [0, 172, 201], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+            bodyStyles: { fontSize: 9, textColor: 30 },
+            alternateRowStyles: { fillColor: [245, 245, 245] },
+            tableLineColor: [224, 224, 224],
+            tableLineWidth: 0.1,
+            margin: { left: 14, right: 14 },
+            columnStyles: {
+                // Precio numérico alineado a la derecha (siempre es la última de las primeras 3)
+            },
+            didDrawPage: (data) => {
+                // Footer
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const pageWidth = doc.internal.pageSize.getWidth();
+                doc.setDrawColor('#FF7200');
+                doc.setLineWidth(0.4);
+                doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8);
+                doc.setTextColor('#666666');
+                doc.text('MEPEX · Buenos Aires, Argentina · mepex.com.ar', 14, pageHeight - 10);
+                const pageNum = `Página ${doc.internal.getNumberOfPages()}`;
+                doc.text(pageNum, pageWidth - 14, pageHeight - 10, { align: 'right' });
+            },
+        });
 
-        // Build print HTML
-        const rubroSections = Object.entries(byRubro).map(([rubro, ritems]) => `
-            <div style="break-inside:avoid; margin-bottom:24px;">
-                <h2 style="font-size:16px; color:#00A9C1; border-bottom:2px solid #00A9C1; padding-bottom:4px; margin:0 0 12px 0;">${rubro}</h2>
-                <table style="width:100%; border-collapse:collapse; font-size:12px;">
-                    <thead>
-                        <tr style="background:#222; color:#ccc;">
-                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Código</th>
-                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Nombre</th>
-                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Categoría</th>
-                            <th style="padding:6px 8px; text-align:left; border:1px solid #333;">Unidad</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${ritems.map(item => `
-                            <tr>
-                                <td style="padding:5px 8px; border:1px solid #333; font-family:monospace;">${item.codigo || '—'}</td>
-                                <td style="padding:5px 8px; border:1px solid #333; font-weight:500;">${item.nombre || '—'}</td>
-                                <td style="padding:5px 8px; border:1px solid #333;">${item.categoria || '—'}</td>
-                                <td style="padding:5px 8px; border:1px solid #333;">${item.unidad || '—'}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `).join('');
+        const filename = `lista-precios-${mode}-${today.replace(/\//g, '-')}.pdf`;
+        doc.save(filename);
+        Toast.success(`PDF generado · ${items.length} items`);
+    },
 
-        const printHtml = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Catálogo MEPEX</title>
-                <style>
-                    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                    body { font-family: 'Segoe UI', Arial, sans-serif; background: #050505; color: #E8E8E8; padding: 32px; margin: 0; }
-                </style>
-            </head>
-            <body>
-                <div style="text-align:center; margin-bottom:32px;">
-                    <h1 style="font-size:24px; color:#00A9C1; margin:0;">MEPEX — Catálogo de Productos</h1>
-                    <p style="color:#888; font-size:13px; margin:6px 0 0 0;">Generado: ${new Date().toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
-                </div>
-                ${rubroSections}
-                <div style="margin-top:32px; text-align:center; color:#555; font-size:11px;">
-                    MEPEX — Montaje y Equipamiento para Exposiciones | ${items.length} items
-                </div>
-            </body>
-            </html>
-        `;
-
-        const printWin = window.open('', '_blank');
-        if (printWin) {
-            printWin.document.write(printHtml);
-            printWin.document.close();
-            setTimeout(() => printWin.print(), 500);
-            Toast.success('PDF de catálogo generado (sin precios)');
-        } else {
-            Toast.error('No se pudo abrir la ventana de impresión. Verificá los permisos del navegador.');
-        }
+    // Hook para sub-handlers de _attachFilterListeners (filtro Rubro)
+    _setListasFilterRubros(values) {
+        this._listasFilters.rubros = values || [];
+        this._applyListasFilters();
     },
 
     _goToRecetasTab() {
@@ -3146,10 +3495,12 @@ const CostosModule = {
             case 'proveedor': this._filterProveedor = values; break;
             case 'rubro': this._filterRubro = values; break;
             case 'tipoAmortizacion': this._filterTipoAmortizacion = values; break;
+            case 'listasRubros': this._listasFilters.rubros = values; break;
         }
         // Re-aplica solo la tabla, preservando dropdowns abiertos del filtro
         if (this._activeTab === 'insumos') this._applyInsumosFilters();
         else if (this._activeTab === 'recetas') this._applyRecetasFilters();
+        else if (this._activeTab === 'listas-precio') this._applyListasFilters();
         else this._renderActiveTab();
     },
 
@@ -3157,7 +3508,7 @@ const CostosModule = {
         if (!wrap) return;
         const trigger = wrap.querySelector('[data-mf-toggle]');
         if (!trigger) return;
-        const labelMap = { clasificacion: 'Clasificación', categoria: 'Categoría', proveedor: 'Proveedor', rubro: 'Rubro', tipoAmortizacion: 'Tipo amort.' };
+        const labelMap = { clasificacion: 'Clasificación', categoria: 'Categoría', proveedor: 'Proveedor', rubro: 'Rubro', tipoAmortizacion: 'Tipo amort.', listasRubros: 'Rubro' };
         const label = labelMap[filterId] || filterId;
         const count = selected ? selected.length : 0;
         const span = trigger.querySelector('span');

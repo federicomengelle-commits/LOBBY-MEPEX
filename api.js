@@ -1446,6 +1446,8 @@ const API = {
                 snapshotPctMargen: i.snapshot_pct_margen != null ? parseFloat(i.snapshot_pct_margen) : null,
                 snapshotHoraTallerArs: i.snapshot_hora_taller_ars != null ? parseFloat(i.snapshot_hora_taller_ars) : null,
                 snapshotCostosAt: i.snapshot_costos_at || null,
+                // F.4 — flag de cotizable (visible en lista de precios)
+                esCotizable: i.es_cotizable === true,
             }));
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
@@ -1524,6 +1526,8 @@ const API = {
             if (data.snapshotPctMargen !== undefined) payload.snapshot_pct_margen = data.snapshotPctMargen;
             if (data.snapshotHoraTallerArs !== undefined) payload.snapshot_hora_taller_ars = data.snapshotHoraTallerArs;
             if (data.snapshotCostosAt !== undefined) payload.snapshot_costos_at = data.snapshotCostosAt;
+            // F.4 — flag cotizable
+            if (data.esCotizable !== undefined) payload.es_cotizable = data.esCotizable === true;
             await UndoHelpers.updateRecord('catalogo_items', id, payload, 'Edito item de catalogo');
             this.clearCache();
             return true;

@@ -14799,3 +14799,367 @@ tr.cmp-proximo td { color: #F28D15; }
     padding: 3px 8px;
     border-radius: 3px;
 }
+.costos-params-clave {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--primary);
+    font-weight: 600;
+}
+.costos-params-desc {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* ============================================
+   F.4 — Tab Listas de Precio (read-only sobre catalogo_items)
+   ============================================ */
+.costos-listas-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.costos-listas-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 16px 24px 14px;
+    background: #0a0a0a;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.costos-listas-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+.costos-listas-title {
+    font-family: var(--font-main);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+.costos-listas-kpis {
+    display: flex;
+    gap: 10px;
+}
+.costos-listas-kpi {
+    background: #111111;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 8px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 80px;
+}
+.costos-listas-kpi-num {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+}
+.costos-listas-kpi-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+.costos-listas-kpi-warn .costos-listas-kpi-num {
+    color: #F28D15;
+}
+.costos-listas-kpi-warn {
+    border-color: rgba(242,141,21,0.40);
+    background: rgba(242,141,21,0.06);
+}
+
+.costos-listas-header-right {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.costos-listas-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.costos-listas-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.costos-listas-meta-label {
+    color: var(--text-dim);
+}
+.costos-listas-meta strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+.costos-listas-prx-edit {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.costos-listas-prx-edit:hover {
+    background: rgba(0,169,193,0.10);
+}
+.costos-listas-prx-input {
+    background: #1a1a1a;
+    border: 1px solid var(--primary);
+    border-radius: 4px;
+    color: var(--text-primary);
+    padding: 4px 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color-scheme: dark;
+}
+
+/* Filtros */
+.costos-listas-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border);
+    background: #050505;
+    flex-shrink: 0;
+}
+.costos-listas-filter-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 280px;
+    min-width: 220px;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+.costos-listas-filter-search:focus-within {
+    border-color: var(--primary);
+}
+.costos-listas-filter-search svg {
+    color: var(--text-muted);
+}
+.costos-listas-filter-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+.costos-listas-filter-inline {
+    display: inline-flex;
+    align-items: center;
+}
+.costos-listas-filter-select {
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: var(--font-main);
+    cursor: pointer;
+}
+.costos-listas-filter-select:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+.costos-listas-filter-act {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+.costos-listas-filter-num {
+    width: 64px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    text-align: right;
+}
+.costos-listas-filter-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.costos-listas-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 12px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+.costos-listas-filter-toggle input[type="checkbox"] {
+    accent-color: var(--primary);
+}
+
+/* Tabla con split visual */
+.costos-listas-table-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 0 24px 16px;
+}
+.costos-listas-table {
+    margin-top: 14px;
+}
+.costos-listas-supheader th {
+    background: #0a0a0a !important;
+    color: var(--primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    padding: 6px 12px !important;
+    border-bottom: 1px solid #1a1a1a;
+}
+.costos-listas-supheader-precio {
+    text-align: left;
+}
+.costos-listas-supheader-estado {
+    text-align: left;
+    border-left: 2px solid #2a2a2a;
+    padding-left: 18px !important;
+}
+.costos-listas-table thead tr:nth-child(2) th {
+    background: var(--bg) !important;
+    top: 27px;             /* offset por la supheader */
+}
+.costos-listas-cell-estado {
+    border-left: 2px solid #2a2a2a;
+    background: #0d0d0d;
+    padding-left: 18px !important;
+}
+.costos-listas-row .costos-listas-cell-estado {
+    background: #0d0d0d;
+}
+.costos-listas-row-warn {
+    color: #F28D15;
+    font-size: 12px;
+    margin-right: 4px;
+}
+.costos-listas-act-stale {
+    color: #F28D15;
+    font-weight: 600;
+}
+.costos-listas-footnote {
+    padding: 8px 24px;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    border-top: 1px solid rgba(255,255,255,0.04);
+    flex-shrink: 0;
+}
+
+/* Toggle (switch) */
+.costos-listas-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+.costos-listas-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.costos-listas-toggle-track {
+    width: 36px;
+    height: 18px;
+    background: #2a2a2a;
+    border-radius: 12px;
+    position: relative;
+    transition: background 180ms ease;
+}
+.costos-listas-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: #888;
+    border-radius: 50%;
+    transition: transform 180ms ease, background 180ms ease;
+}
+.costos-listas-toggle.is-on .costos-listas-toggle-track {
+    background: rgba(0,169,193,0.30);
+}
+.costos-listas-toggle.is-on .costos-listas-toggle-thumb {
+    transform: translateX(18px);
+    background: var(--primary);
+    box-shadow: 0 0 6px rgba(0,169,193,0.50);
+}
+
+/* Modal export PDF */
+.costos-listas-pdf-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.costos-listas-pdf-mode {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 180ms ease, background 180ms ease;
+}
+.costos-listas-pdf-mode:hover {
+    background: rgba(0,169,193,0.04);
+    border-color: rgba(0,169,193,0.30);
+}
+.costos-listas-pdf-mode input[type="radio"] {
+    accent-color: var(--primary);
+    width: 16px;
+    height: 16px;
+}
+.costos-listas-pdf-mode-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.costos-listas-pdf-mode-content strong {
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.costos-listas-pdf-mode-content span {
+    font-size: 12px;
+    color: var(--text-muted);
+}
