@@ -3076,6 +3076,18 @@ const API = {
     // catalogo_items para que el frontend pueda leerlos sin tener que recalcular.
     async recalcularRecetaRPC(itemId) {
         try {
+            // F.5 fix — Para subalquilados, la RPC lee snapshot_pct_margen para
+            // calcular el precio. Si no está cargado, defaultea al global. Por
+            // eso pre-snapshoteamos margen_subalquiler ANTES de llamar a la RPC,
+            // así el cálculo usa el margen específico del item (no el global).
+            const items = await this.getCatalogoItems();
+            const itemBefore = items?.find(i => String(i.id) === String(itemId));
+            if (itemBefore?.tipoReceta === 'subalquilado' && itemBefore.margenSubalquiler != null) {
+                await this.updateCatalogoItem(itemId, {
+                    snapshotPctMargen: itemBefore.margenSubalquiler,
+                });
+            }
+
             const { data, error } = await supabaseClient.rpc('calcular_receta', { p_item_id: itemId });
             if (error) throw error;
             const row = Array.isArray(data) ? data[0] : data;
@@ -3089,12 +3101,18 @@ const API = {
 
             // Snapshot de params globales actuales (la RPC ya no usa markup_estructura)
             const params = await this.getParametrosGlobalesMap();
+            // Para subalquilado, el margen efectivo es margen_subalquiler del item;
+            // para propio, es el global pct_margen_default.
+            const margenEfectivo = itemBefore?.tipoReceta === 'subalquilado'
+                && itemBefore.margenSubalquiler != null
+                ? itemBefore.margenSubalquiler
+                : parseFloat(params.pct_margen_default);
             const snapshotPayload = {
                 costoFabricacion,
                 costoPorUso,
                 precioAlquiler,
                 snapshotPctIndirectosFabrica: parseFloat(params.pct_indirectos_fabrica) || null,
-                snapshotPctMargen: parseFloat(params.pct_margen_default) || null,
+                snapshotPctMargen: margenEfectivo || null,
                 snapshotHoraTallerArs: parseFloat(params.hora_taller_ars) || null,
                 snapshotCostosAt: new Date().toISOString(),
             };

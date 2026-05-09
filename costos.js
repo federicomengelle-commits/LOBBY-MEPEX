@@ -2450,7 +2450,9 @@ const CostosModule = {
             };
             const stale = !item.snapshotCostosAt;
             const dateStr = fmtDate(item.snapshotCostosAt);
-            const margenSnap = item.snapshotPctMargen;
+            // Para subalquilado, el margen REAL aplicado es margen_subalquiler del item.
+            // El snapshot_pct_margen guarda el global por compat, pero no es lo que se usó.
+            const margenSnap = item.margenSubalquiler != null ? item.margenSubalquiler : item.snapshotPctMargen;
             return `
                 <div class="costos-receta-config-block costos-receta-snapshots">
                     <div class="costos-receta-config-title">
