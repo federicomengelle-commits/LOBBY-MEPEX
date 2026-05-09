@@ -3087,14 +3087,13 @@ const API = {
             const costoPorUso = parseFloat(row.costo_por_uso) || 0;
             const precioAlquiler = parseFloat(row.precio_alquiler) || 0;
 
-            // Snapshot de params globales actuales
+            // Snapshot de params globales actuales (la RPC ya no usa markup_estructura)
             const params = await this.getParametrosGlobalesMap();
             const snapshotPayload = {
                 costoFabricacion,
                 costoPorUso,
                 precioAlquiler,
                 snapshotPctIndirectosFabrica: parseFloat(params.pct_indirectos_fabrica) || null,
-                snapshotPctMarkupEstructura: parseFloat(params.pct_markup_estructura) || null,
                 snapshotPctMargen: parseFloat(params.pct_margen_default) || null,
                 snapshotHoraTallerArs: parseFloat(params.hora_taller_ars) || null,
                 snapshotCostosAt: new Date().toISOString(),

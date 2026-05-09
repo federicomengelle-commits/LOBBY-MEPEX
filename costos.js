@@ -1115,9 +1115,6 @@ const CostosModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Nuevo insumo
                 </button>
-                <button class="btn btn-ghost btn-sm" id="costosBtnBulkPrice" title="Actualización masiva de precios">
-                    📊 Ajuste masivo
-                </button>
             </div>
         `;
         this._attachFilterListeners(filtersEl);
@@ -1680,109 +1677,6 @@ const CostosModule = {
         }, 100);
     },
 
-    // ─── Bulk price modal ───
-
-    _openBulkPriceModal() {
-        const categorias = [...new Set(this._insumos.map(i => i.categoria).filter(Boolean))].sort();
-
-        const instance = Modal.open({
-            title: '📊 Actualización masiva de precios',
-            size: 'lg',
-            body: `
-                <div style="margin-bottom:16px; color:var(--text-muted); font-size:13px;">
-                    Aplicar un porcentaje de ajuste a todos los insumos o filtrar por categoría.
-                </div>
-                <div style="display:flex; gap:12px; margin-bottom:16px;">
-                    <div style="flex:1">
-                        <label style="font-size:12px; color:var(--text-muted); margin-bottom:4px; display:block;">Categoría</label>
-                        <select id="bulkPriceCat" class="costos-ficha-select" style="width:100%">
-                            <option value="">Todas</option>
-                            ${categorias.map(c => `<option value="${c}">${c}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div style="flex:1">
-                        <label style="font-size:12px; color:var(--text-muted); margin-bottom:4px; display:block;">Ajuste %</label>
-                        <input type="number" id="bulkPricePercent" value="10" step="0.1" class="costos-ficha-input" style="width:100%">
-                    </div>
-                    <div style="display:flex; align-items:flex-end;">
-                        <button class="btn btn-primary btn-sm" id="bulkPricePreview">Vista previa</button>
-                    </div>
-                </div>
-                <div id="bulkPricePreviewArea"></div>
-            `,
-            footer: `
-                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
-                <button class="btn btn-primary" id="bulkPriceApply" disabled>Aplicar ajuste</button>
-            `,
-        });
-
-        setTimeout(() => {
-            const previewBtn = document.getElementById('bulkPricePreview');
-            const applyBtn = document.getElementById('bulkPriceApply');
-            const previewArea = document.getElementById('bulkPricePreviewArea');
-
-            let previewData = [];
-
-            if (previewBtn) {
-                previewBtn.addEventListener('click', () => {
-                    const cat = document.getElementById('bulkPriceCat')?.value || '';
-                    const percent = parseFloat(document.getElementById('bulkPricePercent')?.value) || 0;
-                    if (percent === 0) { Toast.warning('Ingresá un porcentaje'); return; }
-
-                    let items = [...this._insumos];
-                    if (cat) items = items.filter(i => i.categoria === cat);
-
-                    previewData = items.map(i => ({
-                        ...i,
-                        precioNuevo: Math.round(i.costoUnitario * (1 + percent / 100) * 100) / 100,
-                    }));
-
-                    if (previewArea) {
-                        previewArea.innerHTML = `
-                            <div style="max-height:300px; overflow-y:auto; border:1px solid var(--border); border-radius:6px;">
-                                <table class="costos-table" style="font-size:12px;">
-                                    <thead><tr><th>Insumo</th><th style="text-align:right">Actual</th><th style="text-align:right">Nuevo</th><th style="text-align:right">Var.</th></tr></thead>
-                                    <tbody>
-                                        ${previewData.map(s => `
-                                            <tr>
-                                                <td>${s.nombre}</td>
-                                                <td style="text-align:right">${API.formatCurrency(s.costoUnitario)}</td>
-                                                <td style="text-align:right; color:#00CC88; font-weight:600">${API.formatCurrency(s.precioNuevo)}</td>
-                                                <td style="text-align:right; color:${percent > 0 ? '#ff4444' : '#00CC88'}">${percent > 0 ? '+' : ''}${percent}%</td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div style="margin-top:8px; font-size:12px; color:var(--text-muted);">${previewData.length} insumos afectados</div>
-                        `;
-                    }
-
-                    if (applyBtn) applyBtn.disabled = previewData.length === 0;
-                });
-            }
-
-            if (applyBtn) {
-                applyBtn.addEventListener('click', async () => {
-                    if (!previewData.length) return;
-                    const motivo = `Ajuste masivo — Costos`;
-                    applyBtn.disabled = true;
-                    applyBtn.textContent = 'Aplicando…';
-
-                    for (const s of previewData) {
-                        await API.logPrecioChange(s.id, s.costoUnitario, s.precioNuevo, motivo);
-                        await API.updateInsumo(s.id, { costoUnitario: s.precioNuevo });
-                    }
-
-                    // Recalculate all
-                    const cascada = await API.recalcularTodo();
-                    Toast.success(`${previewData.length} insumos actualizados${cascada.ok ? `, ${cascada.updated || 0} items recalculados` : ''}`);
-                    Modal.close(instance);
-                    await this._refreshData();
-                });
-            }
-        }, 100);
-    },
 
     // ═══════════════════════════════════════════
     //  TAB: RECETAS / BOM
@@ -2031,14 +1925,42 @@ const CostosModule = {
             </div>
         `;
 
+        // F.5 — Cambiar tipo de receta requiere confirmación explícita.
+        // Cambiar tipo NO recalcula el precio; el usuario tiene que apretar
+        // Recalcular después si quiere aplicar los cambios.
         inner.querySelectorAll('.costos-tipo-opt').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const nuevoTipo = btn.dataset.tipo;
-                if (nuevoTipo === item.tipoReceta) return;
+                const tipoActual = item.tipoReceta || 'propio';
+                if (nuevoTipo === tipoActual) return;
+
+                const mensajes = {
+                    'propio→subalquilado': `<p style="margin:0 0 8px">Vas a cambiar de <strong>Propio</strong> a <strong>Subalquilado</strong>.</p>
+                        <p style="margin:0 0 8px">Subalquilado solo aplica <code>costo MP × (1 + margen)</code>. Se descartan del cálculo: minutos de fabricación, indirectos, amortización por uso.</p>
+                        <p style="margin:0; color:var(--text-muted); font-size:13px;">Tu configuración de propio queda guardada en la DB pero no se usa hasta volver a Propio. El precio cacheado actual se mantiene hasta que apretes <strong>Recalcular precio</strong>.</p>`,
+                    'subalquilado→propio': `<p style="margin:0 0 8px">Vas a cambiar de <strong>Subalquilado</strong> a <strong>Propio</strong>.</p>
+                        <p style="margin:0 0 8px">Propio aplica la cascada completa: MP + MO + indirectos sobre MO + amortización por VU. Necesitás tener cargados los minutos de fabricación y la VU del armado.</p>
+                        <p style="margin:0; color:var(--text-muted); font-size:13px;">Tu margen subalquilado actual queda guardado pero no se usa. El precio cacheado se mantiene hasta que apretes <strong>Recalcular precio</strong>.</p>`,
+                };
+                const key = `${tipoActual}→${nuevoTipo}`;
+                const confirmed = await Modal.confirm({
+                    title: '🔀 Cambiar tipo de receta',
+                    message: mensajes[key] || `Cambiar tipo a <strong>${nuevoTipo}</strong>.`,
+                    confirmText: 'Cambiar',
+                    cancelText: 'Cancelar',
+                });
+                if (!confirmed) return;
+
                 inner.querySelectorAll('.costos-tipo-opt').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 item.tipoReceta = nuevoTipo;
-                await API.updateCatalogoItem(item.id, { tipoReceta: nuevoTipo });
+                const ok = await API.updateCatalogoItem(item.id, { tipoReceta: nuevoTipo });
+                if (ok) {
+                    Toast.success(`Tipo cambiado a ${nuevoTipo} · apretá Recalcular para aplicar`, 3000);
+                } else {
+                    Toast.error('No se pudo cambiar el tipo');
+                    item.tipoReceta = tipoActual;
+                }
                 await this._loadRecetaContent(item);
             });
         });
@@ -2074,11 +1996,17 @@ const CostosModule = {
         ]);
         this._recetaCache[item.id] = componentes;
 
-        // Calculate total cost from recipe
-        let costoTotal = 0;
+        // F.5 — alinear con la RPC `calcular_receta`:
+        //  - Insumos: subtotal = cantidad × costo_unit × (1 + desperdicio%)
+        //  - Sub-items: el costo unit relevante es costoPorUso (ya amortizado),
+        //    no costoFabricacion. Es lo que la RPC realmente computa para el
+        //    cálculo del costo_uso del item padre.
+        let costoTotalMpNueva = 0;       // suma con desperdicio (= costoMP de la RPC)
+        let costoTotalRaw = 0;            // suma cruda (cantidad × unit), informativa
         const compData = [];
         for (const comp of componentes) {
             let nombre = '—', costoUnit = 0, unidad = '', codigo = '';
+            let pctDesperdicio = 0;
             if (comp.componenteType === 'insumo') {
                 const insumo = this._insumos.find(i => String(i.id) === String(comp.componenteId));
                 if (insumo) {
@@ -2086,22 +2014,41 @@ const CostosModule = {
                     costoUnit = insumo.costoUnitario;
                     unidad = insumo.unidadBase;
                     codigo = insumo.codigo || '';
+                    // Desperdicio: override del insumo o el del tipo de amortización
+                    const tipo = this._tiposAmortizacionMap[insumo.tipoAmortizacion];
+                    pctDesperdicio = insumo.pctDesperdicioOverride != null
+                        ? insumo.pctDesperdicioOverride
+                        : (tipo?.pct_desperdicio ?? 0);
                 }
             } else if (comp.componenteType === 'item') {
                 const subItem = this._catalogoItems.find(i => String(i.id) === String(comp.componenteId));
                 if (subItem) {
                     nombre = subItem.nombre;
-                    // Para items hijos: usar costoFabricacion (cost completo sin margen).
-                    // Fallback a costoProduccion (legacy).
-                    costoUnit = subItem.costoFabricacion || subItem.costoProduccion || 0;
+                    // Sub-items: el "costo unitario efectivo" desde la perspectiva
+                    // de la receta padre es costo_por_uso (ya amortizado por la RPC).
+                    // Fallback a costoFabricacion si nunca se recalculó.
+                    costoUnit = subItem.costoPorUso || subItem.costoFabricacion || subItem.costoProduccion || 0;
                     unidad = subItem.unidad;
                     codigo = subItem.codigo || '';
+                    // sub-items: el desperdicio ya viene metido en costoPorUso del hijo
+                    pctDesperdicio = 0;
                 }
             }
-            const subtotal = comp.cantidad * costoUnit;
-            costoTotal += subtotal;
-            compData.push({ ...comp, nombre, costoUnit, unidad, codigo, subtotal });
+            const subtotalRaw = comp.cantidad * costoUnit;
+            const subtotalConDesp = subtotalRaw * (1 + (pctDesperdicio || 0) / 100);
+            costoTotalRaw += subtotalRaw;
+            costoTotalMpNueva += subtotalConDesp;
+            compData.push({
+                ...comp,
+                nombre, costoUnit, unidad, codigo,
+                pctDesperdicio,
+                subtotal: subtotalConDesp,    // ahora incluye desperdicio (= lo que la RPC usa)
+                subtotalRaw,                   // crudo, para tooltip
+            });
         }
+        // Mantengo la variable costoTotal para el resto del flujo (cascada legacy etc),
+        // pero apunta al valor real con desperdicio que la RPC computa
+        const costoTotal = costoTotalMpNueva;
 
         // Pre-cargar sub-componentes para items expandidos
         const subcompsByCompId = {};
@@ -2143,11 +2090,11 @@ const CostosModule = {
             </div>
 
             <div class="costos-receta-total-bar">
-                <span class="costos-receta-total-label">Costo MP</span>
+                <span class="costos-receta-total-label" title="Costo de materia prima nuevo, incluye desperdicio aplicado por insumo. Es lo que la RPC calcular_receta usa como base.">Costo MP <span style="color:var(--text-dim); font-weight:400; font-size:11px;">(con desperdicio)</span></span>
                 <span class="costos-receta-total-value" id="costosRecetaTotalValue">${API.formatCurrency(costoTotal)}</span>
-                ${Math.abs(costoTotal - item.costoProduccion) > 0.01 ? `
-                    <span class="costos-receta-total-diff" title="Diferencia con costo guardado">
-                        (guardado: ${API.formatCurrency(item.costoProduccion)})
+                ${costoTotalRaw > 0 && Math.abs(costoTotal - costoTotalRaw) > 0.01 ? `
+                    <span class="costos-receta-total-diff" title="Subtotal sin desperdicio">
+                        (sin desp: ${API.formatCurrency(costoTotalRaw)})
                     </span>
                 ` : ''}
             </div>
@@ -2291,7 +2238,7 @@ const CostosModule = {
                 if (ins) { nombre = ins.nombre; costoUnit = ins.costoUnitario; unidad = ins.unidadBase; codigo = ins.codigo || ''; }
             } else if (sc.componenteType === 'item') {
                 const it = this._catalogoItems.find(i => String(i.id) === String(sc.componenteId));
-                if (it) { nombre = it.nombre; costoUnit = it.costoFabricacion || it.costoProduccion || 0; unidad = it.unidad; codigo = it.codigo || ''; }
+                if (it) { nombre = it.nombre; costoUnit = it.costoPorUso || it.costoFabricacion || it.costoProduccion || 0; unidad = it.unidad; codigo = it.codigo || ''; }
             }
             return { ...sc, nombre, costoUnit, unidad, codigo };
         });
@@ -2518,7 +2465,7 @@ const CostosModule = {
                         </div>
                     </div>
                     <div class="costos-receta-config-hint">
-                        Subalquilado no usa hora taller, indirectos ni markup. Solo costo proveedor × (1 + margen).
+                        Subalquilado no usa hora taller, indirectos ni markup. Solo costo MP × (1 + margen).
                     </div>
                 </div>
             `;
@@ -2530,7 +2477,6 @@ const CostosModule = {
         };
         const snap = {
             pct_indirectos: item.snapshotPctIndirectosFabrica,
-            pct_markup: item.snapshotPctMarkupEstructura,
             pct_margen: item.snapshotPctMargen,
             hora_taller: item.snapshotHoraTallerArs,
             at: item.snapshotCostosAt,
@@ -2538,12 +2484,17 @@ const CostosModule = {
         const stale = !snap.at;
         const dateStr = fmtDate(snap.at);
 
-        // Comparación con params actuales (read-only)
+        // Comparación con params actuales (key-value de parametros_globales)
+        // _paramsGlobales es array [{ clave, valor, ... }]
+        const getParam = (clave) => {
+            const list = this._paramsGlobales || [];
+            const found = list.find(p => p.clave === clave);
+            return found ? parseFloat(found.valor) : null;
+        };
         const cur = {
-            pct_indirectos: parseFloat(params?.pct_indirectos_fabrica) || null,
-            pct_markup: parseFloat(params?.pct_markup_estructura) || null,
-            pct_margen: parseFloat(params?.pct_margen_default) || null,
-            hora_taller: parseFloat(params?.hora_taller_ars) || null,
+            pct_indirectos: getParam('pct_indirectos_fabrica'),
+            pct_margen: getParam('pct_margen_default'),
+            hora_taller: getParam('hora_taller_ars'),
         };
         const diff = (a, b) => (a != null && b != null && Math.abs(a - b) > 0.0001);
         const diffMark = (snapVal, curVal) => diff(snapVal, curVal)
@@ -2561,10 +2512,6 @@ const CostosModule = {
                     <div class="costos-receta-snapshot-item">
                         <span class="costos-receta-snapshot-label">% Indirectos fábrica</span>
                         <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_indirectos)}${diffMark(snap.pct_indirectos, cur.pct_indirectos)}</span>
-                    </div>
-                    <div class="costos-receta-snapshot-item">
-                        <span class="costos-receta-snapshot-label">% Markup estructura</span>
-                        <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_markup)}${diffMark(snap.pct_markup, cur.pct_markup)}</span>
                     </div>
                     <div class="costos-receta-snapshot-item">
                         <span class="costos-receta-snapshot-label">% Margen</span>
@@ -2720,49 +2667,10 @@ const CostosModule = {
     },
 
     // Subalquilado: precio = costo MP (suma componentes) × (1 + margen).
-    // Sin markup, sin amortización. costo_proveedor_directo queda DEPRECADO:
-    // siempre se suma de la receta para que sea consistente con Insumos.
-    async _recalcularSubalquilado(item) {
-        try {
-            // Sumar costos de componentes (insumos + sub-items) — fuente de verdad
-            const comps = await API.getRecetaComponentes(item.id);
-            let costoMP = 0;
-            for (const c of comps) {
-                if (c.componenteType === 'insumo') {
-                    const ins = this._insumos.find(i => String(i.id) === String(c.componenteId));
-                    if (ins) costoMP += c.cantidad * (ins.costoUnitario || 0);
-                } else if (c.componenteType === 'item') {
-                    const sub = this._catalogoItems.find(i => String(i.id) === String(c.componenteId));
-                    if (sub) costoMP += c.cantidad * (sub.costoFabricacion || 0);
-                }
-            }
-            const margen = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
-            const precioAlquiler = costoMP * (1 + margen);
-
-            await API.updateCatalogoItem(item.id, {
-                costoFabricacion: costoMP,       // passthrough — costo MP = costo proveedor
-                costoPorUso: costoMP,             // passthrough — no se amortiza
-                precioAlquiler,
-                costoProveedorDirecto: null,      // depreciado — siempre suma de componentes
-                snapshotPctIndirectosFabrica: null,
-                snapshotPctMarkupEstructura: null,
-                snapshotPctMargen: margen,
-                snapshotHoraTallerArs: null,
-                snapshotCostosAt: new Date().toISOString(),
-            });
-            API.clearCache();
-            return {
-                ok: true,
-                costoMp: costoMP,
-                costoFabricacion: costoMP,
-                costoPorUso: costoMP,
-                precioAlquiler,
-            };
-        } catch (e) {
-            console.warn('[Costos] Error recalculando subalquilado:', e);
-            return { ok: false, error: e?.message || String(e) };
-        }
-    },
+    // F.5 — Eliminado _recalcularSubalquilado. La RPC `calcular_receta` actual
+    // (post patch SQL) maneja correctamente subalquilado: si tipo_receta='subalquilado'
+    // entra a su rama propia, suma componentes (o usa costo_proveedor_directo si está
+    // cargado) y aplica solo margen sin markup. Una sola fuente de verdad.
 
     async _recalcularUnaReceta(item) {
         if (this._recalcInProgress) return;
@@ -2790,13 +2698,8 @@ const CostosModule = {
 
         const oldPrecio = item.precioAlquiler || 0;
 
-        // Bifurcación por tipo: subalquilado tiene fórmula simple (no RPC).
-        let result;
-        if (item.tipoReceta === 'subalquilado') {
-            result = await this._recalcularSubalquilado(item);
-        } else {
-            result = await API.recalcularRecetaRPC(item.id);
-        }
+        // F.5 — Una sola ruta: la RPC maneja propio y subalquilado solita.
+        const result = await API.recalcularRecetaRPC(item.id);
         this._recalcInProgress = false;
 
         if (!result.ok) {
@@ -2847,12 +2750,22 @@ const CostosModule = {
             footer: '',
         });
 
-        // Loop manual para bifurcar por tipo (propio → RPC, subalquilado → fórmula simple)
+        // F.5 — Fresh fetch para evitar cache stale (si el usuario tocó algo
+        // recién, queremos los tipo_receta más actuales).
+        API.clearCache();
+        const itemsRefreshed = await API.getCatalogoItems();
+        if (itemsRefreshed) this._catalogoItems = itemsRefreshed;
         const items = this._catalogoItems || [];
-        // Filtramos a items con componentes activos para evitar items vacíos
+
+        // Filtramos a items con componentes activos + subalquilados (que pueden
+        // tener costo_proveedor_directo cargado sin componentes)
         const compsResp = await supabaseClient.from('receta_componentes').select('item_id').eq('_deleted', false);
         const itemsConReceta = new Set((compsResp.data || []).map(r => String(r.item_id)));
         const targets = items.filter(i => itemsConReceta.has(String(i.id)) || i.tipoReceta === 'subalquilado');
+
+        // Defensa: guardar tipo original antes de la RPC. Si la RPC tocara el
+        // tipo_receta (no debería con el patch SQL), avisamos al final.
+        const tiposBefore = new Map(targets.map(t => [String(t.id), t.tipoReceta]));
 
         let updated = 0, failed = 0;
         for (let i = 0; i < targets.length; i++) {
@@ -2861,13 +2774,25 @@ const CostosModule = {
             const bar = document.getElementById('costosRecalcAllBar');
             if (text) text.textContent = `Recalculando ${i + 1} de ${targets.length}: ${item.nombre}`;
             if (bar) bar.style.width = `${Math.round((i / targets.length) * 100)}%`;
-
-            const r = item.tipoReceta === 'subalquilado'
-                ? await this._recalcularSubalquilado(item)
-                : await API.recalcularRecetaRPC(item.id);
+            const r = await API.recalcularRecetaRPC(item.id);
             if (r.ok) updated++; else failed++;
         }
         const result = { ok: failed === 0, total: targets.length, updated, failed };
+
+        // Verificar que ningún tipo_receta haya cambiado (guard del bug anterior)
+        API.clearCache();
+        const itemsAfter = await API.getCatalogoItems();
+        const cambiosTipo = [];
+        for (const it of (itemsAfter || [])) {
+            const before = tiposBefore.get(String(it.id));
+            if (before && before !== it.tipoReceta) {
+                cambiosTipo.push({ id: it.id, nombre: it.nombre, from: before, to: it.tipoReceta });
+            }
+        }
+        if (cambiosTipo.length > 0) {
+            console.warn('[Costos] tipo_receta cambió en items tras Recalcular Todos:', cambiosTipo);
+            Toast.warning(`${cambiosTipo.length} item(s) cambiaron de tipo · revisá la consola`);
+        }
 
         Modal.close(progressInstance);
         this._recalcInProgress = false;
@@ -3516,10 +3441,6 @@ const CostosModule = {
         // New receta
         const newRecetaBtn = document.getElementById('costosBtnNewReceta');
         if (newRecetaBtn) newRecetaBtn.addEventListener('click', () => this._openNewRecetaModal());
-
-        // Bulk price
-        const bulkBtn = document.getElementById('costosBtnBulkPrice');
-        if (bulkBtn) bulkBtn.addEventListener('click', () => this._openBulkPriceModal());
     },
 
     _setFilter(filterId, values) {
