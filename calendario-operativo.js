@@ -904,11 +904,13 @@ const CalendarioOperativo = {
 
     async _loadPanelData(event) {
         try {
-            const [equipo, movimientos, cargasNew, docs, historial] = await Promise.all([
+            const [equipo, movimientos, cargasNew, asignacionesNew, docs, historial] = await Promise.all([
                 API.getEventoEquipo(event.id).catch(() => []),
                 API.getEventoTransporte(event.id).catch(() => []),
                 // Tanda 3.D — cargas (schema nuevo UUID)
                 API.getCargas({ eventoId: event.id }).catch(() => []),
+                // Tanda 3+ — asignaciones de personas al evento (schema nuevo)
+                API.getAsignacionesByEvento(event.id).catch(() => []),
                 Promise.resolve(null), // TODO Fase 6: API.getEventDocumentos(event.id)
                 Promise.resolve(null), // TODO Fase 6: API.getEventHistorial(event.id)
             ]);
@@ -927,6 +929,8 @@ const CalendarioOperativo = {
             event._movimientos = movimientos || [];
             // Tanda 3.D — cargas del schema nuevo, filtradas no canceladas
             event._cargasNew = (cargasNew || []).filter(c => c.estado !== 'cancelada');
+            // Tanda 3+ — asignaciones de personas al evento, filtradas no canceladas
+            event._asignacionesNew = (asignacionesNew || []).filter(a => a.estado !== 'cancelada');
             event._documentos = docs || (event.documents?.items || []);
             event._historial = historial || [];
         } catch {
@@ -959,6 +963,21 @@ const CalendarioOperativo = {
         container.querySelectorAll('.co-sp-carga-item[data-carga-id]').forEach(el => {
             el.addEventListener('click', () => {
                 window.location.hash = 'logistica?tab=cargas&id=' + el.dataset.cargaId;
+            });
+        });
+        // Tanda 3+: wire aprobar asignación inline
+        container.querySelectorAll('.co-sp-asig-approve[data-asig-id]').forEach(el => {
+            el.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const asigId = el.dataset.asigId;
+                const ok = await API.approveAsignacionEvento(asigId);
+                if (!ok) { Toast.error('No se pudo aprobar.'); return; }
+                Toast.success('Asignación aprobada.');
+                // Recargar panel
+                if (event) {
+                    await this._loadPanelData(event);
+                    this._renderPanelTabContent(event);
+                }
             });
         });
     },
@@ -1112,6 +1131,105 @@ const CalendarioOperativo = {
         `;
     },
 
+    // Tanda 3+ — sección "Personas asignadas" del schema nuevo (asignaciones_evento)
+    // agrupadas por fase. Cada asignación muestra estado (propuesta/aprobada) y
+    // permite aprobar inline si el user es admin.
+    _renderAsignacionesNewSection(event) {
+        const asignaciones = event._asignacionesNew || [];
+        if (asignaciones.length === 0) return '';
+
+        const byFase = { armado: [], funcionamiento: [], desarme: [] };
+        asignaciones.forEach(a => {
+            const f = a.fase || 'armado';
+            if (byFase[f]) byFase[f].push(a);
+        });
+
+        const user = Auth.getUser?.();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+
+        const renderAsig = (a) => {
+            const persona = a.persona;
+            const nombre = persona ? `${persona.nombre}${persona.apellido ? ' ' + persona.apellido : ''}` : '—';
+            const rol = a.rol || (persona?.rol_legacy) || '';
+            const estadoColor = {
+                propuesta: '#F28D15', aprobada: '#00CC88',
+                confirmada: '#00A9C1', cancelada: '#ff4444'
+            }[a.estado] || '#888';
+            const showApprove = isAdmin && a.estado === 'propuesta';
+            return `
+                <div class="co-sp-asig-item" style="border-left-color: ${estadoColor};">
+                    <div class="co-sp-asig-head">
+                        <span class="co-sp-asig-nom">👤 ${nombre}</span>
+                        <span class="co-sp-asig-estado" style="color: ${estadoColor};">${a.estado}</span>
+                    </div>
+                    <div class="co-sp-asig-meta">
+                        ${rol ? `<span>${rol}</span>` : ''}
+                        ${a.fecha_inicio ? `<span>${new Date(a.fecha_inicio).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
+                        ${showApprove ? `<button class="co-sp-asig-approve" data-asig-id="${a.id}">✓ Aprobar</button>` : ''}
+                    </div>
+                </div>
+            `;
+        };
+
+        const faseBlock = (faseKey, label, color) => {
+            const list = byFase[faseKey];
+            if (list.length === 0) return '';
+            return `
+                <div class="co-sp-fase-block">
+                    <div class="co-sp-fase-label" style="color: ${color};">${label} (${list.length})</div>
+                    ${list.map(renderAsig).join('')}
+                </div>
+            `;
+        };
+
+        return `
+            <div class="co-sp-section">
+                <h3 class="co-sp-section-title">
+                    Personas asignadas
+                    <span style="color:#9B7DFF;font-size:11px;font-family:'Space Mono',monospace;">(${asignaciones.length})</span>
+                </h3>
+                <style>
+                    .co-sp-asig-item {
+                        background: #1a1a1a; border: 1px solid #2a2a2a;
+                        border-left: 3px solid #9B7DFF;
+                        border-radius: 6px;
+                        padding: 8px 10px; margin-bottom: 6px;
+                    }
+                    .co-sp-asig-head {
+                        display: flex; justify-content: space-between;
+                        align-items: center; gap: 8px; margin-bottom: 4px;
+                    }
+                    .co-sp-asig-nom {
+                        font-family: 'Outfit', sans-serif; font-size: 13px;
+                        font-weight: 600; color: #E8E8E8;
+                    }
+                    .co-sp-asig-estado {
+                        font-family: 'Space Mono', monospace; font-size: 10px;
+                        text-transform: uppercase; font-weight: 700;
+                    }
+                    .co-sp-asig-meta {
+                        display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+                        font-family: 'Space Mono', monospace; font-size: 11px;
+                        color: #aaa;
+                    }
+                    .co-sp-asig-approve {
+                        background: rgba(0,204,136,0.15); color: #00CC88;
+                        border: 1px solid rgba(0,204,136,0.4);
+                        padding: 3px 8px; border-radius: 4px;
+                        font-family: 'Space Mono', monospace; font-size: 10px;
+                        font-weight: 700; cursor: pointer; margin-left: auto;
+                    }
+                    .co-sp-asig-approve:hover {
+                        background: rgba(0,204,136,0.25);
+                    }
+                </style>
+                ${faseBlock('armado', 'Armado', '#00CC88')}
+                ${faseBlock('funcionamiento', 'Funcionamiento', '#00A9C1')}
+                ${faseBlock('desarme', 'Desarme', '#F28D15')}
+            </div>
+        `;
+    },
+
     _renderLogisticaTab(event) {
         const equipo = event._equipo || (event.logistics?.team || []).map((t, i) => ({
             id: `local-${i}`, name: t.name, role: t.role
@@ -1183,6 +1301,7 @@ const CalendarioOperativo = {
                 <div class="co-sp-movs-list">${movsHTML}</div>
             </div>
             ${this._renderCargasNewSection(event)}
+            ${this._renderAsignacionesNewSection(event)}
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Documentos</h3>
                 <div class="co-sp-docs-list">${docsHTML}</div>

@@ -538,22 +538,9 @@ const RRHHModule = {
                             <input type="text" id="rhPNombre" class="form-input" value="${item?.nombre || ''}" placeholder="Nombre completo o referente cuadrilla" style="font-size:1rem;padding:12px;">
                         </div>
                         <div>
-                            <label class="form-label">Rol</label>
-                            <input type="text" id="rhPRol" class="form-input" list="rhRoles" value="${item?.rol || ''}" placeholder="Ej: Armador, Electricista, Chofer" style="font-size:1rem;padding:12px;">
-                            <datalist id="rhRoles">
-                                <option value="Armador">
-                                <option value="Electricista">
-                                <option value="Chofer">
-                                <option value="Carpintero">
-                                <option value="Pintor">
-                                <option value="Encargado">
-                                <option value="Ayudante">
-                                <option value="Administrativo">
-                                <option value="Project Manager">
-                                <option value="Diseñador">
-                                <option value="Comercial">
-                                <option value="Gerencia">
-                            </datalist>
+                            <label class="form-label">Rol descriptivo</label>
+                            <input type="text" id="rhPRol" class="form-input" value="${item?.rol || ''}" placeholder="Ej: Armador senior, Chofer Iveco" style="font-size:1rem;padding:12px;">
+                            <div style="font-size:0.7rem;color:#888;margin-top:4px;">Texto libre para descripción interna. Para que la persona aparezca en Logística, marcá abajo sus roles operativos.</div>
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -570,6 +557,35 @@ const RRHHModule = {
                             <input type="number" id="rhPCantidad" class="form-input" value="${item?.cantidad_personas || ''}" placeholder="Ej: 8" min="1" style="font-size:1rem;padding:12px;">
                         </div>
                     </div>
+
+                    <div>
+                        <label class="form-label">Roles operativos
+                            <span style="font-size:0.72rem; color:#888; font-weight: 400; margin-left: 6px;">(marca los que la persona puede cumplir — define en qué selects aparece en Logística)</span>
+                        </label>
+                        <div id="rhPRolesOperativos" style="display: flex; flex-wrap: wrap; gap: 6px; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px;">
+                            ${(() => {
+                                const rolesCanon = [
+                                    { key: 'armador', label: 'Armador' },
+                                    { key: 'chofer', label: 'Chofer' },
+                                    { key: 'ayudante', label: 'Ayudante' },
+                                    { key: 'electricista', label: 'Electricista' },
+                                    { key: 'montajista', label: 'Montajista' },
+                                    { key: 'encargado_armado', label: 'Encargado armado' },
+                                    { key: 'tecnico', label: 'Técnico' },
+                                    { key: 'azafata', label: 'Azafata' },
+                                    { key: 'colaborador', label: 'Colaborador externo' },
+                                ];
+                                const actuales = (item?._raw?.roles_operativos) || (item?.roles_operativos) || [];
+                                return rolesCanon.map(r => `
+                                    <label style="display:flex; align-items:center; gap:6px; background:#111; border:1px solid #1a1a1a; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:0.84rem;">
+                                        <input type="checkbox" data-rol-op value="${r.key}" ${actuales.includes(r.key) ? 'checked' : ''} style="margin:0; accent-color:#00A9C1;">
+                                        <span>${r.label}</span>
+                                    </label>
+                                `).join('');
+                            })()}
+                        </div>
+                    </div>
+
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div>
                             <label class="form-label">Contacto</label>
@@ -636,10 +652,8 @@ const RRHHModule = {
                 const tipoDb = tipoUi === 'fijo' ? 'interna' : tipoUi;
 
                 const rolLibre = document.getElementById('rhPRol')?.value?.trim() || null;
-                // roles_operativos: si el rol libre matchea uno canónico, lo agregamos al array.
-                const rolesCanonicos = ['armador', 'chofer', 'ayudante', 'tecnico', 'azafata'];
-                const rolNorm = rolLibre ? rolLibre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') : '';
-                const rolesOperativos = rolNorm && rolesCanonicos.includes(rolNorm) ? [rolNorm] : [];
+                // roles_operativos: leídos de los checkboxes del multi-select.
+                const rolesOperativos = [...document.querySelectorAll('[data-rol-op]:checked')].map(i => i.value);
 
                 const estadoUi = document.getElementById('rhPEstado')?.value || 'activo';
 

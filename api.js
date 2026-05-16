@@ -3500,6 +3500,177 @@ const API = {
     },
 
     // ═════════════════════════════════════════════════════════════
+    //  TANDA 3+ — asignaciones_evento (UUID, reemplaza rrhh_asignaciones legacy)
+    // ═════════════════════════════════════════════════════════════
+    // Persona afectada a un evento en una fase con rango de fechas. Distinto
+    // de carga_personas (que son ayudantes de UN viaje específico).
+
+    async getAsignacionesByEvento(eventoId) {
+        if (!eventoId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('asignaciones_evento')
+                .select(`
+                    *,
+                    persona:personas!persona_id(id, nombre, apellido, telefono, roles_operativos, rol_legacy, tipo),
+                    aprobador:profiles!aprobada_por(id, name, initials),
+                    creador:profiles!created_by(id, name, initials)
+                `)
+                .eq('evento_id', eventoId)
+                .eq('_deleted', false)
+                .order('fase', { ascending: true })
+                .order('fecha_inicio', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getAsignacionesByEvento:', e.message);
+            return [];
+        }
+    },
+
+    async getAsignacionesByPersona(personaId) {
+        if (!personaId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('asignaciones_evento')
+                .select(`
+                    *,
+                    evento:eventos!evento_id(id, nombre, predio, fecha_armado_inicio, fecha_evento_inicio, fecha_desarme_inicio)
+                `)
+                .eq('persona_id', personaId)
+                .eq('_deleted', false)
+                .order('fecha_inicio', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getAsignacionesByPersona:', e.message);
+            return [];
+        }
+    },
+
+    // Cuenta asignaciones pendientes de aprobación (para banner admin).
+    async getAsignacionesPendientesCount() {
+        try {
+            const { count, error } = await supabaseClient
+                .from('asignaciones_evento')
+                .select('*', { count: 'exact', head: true })
+                .eq('_deleted', false)
+                .eq('estado', 'propuesta');
+            if (error) throw error;
+            return count || 0;
+        } catch (e) {
+            return 0;
+        }
+    },
+
+    async createAsignacionEvento(data) {
+        const user = Auth.getUser?.();
+        const payload = {
+            evento_id: data.eventoId || data.evento_id,
+            persona_id: data.personaId || data.persona_id,
+            fase: data.fase || 'armado',
+            fecha_inicio: data.fechaInicio || data.fecha_inicio || null,
+            fecha_fin: data.fechaFin || data.fecha_fin || null,
+            rol: data.rol || null,
+            estado: data.estado || 'propuesta',
+            notas: data.notas || null,
+            created_by: user?.uid || user?.id || null,
+        };
+        if (!payload.evento_id || !payload.persona_id) {
+            console.warn('[API] createAsignacionEvento: evento_id y persona_id obligatorios');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('asignaciones_evento').insert(payload).select(`
+                    *, persona:personas!persona_id(id, nombre, apellido),
+                    evento:eventos!evento_id(id, nombre)
+                `).single();
+            if (error) throw error;
+            // Notif a admin para aprobación
+            const personaNombre = `${row.persona?.nombre || ''}${row.persona?.apellido ? ' ' + row.persona.apellido : ''}`.trim();
+            const eventoNombre = row.evento?.nombre || 'evento';
+            await this.createNotification({
+                tipo: 'asignacion_pendiente_aprobacion',
+                titulo: 'Convocatoria pendiente de aprobación',
+                mensaje: `${personaNombre} → ${eventoNombre} (${row.fase})`,
+                target_role: 'admin',
+                entidad_tipo: 'asignacion',
+                entidad_id: row.id,
+                link: `#calendario?ev=${row.evento_id}`,
+                prioridad: 'normal',
+            });
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createAsignacionEvento:', e.message);
+            return null;
+        }
+    },
+
+    async updateAsignacionEvento(id, data) {
+        const payload = {};
+        if (data.fase !== undefined) payload.fase = data.fase;
+        if (data.fechaInicio !== undefined) payload.fecha_inicio = data.fechaInicio;
+        if (data.fecha_inicio !== undefined) payload.fecha_inicio = data.fecha_inicio;
+        if (data.fechaFin !== undefined) payload.fecha_fin = data.fechaFin;
+        if (data.fecha_fin !== undefined) payload.fecha_fin = data.fecha_fin;
+        if (data.rol !== undefined) payload.rol = data.rol || null;
+        if (data.estado !== undefined) payload.estado = data.estado;
+        if (data.notas !== undefined) payload.notas = data.notas || null;
+        try {
+            const { error } = await supabaseClient
+                .from('asignaciones_evento').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updateAsignacionEvento:', e.message);
+            return null;
+        }
+    },
+
+    async approveAsignacionEvento(id) {
+        const user = Auth.getUser?.();
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('asignaciones_evento').update({
+                    estado: 'aprobada',
+                    aprobada_por: user?.uid || user?.id || null,
+                    aprobada_at: new Date().toISOString(),
+                }).eq('id', id).select('id, created_by, persona_id').maybeSingle();
+            if (error) throw error;
+            // Notif al creador
+            if (row?.created_by && row.created_by !== (user?.uid || user?.id)) {
+                await this.createNotification({
+                    tipo: 'asignacion_aprobada',
+                    titulo: 'Convocatoria aprobada',
+                    mensaje: 'Tu propuesta de asignación fue aprobada.',
+                    target_user_id: row.created_by,
+                    entidad_tipo: 'asignacion',
+                    entidad_id: id,
+                    link: `#calendario`,
+                    prioridad: 'normal',
+                });
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error approveAsignacionEvento:', e.message);
+            return null;
+        }
+    },
+
+    async deleteAsignacionEvento(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('asignaciones_evento').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleteAsignacionEvento:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
     //  TANDA 2 — Vehículos
     // ═════════════════════════════════════════════════════════════
 
@@ -3621,6 +3792,28 @@ const API = {
 
     async getChoferes() {
         return this.getPersonas({ rol: 'chofer' });
+    },
+
+    // Personas con al menos un rol operativo cargado. Excluye administrativos /
+    // gente de oficina / sin rol. Usado por el tab Personas de Logística para
+    // que Diego/PMs solo vean la gente operativa disponible para asignar.
+    OPERATIVO_ROLES: ['armador', 'chofer', 'ayudante', 'electricista', 'montajista', 'encargado_armado', 'tecnico', 'azafata', 'colaborador'],
+
+    async getPersonasOperativas({ soloActivos = true } = {}) {
+        try {
+            let q = supabaseClient
+                .from('personas').select('*')
+                .eq('_deleted', false)
+                .overlaps('roles_operativos', this.OPERATIVO_ROLES)
+                .order('nombre', { ascending: true });
+            if (soloActivos) q = q.eq('activo', true);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getPersonasOperativas:', e.message);
+            return [];
+        }
     },
 
     async createPersona(data) {

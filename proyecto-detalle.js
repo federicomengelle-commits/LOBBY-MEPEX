@@ -38,6 +38,15 @@ const ProyectoDetalle = {
         { value: 'rechazado',   label: 'Rechazado',   color: '#ff4444' },
     ],
 
+    // Estado del ciclo en taller (refleja el estado_taller del proyecto)
+    _cicloEstados: {
+        pendiente:  { label: 'Pendiente',   color: '#888',    pct: 0 },
+        en_armado:  { label: 'En armado',   color: '#F28D15', pct: 25 },
+        listo:      { label: 'Listo',       color: '#00CC88', pct: 50 },
+        despachado: { label: 'Despachado',  color: '#00A9C1', pct: 75 },
+        cerrado:    { label: 'Cerrado',     color: '#9B7DFF', pct: 100 },
+    },
+
     _typeOptions: [
         { value: 'stand_full',            label: 'Stand full',               color: '#00A9C1' },
         { value: 'alquiler_equipamiento', label: 'Alquiler de equipamiento', color: '#F28D15' },
@@ -199,6 +208,7 @@ const ProyectoDetalle = {
                                     ${isCRM ? '⚡ CRM' : '✋ Manual'}
                                 </span>
                                 ${evento ? `<a href="#eventos" class="pjd-event-pill" title="Ver evento">📅 ${this._esc(evento.nombre || '')}</a>` : ''}
+                                ${this._renderCicloBadge(p)}
                             </div>
                         </div>
                         <div class="pjd-header-right">
@@ -1353,6 +1363,22 @@ const ProyectoDetalle = {
     // ═══════════════════════════════════════════
 
     _getStatusOption(value) { return this._statusOptions.find(s => s.value === value); },
+
+    // Renderiza el badge "ciclo del proyecto" usando estado_taller + completitud_pct
+    _renderCicloBadge(p) {
+        const estadoTaller = p.estado_taller || 'pendiente';
+        const cfg = this._cicloEstados[estadoTaller] || this._cicloEstados.pendiente;
+        const pct = typeof p.completitud_pct === 'number' ? p.completitud_pct : cfg.pct;
+        const tooltip = `Ciclo: ${cfg.label} (${pct}%)`;
+        return `
+            <span class="pjd-ciclo-badge" title="${tooltip}" style="--ciclo-color: ${cfg.color};">
+                <span class="pjd-ciclo-dot" style="background: ${cfg.color};"></span>
+                <span>🏗️ ${cfg.label}</span>
+                <span class="pjd-ciclo-pct">${pct}%</span>
+                <span class="pjd-ciclo-bar"><span class="pjd-ciclo-fill" style="width:${pct}%; background:${cfg.color};"></span></span>
+            </span>
+        `;
+    },
     _getTypeOption(value)   { return this._typeOptions.find(t => t.value === value); },
 
     _esc(str) {
@@ -1499,6 +1525,27 @@ const ProyectoDetalle = {
                 text-decoration: none;
             }
             .pjd-event-pill:hover { background: rgba(0, 169, 193, 0.15); }
+
+            /* Ciclo del proyecto (estado_taller + completitud_pct) */
+            .pjd-ciclo-badge {
+                display: inline-flex; align-items: center; gap: 8px;
+                padding: 4px 12px; border-radius: 4px;
+                font-family: var(--font-mono, 'Space Mono', monospace);
+                font-size: 0.7rem; color: var(--ciclo-color, #888);
+                background: color-mix(in srgb, var(--ciclo-color, #888) 8%, transparent);
+                border: 1px solid color-mix(in srgb, var(--ciclo-color, #888) 30%, transparent);
+            }
+            .pjd-ciclo-dot {
+                width: 6px; height: 6px; border-radius: 50%;
+                box-shadow: 0 0 6px currentColor;
+            }
+            .pjd-ciclo-pct { color: var(--text-primary, #E8E8E8); font-weight: 700; }
+            .pjd-ciclo-bar {
+                display: inline-block; width: 50px; height: 4px;
+                background: #1a1a1a; border-radius: 2px; overflow: hidden;
+            }
+            .pjd-ciclo-fill { display: block; height: 100%; transition: width 250ms ease; }
+
             .pjd-header-right {
                 display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
             }

@@ -1209,9 +1209,11 @@ const LogisticaModule = {
     //  TAB PERSONAS
     // ═════════════════════════════════════════════════════════════
 
+    // Solo gente operativa (con al menos un rol operativo). Excluye administrativos
+    // de oficina, ventas, etc. Diego/PMs ven solo lo que pueden asignar.
     async _loadPersonas() {
         try {
-            this._personas = await API.getPersonas({ soloActivos: false });
+            this._personas = await API.getPersonasOperativas({ soloActivos: true });
             this._renderPersonasTab();
         } catch (e) {
             console.warn('[Logistica] Error _loadPersonas:', e.message);
@@ -1222,9 +1224,6 @@ const LogisticaModule = {
     _renderPersonasTab() {
         const c = document.getElementById('logisticaContent');
         if (!c) return;
-
-        const user = Auth.getUser();
-        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
 
         let visibles = this._personas.filter(p => !p._deleted);
         if (this._personasFilterRol) {
@@ -1239,40 +1238,43 @@ const LogisticaModule = {
                         <option value="armador" ${this._personasFilterRol === 'armador' ? 'selected' : ''}>Armador</option>
                         <option value="chofer" ${this._personasFilterRol === 'chofer' ? 'selected' : ''}>Chofer</option>
                         <option value="ayudante" ${this._personasFilterRol === 'ayudante' ? 'selected' : ''}>Ayudante</option>
+                        <option value="electricista" ${this._personasFilterRol === 'electricista' ? 'selected' : ''}>Electricista</option>
+                        <option value="montajista" ${this._personasFilterRol === 'montajista' ? 'selected' : ''}>Montajista</option>
+                        <option value="encargado_armado" ${this._personasFilterRol === 'encargado_armado' ? 'selected' : ''}>Encargado de armado</option>
                         <option value="tecnico" ${this._personasFilterRol === 'tecnico' ? 'selected' : ''}>Técnico</option>
                         <option value="azafata" ${this._personasFilterRol === 'azafata' ? 'selected' : ''}>Azafata</option>
+                        <option value="colaborador" ${this._personasFilterRol === 'colaborador' ? 'selected' : ''}>Colaborador externo</option>
                     </select>
                 </div>
-                ${isAdmin ? `<a href="#rrhh" class="btn-secondary log-rrhh-link">→ Ir a RRHH para gestionar personas</a>` : ''}
-            </div>
-            <div class="log-readonly-banner">
-                Lista de personas disponibles para asignar a cargas.${isAdmin ? ' La alta/baja/edición se hace desde el módulo <strong>RRHH</strong>.' : ''}
+                <div style="font-family: var(--font-mono); font-size: 0.7rem; color: #666; letter-spacing: 0.05em;">
+                    ${visibles.length} ${visibles.length === 1 ? 'persona' : 'personas'} operativas
+                </div>
             </div>
             ${visibles.length === 0 ? `
                 <div class="log-empty">
                     <div class="log-empty-icon">👤</div>
-                    <p>Sin personas cargadas con esos filtros.</p>
-                    ${isAdmin ? `<p class="log-empty-hint">Andá a <a href="#rrhh" style="color:#00A9C1">RRHH</a> para cargar choferes y ayudantes.</p>` : ''}
+                    <p>Sin personas con esos filtros.</p>
                 </div>
             ` : `
                 <table class="log-table">
                     <thead>
                         <tr>
                             <th>Nombre</th>
-                            <th>Tipo</th>
                             <th>Roles</th>
                             <th>Teléfono</th>
-                            <th>Estado</th>
+                            <th style="text-align: right;">Asignar</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${visibles.map(p => `
                             <tr class="log-mov-row" data-id="${p.id}">
                                 <td>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</td>
-                                <td><span class="log-tipo-${p.tipo}">${p.tipo === 'interna' ? 'Interna' : 'Eventual'}</span></td>
-                                <td>${(p.roles_operativos || []).map(r => `<span class="log-rol-chip">${this._esc(r)}</span>`).join('') || '<span class="log-mini">—</span>'}</td>
-                                <td>${p.telefono ? `<a href="tel:${this._escAttr(p.telefono)}" class="log-tel">${this._esc(p.telefono)}</a>` : '—'}</td>
-                                <td>${p.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-ghost">Inactiva</span>'}</td>
+                                <td>${(p.roles_operativos || []).map(r => `<span class="log-rol-chip">${this._esc(this._rolLabel(r))}</span>`).join('') || '<span class="log-mini">—</span>'}</td>
+                                <td>${this._renderTelefonoWhatsApp(p.telefono)}</td>
+                                <td style="text-align: right;">
+                                    <button class="log-mini-btn" data-action="assign-carga" data-id="${p.id}" title="Asignar a una carga">🚚 Carga</button>
+                                    <button class="log-mini-btn" data-action="assign-evento" data-id="${p.id}" title="Asignar a un evento">📅 Evento</button>
+                                </td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -1284,9 +1286,218 @@ const LogisticaModule = {
             this._personasFilterRol = e.target.value;
             this._renderPersonasTab();
         });
+        document.querySelectorAll('[data-action="assign-carga"]').forEach(btn => {
+            btn.addEventListener('click', () => this._openAsignarCargaModal(btn.dataset.id));
+        });
+        document.querySelectorAll('[data-action="assign-evento"]').forEach(btn => {
+            btn.addEventListener('click', () => this._openAsignarEventoModal(btn.dataset.id));
+        });
     },
 
-    // Personas son read-only en este módulo. Alta/baja/edición van por RRHH.
+    // Render del teléfono: si tiene número, lo arma como link a WhatsApp.
+    // Limpia el número sacando espacios, paréntesis, guiones. Asume Argentina
+    // si el número no empieza con + (le antepone 549 — código país + móvil).
+    _renderTelefonoWhatsApp(raw) {
+        if (!raw) return '<span class="log-mini">—</span>';
+        const clean = String(raw).replace(/[^\d+]/g, '');
+        if (!clean) return '<span class="log-mini">—</span>';
+        // Construye número internacional sin + (lo que pide wa.me)
+        let intl = clean.startsWith('+') ? clean.slice(1) : clean;
+        // Si no empieza con código país (asumimos AR si no), prefijar 549
+        if (!/^54/.test(intl)) {
+            intl = '549' + intl.replace(/^0+/, '').replace(/^15/, '');
+        }
+        const display = this._esc(raw);
+        return `
+            <a href="https://wa.me/${intl}" target="_blank" rel="noopener" class="log-tel-wa" title="Abrir WhatsApp">
+                <span class="log-wa-icon">🟢</span>
+                ${display}
+            </a>
+        `;
+    },
+
+    _rolLabel(rolKey) {
+        return ({
+            armador: 'Armador',
+            chofer: 'Chofer',
+            ayudante: 'Ayudante',
+            electricista: 'Electricista',
+            montajista: 'Montajista',
+            encargado_armado: 'Encargado armado',
+            tecnico: 'Técnico',
+            azafata: 'Azafata',
+            colaborador: 'Colaborador',
+        })[rolKey] || rolKey;
+    },
+
+    // Modal: asignar persona a una carga existente (las próximas, no completadas)
+    async _openAsignarCargaModal(personaId) {
+        const persona = this._personas.find(p => p.id === personaId);
+        if (!persona) return;
+        const personaNombre = `${persona.nombre}${persona.apellido ? ' ' + persona.apellido : ''}`;
+
+        // Cargas próximas y no completadas
+        const hoy = new Date().toISOString().slice(0, 10);
+        const cargas = (await API.getCargas({})).filter(c => c.fecha && c.fecha >= hoy && !['completada','cancelada'].includes(c.estado));
+
+        const esChofer = (persona.roles_operativos || []).includes('chofer');
+        const body = `
+            <div class="log-form">
+                <div style="background: rgba(0,169,193,0.08); border: 1px solid rgba(0,169,193,0.3); padding: 10px 14px; border-radius: 6px; margin-bottom: 14px;">
+                    <strong style="color:#00A9C1;">${this._esc(personaNombre)}</strong>
+                    <span style="color:#888; font-size: 0.82rem; margin-left: 8px;">${(persona.roles_operativos || []).map(r => this._rolLabel(r)).join(' · ')}</span>
+                </div>
+                <div class="log-form-row">
+                    <label>Carga *</label>
+                    <select id="acCarga">
+                        <option value="">— Elegí una carga próxima —</option>
+                        ${cargas.map(c => {
+                            const ev = c.evento?.nombre || '—';
+                            const fecha = new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+                            return `<option value="${c.id}">${fecha} · ${this._esc(ev)} · ${c.fase} (${c.estado})</option>`;
+                        }).join('')}
+                    </select>
+                    ${cargas.length === 0 ? '<div class="log-empty-hint">No hay cargas próximas pendientes.</div>' : ''}
+                </div>
+                ${esChofer ? `
+                    <div class="log-form-row">
+                        <label>Rol en la carga</label>
+                        <select id="acRol">
+                            <option value="ayudante">Ayudante</option>
+                            <option value="chofer">Chofer principal</option>
+                        </select>
+                    </div>
+                ` : '<input type="hidden" id="acRol" value="ayudante">'}
+            </div>
+        `;
+        const modalId = Modal.open({
+            title: 'Asignar persona a carga',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                <button class="btn-primary" id="acSave">Asignar</button>
+            `,
+        });
+        document.getElementById('acSave')?.addEventListener('click', async () => {
+            const cargaId = document.getElementById('acCarga')?.value;
+            if (!cargaId) { Toast.warning('Elegí una carga.'); return; }
+            const rolElement = document.getElementById('acRol');
+            const rol = rolElement?.value || 'ayudante';
+            try {
+                if (rol === 'chofer') {
+                    await API.updateCarga(cargaId, { choferPersonaId: personaId });
+                } else {
+                    // Agregar como ayudante respetando los existentes
+                    const carga = await API.getCargaById(cargaId);
+                    const yaIds = (carga?.carga_personas || []).map(cp => cp.persona?.id).filter(Boolean);
+                    if (!yaIds.includes(personaId)) {
+                        await API.setCargaAyudantes(cargaId, [...yaIds, personaId]);
+                    }
+                }
+                Toast.success(`${personaNombre} asignado a la carga.`);
+                Modal.close(modalId);
+            } catch (e) {
+                console.error('[Logistica] asignar a carga error:', e);
+                Toast.error('Error al asignar.');
+            }
+        });
+    },
+
+    // Modal: asignar persona a un evento (asignacion_evento, con fase + fechas)
+    async _openAsignarEventoModal(personaId) {
+        const persona = this._personas.find(p => p.id === personaId);
+        if (!persona) return;
+        const personaNombre = `${persona.nombre}${persona.apellido ? ' ' + persona.apellido : ''}`;
+
+        // Eventos futuros
+        const hoy = new Date().toISOString().slice(0, 10);
+        const eventos = ((await API.getEvents()) || []).filter(ev => {
+            const f = ev.teardownEndDate || ev.eventEndDate || ev.setupDate;
+            return f && f >= hoy;
+        });
+
+        const body = `
+            <div class="log-form">
+                <div style="background: rgba(0,169,193,0.08); border: 1px solid rgba(0,169,193,0.3); padding: 10px 14px; border-radius: 6px; margin-bottom: 14px;">
+                    <strong style="color:#00A9C1;">${this._esc(personaNombre)}</strong>
+                    <span style="color:#888; font-size: 0.82rem; margin-left: 8px;">${(persona.roles_operativos || []).map(r => this._rolLabel(r)).join(' · ')}</span>
+                </div>
+                <div class="log-form-row">
+                    <label>Evento *</label>
+                    <select id="aeEvento">
+                        <option value="">— Elegí un evento —</option>
+                        ${eventos.map(ev => `<option value="${ev.id}">${this._esc(ev.name || '—')}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="log-form-row">
+                    <label>Fase *</label>
+                    <select id="aeFase">
+                        <option value="armado">Armado</option>
+                        <option value="funcionamiento">Funcionamiento</option>
+                        <option value="desarme">Desarme</option>
+                    </select>
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Fecha desde</label>
+                        <input type="datetime-local" id="aeFechaIni">
+                    </div>
+                    <div>
+                        <label>Fecha hasta</label>
+                        <input type="datetime-local" id="aeFechaFin">
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Rol en el evento</label>
+                    <select id="aeRol">
+                        ${['armador','chofer','ayudante','electricista','montajista','encargado_armado','tecnico','azafata','colaborador']
+                            .filter(r => (persona.roles_operativos || []).includes(r))
+                            .map(r => `<option value="${r}">${this._rolLabel(r)}</option>`).join('') ||
+                            '<option value="">(sin rol específico)</option>'}
+                    </select>
+                </div>
+                <div class="log-form-row">
+                    <label>Notas</label>
+                    <textarea id="aeNotas" rows="2" placeholder="Detalles, horarios, etc."></textarea>
+                </div>
+                <div style="background: rgba(242,141,21,0.08); border: 1px solid rgba(242,141,21,0.3); padding: 8px 12px; border-radius: 6px; font-size: 0.78rem; color: #F28D15;">
+                    ⏳ La asignación queda en estado "propuesta" hasta que admin la apruebe.
+                </div>
+            </div>
+        `;
+        const modalId = Modal.open({
+            title: 'Asignar persona a evento',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                <button class="btn-primary" id="aeSave">Proponer asignación</button>
+            `,
+        });
+        document.getElementById('aeSave')?.addEventListener('click', async () => {
+            const eventoId = document.getElementById('aeEvento')?.value;
+            if (!eventoId) { Toast.warning('Elegí un evento.'); return; }
+            const payload = {
+                eventoId,
+                personaId,
+                fase: document.getElementById('aeFase')?.value || 'armado',
+                fechaInicio: document.getElementById('aeFechaIni')?.value || null,
+                fechaFin: document.getElementById('aeFechaFin')?.value || null,
+                rol: document.getElementById('aeRol')?.value || null,
+                notas: document.getElementById('aeNotas')?.value.trim() || null,
+            };
+            try {
+                const r = await API.createAsignacionEvento(payload);
+                if (!r) { Toast.error('No se pudo crear la asignación.'); return; }
+                Toast.success('Asignación propuesta — admin va a aprobar.');
+                Modal.close(modalId);
+            } catch (e) {
+                console.error('[Logistica] asignar a evento error:', e);
+                Toast.error('Error al asignar.');
+            }
+        });
+    },
 
     // ═════════════════════════════════════════════════════════════
     //  Helpers
@@ -1737,6 +1948,27 @@ const LogisticaModule = {
             .logistica-module .log-card-action.approve:hover {
                 background: rgba(0,204,136,0.22);
             }
+
+            /* Tel WhatsApp link en pestaña Personas */
+            .logistica-module .log-tel-wa {
+                color: #00CC88;
+                text-decoration: none;
+                font-family: var(--font-mono);
+                font-size: 0.85rem;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                border-radius: 6px;
+                border: 1px solid rgba(0,204,136,0.25);
+                background: rgba(0,204,136,0.05);
+                transition: all 180ms ease;
+            }
+            .logistica-module .log-tel-wa:hover {
+                background: rgba(0,204,136,0.15);
+                border-color: #00CC88;
+            }
+            .logistica-module .log-wa-icon { font-size: 0.85rem; }
 
             /* Warning si falta vehiculo/chofer cuando ya está aprobada */
             .logistica-module .log-panel-warning {
