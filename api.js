@@ -4060,6 +4060,152 @@ const API = {
     },
 
     // ═════════════════════════════════════════════════════════════
+    //  TANDA 2 — Checklist de armado por proyecto (taller)
+    // ═════════════════════════════════════════════════════════════
+    // Items canónicos: placas, iluminacion, mobiliario, pisos, grafica, embalado.
+    // Schema: taller_proyecto_checklist (UUID, UNIQUE(proyecto_id, item_key)).
+
+    async getChecklistByProyecto(proyectoId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('taller_proyecto_checklist')
+                .select('*, checked_by_profile:profiles!checked_by(id, name, initials)')
+                .eq('proyecto_id', proyectoId);
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getChecklistByProyecto:', e.message);
+            return [];
+        }
+    },
+
+    // Devuelve un map { proyecto_id: { item_key: row, ... } } para varios proyectos
+    // de una sola query. Útil para hidratar progreso en las cards del taller.
+    async getChecklistsBulk(proyectoIds) {
+        if (!proyectoIds || !proyectoIds.length) return {};
+        try {
+            const { data, error } = await supabaseClient
+                .from('taller_proyecto_checklist')
+                .select('proyecto_id, item_key, checked')
+                .in('proyecto_id', proyectoIds);
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(r => {
+                if (!map[r.proyecto_id]) map[r.proyecto_id] = {};
+                map[r.proyecto_id][r.item_key] = r;
+            });
+            return map;
+        } catch (e) {
+            console.warn('[API] Error getChecklistsBulk:', e.message);
+            return {};
+        }
+    },
+
+    // Toggle/set de un check. Upsert por (proyecto_id, item_key).
+    async setChecklistItem(proyectoId, itemKey, checked, notas = null) {
+        const user = Auth.getUser?.();
+        const payload = {
+            proyecto_id: proyectoId,
+            item_key: itemKey,
+            checked: !!checked,
+            checked_by: checked ? (user?.uid || user?.id || null) : null,
+            checked_at: checked ? new Date().toISOString() : null,
+        };
+        if (notas !== null && notas !== undefined) payload.notas = notas;
+        try {
+            const { data, error } = await supabaseClient
+                .from('taller_proyecto_checklist')
+                .upsert(payload, { onConflict: 'proyecto_id,item_key' })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        } catch (e) {
+            console.warn('[API] Error setChecklistItem:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 2 — Mantenimiento de equipos / herramientas (legacy reuse)
+    // ═════════════════════════════════════════════════════════════
+    // Reusa tabla `produccion_mantenimiento` (BIGSERIAL standalone).
+
+    async getMantenimiento({ soloActivos = true } = {}) {
+        try {
+            let q = supabaseClient
+                .from('produccion_mantenimiento')
+                .select('*')
+                .eq('_deleted', false)
+                .order('fecha_proximo_vencimiento', { ascending: true, nullsLast: true });
+            if (soloActivos) q = q.neq('estado', 'baja');
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getMantenimiento:', e.message);
+            return [];
+        }
+    },
+
+    async createMantenimiento(data) {
+        const payload = {
+            nombre: (data.nombre || '').trim(),
+            tipo: data.tipo || 'herramienta',
+            estado: data.estado || 'ok',
+            fecha_ultimo_service: data.fechaUltimoService || data.fecha_ultimo_service || null,
+            fecha_proximo_vencimiento: data.fechaProximoVencimiento || data.fecha_proximo_vencimiento || null,
+            notas: data.notas || null,
+        };
+        if (!payload.nombre) {
+            console.warn('[API] createMantenimiento: nombre obligatorio');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('produccion_mantenimiento').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createMantenimiento:', e.message);
+            return null;
+        }
+    },
+
+    async updateMantenimiento(id, data) {
+        const payload = {};
+        if (data.nombre !== undefined) payload.nombre = data.nombre;
+        if (data.tipo !== undefined) payload.tipo = data.tipo;
+        if (data.estado !== undefined) payload.estado = data.estado;
+        if (data.fechaUltimoService !== undefined) payload.fecha_ultimo_service = data.fechaUltimoService;
+        if (data.fecha_ultimo_service !== undefined) payload.fecha_ultimo_service = data.fecha_ultimo_service;
+        if (data.fechaProximoVencimiento !== undefined) payload.fecha_proximo_vencimiento = data.fechaProximoVencimiento;
+        if (data.fecha_proximo_vencimiento !== undefined) payload.fecha_proximo_vencimiento = data.fecha_proximo_vencimiento;
+        if (data.notas !== undefined) payload.notas = data.notas;
+        try {
+            const { error } = await supabaseClient
+                .from('produccion_mantenimiento').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updateMantenimiento:', e.message);
+            return null;
+        }
+    },
+
+    async deleteMantenimiento(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('produccion_mantenimiento').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleteMantenimiento:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
     //  TANDA 2 — Estado taller en proyectos (helper)
     // ═════════════════════════════════════════════════════════════
 

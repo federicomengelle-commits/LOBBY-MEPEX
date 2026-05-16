@@ -1,25 +1,35 @@
 /* =============================================
-   MEPEX Lobby — Módulo Taller (Tanda 2)
+   MEPEX Lobby — Módulo Taller (Tanda 2 — v2 con tabs)
    =============================================
-   Vista única scrolleable para rol taller.
-   Cards grandes mobile-friendly de "HOY" + "PRÓXIMOS DÍAS".
-
-   Cada card es un proyecto (stand) o una carga.
-   Pensado para Diego/Juan/Carlos/Willy: cero tabs, cero filtros,
-   botones grandes, jerarquía visual clara.
-
-   Para roles no-taller (admin, pm, superadmin) el módulo
-   se ve igual — funciona como dashboard operativo del día.
+   3 tabs:
+     - Hoy           → vista cards HOY/PRÓXIMOS DÍAS (default)
+     - Checklist     → grid de proyectos en taller con 6 checks de armado
+     - Mantenimiento → CRUD de herramientas / equipos / matafuegos
    ============================================= */
 
 const TallerModule = {
 
+    // ─── Items canónicos del checklist (labels solo en frontend) ───
+    CHECK_ITEMS: [
+        { key: 'placas',      label: 'Placas cortadas (pintadas)' },
+        { key: 'iluminacion', label: 'Iluminación testeada' },
+        { key: 'mobiliario',  label: 'Mobiliario seleccionado' },
+        { key: 'pisos',       label: 'Pisos enviados al proveedor' },
+        { key: 'grafica',     label: 'Gráfica revisada y subida' },
+        { key: 'embalado',    label: 'Embalado y listo para carga' },
+    ],
+
     // ─── State ───
+    _activeTab: 'hoy',
     _eventos: [],
     _proyectos: [],
     _cargas: [],
     _novedadesPorProyecto: {},
+    _checklistsBulk: {},
+    _proyectosChecklist: [],
+    _mantenimiento: [],
     _diasAdelante: 7,
+    _selectedChecklistProyecto: null,
 
     // ─── Render principal ───
     async render() {
@@ -29,13 +39,18 @@ const TallerModule = {
         const content = document.getElementById('mainContent');
         if (!content) return;
 
-        content.innerHTML = this._buildShell(user);
+        content.innerHTML = this._buildShell();
         this._injectStyles();
-        await this._loadData();
-        this._render();
+        this._attachTabEvents();
+        await this._loadActiveTab();
     },
 
-    _buildShell(user) {
+    _buildShell() {
+        const tabs = [
+            { id: 'hoy',           icon: '📅', label: 'Hoy' },
+            { id: 'checklist',     icon: '✅', label: 'Checklist' },
+            { id: 'mantenimiento', icon: '🔧', label: 'Mantenimiento' },
+        ];
         return `
             <div class="module-view taller-module">
                 <div class="module-subheader">
@@ -57,6 +72,14 @@ const TallerModule = {
                             <h2 class="title-2">Taller</h2>
                         </div>
                     </div>
+                    <div class="module-section-tabs">
+                        ${tabs.map(t => `
+                            <button class="section-tab ${this._activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">
+                                <span class="section-tab-icon">${t.icon}</span>
+                                <span class="section-tab-text">${t.label}</span>
+                            </button>
+                        `).join('')}
+                    </div>
                 </div>
                 <div class="module-content" id="tallerContent">
                     <div style="display:flex;align-items:center;justify-content:center;min-height:300px;">
@@ -67,7 +90,30 @@ const TallerModule = {
         `;
     },
 
-    async _loadData() {
+    _attachTabEvents() {
+        document.querySelectorAll('.section-tab[data-tab]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (this._activeTab === btn.dataset.tab) return;
+                this._activeTab = btn.dataset.tab;
+                document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
+                const c = document.getElementById('tallerContent');
+                if (c) c.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+                await this._loadActiveTab();
+            });
+        });
+    },
+
+    async _loadActiveTab() {
+        if (this._activeTab === 'hoy') return this._loadHoy();
+        if (this._activeTab === 'checklist') return this._loadChecklist();
+        if (this._activeTab === 'mantenimiento') return this._loadMantenimiento();
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TAB HOY (cards Hoy/Próximos días — vista original)
+    // ═════════════════════════════════════════════════════════════
+
+    async _loadHoy() {
         const hoy = new Date();
         hoy.setHours(0, 0, 0, 0);
         const hasta = new Date(hoy);
@@ -76,24 +122,16 @@ const TallerModule = {
         const hastaStr = hasta.toISOString().slice(0, 10);
 
         try {
-            // Cargas en ventana
             const cargas = await API.getCargas({ desde: desdeStr, hasta: hastaStr });
             this._cargas = (cargas || []).filter(c => c.estado !== 'cancelada');
 
-            // Eventos próximos (que tengan armado entre hoy y +N días).
-            // getEvents() mapea raw → formato interno, así que filtramos por setupDate
-            // (que es fecha_armado_inicio de la tabla).
             const evs = (await API.getEvents()) || [];
-            const ventanaEvs = evs.filter(ev => {
+            this._eventos = evs.filter(ev => {
                 const f = ev.setupDate;
-                if (!f) return false;
-                return f >= desdeStr && f <= hastaStr;
+                return f && f >= desdeStr && f <= hastaStr;
             });
-            this._eventos = ventanaEvs;
 
-            // Proyectos de esos eventos. Subselect del evento devuelve raw (no mapeado),
-            // por eso usamos nombre/predio/fecha_armado_inicio (los nombres reales de columna).
-            const eventIds = ventanaEvs.map(ev => ev.id).filter(Boolean);
+            const eventIds = this._eventos.map(ev => ev.id).filter(Boolean);
             if (eventIds.length) {
                 const { data, error } = await supabaseClient
                     .from('proyectos')
@@ -108,32 +146,38 @@ const TallerModule = {
                 if (error) throw error;
                 this._proyectos = data || [];
 
-                // Novedades visibles para taller pendientes
+                // Novedades + checklists en paralelo
                 const proyIds = this._proyectos.map(p => p.id);
                 if (proyIds.length) {
-                    const { data: novs } = await supabaseClient
-                        .from('proyecto_novedades')
-                        .select('id, proyecto_id, tipo, mensaje, prioridad, created_at, autor:profiles!autor_id(name, initials)')
-                        .in('proyecto_id', proyIds)
-                        .eq('visible_para_taller', true)
-                        .eq('resuelta', false)
-                        .eq('_deleted', false)
-                        .order('created_at', { ascending: false });
+                    const [novs, checks] = await Promise.all([
+                        supabaseClient
+                            .from('proyecto_novedades')
+                            .select('id, proyecto_id, tipo, mensaje, prioridad, created_at, autor:profiles!autor_id(name, initials)')
+                            .in('proyecto_id', proyIds)
+                            .eq('visible_para_taller', true)
+                            .eq('resuelta', false)
+                            .eq('_deleted', false)
+                            .order('created_at', { ascending: false })
+                            .then(r => r.data || []),
+                        API.getChecklistsBulk(proyIds),
+                    ]);
                     this._novedadesPorProyecto = {};
-                    (novs || []).forEach(n => {
+                    novs.forEach(n => {
                         if (!this._novedadesPorProyecto[n.proyecto_id]) this._novedadesPorProyecto[n.proyecto_id] = [];
                         this._novedadesPorProyecto[n.proyecto_id].push(n);
                     });
+                    this._checklistsBulk = checks;
                 }
             } else {
                 this._proyectos = [];
             }
         } catch (e) {
-            console.warn('[Taller] Error _loadData:', e.message);
+            console.warn('[Taller] Error _loadHoy:', e.message);
         }
+        this._renderHoy();
     },
 
-    _render() {
+    _renderHoy() {
         const c = document.getElementById('tallerContent');
         if (!c) return;
 
@@ -141,10 +185,8 @@ const TallerModule = {
         const totalNovedades = Object.values(this._novedadesPorProyecto)
             .reduce((acc, arr) => acc + arr.length, 0);
 
-        // Construir buckets por fecha
         const items = this._buildItemsByDay();
         const hoyStr = new Date().toISOString().slice(0, 10);
-
         const itemsHoy = items[hoyStr] || [];
         const proximosDays = Object.keys(items).filter(d => d !== hoyStr).sort();
 
@@ -160,7 +202,6 @@ const TallerModule = {
                     ` : ''}
                 </div>
 
-                <!-- HOY -->
                 <section class="taller-section">
                     <div class="taller-section-header">
                         <span class="taller-section-eyebrow">HOY</span>
@@ -178,7 +219,6 @@ const TallerModule = {
                     `}
                 </section>
 
-                <!-- PRÓXIMOS DÍAS -->
                 ${proximosDays.length ? `
                     <section class="taller-section">
                         <div class="taller-section-header">
@@ -198,40 +238,30 @@ const TallerModule = {
             </div>
         `;
 
-        this._attachCardEvents();
+        this._attachHoyCardEvents();
     },
 
-    // Agrupa proyectos y cargas por fecha (yyyy-mm-dd).
     _buildItemsByDay() {
         const buckets = {};
-
-        // Proyectos → fecha = fecha_armado_inicio del evento (día de armado)
         this._proyectos.forEach(p => {
             const fecha = p.evento?.fecha_armado_inicio;
             if (!fecha) return;
             if (!buckets[fecha]) buckets[fecha] = [];
             buckets[fecha].push({ kind: 'proyecto', data: p });
         });
-
-        // Cargas → fecha = carga.fecha
         this._cargas.forEach(c => {
             const fecha = c.fecha;
             if (!fecha) return;
             if (!buckets[fecha]) buckets[fecha] = [];
             buckets[fecha].push({ kind: 'carga', data: c });
         });
-
-        // Ordenar dentro de cada día: cargas primero (hora), luego proyectos
         Object.keys(buckets).forEach(d => {
             buckets[d].sort((a, b) => {
                 if (a.kind !== b.kind) return a.kind === 'carga' ? -1 : 1;
-                if (a.kind === 'carga') {
-                    return (a.data.hora_carga || 'z').localeCompare(b.data.hora_carga || 'z');
-                }
+                if (a.kind === 'carga') return (a.data.hora_carga || 'z').localeCompare(b.data.hora_carga || 'z');
                 return 0;
             });
         });
-
         return buckets;
     },
 
@@ -247,14 +277,20 @@ const TallerModule = {
         const nombre = p.nombre || 'Stand';
         const estado = p.estado_taller || 'pendiente';
         const novedades = this._novedadesPorProyecto[p.id] || [];
-        const novedad = novedades[0]; // mostramos la primera
+        const novedad = novedades[0];
 
-        // Action button según estado
+        // Progreso del checklist
+        const checks = this._checklistsBulk[p.id] || {};
+        const total = this.CHECK_ITEMS.length;
+        const done = this.CHECK_ITEMS.reduce((acc, it) => acc + (checks[it.key]?.checked ? 1 : 0), 0);
+        const progressPct = Math.round((done / total) * 100);
+        const allChecked = done === total;
+
         let actionHtml = '';
         if (estado === 'pendiente') {
             actionHtml = `<button class="tlr-card-btn primary" data-action="set-en-armado" data-id="${p.id}">🛠️ Empezar armado</button>`;
         } else if (estado === 'en_armado') {
-            actionHtml = `<button class="tlr-card-btn success" data-action="set-listo" data-id="${p.id}">✅ Marcar listo</button>`;
+            actionHtml = `<button class="tlr-card-btn success ${allChecked ? '' : 'disabled-soft'}" data-action="set-listo" data-id="${p.id}" title="${allChecked ? '' : 'Completá el checklist primero (o marcá igualmente)'}">${allChecked ? '✅ Marcar listo' : `Marcar listo (${done}/${total})`}</button>`;
         } else if (estado === 'listo') {
             actionHtml = `<button class="tlr-card-btn secondary" data-action="set-despachado" data-id="${p.id}">🚚 Marcar despachado</button>`;
         } else {
@@ -269,9 +305,7 @@ const TallerModule = {
                 </div>
 
                 <div class="tlr-card-hero">
-                    ${p.drive_folder_url
-                        ? `<div class="tlr-hero-icon">📁</div>`
-                        : `<div class="tlr-hero-icon">🏗️</div>`}
+                    <div class="tlr-hero-icon">${p.drive_folder_url ? '📁' : '🏗️'}</div>
                 </div>
 
                 ${novedad ? `
@@ -288,6 +322,16 @@ const TallerModule = {
                         <div class="tlr-meta-row"><span class="tlr-meta-key">Evento</span><span>${this._esc(evNombre)}</span></div>
                         ${venue ? `<div class="tlr-meta-row"><span class="tlr-meta-key">Venue</span><span>${this._esc(venue)}</span></div>` : ''}
                     </div>
+
+                    <button class="tlr-checklist-progress" data-action="open-checklist" data-id="${p.id}" title="Ver checklist completo">
+                        <div class="tlr-progress-row">
+                            <span class="tlr-progress-label">Checklist</span>
+                            <span class="tlr-progress-count ${allChecked ? 'done' : ''}">${done}/${total}</span>
+                        </div>
+                        <div class="tlr-progress-bar">
+                            <div class="tlr-progress-fill ${allChecked ? 'done' : ''}" style="width:${progressPct}%"></div>
+                        </div>
+                    </button>
                 </div>
 
                 <div class="tlr-card-actions">
@@ -306,7 +350,6 @@ const TallerModule = {
         const hora = c.hora_carga ? c.hora_carga.slice(0, 5) : '';
         const numStands = (c.carga_proyectos || []).length;
 
-        // Action button según estado
         let actionHtml = '';
         const ext = c.id;
         if (c.estado === 'borrador') {
@@ -331,11 +374,7 @@ const TallerModule = {
                     <span class="tlr-card-kind">CARGA</span>
                     <span class="tlr-estado-badge tlr-estado-${c.estado}">${this._estadoCargaLabel(c.estado)}</span>
                 </div>
-
-                <div class="tlr-card-hero">
-                    <div class="tlr-hero-icon">🚚</div>
-                </div>
-
+                <div class="tlr-card-hero"><div class="tlr-hero-icon">🚚</div></div>
                 <div class="tlr-card-body">
                     <div class="tlr-card-title">${this._esc(veh)}${hora ? ` <span class="tlr-hora-chip">${hora}</span>` : ''}</div>
                     <div class="tlr-card-meta">
@@ -345,16 +384,12 @@ const TallerModule = {
                         <div class="tlr-meta-row"><span class="tlr-meta-key">Stands</span><span>${numStands}</span></div>
                     </div>
                 </div>
-
-                <div class="tlr-card-actions">
-                    ${actionHtml}
-                </div>
+                <div class="tlr-card-actions">${actionHtml}</div>
             </article>
         `;
     },
 
-    _attachCardEvents() {
-        // Cambios de estado proyecto
+    _attachHoyCardEvents() {
         document.querySelectorAll('[data-action="set-en-armado"]').forEach(btn =>
             btn.addEventListener('click', () => this._setEstadoProyecto(btn.dataset.id, 'en_armado'))
         );
@@ -364,8 +399,6 @@ const TallerModule = {
         document.querySelectorAll('[data-action="set-despachado"]').forEach(btn =>
             btn.addEventListener('click', () => this._setEstadoProyecto(btn.dataset.id, 'despachado'))
         );
-
-        // Cargas
         document.querySelectorAll('[data-action="open-carga"]').forEach(btn =>
             btn.addEventListener('click', () => Router.navigate(`logistica?tab=cargas&id=${btn.dataset.id}`))
         );
@@ -375,12 +408,9 @@ const TallerModule = {
         document.querySelectorAll('[data-action="download-pdf"]').forEach(btn =>
             btn.addEventListener('click', () => this._descargarRemito(btn.dataset.path))
         );
-
-        // Upload firmado: el botón dispara el file input asociado por data-carga-id
         document.querySelectorAll('[data-action="upload-firmado-trigger"]').forEach(btn => {
             btn.addEventListener('click', () => {
-                const id = btn.dataset.id;
-                const input = document.querySelector(`.tlr-file-input[data-carga-id="${id}"]`);
+                const input = document.querySelector(`.tlr-file-input[data-carga-id="${btn.dataset.id}"]`);
                 input?.click();
             });
         });
@@ -391,23 +421,417 @@ const TallerModule = {
                 await this._uploadFirmado(input.dataset.cargaId, file);
             });
         });
-
-        // Ver proyecto y ver novedad
         document.querySelectorAll('[data-action="open-proyecto"]').forEach(btn =>
             btn.addEventListener('click', () => Router.navigate(`proyectos/${btn.dataset.id}`))
         );
         document.querySelectorAll('[data-action="view-novedad"]').forEach(btn =>
             btn.addEventListener('click', () => this._openNovedadModal(btn.dataset.id, btn.dataset.proyecto))
         );
-
-        // Drive
         document.querySelectorAll('[data-action="open-drive"]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const url = btn.dataset.url;
                 if (url) window.open(url, '_blank', 'noopener');
             });
         });
+        // Click en barra de progreso → ir al tab checklist con ese proyecto seleccionado
+        document.querySelectorAll('[data-action="open-checklist"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._selectedChecklistProyecto = btn.dataset.id;
+                this._activeTab = 'checklist';
+                document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === 'checklist'));
+                const c = document.getElementById('tallerContent');
+                if (c) c.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+                this._loadChecklist();
+            });
+        });
     },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TAB CHECKLIST
+    // ═════════════════════════════════════════════════════════════
+
+    async _loadChecklist() {
+        try {
+            // Mismos proyectos que _loadHoy pero NO filtramos por novedad o carga.
+            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+            const hasta = new Date(hoy); hasta.setDate(hasta.getDate() + this._diasAdelante);
+            const desdeStr = hoy.toISOString().slice(0, 10);
+            const hastaStr = hasta.toISOString().slice(0, 10);
+            const evs = (await API.getEvents()) || [];
+            const ventanaEvs = evs.filter(ev => {
+                const f = ev.setupDate;
+                return f && f >= desdeStr && f <= hastaStr;
+            });
+            const eventIds = ventanaEvs.map(ev => ev.id).filter(Boolean);
+
+            if (eventIds.length) {
+                const { data, error } = await supabaseClient
+                    .from('proyectos')
+                    .select(`
+                        id, nombre, evento_id, estado_taller,
+                        cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
+                        evento:eventos!evento_id(id, nombre, fecha_armado_inicio, predio)
+                    `)
+                    .in('evento_id', eventIds)
+                    .neq('estado_taller', 'cerrado')
+                    .eq('_deleted', false)
+                    .order('estado_taller', { ascending: true });
+                if (error) throw error;
+                this._proyectosChecklist = data || [];
+                const ids = this._proyectosChecklist.map(p => p.id);
+                this._checklistsBulk = ids.length ? await API.getChecklistsBulk(ids) : {};
+            } else {
+                this._proyectosChecklist = [];
+                this._checklistsBulk = {};
+            }
+        } catch (e) {
+            console.warn('[Taller] Error _loadChecklist:', e.message);
+        }
+        this._renderChecklist();
+    },
+
+    _renderChecklist() {
+        const c = document.getElementById('tallerContent');
+        if (!c) return;
+
+        const list = this._proyectosChecklist;
+        if (!list.length) {
+            c.innerHTML = `
+                <div class="taller-empty-day" style="margin: 40px 24px;">
+                    <div class="taller-empty-icon">📋</div>
+                    <p>No hay proyectos activos en taller.</p>
+                </div>
+            `;
+            return;
+        }
+
+        c.innerHTML = `
+            <div class="taller-content">
+                <div class="taller-section-header" style="margin-bottom: 16px;">
+                    <span class="taller-section-eyebrow">CHECKLIST DE ARMADO</span>
+                    <h3>${list.length} proyecto${list.length === 1 ? '' : 's'} en taller</h3>
+                </div>
+                <div class="tlr-chk-grid">
+                    ${list.map(p => this._renderChecklistRow(p)).join('')}
+                </div>
+            </div>
+        `;
+
+        this._attachChecklistEvents();
+
+        // Auto-expand si vinimos desde una card
+        if (this._selectedChecklistProyecto) {
+            const target = document.querySelector(`.tlr-chk-row[data-id="${this._selectedChecklistProyecto}"]`);
+            if (target) {
+                target.classList.add('expanded');
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            this._selectedChecklistProyecto = null;
+        }
+    },
+
+    _renderChecklistRow(p) {
+        const cliente = p.cliente?.nombre_empresa || p.cliente?.razon_social || '—';
+        const evNombre = p.evento?.nombre || '—';
+        const checks = this._checklistsBulk[p.id] || {};
+        const total = this.CHECK_ITEMS.length;
+        const done = this.CHECK_ITEMS.reduce((acc, it) => acc + (checks[it.key]?.checked ? 1 : 0), 0);
+        const progressPct = Math.round((done / total) * 100);
+        const allChecked = done === total;
+        const estado = p.estado_taller || 'pendiente';
+
+        return `
+            <article class="tlr-chk-row" data-id="${p.id}">
+                <button class="tlr-chk-header" data-action="toggle-chk-row" data-id="${p.id}">
+                    <div class="tlr-chk-header-main">
+                        <div class="tlr-chk-row-title">${this._esc(p.nombre || 'Stand')}</div>
+                        <div class="tlr-chk-row-sub">${this._esc(cliente)} · ${this._esc(evNombre)}</div>
+                    </div>
+                    <div class="tlr-chk-header-right">
+                        <span class="tlr-estado-badge tlr-estado-${estado}">${this._estadoTallerLabel(estado)}</span>
+                        <div class="tlr-chk-progress">
+                            <div class="tlr-progress-bar">
+                                <div class="tlr-progress-fill ${allChecked ? 'done' : ''}" style="width:${progressPct}%"></div>
+                            </div>
+                            <span class="tlr-chk-count ${allChecked ? 'done' : ''}">${done}/${total}</span>
+                        </div>
+                        <span class="tlr-chk-chevron">▾</span>
+                    </div>
+                </button>
+                <div class="tlr-chk-body">
+                    ${this.CHECK_ITEMS.map(it => {
+                        const checked = !!checks[it.key]?.checked;
+                        return `
+                            <label class="tlr-chk-item ${checked ? 'checked' : ''}">
+                                <input type="checkbox" data-action="toggle-chk" data-proyecto="${p.id}" data-item="${it.key}" ${checked ? 'checked' : ''}>
+                                <span class="tlr-chk-box">${checked ? '✓' : ''}</span>
+                                <span class="tlr-chk-label">${this._esc(it.label)}</span>
+                            </label>
+                        `;
+                    }).join('')}
+                </div>
+            </article>
+        `;
+    },
+
+    _attachChecklistEvents() {
+        document.querySelectorAll('[data-action="toggle-chk-row"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                btn.closest('.tlr-chk-row')?.classList.toggle('expanded');
+            });
+        });
+        document.querySelectorAll('[data-action="toggle-chk"]').forEach(input => {
+            input.addEventListener('change', async (e) => {
+                e.stopPropagation();
+                const proyectoId = input.dataset.proyecto;
+                const itemKey = input.dataset.item;
+                const checked = input.checked;
+                // Update local state inmediato
+                if (!this._checklistsBulk[proyectoId]) this._checklistsBulk[proyectoId] = {};
+                this._checklistsBulk[proyectoId][itemKey] = { checked };
+                // Re-render row para actualizar progreso
+                this._refreshChecklistRow(proyectoId);
+                // Persist
+                const r = await API.setChecklistItem(proyectoId, itemKey, checked);
+                if (!r) {
+                    Toast.error('No se pudo guardar el cambio.');
+                    // Revert local
+                    this._checklistsBulk[proyectoId][itemKey] = { checked: !checked };
+                    this._refreshChecklistRow(proyectoId);
+                }
+            });
+        });
+    },
+
+    _refreshChecklistRow(proyectoId) {
+        const row = document.querySelector(`.tlr-chk-row[data-id="${proyectoId}"]`);
+        if (!row) return;
+        const p = this._proyectosChecklist.find(x => x.id === proyectoId);
+        if (!p) return;
+        const wasExpanded = row.classList.contains('expanded');
+        const html = this._renderChecklistRow(p);
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const newRow = tmp.firstElementChild;
+        if (wasExpanded) newRow.classList.add('expanded');
+        row.replaceWith(newRow);
+        // Re-attach events for this row only
+        newRow.querySelector('[data-action="toggle-chk-row"]')?.addEventListener('click', () => {
+            newRow.classList.toggle('expanded');
+        });
+        newRow.querySelectorAll('[data-action="toggle-chk"]').forEach(input => {
+            input.addEventListener('change', async (e) => {
+                e.stopPropagation();
+                const itemKey = input.dataset.item;
+                const checked = input.checked;
+                if (!this._checklistsBulk[proyectoId]) this._checklistsBulk[proyectoId] = {};
+                this._checklistsBulk[proyectoId][itemKey] = { checked };
+                this._refreshChecklistRow(proyectoId);
+                const r = await API.setChecklistItem(proyectoId, itemKey, checked);
+                if (!r) Toast.error('No se pudo guardar.');
+            });
+        });
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TAB MANTENIMIENTO
+    // ═════════════════════════════════════════════════════════════
+
+    async _loadMantenimiento() {
+        try {
+            this._mantenimiento = await API.getMantenimiento({ soloActivos: false });
+        } catch (e) {
+            console.warn('[Taller] Error _loadMantenimiento:', e.message);
+        }
+        this._renderMantenimiento();
+    },
+
+    _renderMantenimiento() {
+        const c = document.getElementById('tallerContent');
+        if (!c) return;
+
+        const list = (this._mantenimiento || []).filter(x => !x._deleted);
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const en30 = new Date(hoy); en30.setDate(en30.getDate() + 30);
+
+        const venceProximo = (item) => {
+            if (!item.fecha_proximo_vencimiento) return null;
+            const f = new Date(item.fecha_proximo_vencimiento + 'T00:00:00');
+            if (f < hoy) return 'vencido';
+            if (f < en30) return 'proximo';
+            return 'ok';
+        };
+        const proximos = list.filter(x => venceProximo(x) === 'proximo').length;
+        const vencidos = list.filter(x => venceProximo(x) === 'vencido').length;
+
+        c.innerHTML = `
+            <div class="taller-content">
+                <div class="tlr-mt-toolbar">
+                    <div class="tlr-mt-stats">
+                        <span class="tlr-mt-stat"><strong>${list.length}</strong> equipos</span>
+                        ${vencidos > 0 ? `<span class="tlr-mt-stat tlr-mt-bad"><strong>${vencidos}</strong> vencidos</span>` : ''}
+                        ${proximos > 0 ? `<span class="tlr-mt-stat tlr-mt-warn"><strong>${proximos}</strong> vencen en 30d</span>` : ''}
+                    </div>
+                    <button class="btn-primary" id="tlrMtNuevo">＋ Nuevo equipo</button>
+                </div>
+                ${list.length === 0 ? `
+                    <div class="taller-empty-day" style="margin: 20px 0 0 0;">
+                        <div class="taller-empty-icon">🔧</div>
+                        <p>Sin equipos cargados.</p>
+                        <p style="font-size:0.78rem;color:#666;">Sumá herramientas, matafuegos, taladros, etc. con sus vencimientos.</p>
+                    </div>
+                ` : `
+                    <table class="tlr-mt-table">
+                        <thead>
+                            <tr>
+                                <th>Equipo</th>
+                                <th>Tipo</th>
+                                <th>Estado</th>
+                                <th>Último service</th>
+                                <th>Próximo venc.</th>
+                                <th>Notas</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${list.map(it => `
+                                <tr>
+                                    <td><strong>${this._esc(it.nombre)}</strong></td>
+                                    <td><span class="tlr-mt-tipo">${this._esc(it.tipo || '—')}</span></td>
+                                    <td><span class="tlr-mt-estado tlr-mt-estado-${it.estado || 'ok'}">${this._mtEstadoLabel(it.estado)}</span></td>
+                                    <td>${this._fmtDate(it.fecha_ultimo_service)}</td>
+                                    <td>${this._renderVencimiento(it)}</td>
+                                    <td class="tlr-mt-notas-cell">${this._esc(it.notas || '—')}</td>
+                                    <td>
+                                        <button class="tlr-mt-mini-btn" data-action="edit-mt" data-id="${it.id}">✎</button>
+                                        <button class="tlr-mt-mini-btn danger" data-action="del-mt" data-id="${it.id}">🗑</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `}
+            </div>
+        `;
+
+        document.getElementById('tlrMtNuevo')?.addEventListener('click', () => this._openMantenimientoModal(null));
+        document.querySelectorAll('[data-action="edit-mt"]').forEach(btn =>
+            btn.addEventListener('click', () => this._openMantenimientoModal(btn.dataset.id))
+        );
+        document.querySelectorAll('[data-action="del-mt"]').forEach(btn =>
+            btn.addEventListener('click', () => this._deleteMantenimiento(btn.dataset.id))
+        );
+    },
+
+    _renderVencimiento(item) {
+        if (!item.fecha_proximo_vencimiento) return '<span style="color:#555">—</span>';
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const f = new Date(item.fecha_proximo_vencimiento + 'T00:00:00');
+        const diff = Math.round((f - hoy) / 86400000);
+        const dateStr = this._fmtDate(item.fecha_proximo_vencimiento);
+        if (diff < 0) return `<span class="tlr-mt-venc-vencido">${dateStr} · vencido</span>`;
+        if (diff < 30) return `<span class="tlr-mt-venc-proximo">${dateStr} · ${diff}d</span>`;
+        return `<span>${dateStr}</span>`;
+    },
+
+    _openMantenimientoModal(id) {
+        const item = id ? this._mantenimiento.find(x => x.id == id) : null;
+        const isEdit = !!item;
+        const body = `
+            <div class="log-form">
+                <div class="log-form-row">
+                    <label>Nombre *</label>
+                    <input type="text" id="mtNombre" value="${this._escAttr(item?.nombre || '')}" placeholder="Ej: Matafuego cocina, Taladro Bosch verde">
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Tipo</label>
+                        <select id="mtTipo">
+                            <option value="herramienta" ${(item?.tipo || 'herramienta') === 'herramienta' ? 'selected' : ''}>Herramienta</option>
+                            <option value="matafuego" ${item?.tipo === 'matafuego' ? 'selected' : ''}>Matafuego</option>
+                            <option value="equipo" ${item?.tipo === 'equipo' ? 'selected' : ''}>Equipo</option>
+                            <option value="vehiculo_propio" ${item?.tipo === 'vehiculo_propio' ? 'selected' : ''}>Vehículo propio</option>
+                            <option value="otro" ${item?.tipo === 'otro' ? 'selected' : ''}>Otro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Estado</label>
+                        <select id="mtEstado">
+                            <option value="ok" ${(item?.estado || 'ok') === 'ok' ? 'selected' : ''}>OK</option>
+                            <option value="atencion" ${item?.estado === 'atencion' ? 'selected' : ''}>Atención</option>
+                            <option value="reparacion" ${item?.estado === 'reparacion' ? 'selected' : ''}>En reparación</option>
+                            <option value="baja" ${item?.estado === 'baja' ? 'selected' : ''}>Baja</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Último service</label>
+                        <input type="date" id="mtUltimoService" value="${item?.fecha_ultimo_service || ''}">
+                    </div>
+                    <div>
+                        <label>Próximo vencimiento</label>
+                        <input type="date" id="mtProxVenc" value="${item?.fecha_proximo_vencimiento || ''}">
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Notas</label>
+                    <textarea id="mtNotas" rows="2">${this._esc(item?.notas || '')}</textarea>
+                </div>
+            </div>
+        `;
+        const modalId = Modal.open({
+            title: isEdit ? 'Editar equipo' : 'Nuevo equipo',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                <button class="btn-primary" id="mtSave">${isEdit ? 'Guardar' : 'Crear'}</button>
+            `,
+        });
+        document.getElementById('mtSave')?.addEventListener('click', async () => {
+            const payload = {
+                nombre: document.getElementById('mtNombre')?.value.trim(),
+                tipo: document.getElementById('mtTipo')?.value,
+                estado: document.getElementById('mtEstado')?.value,
+                fechaUltimoService: document.getElementById('mtUltimoService')?.value || null,
+                fechaProximoVencimiento: document.getElementById('mtProxVenc')?.value || null,
+                notas: document.getElementById('mtNotas')?.value.trim() || null,
+            };
+            if (!payload.nombre) { Toast.warning('El nombre es obligatorio.'); return; }
+            try {
+                if (isEdit) {
+                    await API.updateMantenimiento(id, payload);
+                    Toast.success('Equipo actualizado.');
+                } else {
+                    await API.createMantenimiento(payload);
+                    Toast.success('Equipo agregado.');
+                }
+                Modal.close(modalId);
+                await this._loadMantenimiento();
+            } catch (e) {
+                console.error('[Taller] mantenimiento save error:', e);
+                Toast.error('Error al guardar.');
+            }
+        });
+    },
+
+    async _deleteMantenimiento(id) {
+        const ok = await Confirm.delete('este equipo');
+        if (!ok) return;
+        const r = await API.deleteMantenimiento(id);
+        if (!r) { Toast.error('No se pudo eliminar.'); return; }
+        Toast.success('Equipo eliminado.');
+        await this._loadMantenimiento();
+    },
+
+    _mtEstadoLabel(e) {
+        return ({ ok: 'OK', atencion: 'Atención', reparacion: 'En reparación', baja: 'Baja' })[e] || (e || 'OK');
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  Acciones compartidas tab Hoy
+    // ═════════════════════════════════════════════════════════════
 
     async _setEstadoProyecto(proyectoId, estado) {
         const labels = {
@@ -423,10 +847,9 @@ const TallerModule = {
         const ok = await API.setEstadoTaller(proyectoId, estado);
         if (!ok) { Toast.error('No se pudo actualizar.'); return; }
         Toast.success('Estado actualizado.');
-        // Update local state + re-render
         const p = this._proyectos.find(x => x.id === proyectoId);
         if (p) p.estado_taller = estado;
-        this._render();
+        this._renderHoy();
     },
 
     async _setEstadoCarga(cargaId, estado) {
@@ -435,7 +858,7 @@ const TallerModule = {
         Toast.success('Carga actualizada.');
         const c = this._cargas.find(x => x.id === cargaId);
         if (c) c.estado = estado;
-        this._render();
+        this._renderHoy();
     },
 
     async _uploadFirmado(cargaId, file) {
@@ -445,8 +868,7 @@ const TallerModule = {
             if (!path) { Toast.error('No se pudo subir.'); return; }
             await API.setCargaRemitoFirmado(cargaId, path);
             Toast.success('Foto subida. Carga completada.');
-            await this._loadData();
-            this._render();
+            await this._loadHoy();
         } catch (e) {
             console.error('[Taller] upload firmado error:', e);
             Toast.error('Error al subir la foto.');
@@ -464,7 +886,6 @@ const TallerModule = {
         const novedades = this._novedadesPorProyecto[proyectoId] || [];
         const n = novedades.find(x => x.id === novedadId);
         if (!n) return;
-
         const fecha = new Date(n.created_at).toLocaleString('es-AR', {
             day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
         });
@@ -488,7 +909,7 @@ const TallerModule = {
     },
 
     // ═════════════════════════════════════════════════════════════
-    //  Helpers
+    //  Helpers de formato
     // ═════════════════════════════════════════════════════════════
 
     _estadoTallerLabel(estado) {
@@ -529,28 +950,24 @@ const TallerModule = {
     _fmtDayLong(yyyymmdd) {
         try {
             const d = new Date(yyyymmdd + 'T00:00:00');
-            return d.toLocaleDateString('es-AR', {
-                weekday: 'long', day: 'numeric', month: 'long',
-            });
+            return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
         } catch { return yyyymmdd; }
     },
 
-    _capitalize(s) {
-        if (!s) return s;
-        return s.charAt(0).toUpperCase() + s.slice(1);
+    _fmtDate(yyyymmdd) {
+        if (!yyyymmdd) return '—';
+        try {
+            return new Date(yyyymmdd + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+        } catch { return yyyymmdd; }
     },
+
+    _capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; },
 
     _esc(s) {
-        return String(s ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
-
     _escAttr(s) {
-        return String(s ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/"/g, '&quot;');
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     },
 
     _injectStyles() {
@@ -581,42 +998,31 @@ const TallerModule = {
                 width: fit-content;
             }
             .taller-module .taller-alert-icon { font-size: 1.15rem; }
-
-            .taller-module .taller-section {
-                margin-bottom: 32px;
-            }
+            .taller-module .taller-section { margin-bottom: 32px; }
             .taller-module .taller-section-header {
                 display: flex; align-items: baseline; gap: 12px;
-                margin-bottom: 14px;
-                padding-bottom: 8px;
+                margin-bottom: 14px; padding-bottom: 8px;
                 border-bottom: 1px solid #2a2a2a;
             }
             .taller-module .taller-section-eyebrow {
-                font-family: var(--font-mono, 'Space Mono', monospace);
-                font-size: 0.72rem; color: #00A9C1;
+                font-family: var(--font-mono); font-size: 0.72rem; color: #00A9C1;
                 letter-spacing: 0.12em; font-weight: 700;
             }
             .taller-module .taller-section-header h3 {
                 font-family: var(--font-main); font-size: 1.05rem; font-weight: 500;
                 color: #aaa; margin: 0;
             }
-
-            .taller-module .taller-day-block {
-                margin-bottom: 22px;
-            }
+            .taller-module .taller-day-block { margin-bottom: 22px; }
             .taller-module .taller-day-label {
                 font-family: var(--font-mono); font-size: 0.78rem;
                 color: #888; text-transform: capitalize;
                 margin-bottom: 10px; padding-left: 4px;
                 letter-spacing: 0.05em;
             }
-
             .taller-module .taller-cards-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
                 gap: 16px;
             }
-
             .taller-module .taller-empty-day {
                 display: flex; flex-direction: column; align-items: center;
                 justify-content: center; gap: 8px;
@@ -626,13 +1032,10 @@ const TallerModule = {
             }
             .taller-module .taller-empty-icon { font-size: 2rem; opacity: 0.5; }
 
-            /* Cards */
+            /* Cards (Hoy tab) */
             .taller-module .tlr-card {
-                background: #0e0e0e;
-                border: 1px solid #2a2a2a;
-                border-radius: 10px;
-                overflow: hidden;
-                display: flex; flex-direction: column;
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 10px;
+                overflow: hidden; display: flex; flex-direction: column;
                 transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
             }
             .taller-module .tlr-card:hover {
@@ -643,57 +1046,40 @@ const TallerModule = {
                 border-color: rgba(242, 141, 21, 0.4);
                 box-shadow: 0 0 0 1px rgba(242, 141, 21, 0.15);
             }
-
             .taller-module .tlr-card-head {
                 display: flex; justify-content: space-between; align-items: center;
-                padding: 10px 14px;
-                background: #111;
-                border-bottom: 1px solid #1a1a1a;
+                padding: 10px 14px; background: #111; border-bottom: 1px solid #1a1a1a;
             }
             .taller-module .tlr-card-kind {
                 font-family: var(--font-mono); font-size: 0.7rem;
                 color: #00A9C1; letter-spacing: 0.1em; font-weight: 700;
             }
             .taller-module .tlr-card-carga .tlr-card-kind { color: #F28D15; }
-
             .taller-module .tlr-card-hero {
                 height: 96px;
                 background: linear-gradient(135deg, #0a0a0a 0%, #141414 100%);
                 display: flex; align-items: center; justify-content: center;
                 border-bottom: 1px solid #1a1a1a;
             }
-            .taller-module .tlr-hero-icon {
-                font-size: 3rem; opacity: 0.7;
-            }
-
+            .taller-module .tlr-hero-icon { font-size: 3rem; opacity: 0.7; }
             .taller-module .tlr-novedad-banner {
                 background: rgba(242, 141, 21, 0.10);
                 border-top: 1px solid rgba(242, 141, 21, 0.3);
                 border-bottom: 1px solid rgba(242, 141, 21, 0.3);
-                color: #F28D15;
-                font-family: var(--font-main); font-size: 0.82rem;
+                color: #F28D15; font-family: var(--font-main); font-size: 0.82rem;
                 padding: 8px 12px;
                 display: flex; align-items: flex-start; gap: 8px;
-                cursor: pointer;
-                text-align: left;
+                cursor: pointer; text-align: left;
                 border-left: none; border-right: none;
-                transition: background 150ms ease;
-                width: 100%;
+                transition: background 150ms ease; width: 100%;
             }
-            .taller-module .tlr-novedad-banner:hover {
-                background: rgba(242, 141, 21, 0.18);
-            }
+            .taller-module .tlr-novedad-banner:hover { background: rgba(242, 141, 21, 0.18); }
             .taller-module .tlr-novedad-icon { font-size: 1rem; line-height: 1; padding-top: 2px; }
             .taller-module .tlr-novedad-text { flex: 1; }
-
-            .taller-module .tlr-card-body {
-                padding: 12px 14px;
-                flex: 1;
-            }
+            .taller-module .tlr-card-body { padding: 12px 14px; flex: 1; }
             .taller-module .tlr-card-title {
                 font-family: var(--font-main); font-size: 1.05rem; font-weight: 600;
-                color: #E8E8E8; margin-bottom: 10px;
-                word-wrap: break-word;
+                color: #E8E8E8; margin-bottom: 10px; word-wrap: break-word;
             }
             .taller-module .tlr-hora-chip {
                 display: inline-block;
@@ -707,15 +1093,12 @@ const TallerModule = {
             }
             .taller-module .tlr-meta-row {
                 display: flex; justify-content: space-between; align-items: baseline;
-                gap: 8px;
-                font-family: var(--font-main); font-size: 0.85rem;
-                color: #ccc;
+                gap: 8px; font-family: var(--font-main); font-size: 0.85rem; color: #ccc;
             }
             .taller-module .tlr-meta-key {
                 color: #777; font-family: var(--font-mono); font-size: 0.7rem;
                 text-transform: uppercase; letter-spacing: 0.05em;
             }
-
             .taller-module .tlr-estado-badge {
                 font-family: var(--font-mono); font-size: 0.68rem; font-weight: 600;
                 padding: 2px 8px; border-radius: 4px;
@@ -731,51 +1114,34 @@ const TallerModule = {
             .taller-module .tlr-estado-en_curso { background: rgba(242, 141, 21, 0.15); color: #F28D15; }
             .taller-module .tlr-estado-completada { background: rgba(0, 204, 136, 0.15); color: #00CC88; }
             .taller-module .tlr-estado-cancelada { background: rgba(255, 68, 68, 0.15); color: #ff4444; }
-
             .taller-module .tlr-card-actions {
                 display: flex; flex-direction: column; gap: 8px;
-                padding: 12px 14px;
-                border-top: 1px solid #1a1a1a;
-                background: #0a0a0a;
+                padding: 12px 14px; border-top: 1px solid #1a1a1a; background: #0a0a0a;
             }
             .taller-module .tlr-card-btn {
-                width: 100%;
-                padding: 11px 14px;
+                width: 100%; padding: 11px 14px;
                 font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700;
-                border-radius: 6px;
-                border: 1px solid transparent;
-                cursor: pointer;
-                transition: all 200ms ease;
-                text-align: center;
-                min-height: 44px; /* mobile target */
+                border-radius: 6px; border: 1px solid transparent;
+                cursor: pointer; transition: all 200ms ease;
+                text-align: center; min-height: 44px;
             }
-            .taller-module .tlr-card-btn.primary {
-                background: #00A9C1; color: #050505;
-            }
-            .taller-module .tlr-card-btn.primary:hover {
-                background: #00C2DC; box-shadow: 0 0 12px rgba(0, 169, 193, 0.4);
-            }
-            .taller-module .tlr-card-btn.success {
-                background: #00CC88; color: #050505;
-            }
-            .taller-module .tlr-card-btn.success:hover {
-                background: #00E89C; box-shadow: 0 0 12px rgba(0, 204, 136, 0.4);
-            }
+            .taller-module .tlr-card-btn.primary { background: #00A9C1; color: #050505; }
+            .taller-module .tlr-card-btn.primary:hover { background: #00C2DC; box-shadow: 0 0 12px rgba(0, 169, 193, 0.4); }
+            .taller-module .tlr-card-btn.success { background: #00CC88; color: #050505; }
+            .taller-module .tlr-card-btn.success:hover { background: #00E89C; box-shadow: 0 0 12px rgba(0, 204, 136, 0.4); }
+            .taller-module .tlr-card-btn.success.disabled-soft { background: rgba(0, 204, 136, 0.30); color: #050505; }
             .taller-module .tlr-card-btn.secondary {
-                background: #1a1a1a; color: #E8E8E8;
-                border-color: #2a2a2a;
+                background: #1a1a1a; color: #E8E8E8; border-color: #2a2a2a;
             }
             .taller-module .tlr-card-btn.secondary:hover {
                 background: #222; border-color: #00A9C1;
             }
             .taller-module .tlr-card-btn.ghost {
-                background: transparent; color: #888;
-                border-color: #2a2a2a;
+                background: transparent; color: #888; border-color: #2a2a2a;
             }
             .taller-module .tlr-card-btn.ghost:hover {
                 color: #00A9C1; border-color: #00A9C1; background: rgba(0, 169, 193, 0.05);
             }
-
             .taller-module .tlr-card-state-done {
                 padding: 10px 14px; text-align: center;
                 font-family: var(--font-mono); font-size: 0.85rem;
@@ -783,6 +1149,209 @@ const TallerModule = {
                 border: 1px solid rgba(0, 204, 136, 0.2);
                 border-radius: 6px;
             }
+
+            /* Progreso de checklist en card */
+            .taller-module .tlr-checklist-progress {
+                width: 100%;
+                background: transparent;
+                border: 1px solid #2a2a2a;
+                border-radius: 6px;
+                padding: 8px 10px;
+                cursor: pointer;
+                text-align: left;
+                margin-top: 10px;
+                transition: border-color 180ms ease;
+            }
+            .taller-module .tlr-checklist-progress:hover { border-color: #00A9C1; }
+            .taller-module .tlr-progress-row {
+                display: flex; justify-content: space-between; align-items: center;
+                margin-bottom: 4px;
+            }
+            .taller-module .tlr-progress-label {
+                font-family: var(--font-mono); font-size: 0.7rem; color: #888;
+                letter-spacing: 0.05em; text-transform: uppercase;
+            }
+            .taller-module .tlr-progress-count {
+                font-family: var(--font-mono); font-size: 0.78rem; color: #E8E8E8;
+                font-weight: 700;
+            }
+            .taller-module .tlr-progress-count.done { color: #00CC88; }
+            .taller-module .tlr-progress-bar {
+                height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden;
+            }
+            .taller-module .tlr-progress-fill {
+                height: 100%; background: linear-gradient(90deg, #00A9C1, #00CCFF);
+                transition: width 250ms ease;
+            }
+            .taller-module .tlr-progress-fill.done {
+                background: linear-gradient(90deg, #00CC88, #00FF9F);
+            }
+
+            /* Tab Checklist */
+            .taller-module .tlr-chk-grid {
+                display: flex; flex-direction: column; gap: 8px;
+            }
+            .taller-module .tlr-chk-row {
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                overflow: hidden; transition: border-color 180ms ease;
+            }
+            .taller-module .tlr-chk-row:hover { border-color: rgba(0,169,193,0.3); }
+            .taller-module .tlr-chk-header {
+                width: 100%; background: transparent; border: none;
+                padding: 14px 16px;
+                display: grid; grid-template-columns: 1fr auto;
+                gap: 16px; align-items: center;
+                cursor: pointer; text-align: left;
+                transition: background 150ms ease;
+            }
+            .taller-module .tlr-chk-header:hover { background: #111; }
+            .taller-module .tlr-chk-header-main { min-width: 0; }
+            .taller-module .tlr-chk-row-title {
+                font-family: var(--font-main); font-size: 0.98rem; font-weight: 600;
+                color: #E8E8E8;
+            }
+            .taller-module .tlr-chk-row-sub {
+                font-family: var(--font-main); font-size: 0.78rem; color: #888;
+                margin-top: 2px;
+            }
+            .taller-module .tlr-chk-header-right {
+                display: flex; align-items: center; gap: 14px;
+            }
+            .taller-module .tlr-chk-progress {
+                display: flex; align-items: center; gap: 8px;
+                min-width: 160px;
+            }
+            .taller-module .tlr-chk-progress .tlr-progress-bar {
+                width: 100px; height: 6px;
+            }
+            .taller-module .tlr-chk-count {
+                font-family: var(--font-mono); font-size: 0.78rem; color: #aaa;
+                font-weight: 700; min-width: 30px; text-align: right;
+            }
+            .taller-module .tlr-chk-count.done { color: #00CC88; }
+            .taller-module .tlr-chk-chevron {
+                color: #555; transition: transform 200ms ease;
+                font-size: 0.9rem;
+            }
+            .taller-module .tlr-chk-row.expanded .tlr-chk-chevron { transform: rotate(180deg); }
+            .taller-module .tlr-chk-body {
+                max-height: 0; overflow: hidden;
+                transition: max-height 250ms ease;
+                background: #0a0a0a;
+            }
+            .taller-module .tlr-chk-row.expanded .tlr-chk-body {
+                max-height: 500px;
+                padding: 12px 16px;
+                border-top: 1px solid #1a1a1a;
+                display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                gap: 10px;
+            }
+            .taller-module .tlr-chk-item {
+                display: flex; align-items: center; gap: 10px;
+                padding: 10px 12px;
+                background: #111; border: 1px solid #2a2a2a;
+                border-radius: 6px; cursor: pointer;
+                transition: all 180ms ease;
+                font-family: var(--font-main); font-size: 0.88rem; color: #ccc;
+            }
+            .taller-module .tlr-chk-item:hover {
+                border-color: #00A9C1; background: #161616;
+            }
+            .taller-module .tlr-chk-item.checked {
+                background: rgba(0, 204, 136, 0.08);
+                border-color: rgba(0, 204, 136, 0.4);
+                color: #00CC88;
+            }
+            .taller-module .tlr-chk-item input[type="checkbox"] {
+                position: absolute; opacity: 0; pointer-events: none;
+            }
+            .taller-module .tlr-chk-box {
+                width: 22px; height: 22px;
+                background: #0a0a0a; border: 2px solid #2a2a2a;
+                border-radius: 4px;
+                display: flex; align-items: center; justify-content: center;
+                color: transparent; font-weight: 700;
+                transition: all 180ms ease;
+                flex-shrink: 0;
+            }
+            .taller-module .tlr-chk-item.checked .tlr-chk-box {
+                background: #00CC88; border-color: #00CC88; color: #050505;
+            }
+            .taller-module .tlr-chk-label {
+                flex: 1; line-height: 1.3;
+            }
+
+            /* Tab Mantenimiento */
+            .taller-module .tlr-mt-toolbar {
+                display: flex; justify-content: space-between; align-items: center;
+                gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+            }
+            .taller-module .tlr-mt-stats {
+                display: flex; gap: 8px; flex-wrap: wrap;
+            }
+            .taller-module .tlr-mt-stat {
+                background: #111; border: 1px solid #2a2a2a;
+                padding: 6px 12px; border-radius: 6px;
+                font-family: var(--font-main); font-size: 0.85rem; color: #aaa;
+            }
+            .taller-module .tlr-mt-stat strong { color: #E8E8E8; }
+            .taller-module .tlr-mt-stat.tlr-mt-bad {
+                background: rgba(255,68,68,0.10); border-color: rgba(255,68,68,0.3);
+                color: #ff8888;
+            }
+            .taller-module .tlr-mt-stat.tlr-mt-bad strong { color: #ff4444; }
+            .taller-module .tlr-mt-stat.tlr-mt-warn {
+                background: rgba(242,141,21,0.10); border-color: rgba(242,141,21,0.3);
+                color: #F28D15;
+            }
+            .taller-module .tlr-mt-stat.tlr-mt-warn strong { color: #F28D15; }
+            .taller-module .tlr-mt-table {
+                width: 100%; border-collapse: collapse;
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                overflow: hidden;
+                font-family: var(--font-main); font-size: 0.85rem;
+            }
+            .taller-module .tlr-mt-table thead th {
+                background: #111;
+                color: #888; font-weight: 600;
+                font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+                padding: 10px 12px; text-align: left;
+                border-bottom: 1px solid #2a2a2a;
+            }
+            .taller-module .tlr-mt-table tbody td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #1a1a1a;
+                color: #E8E8E8; vertical-align: middle;
+            }
+            .taller-module .tlr-mt-table tbody tr:hover { background: rgba(0,169,193,0.04); }
+            .taller-module .tlr-mt-tipo {
+                font-family: var(--font-mono); font-size: 0.72rem;
+                color: #888; text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .taller-module .tlr-mt-estado {
+                font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+                padding: 2px 8px; border-radius: 4px;
+                text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .taller-module .tlr-mt-estado-ok { background: rgba(0,204,136,0.15); color: #00CC88; }
+            .taller-module .tlr-mt-estado-atencion { background: rgba(242,141,21,0.15); color: #F28D15; }
+            .taller-module .tlr-mt-estado-reparacion { background: rgba(155,125,255,0.15); color: #9B7DFF; }
+            .taller-module .tlr-mt-estado-baja { background: rgba(255,68,68,0.15); color: #ff4444; }
+            .taller-module .tlr-mt-venc-vencido { color: #ff4444; font-weight: 600; }
+            .taller-module .tlr-mt-venc-proximo { color: #F28D15; font-weight: 600; }
+            .taller-module .tlr-mt-notas-cell {
+                max-width: 240px; overflow: hidden; text-overflow: ellipsis;
+                white-space: nowrap; color: #888; font-size: 0.8rem;
+            }
+            .taller-module .tlr-mt-mini-btn {
+                background: transparent; border: 1px solid #2a2a2a; color: #888;
+                padding: 4px 8px; border-radius: 4px; cursor: pointer;
+                font-family: var(--font-mono); font-size: 0.72rem;
+                margin-right: 4px;
+                transition: all 200ms ease;
+            }
+            .taller-module .tlr-mt-mini-btn:hover { border-color: #00A9C1; color: #00A9C1; }
+            .taller-module .tlr-mt-mini-btn.danger:hover { border-color: #ff4444; color: #ff4444; }
 
             /* Novedad modal */
             .tlr-novedad-modal { display: flex; flex-direction: column; gap: 14px; padding: 8px 4px; }
@@ -800,17 +1369,18 @@ const TallerModule = {
                 padding-top: 8px; border-top: 1px solid #2a2a2a;
             }
 
-            /* Mobile tweaks */
             @media (max-width: 640px) {
                 .taller-module .taller-content { padding: 14px 14px 30px 14px; }
                 .taller-module .taller-greeting h2 { font-size: 1.35rem; }
                 .taller-module .taller-cards-grid {
-                    grid-template-columns: 1fr;
-                    gap: 14px;
+                    grid-template-columns: 1fr; gap: 14px;
                 }
                 .taller-module .tlr-card-hero { height: 80px; }
                 .taller-module .tlr-hero-icon { font-size: 2.4rem; }
                 .taller-module .tlr-card-title { font-size: 1rem; }
+                .taller-module .tlr-chk-header-right { gap: 8px; }
+                .taller-module .tlr-chk-progress { min-width: 100px; }
+                .taller-module .tlr-chk-progress .tlr-progress-bar { width: 60px; }
             }
         `;
         document.head.appendChild(style);

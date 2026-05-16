@@ -218,11 +218,11 @@ const LogisticaModule = {
             </div>
 
             <div class="log-split">
-                <div class="log-table-wrap">
-                    ${this._renderCargasTable(visible, isAdmin)}
+                <div class="log-cards-wrap">
+                    ${this._renderCargasGrid(visible, isAdmin)}
                 </div>
                 <div class="log-panel" id="logPanel">
-                    ${this._selectedCargaId ? '' : this._renderEmptyPanel('Seleccioná una carga para ver el detalle')}
+                    ${this._selectedCargaId ? '' : this._renderEmptyPanel('Seleccioná una carga para ver el detalle o creá una nueva')}
                 </div>
             </div>
         `;
@@ -233,7 +233,7 @@ const LogisticaModule = {
         }
     },
 
-    _renderCargasTable(rows, isAdmin) {
+    _renderCargasGrid(rows, isAdmin) {
         if (!rows.length) {
             return `
                 <div class="log-empty">
@@ -243,49 +243,62 @@ const LogisticaModule = {
                 </div>
             `;
         }
-        return `
-            <table class="log-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Evento</th>
-                        <th>Fase</th>
-                        <th>Vehículo</th>
-                        <th>Chofer</th>
-                        <th>Stands</th>
-                        <th>Estado</th>
-                        ${isAdmin ? '<th>Acción</th>' : ''}
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows.map(c => this._renderCargaRow(c, isAdmin)).join('')}
-                </tbody>
-            </table>
-        `;
+        return `<div class="log-cards-grid">${rows.map(c => this._renderCargaCard(c, isAdmin)).join('')}</div>`;
     },
 
-    _renderCargaRow(c, isAdmin) {
+    _renderCargaCard(c, isAdmin) {
         const sel = c.id === this._selectedCargaId ? ' selected' : '';
-        const fecha = c.fecha ? new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—';
+        const fecha = c.fecha
+            ? new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' })
+            : '—';
+        const hora = c.hora_carga ? c.hora_carga.slice(0, 5) : '';
         const evNombre = c.evento?.nombre || '—';
-        const veh = c.vehiculo?.descripcion || '—';
-        const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : '—';
+        const veh = c.vehiculo?.descripcion || 'Sin vehículo';
+        const vehPatente = c.vehiculo?.patente ? ` · ${c.vehiculo.patente}` : '';
+        const vehProp = c.vehiculo?.propietario === 'tercero' ? ' (tercero)' : '';
+        const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : 'Sin chofer';
         const numStands = (c.carga_proyectos || []).length;
-        const estadoBadge = this._estadoBadge(c.estado);
-        const accion = isAdmin && c.estado === 'borrador'
-            ? `<button class="log-mini-btn approve" data-action="approve" data-id="${c.id}">✓ Aprobar</button>`
+        const standChips = (c.carga_proyectos || []).slice(0, 3).map(cp => `<span class="log-stand-chip">${this._esc(cp.proyecto?.nombre || '—')}</span>`).join('');
+        const standsExtra = numStands > 3 ? `<span class="log-stand-chip more">+${numStands - 3}</span>` : '';
+
+        const approveBtn = isAdmin && c.estado === 'borrador'
+            ? `<button class="log-card-action approve" data-action="approve" data-id="${c.id}">✓ Aprobar</button>`
             : '';
+
         return `
-            <tr class="log-mov-row${sel}" data-id="${c.id}">
-                <td>${fecha}${c.hora_carga ? `<br><span class="log-hora">${c.hora_carga.slice(0,5)}</span>` : ''}</td>
-                <td>${this._esc(evNombre)}</td>
-                <td><span class="log-fase log-fase-${c.fase}">${this._faseLabel(c.fase)}</span></td>
-                <td>${this._esc(veh)}${c.vehiculo?.patente ? `<br><span class="log-mini">${this._esc(c.vehiculo.patente)}</span>` : ''}</td>
-                <td>${this._esc(chofer)}</td>
-                <td><span class="log-stands-count">${numStands}</span></td>
-                <td>${estadoBadge}</td>
-                ${isAdmin ? `<td>${accion}</td>` : ''}
-            </tr>
+            <article class="log-card${sel}" data-id="${c.id}">
+                <div class="log-card-header">
+                    <div class="log-card-header-left">
+                        <span class="log-fase log-fase-${c.fase}">${this._faseLabel(c.fase)}</span>
+                        ${this._estadoBadge(c.estado)}
+                    </div>
+                    <span class="log-card-id">#${c.id.slice(0, 6).toUpperCase()}</span>
+                </div>
+                <div class="log-card-body">
+                    <div class="log-card-evento">${this._esc(evNombre)}</div>
+                    <div class="log-card-meta">
+                        <div class="log-card-meta-row">
+                            <span class="log-card-meta-icon">📅</span>
+                            <span>${fecha}${hora ? ` · <strong>${hora}</strong>` : ''}</span>
+                        </div>
+                        <div class="log-card-meta-row">
+                            <span class="log-card-meta-icon">🚛</span>
+                            <span>${this._esc(veh)}${this._esc(vehPatente)}${vehProp}</span>
+                        </div>
+                        <div class="log-card-meta-row">
+                            <span class="log-card-meta-icon">👤</span>
+                            <span>${this._esc(chofer)}</span>
+                        </div>
+                    </div>
+                    ${numStands > 0 ? `
+                        <div class="log-card-stands">
+                            <div class="log-card-stands-label">${numStands} stand${numStands === 1 ? '' : 's'}</div>
+                            <div class="log-card-chips">${standChips}${standsExtra}</div>
+                        </div>
+                    ` : `<div class="log-card-stands"><div class="log-card-stands-label log-warn">Sin stands asignados</div></div>`}
+                </div>
+                ${approveBtn ? `<div class="log-card-footer">${approveBtn}</div>` : ''}
+            </article>
         `;
     },
 
@@ -306,14 +319,14 @@ const LogisticaModule = {
             this._filterFecha = e.target.value;
             this._renderCargasTab();
         });
-        document.getElementById('logNuevaCarga')?.addEventListener('click', () => this._openNuevaCargaModal());
+        document.getElementById('logNuevaCarga')?.addEventListener('click', () => this._openNuevaCargaForm(null));
 
-        // Row click → seleccionar
-        document.querySelectorAll('.log-mov-row').forEach(row => {
-            row.addEventListener('click', (e) => {
+        // Card click → seleccionar
+        document.querySelectorAll('.log-card').forEach(card => {
+            card.addEventListener('click', (e) => {
                 if (e.target.closest('button')) return;
-                this._selectedCargaId = row.dataset.id;
-                document.querySelectorAll('.log-mov-row').forEach(r => r.classList.toggle('selected', r === row));
+                this._selectedCargaId = card.dataset.id;
+                document.querySelectorAll('.log-card').forEach(r => r.classList.toggle('selected', r === card));
                 this._renderCargaPanel(this._selectedCargaId);
             });
         });
@@ -471,7 +484,7 @@ const LogisticaModule = {
         });
 
         document.querySelector('[data-action="approve"]')?.addEventListener('click', () => this._aprobarCarga(cargaId));
-        document.querySelector('[data-action="edit"]')?.addEventListener('click', () => this._openEditCargaModal(cargaId));
+        document.querySelector('[data-action="edit"]')?.addEventListener('click', () => this._openEditCargaForm(cargaId));
         document.querySelector('[data-action="delete"]')?.addEventListener('click', () => this._deleteCarga(cargaId));
         document.querySelector('[data-action="download-pdf"]')?.addEventListener('click', () => this._downloadRemito(carga));
         document.querySelector('[data-action="regen-pdf"]')?.addEventListener('click', () => this._regenerarPDF(cargaId));
@@ -588,9 +601,14 @@ const LogisticaModule = {
         await this._loadCargas();
     },
 
-    // ─── Modal Nueva / Editar Carga ───
-    async _openNuevaCargaModal(existingId = null) {
-        // Preload proyectos si hay evento seleccionado
+    // ─── Form inline en panel lateral: Nueva / Editar Carga ───
+    // En lugar de modal, reemplaza el contenido del panel lateral derecho.
+    // Más contextual: ves la lista de cards y editás en paralelo.
+    async _openNuevaCargaForm(existingId = null) {
+        const panel = document.getElementById('logPanel');
+        if (!panel) return;
+        panel.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:200px;"><div class="spinner"></div></div>';
+
         const carga = existingId ? await API.getCargaById(existingId) : null;
         const isEdit = !!carga;
         const initialEventoId = carga?.evento_id || '';
@@ -604,7 +622,6 @@ const LogisticaModule = {
         const initialProyectoIds = (carga?.carga_proyectos || []).map(cp => cp.proyecto?.id).filter(Boolean);
         const initialAyudanteIds = (carga?.carga_personas || []).map(cp => cp.persona?.id).filter(Boolean);
 
-        // Proyectos del evento inicial
         let proyectosEv = [];
         if (initialEventoId) {
             proyectosEv = this._proyectosPorEvento[initialEventoId] || await this._loadProyectosPorEvento(initialEventoId);
@@ -618,8 +635,15 @@ const LogisticaModule = {
             p.activo && !p._deleted
         );
 
-        const body = `
-            <div class="log-form">
+        panel.innerHTML = `
+            <div class="log-panel-header">
+                <div>
+                    <div class="log-panel-eyebrow">${isEdit ? 'EDITAR CARGA' : 'NUEVA CARGA'}</div>
+                    <h3 class="log-panel-title">${isEdit ? '#' + existingId.slice(0, 6).toUpperCase() : 'Borrador'}</h3>
+                </div>
+                <button class="log-panel-close" data-action="close-form" title="Cancelar">✕</button>
+            </div>
+            <div class="log-panel-body log-form">
                 <div class="log-form-row">
                     <label>Evento *</label>
                     <select id="cgEvento">
@@ -649,7 +673,7 @@ const LogisticaModule = {
                         <input type="time" id="cgHora" value="${initialHora}">
                     </div>
                     <div>
-                        <label>Hora estimada llegada</label>
+                        <label>ETA destino</label>
                         <input type="time" id="cgEta" value="${initialEta}">
                     </div>
                 </div>
@@ -673,6 +697,12 @@ const LogisticaModule = {
                     <div class="log-form-hint">¿Falta alguien? Cargalo en <a href="#rrhh" style="color:#00A9C1">RRHH</a> con rol "chofer".</div>
                 </div>
                 <div class="log-form-row">
+                    <label>Proyectos / stands a cargar</label>
+                    <div class="log-multi-select" id="cgProyectos">
+                        ${this._renderProyectosMultiSelect(proyectosEv, initialProyectoIds)}
+                    </div>
+                </div>
+                <div class="log-form-row">
                     <label>Ayudantes</label>
                     <div class="log-multi-select" id="cgAyudantes">
                         ${ayudantes.map(p => `
@@ -684,26 +714,26 @@ const LogisticaModule = {
                     </div>
                 </div>
                 <div class="log-form-row">
-                    <label>Proyectos / stands a cargar</label>
-                    <div class="log-multi-select" id="cgProyectos">
-                        ${this._renderProyectosMultiSelect(proyectosEv, initialProyectoIds)}
-                    </div>
-                </div>
-                <div class="log-form-row">
                     <label>Notas</label>
                     <textarea id="cgNotas" rows="3" placeholder="Observaciones, instrucciones especiales...">${this._esc(initialNotas)}</textarea>
                 </div>
             </div>
+            <div class="log-panel-actions">
+                <button class="btn-primary log-action-btn" id="cgSave">${isEdit ? 'Guardar cambios' : '＋ Crear carga'}</button>
+                <button class="btn-secondary log-action-btn" data-action="close-form">Cancelar</button>
+            </div>
         `;
 
-        const modalId = Modal.open({
-            title: isEdit ? 'Editar carga' : 'Nueva carga',
-            body,
-            size: 'lg',
-            footer: `
-                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
-                <button class="btn-primary" id="cgSave">${isEdit ? 'Guardar' : 'Crear carga'}</button>
-            `,
+        // Close handlers
+        panel.querySelectorAll('[data-action="close-form"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this._selectedCargaId && isEdit) {
+                    this._renderCargaPanel(this._selectedCargaId);
+                } else {
+                    this._selectedCargaId = null;
+                    panel.innerHTML = this._renderEmptyPanel('Seleccioná una carga para ver el detalle o creá una nueva');
+                }
+            });
         });
 
         // Cambio de evento → recargar proyectos
@@ -722,8 +752,7 @@ const LogisticaModule = {
             const fecha = document.getElementById('cgFecha')?.value || '';
             if (!eventoId || !fecha) { Toast.warning('Evento y fecha son obligatorios.'); return; }
             const payload = {
-                eventoId,
-                fecha,
+                eventoId, fecha,
                 fase: document.getElementById('cgFase')?.value || 'armado',
                 vehiculoId: document.getElementById('cgVehiculo')?.value || null,
                 choferPersonaId: document.getElementById('cgChofer')?.value || null,
@@ -734,21 +763,21 @@ const LogisticaModule = {
                 ayudanteIds: [...document.querySelectorAll('#cgAyudantes input:checked')].map(i => i.value),
             };
             try {
+                let savedId = existingId;
                 if (isEdit) {
                     await API.updateCarga(existingId, payload);
                     await API.setCargaProyectos(existingId, payload.proyectoIds);
                     await API.setCargaAyudantes(existingId, payload.ayudanteIds);
                     Toast.success('Carga actualizada.');
-                    this._selectedCargaId = existingId;
                 } else {
                     const row = await API.createCarga(payload);
                     if (!row) { Toast.error('No se pudo crear la carga.'); return; }
-                    Toast.success('Carga creada en borrador — admin va a aprobar.');
-                    this._selectedCargaId = row.id;
+                    Toast.success('Carga creada — admin va a aprobar.');
+                    savedId = row.id;
                 }
-                Modal.close(modalId);
+                this._selectedCargaId = savedId;
                 await this._loadCargas();
-                if (this._selectedCargaId) this._renderCargaPanel(this._selectedCargaId);
+                this._renderCargaPanel(savedId);
             } catch (e) {
                 console.error('[Logistica] save carga error:', e);
                 Toast.error('Error al guardar.');
@@ -756,8 +785,8 @@ const LogisticaModule = {
         });
     },
 
-    async _openEditCargaModal(cargaId) {
-        return this._openNuevaCargaModal(cargaId);
+    _openEditCargaForm(cargaId) {
+        return this._openNuevaCargaForm(cargaId);
     },
 
     async _loadProyectosPorEvento(eventoId) {
@@ -1370,6 +1399,134 @@ const LogisticaModule = {
             }
             .logistica-module .log-readonly-banner strong {
                 color: #9B7DFF;
+            }
+
+            /* ── Cards de carga (reemplazo de la tabla) ── */
+            .logistica-module .log-cards-wrap {
+                overflow-y: auto;
+                padding-right: 4px;
+                min-height: 200px;
+                max-height: calc(100vh - 230px);
+            }
+            .logistica-module .log-cards-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                gap: 12px;
+            }
+            @media (max-width: 1400px) {
+                .logistica-module .log-cards-grid { grid-template-columns: 1fr; }
+            }
+            .logistica-module .log-card {
+                background: #0e0e0e;
+                border: 1px solid #2a2a2a;
+                border-radius: 8px;
+                overflow: hidden;
+                cursor: pointer;
+                transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+                display: flex; flex-direction: column;
+            }
+            .logistica-module .log-card:hover {
+                border-color: rgba(0,169,193,0.35);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            }
+            .logistica-module .log-card.selected {
+                border-color: #00A9C1;
+                box-shadow: 0 0 0 1px #00A9C1, 0 4px 16px rgba(0,169,193,0.18);
+            }
+            .logistica-module .log-card-header {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 8px 12px;
+                background: #111;
+                border-bottom: 1px solid #1a1a1a;
+            }
+            .logistica-module .log-card-header-left {
+                display: flex; align-items: center; gap: 6px;
+            }
+            .logistica-module .log-card-id {
+                font-family: var(--font-mono);
+                font-size: 0.66rem;
+                color: #555;
+                letter-spacing: 0.05em;
+            }
+            .logistica-module .log-card-body {
+                padding: 12px;
+                display: flex; flex-direction: column; gap: 10px;
+                flex: 1;
+            }
+            .logistica-module .log-card-evento {
+                font-family: var(--font-main);
+                font-size: 0.98rem;
+                font-weight: 600;
+                color: #E8E8E8;
+                line-height: 1.3;
+            }
+            .logistica-module .log-card-meta {
+                display: flex; flex-direction: column; gap: 4px;
+                font-family: var(--font-main);
+                font-size: 0.82rem;
+                color: #aaa;
+            }
+            .logistica-module .log-card-meta-row {
+                display: flex; align-items: center; gap: 8px;
+            }
+            .logistica-module .log-card-meta-icon {
+                font-size: 0.9rem; opacity: 0.7; min-width: 18px;
+            }
+            .logistica-module .log-card-meta-row strong {
+                color: #E8E8E8; font-weight: 600;
+            }
+            .logistica-module .log-card-stands {
+                padding-top: 8px;
+                border-top: 1px solid #1a1a1a;
+            }
+            .logistica-module .log-card-stands-label {
+                font-family: var(--font-mono);
+                font-size: 0.68rem;
+                color: #666;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                margin-bottom: 4px;
+            }
+            .logistica-module .log-card-stands-label.log-warn {
+                color: #F28D15;
+            }
+            .logistica-module .log-card-chips {
+                display: flex; flex-wrap: wrap; gap: 4px;
+            }
+            .logistica-module .log-stand-chip {
+                background: rgba(0,169,193,0.10);
+                color: #00A9C1;
+                padding: 2px 7px;
+                border-radius: 3px;
+                font-family: var(--font-main);
+                font-size: 0.72rem;
+            }
+            .logistica-module .log-stand-chip.more {
+                background: #1a1a1a; color: #888;
+            }
+            .logistica-module .log-card-footer {
+                padding: 8px 12px;
+                background: #0a0a0a;
+                border-top: 1px solid #1a1a1a;
+                display: flex; justify-content: flex-end;
+            }
+            .logistica-module .log-card-action {
+                font-family: var(--font-mono);
+                font-size: 0.74rem;
+                font-weight: 700;
+                padding: 6px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                border: 1px solid transparent;
+                transition: all 180ms ease;
+            }
+            .logistica-module .log-card-action.approve {
+                background: rgba(0,204,136,0.12);
+                border-color: rgba(0,204,136,0.4);
+                color: #00CC88;
+            }
+            .logistica-module .log-card-action.approve:hover {
+                background: rgba(0,204,136,0.22);
             }
         `;
         document.head.appendChild(style);
