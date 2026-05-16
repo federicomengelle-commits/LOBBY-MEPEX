@@ -3076,17 +3076,10 @@ const API = {
     // catalogo_items para que el frontend pueda leerlos sin tener que recalcular.
     async recalcularRecetaRPC(itemId) {
         try {
-            // F.5 fix — Para subalquilados, la RPC lee snapshot_pct_margen para
-            // calcular el precio. Si no está cargado, defaultea al global. Por
-            // eso pre-snapshoteamos margen_subalquiler ANTES de llamar a la RPC,
-            // así el cálculo usa el margen específico del item (no el global).
+            // F.7 — el SQL de calcular_receta usa COALESCE(margen_subalquiler, 0.50)
+            // directamente para subalquilados. No hace falta pre-snapshot.
             const items = await this.getCatalogoItems();
             const itemBefore = items?.find(i => String(i.id) === String(itemId));
-            if (itemBefore?.tipoReceta === 'subalquilado' && itemBefore.margenSubalquiler != null) {
-                await this.updateCatalogoItem(itemId, {
-                    snapshotPctMargen: itemBefore.margenSubalquiler,
-                });
-            }
 
             const { data, error } = await supabaseClient.rpc('calcular_receta', { p_item_id: itemId });
             if (error) throw error;

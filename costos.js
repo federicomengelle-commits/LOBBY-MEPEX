@@ -1545,6 +1545,11 @@ const CostosModule = {
                     </div>
                     <div class="costos-receta-config-hint">Dejá en blanco para usar el default del tipo.</div>
                 </div>
+                <div class="costos-receta-config-info">
+                    Estos parámetros se aplican al cálculo de las recetas que usan este insumo
+                    (cuánto se desgasta por uso, cuánto se desperdicia al cortar, etc).
+                    <strong>No modifican el costo unitario del insumo.</strong>
+                </div>
             </div>
         `;
     },
@@ -2432,6 +2437,7 @@ const CostosModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                     Recalcular precio
                 </button>
+                <span class="costos-receta-recalc-dirty" id="costosRecetaRecalcDirty" style="display:none;">● cambios sin recalcular</span>
                 <span class="costos-receta-recalc-hint" id="costosRecetaRecalcHint" style="margin-left:10px; color:var(--text-muted); font-size:12px;">
                     Invoca <code>calcular_receta(${item.id})</code> y persiste el resultado.
                 </span>
@@ -2477,6 +2483,10 @@ const CostosModule = {
                 </div>
                 <div class="costos-receta-config-hint">
                     Editá y salí del campo (blur) para guardar. Apretá <strong>Recalcular precio</strong> para refrescar el cache.
+                </div>
+                <div class="costos-receta-config-info">
+                    Configuración del <strong>armado del item</strong> (no de los insumos).
+                    El VU armado puede ser distinto al VU de cada insumo individual.
                 </div>
             </div>
         `;
@@ -2673,6 +2683,13 @@ const CostosModule = {
     },
 
     _attachRecetaConfigEvents(item, compData, params) {
+        // F.7 — Mostrar tag "● cambios sin recalcular" cuando se persiste un campo
+        // que afecta el precio (MO, VU armado, margen, proveedor).
+        const showDirty = () => {
+            const tag = document.getElementById('costosRecetaRecalcDirty');
+            if (tag) tag.style.display = 'inline-block';
+        };
+
         // Persistir inputs en blur
         const persist = async (field, raw) => {
             const isOverride = field === 'vidaUtilArmadoOverride' || field === 'costoProveedorDirecto' || field === 'proveedorIdDirecto';
@@ -2688,6 +2705,7 @@ const CostosModule = {
             if (ok) {
                 Toast.success('Cambio guardado · recalculá para actualizar precio', 2500);
                 item[field] = value;
+                showDirty();
             } else {
                 Toast.error('Error al guardar');
             }
@@ -2888,15 +2906,6 @@ const CostosModule = {
             Toast.error(`Error al recalcular masivo`);
         }
         await this._refreshData();
-    },
-
-    // ═══════════════════════════════════════════
-    //  CASCADA LEGACY (queda como compat shim — no se usa más desde Recetas)
-    // ═══════════════════════════════════════════
-
-    _renderCascadaBlock(item, costoMP, params) {
-        // Compat: si algún caller externo aún la invoca, devuelve string vacío.
-        return '';
     },
 
 
