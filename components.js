@@ -5,6 +5,15 @@
    Todos los componentes UI reutilizables del sistema.
    ============================================= */
 
+// ─── HELPERS GLOBALES ───────────────────────────
+// normStr: normaliza para búsquedas accent-insensitive.
+// "guía" → "guia"  ·  "Sólido" → "solido"  ·  null → ""
+// USO: normStr(item.nombre).includes(normStr(query))
+window.normStr = function (s) {
+    if (s == null) return '';
+    return String(s).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+};
+
 // ─── TOAST ──────────────────────────────────────
 const Toast = {
     _container: null,

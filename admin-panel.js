@@ -422,11 +422,11 @@ const AdminPanel = {
 
         // Filter by search
         if (this._searchQuery) {
-            const q = this._searchQuery.toLowerCase();
+            const q = normStr(this._searchQuery);
             users = users.filter(u =>
-                (u.name || '').toLowerCase().includes(q) ||
-                (u.username || '').toLowerCase().includes(q) ||
-                this._getRoleLabel(u.role).toLowerCase().includes(q)
+                normStr(u.name).includes(q) ||
+                normStr(u.username).includes(q) ||
+                normStr(this._getRoleLabel(u.role)).includes(q)
             );
         }
 
@@ -591,10 +591,10 @@ const AdminPanel = {
 
         // Search filter
         if (this._userSearch) {
-            const q = this._userSearch.toLowerCase();
+            const q = normStr(this._userSearch);
             users = users.filter(u =>
-                (u.name || '').toLowerCase().includes(q) ||
-                (u.username || '').toLowerCase().includes(q)
+                normStr(u.name).includes(q) ||
+                normStr(u.username).includes(q)
             );
         }
 

@@ -605,21 +605,21 @@ const Data = {
         }
     },
 
-    // ─── BUSCADOR: buscar en módulos y secciones ───
+    // ─── BUSCADOR: buscar en módulos y secciones (accent-insensitive) ───
     search(query) {
         if (!query || query.length < 2) return [];
-        const q = query.toLowerCase();
+        const q = normStr(query);
         const results = [];
 
         // Search modules
         this.getModuleList().forEach(mod => {
             if (mod.isExternal) return; // Don't show external links in search
-            if (mod.name.toLowerCase().includes(q) || mod.shortName.toLowerCase().includes(q) || mod.description.toLowerCase().includes(q)) {
+            if (normStr(mod.name).includes(q) || normStr(mod.shortName).includes(q) || normStr(mod.description).includes(q)) {
                 results.push({ type: 'module', label: mod.name, icon: mod.icon, route: mod.id });
             }
             // Search sections
             (mod.sections || []).forEach(sec => {
-                if (sec.name.toLowerCase().includes(q) || sec.description.toLowerCase().includes(q)) {
+                if (normStr(sec.name).includes(q) || normStr(sec.description).includes(q)) {
                     results.push({ type: 'section', label: `${mod.shortName} › ${sec.name}`, icon: sec.icon, route: mod.id, sectionId: sec.id });
                 }
             });

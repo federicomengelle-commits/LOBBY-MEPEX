@@ -393,10 +393,10 @@ const EventosModule = {
 
         // Search
         if (this._searchQuery) {
-            const q = this._searchQuery.toLowerCase();
+            const q = normStr(this._searchQuery);
             list = list.filter(e =>
-                (e.name || '').toLowerCase().includes(q) ||
-                (e.venue || '').toLowerCase().includes(q)
+                normStr(e.name).includes(q) ||
+                normStr(e.venue).includes(q)
             );
         }
 
@@ -1015,7 +1015,7 @@ const EventosModule = {
         const buildPersonaList = (filterRol, search, selected) => {
             let lista = this._personalList.filter(p => !asignados.has(String(p.id)));
             if (filterRol) lista = lista.filter(p => p.rol === filterRol);
-            if (search) lista = lista.filter(p => (p.nombre || '').toLowerCase().includes(search.toLowerCase()));
+            if (search) lista = lista.filter(p => normStr(p.nombre).includes(normStr(search)));
             if (lista.length === 0) return `<p style="color:#666;padding:12px;text-align:center">Sin resultados</p>`;
             return lista.map(p => {
                 const color = tipoColors[p.tipo] || '#666';
@@ -2015,11 +2015,11 @@ const EventosModule = {
         renderResults(orphans);
 
         searchInput?.addEventListener('input', () => {
-            const q = searchInput.value.trim().toLowerCase();
+            const q = normStr(searchInput.value.trim());
             if (!q) return renderResults(orphans);
             const filtered = orphans.filter(p =>
-                (p.nombre || '').toLowerCase().includes(q) ||
-                (p.cliente?.nombre_empresa || '').toLowerCase().includes(q)
+                normStr(p.nombre).includes(q) ||
+                normStr(p.cliente?.nombre_empresa).includes(q)
             );
             renderResults(filtered);
         });

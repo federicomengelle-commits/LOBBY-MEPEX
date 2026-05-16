@@ -830,10 +830,10 @@ const Modules = {
 
         // Text search
         const searchInput = document.getElementById('apiSectionSearch');
-        const q = searchInput ? searchInput.value.toLowerCase() : '';
+        const q = searchInput ? normStr(searchInput.value) : '';
         if (q && q.length >= 2) {
             data = data.filter(item =>
-                JSON.stringify(Object.values(item)).toLowerCase().includes(q)
+                normStr(JSON.stringify(Object.values(item))).includes(q)
             );
         }
 

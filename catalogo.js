@@ -187,13 +187,13 @@ const CatalogoModule = {
 
         // Search
         if (this._searchQuery) {
-            const q = this._searchQuery.toLowerCase();
+            const q = normStr(this._searchQuery);
             data = data.filter(i =>
-                (i.nombre || '').toLowerCase().includes(q) ||
-                (i.codigo || '').toLowerCase().includes(q) ||
-                (i.rubro || '').toLowerCase().includes(q) ||
-                (i.categoria || '').toLowerCase().includes(q) ||
-                (i.descripcion || '').toLowerCase().includes(q)
+                normStr(i.nombre).includes(q) ||
+                normStr(i.codigo).includes(q) ||
+                normStr(i.rubro).includes(q) ||
+                normStr(i.categoria).includes(q) ||
+                normStr(i.descripcion).includes(q)
             );
         }
 

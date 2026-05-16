@@ -2091,12 +2091,12 @@ const FinanzasModule = {
 
         // Search
         if (this._cuentasSearch) {
-            const q = this._cuentasSearch.toLowerCase();
+            const q = normStr(this._cuentasSearch);
             items = items.filter(c =>
-                (c.nombre || '').toLowerCase().includes(q) ||
-                (c.entidad || '').toLowerCase().includes(q) ||
-                (c.tipo || '').toLowerCase().includes(q) ||
-                (c.cbu_alias || '').toLowerCase().includes(q)
+                normStr(c.nombre).includes(q) ||
+                normStr(c.entidad).includes(q) ||
+                normStr(c.tipo).includes(q) ||
+                normStr(c.cbu_alias).includes(q)
             );
         }
 
@@ -2696,12 +2696,12 @@ const FinanzasModule = {
 
         // Search
         if (this._ingresosSearch) {
-            const q = this._ingresosSearch.toLowerCase();
+            const q = normStr(this._ingresosSearch);
             items = items.filter(i =>
-                (i.concepto || '').toLowerCase().includes(q) ||
-                (i.notas || '').toLowerCase().includes(q) ||
-                (this._clientesMap[i.cliente_id] || '').toLowerCase().includes(q) ||
-                (this._proyectosMap[i.proyecto_id] || '').toLowerCase().includes(q)
+                normStr(i.concepto).includes(q) ||
+                normStr(i.notas).includes(q) ||
+                normStr(this._clientesMap[i.cliente_id]).includes(q) ||
+                normStr(this._proyectosMap[i.proyecto_id]).includes(q)
             );
         }
 
@@ -3335,12 +3335,12 @@ const FinanzasModule = {
         let items = [...this._egresos];
 
         if (this._egresosSearch) {
-            const q = this._egresosSearch.toLowerCase();
+            const q = normStr(this._egresosSearch);
             items = items.filter(e =>
-                (e.concepto || '').toLowerCase().includes(q) ||
-                (e.destinatario || '').toLowerCase().includes(q) ||
-                (e.subcategoria || '').toLowerCase().includes(q) ||
-                (this._proyectosMap[e.proyecto_id] || '').toLowerCase().includes(q)
+                normStr(e.concepto).includes(q) ||
+                normStr(e.destinatario).includes(q) ||
+                normStr(e.subcategoria).includes(q) ||
+                normStr(this._proyectosMap[e.proyecto_id]).includes(q)
             );
         }
         if (this._egresosCatFilter) items = items.filter(e => e.categoria === this._egresosCatFilter);
@@ -6042,14 +6042,14 @@ const FinanzasModule = {
 
     _applyFactEmitidosFilter() {
         let items = [...this._factEmitidos];
-        const search = this._factEmitidosSearch.toLowerCase();
+        const search = normStr(this._factEmitidosSearch);
         if (search) {
             items = items.filter(c =>
-                (c.numero || '').toLowerCase().includes(search) ||
-                (c.cuit_dni || '').toLowerCase().includes(search) ||
-                (c.cae || '').toLowerCase().includes(search) ||
-                (c.descripcion || '').toLowerCase().includes(search) ||
-                (this._clientesMap[c.cliente_id] || '').toLowerCase().includes(search)
+                normStr(c.numero).includes(search) ||
+                normStr(c.cuit_dni).includes(search) ||
+                normStr(c.cae).includes(search) ||
+                normStr(c.descripcion).includes(search) ||
+                normStr(this._clientesMap[c.cliente_id]).includes(search)
             );
         }
         if (this._factEmitidosTipoFilter) items = items.filter(c => c.tipo === this._factEmitidosTipoFilter);
@@ -6400,13 +6400,13 @@ const FinanzasModule = {
 
     _applyFactRecibidosFilter() {
         let items = [...this._factRecibidos];
-        const search = this._factRecibidosSearch.toLowerCase();
+        const search = normStr(this._factRecibidosSearch);
         if (search) {
             items = items.filter(c =>
-                (c.proveedor_nombre || '').toLowerCase().includes(search) ||
-                (c.concepto || '').toLowerCase().includes(search) ||
-                (c.numero || '').toLowerCase().includes(search) ||
-                (c.cuit || '').toLowerCase().includes(search)
+                normStr(c.proveedor_nombre).includes(search) ||
+                normStr(c.concepto).includes(search) ||
+                normStr(c.numero).includes(search) ||
+                normStr(c.cuit).includes(search)
             );
         }
         if (this._factRecibidosCatFilter) items = items.filter(c => c.categoria === this._factRecibidosCatFilter);

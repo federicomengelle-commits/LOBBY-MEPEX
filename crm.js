@@ -348,13 +348,13 @@ const CRM = {
 
         // Search
         if (this._searchQuery) {
-            const q = this._searchQuery.toLowerCase();
+            const q = normStr(this._searchQuery);
             filtered = filtered.filter(c =>
-                (c.name || '').toLowerCase().includes(q) ||
-                (c.contactName || '').toLowerCase().includes(q) ||
-                (c.email || '').toLowerCase().includes(q) ||
-                (c.rubro || '').toLowerCase().includes(q) ||
-                (c.tipo || '').toLowerCase().includes(q)
+                normStr(c.name).includes(q) ||
+                normStr(c.contactName).includes(q) ||
+                normStr(c.email).includes(q) ||
+                normStr(c.rubro).includes(q) ||
+                normStr(c.tipo).includes(q)
             );
         }
 
@@ -1187,12 +1187,12 @@ const CRM = {
         let filtered = [...this._cotizaciones];
 
         if (this._pipelineSearch) {
-            const q = this._pipelineSearch.toLowerCase();
+            const q = normStr(this._pipelineSearch);
             filtered = filtered.filter(c =>
-                (c.numero || '').toLowerCase().includes(q) ||
-                (c.clienteNombre || '').toLowerCase().includes(q) ||
-                (c.nombreEvento || '').toLowerCase().includes(q) ||
-                (c.notasInternas || '').toLowerCase().includes(q)
+                normStr(c.numero).includes(q) ||
+                normStr(c.clienteNombre).includes(q) ||
+                normStr(c.nombreEvento).includes(q) ||
+                normStr(c.notasInternas).includes(q)
             );
         }
 
@@ -1717,9 +1717,9 @@ const CRM = {
         });
 
         const renderProyectoList = (filterText) => {
-            const q = (filterText || '').toLowerCase().trim();
+            const q = normStr(filterText).trim();
             const filtered = q
-                ? proyectosCliente.filter(p => (p.name || '').toLowerCase().includes(q))
+                ? proyectosCliente.filter(p => normStr(p.name).includes(q))
                 : proyectosCliente;
             if (!proyectosCliente.length) {
                 return `<div class="crm-link-empty">Este cliente no tiene proyectos.<br><small>Cambiá a "Crear nuevo" para generar uno.</small></div>`;
@@ -2041,12 +2041,12 @@ const CRM = {
         let filtered = [...this._cotizaciones];
 
         if (this._cotSearch) {
-            const q = this._cotSearch.toLowerCase();
+            const q = normStr(this._cotSearch);
             filtered = filtered.filter(c =>
-                (c.numero || '').toLowerCase().includes(q) ||
-                (c.clienteNombre || '').toLowerCase().includes(q) ||
-                (c.nombreEvento || '').toLowerCase().includes(q) ||
-                (c.notasInternas || '').toLowerCase().includes(q)
+                normStr(c.numero).includes(q) ||
+                normStr(c.clienteNombre).includes(q) ||
+                normStr(c.nombreEvento).includes(q) ||
+                normStr(c.notasInternas).includes(q)
             );
         }
 
@@ -2841,9 +2841,9 @@ const CRM = {
         }
 
         const renderList = (filterText) => {
-            const q = (filterText || '').toLowerCase().trim();
+            const q = normStr(filterText).trim();
             const filtered = q
-                ? items.filter(i => (i.name || '').toLowerCase().includes(q))
+                ? items.filter(i => normStr(i.name).includes(q))
                 : items;
             if (!filtered.length) {
                 return '<div class="crm-link-empty">Sin resultados</div>';
@@ -3004,12 +3004,12 @@ const CRM = {
             filtered = filtered.filter(e => e.tipo === this._interFilterTipo);
         }
         if (this._interSearch) {
-            const q = this._interSearch.toLowerCase();
+            const q = normStr(this._interSearch);
             filtered = filtered.filter(e =>
-                (e.clientName && e.clientName.toLowerCase().includes(q)) ||
-                (e.descripcion && e.descripcion.toLowerCase().includes(q)) ||
-                (e.cotRef && e.cotRef.toLowerCase().includes(q)) ||
-                (e.user && e.user.toLowerCase().includes(q))
+                normStr(e.clientName).includes(q) ||
+                normStr(e.descripcion).includes(q) ||
+                normStr(e.cotRef).includes(q) ||
+                normStr(e.user).includes(q)
             );
         }
 

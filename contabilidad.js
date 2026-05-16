@@ -1986,11 +1986,11 @@ const ContabilidadModule = {
 
     _getFilteredPlan() {
         if (!this._planSearch) return this._planCuentas;
-        const q = this._planSearch.toLowerCase();
+        const q = normStr(this._planSearch);
         // Find matching cuentas
         const matching = new Set();
         for (const c of this._planCuentas) {
-            if (c.nombre.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q)) {
+            if (normStr(c.nombre).includes(q) || normStr(c.codigo).includes(q)) {
                 matching.add(c.codigo);
                 // Also include parents
                 if (c.codigo_padre) {

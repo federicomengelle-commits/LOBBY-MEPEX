@@ -1077,12 +1077,12 @@ const InventarioModule = {
         let data = [...this._piezas];
 
         if (this._piezasSearch) {
-            const q = this._piezasSearch.toLowerCase();
+            const q = normStr(this._piezasSearch);
             data = data.filter(i =>
-                (i.nombre || '').toLowerCase().includes(q) ||
-                (i.codigo || '').toLowerCase().includes(q) ||
-                (i.rubro || '').toLowerCase().includes(q) ||
-                (i.categoria || '').toLowerCase().includes(q)
+                normStr(i.nombre).includes(q) ||
+                normStr(i.codigo).includes(q) ||
+                normStr(i.rubro).includes(q) ||
+                normStr(i.categoria).includes(q)
             );
         }
         if (this._piezasRubroFilter) {
@@ -1244,12 +1244,12 @@ const InventarioModule = {
         let data = [...this._materiales];
 
         if (this._materialesSearch) {
-            const q = this._materialesSearch.toLowerCase();
+            const q = normStr(this._materialesSearch);
             data = data.filter(i =>
-                (i.nombre || '').toLowerCase().includes(q) ||
-                (i.codigo || '').toLowerCase().includes(q) ||
-                (i.clasificacion || '').toLowerCase().includes(q) ||
-                (i.categoria || '').toLowerCase().includes(q)
+                normStr(i.nombre).includes(q) ||
+                normStr(i.codigo).includes(q) ||
+                normStr(i.clasificacion).includes(q) ||
+                normStr(i.categoria).includes(q)
             );
         }
         if (this._materialesClasFilter) {
@@ -1941,7 +1941,7 @@ const InventarioModule = {
         input.addEventListener('input', () => {
             clearTimeout(debounce);
             debounce = setTimeout(() => {
-                const q = input.value.trim().toLowerCase();
+                const q = normStr(input.value.trim());
                 if (q.length < 2) { results.style.display = 'none'; return; }
 
                 let items = [];
@@ -1954,7 +1954,7 @@ const InventarioModule = {
 
                 const filtered = items.filter(i =>
                     !selectedList.find(s => s.id === i.id && s._tipo === i._tipo) &&
-                    ((i.nombre || '').toLowerCase().includes(q) || (i.codigo || '').toLowerCase().includes(q))
+                    (normStr(i.nombre).includes(q) || normStr(i.codigo).includes(q))
                 ).slice(0, 10);
 
                 if (filtered.length === 0) {

@@ -75,12 +75,12 @@ const API = {
         if (!query || query.length < 2) return [];
         const clients = await this.getClients();
         if (!clients) return [];
-        const q = query.toLowerCase();
+        const q = normStr(query);
         return clients.filter(c =>
-            (c.name || '').toLowerCase().includes(q) ||
-            (c.razonSocial || '').toLowerCase().includes(q) ||
-            (c.contactName || '').toLowerCase().includes(q) ||
-            (c.rubro || '').toLowerCase().includes(q)
+            normStr(c.name).includes(q) ||
+            normStr(c.razonSocial).includes(q) ||
+            normStr(c.contactName).includes(q) ||
+            normStr(c.rubro).includes(q)
         );
     },
 
@@ -196,13 +196,13 @@ const API = {
         if (!query || query.length < 2) return [];
         const projects = await this.getProjects();
         if (!projects) return [];
-        const q = query.toLowerCase();
+        const q = normStr(query);
         return projects.filter(p =>
-            (p.name || '').toLowerCase().includes(q) ||
-            (p.clientName || '').toLowerCase().includes(q) ||
-            (p.eventName || '').toLowerCase().includes(q) ||
-            (p.status || '').toLowerCase().includes(q) ||
-            (p.type || '').toLowerCase().includes(q)
+            normStr(p.name).includes(q) ||
+            normStr(p.clientName).includes(q) ||
+            normStr(p.eventName).includes(q) ||
+            normStr(p.status).includes(q) ||
+            normStr(p.type).includes(q)
         );
     },
 
@@ -266,11 +266,11 @@ const API = {
         if (!query || query.length < 2) return [];
         const events = await this.getEvents();
         if (!events) return [];
-        const q = query.toLowerCase();
+        const q = normStr(query);
         return events.filter(e =>
-            (e.name || '').toLowerCase().includes(q) ||
-            (e.venue || '').toLowerCase().includes(q) ||
-            (e.status || '').toLowerCase().includes(q)
+            normStr(e.name).includes(q) ||
+            normStr(e.venue).includes(q) ||
+            normStr(e.status).includes(q)
         );
     },
 
