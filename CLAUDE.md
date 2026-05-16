@@ -510,6 +510,10 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 | `docs/FASE-3-ROLES-PERMISOS.md` | Spec de roles y permisos (rediseno) |
 | `docs/FASE-4-PRIORIDADES-EJECUCION.md` | Prioridades de ejecucion (rediseno) |
 | `docs/AUDITORIA_ESTRATEGICA_2026.md` | Auditoria estrategica 2026 |
+| `docs/modulo-taller-logistica-blueprint.md` | Blueprint integrado Taller + Logística + RRHH + Notifs + Encuestas |
+| `docs/prompts/tanda-1-base.md` | Prompt ejecutable Tanda 1 (schema · API · Drive · notifs · novedades) |
+| `docs/prompts/tanda-2-operativo.md` | Prompt ejecutable Tanda 2 (módulos Taller / Logística + remito) |
+| `docs/prompts/tanda-3-cierre.md` | Prompt ejecutable Tanda 3 (RRHH / convocatorias / encuesta cliente) |
 | `docs/CLAUDE.md.old` | Version anterior de CLAUDE.md (referencia historica) |
 
 ---
@@ -517,7 +521,18 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 ## 10. ESTADO ACTUAL
 
 - **Fecha:** 2026-05-16
-- **Ultimo commit destacado:** `5d678d9` — feat(costos): F.11 — VU armado duro + breakdown visual de la fórmula
+- **Ultimo commit destacado:** `8a97ef2` — feat(proyectos): tab Novedades (tickers) — Tanda 1 B5
+- **Tanda 1 completada (Taller + Logística — Base & Backbone)**:
+  - **B1** (`e432abc`): `sql/taller_logistica_v1.sql` — migración base. Crea `proyecto_novedades`, `notifications`, `encuestas_evento` (UUID, alineadas a eventos/proyectos/profiles). ALTER `proyectos` con `estado_taller`, `estado_taller_updated_{at,by}`, `completitud_pct`. RLS habilitado en las 3 tablas (SELECT amplio para authenticated; UPDATE/DELETE filtrado por autor/admin; encuestas SELECT/UPDATE abierto a anon vía token).
+  - **B2** (`43de642`): `api.js` extendido. CRUD para `proyecto_novedades` (`getNovedades`, `createNovedad`, `resolveNovedad`, `markNovedadVisible`, `deleteNovedad`) con fan-out automático a `notifications` según matriz §5 del blueprint (PM siempre; +admin si alta/crítica; +taller si toggle o alta/crítica). CRUD para `notifications` (`getNotifications` segmentado por target_user_id/role, `getUnreadNotificationsCount`, `markNotificationRead`, `markAllNotificationsRead`, `createNotification`). Esqueleto encuestas (`getEncuestaByToken`, `createEncuesta`).
+  - **B3** (`117bd61`): Drive embed en tab "Archivos Drive" de ficha proyecto. Reemplaza placeholder por iframe a `https://drive.google.com/embeddedfolderview?id=<ID>#grid` con toolbar superior (URL compacta + botones) y fallback "Abrir en Drive" debajo del iframe. `_extractDriveFolderId` ahora soporta `/folders/<id>` y `?id=<id>`. Requiere que la carpeta esté compartida como "Cualquiera con el enlace".
+  - **B4** (`da896e1`): `notifications.js` nuevo módulo `Notifications`. Campana en header global (entre badge de conexión y user dropdown) con badge numérico (0–99+). Dropdown 380px con últimas 20 notifs del rol/usuario. Polling 30s + refresh on focus/visibilitychange. Click en notif → marca leída + navega al deep link. Botón "Marcar todas leídas" cuando hay no leídas. Estilos inyectados en `<head>` sin tocar `style.css`. Cargado antes de `app.js` en `index.html` (v=4).
+  - **B5** (`8a97ef2`): Tab "Novedades" en ficha proyecto (entre Archivos Drive y Cotización origen). Stats chips (pendientes/resueltas) + botón "+ Nueva novedad". Modal con tipo (6 valores), prioridad (3 niveles), mensaje libre y toggle "Avisar a taller". Cada item lista autor, fecha relativa, mensaje, acciones (marcar resuelta / reabrir / toggle visible_para_taller / eliminar) con permisos por autor + admin. Border-left por prioridad. Soporte de deep-link `#proyectos/<id>?tab=novedades` — Router ahora strippea `?query` antes del match de ruta (no rompe rutas existentes).
+- **Decisiones de arquitectura tomadas en Tanda 1**:
+  - **Opción C (alcance estricto)** — solo se crearon las tablas que Tanda 1 realmente necesita. Las tablas `personas`, `vehiculos`, `cargas`, `carga_proyectos`, `carga_personas`, `asignaciones_evento` NO se crearon: ya existen las legacy (`rrhh_personal`, `logistica_vehiculos`, `logistica_movimientos`, `rrhh_asignaciones`) en BIGINT y los módulos `taller.js`/`logistica.js`/`rrhh.js` ya están enchufados a ellas. Tanda 2 decide migrar o extender.
+  - **UUID en tablas nuevas** — coherente con `eventos`/`proyectos`/`profiles`/`clientes`. Las legacy BIGINT quedan como están.
+  - **Notifications.leida_por como JSONB array de UUIDs** — permite que múltiples usuarios puedan leer la misma notif por target_role sin duplicar filas. El frontend actualiza optimistic.
+  - **Encuesta evento creada ahora aunque sea Tanda 3** — para no tener que tocar schema después.
 - **Refactor mayor reciente — Módulo Costos (F.1 a F.11)**:
   - F.1: Insumos integran `tipo_amortizacion` + overrides (VU/desp/reac).
   - F.2: Recetas integran RPC `calcular_receta`, MO en minutos, snapshots.
@@ -539,8 +554,11 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
   - Integracion La PyME V4.
 - **Bugs conocidos**:
   - Columnas rotadas en tabla `clientes` (mapeado en `api.js` como workaround).
+  - Las tablas legacy `logistica_vehiculos` y `logistica_movimientos` referencian `eventos(id)` / `proyectos(id)` como BIGINT pero esas PK son UUID. Hay incompatibilidad de tipos que probablemente nunca se ejerza porque el módulo `logistica.js` no parece crear FKs reales — pero a la hora de reescribir logística en Tanda 2 hay que limpiar esto.
   - Ninguno otro reportado.
 - **Pendientes próximos** (orden recomendado):
-  1. Edge cases defensivos en Costos (items propios sin componentes, sin tipo_amortización, recetas circulares).
-  2. PDF testing real con datos reales.
-  3. Módulo de Costos Fijos mensuales + dashboard breakeven (cuando se necesite trackear punto de equilibrio).
+  1. **Tanda 2**: Módulo Taller (vista pantalla única) + Módulo Logística (cargas + remito PDF jsPDF + foto firma vía Storage). Decisión arquitectónica pendiente: ¿migrar logistica_movimientos → cargas en UUID o extender legacy?
+  2. **Tanda 3**: RRHH/convocatorias (rrhh_personal → personas?) + encuesta cliente pública (token) + cálculo de completitud por trigger + integración con Calendario Operativo.
+  3. Edge cases defensivos en Costos (items propios sin componentes, sin tipo_amortización, recetas circulares).
+  4. PDF testing real con datos reales.
+  5. Módulo de Costos Fijos mensuales + dashboard breakeven (cuando se necesite trackear punto de equilibrio).
