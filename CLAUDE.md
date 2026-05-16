@@ -292,6 +292,14 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 12. **SQL migrations en `/sql/`.** Documentar cambios de schema.
 13. **El bug de columnas rotadas en `clientes` se maneja en `api.js`**, no se corrige en Supabase.
 
+### Eficiencia operativa (preferencias del usuario)
+
+14. **Mínima cantidad de tokens posible.** Respuestas concisas, sin recapitular lo obvio.
+15. **Simplificar el accionar.** Una pasada precisa > tres pasadas tentativas.
+16. **Evitar pasos en vano.** No verificar lo que ya se sabe. No re-leer archivos sin razón. No repetir lo mismo en distintas formas.
+17. **Ser certero.** Si hay decisión clara, ejecutar; si hay duda real, preguntar una sola vez con opciones concretas. Nada de "¿querés que…?" cuando ya está acordado.
+18. **Plan first solo cuando aporta valor.** Si la tarea es chica y obvia, ejecutar directo. Plan extenso solo para refactors macro.
+
 ---
 
 ## 9. ARCHIVOS DE REFERENCIA

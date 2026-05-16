@@ -1318,17 +1318,26 @@ const CostosModule = {
         // Load price history
         const historial = await API.getPrecioHistorial(item.id);
 
+        // F.6 — los inputs llevan ambas clases: la nueva (estilo Recetas) y la
+        // legacy `costos-ficha-input` para que el querySelectorAll del save siga
+        // matcheando sin tener que tocar _attachFichaEvents.
         const mkInput = (field, val, type, ph) =>
-            `<input class="costos-ficha-input" data-field="${field}" type="${type || 'text'}" value="${val != null ? val : ''}" placeholder="${ph || ''}" spellcheck="false">`;
+            `<input class="costos-receta-config-input costos-ficha-input" data-field="${field}" type="${type || 'text'}" value="${val != null ? val : ''}" placeholder="${ph || ''}" spellcheck="false">`;
 
         const mkSelect = (field, options, val) =>
-            `<select class="costos-ficha-select" data-field="${field}">
+            `<select class="costos-receta-config-input costos-ficha-select" data-field="${field}" style="text-align:left; width:100%;">
                 ${options.map(o => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('')}
             </select>`;
 
+        // Bloque header
+        const clasifBadge = item.clasificacion
+            ? `<span class="badge" style="background:rgba(0,169,193,0.10); color:var(--primary); border:1px solid rgba(0,169,193,0.30); margin-left:8px;">${item.clasificacion}</span>`
+            : '';
+
+        // Historial: lo dejamos visualmente igual (es lista, no inputs)
         const historialHtml = historial.length > 0 ? `
-            <div class="costos-ficha-section">
-                <div class="costos-ficha-section-title">
+            <div class="costos-receta-config-block">
+                <div class="costos-receta-config-title">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                     Historial de precios
                 </div>
@@ -1358,55 +1367,109 @@ const CostosModule = {
             <div class="costos-ficha">
                 <div class="costos-ficha-header">
                     <div class="costos-ficha-header-left">
-                        <h3 class="costos-ficha-title">${item.nombre}</h3>
+                        <h3 class="costos-ficha-title">${item.nombre}${clasifBadge}</h3>
                         ${item.codigo ? `<span class="costos-ficha-code">${item.codigo}</span>` : ''}
                     </div>
-                    <button class="costos-ficha-close" id="costosFichaClose" title="Cerrar">
+                    <button class="costos-ficha-close" id="costosFichaClose" title="Cerrar (ESC)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                 </div>
 
-                <div class="costos-ficha-body">
-                    <div class="costos-ficha-section">
-                        <div class="costos-ficha-section-title">Datos del insumo</div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Nombre</span>${mkInput('nombre', item.nombre, 'text', 'Nombre del insumo')}</div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Código</span>${mkInput('codigo', item.codigo, 'text', 'Ej: MAT-ALB')}</div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Clasificación</span>${mkSelect('clasificacion', ['', ...this._clasificacionOpts], item.clasificacion)}</div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Categoría</span>${mkSelect('categoria', ['', ...this._categoriaOpts], item.categoria)}</div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Unidad</span>${mkSelect('unidadBase', ['unidad', 'metro', 'm²', 'kg', 'litro', 'hora', 'día', 'viaje', 'rollo', 'balde'], item.unidadBase)}</div>
+                <div class="costos-ficha-body" style="padding:0 20px;">
+
+                    <!-- DATOS BÁSICOS -->
+                    <div class="costos-receta-config-block">
+                        <div class="costos-receta-config-title">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/></svg>
+                            Datos básicos
+                        </div>
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Nombre</label>
+                            <div class="costos-receta-config-input-wrap" style="flex:1; min-width:0;">
+                                ${mkInput('nombre', item.nombre, 'text', 'Nombre del insumo')}
+                            </div>
+                        </div>
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Código</label>
+                            <div class="costos-receta-config-input-wrap">
+                                ${mkInput('codigo', item.codigo, 'text', 'Ej: MAT-ALB')}
+                            </div>
+                        </div>
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Clasificación</label>
+                            <div class="costos-receta-config-input-wrap">
+                                ${mkSelect('clasificacion', ['', ...this._clasificacionOpts], item.clasificacion)}
+                            </div>
+                        </div>
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Categoría</label>
+                            <div class="costos-receta-config-input-wrap">
+                                ${mkSelect('categoria', ['', ...this._categoriaOpts], item.categoria)}
+                            </div>
+                        </div>
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Unidad</label>
+                            <div class="costos-receta-config-input-wrap">
+                                ${mkSelect('unidadBase', ['unidad', 'metro', 'm²', 'kg', 'litro', 'hora', 'día', 'viaje', 'rollo', 'balde'], item.unidadBase)}
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="costos-ficha-section">
-                        <div class="costos-ficha-section-title">
+                    <!-- COSTO Y PROVEEDOR -->
+                    <div class="costos-receta-config-block">
+                        <div class="costos-receta-config-title">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                             Costo y proveedor
                         </div>
-                        <div class="costos-ficha-row">
-                            <span class="costos-ficha-label">Costo unitario</span>
-                            <div class="costos-ficha-price-group">
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Costo unitario</label>
+                            <div class="costos-receta-config-input-wrap">
+                                <span class="costos-receta-config-prefix">$</span>
                                 ${mkInput('costoUnitario', item.costoUnitario, 'number', '0.00')}
-                                <span class="costos-ficha-price-unit">/${item.unidadBase}</span>
+                                <span class="costos-receta-config-suffix">/${item.unidadBase}</span>
                             </div>
                         </div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Moneda</span>${mkSelect('moneda', ['USD', 'ARS'], item.moneda)}</div>
-                        <div class="costos-ficha-row"><span class="costos-ficha-label">Proveedor</span><input class="costos-ficha-input" data-field="proveedor" type="text" value="${item.proveedor != null ? item.proveedor : ''}" placeholder="Buscar o escribir proveedor…" list="costosProveedoresList" spellcheck="false" autocomplete="off"></div>
-                        ${item.fechaUltimoPrecio ? `<div class="costos-ficha-row"><span class="costos-ficha-label">Último precio</span><span class="costos-ficha-value-static">${API.formatDate(item.fechaUltimoPrecio)}</span></div>` : ''}
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Moneda</label>
+                            <div class="costos-receta-config-input-wrap">
+                                ${mkSelect('moneda', ['USD', 'ARS'], item.moneda)}
+                            </div>
+                        </div>
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Proveedor</label>
+                            <div class="costos-receta-config-input-wrap" style="flex:1; min-width:0;">
+                                <input class="costos-receta-config-input costos-ficha-input" data-field="proveedor" type="text" value="${item.proveedor != null ? item.proveedor : ''}" placeholder="Buscar o escribir proveedor…" list="costosProveedoresList" spellcheck="false" autocomplete="off" style="text-align:left; width:100%;">
+                            </div>
+                        </div>
+                        ${item.fechaUltimoPrecio ? `
+                            <div class="costos-receta-config-row">
+                                <label class="costos-receta-config-label">Último precio</label>
+                                <span style="font-family:var(--font-mono); font-size:12px; color:var(--text-muted);">${API.formatDate(item.fechaUltimoPrecio)}</span>
+                            </div>
+                        ` : ''}
                     </div>
 
                     ${this._renderAmortizacionSection(item)}
 
-                    <div class="costos-ficha-section">
-                        <div class="costos-ficha-section-title">Notas</div>
-                        <textarea class="costos-ficha-textarea" data-field="notas" placeholder="Observaciones…">${item.notas || ''}</textarea>
+                    <!-- NOTAS -->
+                    <div class="costos-receta-config-block">
+                        <div class="costos-receta-config-title">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            Notas
+                        </div>
+                        <textarea class="costos-receta-config-input costos-ficha-textarea" data-field="notas" placeholder="Observaciones…" style="width:100%; min-height:60px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;">${item.notas || ''}</textarea>
                     </div>
 
                     ${historialHtml}
+                </div>
 
-                    <div class="costos-ficha-actions">
-                        <button class="btn btn-primary btn-sm" id="costosFichaSave">Guardar cambios</button>
-                        <button class="btn btn-ghost btn-sm btn-danger" id="costosFichaDelete">Eliminar</button>
-                        <span class="costos-ficha-save-status" id="costosFichaSaveStatus"></span>
-                    </div>
+                <div class="costos-ficha-actions">
+                    <button class="btn btn-primary" id="costosFichaSave">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Guardar cambios
+                    </button>
+                    <button class="btn btn-ghost btn-danger" id="costosFichaDelete">Eliminar</button>
+                    <span class="costos-ficha-save-status" id="costosFichaSaveStatus"></span>
                 </div>
             </div>
         `;
@@ -1431,38 +1494,56 @@ const CostosModule = {
         const despOv = item.pctDesperdicioOverride != null ? item.pctDesperdicioOverride : '';
         const hasAnyOverride = vuOv !== '' || reacOv !== '' || despOv !== '';
 
+        // F.6 — Indicador VU efectiva: si hay override, mostrar el valor override
+        // como "principal"; si no, mostrar el heredado.
+        const vuEfectiva = this._getVuEfectiva(item);
+        const vuHeredada = currentTipo?.vida_util;
+        const vuFuente = (item.vidaUtilOverride != null) ? 'override' : 'heredada';
+        const vuBadgeColor = vuFuente === 'override' ? '#F28D15' : 'var(--primary)';
+
         return `
-            <div class="costos-ficha-section">
-                <div class="costos-ficha-section-title">
+            <div class="costos-receta-config-block">
+                <div class="costos-receta-config-title">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     Amortización
+                    ${vuEfectiva != null ? `<span style="margin-left:auto; font-family:var(--font-mono); font-size:11px; color:${vuBadgeColor};">VU efectiva: <strong>${vuEfectiva}</strong> usos · ${vuFuente}</span>` : ''}
                 </div>
-                <div class="costos-ficha-row">
-                    <span class="costos-ficha-label">Tipo</span>
-                    <select class="costos-ficha-select" data-field="tipoAmortizacion" id="costosFichaTipoAmort" required>
-                        ${currentCodigo ? '' : '<option value="" disabled selected>— Seleccionar —</option>'}
-                        ${optionsHtml}
-                    </select>
+                <div class="costos-receta-config-row">
+                    <label class="costos-receta-config-label">Tipo</label>
+                    <div class="costos-receta-config-input-wrap" style="flex:1; min-width:0;">
+                        <select class="costos-receta-config-input costos-ficha-select" data-field="tipoAmortizacion" id="costosFichaTipoAmort" required style="text-align:left; width:100%;">
+                            ${currentCodigo ? '' : '<option value="" disabled selected>— Seleccionar —</option>'}
+                            ${optionsHtml}
+                        </select>
+                    </div>
                 </div>
-                <div class="costos-ficha-overrides-toggle" id="costosFichaOverridesToggle"
-                    style="cursor:pointer; padding:6px 0; font-size:12px; color:var(--text-muted); user-select:none;">
+                <div id="costosFichaOverridesToggle" style="cursor:pointer; padding:6px 0; font-size:12px; color:var(--text-muted); user-select:none; font-family:var(--font-mono);">
                     <span id="costosFichaOverridesArrow">${hasAnyOverride ? '▾' : '▸'}</span>
-                    Overrides ${hasAnyOverride ? '<span style="color:#F28D15">·</span> activos' : '(avanzado)'}
+                    Overrides ${hasAnyOverride ? '<span style="color:#F28D15">●</span> activos' : '(avanzado)'}
                 </div>
-                <div class="costos-ficha-overrides" id="costosFichaOverrides" style="display:${hasAnyOverride ? 'block' : 'none'}; padding-left:8px; border-left:2px solid rgba(0,169,193,0.2);">
-                    <div class="costos-ficha-row">
-                        <span class="costos-ficha-label">Vida útil</span>
-                        <input class="costos-ficha-input" data-field="vidaUtilOverride" id="costosFichaVuOv" type="number" min="0" step="1" value="${vuOv}" placeholder="${phVU}" spellcheck="false">
+                <div id="costosFichaOverrides" style="display:${hasAnyOverride ? 'block' : 'none'}; padding-left:12px; border-left:2px solid rgba(0,169,193,0.20); margin-top:4px;">
+                    <div class="costos-receta-config-row">
+                        <label class="costos-receta-config-label">Vida útil</label>
+                        <div class="costos-receta-config-input-wrap">
+                            <input class="costos-receta-config-input costos-ficha-input" data-field="vidaUtilOverride" id="costosFichaVuOv" type="number" min="0" step="1" value="${vuOv}" placeholder="${phVU}" spellcheck="false">
+                            <span class="costos-receta-config-suffix">usos</span>
+                        </div>
                     </div>
-                    <div class="costos-ficha-row">
-                        <span class="costos-ficha-label">% reacond.</span>
-                        <input class="costos-ficha-input" data-field="pctReacondOverride" id="costosFichaReacOv" type="number" min="0" step="0.01" value="${reacOv}" placeholder="${phReac}" spellcheck="false">
+                    <div class="costos-receta-config-row">
+                        <label class="costos-receta-config-label">% reacond.</label>
+                        <div class="costos-receta-config-input-wrap">
+                            <input class="costos-receta-config-input costos-ficha-input" data-field="pctReacondOverride" id="costosFichaReacOv" type="number" min="0" step="0.01" value="${reacOv}" placeholder="${phReac}" spellcheck="false">
+                            <span class="costos-receta-config-suffix">%</span>
+                        </div>
                     </div>
-                    <div class="costos-ficha-row">
-                        <span class="costos-ficha-label">% desperdicio</span>
-                        <input class="costos-ficha-input" data-field="pctDesperdicioOverride" id="costosFichaDespOv" type="number" min="0" step="0.01" value="${despOv}" placeholder="${phDesp}" spellcheck="false">
+                    <div class="costos-receta-config-row">
+                        <label class="costos-receta-config-label">% desperdicio</label>
+                        <div class="costos-receta-config-input-wrap">
+                            <input class="costos-receta-config-input costos-ficha-input" data-field="pctDesperdicioOverride" id="costosFichaDespOv" type="number" min="0" step="0.01" value="${despOv}" placeholder="${phDesp}" spellcheck="false">
+                            <span class="costos-receta-config-suffix">%</span>
+                        </div>
                     </div>
-                    <div style="font-size:11px; color:var(--text-dim); padding:4px 0 2px;">Dejá en blanco para usar el default del tipo.</div>
+                    <div class="costos-receta-config-hint">Dejá en blanco para usar el default del tipo.</div>
                 </div>
             </div>
         `;
