@@ -2450,6 +2450,10 @@ const CostosModule = {
         const vuArmadoOv = item.vidaUtilArmadoOverride;
         const vuArmadoOvDisplay = vuArmadoOv != null ? vuArmadoOv : '';
 
+        // F.8 — margen propio (override). Vacío = usa global.
+        const margenPropioOv = item.margenPropio;       // decimal o null
+        const margenPropioOvDisplay = margenPropioOv != null ? Math.round(margenPropioOv * 100) : '';
+
         // Default heredado: VU mínima de los componentes (insumos vía tipo_amortizacion)
         let vuMinComp = null;
         for (const c of (compData || [])) {
@@ -2481,8 +2485,16 @@ const CostosModule = {
                         <span class="costos-receta-config-suffix">usos</span>
                     </div>
                 </div>
+                <div class="costos-receta-config-row">
+                    <label class="costos-receta-config-label">Margen % (override)</label>
+                    <div class="costos-receta-config-input-wrap">
+                        <input type="number" class="costos-receta-config-input" id="costosRecetaMargenPropio" data-field="margenPropio" value="${margenPropioOvDisplay}" step="1" min="0" max="500" placeholder="Default: usa global">
+                        <span class="costos-receta-config-suffix">%</span>
+                    </div>
+                </div>
                 <div class="costos-receta-config-hint">
                     Editá y salí del campo (blur) para guardar. Apretá <strong>Recalcular precio</strong> para refrescar el cache.
+                    Margen vacío usa el global de Parámetros.
                 </div>
                 <div class="costos-receta-config-info">
                     Configuración del <strong>armado del item</strong> (no de los insumos).
@@ -2692,10 +2704,17 @@ const CostosModule = {
 
         // Persistir inputs en blur
         const persist = async (field, raw) => {
-            const isOverride = field === 'vidaUtilArmadoOverride' || field === 'costoProveedorDirecto' || field === 'proveedorIdDirecto';
+            const nullableOverrides = ['vidaUtilArmadoOverride', 'costoProveedorDirecto', 'proveedorIdDirecto', 'margenPropio'];
+            const isNullableOverride = nullableOverrides.includes(field);
             let value;
-            if (isOverride) {
-                value = (raw === '' || raw == null) ? null : (field === 'vidaUtilArmadoOverride' || field === 'proveedorIdDirecto' ? parseInt(raw) : parseFloat(raw));
+            if (isNullableOverride) {
+                if (raw === '' || raw == null) {
+                    value = null;
+                } else if (field === 'vidaUtilArmadoOverride' || field === 'proveedorIdDirecto') {
+                    value = parseInt(raw);
+                } else {
+                    value = parseFloat(raw);
+                }
             } else if (field === 'manoObraMinutos') {
                 value = parseInt(raw) || 0;
             } else {
@@ -2722,6 +2741,17 @@ const CostosModule = {
                 await persist('margenSubalquiler', pct / 100);
                 return;
             }
+            // F.8 — Margen propio (override): entero (150) → decimal (1.50). Vacío → null.
+            if (el.dataset.field === 'margenPropio') {
+                if (el.value === '' || el.value == null) {
+                    await persist('margenPropio', null);
+                    return;
+                }
+                const pct = parseFloat(el.value);
+                if (isNaN(pct)) return;
+                await persist('margenPropio', pct / 100);
+                return;
+            }
             // Proveedor subalquilado: nombre → lookup → id
             if (el.dataset.field === 'proveedorNombreSubalq') {
                 const trimmed = el.value.trim();
@@ -2741,7 +2771,7 @@ const CostosModule = {
             await persist(el.dataset.field, el.value);
         };
 
-        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaProvNombre', 'costosRecetaMargenSubalq'].forEach(id => {
+        ['costosRecetaMOMin', 'costosRecetaVUArmadoOv', 'costosRecetaMargenPropio', 'costosRecetaProvNombre', 'costosRecetaMargenSubalq'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
             const original = el.value;

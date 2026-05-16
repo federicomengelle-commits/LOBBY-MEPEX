@@ -1430,7 +1430,7 @@ const API = {
                 pctIndirectosComercial: i.pct_indirectos_comercial != null ? parseFloat(i.pct_indirectos_comercial) : 0.20,
                 vidaUtilUsos: i.vida_util_usos || 20,
                 pctReacondicionamiento: i.pct_reacondicionamiento != null ? parseFloat(i.pct_reacondicionamiento) : 0.05,
-                margenPropio: i.margen_propio != null ? parseFloat(i.margen_propio) : 0.50,
+                margenPropio: i.margen_propio != null ? parseFloat(i.margen_propio) : null,  // F.8: null = usa global; valor = override
                 costoManoObra: parseFloat(i.costo_mano_obra) || 0,
                 costoIndirectos: parseFloat(i.costo_indirectos) || 0,
                 costoFabricacion: parseFloat(i.costo_fabricacion) || 0,
@@ -1504,7 +1504,10 @@ const API = {
             if (data.pctIndirectosComercial !== undefined) payload.pct_indirectos_comercial = data.pctIndirectosComercial;
             if (data.vidaUtilUsos !== undefined) payload.vida_util_usos = data.vidaUtilUsos;
             if (data.pctReacondicionamiento !== undefined) payload.pct_reacondicionamiento = data.pctReacondicionamiento;
-            if (data.margenPropio !== undefined) payload.margen_propio = data.margenPropio;
+            // F.8: margen propio = null limpia el override (vuelve al global). Cualquier número se persiste como decimal (0.50 = 50%).
+            if (data.margenPropio !== undefined) {
+                payload.margen_propio = (data.margenPropio === null || data.margenPropio === '') ? null : parseFloat(data.margenPropio);
+            }
             if (data.costoManoObra !== undefined) payload.costo_mano_obra = data.costoManoObra;
             if (data.costoIndirectos !== undefined) payload.costo_indirectos = data.costoIndirectos;
             if (data.costoFabricacion !== undefined) payload.costo_fabricacion = data.costoFabricacion;
@@ -3094,12 +3097,17 @@ const API = {
 
             // Snapshot de params globales actuales (la RPC ya no usa markup_estructura)
             const params = await this.getParametrosGlobalesMap();
-            // Para subalquilado, el margen efectivo es margen_subalquiler del item;
-            // para propio, es el global pct_margen_default.
-            const margenEfectivo = itemBefore?.tipoReceta === 'subalquilado'
-                && itemBefore.margenSubalquiler != null
-                ? itemBefore.margenSubalquiler
-                : parseFloat(params.pct_margen_default);
+            // F.8 — margen efectivo según tipo:
+            //  - subalquilado: margen_subalquiler del item (override fijo).
+            //  - propio: margen_propio del item si está cargado, sino global.
+            let margenEfectivo;
+            if (itemBefore?.tipoReceta === 'subalquilado' && itemBefore.margenSubalquiler != null) {
+                margenEfectivo = itemBefore.margenSubalquiler;
+            } else if (itemBefore?.tipoReceta === 'propio' && itemBefore.margenPropio != null) {
+                margenEfectivo = itemBefore.margenPropio;
+            } else {
+                margenEfectivo = parseFloat(params.pct_margen_default);
+            }
             const snapshotPayload = {
                 costoFabricacion,
                 costoPorUso,
