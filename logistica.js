@@ -33,6 +33,11 @@ const LogisticaModule = {
     _filterEstado: '',
     _filterFecha: '',
     _personasFilterRol: '',
+    _cargasParaRemitos: [],
+    _remitosFiltroEvento: '',
+    _remitosFiltroTipo: '',
+    _remitosFiltroDesde: '',
+    _remitosFiltroHasta: '',
 
     // ─── Render principal ───
     async render() {
@@ -47,6 +52,8 @@ const LogisticaModule = {
         if (params.tab === 'cargas') {
             this._activeTab = 'cargas';
             if (params.id) this._selectedCargaId = params.id;
+        } else if (params.tab === 'remitos') {
+            this._activeTab = 'remitos';
         } else if (params.tab === 'vehiculos') {
             this._activeTab = 'vehiculos';
             if (params.id) this._selectedVehiculoId = params.id;
@@ -75,6 +82,7 @@ const LogisticaModule = {
     _buildShell() {
         const tabs = [
             { id: 'cargas',     icon: '🚚', label: 'Cargas' },
+            { id: 'remitos',    icon: '📑', label: 'Remitos' },
             { id: 'vehiculos',  icon: '🚛', label: 'Vehículos' },
             { id: 'personas',   icon: '👤', label: 'Personas' },
         ];
@@ -135,6 +143,7 @@ const LogisticaModule = {
 
     async _loadActiveTab() {
         if (this._activeTab === 'cargas') return this._loadCargas();
+        if (this._activeTab === 'remitos') return this._loadRemitos();
         if (this._activeTab === 'vehiculos') return this._loadVehiculos();
         if (this._activeTab === 'personas') return this._loadPersonas();
     },
@@ -843,6 +852,177 @@ const LogisticaModule = {
                 <span>${this._esc(p.nombre || 'Sin nombre')}</span>
             </label>
         `).join('');
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TAB REMITOS (archivo de PDFs + fotos firmadas)
+    // ═════════════════════════════════════════════════════════════
+
+    async _loadRemitos() {
+        try {
+            // Traemos todas las cargas no canceladas con sus relaciones,
+            // sin filtro de fecha (el filtro se aplica en cliente).
+            const [cargas, eventos] = await Promise.all([
+                API.getCargas({}),
+                this._eventos.length ? Promise.resolve(this._eventos) : API.getEvents(),
+            ]);
+            this._cargasParaRemitos = (cargas || []).filter(c => c.estado !== 'cancelada');
+            this._eventos = eventos || [];
+            this._renderRemitos();
+        } catch (e) {
+            console.warn('[Logistica] Error _loadRemitos:', e.message);
+            this._renderRemitos();
+        }
+    },
+
+    _renderRemitos() {
+        const c = document.getElementById('logisticaContent');
+        if (!c) return;
+
+        let rows = this._cargasParaRemitos || [];
+        if (this._remitosFiltroEvento) rows = rows.filter(x => x.evento_id === this._remitosFiltroEvento);
+        if (this._remitosFiltroDesde) rows = rows.filter(x => x.fecha && x.fecha >= this._remitosFiltroDesde);
+        if (this._remitosFiltroHasta) rows = rows.filter(x => x.fecha && x.fecha <= this._remitosFiltroHasta);
+        if (this._remitosFiltroTipo === 'con_pdf') rows = rows.filter(x => !!x.remito_pdf_url);
+        if (this._remitosFiltroTipo === 'con_firmado') rows = rows.filter(x => !!x.remito_firmado_url);
+        if (this._remitosFiltroTipo === 'completados') rows = rows.filter(x => !!x.remito_pdf_url && !!x.remito_firmado_url);
+        if (this._remitosFiltroTipo === 'sin_remito') rows = rows.filter(x => !x.remito_pdf_url);
+
+        // Orden: más reciente primero
+        rows = [...rows].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+
+        // KPIs
+        const totalCargas = (this._cargasParaRemitos || []).length;
+        const conPdf = (this._cargasParaRemitos || []).filter(x => x.remito_pdf_url).length;
+        const conFirma = (this._cargasParaRemitos || []).filter(x => x.remito_firmado_url).length;
+
+        c.innerHTML = `
+            <div class="log-remitos-stats">
+                <div class="log-remitos-stat"><strong>${totalCargas}</strong> cargas no canceladas</div>
+                <div class="log-remitos-stat"><strong>${conPdf}</strong> con PDF</div>
+                <div class="log-remitos-stat"><strong>${conFirma}</strong> con foto firmada</div>
+            </div>
+
+            <div class="log-toolbar">
+                <div class="log-filters">
+                    <select class="log-filter" id="logRemFiltroEvento">
+                        <option value="">Todos los eventos</option>
+                        ${this._eventos.map(ev => `
+                            <option value="${ev.id}" ${this._remitosFiltroEvento === ev.id ? 'selected' : ''}>${this._esc(ev.name || '—')}</option>
+                        `).join('')}
+                    </select>
+                    <select class="log-filter" id="logRemFiltroTipo">
+                        <option value="">Todos los remitos</option>
+                        <option value="con_pdf" ${this._remitosFiltroTipo === 'con_pdf' ? 'selected' : ''}>Con PDF generado</option>
+                        <option value="con_firmado" ${this._remitosFiltroTipo === 'con_firmado' ? 'selected' : ''}>Con foto firmada</option>
+                        <option value="completados" ${this._remitosFiltroTipo === 'completados' ? 'selected' : ''}>Completos (PDF + foto)</option>
+                        <option value="sin_remito" ${this._remitosFiltroTipo === 'sin_remito' ? 'selected' : ''}>Pendientes (sin PDF)</option>
+                    </select>
+                    <input type="date" class="log-filter" id="logRemDesde" value="${this._remitosFiltroDesde || ''}" placeholder="Desde">
+                    <input type="date" class="log-filter" id="logRemHasta" value="${this._remitosFiltroHasta || ''}" placeholder="Hasta">
+                </div>
+            </div>
+
+            ${rows.length === 0 ? `
+                <div class="log-empty">
+                    <div class="log-empty-icon">📑</div>
+                    <p>No hay remitos con esos filtros.</p>
+                </div>
+            ` : `
+                <table class="log-table log-remitos-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Evento</th>
+                            <th>Vehículo</th>
+                            <th>Chofer</th>
+                            <th>Stands</th>
+                            <th style="text-align:center;">📄 PDF</th>
+                            <th style="text-align:center;">📸 Firma</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(c => this._renderRemitoRow(c)).join('')}
+                    </tbody>
+                </table>
+            `}
+        `;
+
+        this._attachRemitosEvents();
+    },
+
+    _renderRemitoRow(c) {
+        const fecha = c.fecha
+            ? new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' })
+            : '—';
+        const evNombre = c.evento?.nombre || '—';
+        const veh = c.vehiculo?.descripcion || '—';
+        const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : '—';
+        const numStands = (c.carga_proyectos || []).length;
+        const pdfIcon = c.remito_pdf_url
+            ? `<button class="log-rem-icon-btn pdf" data-action="open-pdf" data-path="${this._escAttr(c.remito_pdf_url)}" title="Abrir PDF">📄</button>`
+            : `<span class="log-rem-icon-empty" title="Sin PDF">—</span>`;
+        const firmaIcon = c.remito_firmado_url
+            ? `<button class="log-rem-icon-btn firma" data-action="open-firma" data-path="${this._escAttr(c.remito_firmado_url)}" title="Ver foto firmada">📸</button>`
+            : `<span class="log-rem-icon-empty" title="Sin foto firmada">—</span>`;
+
+        return `
+            <tr class="log-rem-row">
+                <td>${fecha}</td>
+                <td>${this._esc(evNombre)}</td>
+                <td>${this._esc(veh)}</td>
+                <td>${this._esc(chofer)}</td>
+                <td><span class="log-stands-count">${numStands}</span></td>
+                <td style="text-align:center;">${pdfIcon}</td>
+                <td style="text-align:center;">${firmaIcon}</td>
+                <td>${this._estadoBadge(c.estado)}</td>
+                <td>
+                    <button class="log-mini-btn" data-action="open-carga-from-rem" data-id="${c.id}" title="Ver carga">→</button>
+                </td>
+            </tr>
+        `;
+    },
+
+    _attachRemitosEvents() {
+        document.getElementById('logRemFiltroEvento')?.addEventListener('change', e => {
+            this._remitosFiltroEvento = e.target.value;
+            this._renderRemitos();
+        });
+        document.getElementById('logRemFiltroTipo')?.addEventListener('change', e => {
+            this._remitosFiltroTipo = e.target.value;
+            this._renderRemitos();
+        });
+        document.getElementById('logRemDesde')?.addEventListener('change', e => {
+            this._remitosFiltroDesde = e.target.value;
+            this._renderRemitos();
+        });
+        document.getElementById('logRemHasta')?.addEventListener('change', e => {
+            this._remitosFiltroHasta = e.target.value;
+            this._renderRemitos();
+        });
+        document.querySelectorAll('[data-action="open-pdf"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const path = btn.dataset.path;
+                const url = await API.getRemitoSignedUrl(path, 3600);
+                if (url) window.open(url, '_blank', 'noopener');
+                else Toast.error('No se pudo generar el enlace.');
+            });
+        });
+        document.querySelectorAll('[data-action="open-firma"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const path = btn.dataset.path;
+                const url = await API.getRemitoSignedUrl(path, 3600);
+                if (url) window.open(url, '_blank', 'noopener');
+                else Toast.error('No se pudo generar el enlace.');
+            });
+        });
+        document.querySelectorAll('[data-action="open-carga-from-rem"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                window.location.hash = `logistica?tab=cargas&id=${btn.dataset.id}`;
+            });
+        });
     },
 
     // ═════════════════════════════════════════════════════════════
@@ -1602,6 +1782,42 @@ const LogisticaModule = {
             .logistica-module .log-action-btn-ghost:hover {
                 color: #00A9C1 !important;
                 border-color: #00A9C1 !important;
+            }
+
+            /* Tab Remitos */
+            .logistica-module .log-remitos-stats {
+                display: flex; gap: 10px; flex-wrap: wrap;
+                padding: 16px 24px 0 24px;
+            }
+            .logistica-module .log-remitos-stat {
+                background: #111; border: 1px solid #2a2a2a;
+                padding: 6px 12px; border-radius: 6px;
+                font-family: var(--font-main); font-size: 0.85rem; color: #aaa;
+            }
+            .logistica-module .log-remitos-stat strong { color: #00A9C1; }
+            .logistica-module .log-remitos-table {
+                margin: 0 24px 24px 24px;
+                width: calc(100% - 48px);
+            }
+            .logistica-module .log-rem-row { transition: background 150ms ease; }
+            .logistica-module .log-rem-row:hover { background: rgba(0,169,193,0.05); }
+            .logistica-module .log-rem-icon-btn {
+                background: transparent;
+                border: 1px solid #2a2a2a;
+                border-radius: 6px;
+                width: 32px; height: 32px;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: all 180ms ease;
+            }
+            .logistica-module .log-rem-icon-btn.pdf:hover {
+                border-color: #ff8888; background: rgba(255,136,136,0.08);
+            }
+            .logistica-module .log-rem-icon-btn.firma:hover {
+                border-color: #00CC88; background: rgba(0,204,136,0.08);
+            }
+            .logistica-module .log-rem-icon-empty {
+                color: #555; font-family: var(--font-mono);
             }
         `;
         document.head.appendChild(style);
