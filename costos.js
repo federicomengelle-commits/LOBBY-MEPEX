@@ -246,7 +246,7 @@ const CostosModule = {
         this._proveedoresById = {};
         for (const p of this._proveedores) {
             if (!p) continue;
-            if (p.name) this._proveedoresByName[p.name.trim().toLowerCase()] = p;
+            if (p.name) this._proveedoresByName[this._norm(p.name.trim())] = p;
             if (p.id != null) this._proveedoresById[String(p.id)] = p;
         }
         console.log('[Costos] Proveedores cargados:', this._proveedores.length);
@@ -281,6 +281,14 @@ const CostosModule = {
             console.warn('[Costos] Error loading tipos amortización:', e.message);
             return [];
         }
+    },
+
+    // F.9 — Normaliza strings para búsquedas accent-insensitive.
+    // "guía" → "guia"  ·  "Sólido" → "solido"  ·  "Coca-Cola" → "coca-cola"
+    // Uso en TODOS los buscadores y lookups del módulo Costos.
+    _norm(s) {
+        if (s == null) return '';
+        return String(s).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
     },
 
     _getVuEfectiva(insumo) {
@@ -452,13 +460,13 @@ const CostosModule = {
         const f = this._listasFilters;
         let data = [...this._catalogoItems];
 
-        // Search
+        // Search (accent-insensitive)
         if (f.search) {
-            const q = f.search.toLowerCase();
+            const q = this._norm(f.search);
             data = data.filter(i =>
-                (i.nombre || '').toLowerCase().includes(q) ||
-                (i.codigo || '').toLowerCase().includes(q) ||
-                (i.rubro || '').toLowerCase().includes(q)
+                this._norm(i.nombre).includes(q) ||
+                this._norm(i.codigo).includes(q) ||
+                this._norm(i.rubro).includes(q)
             );
         }
         // Rubros
@@ -1124,13 +1132,13 @@ const CostosModule = {
         let data = [...this._insumos];
 
         if (this._searchQuery) {
-            const q = this._searchQuery.toLowerCase();
+            const q = this._norm(this._searchQuery);
             data = data.filter(i =>
-                (i.nombre || '').toLowerCase().includes(q) ||
-                (i.codigo || '').toLowerCase().includes(q) ||
-                (i.clasificacion || '').toLowerCase().includes(q) ||
-                (i.categoria || '').toLowerCase().includes(q) ||
-                (i.proveedor || '').toLowerCase().includes(q)
+                this._norm(i.nombre).includes(q) ||
+                this._norm(i.codigo).includes(q) ||
+                this._norm(i.clasificacion).includes(q) ||
+                this._norm(i.categoria).includes(q) ||
+                this._norm(i.proveedor).includes(q)
             );
         }
 
@@ -1817,12 +1825,12 @@ const CostosModule = {
         let data = [...this._catalogoItems];
 
         if (this._searchQuery) {
-            const q = this._searchQuery.toLowerCase();
+            const q = this._norm(this._searchQuery);
             data = data.filter(i =>
-                (i.nombre || '').toLowerCase().includes(q) ||
-                (i.codigo || '').toLowerCase().includes(q) ||
-                (i.rubro || '').toLowerCase().includes(q) ||
-                (i.categoria || '').toLowerCase().includes(q)
+                this._norm(i.nombre).includes(q) ||
+                this._norm(i.codigo).includes(q) ||
+                this._norm(i.rubro).includes(q) ||
+                this._norm(i.categoria).includes(q)
             );
         }
 
@@ -2762,7 +2770,7 @@ const CostosModule = {
                     await persist('proveedorIdDirecto', null);
                     return;
                 }
-                const match = this._proveedoresByName[trimmed.toLowerCase()];
+                const match = this._proveedoresByName[this._norm(trimmed)];
                 if (match) {
                     await persist('proveedorIdDirecto', match.id);
                 } else {
@@ -3090,10 +3098,10 @@ const CostosModule = {
             const searchInput = document.getElementById('costosAddInsumoSearch');
             if (searchInput) {
                 searchInput.addEventListener('input', () => {
-                    const q = searchInput.value.toLowerCase();
+                    const q = this._norm(searchInput.value);
                     document.querySelectorAll('.costos-add-insumo-row').forEach(row => {
-                        const name = row.querySelector('.costos-add-insumo-name')?.textContent?.toLowerCase() || '';
-                        const code = row.querySelector('.costos-add-insumo-code')?.textContent?.toLowerCase() || '';
+                        const name = this._norm(row.querySelector('.costos-add-insumo-name')?.textContent || '');
+                        const code = this._norm(row.querySelector('.costos-add-insumo-code')?.textContent || '');
                         row.style.display = (!q || name.includes(q) || code.includes(q)) ? '' : 'none';
                     });
                 });
