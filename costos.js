@@ -2533,9 +2533,9 @@ const CostosModule = {
                     </div>
                 </div>
                 <div class="costos-receta-config-row">
-                    <label class="costos-receta-config-label">VU armado (override)</label>
+                    <label class="costos-receta-config-label" title="Cuántos usos te dura el item antes de descartarlo. Si está cargada (>0), TODO el costo de fabricación se divide por este número, ignorando las VUs de los componentes individuales. Es la 'regla 1:N' (ej: vitrina que dura 5 usos → costo/uso = costo_fab/5). Si está vacía, cada componente se amortiza por su VU propia (modelo viejo).">VU del armado · usos</label>
                     <div class="costos-receta-config-input-wrap">
-                        <input type="number" class="costos-receta-config-input" id="costosRecetaVUArmadoOv" data-field="vidaUtilArmadoOverride" value="${vuArmadoOvDisplay}" step="1" min="0" placeholder="${phVU}">
+                        <input type="number" class="costos-receta-config-input" id="costosRecetaVUArmadoOv" data-field="vidaUtilArmadoOverride" value="${vuArmadoOvDisplay}" step="1" min="0" placeholder="${phVU}" title="Cargá un número &gt; 0 para usar la regla 1:N (todo el costo / VU). Vacío = amortización por componente.">
                         <span class="costos-receta-config-suffix">usos</span>
                     </div>
                 </div>
@@ -2702,7 +2702,7 @@ const CostosModule = {
         `;
     },
 
-    // F.10 — Compactado: 1 fila inline con los 3 valores. Precio destacado.
+    // F.10/F.11 — Compactado: 1 fila inline + breakdown visual de la fórmula.
     _renderCacheResultBlock(item) {
         const fmtCur = (v) => API.formatCurrency(v || 0);
         const isSubalq = item.tipoReceta === 'subalquilado';
@@ -2718,8 +2718,24 @@ const CostosModule = {
                     <span class="costos-receta-result-sep">·</span>
                     <span class="costos-receta-result-pair costos-receta-result-pair-final"><span class="rl-l">Precio</span><span class="rl-v" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span></span>
                 </div>
+                <div class="costos-receta-breakdown">
+                    ${fmtCur(item.costoFabricacion)} costo MP × (1 + ${margenPct}) = <strong>${fmtCur(item.precioAlquiler)}</strong>
+                </div>
             `;
         }
+
+        // PROPIO — breakdown de la fórmula con números reales.
+        const vuArmado = item.vidaUtilArmadoOverride;
+        const margenDecimal = item.margenPropio != null ? item.margenPropio : (item.snapshotPctMargen ?? 0.50);
+        const margenPct = `${Math.round(margenDecimal * 100)}%`;
+        // Si tiene VU armado: regla 1:N. Sino: amortización por componente (no muestro fórmula simple).
+        const breakdown = vuArmado != null && vuArmado > 0
+            ? `<span class="costos-receta-breakdown-step">${fmtCur(item.costoFabricacion)} <span class="bk-op">nuevo</span></span>
+               <span class="costos-receta-breakdown-step">÷ <strong>${vuArmado}</strong> usos = ${fmtCur(item.costoPorUso)} <span class="bk-op">/uso</span></span>
+               <span class="costos-receta-breakdown-step">× (1 + <strong>${margenPct}</strong>) = <strong class="bk-final">${fmtCur(item.precioAlquiler)}</strong></span>`
+            : `<span class="costos-receta-breakdown-step">${fmtCur(item.costoFabricacion)} <span class="bk-op">nuevo</span> (cada componente se amortiza por su VU propia)</span>
+               <span class="costos-receta-breakdown-step">→ ${fmtCur(item.costoPorUso)} <span class="bk-op">/uso</span></span>
+               <span class="costos-receta-breakdown-step">× (1 + <strong>${margenPct}</strong>) = <strong class="bk-final">${fmtCur(item.precioAlquiler)}</strong></span>`;
 
         return `
             <div class="costos-receta-result-inline">
@@ -2728,6 +2744,9 @@ const CostosModule = {
                 <span class="costos-receta-result-pair"><span class="rl-l">Costo/uso</span><span class="rl-v" id="costosRecetaResCostoPorUso">${fmtCur(item.costoPorUso)}</span></span>
                 <span class="costos-receta-result-sep">·</span>
                 <span class="costos-receta-result-pair costos-receta-result-pair-final"><span class="rl-l">Precio</span><span class="rl-v" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span></span>
+            </div>
+            <div class="costos-receta-breakdown">
+                ${breakdown}
             </div>
         `;
     },

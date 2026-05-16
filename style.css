@@ -15458,3 +15458,35 @@ select.costos-listas-filter-select {
     padding: 4px 0;
 }
 
+/* F.11 — Breakdown visual de la fórmula (debajo del Resultado actual) */
+.costos-receta-breakdown {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: rgba(0, 169, 193, 0.04);
+    border-left: 2px solid rgba(0, 169, 193, 0.30);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 8px;
+}
+.costos-receta-breakdown strong {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+.costos-receta-breakdown .bk-op {
+    color: var(--text-dim);
+    font-style: italic;
+}
+.costos-receta-breakdown .bk-final {
+    color: var(--primary);
+    font-size: 13px;
+}
+.costos-receta-breakdown-step {
+    white-space: nowrap;
+}
+
