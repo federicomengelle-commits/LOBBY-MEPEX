@@ -1988,29 +1988,32 @@ const CostosModule = {
         if (row) row.classList.add('active');
 
         const tipoReceta = item.tipoReceta || 'propio';
+        const rubrosOpts = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
+        const precioActual = item.precioAlquiler || 0;
+
+        // F.10 — Header rediseñado: nombre + código + rubro EDITABLES inline,
+        // toggle de tipo compacto, y precio cacheado destacado.
         inner.innerHTML = `
             <div class="costos-ficha">
-                <div class="costos-ficha-header">
-                    <div class="costos-ficha-header-left">
-                        <h3 class="costos-ficha-title">${item.nombre}</h3>
-                        ${item.codigo ? `<span class="costos-ficha-code">${item.codigo}</span>` : ''}
-                        ${item.rubro ? `<span class="badge badge-ghost" style="margin-left:8px">${item.rubro}</span>` : ''}
-                    </div>
-                    <button class="costos-ficha-close" id="costosFichaClose" title="Cerrar">
+                <div class="costos-receta-header-v2">
+                    <button class="costos-ficha-close" id="costosFichaClose" title="Cerrar (ESC)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
-                </div>
-                <div class="costos-tipo-receta-bar">
-                    <span class="costos-tipo-receta-label">TIPO DE RECETA</span>
-                    <div class="costos-tipo-toggle" role="tablist">
-                        <button class="costos-tipo-opt ${tipoReceta === 'propio' ? 'active' : ''}" data-tipo="propio" role="tab">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                            Propio
-                        </button>
-                        <button class="costos-tipo-opt ${tipoReceta === 'subalquilado' ? 'active' : ''}" data-tipo="subalquilado" role="tab">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                            Subalquilado
-                        </button>
+                    <input type="text" class="costos-receta-name-input" id="costosRecetaNombreEdit" data-field="nombre" value="${(item.nombre || '').replace(/"/g, '&quot;')}" placeholder="Nombre del item" spellcheck="false">
+                    <div class="costos-receta-meta-row">
+                        <input type="text" class="costos-receta-code-input" id="costosRecetaCodigoEdit" data-field="codigo" value="${(item.codigo || '').replace(/"/g, '&quot;')}" placeholder="Código" spellcheck="false">
+                        <input type="text" class="costos-receta-rubro-input" id="costosRecetaRubroEdit" data-field="rubro" value="${(item.rubro || '').replace(/"/g, '&quot;')}" placeholder="Rubro" list="costosRecetaRubrosList" spellcheck="false" autocomplete="off">
+                        <datalist id="costosRecetaRubrosList">
+                            ${rubrosOpts.map(r => `<option value="${r}"></option>`).join('')}
+                        </datalist>
+                        <div class="costos-receta-tipo-tabs" role="tablist">
+                            <button class="costos-tipo-opt-mini ${tipoReceta === 'propio' ? 'active' : ''}" data-tipo="propio" role="tab" title="Propio (cascada completa)">Propio</button>
+                            <button class="costos-tipo-opt-mini ${tipoReceta === 'subalquilado' ? 'active' : ''}" data-tipo="subalquilado" role="tab" title="Subalquilado (costo proveedor + margen)">Subalq.</button>
+                        </div>
+                    </div>
+                    <div class="costos-receta-precio-headline">
+                        <span class="costos-receta-precio-label">Precio actual</span>
+                        <span class="costos-receta-precio-value" id="costosRecetaPrecioHeadline">${precioActual > 0 ? API.formatCurrency(precioActual) : '<span style="color:var(--text-dim)">—</span>'}</span>
                     </div>
                 </div>
                 <div class="costos-ficha-body" id="costosRecetaBody">
@@ -2019,10 +2022,38 @@ const CostosModule = {
             </div>
         `;
 
+        // F.10 — handlers inline para campos editables del header (blur guarda)
+        ['costosRecetaNombreEdit', 'costosRecetaCodigoEdit', 'costosRecetaRubroEdit'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const original = el.value;
+            const save = async () => {
+                const newVal = el.value.trim();
+                if (newVal === original) return;
+                const field = el.dataset.field;
+                const ok = await API.updateCatalogoItem(item.id, { [field]: newVal });
+                if (ok) {
+                    item[field] = newVal;
+                    Toast.success(`${field === 'nombre' ? 'Nombre' : field === 'codigo' ? 'Código' : 'Rubro'} actualizado`, 1500);
+                    // Refresh row in tabla
+                    const cached = this._catalogoItems.find(i => String(i.id) === String(item.id));
+                    if (cached) cached[field] = newVal;
+                } else {
+                    Toast.error('No se pudo actualizar');
+                    el.value = original;
+                }
+            };
+            el.addEventListener('blur', save);
+            el.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); el.blur(); }
+                if (ev.key === 'Escape') { el.value = original; el.blur(); }
+            });
+        });
+
         // F.5 — Cambiar tipo de receta requiere confirmación explícita.
         // Cambiar tipo NO recalcula el precio; el usuario tiene que apretar
         // Recalcular después si quiere aplicar los cambios.
-        inner.querySelectorAll('.costos-tipo-opt').forEach(btn => {
+        inner.querySelectorAll('.costos-tipo-opt-mini').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const nuevoTipo = btn.dataset.tipo;
                 const tipoActual = item.tipoReceta || 'propio';
@@ -2045,7 +2076,7 @@ const CostosModule = {
                 });
                 if (!confirmed) return;
 
-                inner.querySelectorAll('.costos-tipo-opt').forEach(b => b.classList.remove('active'));
+                inner.querySelectorAll('.costos-tipo-opt-mini').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 item.tipoReceta = nuevoTipo;
                 const ok = await API.updateCatalogoItem(item.id, { tipoReceta: nuevoTipo });
@@ -2440,15 +2471,30 @@ const CostosModule = {
                 : this._renderMOAmortizacionBlock(item, compData)}
             ${this._renderSnapshotsBlock(item, params)}
             ${this._renderCacheResultBlock(item)}
+            ${this._renderNotasBlock(item)}
             <div class="costos-receta-recalc-wrap">
                 <button class="btn btn-primary costos-receta-recalc-btn" id="costosRecetaRecalcBtn">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                     Recalcular precio
                 </button>
                 <span class="costos-receta-recalc-dirty" id="costosRecetaRecalcDirty" style="display:none;">● cambios sin recalcular</span>
-                <span class="costos-receta-recalc-hint" id="costosRecetaRecalcHint" style="margin-left:10px; color:var(--text-muted); font-size:12px;">
-                    Invoca <code>calcular_receta(${item.id})</code> y persiste el resultado.
-                </span>
+                <button class="btn btn-ghost btn-danger costos-receta-delete-btn" id="costosRecetaDeleteBtn" title="Eliminar receta">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </div>
+        `;
+    },
+
+    // F.10 — Bloque Notas (similar al de Insumos, opcional)
+    _renderNotasBlock(item) {
+        const notas = item.notas || '';
+        return `
+            <div class="costos-receta-config-block">
+                <div class="costos-receta-config-title">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Notas
+                </div>
+                <textarea class="costos-receta-config-input" id="costosRecetaNotasEdit" data-field="notas" placeholder="Observaciones, contexto, alertas…" style="width:100%; min-height:50px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;">${notas}</textarea>
             </div>
         `;
     },
@@ -2564,21 +2610,25 @@ const CostosModule = {
             // Para subalquilado, el margen REAL aplicado es margen_subalquiler del item.
             // El snapshot_pct_margen guarda el global por compat, pero no es lo que se usó.
             const margenSnap = item.margenSubalquiler != null ? item.margenSubalquiler : item.snapshotPctMargen;
+            // F.10 — Colapsable, cerrado por default (solo muestra margen, casi nunca cambia)
             return `
-                <div class="costos-receta-config-block costos-receta-snapshots">
-                    <div class="costos-receta-config-title">
+                <div class="costos-receta-config-block costos-receta-snapshots costos-receta-collapsible ${stale ? 'is-open' : ''}" id="costosRecetaSnapshotBlock">
+                    <div class="costos-receta-config-title costos-receta-collapse-toggle" data-target="costosRecetaSnapshotBlock">
+                        <svg class="costos-receta-collapse-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
                         Snapshot al recalcular
                         ${stale ? `<span style="color:#F28D15; font-size:11px; margin-left:8px;">⚠ sin snapshot</span>` : `<span style="color:var(--text-dim); font-size:11px; margin-left:8px;">${dateStr}</span>`}
                     </div>
-                    <div class="costos-receta-snapshot-grid" style="grid-template-columns: 1fr;">
-                        <div class="costos-receta-snapshot-item">
-                            <span class="costos-receta-snapshot-label">% Margen aplicado</span>
-                            <span class="costos-receta-snapshot-value">${fmtPct(margenSnap)}</span>
+                    <div class="costos-receta-collapsible-body">
+                        <div class="costos-receta-snapshot-grid" style="grid-template-columns: 1fr;">
+                            <div class="costos-receta-snapshot-item">
+                                <span class="costos-receta-snapshot-label">% Margen aplicado</span>
+                                <span class="costos-receta-snapshot-value">${fmtPct(margenSnap)}</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="costos-receta-config-hint">
-                        Subalquilado no usa hora taller, indirectos ni markup. Solo costo MP × (1 + margen).
+                        <div class="costos-receta-config-hint">
+                            Subalquilado no usa hora taller, indirectos ni markup. Solo costo MP × (1 + margen).
+                        </div>
                     </div>
                 </div>
             `;
@@ -2614,100 +2664,82 @@ const CostosModule = {
             ? `<span title="Snapshot difiere del global actual" style="color:#F28D15; margin-left:4px;">●</span>`
             : '';
 
+        // F.10 — Colapsable. Cerrado por default; auto-abre si hay diff vs global.
+        const hasDiff = diff(snap.pct_indirectos, cur.pct_indirectos)
+                     || diff(snap.pct_margen, cur.pct_margen)
+                     || diff(snap.hora_taller, cur.hora_taller);
+        const startOpen = hasDiff || stale;
         return `
-            <div class="costos-receta-config-block costos-receta-snapshots">
-                <div class="costos-receta-config-title">
+            <div class="costos-receta-config-block costos-receta-snapshots costos-receta-collapsible ${startOpen ? 'is-open' : ''}" id="costosRecetaSnapshotBlock">
+                <div class="costos-receta-config-title costos-receta-collapse-toggle" data-target="costosRecetaSnapshotBlock">
+                    <svg class="costos-receta-collapse-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
                     Snapshot al recalcular
                     ${stale ? `<span style="color:#F28D15; font-size:11px; margin-left:8px;">⚠ sin snapshot</span>` : `<span style="color:var(--text-dim); font-size:11px; margin-left:8px;">${dateStr}</span>`}
+                    ${hasDiff && !stale ? `<span style="color:#F28D15; font-size:11px; margin-left:6px;">● desfasado</span>` : ''}
                 </div>
-                <div class="costos-receta-snapshot-grid">
-                    <div class="costos-receta-snapshot-item">
-                        <span class="costos-receta-snapshot-label">% Indirectos fábrica</span>
-                        <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_indirectos)}${diffMark(snap.pct_indirectos, cur.pct_indirectos)}</span>
+                <div class="costos-receta-collapsible-body">
+                    <div class="costos-receta-snapshot-grid">
+                        <div class="costos-receta-snapshot-item">
+                            <span class="costos-receta-snapshot-label">% Indirectos fábrica</span>
+                            <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_indirectos)}${diffMark(snap.pct_indirectos, cur.pct_indirectos)}</span>
+                        </div>
+                        <div class="costos-receta-snapshot-item">
+                            <span class="costos-receta-snapshot-label">% Margen</span>
+                            <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_margen)}${diffMark(snap.pct_margen, cur.pct_margen)}</span>
+                        </div>
+                        ${isSubalq ? '' : `
+                        <div class="costos-receta-snapshot-item">
+                            <span class="costos-receta-snapshot-label">Hora taller</span>
+                            <span class="costos-receta-snapshot-value">${fmtCur(snap.hora_taller)}/h${diffMark(snap.hora_taller, cur.hora_taller)}</span>
+                        </div>`}
                     </div>
-                    <div class="costos-receta-snapshot-item">
-                        <span class="costos-receta-snapshot-label">% Margen</span>
-                        <span class="costos-receta-snapshot-value">${fmtPct(snap.pct_margen)}${diffMark(snap.pct_margen, cur.pct_margen)}</span>
+                    <div class="costos-receta-config-hint">
+                        Estos valores se snapshotean al apretar <strong>Recalcular precio</strong>. Marcador ● = difiere del global actual.
                     </div>
-                    ${isSubalq ? '' : `
-                    <div class="costos-receta-snapshot-item">
-                        <span class="costos-receta-snapshot-label">Hora taller</span>
-                        <span class="costos-receta-snapshot-value">${fmtCur(snap.hora_taller)}/h${diffMark(snap.hora_taller, cur.hora_taller)}</span>
-                    </div>`}
-                </div>
-                <div class="costos-receta-config-hint">
-                    Estos valores se snapshotean al apretar <strong>Recalcular precio</strong>. Marcador ● = difiere del global actual.
                 </div>
             </div>
         `;
     },
 
+    // F.10 — Compactado: 1 fila inline con los 3 valores. Precio destacado.
     _renderCacheResultBlock(item) {
         const fmtCur = (v) => API.formatCurrency(v || 0);
         const isSubalq = item.tipoReceta === 'subalquilado';
 
         if (isSubalq) {
-            // Subalquilado: costo siempre heredado de los componentes (Costo MP).
-            // costo_proveedor_directo es legacy/null. costoFabricacion del cache
-            // es el valor más reciente de la suma de componentes (snapshoteado al
-            // último Recalcular).
             const margenDecimal = item.margenSubalquiler != null ? item.margenSubalquiler : 0.50;
             const margenPct = `${Math.round(margenDecimal * 100)}%`;
             return `
-                <div class="costos-receta-config-block costos-receta-result-block">
-                    <div class="costos-receta-config-title">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                        Resultado actual
-                    </div>
-                    <div class="costos-receta-result-grid">
-                        <div class="costos-receta-result-item">
-                            <span class="costos-receta-result-label" title="Costo materia prima — heredado de los componentes de la receta">Costo MP</span>
-                            <span class="costos-receta-result-value" id="costosRecetaResCostoFab">${fmtCur(item.costoFabricacion)}</span>
-                        </div>
-                        <div class="costos-receta-result-item">
-                            <span class="costos-receta-result-label">Margen</span>
-                            <span class="costos-receta-result-value">${margenPct}</span>
-                        </div>
-                        <div class="costos-receta-result-item costos-receta-result-item-final">
-                            <span class="costos-receta-result-label">Precio alquiler</span>
-                            <span class="costos-receta-result-value" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span>
-                        </div>
-                    </div>
+                <div class="costos-receta-result-inline">
+                    <span class="costos-receta-result-pair"><span class="rl-l">Costo MP</span><span class="rl-v" id="costosRecetaResCostoFab">${fmtCur(item.costoFabricacion)}</span></span>
+                    <span class="costos-receta-result-sep">·</span>
+                    <span class="costos-receta-result-pair"><span class="rl-l">Margen</span><span class="rl-v">${margenPct}</span></span>
+                    <span class="costos-receta-result-sep">·</span>
+                    <span class="costos-receta-result-pair costos-receta-result-pair-final"><span class="rl-l">Precio</span><span class="rl-v" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span></span>
                 </div>
             `;
         }
 
         return `
-            <div class="costos-receta-config-block costos-receta-result-block">
-                <div class="costos-receta-config-title">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    Resultado actual (cache)
-                </div>
-                <div class="costos-receta-result-grid">
-                    <div class="costos-receta-result-item">
-                        <span class="costos-receta-result-label">Costo fabricación</span>
-                        <span class="costos-receta-result-value" id="costosRecetaResCostoFab">${fmtCur(item.costoFabricacion)}</span>
-                    </div>
-                    <div class="costos-receta-result-item">
-                        <span class="costos-receta-result-label">Costo por uso</span>
-                        <span class="costos-receta-result-value" id="costosRecetaResCostoPorUso">${fmtCur(item.costoPorUso)}</span>
-                    </div>
-                    <div class="costos-receta-result-item costos-receta-result-item-final">
-                        <span class="costos-receta-result-label">Precio alquiler</span>
-                        <span class="costos-receta-result-value" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span>
-                    </div>
-                </div>
+            <div class="costos-receta-result-inline">
+                <span class="costos-receta-result-pair"><span class="rl-l">Costo fab</span><span class="rl-v" id="costosRecetaResCostoFab">${fmtCur(item.costoFabricacion)}</span></span>
+                <span class="costos-receta-result-sep">·</span>
+                <span class="costos-receta-result-pair"><span class="rl-l">Costo/uso</span><span class="rl-v" id="costosRecetaResCostoPorUso">${fmtCur(item.costoPorUso)}</span></span>
+                <span class="costos-receta-result-sep">·</span>
+                <span class="costos-receta-result-pair costos-receta-result-pair-final"><span class="rl-l">Precio</span><span class="rl-v" id="costosRecetaResPrecio">${fmtCur(item.precioAlquiler)}</span></span>
             </div>
         `;
     },
 
     _attachRecetaConfigEvents(item, compData, params) {
-        // F.7 — Mostrar tag "● cambios sin recalcular" cuando se persiste un campo
-        // que afecta el precio (MO, VU armado, margen, proveedor).
+        // F.7+F.10 — Tag "● cambios sin recalcular" + botón Recalcular naranja
+        // para llamar la atención visual cuando hay edits pendientes.
         const showDirty = () => {
             const tag = document.getElementById('costosRecetaRecalcDirty');
+            const btn = document.getElementById('costosRecetaRecalcBtn');
             if (tag) tag.style.display = 'inline-block';
+            if (btn) btn.classList.add('costos-receta-recalc-btn-dirty');
         };
 
         // Persistir inputs en blur
@@ -2805,6 +2837,50 @@ const CostosModule = {
         const btn = document.getElementById('costosRecetaRecalcBtn');
         if (btn) {
             btn.addEventListener('click', () => this._recalcularUnaReceta(item));
+        }
+
+        // F.10 — Toggle collapsibles (snapshot block, etc.)
+        document.querySelectorAll('.costos-receta-collapse-toggle').forEach(toggle => {
+            toggle.addEventListener('click', (ev) => {
+                const targetId = toggle.dataset.target;
+                const block = document.getElementById(targetId);
+                if (block) block.classList.toggle('is-open');
+            });
+        });
+
+        // F.10 — Notas (blur guarda)
+        const notasEl = document.getElementById('costosRecetaNotasEdit');
+        if (notasEl) {
+            const originalNotas = notasEl.value;
+            notasEl.addEventListener('blur', async () => {
+                if (notasEl.value === originalNotas) return;
+                const ok = await API.updateCatalogoItem(item.id, { notas: notasEl.value });
+                if (ok) { item.notas = notasEl.value; Toast.success('Notas guardadas', 1500); }
+                else Toast.error('No se pudo guardar');
+            });
+        }
+
+        // F.10 — Botón Eliminar receta (con confirm)
+        const deleteBtn = document.getElementById('costosRecetaDeleteBtn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async () => {
+                const confirmed = await Modal.confirm({
+                    title: '🗑 Eliminar receta',
+                    message: `<p style="margin:0 0 8px">¿Eliminar <strong>${item.nombre}</strong> (${item.codigo || 'sin código'})?</p>
+                              <p style="margin:0; color:var(--text-muted); font-size:13px;">Esta acción se puede deshacer con Ctrl+Z. Si esta receta es componente de otras, esas se rompen hasta que las arregles.</p>`,
+                    confirmText: 'Eliminar',
+                    cancelText: 'Cancelar',
+                });
+                if (!confirmed) return;
+                const ok = await API.deleteCatalogoItem(item.id);
+                if (ok) {
+                    Toast.success('Receta eliminada · Ctrl+Z para deshacer');
+                    this._closePanel();
+                    await this._refreshData();
+                } else {
+                    Toast.error('No se pudo eliminar');
+                }
+            });
         }
     },
 

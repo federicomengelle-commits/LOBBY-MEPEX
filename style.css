@@ -15224,3 +15224,237 @@ select.costos-listas-filter-select {
     line-height: 1.5;
 }
 
+/* ============================================
+   F.10 — Panel Receta rediseñado (header editable + compacto)
+   ============================================ */
+
+/* Header v2: bloque sticky con nombre/código/rubro EDITABLES + tipo + precio */
+.costos-receta-header-v2 {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: linear-gradient(180deg, #0a0a0a 0%, #0a0a0a 90%, transparent 100%);
+    padding: 16px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+}
+.costos-receta-header-v2 .costos-ficha-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background 150ms ease, color 150ms ease;
+}
+.costos-receta-header-v2 .costos-ficha-close:hover {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-primary);
+}
+
+.costos-receta-name-input {
+    display: block;
+    width: calc(100% - 32px);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: 17px;
+    font-weight: 700;
+    padding: 4px 8px;
+    margin-bottom: 6px;
+    transition: border-color 180ms ease, background 180ms ease;
+}
+.costos-receta-name-input:hover {
+    background: rgba(255,255,255,0.03);
+}
+.costos-receta-name-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    background: rgba(0,169,193,0.06);
+}
+
+.costos-receta-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.costos-receta-code-input,
+.costos-receta-rubro-input {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 6px;
+    transition: border-color 180ms ease, background 180ms ease;
+}
+.costos-receta-code-input { width: 90px; }
+.costos-receta-rubro-input { width: 130px; color: var(--primary); text-transform: uppercase; letter-spacing: 0.04em; }
+.costos-receta-code-input:hover,
+.costos-receta-rubro-input:hover { background: rgba(255,255,255,0.03); }
+.costos-receta-code-input:focus,
+.costos-receta-rubro-input:focus {
+    outline: none; border-color: var(--primary); background: rgba(0,169,193,0.06);
+}
+
+/* Tipo tabs mini (al lado del nombre) */
+.costos-receta-tipo-tabs {
+    display: inline-flex;
+    margin-left: auto;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 2px;
+    gap: 0;
+}
+.costos-tipo-opt-mini {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-main);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+    white-space: nowrap;
+}
+.costos-tipo-opt-mini:hover {
+    color: var(--text-primary);
+}
+.costos-tipo-opt-mini.active {
+    background: var(--primary);
+    color: #000;
+    font-weight: 600;
+}
+
+/* Precio destacado en header */
+.costos-receta-precio-headline {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: rgba(0,169,193,0.08);
+    border: 1px solid rgba(0,169,193,0.30);
+    border-radius: 5px;
+}
+.costos-receta-precio-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.costos-receta-precio-value {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-left: auto;
+}
+
+/* Resultado actual compacto: 1 fila inline */
+.costos-receta-result-inline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 10px 14px;
+    margin-top: 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+.costos-receta-result-pair {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+}
+.costos-receta-result-pair .rl-l {
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.costos-receta-result-pair .rl-v {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.costos-receta-result-pair-final .rl-v {
+    color: var(--primary);
+    font-size: 14px;
+    font-weight: 700;
+}
+.costos-receta-result-sep {
+    color: var(--text-dim);
+}
+
+/* Collapsibles */
+.costos-receta-collapsible .costos-receta-collapse-toggle {
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0 !important;
+}
+.costos-receta-collapsible .costos-receta-collapse-arrow {
+    transition: transform 180ms ease;
+    color: var(--text-muted);
+}
+.costos-receta-collapsible.is-open .costos-receta-collapse-arrow {
+    transform: rotate(90deg);
+    color: var(--primary);
+}
+.costos-receta-collapsible-body {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 250ms ease, opacity 200ms ease, margin-top 200ms ease;
+    margin-top: 0;
+}
+.costos-receta-collapsible.is-open .costos-receta-collapsible-body {
+    max-height: 500px;
+    opacity: 1;
+    margin-top: 10px;
+}
+
+/* Botón Recalcular naranja cuando hay cambios sin guardar */
+.costos-receta-recalc-btn-dirty {
+    background: #F28D15 !important;
+    border-color: #F28D15 !important;
+    color: #000 !important;
+    animation: pulseDirty 1.6s infinite;
+}
+@keyframes pulseDirty {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(242,141,21,0.30); }
+    50% { box-shadow: 0 0 0 4px rgba(242,141,21,0); }
+}
+
+/* Botón Eliminar receta (icono solo, danger) */
+.costos-receta-delete-btn {
+    margin-left: auto;
+    padding: 6px 8px !important;
+    color: #ff6666 !important;
+}
+.costos-receta-delete-btn:hover {
+    background: rgba(255,68,68,0.10) !important;
+    color: #ff4444 !important;
+}
+
+/* Reducir paddings/gaps generales del panel para más densidad efectiva */
+.costos-receta-config-block {
+    padding: 12px 14px;
+    margin-top: 10px;
+}
+.costos-receta-config-row {
+    padding: 4px 0;
+}
+
