@@ -468,18 +468,42 @@ const ProyectoDetalle = {
     _renderArchivosTab() {
         const p = this._project;
         if (p.drive_folder_url) {
+            const folderId = p.drive_folder_id || this._extractDriveFolderId(p.drive_folder_url);
+            const embedUrl = folderId
+                ? `https://drive.google.com/embeddedfolderview?id=${folderId}#grid`
+                : null;
             return `
                 <div class="pjd-tab-pad">
-                    <div class="pjd-drive-card pjd-drive-card-lg">
-                        <div class="pjd-drive-icon">📁</div>
-                        <h3 class="pjd-section-title">Carpeta Drive vinculada</h3>
-                        <div class="pjd-drive-url">${this._esc(p.drive_folder_url)}</div>
-                        <div class="pjd-drive-actions">
-                            <button class="btn btn-primary pjd-btn-lg" id="pjdArchivosOpen">Abrir en Drive</button>
-                            ${!this._isRO ? '<button class="btn btn-ghost" id="pjdArchivosEdit">Editar URL</button>' : ''}
+                    <div class="pjd-drive-toolbar">
+                        <div class="pjd-drive-toolbar-left">
+                            <span class="pjd-drive-icon-sm">📁</span>
+                            <span class="pjd-drive-url-compact" title="${this._escAttr(p.drive_folder_url)}">${this._esc(p.drive_folder_url)}</span>
                         </div>
-                        <p class="pjd-section-helper">En una próxima versión vas a poder ver y subir archivos directamente desde acá.</p>
+                        <div class="pjd-drive-toolbar-right">
+                            <button class="btn btn-ghost" id="pjdArchivosOpen" title="Abrir en pestaña nueva">↗ Abrir en Drive</button>
+                            ${!this._isRO ? '<button class="btn btn-ghost" id="pjdArchivosEdit" title="Editar URL">Editar URL</button>' : ''}
+                        </div>
                     </div>
+                    ${embedUrl ? `
+                        <div class="pjd-drive-embed-wrap" id="pjdDriveEmbedWrap">
+                            <iframe
+                                class="pjd-drive-iframe"
+                                src="${embedUrl}"
+                                title="Carpeta Drive"
+                                loading="lazy"
+                                referrerpolicy="no-referrer"
+                                allow="clipboard-read; clipboard-write"></iframe>
+                            <p class="pjd-drive-fallback">
+                                Si la carpeta no carga, verificá que esté compartida como
+                                <strong>"Cualquiera con el enlace"</strong> (Viewer).
+                                <button class="pjd-link-btn" id="pjdArchivosFallback">Abrir en Drive →</button>
+                            </p>
+                        </div>
+                    ` : `
+                        <div class="pjd-drive-empty">
+                            <p class="pjd-section-empty">No se pudo extraer el ID de carpeta de la URL guardada. Editala y volvé a intentar.</p>
+                        </div>
+                    `}
                 </div>
             `;
         }
@@ -488,7 +512,7 @@ const ProyectoDetalle = {
                 <div class="pjd-drive-empty pjd-drive-empty-lg">
                     <div class="pjd-drive-icon dim">📁</div>
                     <h3 class="pjd-section-title">Sin carpeta Drive vinculada</h3>
-                    <p class="pjd-section-empty">Vinculá una carpeta de Google Drive para empezar a organizar archivos del proyecto.</p>
+                    <p class="pjd-section-empty">Vinculá una carpeta de Google Drive para ver y abrir archivos del proyecto sin salir del lobby.</p>
                     ${!this._isRO ? '<button class="btn btn-primary pjd-btn-lg" id="pjdArchivosLink">🔗 Vincular carpeta Drive</button>' : ''}
                 </div>
             </div>
@@ -497,6 +521,7 @@ const ProyectoDetalle = {
 
     _attachArchivosEvents() {
         document.getElementById('pjdArchivosOpen')?.addEventListener('click', () => this._openDrive());
+        document.getElementById('pjdArchivosFallback')?.addEventListener('click', () => this._openDrive());
         document.getElementById('pjdArchivosEdit')?.addEventListener('click', () => this._editDriveUrl());
         document.getElementById('pjdArchivosLink')?.addEventListener('click', () => this._editDriveUrl());
     },
@@ -1126,8 +1151,15 @@ const ProyectoDetalle = {
 
     _extractDriveFolderId(url) {
         if (!url) return null;
-        const m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-        return m ? m[1] : null;
+        // Soporta tres formatos:
+        //   drive.google.com/drive/folders/<ID>
+        //   drive.google.com/open?id=<ID>
+        //   drive.google.com/.../?id=<ID>
+        const m1 = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+        if (m1) return m1[1];
+        const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (m2) return m2[1];
+        return null;
     },
 
     // ═══════════════════════════════════════════
@@ -1493,6 +1525,50 @@ const ProyectoDetalle = {
                 font-family: var(--font-mono); font-size: 0.65rem;
                 color: #555; margin-left: 6px;
             }
+
+            /* Drive embed (Tanda 1 B3) */
+            .pjd-drive-toolbar {
+                display: flex; justify-content: space-between; align-items: center;
+                gap: 12px; padding: 10px 14px; margin-bottom: 12px;
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                flex-wrap: wrap;
+            }
+            .pjd-drive-toolbar-left {
+                display: flex; align-items: center; gap: 10px;
+                min-width: 0; flex: 1;
+            }
+            .pjd-drive-toolbar-right {
+                display: flex; gap: 8px; flex-wrap: wrap;
+            }
+            .pjd-drive-icon-sm { font-size: 1.2rem; opacity: 0.7; }
+            .pjd-drive-url-compact {
+                font-family: var(--font-mono); font-size: 0.72rem;
+                color: #888; white-space: nowrap; overflow: hidden;
+                text-overflow: ellipsis; min-width: 0;
+            }
+            .pjd-drive-embed-wrap {
+                position: relative;
+                background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 8px;
+                overflow: hidden;
+            }
+            .pjd-drive-iframe {
+                width: 100%; height: 70vh; min-height: 480px;
+                border: 0; display: block; background: #1a1a1a;
+            }
+            .pjd-drive-fallback {
+                margin: 0; padding: 10px 14px;
+                font-family: var(--font-mono); font-size: 0.7rem; color: #888;
+                background: #0e0e0e; border-top: 1px solid #2a2a2a;
+                display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            }
+            .pjd-link-btn {
+                background: transparent; border: none; padding: 0;
+                color: #00A9C1; font-family: inherit; font-size: inherit;
+                cursor: pointer; text-decoration: none;
+                border-bottom: 1px dashed transparent;
+                transition: border-color 200ms ease;
+            }
+            .pjd-link-btn:hover { border-bottom-color: #00A9C1; }
         `;
     },
 };
