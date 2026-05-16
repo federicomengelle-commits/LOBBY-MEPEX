@@ -1214,6 +1214,13 @@ const LogisticaModule = {
     async _loadPersonas() {
         try {
             this._personas = await API.getPersonasOperativas({ soloActivos: true });
+            // Hidratar asignaciones activas por persona (para badges)
+            const ids = this._personas.map(p => p.id);
+            this._asignacionesPorPersona = ids.length
+                ? await API.getAsignacionesActivasBulk(ids)
+                : {};
+            // Count de convocatorias pendientes (para banner admin)
+            this._convocatoriasPendientes = await API.getAsignacionesPendientesCount();
             this._renderPersonasTab();
         } catch (e) {
             console.warn('[Logistica] Error _loadPersonas:', e.message);
@@ -1225,12 +1232,23 @@ const LogisticaModule = {
         const c = document.getElementById('logisticaContent');
         if (!c) return;
 
+        const user = Auth.getUser();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+
         let visibles = this._personas.filter(p => !p._deleted);
         if (this._personasFilterRol) {
             visibles = visibles.filter(p => (p.roles_operativos || []).includes(this._personasFilterRol));
         }
 
+        const pendientes = this._convocatoriasPendientes || 0;
+
         c.innerHTML = `
+            ${isAdmin && pendientes > 0 ? `
+                <div class="log-admin-banner" style="cursor:pointer;" data-action="open-pending-convocatorias">
+                    <span class="log-admin-icon">⏳</span>
+                    <span><strong>${pendientes}</strong> convocatoria${pendientes === 1 ? '' : 's'} pendiente${pendientes === 1 ? '' : 's'} de aprobación · <span style="color:#888;">click para verlas en Calendario</span></span>
+                </div>
+            ` : ''}
             <div class="log-toolbar">
                 <div class="log-filters">
                     <select class="log-filter" id="logFiltroRol">
@@ -1266,17 +1284,28 @@ const LogisticaModule = {
                         </tr>
                     </thead>
                     <tbody>
-                        ${visibles.map(p => `
-                            <tr class="log-mov-row" data-id="${p.id}">
-                                <td>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</td>
-                                <td>${(p.roles_operativos || []).map(r => `<span class="log-rol-chip">${this._esc(this._rolLabel(r))}</span>`).join('') || '<span class="log-mini">—</span>'}</td>
-                                <td>${this._renderTelefonoWhatsApp(p.telefono)}</td>
-                                <td style="text-align: right;">
-                                    <button class="log-mini-btn" data-action="assign-carga" data-id="${p.id}" title="Asignar a una carga">🚚 Carga</button>
-                                    <button class="log-mini-btn" data-action="assign-evento" data-id="${p.id}" title="Asignar a un evento">📅 Evento</button>
-                                </td>
-                            </tr>
-                        `).join('')}
+                        ${visibles.map(p => {
+                            const asigs = (this._asignacionesPorPersona || {})[p.id] || [];
+                            const nombre = `${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}`;
+                            const asigChips = asigs.length > 0
+                                ? `<div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:3px;">${asigs.slice(0, 2).map(a => {
+                                    const estadoColor = a.estado === 'aprobada' ? '#00CC88' : a.estado === 'propuesta' ? '#F28D15' : '#9B7DFF';
+                                    const evNombre = a.evento?.nombre || '—';
+                                    return `<span class="log-asig-chip" style="color:${estadoColor}; border-color:${estadoColor}40; background:${estadoColor}10;" title="${this._esc(evNombre)} · ${a.fase} · ${a.estado}">📅 ${this._esc(evNombre).slice(0, 20)}${evNombre.length > 20 ? '…' : ''}</span>`;
+                                }).join('')}${asigs.length > 2 ? `<span class="log-asig-chip" style="color:#666;">+${asigs.length - 2}</span>` : ''}</div>`
+                                : '';
+                            return `
+                                <tr class="log-mov-row" data-id="${p.id}">
+                                    <td>${nombre}${asigChips}</td>
+                                    <td>${(p.roles_operativos || []).map(r => `<span class="log-rol-chip">${this._esc(this._rolLabel(r))}</span>`).join('') || '<span class="log-mini">—</span>'}</td>
+                                    <td>${this._renderTelefonoWhatsApp(p.telefono)}</td>
+                                    <td style="text-align: right;">
+                                        <button class="log-mini-btn" data-action="assign-carga" data-id="${p.id}" title="Asignar a una carga">🚚 Carga</button>
+                                        <button class="log-mini-btn" data-action="assign-evento" data-id="${p.id}" title="Asignar a un evento">📅 Evento</button>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
             `}
@@ -1291,6 +1320,9 @@ const LogisticaModule = {
         });
         document.querySelectorAll('[data-action="assign-evento"]').forEach(btn => {
             btn.addEventListener('click', () => this._openAsignarEventoModal(btn.dataset.id));
+        });
+        document.querySelector('[data-action="open-pending-convocatorias"]')?.addEventListener('click', () => {
+            Router.navigate('calendario');
         });
     },
 
@@ -1341,43 +1373,69 @@ const LogisticaModule = {
         const cargas = (await API.getCargas({})).filter(c => c.fecha && c.fecha >= hoy && !['completada','cancelada'].includes(c.estado));
 
         const esChofer = (persona.roles_operativos || []).includes('chofer');
+        const sinCargas = cargas.length === 0;
         const body = `
             <div class="log-form">
                 <div style="background: rgba(0,169,193,0.08); border: 1px solid rgba(0,169,193,0.3); padding: 10px 14px; border-radius: 6px; margin-bottom: 14px;">
                     <strong style="color:#00A9C1;">${this._esc(personaNombre)}</strong>
                     <span style="color:#888; font-size: 0.82rem; margin-left: 8px;">${(persona.roles_operativos || []).map(r => this._rolLabel(r)).join(' · ')}</span>
                 </div>
-                <div class="log-form-row">
-                    <label>Carga *</label>
-                    <select id="acCarga">
-                        <option value="">— Elegí una carga próxima —</option>
-                        ${cargas.map(c => {
-                            const ev = c.evento?.nombre || '—';
-                            const fecha = new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
-                            return `<option value="${c.id}">${fecha} · ${this._esc(ev)} · ${c.fase} (${c.estado})</option>`;
-                        }).join('')}
-                    </select>
-                    ${cargas.length === 0 ? '<div class="log-empty-hint">No hay cargas próximas pendientes.</div>' : ''}
-                </div>
-                ${esChofer ? `
+                ${sinCargas ? `
+                    <div style="background: rgba(242,141,21,0.08); border: 1px solid rgba(242,141,21,0.3); padding: 14px 16px; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 2rem; margin-bottom: 6px;">🚚</div>
+                        <div style="font-family: var(--font-main); font-size: 0.92rem; color: #F28D15; margin-bottom: 4px;">
+                            <strong>No hay cargas próximas para asignar.</strong>
+                        </div>
+                        <div style="font-size: 0.82rem; color: #888; margin-bottom: 14px;">
+                            Creá una nueva carga ahora y después agregás a ${this._esc(personaNombre)} desde el formulario.
+                        </div>
+                        <button class="btn-primary" id="acCrearCarga" style="padding: 8px 18px;">＋ Crear nueva carga</button>
+                    </div>
+                ` : `
                     <div class="log-form-row">
-                        <label>Rol en la carga</label>
-                        <select id="acRol">
-                            <option value="ayudante">Ayudante</option>
-                            <option value="chofer">Chofer principal</option>
+                        <label>Carga *</label>
+                        <select id="acCarga">
+                            <option value="">— Elegí una carga próxima —</option>
+                            ${cargas.map(c => {
+                                const ev = c.evento?.nombre || '—';
+                                const fecha = new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+                                return `<option value="${c.id}">${fecha} · ${this._esc(ev)} · ${c.fase} (${c.estado})</option>`;
+                            }).join('')}
                         </select>
                     </div>
-                ` : '<input type="hidden" id="acRol" value="ayudante">'}
+                    ${esChofer ? `
+                        <div class="log-form-row">
+                            <label>Rol en la carga</label>
+                            <select id="acRol">
+                                <option value="ayudante">Ayudante</option>
+                                <option value="chofer">Chofer principal</option>
+                            </select>
+                        </div>
+                    ` : '<input type="hidden" id="acRol" value="ayudante">'}
+                `}
             </div>
         `;
         const modalId = Modal.open({
             title: 'Asignar persona a carga',
             body,
             size: 'md',
-            footer: `
-                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
-                <button class="btn-primary" id="acSave">Asignar</button>
-            `,
+            footer: sinCargas
+                ? `<button class="btn-secondary" data-modal-cancel>Cerrar</button>`
+                : `
+                    <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                    <button class="btn-primary" id="acSave">Asignar</button>
+                `,
+        });
+
+        // Si no hay cargas y se hace click en "Crear nueva carga", saltamos al
+        // tab Cargas y abrimos el form. La persona no se autoasigna pero queda
+        // como recordatorio en el form (el user la elige en ayudantes/chofer).
+        document.getElementById('acCrearCarga')?.addEventListener('click', () => {
+            Modal.close(modalId);
+            this._activeTab = 'cargas';
+            document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === 'cargas'));
+            this._loadCargas().then(() => this._openNuevaCargaForm(null));
+            Toast.info(`No olvides agregar a ${personaNombre} como chofer o ayudante en el form.`);
         });
         document.getElementById('acSave')?.addEventListener('click', async () => {
             const cargaId = document.getElementById('acCarga')?.value;
@@ -1478,20 +1536,43 @@ const LogisticaModule = {
         document.getElementById('aeSave')?.addEventListener('click', async () => {
             const eventoId = document.getElementById('aeEvento')?.value;
             if (!eventoId) { Toast.warning('Elegí un evento.'); return; }
+            const fechaIni = document.getElementById('aeFechaIni')?.value || null;
+            const fechaFin = document.getElementById('aeFechaFin')?.value || null;
             const payload = {
                 eventoId,
                 personaId,
                 fase: document.getElementById('aeFase')?.value || 'armado',
-                fechaInicio: document.getElementById('aeFechaIni')?.value || null,
-                fechaFin: document.getElementById('aeFechaFin')?.value || null,
+                fechaInicio: fechaIni,
+                fechaFin: fechaFin,
                 rol: document.getElementById('aeRol')?.value || null,
                 notas: document.getElementById('aeNotas')?.value.trim() || null,
             };
+
+            // Validar conflictos de solapamiento si hay rango de fechas
+            if (fechaIni && fechaFin) {
+                const conflictos = await API.detectarConflictosPersona(personaId, fechaIni, fechaFin);
+                if (conflictos.length > 0) {
+                    const lista = conflictos.map(c => {
+                        const ev = c.evento?.nombre || '—';
+                        const desde = c.fecha_inicio ? new Date(c.fecha_inicio).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '?';
+                        const hasta = c.fecha_fin ? new Date(c.fecha_fin).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '?';
+                        return `• <strong>${this._esc(ev)}</strong> · ${c.fase} · ${desde} → ${hasta} (${c.estado})`;
+                    }).join('<br>');
+                    const continuar = await Confirm.action(
+                        '⚠ Conflicto de fechas',
+                        `${this._esc(personaNombre)} ya tiene asignaciones que se solapan con este rango:<br><br>${lista}<br><br>¿Asignar igualmente?`,
+                    );
+                    if (!continuar) return;
+                }
+            }
+
             try {
                 const r = await API.createAsignacionEvento(payload);
                 if (!r) { Toast.error('No se pudo crear la asignación.'); return; }
                 Toast.success('Asignación propuesta — admin va a aprobar.');
                 Modal.close(modalId);
+                // Reload personas para refrescar badges
+                await this._loadPersonas();
             } catch (e) {
                 console.error('[Logistica] asignar a evento error:', e);
                 Toast.error('Error al asignar.');
@@ -1969,6 +2050,14 @@ const LogisticaModule = {
                 border-color: #00CC88;
             }
             .logistica-module .log-wa-icon { font-size: 0.85rem; }
+            .logistica-module .log-asig-chip {
+                display: inline-block;
+                font-family: var(--font-mono, 'Space Mono', monospace);
+                font-size: 0.66rem;
+                padding: 1px 7px;
+                border-radius: 3px;
+                border: 1px solid;
+            }
 
             /* Warning si falta vehiculo/chofer cuando ya está aprobada */
             .logistica-module .log-panel-warning {

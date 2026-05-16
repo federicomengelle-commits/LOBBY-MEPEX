@@ -1231,12 +1231,13 @@ const CalendarioOperativo = {
     },
 
     _renderLogisticaTab(event) {
-        const equipo = event._equipo || (event.logistics?.team || []).map((t, i) => ({
-            id: `local-${i}`, name: t.name, role: t.role
-        }));
-        // Soporte dual: shape nuevo de API.getEventoEquipo (nombre/rolEvento/rolBase)
-        // + fallback al shape viejo de localStorage (name/role) que aún se mapea
-        // en el catch de _loadPanelData cuando la API falla.
+        // Equipo legacy (rrhh_asignaciones). Solo se muestra como FALLBACK si NO
+        // hay asignaciones nuevas (asignaciones_evento). El sistema nuevo es la
+        // sección "Personas asignadas" que se renderiza separada más abajo.
+        const hayAsignacionesNuevas = (event._asignacionesNew || []).length > 0;
+        const equipo = !hayAsignacionesNuevas
+            ? (event._equipo || (event.logistics?.team || []).map((t, i) => ({ id: `local-${i}`, name: t.name, role: t.role })))
+            : [];
         const teamRows = equipo.map(t => {
             const nombre = t.nombre || t.name || '—';
             const rol = t.rolEvento || t.rolBase || t.role || '—';
@@ -1292,10 +1293,12 @@ const CalendarioOperativo = {
                 .co-sp-mov-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:#aaa; font-family:'Space Mono',monospace; }
                 .co-sp-mov-date { color:#9B7DFF; }
             </style>
+            ${equipo.length > 0 ? `
             <div class="co-sp-section">
-                <h3 class="co-sp-section-title">Equipo asignado</h3>
-                <div class="co-sp-team">${teamRows || '<span class="co-sp-empty">Sin asignar</span>'}</div>
+                <h3 class="co-sp-section-title">Equipo asignado <span style="color:#666;font-size:10px;font-family:'Space Mono',monospace;">(legacy)</span></h3>
+                <div class="co-sp-team">${teamRows}</div>
             </div>
+            ` : ''}
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Transporte ${movimientos.length > 0 ? `<span style="color:#00CC88;font-size:11px;font-family:'Space Mono',monospace;">(${movimientos.length})</span>` : ''}</h3>
                 <div class="co-sp-movs-list">${movsHTML}</div>

@@ -3528,6 +3528,62 @@ const API = {
         }
     },
 
+    // Devuelve { persona_id: [...asignaciones activas (no canceladas, no vencidas)] }
+    // para varios persona_ids de una sola query. Filtra solo activas: fecha_fin
+    // null o futura.
+    async getAsignacionesActivasBulk(personaIds) {
+        if (!personaIds || !personaIds.length) return {};
+        try {
+            const hoyISO = new Date().toISOString();
+            const { data, error } = await supabaseClient
+                .from('asignaciones_evento')
+                .select(`
+                    id, persona_id, fase, fecha_inicio, fecha_fin, rol, estado,
+                    evento:eventos!evento_id(id, nombre)
+                `)
+                .in('persona_id', personaIds)
+                .eq('_deleted', false)
+                .neq('estado', 'cancelada')
+                .or(`fecha_fin.is.null,fecha_fin.gte.${hoyISO}`);
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(a => {
+                if (!map[a.persona_id]) map[a.persona_id] = [];
+                map[a.persona_id].push(a);
+            });
+            return map;
+        } catch (e) {
+            console.warn('[API] Error getAsignacionesActivasBulk:', e.message);
+            return {};
+        }
+    },
+
+    // Detecta conflictos para una persona en un rango. Devuelve las asignaciones
+    // existentes (no canceladas) que solapan con [desde, hasta].
+    async detectarConflictosPersona(personaId, desde, hasta, excludeAsigId = null) {
+        if (!personaId || !desde || !hasta) return [];
+        try {
+            let q = supabaseClient
+                .from('asignaciones_evento')
+                .select(`
+                    id, fase, fecha_inicio, fecha_fin, rol, estado,
+                    evento:eventos!evento_id(id, nombre)
+                `)
+                .eq('persona_id', personaId)
+                .eq('_deleted', false)
+                .neq('estado', 'cancelada')
+                .lte('fecha_inicio', hasta)
+                .gte('fecha_fin', desde);
+            if (excludeAsigId) q = q.neq('id', excludeAsigId);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error detectarConflictosPersona:', e.message);
+            return [];
+        }
+    },
+
     async getAsignacionesByPersona(personaId) {
         if (!personaId) return [];
         try {
