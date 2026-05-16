@@ -521,7 +521,21 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 ## 10. ESTADO ACTUAL
 
 - **Fecha:** 2026-05-16
-- **Ultimo commit destacado:** Tanda 2 (Taller + Logística operativos) — schema + módulos + PDF + Storage
+- **Ultimo commit destacado:** Tanda 3 completa (RRHH→personas + encuesta NPS + triggers completitud + cargas en calendario)
+- **Tanda 3 completada (Cierre del blueprint operativo)**:
+  - **3.A — RRHH migrado a `personas`** (`sql/rrhh_to_personas_migration.sql` + `rrhh.js`): expande `personas` con columnas faltantes (contacto, email, fecha_ingreso, documentacion, cantidad_personas, rol_legacy) + admite tipo='cuadrilla' + copia los registros vivos de `rrhh_personal` a `personas` manteniendo el mismo id UUID. Mapeo nombre→nombre+apellido, tipo 'fijo'→'interna', rol legacy a `roles_operativos[]` cuando matchea uno canónico (armador/chofer/ayudante/tecnico/azafata) o queda en `rol_legacy` cuando no. `rrhh.js` tab Nómina lee/escribe `personas` ahora (compat layer transparente con `_mapPersonaToLegacyShape`). EFECTO: las personas cargadas desde RRHH aparecen automáticamente como choferes/ayudantes en el select de cargas en Logística. La tabla `rrhh_personal` queda intacta mientras `rrhh_asignaciones` y `rrhh_vacaciones` la referencien (tabs Asignación y Vacaciones siguen legacy con banner aclaratorio).
+  - **3.B — Encuesta NPS pública con token** (`encuesta.html` + `eventos.js` + `api.js`): `encuesta.html` standalone (sin login, branding MEPEX, mobile-first, escala NPS 0-10 color-coded — rojo 0-6, naranja 7-8, verde 9-10 + comentario opcional). `api.js getEncuestaForEvent(eventoId)` devuelve la encuesta más reciente del evento. `eventos.js` suma botón "📨 Enviar encuesta al cliente" en el panel lateral del evento (al lado de Eliminar). Al click: `_openEncuestaModal` crea la encuesta si no existe, genera URL pública (`/encuesta.html?t=<token>`), la muestra en modal con botón "Copiar" al clipboard. Si la encuesta ya fue respondida, muestra el NPS color-coded (Promotor/Pasivo/Detractor) + comentario + fecha. El admin/PM manda el link manualmente por WhatsApp/email.
+  - **3.C — Triggers SQL para `completitud_pct`** (`sql/completitud_triggers.sql` + `taller.js`): función `calc_completitud_pct(proyecto_id)` mapea estado_taller a % (pendiente=0 / en_armado=25 / listo=50 / despachado=75 / cerrado=100). Si hay encuesta del evento respondida → siempre 100. Trigger BEFORE UPDATE en proyectos recalcula automáticamente al cambiar estado_taller. Trigger AFTER UPDATE en encuestas_evento cierra todos los proyectos del evento (estado='cerrado', completitud=100) cuando se responde la encuesta. Backfill incluido para proyectos existentes. UI: las cards de stand del Taller ahora muestran una segunda barra "Ciclo del proyecto" con gradient violeta→turquesa (debajo de la barra del checklist).
+  - **3.D — Render de cargas en Calendario Operativo** (`calendario-operativo.js`): el side panel del evento (tab Logística) ahora suma una sección "Cargas (N)" agrupada por fase (Armado verde / Intermedio violeta / Desarme naranja) con mini-cards por cada carga (vehículo + chofer + fecha/hora + count stands + badge estado color-coded). Click en una mini-card → deep-link a `#logistica?tab=cargas&id=<uuid>`. Coexiste con la sección legacy "Transporte" (logistica_movimientos) sin pisarla.
+- **UX refactor incluido en Tanda 3 (a pedido de Fede mid-sesión)**:
+  - Logística cargas: tabla → grid de cards (1-2 cols responsive, chips de stands preview, botón Aprobar inline para admin).
+  - Modal Nueva/Editar carga → form inline en panel lateral derecho (chau modal, más contextual).
+  - Personas en Logística: solo lectura. CRUD se hace desde RRHH. Banner + link "→ Ir a RRHH" solo visible para admin/superadmin (no para taller/pm que no acceden a RRHH).
+  - Panel cargas: warning naranja arriba si carga aprobada/en_curso sin vehículo o chofer + botón "Editar" en aprobadas + "Eliminar" separado en "ZONA DE PELIGRO" rojo dashed.
+  - Tab Remitos (4to en Logística): listado histórico completo de PDFs + fotos firmadas con filtros (evento/tipo/fecha desde/hasta) e íconos clickeables que abren signed URLs.
+  - Taller: 3 tabs (Hoy / Checklist / Mantenimiento). Tab Checklist tiene 6 items canónicos (placas/iluminación/mobiliario/pisos/gráfica/embalado) con rows expandibles. Tab Mantenimiento es CRUD de equipos/matafuegos/herramientas con vencimientos + stats banner (vencidos, próximos 30d). Cards de stand muestran progreso checklist + ciclo del proyecto.
+  - PDF logo optimizado: de 5.4 MB → 14 KB (canvas resize 400px + JPEG 88%).
+  - Notif filter: superadmin ve también las target_role='admin'.
 - **Tanda 2 completada (Operativo: Taller cards + Logística cargas + Remito PDF)**:
   - **B1.a** (`sql/taller_logistica_v2.sql`): tablas operativas en UUID. `personas` (RRHH operativo: internos + eventuales con `roles_operativos[]`), `vehiculos` (flota MEPEX + terceros), `cargas` (viajes con FK a evento/vehículo/chofer/responsable/aprobador + estado borrador→aprobada→en_curso→completada/cancelada + paths a remito_pdf_url y remito_firmado_url), `carga_proyectos` (M2M stand↔carga, ON DELETE CASCADE), `carga_personas` (ayudantes). Índices por evento/fecha/estado + GIN sobre roles_operativos. RLS abierto a authenticated; DELETE restringido a admin/superadmin. Las legacy (`logistica_movimientos`, `logistica_vehiculos`, `rrhh_personal`) NO se tocan — coexisten.
   - **B1.b** (`sql/storage_remitos.sql`): policies del bucket `remitos` (SELECT/INSERT/UPDATE abiertos a authenticated, DELETE a admin/superadmin). El bucket en sí hay que crearlo a mano en Dashboard → Storage (Supabase no permite crear buckets via SQL).
@@ -572,12 +586,14 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
   - Las tablas legacy `logistica_vehiculos` y `logistica_movimientos` referencian `eventos(id)` / `proyectos(id)` como BIGINT pero esas PK son UUID. Tanda 2 lo evita usando las tablas nuevas en UUID; la limpieza de las legacy queda para Tanda 3.
   - Ninguno otro reportado.
 - **Pasos manuales pendientes (no automatizables vía SQL)**:
-  1. Ejecutar `sql/taller_logistica_v2.sql` en Supabase SQL Editor.
-  2. Crear bucket `remitos` en Dashboard → Storage (Public OFF).
-  3. Ejecutar `sql/storage_remitos.sql` para las policies del bucket.
+  1. Ejecutar `sql/taller_logistica_v2.sql` en Supabase SQL Editor (schema operativo Tanda 2).
+  2. `sql/storage_remitos.sql` (crea bucket `remitos` via INSERT + policies — todo en uno, idempotente).
+  3. `sql/taller_checklist_v2.sql` (tabla checklist UUID).
+  4. `sql/rrhh_to_personas_migration.sql` (Tanda 3.A — expande personas + copia rrhh_personal → personas).
+  5. `sql/completitud_triggers.sql` (Tanda 3.C — triggers + backfill completitud_pct).
 - **Pendientes próximos** (orden recomendado):
-  1. **Tanda 3**: RRHH/convocatorias (decidir migrar rrhh_personal → personas) + encuesta cliente pública (token) + cálculo de completitud por trigger + integración Calendario Operativo + render de cargas/equipos dentro de fases del evento.
-  2. Migración o cleanup de `logistica_movimientos` / `logistica_vehiculos` / `rrhh_personal` legacy.
+  1. **Tanda 4 (planeada)**: revisión UI/UX integral con foco en móvil y tablet. Auditoría módulo por módulo con DevTools mobile preview (iPhone 12, iPad). Sidebar drawer en mobile, tablas → cards en mobile, tap targets 44px, modals fullscreen mobile, búsqueda como botón visible (no Ctrl+K), notif dropdown como bottom sheet, Calendario Operativo con vista alternativa mobile. Específicamente pensado para personal poco tech (taller). Ver `plan_tanda4_ui_review.md` en memoria.
+  2. Cleanup de tablas legacy: `logistica_movimientos`, `logistica_vehiculos`, `rrhh_personal`, `rrhh_asignaciones`. Decidir qué migrar a esquema nuevo y qué borrar.
   3. Edge cases defensivos en Costos (items propios sin componentes, sin tipo_amortización, recetas circulares).
-  4. PDF testing real con datos reales (logo, anchos de texto largos, varias páginas si hay 30+ stands).
-  5. Módulo de Costos Fijos mensuales + dashboard breakeven.
+  4. Módulo de Costos Fijos mensuales + dashboard breakeven.
+  5. Mejoras a la encuesta NPS: multi-pregunta, ratings por dimensión, envío automático por WhatsApp/email.
