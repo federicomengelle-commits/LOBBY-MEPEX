@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encuesta — MEPEX</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <link rel="icon" type="image/png" href="assets/mepex_iso.png">
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        :root {
+            --primary: #00A9C1;
+            --bg: #050505;
+            --bg-card: #111;
+            --border: #2a2a2a;
+            --text-primary: #E8E8E8;
+            --text-muted: #888;
+            --text-dim: #555;
+            --success: #00CC88;
+            --error: #ff4444;
+            --accent: #F28D15;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            background: var(--bg);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+        }
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            max-width: 520px;
+            width: 100%;
+            padding: 32px 28px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .logo {
+            max-width: 140px;
+            height: auto;
+            margin: 0 auto 18px auto;
+            display: block;
+        }
+        .header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 6px;
+        }
+        .header p {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+        .evento-title {
+            background: rgba(0,169,193,0.08);
+            border: 1px solid rgba(0,169,193,0.25);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .evento-title strong {
+            color: var(--primary);
+            font-weight: 600;
+        }
+        .question {
+            margin-bottom: 24px;
+        }
+        .question-label {
+            display: block;
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+        .question-hint {
+            display: block;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 14px;
+        }
+        .nps-scale {
+            display: grid;
+            grid-template-columns: repeat(11, 1fr);
+            gap: 5px;
+            margin-bottom: 8px;
+        }
+        @media (max-width: 480px) {
+            .nps-scale { grid-template-columns: repeat(6, 1fr); }
+        }
+        .nps-btn {
+            aspect-ratio: 1;
+            border: 1.5px solid var(--border);
+            background: #0a0a0a;
+            color: var(--text-primary);
+            border-radius: 8px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 180ms ease;
+            min-height: 44px;
+        }
+        .nps-btn:hover { border-color: var(--primary); }
+        .nps-btn.selected { background: var(--primary); color: var(--bg); border-color: var(--primary); }
+        .nps-btn.selected[data-score="0"],
+        .nps-btn.selected[data-score="1"],
+        .nps-btn.selected[data-score="2"],
+        .nps-btn.selected[data-score="3"],
+        .nps-btn.selected[data-score="4"],
+        .nps-btn.selected[data-score="5"],
+        .nps-btn.selected[data-score="6"] { background: var(--error); border-color: var(--error); }
+        .nps-btn.selected[data-score="7"],
+        .nps-btn.selected[data-score="8"] { background: var(--accent); border-color: var(--accent); }
+        .nps-btn.selected[data-score="9"],
+        .nps-btn.selected[data-score="10"] { background: var(--success); border-color: var(--success); }
+        .nps-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            font-family: 'Space Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        textarea {
+            width: 100%;
+            background: #0a0a0a;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 12px 14px;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            min-height: 100px;
+            resize: vertical;
+        }
+        textarea:focus { outline: none; border-color: var(--primary); }
+        .btn {
+            width: 100%;
+            background: var(--primary);
+            color: var(--bg);
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 200ms ease;
+            margin-top: 8px;
+            min-height: 50px;
+        }
+        .btn:hover:not(:disabled) {
+            background: #00C2DC;
+            box-shadow: 0 0 16px rgba(0,169,193,0.5);
+        }
+        .btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+        .state-screen {
+            text-align: center;
+            padding: 30px 0;
+        }
+        .state-icon {
+            font-size: 3.5rem;
+            margin-bottom: 16px;
+        }
+        .state-screen h2 {
+            font-size: 1.3rem;
+            margin-bottom: 10px;
+        }
+        .state-screen p {
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .footer {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-family: 'Space Mono', monospace;
+            letter-spacing: 0.05em;
+        }
+        .spinner {
+            display: inline-block;
+            width: 40px; height: 40px;
+            border: 3px solid #333;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+
+<body>
+    <div class="card" id="card">
+        <div class="state-screen">
+            <div class="spinner"></div>
+            <p style="margin-top: 16px;">Cargando encuesta...</p>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        (async () => {
+            const card = document.getElementById('card');
+
+            // Estados de UI
+            const renderError = (msg) => {
+                card.innerHTML = `
+                    <div class="state-screen">
+                        <div class="state-icon">❌</div>
+                        <h2>No pudimos cargar la encuesta</h2>
+                        <p>${msg}</p>
+                    </div>
+                `;
+            };
+            const renderThanks = (nps) => {
+                const emoji = nps >= 9 ? '🎉' : nps >= 7 ? '🙏' : '🤝';
+                card.innerHTML = `
+                    <div class="state-screen">
+                        <div class="state-icon">${emoji}</div>
+                        <h2>¡Gracias por tu respuesta!</h2>
+                        <p>Tu opinión nos ayuda a mejorar.</p>
+                        <p style="margin-top: 16px; color: var(--primary); font-family: 'Space Mono';">— Equipo MEPEX</p>
+                    </div>
+                    <div class="footer">MEPEX · Montaje y Equipamiento para Exposiciones</div>
+                `;
+            };
+
+            // Parse token
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('t');
+            if (!token) {
+                renderError('Falta el código de la encuesta en el link.');
+                return;
+            }
+
+            // Fetch encuesta + evento
+            try {
+                const { data: enc, error: encErr } = await supabaseClient
+                    .from('encuestas_evento')
+                    .select(`
+                        *,
+                        evento:eventos!evento_id(nombre, predio, fecha_evento_inicio),
+                        cliente:clientes!cliente_id(nombre_empresa, razon_social)
+                    `)
+                    .eq('token', token)
+                    .maybeSingle();
+                if (encErr) throw encErr;
+                if (!enc) {
+                    renderError('El link de encuesta no es válido o ya expiró.');
+                    return;
+                }
+                if (enc.respondida_at) {
+                    renderThanks(enc.nps);
+                    return;
+                }
+
+                // Render form
+                const evNombre = enc.evento?.nombre || 'su evento';
+                const clienteNombre = enc.cliente?.nombre_empresa || enc.cliente?.razon_social || '';
+                card.innerHTML = `
+                    <div class="header">
+                        <img src="assets/logo_full.png" alt="MEPEX" class="logo" onerror="this.style.display='none'">
+                        <h1>¿Cómo estuvo nuestro servicio?</h1>
+                        <p>Nos importa tu opinión.</p>
+                    </div>
+
+                    <div class="evento-title">
+                        ${clienteNombre ? `<div style="font-size:0.78rem; color: var(--text-muted); margin-bottom:4px;">${clienteNombre}</div>` : ''}
+                        <strong>${evNombre}</strong>
+                    </div>
+
+                    <form id="encForm">
+                        <div class="question">
+                            <label class="question-label">¿Qué tan probable es que nos recomiendes?</label>
+                            <span class="question-hint">Elegí un número del 0 (nada probable) al 10 (totalmente probable)</span>
+                            <div class="nps-scale" id="npsScale">
+                                ${Array.from({ length: 11 }, (_, i) => `<button type="button" class="nps-btn" data-score="${i}">${i}</button>`).join('')}
+                            </div>
+                            <div class="nps-labels">
+                                <span>Nada</span>
+                                <span>Totalmente</span>
+                            </div>
+                        </div>
+
+                        <div class="question">
+                            <label class="question-label" for="comentario">Algún comentario (opcional)</label>
+                            <textarea id="comentario" placeholder="Lo que quieras compartir con nosotros..."></textarea>
+                        </div>
+
+                        <button type="submit" class="btn" id="submitBtn" disabled>Enviar respuesta</button>
+                    </form>
+                `;
+
+                // Wire NPS selection
+                let npsSelected = null;
+                const npsBtns = document.querySelectorAll('.nps-btn');
+                const submitBtn = document.getElementById('submitBtn');
+                npsBtns.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        npsSelected = parseInt(btn.dataset.score);
+                        npsBtns.forEach(b => b.classList.remove('selected'));
+                        btn.classList.add('selected');
+                        submitBtn.disabled = false;
+                    });
+                });
+
+                // Submit
+                document.getElementById('encForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    if (npsSelected === null) return;
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Enviando...';
+                    const comentario = document.getElementById('comentario').value.trim() || null;
+                    try {
+                        const { error } = await supabaseClient
+                            .from('encuestas_evento')
+                            .update({
+                                nps: npsSelected,
+                                comentario,
+                                respondida_at: new Date().toISOString(),
+                            })
+                            .eq('token', token);
+                        if (error) throw error;
+                        renderThanks(npsSelected);
+                    } catch (err) {
+                        console.error(err);
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Reintentar';
+                        alert('No pudimos guardar tu respuesta. ¿Probás de nuevo?');
+                    }
+                });
+            } catch (err) {
+                console.error('[Encuesta] error:', err);
+                renderError('Hubo un error al cargar la encuesta. Por favor, contactá a MEPEX.');
+            }
+        })();
+    </script>
+</body>
+
+</html>

@@ -652,6 +652,10 @@ const EventosModule = {
                 <!-- Actions -->
                 ${!this._isRO ? `
                 <div class="ev-panel-section ev-panel-actions">
+                    <button class="btn btn-ghost ev-btn-encuesta" data-event-id="${ev.id}" style="border-color: rgba(0,169,193,0.4); color: #00A9C1;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        Enviar encuesta al cliente
+                    </button>
                     <button class="btn btn-ghost ev-btn-delete-event" data-event-id="${ev.id}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         Eliminar evento
@@ -1643,6 +1647,11 @@ const EventosModule = {
             }
         });
 
+        // Enviar encuesta al cliente (Tanda 3.B)
+        document.querySelector('.ev-btn-encuesta')?.addEventListener('click', () => {
+            this._openEncuestaModal(ev);
+        });
+
         // Notes auto-save
         const notesTextarea = document.getElementById('evNotasTextarea');
         if (notesTextarea) {
@@ -2127,6 +2136,110 @@ const EventosModule = {
         } else {
             Toast.error('Error al eliminar evento');
         }
+    },
+
+    // ═══════════════════════════════════════════
+    //  ENCUESTA AL CLIENTE (Tanda 3.B)
+    // ═══════════════════════════════════════════
+
+    async _openEncuestaModal(ev) {
+        // Loading
+        const modalId = Modal.open({
+            title: 'Encuesta al cliente',
+            body: `<div style="display:flex;align-items:center;justify-content:center;min-height:120px;"><div class="spinner"></div></div>`,
+            size: 'md',
+            footer: `<button class="btn-secondary" data-modal-cancel>Cerrar</button>`,
+        });
+
+        try {
+            // Buscar encuesta existente para el evento
+            let enc = await API.getEncuestaForEvent(ev.id);
+
+            // Si no existe, crearla
+            if (!enc) {
+                enc = await API.createEncuesta({
+                    eventoId: ev.id,
+                    clienteId: ev.cliente_id || null,
+                });
+                if (!enc) {
+                    Modal.close(modalId);
+                    Toast.error('No se pudo generar la encuesta.');
+                    return;
+                }
+            }
+
+            // Construir URL pública
+            const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+            const url = `${baseUrl}encuesta.html?t=${enc.token}`;
+
+            // Estado: respondida / pendiente
+            let estadoHtml;
+            if (enc.respondida_at) {
+                const nps = enc.nps;
+                const npsColor = nps >= 9 ? '#00CC88' : nps >= 7 ? '#F28D15' : '#ff4444';
+                const npsLabel = nps >= 9 ? 'Promotor' : nps >= 7 ? 'Pasivo' : 'Detractor';
+                estadoHtml = `
+                    <div style="padding: 14px 16px; background: rgba(0,204,136,0.08); border: 1px solid rgba(0,204,136,0.3); border-radius: 8px; margin-bottom: 16px;">
+                        <div style="font-family: var(--font-mono); font-size: 0.7rem; color: #00CC88; letter-spacing: 0.08em; margin-bottom: 6px;">✓ RESPONDIDA</div>
+                        <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px;">
+                            <span style="font-size: 2.2rem; font-weight: 700; color: ${npsColor}; font-family: var(--font-mono);">${nps}</span>
+                            <span style="font-size: 0.95rem; color: ${npsColor};">${npsLabel}</span>
+                        </div>
+                        ${enc.comentario ? `<div style="background: #0a0a0a; padding: 10px; border-radius: 6px; font-size: 0.88rem; color: #ccc; line-height: 1.5; white-space: pre-wrap;">${this._esc(enc.comentario)}</div>` : '<div style="font-size: 0.78rem; color: #666; font-style: italic;">Sin comentarios.</div>'}
+                        <div style="font-family: var(--font-mono); font-size: 0.7rem; color: #666; margin-top: 8px;">${new Date(enc.respondida_at).toLocaleString('es-AR')}</div>
+                    </div>
+                `;
+            } else {
+                const fechaEnviada = enc.enviada_at ? new Date(enc.enviada_at).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+                estadoHtml = `
+                    <div style="padding: 12px 14px; background: rgba(242,141,21,0.08); border: 1px solid rgba(242,141,21,0.3); border-radius: 8px; margin-bottom: 16px;">
+                        <div style="font-family: var(--font-mono); font-size: 0.7rem; color: #F28D15; letter-spacing: 0.08em;">⏳ PENDIENTE DE RESPUESTA</div>
+                        <div style="font-size: 0.82rem; color: #aaa; margin-top: 4px;">Link generado el ${fechaEnviada}</div>
+                    </div>
+                `;
+            }
+
+            const body = `
+                <div>
+                    ${estadoHtml}
+                    <div style="font-family: var(--font-mono); font-size: 0.7rem; color: #888; letter-spacing: 0.05em; margin-bottom: 6px;">LINK PÚBLICO</div>
+                    <div style="display: flex; gap: 6px; margin-bottom: 12px;">
+                        <input type="text" id="encUrlInput" value="${url}" readonly style="flex: 1; background: #0a0a0a; border: 1px solid #2a2a2a; color: #00A9C1; padding: 10px 12px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.78rem;">
+                        <button class="btn-primary" id="encCopyBtn" style="padding: 8px 14px; font-size: 0.78rem; white-space: nowrap;">📋 Copiar</button>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #888; line-height: 1.5;">
+                        Mandale este link al cliente por WhatsApp, email o el medio que prefieras. La encuesta no requiere login — el cliente solo abre el link y responde.
+                    </div>
+                </div>
+            `;
+
+            const bodyEl = document.querySelector(`#modal-${modalId} .modal-body`)
+                       || document.querySelector('.modal-body');
+            if (bodyEl) bodyEl.innerHTML = body;
+
+            // Wire eventos
+            setTimeout(() => {
+                document.getElementById('encCopyBtn')?.addEventListener('click', async () => {
+                    const input = document.getElementById('encUrlInput');
+                    try {
+                        await navigator.clipboard.writeText(input.value);
+                        Toast.success('Link copiado al portapapeles');
+                    } catch (err) {
+                        input.select();
+                        document.execCommand('copy');
+                        Toast.success('Link copiado');
+                    }
+                });
+            }, 50);
+        } catch (e) {
+            console.error('[Eventos] Encuesta error:', e);
+            Modal.close(modalId);
+            Toast.error('Error al generar la encuesta.');
+        }
+    },
+
+    _esc(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 
     // ═══════════════════════════════════════════

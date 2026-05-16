@@ -3441,6 +3441,25 @@ const API = {
     //  TANDA 1 — Encuestas Evento (schema-only para Tanda 3)
     // ═════════════════════════════════════════════════════════════
 
+    // Devuelve la encuesta más reciente de un evento (si existe). Null sino.
+    async getEncuestaForEvent(eventoId) {
+        if (!eventoId) return null;
+        try {
+            const { data, error } = await supabaseClient
+                .from('encuestas_evento')
+                .select('*')
+                .eq('evento_id', eventoId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            return data || null;
+        } catch (e) {
+            console.warn('[API] Error getEncuestaForEvent:', e.message);
+            return null;
+        }
+    },
+
     async getEncuestaByToken(token) {
         try {
             const { data, error } = await supabaseClient
