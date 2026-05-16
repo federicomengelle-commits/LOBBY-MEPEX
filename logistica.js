@@ -609,6 +609,9 @@ const LogisticaModule = {
         if (!panel) return;
         panel.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:200px;"><div class="spinner"></div></div>';
 
+        const user = Auth.getUser();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+
         const carga = existingId ? await API.getCargaById(existingId) : null;
         const isEdit = !!carga;
         const initialEventoId = carga?.evento_id || '';
@@ -694,7 +697,7 @@ const LogisticaModule = {
                             <option value="${p.id}" ${p.id === initialChoferId ? 'selected' : ''}>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</option>
                         `).join('')}
                     </select>
-                    <div class="log-form-hint">¿Falta alguien? Cargalo en <a href="#rrhh" style="color:#00A9C1">RRHH</a> con rol "chofer".</div>
+                    ${isAdmin ? `<div class="log-form-hint">¿Falta alguien? Cargalo en <a href="#rrhh" style="color:#00A9C1">RRHH</a> con rol "chofer".</div>` : ''}
                 </div>
                 <div class="log-form-row">
                     <label>Proyectos / stands a cargar</label>
@@ -710,7 +713,9 @@ const LogisticaModule = {
                                 <input type="checkbox" value="${p.id}" ${initialAyudanteIds.includes(p.id) ? 'checked' : ''}>
                                 <span>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</span>
                             </label>
-                        `).join('') || '<div class="log-empty-hint">Sin personas cargadas. Agregalas en <a href="#rrhh" style="color:#00A9C1">RRHH</a>.</div>'}
+                        `).join('') || (isAdmin
+                            ? '<div class="log-empty-hint">Sin personas cargadas. Agregalas en <a href="#rrhh" style="color:#00A9C1">RRHH</a>.</div>'
+                            : '<div class="log-empty-hint">Sin personas cargadas.</div>')}
                     </div>
                 </div>
                 <div class="log-form-row">
@@ -1017,6 +1022,9 @@ const LogisticaModule = {
         const c = document.getElementById('logisticaContent');
         if (!c) return;
 
+        const user = Auth.getUser();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+
         let visibles = this._personas.filter(p => !p._deleted);
         if (this._personasFilterRol) {
             visibles = visibles.filter(p => (p.roles_operativos || []).includes(this._personasFilterRol));
@@ -1034,16 +1042,16 @@ const LogisticaModule = {
                         <option value="azafata" ${this._personasFilterRol === 'azafata' ? 'selected' : ''}>Azafata</option>
                     </select>
                 </div>
-                <a href="#rrhh" class="btn-secondary log-rrhh-link">→ Ir a RRHH para gestionar personas</a>
+                ${isAdmin ? `<a href="#rrhh" class="btn-secondary log-rrhh-link">→ Ir a RRHH para gestionar personas</a>` : ''}
             </div>
             <div class="log-readonly-banner">
-                Lista de personas disponibles para asignar a cargas. La alta/baja/edición se hace desde el módulo <strong>RRHH</strong>.
+                Lista de personas disponibles para asignar a cargas.${isAdmin ? ' La alta/baja/edición se hace desde el módulo <strong>RRHH</strong>.' : ''}
             </div>
             ${visibles.length === 0 ? `
                 <div class="log-empty">
                     <div class="log-empty-icon">👤</div>
                     <p>Sin personas cargadas con esos filtros.</p>
-                    <p class="log-empty-hint">Andá a <a href="#rrhh" style="color:#00A9C1">RRHH</a> para cargar choferes y ayudantes.</p>
+                    ${isAdmin ? `<p class="log-empty-hint">Andá a <a href="#rrhh" style="color:#00A9C1">RRHH</a> para cargar choferes y ayudantes.</p>` : ''}
                 </div>
             ` : `
                 <table class="log-table">
