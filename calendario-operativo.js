@@ -904,9 +904,11 @@ const CalendarioOperativo = {
 
     async _loadPanelData(event) {
         try {
-            const [equipo, movimientos, docs, historial] = await Promise.all([
+            const [equipo, movimientos, cargasNew, docs, historial] = await Promise.all([
                 API.getEventoEquipo(event.id).catch(() => []),
                 API.getEventoTransporte(event.id).catch(() => []),
+                // Tanda 3.D — cargas (schema nuevo UUID)
+                API.getCargas({ eventoId: event.id }).catch(() => []),
                 Promise.resolve(null), // TODO Fase 6: API.getEventDocumentos(event.id)
                 Promise.resolve(null), // TODO Fase 6: API.getEventHistorial(event.id)
             ]);
@@ -923,6 +925,8 @@ const CalendarioOperativo = {
             // directamente. Ya no derivamos {truck, driver, ...} porque no hay
             // consumer que lo lea (verificado con grep `event._transporte`).
             event._movimientos = movimientos || [];
+            // Tanda 3.D — cargas del schema nuevo, filtradas no canceladas
+            event._cargasNew = (cargasNew || []).filter(c => c.estado !== 'cancelada');
             event._documentos = docs || (event.documents?.items || []);
             event._historial = historial || [];
         } catch {
@@ -949,6 +953,14 @@ const CalendarioOperativo = {
             case 'logistica': container.innerHTML = this._renderLogisticaTab(event); break;
             case 'historial': container.innerHTML = this._renderHistorialTab(event); break;
         }
+
+        // Tanda 3.D: wire click en cargas para navegar a logística.
+        // (innerHTML no ejecuta los <script> inline, así que enganchamos acá.)
+        container.querySelectorAll('.co-sp-carga-item[data-carga-id]').forEach(el => {
+            el.addEventListener('click', () => {
+                window.location.hash = 'logistica?tab=cargas&id=' + el.dataset.cargaId;
+            });
+        });
     },
 
     _renderInfoTab(event) {
@@ -1001,6 +1013,102 @@ const CalendarioOperativo = {
                     : '<span class="co-sp-empty">Sin proyectos vinculados</span>'}
             </div>
             ${notasHTML}
+        `;
+    },
+
+    // Tanda 3.D — sección "Cargas" del schema nuevo, agrupadas por fase.
+    // Click en una carga navega al módulo Logística con esa carga seleccionada.
+    _renderCargasNewSection(event) {
+        const cargas = event._cargasNew || [];
+        if (cargas.length === 0) {
+            return ''; // nada que mostrar
+        }
+
+        // Agrupar por fase
+        const byFase = { armado: [], desarme: [], intermedio: [] };
+        cargas.forEach(c => {
+            const fase = c.fase || 'intermedio';
+            if (byFase[fase]) byFase[fase].push(c);
+        });
+
+        const renderCarga = (c) => {
+            const veh = c.vehiculo?.descripcion || 'Sin vehículo';
+            const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : 'Sin chofer';
+            const fechaHora = `${c.fecha || ''}${c.hora_carga ? ' ' + c.hora_carga.slice(0, 5) : ''}`.trim() || '—';
+            const numStands = (c.carga_proyectos || []).length;
+            const estadoColor = {
+                borrador: '#888', aprobada: '#00A9C1', en_curso: '#F28D15',
+                completada: '#00CC88', cancelada: '#ff4444'
+            }[c.estado] || '#888';
+            return `
+                <div class="co-sp-carga-item" data-carga-id="${c.id}" style="border-left-color: ${estadoColor};">
+                    <div class="co-sp-carga-head">
+                        <span class="co-sp-carga-veh">🚚 ${veh}</span>
+                        <span class="co-sp-carga-estado" style="color:${estadoColor};">${c.estado}</span>
+                    </div>
+                    <div class="co-sp-carga-meta">
+                        <span>👤 ${chofer}</span>
+                        <span>📅 ${fechaHora}</span>
+                        <span>📦 ${numStands} stand${numStands === 1 ? '' : 's'}</span>
+                    </div>
+                </div>
+            `;
+        };
+
+        const sectionForFase = (fase, label, color) => {
+            const list = byFase[fase];
+            if (list.length === 0) return '';
+            return `
+                <div class="co-sp-fase-block">
+                    <div class="co-sp-fase-label" style="color: ${color};">${label} (${list.length})</div>
+                    ${list.map(renderCarga).join('')}
+                </div>
+            `;
+        };
+
+        return `
+            <div class="co-sp-section">
+                <h3 class="co-sp-section-title">
+                    Cargas
+                    <span style="color:#00A9C1;font-size:11px;font-family:'Space Mono',monospace;">(${cargas.length})</span>
+                </h3>
+                <style>
+                    .co-sp-fase-block { margin-bottom: 10px; }
+                    .co-sp-fase-label {
+                        font-family: 'Space Mono', monospace; font-size: 10px;
+                        text-transform: uppercase; letter-spacing: 0.08em;
+                        margin-bottom: 4px; font-weight: 700;
+                    }
+                    .co-sp-carga-item {
+                        background: #1a1a1a; border: 1px solid #2a2a2a;
+                        border-left: 3px solid #00A9C1;
+                        border-radius: 6px;
+                        padding: 8px 10px; margin-bottom: 6px;
+                        cursor: pointer; transition: all 150ms ease;
+                    }
+                    .co-sp-carga-item:hover { background: #222; border-color: #00A9C1; }
+                    .co-sp-carga-head {
+                        display: flex; justify-content: space-between;
+                        align-items: center; gap: 8px; margin-bottom: 4px;
+                    }
+                    .co-sp-carga-veh {
+                        font-family: 'Outfit', sans-serif; font-size: 13px;
+                        font-weight: 600; color: #E8E8E8;
+                    }
+                    .co-sp-carga-estado {
+                        font-family: 'Space Mono', monospace; font-size: 10px;
+                        text-transform: uppercase; font-weight: 700;
+                    }
+                    .co-sp-carga-meta {
+                        display: flex; flex-wrap: wrap; gap: 10px;
+                        font-family: 'Space Mono', monospace; font-size: 11px;
+                        color: #aaa;
+                    }
+                </style>
+                ${sectionForFase('armado', 'Armado', '#00CC88')}
+                ${sectionForFase('intermedio', 'Intermedio', '#9B7DFF')}
+                ${sectionForFase('desarme', 'Desarme', '#F28D15')}
+            </div>
         `;
     },
 
@@ -1074,6 +1182,7 @@ const CalendarioOperativo = {
                 <h3 class="co-sp-section-title">Transporte ${movimientos.length > 0 ? `<span style="color:#00CC88;font-size:11px;font-family:'Space Mono',monospace;">(${movimientos.length})</span>` : ''}</h3>
                 <div class="co-sp-movs-list">${movsHTML}</div>
             </div>
+            ${this._renderCargasNewSection(event)}
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Documentos</h3>
                 <div class="co-sp-docs-list">${docsHTML}</div>
