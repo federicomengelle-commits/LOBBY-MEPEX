@@ -197,19 +197,51 @@ const RRHHModule = {
     // ════════════════════════════════════════════════════
 
     async _loadNomina() {
+        // Lee de `personas` (post-migración Tanda 3.A). Tabla `rrhh_personal`
+        // queda como cementerio mientras rrhh_asignaciones la referencie.
         try {
             const { data, error } = await supabaseClient
-                .from('rrhh_personal')
+                .from('personas')
                 .select('*')
                 .eq('_deleted', false)
                 .order('nombre', { ascending: true });
             if (error) throw error;
-            this._personal = data || [];
+            // Mapeo de compat: presento la persona con shape similar a rrhh_personal
+            // para no reescribir todo el render de un saque.
+            this._personal = (data || []).map(p => this._mapPersonaToLegacyShape(p));
         } catch (e) {
-            console.warn('[RRHH] Error loading personal:', e);
+            console.warn('[RRHH] Error loading personas:', e);
             this._personal = [];
         }
         this._renderNomina();
+    },
+
+    // Convierte una persona del schema nuevo al shape que esperan los renders existentes.
+    // Esto es compat layer: nuevas columnas viven en _raw para acceso completo.
+    _mapPersonaToLegacyShape(p) {
+        const fullName = [p.nombre, p.apellido].filter(Boolean).join(' ').trim();
+        // rol display: rol_legacy si existe, sino primer rol_operativo, sino ''
+        const rolDisplay = p.rol_legacy
+            || (Array.isArray(p.roles_operativos) && p.roles_operativos.length
+                ? this._capitalize(p.roles_operativos[0])
+                : '');
+        // tipo: 'interna' (schema nuevo) → 'fijo' (UI legacy)
+        const tipoLegacy = p.tipo === 'interna' ? 'fijo' : (p.tipo || 'eventual');
+        return {
+            ...p,
+            _raw: p,
+            nombre: fullName || p.nombre || '',
+            rol: rolDisplay,
+            tipo: tipoLegacy,
+            estado: p.activo === false ? 'inactivo' : 'activo',
+            // contacto, telefono, email, documentacion, fecha_ingreso, cantidad_personas
+            // ya están en p directo después de la migración.
+        };
+    },
+
+    _capitalize(s) {
+        if (!s) return '';
+        return s.charAt(0).toUpperCase() + s.slice(1);
     },
 
     _renderNomina() {
@@ -591,20 +623,38 @@ const RRHHModule = {
             });
 
             document.getElementById('rhPSave')?.addEventListener('click', async () => {
-                const nombre = document.getElementById('rhPNombre')?.value?.trim();
-                if (!nombre) { Toast.warning('Ingresá el nombre'); return; }
+                const nombreCompleto = document.getElementById('rhPNombre')?.value?.trim();
+                if (!nombreCompleto) { Toast.warning('Ingresá el nombre'); return; }
 
-                const tipo = document.getElementById('rhPTipo')?.value || 'fijo';
+                // Split nombre completo a nombre + apellido
+                const partes = nombreCompleto.split(/\s+/);
+                const nombreSolo = partes[0];
+                const apellidoSolo = partes.length > 1 ? partes.slice(1).join(' ') : null;
+
+                const tipoUi = document.getElementById('rhPTipo')?.value || 'fijo';
+                // Mapeo tipo UI legacy → schema nuevo
+                const tipoDb = tipoUi === 'fijo' ? 'interna' : tipoUi;
+
+                const rolLibre = document.getElementById('rhPRol')?.value?.trim() || null;
+                // roles_operativos: si el rol libre matchea uno canónico, lo agregamos al array.
+                const rolesCanonicos = ['armador', 'chofer', 'ayudante', 'tecnico', 'azafata'];
+                const rolNorm = rolLibre ? rolLibre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') : '';
+                const rolesOperativos = rolNorm && rolesCanonicos.includes(rolNorm) ? [rolNorm] : [];
+
+                const estadoUi = document.getElementById('rhPEstado')?.value || 'activo';
+
                 const payload = {
-                    nombre,
-                    rol: document.getElementById('rhPRol')?.value?.trim() || null,
-                    tipo,
-                    cantidad_personas: tipo === 'cuadrilla' ? (parseInt(document.getElementById('rhPCantidad')?.value) || null) : null,
+                    nombre: nombreSolo,
+                    apellido: apellidoSolo,
+                    tipo: tipoDb,
+                    roles_operativos: rolesOperativos,
+                    rol_legacy: rolLibre,
+                    cantidad_personas: tipoUi === 'cuadrilla' ? (parseInt(document.getElementById('rhPCantidad')?.value) || null) : null,
                     contacto: document.getElementById('rhPContacto')?.value?.trim() || null,
                     telefono: document.getElementById('rhPTel')?.value?.trim() || null,
                     email: document.getElementById('rhPEmail')?.value?.trim() || null,
                     fecha_ingreso: document.getElementById('rhPIngreso')?.value || null,
-                    estado: document.getElementById('rhPEstado')?.value || 'activo',
+                    activo: estadoUi === 'activo',
                     documentacion: document.getElementById('rhPDoc')?.value?.trim() || null,
                     notas: document.getElementById('rhPNotas')?.value?.trim() || null,
                     _deleted: false,
@@ -612,16 +662,16 @@ const RRHHModule = {
 
                 try {
                     if (editId) {
-                        await supabaseClient.from('rrhh_personal').update(payload).eq('id', editId);
+                        await supabaseClient.from('personas').update(payload).eq('id', editId);
                         Toast.success('Personal actualizado');
                     } else {
-                        await supabaseClient.from('rrhh_personal').insert(payload);
+                        await supabaseClient.from('personas').insert(payload);
                         Toast.success('Personal agregado');
                     }
                     Modal.close();
                     await this._loadNomina();
                 } catch (e) {
-                    console.error('[RRHH] Error saving personal:', e);
+                    console.error('[RRHH] Error saving personas:', e);
                     Toast.error('Error al guardar');
                 }
             });
@@ -633,7 +683,7 @@ const RRHHModule = {
         const ok = await Confirm.delete('este personal');
         if (!ok) return;
         try {
-            await supabaseClient.from('rrhh_personal').update({ _deleted: true }).eq('id', id);
+            await supabaseClient.from('personas').update({ _deleted: true }).eq('id', id);
             Toast.success('Personal eliminado');
             this._selectedPersonId = null;
             await this._loadNomina();
@@ -693,6 +743,9 @@ const RRHHModule = {
         const conflicts = this._detectConflicts();
 
         cc.innerHTML = `
+            <div style="margin: 0 0 12px 0; padding: 10px 14px; background: rgba(155,125,255,0.08); border: 1px solid rgba(155,125,255,0.25); border-radius: 6px; color: #aaa; font-family: var(--font-main); font-size: 0.85rem;">
+                ℹ Esta vista refleja asignaciones <strong style="color:#9B7DFF;">legacy</strong>. Las cargas asignadas desde <a href="#logistica" style="color:#00A9C1;">Logística</a> (choferes + ayudantes a cargas) se gestionan en ese módulo aparte.
+            </div>
             <div class="rh-toolbar">
                 <h3 class="rh-toolbar-title">Asignación de Personal por Evento</h3>
                 <button class="rh-btn-add" id="rhAddAsign">+ Nueva Asignación</button>
