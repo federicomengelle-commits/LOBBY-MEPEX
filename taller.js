@@ -125,51 +125,43 @@ const TallerModule = {
             const cargas = await API.getCargas({ desde: desdeStr, hasta: hastaStr });
             this._cargas = (cargas || []).filter(c => c.estado !== 'cancelada');
 
-            const evs = (await API.getEvents()) || [];
-            this._eventos = evs.filter(ev => {
-                const f = ev.setupDate;
-                return f && f >= desdeStr && f <= hastaStr;
-            });
+            // Proyectos activos en taller (estado != cerrado). NO filtramos por
+            // ventana de fecha del evento — si está en taller, está en taller,
+            // aunque el evento todavía no tenga fecha cargada.
+            const { data, error } = await supabaseClient
+                .from('proyectos')
+                .select(`
+                    id, nombre, evento_id, cliente_id, drive_folder_url,
+                    estado_taller,
+                    cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
+                    evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio)
+                `)
+                .eq('_deleted', false)
+                .or('estado_taller.is.null,estado_taller.neq.cerrado');
+            if (error) throw error;
+            this._proyectos = data || [];
 
-            const eventIds = this._eventos.map(ev => ev.id).filter(Boolean);
-            if (eventIds.length) {
-                const { data, error } = await supabaseClient
-                    .from('proyectos')
-                    .select(`
-                        id, nombre, evento_id, cliente_id, drive_folder_url,
-                        estado_taller,
-                        cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
-                        evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio)
-                    `)
-                    .in('evento_id', eventIds)
-                    .eq('_deleted', false);
-                if (error) throw error;
-                this._proyectos = data || [];
-
-                // Novedades + checklists en paralelo
-                const proyIds = this._proyectos.map(p => p.id);
-                if (proyIds.length) {
-                    const [novs, checks] = await Promise.all([
-                        supabaseClient
-                            .from('proyecto_novedades')
-                            .select('id, proyecto_id, tipo, mensaje, prioridad, created_at, autor:profiles!autor_id(name, initials)')
-                            .in('proyecto_id', proyIds)
-                            .eq('visible_para_taller', true)
-                            .eq('resuelta', false)
-                            .eq('_deleted', false)
-                            .order('created_at', { ascending: false })
-                            .then(r => r.data || []),
-                        API.getChecklistsBulk(proyIds),
-                    ]);
-                    this._novedadesPorProyecto = {};
-                    novs.forEach(n => {
-                        if (!this._novedadesPorProyecto[n.proyecto_id]) this._novedadesPorProyecto[n.proyecto_id] = [];
-                        this._novedadesPorProyecto[n.proyecto_id].push(n);
-                    });
-                    this._checklistsBulk = checks;
-                }
-            } else {
-                this._proyectos = [];
+            // Novedades + checklists en paralelo
+            const proyIds = this._proyectos.map(p => p.id);
+            if (proyIds.length) {
+                const [novs, checks] = await Promise.all([
+                    supabaseClient
+                        .from('proyecto_novedades')
+                        .select('id, proyecto_id, tipo, mensaje, prioridad, created_at, autor:profiles!autor_id(name, initials)')
+                        .in('proyecto_id', proyIds)
+                        .eq('visible_para_taller', true)
+                        .eq('resuelta', false)
+                        .eq('_deleted', false)
+                        .order('created_at', { ascending: false })
+                        .then(r => r.data || []),
+                    API.getChecklistsBulk(proyIds),
+                ]);
+                this._novedadesPorProyecto = {};
+                novs.forEach(n => {
+                    if (!this._novedadesPorProyecto[n.proyecto_id]) this._novedadesPorProyecto[n.proyecto_id] = [];
+                    this._novedadesPorProyecto[n.proyecto_id].push(n);
+                });
+                this._checklistsBulk = checks;
             }
         } catch (e) {
             console.warn('[Taller] Error _loadHoy:', e.message);
@@ -188,7 +180,10 @@ const TallerModule = {
         const items = this._buildItemsByDay();
         const hoyStr = new Date().toISOString().slice(0, 10);
         const itemsHoy = items[hoyStr] || [];
-        const proximosDays = Object.keys(items).filter(d => d !== hoyStr).sort();
+        const sinFecha = items['_sin_fecha'] || [];
+        const proximosDays = Object.keys(items)
+            .filter(d => d !== hoyStr && d !== '_sin_fecha')
+            .sort();
 
         c.innerHTML = `
             <div class="taller-content">
@@ -235,6 +230,18 @@ const TallerModule = {
                         `).join('')}
                     </section>
                 ` : ''}
+
+                ${sinFecha.length ? `
+                    <section class="taller-section">
+                        <div class="taller-section-header">
+                            <span class="taller-section-eyebrow">SIN FECHA</span>
+                            <h3>Proyectos en taller sin armado agendado</h3>
+                        </div>
+                        <div class="taller-cards-grid">
+                            ${sinFecha.map(it => this._renderCard(it)).join('')}
+                        </div>
+                    </section>
+                ` : ''}
             </div>
         `;
 
@@ -244,8 +251,8 @@ const TallerModule = {
     _buildItemsByDay() {
         const buckets = {};
         this._proyectos.forEach(p => {
-            const fecha = p.evento?.fecha_armado_inicio;
-            if (!fecha) return;
+            // Sin fecha de armado → bucket especial al final ('_sin_fecha')
+            const fecha = p.evento?.fecha_armado_inicio || '_sin_fecha';
             if (!buckets[fecha]) buckets[fecha] = [];
             buckets[fecha].push({ kind: 'proyecto', data: p });
         });
@@ -451,39 +458,24 @@ const TallerModule = {
     // ═════════════════════════════════════════════════════════════
 
     async _loadChecklist() {
+        // Todos los proyectos cuyo estado_taller esté activo (no cerrado).
+        // No filtramos por fecha del evento — si está en taller, debe aparecer.
         try {
-            // Mismos proyectos que _loadHoy pero NO filtramos por novedad o carga.
-            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-            const hasta = new Date(hoy); hasta.setDate(hasta.getDate() + this._diasAdelante);
-            const desdeStr = hoy.toISOString().slice(0, 10);
-            const hastaStr = hasta.toISOString().slice(0, 10);
-            const evs = (await API.getEvents()) || [];
-            const ventanaEvs = evs.filter(ev => {
-                const f = ev.setupDate;
-                return f && f >= desdeStr && f <= hastaStr;
-            });
-            const eventIds = ventanaEvs.map(ev => ev.id).filter(Boolean);
-
-            if (eventIds.length) {
-                const { data, error } = await supabaseClient
-                    .from('proyectos')
-                    .select(`
-                        id, nombre, evento_id, estado_taller,
-                        cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
-                        evento:eventos!evento_id(id, nombre, fecha_armado_inicio, predio)
-                    `)
-                    .in('evento_id', eventIds)
-                    .neq('estado_taller', 'cerrado')
-                    .eq('_deleted', false)
-                    .order('estado_taller', { ascending: true });
-                if (error) throw error;
-                this._proyectosChecklist = data || [];
-                const ids = this._proyectosChecklist.map(p => p.id);
-                this._checklistsBulk = ids.length ? await API.getChecklistsBulk(ids) : {};
-            } else {
-                this._proyectosChecklist = [];
-                this._checklistsBulk = {};
-            }
+            const { data, error } = await supabaseClient
+                .from('proyectos')
+                .select(`
+                    id, nombre, evento_id, estado_taller,
+                    cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
+                    evento:eventos!evento_id(id, nombre, fecha_armado_inicio, predio)
+                `)
+                .eq('_deleted', false)
+                .or('estado_taller.is.null,estado_taller.neq.cerrado')
+                .order('estado_taller', { ascending: true })
+                .order('nombre', { ascending: true });
+            if (error) throw error;
+            this._proyectosChecklist = data || [];
+            const ids = this._proyectosChecklist.map(p => p.id);
+            this._checklistsBulk = ids.length ? await API.getChecklistsBulk(ids) : {};
         } catch (e) {
             console.warn('[Taller] Error _loadChecklist:', e.message);
         }
@@ -1015,7 +1007,7 @@ const TallerModule = {
             .taller-module .taller-day-block { margin-bottom: 22px; }
             .taller-module .taller-day-label {
                 font-family: var(--font-mono); font-size: 0.78rem;
-                color: #888; text-transform: capitalize;
+                color: #888;
                 margin-bottom: 10px; padding-left: 4px;
                 letter-spacing: 0.05em;
             }
