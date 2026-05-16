@@ -99,21 +99,26 @@ const Router = {
         this._previousHash = prevHash;
         this._currentHash = hash;
 
+        // Strip ?query del hash para el route matching. El módulo destino puede
+        // leer location.hash para recuperar el query (deep-links de Notifications).
+        const queryIdx = hash.indexOf('?');
+        const routeKey = queryIdx >= 0 ? hash.slice(0, queryIdx) : hash;
+
         // ── Handle redirects (rutas viejas → nuevas) ──
-        if (this._redirects[hash]) {
-            this.navigate(this._redirects[hash]);
+        if (this._redirects[routeKey]) {
+            this.navigate(this._redirects[routeKey]);
             return;
         }
 
         // Match static route first; fall back to dynamic patterns (e.g. proyectos/:id)
-        let route = this.routes[hash];
+        let route = this.routes[routeKey];
         let routeParams = {};
 
         if (!route) {
             for (const [pattern, def] of Object.entries(this.routes)) {
                 if (!pattern.includes(':')) continue;
                 const regex = new RegExp('^' + pattern.replace(/:(\w+)/g, '([^/]+)') + '$');
-                const match = hash.match(regex);
+                const match = routeKey.match(regex);
                 if (match) {
                     route = def;
                     const paramNames = [...pattern.matchAll(/:(\w+)/g)].map(m => m[1]);

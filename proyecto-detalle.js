@@ -20,10 +20,12 @@ const ProyectoDetalle = {
     _isAdminLevel: false,
     _isSuperAdmin: false,
     _userRole: null,
+    _novedades: [],
 
     _tabs: [
         { key: 'resumen',     label: 'Resumen',           icon: '📋' },
         { key: 'archivos',    label: 'Archivos Drive',    icon: '📁' },
+        { key: 'novedades',   label: 'Novedades',         icon: '📢' },
         { key: 'cotizacion',  label: 'Cotización origen', icon: '🔗' },
         { key: 'actividad',   label: 'Actividad',         icon: '🕐' },
     ],
@@ -73,7 +75,8 @@ const ProyectoDetalle = {
         this._isAdminLevel = Auth.isAdminLevel?.() || false;
         this._isSuperAdmin = Auth.isSuperAdmin?.() || false;
         this._projectId = id;
-        this._activeTab = 'resumen';
+        // Soporta deep-link tipo #proyectos/<id>?tab=novedades
+        this._activeTab = this._readInitialTab() || 'resumen';
 
         const content = document.getElementById('mainContent');
         if (!content) return;
@@ -265,6 +268,11 @@ const ProyectoDetalle = {
                 container.innerHTML = this._renderArchivosTab();
                 this._attachArchivosEvents();
                 return;
+            case 'novedades':
+                container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando novedades…</span></div>';
+                container.innerHTML = await this._renderNovedadesTab();
+                this._attachNovedadesEvents();
+                return;
             case 'cotizacion':
                 container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando cotización…</span></div>';
                 container.innerHTML = await this._renderCotizacionTab();
@@ -279,6 +287,20 @@ const ProyectoDetalle = {
                 this._attachResumenEvents();
                 return;
         }
+    },
+
+    // Lee `?tab=<key>` del hash actual (ej '#proyectos/123?tab=novedades').
+    // Devuelve el key del tab si es válido, null en caso contrario.
+    _readInitialTab() {
+        try {
+            const hash = window.location.hash || '';
+            const queryIdx = hash.indexOf('?');
+            if (queryIdx < 0) return null;
+            const params = new URLSearchParams(hash.slice(queryIdx + 1));
+            const tab = params.get('tab');
+            if (!tab) return null;
+            return this._tabs.some(t => t.key === tab) ? tab : null;
+        } catch { return null; }
     },
 
     // ═══════════════════════════════════════════
@@ -524,6 +546,245 @@ const ProyectoDetalle = {
         document.getElementById('pjdArchivosFallback')?.addEventListener('click', () => this._openDrive());
         document.getElementById('pjdArchivosEdit')?.addEventListener('click', () => this._editDriveUrl());
         document.getElementById('pjdArchivosLink')?.addEventListener('click', () => this._editDriveUrl());
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: NOVEDADES (Tanda 1 B5)
+    // ═══════════════════════════════════════════
+
+    _novedadTipos: [
+        { value: 'nota',           label: 'Nota',             color: '#888888' },
+        { value: 'cambio_diseno',  label: 'Cambio de diseño', color: '#9B7DFF' },
+        { value: 'cambio_medidas', label: 'Cambio de medidas',color: '#4A90D9' },
+        { value: 'alerta',         label: 'Alerta',           color: '#F28D15' },
+        { value: 'falta_material', label: 'Falta material',   color: '#ff4444' },
+        { value: 'consulta',       label: 'Consulta',         color: '#00A9C1' },
+    ],
+
+    _novedadPrioridades: [
+        { value: 'normal',   label: 'Normal',   color: '#888888' },
+        { value: 'alta',     label: 'Alta',     color: '#F28D15' },
+        { value: 'critica',  label: 'Crítica',  color: '#ff4444' },
+    ],
+
+    async _renderNovedadesTab() {
+        try {
+            this._novedades = await API.getNovedades(this._projectId);
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error cargando novedades:', e.message);
+            this._novedades = [];
+        }
+
+        const pendientes = this._novedades.filter(n => !n.resuelta);
+        const resueltas = this._novedades.filter(n => n.resuelta);
+
+        return `
+            <div class="pjd-tab-pad">
+                <div class="pjd-novedades-header">
+                    <div class="pjd-novedades-stats">
+                        <span class="pjd-stat-chip pendientes">
+                            <span class="pjd-stat-num">${pendientes.length}</span>
+                            <span class="pjd-stat-label">pendientes</span>
+                        </span>
+                        ${resueltas.length ? `
+                            <span class="pjd-stat-chip resueltas">
+                                <span class="pjd-stat-num">${resueltas.length}</span>
+                                <span class="pjd-stat-label">resueltas</span>
+                            </span>
+                        ` : ''}
+                    </div>
+                    ${!this._isRO ? `
+                        <button class="btn btn-primary" id="pjdNovedadNueva">
+                            + Nueva novedad
+                        </button>
+                    ` : ''}
+                </div>
+
+                ${this._novedades.length === 0 ? `
+                    <div class="pjd-empty-state">
+                        <div class="pjd-empty-icon">📢</div>
+                        <h3 class="pjd-section-title">Sin novedades</h3>
+                        <p class="pjd-section-empty">Cargá novedades para avisar al equipo cambios, alertas o falta de material.</p>
+                    </div>
+                ` : `
+                    <ul class="pjd-novedad-list">
+                        ${this._novedades.map(n => this._renderNovedadItem(n)).join('')}
+                    </ul>
+                `}
+            </div>
+        `;
+    },
+
+    _renderNovedadItem(n) {
+        const tipo = this._novedadTipos.find(t => t.value === n.tipo) || this._novedadTipos[0];
+        const prio = this._novedadPrioridades.find(p => p.value === n.prioridad) || this._novedadPrioridades[0];
+        const autor = n.autor?.name || '—';
+        const initials = n.autor?.initials || this._initials(autor);
+        const user = Auth.getUser?.();
+        const isAuthor = n.autor_id && (user?.uid === n.autor_id || user?.id === n.autor_id);
+        const canEdit = !this._isRO && (isAuthor || this._isAdminLevel);
+        return `
+            <li class="pjd-novedad-item ${n.resuelta ? 'resuelta' : ''} ${'prio-' + (n.prioridad || 'normal')}">
+                <div class="pjd-novedad-head">
+                    <span class="pjd-novedad-tipo" style="--chip-color: ${tipo.color}">${this._esc(tipo.label)}</span>
+                    ${prio.value !== 'normal' ? `<span class="pjd-novedad-prio" style="--chip-color: ${prio.color}">${this._esc(prio.label)}</span>` : ''}
+                    ${n.visible_para_taller ? '<span class="pjd-novedad-flag" title="Visible para taller">🔨</span>' : ''}
+                    ${n.resuelta ? '<span class="pjd-novedad-resolved">✓ Resuelta</span>' : ''}
+                    <span class="pjd-novedad-date" title="${this._esc(n.created_at || '')}">${this._fmtRelative(n.created_at)}</span>
+                </div>
+                <div class="pjd-novedad-mensaje">${this._esc(n.mensaje || '').replace(/\n/g, '<br>')}</div>
+                <div class="pjd-novedad-footer">
+                    <span class="pjd-novedad-autor">
+                        <span class="pjd-avatar pjd-avatar-xs">${this._esc(initials)}</span>
+                        <span>${this._esc(autor)}</span>
+                    </span>
+                    ${canEdit ? `
+                        <div class="pjd-novedad-actions">
+                            ${!n.resuelta
+                                ? `<button class="pjd-btn-mini" data-novedad-resolve="${n.id}">Marcar resuelta</button>`
+                                : `<button class="pjd-btn-mini" data-novedad-reopen="${n.id}">Reabrir</button>`}
+                            ${!this._isRO ? `<button class="pjd-btn-mini" data-novedad-toggle-taller="${n.id}" data-current="${n.visible_para_taller ? '1' : '0'}">${n.visible_para_taller ? 'Ocultar a taller' : 'Avisar a taller'}</button>` : ''}
+                            <button class="pjd-btn-mini danger" data-novedad-delete="${n.id}">Eliminar</button>
+                        </div>
+                    ` : ''}
+                </div>
+            </li>
+        `;
+    },
+
+    _attachNovedadesEvents() {
+        document.getElementById('pjdNovedadNueva')?.addEventListener('click', () => this._openNuevaNovedadModal());
+
+        document.querySelectorAll('[data-novedad-resolve]').forEach(b => {
+            b.addEventListener('click', () => this._toggleResolveNovedad(b.dataset.novedadResolve, true));
+        });
+        document.querySelectorAll('[data-novedad-reopen]').forEach(b => {
+            b.addEventListener('click', () => this._toggleResolveNovedad(b.dataset.novedadReopen, false));
+        });
+        document.querySelectorAll('[data-novedad-toggle-taller]').forEach(b => {
+            b.addEventListener('click', () => {
+                const id = b.dataset.novedadToggleTaller;
+                const current = b.dataset.current === '1';
+                this._toggleNovedadVisible(id, !current);
+            });
+        });
+        document.querySelectorAll('[data-novedad-delete]').forEach(b => {
+            b.addEventListener('click', () => this._eliminarNovedad(b.dataset.novedadDelete));
+        });
+    },
+
+    async _openNuevaNovedadModal() {
+        const tipoOpts = this._novedadTipos.map(t =>
+            `<option value="${t.value}">${this._esc(t.label)}</option>`
+        ).join('');
+        const prioOpts = this._novedadPrioridades.map(p =>
+            `<option value="${p.value}">${this._esc(p.label)}</option>`
+        ).join('');
+
+        const body = `
+            <form class="mepex-form" id="pjdNovedadForm" autocomplete="off">
+                <div class="form-field">
+                    <label class="form-label">Tipo</label>
+                    <select class="form-input form-select" name="tipo">${tipoOpts}</select>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Prioridad</label>
+                    <select class="form-input form-select" name="prioridad">${prioOpts}</select>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Mensaje <span class="form-required">*</span></label>
+                    <textarea class="form-input" name="mensaje" rows="5" required placeholder="¿Qué pasó? ¿Qué cambia? ¿Qué tiene que saber el equipo?"></textarea>
+                </div>
+                <div class="form-field pjd-toggle-field">
+                    <label class="pjd-toggle">
+                        <input type="checkbox" name="visible_para_taller">
+                        <span class="pjd-toggle-track"><span class="pjd-toggle-thumb"></span></span>
+                        <span class="pjd-toggle-label">🔨 Avisar a taller</span>
+                    </label>
+                    <p class="pjd-form-helper">Si está activo, taller ve esta novedad y recibe notificación.</p>
+                </div>
+            </form>
+        `;
+        const instance = Modal.open({
+            title: 'Nueva novedad',
+            body,
+            size: 'sm',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="pjdNovedadSave">Crear</button>
+            `,
+        });
+
+        instance.overlay.querySelector('#pjdNovedadSave')?.addEventListener('click', async () => {
+            const form = instance.overlay.querySelector('#pjdNovedadForm');
+            const tipo = form.querySelector('[name="tipo"]').value;
+            const prioridad = form.querySelector('[name="prioridad"]').value;
+            const mensaje = form.querySelector('[name="mensaje"]').value.trim();
+            const visibleParaTaller = form.querySelector('[name="visible_para_taller"]').checked;
+            if (!mensaje) { Toast.warning('Escribí un mensaje'); return; }
+
+            const saveBtn = instance.overlay.querySelector('#pjdNovedadSave');
+            saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
+            try {
+                const row = await API.createNovedad({
+                    proyectoId: this._projectId,
+                    tipo, prioridad, mensaje, visibleParaTaller,
+                });
+                if (!row) throw new Error('createNovedad devolvió null');
+                Toast.success('Novedad creada');
+                Modal.close(instance.id);
+                // Refrescar campana del header (puede haber generado notifs)
+                if (typeof Notifications !== 'undefined') Notifications.refresh();
+                await this._renderTabContent();
+            } catch (e) {
+                console.warn('[ProyectoDetalle] Error creando novedad:', e.message);
+                Toast.error('Error al crear la novedad');
+                saveBtn.disabled = false; saveBtn.textContent = 'Crear';
+            }
+        });
+    },
+
+    async _toggleResolveNovedad(id, resuelta) {
+        try {
+            const ok = await API.resolveNovedad(id, resuelta);
+            if (!ok) throw new Error('resolveNovedad falló');
+            Toast.success(resuelta ? 'Marcada resuelta' : 'Reabierta');
+            await this._renderTabContent();
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error toggle resolve novedad:', e.message);
+            Toast.error('Error al actualizar la novedad');
+        }
+    },
+
+    async _toggleNovedadVisible(id, visible) {
+        try {
+            const ok = await API.markNovedadVisible(id, visible);
+            if (!ok) throw new Error('markNovedadVisible falló');
+            Toast.success(visible ? 'Visible para taller' : 'Oculta a taller');
+            await this._renderTabContent();
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error toggle visible novedad:', e.message);
+            Toast.error('Error al actualizar visibilidad');
+        }
+    },
+
+    async _eliminarNovedad(id) {
+        const ok = await Modal.confirm({
+            title: 'Eliminar novedad',
+            message: '¿Seguro que querés eliminar esta novedad?',
+            confirmText: 'Eliminar',
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            const r = await API.deleteNovedad(id);
+            if (!r) throw new Error('deleteNovedad falló');
+            Toast.success('Novedad eliminada');
+            await this._renderTabContent();
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error eliminando novedad:', e.message);
+            Toast.error('Error al eliminar la novedad');
+        }
     },
 
     // ═══════════════════════════════════════════
@@ -1524,6 +1785,119 @@ const ProyectoDetalle = {
             .pjd-form-helper {
                 font-family: var(--font-mono); font-size: 0.65rem;
                 color: #555; margin-left: 6px;
+            }
+
+            /* Novedades (Tanda 1 B5) */
+            .pjd-novedades-header {
+                display: flex; justify-content: space-between; align-items: center;
+                gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+            }
+            .pjd-novedades-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+            .pjd-stat-chip {
+                display: inline-flex; align-items: baseline; gap: 6px;
+                padding: 6px 12px; border-radius: 6px;
+                background: #0e0e0e; border: 1px solid #2a2a2a;
+                font-family: var(--font-mono, 'Space Mono', monospace);
+            }
+            .pjd-stat-chip.pendientes { border-color: rgba(242, 141, 21, 0.3); }
+            .pjd-stat-chip.resueltas { border-color: rgba(0, 204, 136, 0.3); }
+            .pjd-stat-num {
+                font-size: 1rem; font-weight: 700;
+                color: var(--text-primary, #E8E8E8);
+            }
+            .pjd-stat-chip.pendientes .pjd-stat-num { color: #F28D15; }
+            .pjd-stat-chip.resueltas .pjd-stat-num { color: #00CC88; }
+            .pjd-stat-label {
+                font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px;
+            }
+
+            .pjd-novedad-list {
+                list-style: none; padding: 0; margin: 0;
+                display: flex; flex-direction: column; gap: 10px;
+            }
+            .pjd-novedad-item {
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                padding: 12px 14px;
+                display: flex; flex-direction: column; gap: 8px;
+                border-left: 3px solid #2a2a2a;
+                transition: border-color 200ms ease;
+            }
+            .pjd-novedad-item.prio-alta { border-left-color: #F28D15; }
+            .pjd-novedad-item.prio-critica { border-left-color: #ff4444; }
+            .pjd-novedad-item.resuelta { opacity: 0.55; border-left-color: #00CC88; }
+            .pjd-novedad-head {
+                display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            }
+            .pjd-novedad-tipo, .pjd-novedad-prio {
+                display: inline-block; padding: 2px 8px; border-radius: 4px;
+                font-family: var(--font-mono); font-size: 0.65rem; font-weight: 700;
+                color: var(--chip-color, #888);
+                background: color-mix(in srgb, var(--chip-color, #888) 14%, transparent);
+                border: 1px solid color-mix(in srgb, var(--chip-color, #888) 30%, transparent);
+                text-transform: uppercase; letter-spacing: 0.5px;
+            }
+            .pjd-novedad-flag {
+                font-size: 0.9rem;
+            }
+            .pjd-novedad-resolved {
+                font-family: var(--font-mono); font-size: 0.65rem; color: #00CC88;
+                text-transform: uppercase; letter-spacing: 0.5px;
+            }
+            .pjd-novedad-date {
+                margin-left: auto;
+                font-family: var(--font-mono); font-size: 0.7rem; color: #666;
+            }
+            .pjd-novedad-mensaje {
+                font-family: var(--font-main); font-size: 0.9rem; line-height: 1.5;
+                color: var(--text-primary, #E8E8E8);
+                word-wrap: break-word;
+            }
+            .pjd-novedad-item.resuelta .pjd-novedad-mensaje { text-decoration: line-through; color: #888; }
+            .pjd-novedad-footer {
+                display: flex; justify-content: space-between; align-items: center;
+                gap: 8px; margin-top: 2px; flex-wrap: wrap;
+            }
+            .pjd-novedad-autor {
+                display: inline-flex; align-items: center; gap: 6px;
+                font-family: var(--font-main); font-size: 0.8rem; color: #888;
+            }
+            .pjd-avatar-xs {
+                width: 22px; height: 22px; font-size: 0.6rem;
+            }
+            .pjd-novedad-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+            .pjd-btn-mini.danger { color: #ff4444; }
+            .pjd-btn-mini.danger:hover { color: #ff4444; border-color: #ff4444; }
+
+            /* Toggle switch */
+            .pjd-toggle-field { display: flex; flex-direction: column; gap: 4px; }
+            .pjd-toggle {
+                display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+                user-select: none;
+            }
+            .pjd-toggle input[type="checkbox"] { display: none; }
+            .pjd-toggle-track {
+                position: relative;
+                width: 36px; height: 20px;
+                background: #2a2a2a; border-radius: 10px;
+                transition: background 200ms ease;
+                flex-shrink: 0;
+            }
+            .pjd-toggle-thumb {
+                position: absolute; top: 2px; left: 2px;
+                width: 16px; height: 16px; border-radius: 50%;
+                background: #888;
+                transition: transform 200ms ease, background 200ms ease;
+            }
+            .pjd-toggle input:checked + .pjd-toggle-track {
+                background: rgba(0, 169, 193, 0.3);
+            }
+            .pjd-toggle input:checked + .pjd-toggle-track .pjd-toggle-thumb {
+                transform: translateX(16px);
+                background: #00A9C1;
+            }
+            .pjd-toggle-label {
+                font-family: var(--font-main); font-size: 0.85rem;
+                color: var(--text-primary, #E8E8E8);
             }
 
             /* Drive embed (Tanda 1 B3) */
