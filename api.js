@@ -601,6 +601,15 @@ const API = {
             if (data.drive_folder_url !== undefined) payload.drive_folder_url = data.drive_folder_url || null;
             if (data.driveFolderId !== undefined) payload.drive_folder_id = data.driveFolderId || null;
             if (data.drive_folder_id !== undefined) payload.drive_folder_id = data.drive_folder_id || null;
+            // Tanda 1 — campos taller/completitud
+            if (data.estadoTaller !== undefined) payload.estado_taller = data.estadoTaller;
+            if (data.estado_taller !== undefined) payload.estado_taller = data.estado_taller;
+            if (data.estadoTallerUpdatedAt !== undefined) payload.estado_taller_updated_at = data.estadoTallerUpdatedAt;
+            if (data.estado_taller_updated_at !== undefined) payload.estado_taller_updated_at = data.estado_taller_updated_at;
+            if (data.estadoTallerUpdatedBy !== undefined) payload.estado_taller_updated_by = data.estadoTallerUpdatedBy;
+            if (data.estado_taller_updated_by !== undefined) payload.estado_taller_updated_by = data.estado_taller_updated_by;
+            if (data.completitudPct !== undefined) payload.completitud_pct = data.completitudPct;
+            if (data.completitud_pct !== undefined) payload.completitud_pct = data.completitud_pct;
             if (data._deleted !== undefined) payload._deleted = data._deleted;
             await UndoHelpers.updateRecord('proyectos', id, payload, `Edito proyecto: ${data.name || data.nombre || ''}`);
             this.clearCache();
@@ -3162,5 +3171,308 @@ const API = {
         }
         this.clearCache();
         return { ok: failed === 0, total: targets.length, updated, failed };
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 1 — Novedades (proyecto_novedades)
+    // ═════════════════════════════════════════════════════════════
+
+    async getNovedades(proyectoId, { includeResolved = true } = {}) {
+        try {
+            let q = supabaseClient
+                .from('proyecto_novedades')
+                .select(`
+                    *,
+                    autor:profiles!autor_id(id, name, initials),
+                    resuelta_por_profile:profiles!resuelta_por(id, name, initials)
+                `)
+                .eq('proyecto_id', proyectoId)
+                .eq('_deleted', false)
+                .order('created_at', { ascending: false });
+            if (!includeResolved) q = q.eq('resuelta', false);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getNovedades:', e.message);
+            return [];
+        }
+    },
+
+    async createNovedad(data) {
+        const user = Auth.getUser?.();
+        const payload = {
+            proyecto_id: data.proyectoId || data.proyecto_id,
+            autor_id: user?.uid || user?.id || null,
+            tipo: data.tipo || 'nota',
+            mensaje: (data.mensaje || '').trim(),
+            prioridad: data.prioridad || 'normal',
+            visible_para_taller: !!data.visibleParaTaller,
+        };
+        if (!payload.proyecto_id || !payload.mensaje) {
+            console.warn('[API] createNovedad: proyecto_id y mensaje son obligatorios');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('proyecto_novedades')
+                .insert(payload)
+                .select(`
+                    *,
+                    autor:profiles!autor_id(id, name, initials)
+                `)
+                .single();
+            if (error) throw error;
+
+            // Disparo notificaciones según matriz §5 del blueprint:
+            //  - normal sin toggle: solo a PM responsables del proyecto.
+            //  - normal con toggle "avisar a taller": + target_role=taller.
+            //  - alta/crítica: PM + admin + taller (con badge alto).
+            await this._fanoutNovedadNotifications(row);
+
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createNovedad:', e.message);
+            return null;
+        }
+    },
+
+    // Fan-out de notificaciones cuando se crea una novedad.
+    // Mantiene la matriz del blueprint §5 lo más simple posible.
+    async _fanoutNovedadNotifications(novedad) {
+        try {
+            const esAltaOCritica = novedad.prioridad === 'alta' || novedad.prioridad === 'critica';
+            const avisarTaller = !!novedad.visible_para_taller || esAltaOCritica;
+            const link = `#proyectos/${novedad.proyecto_id}?tab=novedades`;
+            const tituloProyecto = (novedad.mensaje || '').slice(0, 80);
+
+            // PM: target_role=pm. Si después se quiere dirigir solo a responsables
+            // del proyecto, se filtra con target_user_id en una próxima iteración.
+            const notifs = [];
+            notifs.push({
+                tipo: esAltaOCritica ? 'novedad_critica' : 'novedad_proyecto',
+                titulo: esAltaOCritica
+                    ? `⚠️ Novedad ${novedad.prioridad} en proyecto`
+                    : 'Nueva novedad en proyecto',
+                mensaje: tituloProyecto,
+                target_role: 'pm',
+                entidad_tipo: 'proyecto',
+                entidad_id: novedad.proyecto_id,
+                link,
+                prioridad: novedad.prioridad || 'normal',
+            });
+            if (esAltaOCritica) {
+                notifs.push({ ...notifs[0], target_role: 'admin' });
+            }
+            if (avisarTaller) {
+                notifs.push({
+                    tipo: 'novedad_para_taller',
+                    titulo: '🔨 Cambio en proyecto en taller',
+                    mensaje: tituloProyecto,
+                    target_role: 'taller',
+                    entidad_tipo: 'proyecto',
+                    entidad_id: novedad.proyecto_id,
+                    link,
+                    prioridad: novedad.prioridad || 'normal',
+                });
+            }
+            await supabaseClient.from('notifications').insert(notifs);
+        } catch (e) {
+            console.warn('[API] Error fan-out notifs novedad:', e.message);
+        }
+    },
+
+    async resolveNovedad(id, resuelta = true) {
+        const user = Auth.getUser?.();
+        try {
+            const payload = {
+                resuelta: !!resuelta,
+                resuelta_por: resuelta ? (user?.uid || user?.id || null) : null,
+                resuelta_at: resuelta ? new Date().toISOString() : null,
+            };
+            const { error } = await supabaseClient
+                .from('proyecto_novedades').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error resolveNovedad:', e.message);
+            return null;
+        }
+    },
+
+    async markNovedadVisible(id, visible) {
+        try {
+            const { error } = await supabaseClient
+                .from('proyecto_novedades')
+                .update({ visible_para_taller: !!visible })
+                .eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error markNovedadVisible:', e.message);
+            return null;
+        }
+    },
+
+    async deleteNovedad(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('proyecto_novedades').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleteNovedad:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 1 — Notifications (feed transversal)
+    // ═════════════════════════════════════════════════════════════
+
+    // Obtiene notificaciones visibles para el usuario actual.
+    // Segmenta por target_user_id == uid o target_role == role del usuario.
+    async getNotifications({ limit = 20, includeRead = true } = {}) {
+        const user = Auth.getUser?.();
+        if (!user) return [];
+        try {
+            const uid = user.uid || user.id;
+            // OR composable: para Supabase usamos `or()` con filtros sobre la misma columna.
+            // target_user_id = uid OR target_role = user.role OR target_role IS NULL
+            const { data, error } = await supabaseClient
+                .from('notifications')
+                .select('*')
+                .or(`target_user_id.eq.${uid},target_role.eq.${user.role},target_role.is.null`)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            if (error) throw error;
+            let rows = data || [];
+            if (!includeRead) {
+                rows = rows.filter(n => !this._isNotifReadBy(n, uid));
+            }
+            return rows;
+        } catch (e) {
+            console.warn('[API] Error getNotifications:', e.message);
+            return [];
+        }
+    },
+
+    _isNotifReadBy(notif, uid) {
+        const arr = Array.isArray(notif?.leida_por) ? notif.leida_por : [];
+        return arr.includes(uid);
+    },
+
+    // Cuenta no-leídas para el badge de la campana.
+    async getUnreadNotificationsCount() {
+        const items = await this.getNotifications({ limit: 50, includeRead: true });
+        const user = Auth.getUser?.();
+        const uid = user?.uid || user?.id;
+        if (!uid) return 0;
+        return items.filter(n => !this._isNotifReadBy(n, uid)).length;
+    },
+
+    async markNotificationRead(id) {
+        const user = Auth.getUser?.();
+        const uid = user?.uid || user?.id;
+        if (!uid) return null;
+        try {
+            const { data: row, error: getErr } = await supabaseClient
+                .from('notifications').select('leida_por').eq('id', id).maybeSingle();
+            if (getErr) throw getErr;
+            const arr = Array.isArray(row?.leida_por) ? row.leida_por : [];
+            if (arr.includes(uid)) return true;
+            arr.push(uid);
+            const { error } = await supabaseClient
+                .from('notifications').update({ leida_por: arr }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error markNotificationRead:', e.message);
+            return null;
+        }
+    },
+
+    async markAllNotificationsRead() {
+        const items = await this.getNotifications({ limit: 50, includeRead: false });
+        const user = Auth.getUser?.();
+        const uid = user?.uid || user?.id;
+        if (!uid) return 0;
+        let ok = 0;
+        for (const n of items) {
+            const r = await this.markNotificationRead(n.id);
+            if (r) ok++;
+        }
+        return ok;
+    },
+
+    async createNotification(data) {
+        const payload = {
+            tipo: data.tipo,
+            titulo: data.titulo,
+            mensaje: data.mensaje || null,
+            target_role: data.targetRole || data.target_role || null,
+            target_user_id: data.targetUserId || data.target_user_id || null,
+            entidad_tipo: data.entidadTipo || data.entidad_tipo || null,
+            entidad_id: data.entidadId || data.entidad_id || null,
+            link: data.link || null,
+            prioridad: data.prioridad || 'normal',
+            expires_at: data.expiresAt || data.expires_at || null,
+        };
+        if (!payload.tipo || !payload.titulo) {
+            console.warn('[API] createNotification: tipo y titulo son obligatorios');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('notifications').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createNotification:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 1 — Encuestas Evento (schema-only para Tanda 3)
+    // ═════════════════════════════════════════════════════════════
+
+    async getEncuestaByToken(token) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('encuestas_evento').select('*').eq('token', token).maybeSingle();
+            if (error) throw error;
+            return data || null;
+        } catch (e) {
+            console.warn('[API] Error getEncuestaByToken:', e.message);
+            return null;
+        }
+    },
+
+    async createEncuesta(data) {
+        const token = data.token || (typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID().replace(/-/g, '')
+            : Math.random().toString(36).slice(2) + Date.now().toString(36));
+        const user = Auth.getUser?.();
+        const payload = {
+            evento_id: data.eventoId || data.evento_id,
+            cliente_id: data.clienteId || data.cliente_id || null,
+            token,
+            enviada_at: data.enviadaAt || new Date().toISOString(),
+            enviada_por: user?.uid || user?.id || null,
+        };
+        if (!payload.evento_id) {
+            console.warn('[API] createEncuesta: evento_id obligatorio');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('encuestas_evento').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createEncuesta:', e.message);
+            return null;
+        }
     },
 };
