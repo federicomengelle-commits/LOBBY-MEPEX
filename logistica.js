@@ -670,7 +670,7 @@ const LogisticaModule = {
                             <option value="${p.id}" ${p.id === initialChoferId ? 'selected' : ''}>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</option>
                         `).join('')}
                     </select>
-                    <div class="log-form-hint">¿Falta alguien? Cargalo en la pestaña Personas con rol "chofer".</div>
+                    <div class="log-form-hint">¿Falta alguien? Cargalo en <a href="#rrhh" style="color:#00A9C1">RRHH</a> con rol "chofer".</div>
                 </div>
                 <div class="log-form-row">
                     <label>Ayudantes</label>
@@ -680,7 +680,7 @@ const LogisticaModule = {
                                 <input type="checkbox" value="${p.id}" ${initialAyudanteIds.includes(p.id) ? 'checked' : ''}>
                                 <span>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</span>
                             </label>
-                        `).join('') || '<div class="log-empty-hint">Sin personas cargadas. Agregalas en la pestaña Personas.</div>'}
+                        `).join('') || '<div class="log-empty-hint">Sin personas cargadas. Agregalas en <a href="#rrhh" style="color:#00A9C1">RRHH</a>.</div>'}
                     </div>
                 </div>
                 <div class="log-form-row">
@@ -987,8 +987,6 @@ const LogisticaModule = {
     _renderPersonasTab() {
         const c = document.getElementById('logisticaContent');
         if (!c) return;
-        const user = Auth.getUser();
-        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
 
         let visibles = this._personas.filter(p => !p._deleted);
         if (this._personasFilterRol) {
@@ -1007,13 +1005,16 @@ const LogisticaModule = {
                         <option value="azafata" ${this._personasFilterRol === 'azafata' ? 'selected' : ''}>Azafata</option>
                     </select>
                 </div>
-                <button class="btn-primary" id="logNuevaPersona">＋ Nueva persona</button>
+                <a href="#rrhh" class="btn-secondary log-rrhh-link">→ Ir a RRHH para gestionar personas</a>
+            </div>
+            <div class="log-readonly-banner">
+                Lista de personas disponibles para asignar a cargas. La alta/baja/edición se hace desde el módulo <strong>RRHH</strong>.
             </div>
             ${visibles.length === 0 ? `
                 <div class="log-empty">
                     <div class="log-empty-icon">👤</div>
                     <p>Sin personas cargadas con esos filtros.</p>
-                    <p class="log-empty-hint">Cargá choferes y ayudantes para asignarlos a las cargas.</p>
+                    <p class="log-empty-hint">Andá a <a href="#rrhh" style="color:#00A9C1">RRHH</a> para cargar choferes y ayudantes.</p>
                 </div>
             ` : `
                 <table class="log-table">
@@ -1024,7 +1025,6 @@ const LogisticaModule = {
                             <th>Roles</th>
                             <th>Teléfono</th>
                             <th>Estado</th>
-                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1035,10 +1035,6 @@ const LogisticaModule = {
                                 <td>${(p.roles_operativos || []).map(r => `<span class="log-rol-chip">${this._esc(r)}</span>`).join('') || '<span class="log-mini">—</span>'}</td>
                                 <td>${p.telefono ? `<a href="tel:${this._escAttr(p.telefono)}" class="log-tel">${this._esc(p.telefono)}</a>` : '—'}</td>
                                 <td>${p.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-ghost">Inactiva</span>'}</td>
-                                <td>
-                                    <button class="log-mini-btn" data-action="edit-per" data-id="${p.id}">✎</button>
-                                    ${isAdmin ? `<button class="log-mini-btn danger" data-action="del-per" data-id="${p.id}">🗑</button>` : ''}
-                                </td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -1046,132 +1042,13 @@ const LogisticaModule = {
             `}
         `;
 
-        document.getElementById('logNuevaPersona')?.addEventListener('click', () => this._openPersonaModal(null));
         document.getElementById('logFiltroRol')?.addEventListener('change', e => {
             this._personasFilterRol = e.target.value;
             this._renderPersonasTab();
         });
-        document.querySelectorAll('[data-action="edit-per"]').forEach(btn => {
-            btn.addEventListener('click', () => this._openPersonaModal(btn.dataset.id));
-        });
-        document.querySelectorAll('[data-action="del-per"]').forEach(btn => {
-            btn.addEventListener('click', () => this._deletePersona(btn.dataset.id));
-        });
     },
 
-    _openPersonaModal(personaId) {
-        const p = personaId ? this._personas.find(x => x.id === personaId) : null;
-        const isEdit = !!p;
-        const rolesAll = ['armador', 'chofer', 'ayudante', 'tecnico', 'azafata'];
-        const rolesActuales = p?.roles_operativos || [];
-        const body = `
-            <div class="log-form">
-                <div class="log-form-row log-form-2col">
-                    <div>
-                        <label>Nombre *</label>
-                        <input type="text" id="pNombre" value="${this._escAttr(p?.nombre || '')}">
-                    </div>
-                    <div>
-                        <label>Apellido</label>
-                        <input type="text" id="pApellido" value="${this._escAttr(p?.apellido || '')}">
-                    </div>
-                </div>
-                <div class="log-form-row log-form-2col">
-                    <div>
-                        <label>Tipo</label>
-                        <select id="pTipo">
-                            <option value="eventual" ${(p?.tipo || 'eventual') === 'eventual' ? 'selected' : ''}>Eventual</option>
-                            <option value="interna" ${p?.tipo === 'interna' ? 'selected' : ''}>Interna</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label>Activa</label>
-                        <select id="pActivo">
-                            <option value="true" ${p?.activo !== false ? 'selected' : ''}>Sí</option>
-                            <option value="false" ${p?.activo === false ? 'selected' : ''}>No</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="log-form-row">
-                    <label>Roles operativos</label>
-                    <div class="log-multi-select">
-                        ${rolesAll.map(r => `
-                            <label class="log-multi-opt">
-                                <input type="checkbox" data-rol value="${r}" ${rolesActuales.includes(r) ? 'checked' : ''}>
-                                <span>${r}</span>
-                            </label>
-                        `).join('')}
-                    </div>
-                </div>
-                <div class="log-form-row log-form-2col">
-                    <div>
-                        <label>Teléfono</label>
-                        <input type="text" id="pTel" value="${this._escAttr(p?.telefono || '')}">
-                    </div>
-                    <div>
-                        <label>Documento</label>
-                        <input type="text" id="pDoc" value="${this._escAttr(p?.documento || '')}">
-                    </div>
-                </div>
-                <div class="log-form-row">
-                    <label>Costo diario referencial</label>
-                    <input type="number" step="0.01" id="pCosto" value="${p?.costo_dia_referencial ?? ''}">
-                </div>
-                <div class="log-form-row">
-                    <label>Notas</label>
-                    <textarea id="pNotas" rows="2">${this._esc(p?.notas || '')}</textarea>
-                </div>
-            </div>
-        `;
-
-        const modalId = Modal.open({
-            title: isEdit ? 'Editar persona' : 'Nueva persona',
-            body,
-            size: 'md',
-            footer: `
-                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
-                <button class="btn-primary" id="pSave">${isEdit ? 'Guardar' : 'Crear'}</button>
-            `,
-        });
-
-        document.getElementById('pSave')?.addEventListener('click', async () => {
-            const payload = {
-                nombre: document.getElementById('pNombre')?.value.trim(),
-                apellido: document.getElementById('pApellido')?.value.trim() || null,
-                tipo: document.getElementById('pTipo')?.value,
-                rolesOperativos: [...document.querySelectorAll('[data-rol]:checked')].map(i => i.value),
-                telefono: document.getElementById('pTel')?.value.trim() || null,
-                documento: document.getElementById('pDoc')?.value.trim() || null,
-                costoDiaReferencial: parseFloat(document.getElementById('pCosto')?.value) || null,
-                notas: document.getElementById('pNotas')?.value.trim() || null,
-                activo: document.getElementById('pActivo')?.value === 'true',
-            };
-            if (!payload.nombre) { Toast.warning('El nombre es obligatorio.'); return; }
-            try {
-                if (isEdit) {
-                    await API.updatePersona(personaId, payload);
-                    Toast.success('Persona actualizada.');
-                } else {
-                    await API.createPersona(payload);
-                    Toast.success('Persona creada.');
-                }
-                Modal.close(modalId);
-                await this._loadPersonas();
-            } catch (e) {
-                console.error('[Logistica] save persona error:', e);
-                Toast.error('Error al guardar.');
-            }
-        });
-    },
-
-    async _deletePersona(id) {
-        const ok = await Confirm.delete('esta persona');
-        if (!ok) return;
-        const r = await API.deletePersona(id);
-        if (!r) { Toast.error('No se pudo eliminar.'); return; }
-        Toast.success('Persona eliminada.');
-        await this._loadPersonas();
-    },
+    // Personas son read-only en este módulo. Alta/baja/edición van por RRHH.
 
     // ═════════════════════════════════════════════════════════════
     //  Helpers
@@ -1467,6 +1344,33 @@ const LogisticaModule = {
             .logistica-module .log-multi-opt:hover { border-color: #00A9C1; }
             .logistica-module .log-multi-opt input { margin: 0; accent-color: #00A9C1; }
             .logistica-module .log-multi-opt input:checked + span { color: #00A9C1; font-weight: 600; }
+
+            .logistica-module .log-rrhh-link {
+                font-family: var(--font-mono);
+                font-size: 0.78rem;
+                padding: 8px 14px;
+                text-decoration: none;
+                color: #00A9C1;
+                border: 1px solid rgba(0,169,193,0.3);
+                border-radius: 6px;
+            }
+            .logistica-module .log-rrhh-link:hover {
+                background: rgba(0,169,193,0.08);
+                border-color: #00A9C1;
+            }
+            .logistica-module .log-readonly-banner {
+                margin: 0 24px 12px 24px;
+                padding: 10px 14px;
+                background: rgba(155, 125, 255, 0.08);
+                border: 1px solid rgba(155, 125, 255, 0.25);
+                border-radius: 6px;
+                color: #aaa;
+                font-family: var(--font-main);
+                font-size: 0.85rem;
+            }
+            .logistica-module .log-readonly-banner strong {
+                color: #9B7DFF;
+            }
         `;
         document.head.appendChild(style);
     },

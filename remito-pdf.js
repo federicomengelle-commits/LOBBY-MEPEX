@@ -111,7 +111,16 @@ const RemitoPDF = {
         const venue = carga.destino_override || carga.evento?.predio || '—';
         const fase = ({ armado: 'ARMADO', desarme: 'DESARME', intermedio: 'INTERMEDIO' })[carga.fase] || carga.fase?.toUpperCase() || '—';
 
+        // Cliente(s) inferido(s) desde los proyectos cargados.
+        const clientesNombres = [...new Set(
+            (carga.carga_proyectos || [])
+                .map(cp => cp.proyecto?.cliente?.nombre_empresa || cp.proyecto?.cliente?.razon_social)
+                .filter(Boolean)
+        )];
+        const clienteTxt = clientesNombres.length > 0 ? clientesNombres.join(' · ') : '—';
+
         y = this._row(doc, MARGIN, y, 'EVENTO:', evNombre);
+        y = this._row(doc, MARGIN, y, 'CLIENTE:', clienteTxt);
         y = this._row(doc, MARGIN, y, 'DESTINO:', venue);
         y = this._row(doc, MARGIN, y, 'FASE:', fase);
         y = this._row(doc, MARGIN, y, 'FECHA / HORA CARGA:', `${fechaCarga}${horaTxt ? ` · ${horaTxt}` : ''}`);

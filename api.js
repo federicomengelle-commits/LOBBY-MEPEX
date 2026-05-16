@@ -3710,13 +3710,13 @@ const API = {
                 .from('cargas')
                 .select(`
                     *,
-                    evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio, cliente_id),
+                    evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio),
                     vehiculo:vehiculos!vehiculo_id(*),
                     chofer:personas!chofer_persona_id(*),
                     aprobador:profiles!aprobada_por(id, name, initials),
                     creador:profiles!created_by(id, name, initials),
                     responsable:profiles!responsable_mepex_id(id, name, initials),
-                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id)),
+                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id, cliente:clientes!cliente_id(id, nombre_empresa, razon_social))),
                     carga_personas(id, rol_en_carga, persona:personas!persona_id(id, nombre, apellido, telefono, roles_operativos))
                 `)
                 .eq('id', id)
