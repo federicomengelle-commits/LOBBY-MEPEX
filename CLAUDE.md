@@ -521,7 +521,39 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 ## 10. ESTADO ACTUAL
 
 - **Fecha:** 2026-05-16
-- **Ultimo commit destacado:** Tanda 3 completa (RRHH→personas + encuesta NPS + triggers completitud + cargas en calendario)
+- **Ultimo commit destacado:** `f096f1a` — pulido pre-Tanda 4 (banner admin + badges asignaciones + conflictos + legacy fallback)
+- **Próximo paso:** **Tanda 4 = UX/Mobile review integral** según `memory/plan_tanda4_ui_review.md`.
+- **Tanda 3+ completada (Cierre del blueprint operativo + asignaciones_evento + pulido UX)**:
+  - **3.E — Asignaciones de personas a eventos** (`sql/asignaciones_y_notifs.sql` + `api.js` + `logistica.js` + `calendario-operativo.js`): nueva tabla `asignaciones_evento` (UUID) — persona afectada a evento en una fase con rango de fechas + rol + estado (propuesta/aprobada/confirmada/cancelada). Diferente de `carga_personas` (que es por VIAJE). API CRUD completo (`getAsignacionesByEvento`, `getAsignacionesByPersona`, `getAsignacionesActivasBulk`, `getAsignacionesPendientesCount`, `createAsignacionEvento` con notif admin auto, `updateAsignacionEvento`, `approveAsignacionEvento` con notif al creador, `deleteAsignacionEvento`, `detectarConflictosPersona`). Trigger AFTER UPDATE en `encuestas_evento` dispara notif a PM+admin cuando se responde con NPS color-coded (Promotor/Pasivo/Detractor) — `prioridad='alta'` si NPS<7. Documentación SQL de los 9 roles canónicos operativos ampliados (armador/chofer/ayudante/electricista/montajista/encargado_armado/tecnico/azafata/colaborador).
+  - **3.E UI Personas refactor según spec Fede** (`logistica.js v=9`): SACA columna Tipo + Estado + botón "→ Ir a RRHH" + banner read-only. Filtro `getPersonasOperativas` muestra solo gente con al menos un rol operativo (excluye internos de oficina/ventas). Teléfonos como links WhatsApp (`wa.me/<intl>`, asume AR si no tiene código). Botones "🚚 Carga" + "📅 Evento" por fila para asignar inline. Banner admin "X convocatorias pendientes" arriba si hay propuestas sin aprobar (clickeable → Calendario). Cada card muestra chips de asignaciones activas color-coded ("📅 Estetica" verde aprobada / naranja propuesta) con +N si hay más. Modal "Asignar a carga" si NO hay cargas próximas → empty state + botón "+ Crear nueva carga" que abre el form. Modal "Asignar a evento" valida solapamiento con `detectarConflictosPersona` y muestra confirm con lista si hay conflictos.
+  - **3.E modal RRHH refactor** (`rrhh.js v=3`): input "Rol descriptivo" libre que guarda en `rol_legacy` + multi-select con 9 roles canónicos en checkboxes. Los checks definen en qué selects aparece la persona en Logística. Save handler usa los checkboxes (no el text input).
+  - **3.E proyecto-detalle ciclo badge** (`proyecto-detalle.js v=4`): badge "🏗️ <estado_taller> <pct>%" en el header con barra mini color-coded por estado (pendiente gris / en_armado naranja / listo verde / despachado turquesa / cerrado violeta). Refleja `completitud_pct` mantenido por trigger SQL.
+  - **3.E calendario operativo asignaciones** (`calendario-operativo.js v=6`): `_loadPanelData` trae `asignacionesNew` en paralelo. Side panel tab Logística suma sección "Personas asignadas (N)" agrupada por fase (armado/funcionamiento/desarme) con cada persona, estado color-coded y botón "✓ Aprobar" inline si admin. La sección legacy "Equipo asignado" (`rrhh_asignaciones`) ahora se renderiza SOLO como fallback si NO hay asignaciones nuevas (evita duplicación visual). Etiqueta "(legacy)" cuando aparece.
+  - **Bug detectado y fixeado** (`sql/fix_completitud_trigger.sql`): la función trigger `trg_proyectos_completitud_fn` llamaba a `calc_completitud_pct(NEW.id)` que hace SELECT FROM proyectos. En un BEFORE UPDATE el SELECT lee el valor OLD (la fila aún no fue updateada), entonces el cálculo era con estado_taller viejo. Fix: la función ahora calcula directo con NEW.estado_taller sin SELECT intermedio. `calc_completitud_pct` queda para llamadas externas / backfill.
+- **Decisiones de arquitectura tomadas en Tanda 3+**:
+  - **Coexistencia legacy + nuevo schema**: `rrhh_personal` migrada a `personas` pero ambas viven (las legacy aún las referencian rrhh_asignaciones / rrhh_vacaciones). Tab Asignación y Vacaciones de RRHH siguen contra legacy con banner aclaratorio. La limpieza queda para tanda futura.
+  - **9 roles canónicos operativos** (armador/chofer/ayudante/electricista/montajista/encargado_armado/tecnico/azafata/colaborador): valores en `personas.roles_operativos[]`. El campo `rol_legacy` guarda el string descriptivo libre (no se pierde info como "Encargado", "Chofer Iveco senior", etc.) — pero solo los roles canónicos definen visibilidad en selects de Logística.
+  - **Validación de conflictos no es bloqueo**: si se detecta solapamiento al asignar una persona, se muestra warning con las asignaciones existentes y se permite continuar igualmente. Admin decide.
+  - **Asignaciones vs cargas — distinción clara**: `asignaciones_evento` = persona afectada al EVENTO en una fase con rango de fechas (largo plazo, varios días). `carga_personas` = ayudantes de UN VIAJE específico (1 día, contexto carga). Coexisten — una persona puede tener una asignación al evento + estar en una carga específica del mismo evento.
+- **Pasos manuales pendientes (SQL en Supabase Dashboard, orden recomendado)**:
+  1. `sql/taller_logistica_v2.sql` — schema operativo (cargas/vehiculos/personas/etc.).
+  2. `sql/storage_remitos.sql` — crea bucket `remitos` privado + policies (idempotente).
+  3. `sql/taller_checklist_v2.sql` — tabla checklist UUID.
+  4. `sql/rrhh_to_personas_migration.sql` — expande personas + copia rrhh_personal → personas.
+  5. `sql/completitud_triggers.sql` — triggers completitud_pct + backfill.
+  6. `sql/asignaciones_y_notifs.sql` — tabla asignaciones_evento + trigger notif encuesta.
+  7. `sql/fix_completitud_trigger.sql` — fix del bug del badge "En armado 0%".
+- **Pendientes próximos**:
+  1. **Tanda 4 — Revisión UI/UX integral mobile/tablet** (ver `memory/plan_tanda4_ui_review.md`): sidebar como drawer overlay en mobile, tablas → cards en mobile, tap targets 44px, modals fullscreen mobile, búsqueda como botón visible (no Ctrl+K), notif dropdown como bottom sheet, Calendario Operativo con vista alternativa mobile (lista por día). Auditoría módulo por módulo con DevTools (iPhone 12 + iPad).
+  2. Cleanup tablas legacy `logistica_movimientos`, `logistica_vehiculos`, `rrhh_personal`, `rrhh_asignaciones`. Decidir qué migrar al schema nuevo y qué borrar.
+  3. Edge cases defensivos en Costos (items propios sin componentes, sin tipo_amortización, recetas circulares).
+  4. Módulo de Costos Fijos mensuales + dashboard breakeven.
+  5. Mejoras a la encuesta NPS: multi-pregunta, ratings por dimensión, envío automático por WhatsApp/email.
+- **Bugs conocidos** (al cierre Tanda 3+):
+  - Columnas rotadas en `clientes` (mapeado en api.js).
+  - Tablas legacy `logistica_vehiculos` / `logistica_movimientos` con tipos BIGINT vs UUID en FKs.
+  - Modal "Asignar a Evento" solo muestra eventos con fecha futura cargada — es esperado, pero data limitada hace que aparezcan pocos eventos.
+- **Verificación end-to-end (en Chrome, server http://195.200.1.250)**: completada — pestaña Personas + asignar persona a evento + notif admin + aprobación inline en Calendario + badge ciclo en proyecto-detalle. PDF size 5.4MB→14KB. Bucket Storage OK. Notifs filter superadmin OK. Cleanup hecho (Sacha test cancelada, proyecto pendiente).
 - **Tanda 3 completada (Cierre del blueprint operativo)**:
   - **3.A — RRHH migrado a `personas`** (`sql/rrhh_to_personas_migration.sql` + `rrhh.js`): expande `personas` con columnas faltantes (contacto, email, fecha_ingreso, documentacion, cantidad_personas, rol_legacy) + admite tipo='cuadrilla' + copia los registros vivos de `rrhh_personal` a `personas` manteniendo el mismo id UUID. Mapeo nombre→nombre+apellido, tipo 'fijo'→'interna', rol legacy a `roles_operativos[]` cuando matchea uno canónico (armador/chofer/ayudante/tecnico/azafata) o queda en `rol_legacy` cuando no. `rrhh.js` tab Nómina lee/escribe `personas` ahora (compat layer transparente con `_mapPersonaToLegacyShape`). EFECTO: las personas cargadas desde RRHH aparecen automáticamente como choferes/ayudantes en el select de cargas en Logística. La tabla `rrhh_personal` queda intacta mientras `rrhh_asignaciones` y `rrhh_vacaciones` la referencien (tabs Asignación y Vacaciones siguen legacy con banner aclaratorio).
   - **3.B — Encuesta NPS pública con token** (`encuesta.html` + `eventos.js` + `api.js`): `encuesta.html` standalone (sin login, branding MEPEX, mobile-first, escala NPS 0-10 color-coded — rojo 0-6, naranja 7-8, verde 9-10 + comentario opcional). `api.js getEncuestaForEvent(eventoId)` devuelve la encuesta más reciente del evento. `eventos.js` suma botón "📨 Enviar encuesta al cliente" en el panel lateral del evento (al lado de Eliminar). Al click: `_openEncuestaModal` crea la encuesta si no existe, genera URL pública (`/encuesta.html?t=<token>`), la muestra en modal con botón "Copiar" al clipboard. Si la encuesta ya fue respondida, muestra el NPS color-coded (Promotor/Pasivo/Detractor) + comentario + fecha. El admin/PM manda el link manualmente por WhatsApp/email.
@@ -581,19 +613,4 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
   - Modulo eventos V1 completo.
   - Panel de control admin.
   - Integracion La PyME V4.
-- **Bugs conocidos**:
-  - Columnas rotadas en tabla `clientes` (mapeado en `api.js` como workaround).
-  - Las tablas legacy `logistica_vehiculos` y `logistica_movimientos` referencian `eventos(id)` / `proyectos(id)` como BIGINT pero esas PK son UUID. Tanda 2 lo evita usando las tablas nuevas en UUID; la limpieza de las legacy queda para Tanda 3.
-  - Ninguno otro reportado.
-- **Pasos manuales pendientes (no automatizables vía SQL)**:
-  1. Ejecutar `sql/taller_logistica_v2.sql` en Supabase SQL Editor (schema operativo Tanda 2).
-  2. `sql/storage_remitos.sql` (crea bucket `remitos` via INSERT + policies — todo en uno, idempotente).
-  3. `sql/taller_checklist_v2.sql` (tabla checklist UUID).
-  4. `sql/rrhh_to_personas_migration.sql` (Tanda 3.A — expande personas + copia rrhh_personal → personas).
-  5. `sql/completitud_triggers.sql` (Tanda 3.C — triggers + backfill completitud_pct).
-- **Pendientes próximos** (orden recomendado):
-  1. **Tanda 4 (planeada)**: revisión UI/UX integral con foco en móvil y tablet. Auditoría módulo por módulo con DevTools mobile preview (iPhone 12, iPad). Sidebar drawer en mobile, tablas → cards en mobile, tap targets 44px, modals fullscreen mobile, búsqueda como botón visible (no Ctrl+K), notif dropdown como bottom sheet, Calendario Operativo con vista alternativa mobile. Específicamente pensado para personal poco tech (taller). Ver `plan_tanda4_ui_review.md` en memoria.
-  2. Cleanup de tablas legacy: `logistica_movimientos`, `logistica_vehiculos`, `rrhh_personal`, `rrhh_asignaciones`. Decidir qué migrar a esquema nuevo y qué borrar.
-  3. Edge cases defensivos en Costos (items propios sin componentes, sin tipo_amortización, recetas circulares).
-  4. Módulo de Costos Fijos mensuales + dashboard breakeven.
-  5. Mejoras a la encuesta NPS: multi-pregunta, ratings por dimensión, envío automático por WhatsApp/email.
+- *(La lista de SQLs a ejecutar y los Pendientes próximos están ahora en la sección Tanda 3+ arriba, actualizadas con los nuevos archivos. Ver §10 al inicio.)*
