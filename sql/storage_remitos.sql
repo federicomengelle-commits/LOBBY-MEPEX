@@ -7,24 +7,30 @@
 --   remitos/<carga_id>/remito.pdf       → PDF generado al aprobar (admin)
 --   remitos/<carga_id>/firmado.<ext>    → Foto del remito firmado (taller, post-viaje)
 --
--- IMPORTANTE: Supabase NO permite crear buckets via SQL directo. Hay que:
---   1. Ir a Dashboard → Storage → New bucket
---   2. Name: remitos
---   3. Public: OFF (privado)
---   4. File size limit: 10 MB (sobra para PDFs + JPGs comprimidos)
---   5. Allowed MIME types: dejarlo libre o restringir a:
---        application/pdf
---        image/jpeg
---        image/png
---        image/webp
---   6. Click "Save"
---   7. Luego ejecutar este SQL para las policies.
+-- Este archivo: crea el bucket via INSERT directo en storage.buckets
+-- (funciona desde SQL Editor del Dashboard porque corre como service_role)
+-- + policies de RLS sobre storage.objects.
 --
 -- Estrategia MVP: policies abiertas a authenticated. El frontend enforce
 -- "solo taller/pm/admin/superadmin ven los botones de upload/download".
 -- Cuando se quiera reforzar (Tanda 3+), se puede agregar JOIN con profiles
 -- o usar una función helper has_role(role TEXT).
 -- =============================================
+
+
+-- ─── Crear bucket `remitos` privado, 10MB, MIME restringido ───
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'remitos',
+    'remitos',
+    false,        -- privado: acceso solo via signed URL
+    10485760,     -- 10 MB por archivo
+    ARRAY['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+)
+ON CONFLICT (id) DO UPDATE SET
+    public = EXCLUDED.public,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 
 -- ─── SELECT: cualquier authenticated puede leer archivos del bucket ───
