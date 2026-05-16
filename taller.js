@@ -132,7 +132,7 @@ const TallerModule = {
                 .from('proyectos')
                 .select(`
                     id, nombre, evento_id, cliente_id, drive_folder_url,
-                    estado_taller,
+                    estado_taller, completitud_pct,
                     cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
                     evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio)
                 `)
@@ -339,6 +339,18 @@ const TallerModule = {
                             <div class="tlr-progress-fill ${allChecked ? 'done' : ''}" style="width:${progressPct}%"></div>
                         </div>
                     </button>
+
+                    ${typeof p.completitud_pct === 'number' ? `
+                        <div class="tlr-ciclo-progress" title="Avance del ciclo: pendiente → armado → listo → despachado → cerrado">
+                            <div class="tlr-progress-row">
+                                <span class="tlr-progress-label">Ciclo del proyecto</span>
+                                <span class="tlr-progress-count ${p.completitud_pct === 100 ? 'done' : ''}">${p.completitud_pct}%</span>
+                            </div>
+                            <div class="tlr-progress-bar">
+                                <div class="tlr-progress-fill ${p.completitud_pct === 100 ? 'done' : ''}" style="width:${p.completitud_pct}%; background: linear-gradient(90deg, #9B7DFF, #00A9C1);"></div>
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
 
                 <div class="tlr-card-actions">
@@ -464,7 +476,7 @@ const TallerModule = {
             const { data, error } = await supabaseClient
                 .from('proyectos')
                 .select(`
-                    id, nombre, evento_id, estado_taller,
+                    id, nombre, evento_id, estado_taller, completitud_pct,
                     cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
                     evento:eventos!evento_id(id, nombre, fecha_armado_inicio, predio)
                 `)
@@ -1177,6 +1189,13 @@ const TallerModule = {
             }
             .taller-module .tlr-progress-fill.done {
                 background: linear-gradient(90deg, #00CC88, #00FF9F);
+            }
+            .taller-module .tlr-ciclo-progress {
+                margin-top: 6px;
+                padding: 6px 10px;
+                background: transparent;
+                border: 1px solid #2a2a2a;
+                border-radius: 6px;
             }
 
             /* Tab Checklist */
