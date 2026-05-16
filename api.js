@@ -3475,4 +3475,632 @@ const API = {
             return null;
         }
     },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 2 — Vehículos
+    // ═════════════════════════════════════════════════════════════
+
+    async getVehiculos({ soloActivos = true } = {}) {
+        try {
+            let q = supabaseClient
+                .from('vehiculos').select('*')
+                .eq('_deleted', false)
+                .order('descripcion', { ascending: true });
+            if (soloActivos) q = q.eq('activo', true);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getVehiculos:', e.message);
+            return [];
+        }
+    },
+
+    async createVehiculo(data) {
+        const payload = {
+            patente: data.patente || null,
+            descripcion: (data.descripcion || '').trim(),
+            propietario: data.propietario || 'mepex',
+            capacidad_descriptiva: data.capacidadDescriptiva || data.capacidad_descriptiva || null,
+            contacto_nombre: data.contactoNombre || data.contacto_nombre || null,
+            contacto_telefono: data.contactoTelefono || data.contacto_telefono || null,
+            costo_referencial: data.costoReferencial ?? data.costo_referencial ?? null,
+            activo: data.activo !== false,
+            notas: data.notas || null,
+        };
+        if (!payload.descripcion) {
+            console.warn('[API] createVehiculo: descripcion obligatoria');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('vehiculos').insert(payload).select().single();
+            if (error) throw error;
+            // Si es tercero, notif a admin (matriz §5 — "Vehículo tercero nuevo creado → admin aprobar")
+            if (payload.propietario === 'tercero') {
+                await this.createNotification({
+                    tipo: 'vehiculo_tercero_creado',
+                    titulo: 'Nuevo vehículo tercero',
+                    mensaje: `${payload.descripcion}${payload.contacto_nombre ? ` — ${payload.contacto_nombre}` : ''}`,
+                    target_role: 'admin',
+                    entidad_tipo: 'vehiculo',
+                    entidad_id: row.id,
+                    link: '#logistica?tab=vehiculos',
+                    prioridad: 'normal',
+                });
+            }
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createVehiculo:', e.message);
+            return null;
+        }
+    },
+
+    async updateVehiculo(id, data) {
+        const payload = {};
+        if (data.patente !== undefined) payload.patente = data.patente || null;
+        if (data.descripcion !== undefined) payload.descripcion = data.descripcion;
+        if (data.propietario !== undefined) payload.propietario = data.propietario;
+        if (data.capacidadDescriptiva !== undefined) payload.capacidad_descriptiva = data.capacidadDescriptiva;
+        if (data.capacidad_descriptiva !== undefined) payload.capacidad_descriptiva = data.capacidad_descriptiva;
+        if (data.contactoNombre !== undefined) payload.contacto_nombre = data.contactoNombre;
+        if (data.contacto_nombre !== undefined) payload.contacto_nombre = data.contacto_nombre;
+        if (data.contactoTelefono !== undefined) payload.contacto_telefono = data.contactoTelefono;
+        if (data.contacto_telefono !== undefined) payload.contacto_telefono = data.contacto_telefono;
+        if (data.costoReferencial !== undefined) payload.costo_referencial = data.costoReferencial;
+        if (data.costo_referencial !== undefined) payload.costo_referencial = data.costo_referencial;
+        if (data.activo !== undefined) payload.activo = !!data.activo;
+        if (data.notas !== undefined) payload.notas = data.notas || null;
+        try {
+            const { error } = await supabaseClient
+                .from('vehiculos').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updateVehiculo:', e.message);
+            return null;
+        }
+    },
+
+    async deleteVehiculo(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('vehiculos').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleteVehiculo:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 2 — Personas (separado de rrhh_personal legacy)
+    // ═════════════════════════════════════════════════════════════
+
+    async getPersonas({ rol = null, tipo = null, soloActivos = true } = {}) {
+        try {
+            let q = supabaseClient
+                .from('personas').select('*')
+                .eq('_deleted', false)
+                .order('nombre', { ascending: true });
+            if (soloActivos) q = q.eq('activo', true);
+            if (tipo) q = q.eq('tipo', tipo);
+            if (rol) q = q.contains('roles_operativos', [rol]);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getPersonas:', e.message);
+            return [];
+        }
+    },
+
+    async getChoferes() {
+        return this.getPersonas({ rol: 'chofer' });
+    },
+
+    async createPersona(data) {
+        const payload = {
+            profile_id: data.profileId || data.profile_id || null,
+            nombre: (data.nombre || '').trim(),
+            apellido: data.apellido || null,
+            tipo: data.tipo || 'eventual',
+            roles_operativos: Array.isArray(data.rolesOperativos)
+                ? data.rolesOperativos
+                : (Array.isArray(data.roles_operativos) ? data.roles_operativos : []),
+            telefono: data.telefono || null,
+            documento: data.documento || null,
+            costo_dia_referencial: data.costoDiaReferencial ?? data.costo_dia_referencial ?? null,
+            notas: data.notas || null,
+            activo: data.activo !== false,
+        };
+        if (!payload.nombre) {
+            console.warn('[API] createPersona: nombre obligatorio');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('personas').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createPersona:', e.message);
+            return null;
+        }
+    },
+
+    async updatePersona(id, data) {
+        const payload = {};
+        if (data.nombre !== undefined) payload.nombre = data.nombre;
+        if (data.apellido !== undefined) payload.apellido = data.apellido || null;
+        if (data.tipo !== undefined) payload.tipo = data.tipo;
+        if (data.rolesOperativos !== undefined) payload.roles_operativos = data.rolesOperativos;
+        if (data.roles_operativos !== undefined) payload.roles_operativos = data.roles_operativos;
+        if (data.telefono !== undefined) payload.telefono = data.telefono || null;
+        if (data.documento !== undefined) payload.documento = data.documento || null;
+        if (data.costoDiaReferencial !== undefined) payload.costo_dia_referencial = data.costoDiaReferencial;
+        if (data.costo_dia_referencial !== undefined) payload.costo_dia_referencial = data.costo_dia_referencial;
+        if (data.notas !== undefined) payload.notas = data.notas || null;
+        if (data.activo !== undefined) payload.activo = !!data.activo;
+        if (data.profileId !== undefined) payload.profile_id = data.profileId || null;
+        if (data.profile_id !== undefined) payload.profile_id = data.profile_id || null;
+        try {
+            const { error } = await supabaseClient
+                .from('personas').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updatePersona:', e.message);
+            return null;
+        }
+    },
+
+    async deletePersona(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('personas').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deletePersona:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 2 — Cargas (logística operativa con aprobación)
+    // ═════════════════════════════════════════════════════════════
+
+    // Devuelve cargas con relaciones embebidas (evento, vehículo, chofer,
+    // proyectos vinculados y ayudantes). Filtros opcionales.
+    async getCargas({ eventoId = null, fase = null, estado = null, desde = null, hasta = null } = {}) {
+        try {
+            let q = supabaseClient
+                .from('cargas')
+                .select(`
+                    *,
+                    evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio),
+                    vehiculo:vehiculos!vehiculo_id(id, descripcion, patente, propietario, contacto_nombre, contacto_telefono),
+                    chofer:personas!chofer_persona_id(id, nombre, apellido, telefono),
+                    aprobador:profiles!aprobada_por(id, name, initials),
+                    creador:profiles!created_by(id, name, initials),
+                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id)),
+                    carga_personas(id, rol_en_carga, persona:personas!persona_id(id, nombre, apellido))
+                `)
+                .eq('_deleted', false)
+                .order('fecha', { ascending: true });
+            if (eventoId) q = q.eq('evento_id', eventoId);
+            if (fase) q = q.eq('fase', fase);
+            if (estado) q = q.eq('estado', estado);
+            if (desde) q = q.gte('fecha', desde);
+            if (hasta) q = q.lte('fecha', hasta);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] Error getCargas:', e.message);
+            return [];
+        }
+    },
+
+    async getCargaById(id) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('cargas')
+                .select(`
+                    *,
+                    evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio, cliente_id),
+                    vehiculo:vehiculos!vehiculo_id(*),
+                    chofer:personas!chofer_persona_id(*),
+                    aprobador:profiles!aprobada_por(id, name, initials),
+                    creador:profiles!created_by(id, name, initials),
+                    responsable:profiles!responsable_mepex_id(id, name, initials),
+                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id)),
+                    carga_personas(id, rol_en_carga, persona:personas!persona_id(id, nombre, apellido, telefono, roles_operativos))
+                `)
+                .eq('id', id)
+                .maybeSingle();
+            if (error) throw error;
+            return data || null;
+        } catch (e) {
+            console.warn('[API] Error getCargaById:', e.message);
+            return null;
+        }
+    },
+
+    // Cargas con fecha entre hoy y hoy+days (para vista taller).
+    async getCargasProximas({ days = 7 } = {}) {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const hasta = new Date(hoy);
+        hasta.setDate(hasta.getDate() + days);
+        const desdeStr = hoy.toISOString().slice(0, 10);
+        const hastaStr = hasta.toISOString().slice(0, 10);
+        return this.getCargas({ desde: desdeStr, hasta: hastaStr });
+    },
+
+    async createCarga(data) {
+        const user = Auth.getUser?.();
+        const payload = {
+            evento_id: data.eventoId || data.evento_id,
+            fase: data.fase || 'armado',
+            vehiculo_id: data.vehiculoId || data.vehiculo_id || null,
+            chofer_persona_id: data.choferPersonaId || data.chofer_persona_id || null,
+            fecha: data.fecha,
+            hora_carga: data.horaCarga || data.hora_carga || null,
+            hora_estimada_llegada: data.horaEstimadaLlegada || data.hora_estimada_llegada || null,
+            destino_override: data.destinoOverride || data.destino_override || null,
+            responsable_mepex_id: data.responsableMepexId || data.responsable_mepex_id || user?.uid || user?.id || null,
+            estado: 'borrador',
+            notas: data.notas || null,
+            created_by: user?.uid || user?.id || null,
+        };
+        if (!payload.evento_id || !payload.fecha) {
+            console.warn('[API] createCarga: evento_id y fecha son obligatorios');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('cargas').insert(payload).select().single();
+            if (error) throw error;
+
+            // Vincular proyectos (carga_proyectos)
+            const proyectoIds = Array.isArray(data.proyectoIds) ? data.proyectoIds
+                              : (Array.isArray(data.proyectos) ? data.proyectos : []);
+            if (proyectoIds.length > 0) {
+                const cps = proyectoIds.filter(Boolean).map(pid => ({
+                    carga_id: row.id, proyecto_id: pid,
+                }));
+                if (cps.length > 0) {
+                    await supabaseClient.from('carga_proyectos').insert(cps);
+                }
+            }
+
+            // Vincular ayudantes (carga_personas)
+            const ayudanteIds = Array.isArray(data.ayudanteIds) ? data.ayudanteIds
+                              : (Array.isArray(data.ayudantes) ? data.ayudantes : []);
+            if (ayudanteIds.length > 0) {
+                const cps = ayudanteIds.filter(Boolean).map(persId => ({
+                    carga_id: row.id, persona_id: persId, rol_en_carga: 'ayudante',
+                }));
+                if (cps.length > 0) {
+                    await supabaseClient.from('carga_personas').insert(cps);
+                }
+            }
+
+            // Notif a admin para aprobación
+            await this.createNotification({
+                tipo: 'carga_pendiente_aprobacion',
+                titulo: 'Carga pendiente de aprobación',
+                mensaje: `Nueva carga para evento — fecha ${payload.fecha}`,
+                target_role: 'admin',
+                entidad_tipo: 'carga',
+                entidad_id: row.id,
+                link: `#logistica?tab=cargas&id=${row.id}`,
+                prioridad: 'normal',
+            });
+
+            return row;
+        } catch (e) {
+            console.warn('[API] Error createCarga:', e.message);
+            return null;
+        }
+    },
+
+    // Update campos básicos de una carga (sin tocar estado/aprobación/remitos).
+    // Para aprobar, completar o subir remito, usar funciones específicas.
+    async updateCarga(id, data) {
+        const payload = {};
+        if (data.eventoId !== undefined) payload.evento_id = data.eventoId;
+        if (data.evento_id !== undefined) payload.evento_id = data.evento_id;
+        if (data.fase !== undefined) payload.fase = data.fase;
+        if (data.vehiculoId !== undefined) payload.vehiculo_id = data.vehiculoId || null;
+        if (data.vehiculo_id !== undefined) payload.vehiculo_id = data.vehiculo_id || null;
+        if (data.choferPersonaId !== undefined) payload.chofer_persona_id = data.choferPersonaId || null;
+        if (data.chofer_persona_id !== undefined) payload.chofer_persona_id = data.chofer_persona_id || null;
+        if (data.fecha !== undefined) payload.fecha = data.fecha;
+        if (data.horaCarga !== undefined) payload.hora_carga = data.horaCarga || null;
+        if (data.hora_carga !== undefined) payload.hora_carga = data.hora_carga || null;
+        if (data.horaEstimadaLlegada !== undefined) payload.hora_estimada_llegada = data.horaEstimadaLlegada || null;
+        if (data.hora_estimada_llegada !== undefined) payload.hora_estimada_llegada = data.hora_estimada_llegada || null;
+        if (data.destinoOverride !== undefined) payload.destino_override = data.destinoOverride || null;
+        if (data.destino_override !== undefined) payload.destino_override = data.destino_override || null;
+        if (data.responsableMepexId !== undefined) payload.responsable_mepex_id = data.responsableMepexId || null;
+        if (data.responsable_mepex_id !== undefined) payload.responsable_mepex_id = data.responsable_mepex_id || null;
+        if (data.notas !== undefined) payload.notas = data.notas || null;
+        try {
+            const { error } = await supabaseClient
+                .from('cargas').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updateCarga:', e.message);
+            return null;
+        }
+    },
+
+    // Reemplaza la lista de proyectos vinculados a la carga.
+    async setCargaProyectos(cargaId, proyectoIds) {
+        try {
+            // Borrar todos los actuales (cascade via ON DELETE no aplica acá)
+            await supabaseClient.from('carga_proyectos').delete().eq('carga_id', cargaId);
+            const ids = Array.isArray(proyectoIds) ? proyectoIds.filter(Boolean) : [];
+            if (ids.length > 0) {
+                const rows = ids.map(pid => ({ carga_id: cargaId, proyecto_id: pid }));
+                const { error } = await supabaseClient.from('carga_proyectos').insert(rows);
+                if (error) throw error;
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error setCargaProyectos:', e.message);
+            return null;
+        }
+    },
+
+    // Idem para ayudantes (carga_personas).
+    async setCargaAyudantes(cargaId, personaIds) {
+        try {
+            await supabaseClient.from('carga_personas').delete().eq('carga_id', cargaId);
+            const ids = Array.isArray(personaIds) ? personaIds.filter(Boolean) : [];
+            if (ids.length > 0) {
+                const rows = ids.map(pid => ({
+                    carga_id: cargaId, persona_id: pid, rol_en_carga: 'ayudante',
+                }));
+                const { error } = await supabaseClient.from('carga_personas').insert(rows);
+                if (error) throw error;
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error setCargaAyudantes:', e.message);
+            return null;
+        }
+    },
+
+    // Admin aprueba: pasa a 'aprobada', registra quién/cuándo, dispara notif al creador.
+    // La generación del PDF y upload a Storage la maneja el caller (logistica.js) usando
+    // RemitoPDF.generate(cargaId) + this.uploadRemitoPDF(...). Esto es solo el state change.
+    async approveCarga(cargaId) {
+        const user = Auth.getUser?.();
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('cargas').update({
+                    estado: 'aprobada',
+                    aprobada_por: user?.uid || user?.id || null,
+                    aprobada_at: new Date().toISOString(),
+                }).eq('id', cargaId)
+                .select('id, created_by').maybeSingle();
+            if (error) throw error;
+            if (row?.created_by && row.created_by !== (user?.uid || user?.id)) {
+                await this.createNotification({
+                    tipo: 'carga_aprobada',
+                    titulo: 'Carga aprobada',
+                    mensaje: 'Tu carga fue aprobada, remito listo',
+                    target_user_id: row.created_by,
+                    entidad_tipo: 'carga',
+                    entidad_id: cargaId,
+                    link: `#logistica?tab=cargas&id=${cargaId}`,
+                    prioridad: 'normal',
+                });
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error approveCarga:', e.message);
+            return null;
+        }
+    },
+
+    async setCargaEstado(cargaId, estado) {
+        if (!['borrador','aprobada','en_curso','completada','cancelada'].includes(estado)) {
+            console.warn('[API] setCargaEstado: estado inválido', estado);
+            return null;
+        }
+        try {
+            const { error } = await supabaseClient
+                .from('cargas').update({ estado }).eq('id', cargaId);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error setCargaEstado:', e.message);
+            return null;
+        }
+    },
+
+    async setCargaRemitoPDF(cargaId, path) {
+        try {
+            const { error } = await supabaseClient
+                .from('cargas').update({ remito_pdf_url: path }).eq('id', cargaId);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error setCargaRemitoPDF:', e.message);
+            return null;
+        }
+    },
+
+    // Guarda path de la foto firmada + pasa la carga a 'completada' +
+    // dispara notif a PM dueño y a admin.
+    async setCargaRemitoFirmado(cargaId, path) {
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('cargas').update({
+                    remito_firmado_url: path,
+                    estado: 'completada',
+                }).eq('id', cargaId)
+                .select('id, evento_id, created_by, aprobada_por')
+                .maybeSingle();
+            if (error) throw error;
+
+            const link = `#logistica?tab=cargas&id=${cargaId}`;
+            // Notif al PM (target_role=pm, broad — refinable luego)
+            await this.createNotification({
+                tipo: 'remito_firmado',
+                titulo: 'Remito firmado recibido',
+                mensaje: 'La carga se completó y se subió la foto del remito.',
+                target_role: 'pm',
+                entidad_tipo: 'carga', entidad_id: cargaId, link,
+                prioridad: 'normal',
+            });
+            // Notif al admin
+            await this.createNotification({
+                tipo: 'remito_firmado',
+                titulo: 'Remito firmado recibido',
+                mensaje: 'Carga completada con foto del remito firmado.',
+                target_role: 'admin',
+                entidad_tipo: 'carga', entidad_id: cargaId, link,
+                prioridad: 'normal',
+            });
+            return true;
+        } catch (e) {
+            console.warn('[API] Error setCargaRemitoFirmado:', e.message);
+            return null;
+        }
+    },
+
+    async deleteCarga(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('cargas').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleteCarga:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 2 — Storage (bucket 'remitos')
+    // ═════════════════════════════════════════════════════════════
+
+    // Sube el PDF generado. `blob` es un Blob/File con MIME application/pdf.
+    // Devuelve el path interno (no la URL pública — bucket es privado, usar
+    // getRemitoSignedUrl para descargar).
+    async uploadRemitoPDF(cargaId, blob) {
+        const path = `${cargaId}/remito.pdf`;
+        try {
+            const { error } = await supabaseClient.storage
+                .from('remitos')
+                .upload(path, blob, {
+                    contentType: 'application/pdf',
+                    upsert: true,
+                    cacheControl: '60',
+                });
+            if (error) throw error;
+            return path;
+        } catch (e) {
+            console.warn('[API] Error uploadRemitoPDF:', e.message);
+            return null;
+        }
+    },
+
+    // Sube la foto del remito firmado. `file` es un File de un <input type="file">.
+    // Determina extensión por MIME o nombre. Devuelve path.
+    async uploadRemitoFirmado(cargaId, file) {
+        const ext = (() => {
+            if (!file) return 'jpg';
+            const fromType = (file.type || '').split('/')[1];
+            if (fromType && ['jpeg','png','webp'].includes(fromType)) {
+                return fromType === 'jpeg' ? 'jpg' : fromType;
+            }
+            const fromName = (file.name || '').split('.').pop()?.toLowerCase();
+            if (fromName && ['jpg','jpeg','png','webp'].includes(fromName)) return fromName === 'jpeg' ? 'jpg' : fromName;
+            return 'jpg';
+        })();
+        const path = `${cargaId}/firmado.${ext}`;
+        try {
+            const { error } = await supabaseClient.storage
+                .from('remitos')
+                .upload(path, file, {
+                    contentType: file?.type || 'image/jpeg',
+                    upsert: true,
+                    cacheControl: '60',
+                });
+            if (error) throw error;
+            return path;
+        } catch (e) {
+            console.warn('[API] Error uploadRemitoFirmado:', e.message);
+            return null;
+        }
+    },
+
+    // Genera signed URL temporal para descargar un objeto del bucket privado.
+    async getRemitoSignedUrl(path, expiresInSec = 3600) {
+        if (!path) return null;
+        try {
+            const { data, error } = await supabaseClient.storage
+                .from('remitos')
+                .createSignedUrl(path, expiresInSec);
+            if (error) throw error;
+            return data?.signedUrl || null;
+        } catch (e) {
+            console.warn('[API] Error getRemitoSignedUrl:', e.message);
+            return null;
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TANDA 2 — Estado taller en proyectos (helper)
+    // ═════════════════════════════════════════════════════════════
+
+    // Setea el estado_taller de un proyecto + dispara notif al PM creador.
+    // Llamado desde taller.js cuando el rol taller marca "listo".
+    async setEstadoTaller(proyectoId, estado) {
+        if (!['pendiente','en_armado','listo','despachado','cerrado'].includes(estado)) {
+            console.warn('[API] setEstadoTaller: estado inválido', estado);
+            return null;
+        }
+        const user = Auth.getUser?.();
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('proyectos')
+                .update({
+                    estado_taller: estado,
+                    estado_taller_updated_at: new Date().toISOString(),
+                    estado_taller_updated_by: user?.uid || user?.id || null,
+                })
+                .eq('id', proyectoId)
+                .select('id, nombre, created_by')
+                .maybeSingle();
+            if (error) throw error;
+
+            if (estado === 'listo') {
+                const titulo = (row?.nombre || 'Stand');
+                await this.createNotification({
+                    tipo: 'proyecto_listo',
+                    titulo: `Stand listo: ${titulo}`,
+                    mensaje: `${user?.name || 'Taller'} marcó el stand como listo`,
+                    target_role: 'pm',
+                    entidad_tipo: 'proyecto',
+                    entidad_id: proyectoId,
+                    link: `#proyectos/${proyectoId}`,
+                    prioridad: 'normal',
+                });
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] Error setEstadoTaller:', e.message);
+            return null;
+        }
+    },
 };

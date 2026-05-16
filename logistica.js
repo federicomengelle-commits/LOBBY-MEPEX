@@ -1,27 +1,38 @@
 /* =============================================
-   MEPEX Lobby — Módulo Logística
+   MEPEX Lobby — Módulo Logística (Tanda 2)
    =============================================
    Categoría: OPERACIONES
-   2 tabs: Vehículos, Movimientos
-   Cada movimiento = un viaje con checks de estado
-   y remito de carga vinculado.
+   3 tabs internos:
+     - Cargas       (CRUD + flujo aprobación admin)
+     - Vehículos    (CRUD)
+     - Personas     (CRUD básico — choferes y ayudantes)
+
+   Schema: tabla `cargas` (UUID) en lugar del `logistica_movimientos`
+   legacy. Coexisten pero este módulo solo opera sobre la nueva.
+
+   Deep-links soportados:
+     #logistica?tab=cargas&id=<uuid>
+     #logistica?tab=vehiculos&id=<uuid>
+     #logistica?tab=personas&id=<uuid>
    ============================================= */
 
 const LogisticaModule = {
 
     // ─── State ───
-    _activeTab: 'vehiculos',
+    _activeTab: 'cargas',
+    _cargas: [],
     _vehiculos: [],
-    _movimientos: [],
-    _remito: [],
-    _events: [],
-    _projects: [],
+    _personas: [],
+    _eventos: [],
+    _proyectosPorEvento: {},
+    _selectedCargaId: null,
     _selectedVehiculoId: null,
-    _selectedMovimientoId: null,
+    _selectedPersonaId: null,
     _filterEvento: '',
-    _filterVehiculo: '',
+    _filterFase: '',
     _filterEstado: '',
     _filterFecha: '',
+    _personasFilterRol: '',
 
     // ─── Render principal ───
     async render() {
@@ -31,26 +42,24 @@ const LogisticaModule = {
         const content = document.getElementById('mainContent');
         if (!content) return;
 
-        // Fase 5 — deep link: #logistica?tab=movimientos&id=<uuid>
+        // Deep-link
         const params = this._parseHashParams();
-        if (params.tab === 'movimientos') {
-            this._activeTab = 'movimientos';
-            this._selectedVehiculoId = null;
-            if (params.id) this._selectedMovimientoId = params.id;
+        if (params.tab === 'cargas') {
+            this._activeTab = 'cargas';
+            if (params.id) this._selectedCargaId = params.id;
         } else if (params.tab === 'vehiculos') {
             this._activeTab = 'vehiculos';
-            this._selectedMovimientoId = null;
             if (params.id) this._selectedVehiculoId = params.id;
+        } else if (params.tab === 'personas') {
+            this._activeTab = 'personas';
+            if (params.id) this._selectedPersonaId = params.id;
         }
 
         content.innerHTML = this._buildShell();
+        this._injectStyles();
         this._attachTabEvents();
 
-        if (this._activeTab === 'vehiculos') {
-            await this._loadVehiculos();
-        } else {
-            await this._loadMovimientos();
-        }
+        await this._loadActiveTab();
     },
 
     _parseHashParams() {
@@ -64,15 +73,12 @@ const LogisticaModule = {
     },
 
     _buildShell() {
+        const tabs = [
+            { id: 'cargas',     icon: '🚚', label: 'Cargas' },
+            { id: 'vehiculos',  icon: '🚛', label: 'Vehículos' },
+            { id: 'personas',   icon: '👤', label: 'Personas' },
+        ];
         return `
-            <style>
-                /* Fase 5 — vista inversa de movimientos en ficha vehículo */
-                .log-section-count { font-family:'Space Mono',monospace; font-size:10px; color:#00A9C1;
-                    background:#00A9C115; border:1px solid #00A9C130; border-radius:4px;
-                    padding:1px 6px; margin-left:6px; vertical-align:middle; }
-                .log-mov-row { transition: background 150ms ease; }
-                .log-mov-row:hover { background:#1a1a1a; }
-            </style>
             <div class="module-view logistica-module">
                 <div class="module-subheader">
                     <div class="module-subheader-top">
@@ -94,14 +100,12 @@ const LogisticaModule = {
                         </div>
                     </div>
                     <div class="module-section-tabs">
-                        <button class="section-tab ${this._activeTab === 'vehiculos' ? 'active' : ''}" data-tab="vehiculos">
-                            <span class="section-tab-icon">🚛</span>
-                            <span class="section-tab-text">Vehículos</span>
-                        </button>
-                        <button class="section-tab ${this._activeTab === 'movimientos' ? 'active' : ''}" data-tab="movimientos">
-                            <span class="section-tab-icon">📦</span>
-                            <span class="section-tab-text">Movimientos</span>
-                        </button>
+                        ${tabs.map(t => `
+                            <button class="section-tab ${this._activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">
+                                <span class="section-tab-icon">${t.icon}</span>
+                                <span class="section-tab-text">${t.label}</span>
+                            </button>
+                        `).join('')}
                     </div>
                 </div>
                 <div class="module-content" id="logisticaContent">
@@ -116,1153 +120,1354 @@ const LogisticaModule = {
     _attachTabEvents() {
         document.querySelectorAll('.section-tab[data-tab]').forEach(btn => {
             btn.addEventListener('click', async () => {
+                if (this._activeTab === btn.dataset.tab) return;
                 this._activeTab = btn.dataset.tab;
+                this._selectedCargaId = null;
                 this._selectedVehiculoId = null;
-                this._selectedMovimientoId = null;
-                document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const lc = document.getElementById('logisticaContent');
-                if (lc) lc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
-                if (this._activeTab === 'vehiculos') {
-                    await this._loadVehiculos();
-                } else {
-                    await this._loadMovimientos();
-                }
+                this._selectedPersonaId = null;
+                document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
+                const c = document.getElementById('logisticaContent');
+                if (c) c.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+                await this._loadActiveTab();
             });
         });
     },
 
-    // ════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════
-
-    _isReadOnly() {
-        const user = Auth.getUser();
-        return user ? Data.isReadOnly(user.role, 'logistica') : true;
+    async _loadActiveTab() {
+        if (this._activeTab === 'cargas') return this._loadCargas();
+        if (this._activeTab === 'vehiculos') return this._loadVehiculos();
+        if (this._activeTab === 'personas') return this._loadPersonas();
     },
 
-    _formatDate(d) {
-        if (!d) return '—';
-        return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
-    },
+    // ═════════════════════════════════════════════════════════════
+    //  TAB CARGAS
+    // ═════════════════════════════════════════════════════════════
 
-    _formatDateTime(d) {
-        if (!d) return '—';
-        return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    },
-
-    _getVencimientoClass(fecha) {
-        if (!fecha) return '';
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const d = new Date(fecha);
-        d.setHours(0, 0, 0, 0);
-        const in30 = new Date(today);
-        in30.setDate(in30.getDate() + 30);
-        if (d < today) return 'log-vencido';
-        if (d <= in30) return 'log-proximo';
-        return 'log-vigente';
-    },
-
-    _getVencimientoLabel(fecha) {
-        if (!fecha) return '';
-        const cls = this._getVencimientoClass(fecha);
-        if (cls === 'log-vencido') return 'VENCIDO';
-        if (cls === 'log-proximo') return 'Próximo';
-        return '';
-    },
-
-    _getEstadoVehiculoColor(estado) {
-        switch (estado) {
-            case 'disponible': return '#00CC88';
-            case 'en_uso': return '#00A9C1';
-            case 'en_service': return '#F28D15';
-            case 'baja': return '#ff4444';
-            default: return '#888';
-        }
-    },
-
-    _getEstadoVehiculoLabel(estado) {
-        switch (estado) {
-            case 'disponible': return 'Disponible';
-            case 'en_uso': return 'En uso';
-            case 'en_service': return 'En service';
-            case 'baja': return 'Baja';
-            default: return estado || '—';
-        }
-    },
-
-
-    // ════════════════════════════════════════════════════
-    //  TAB: VEHÍCULOS
-    // ════════════════════════════════════════════════════
-
-    async _loadVehiculos() {
+    async _loadCargas() {
         try {
-            const { data, error } = await supabaseClient
-                .from('logistica_vehiculos')
-                .select('*')
-                .eq('_deleted', false)
-                .order('nombre', { ascending: true });
-            if (error) throw error;
-            this._vehiculos = data || [];
-        } catch (e) {
-            console.warn('[Logistica] Error loading vehiculos:', e);
-            this._vehiculos = [];
-        }
-        this._renderVehiculos();
-    },
-
-    _renderVehiculos() {
-        const lc = document.getElementById('logisticaContent');
-        if (!lc) return;
-
-        if (this._selectedVehiculoId) {
-            this._renderFichaVehiculo();
-            return;
-        }
-
-        const readOnly = this._isReadOnly();
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        lc.innerHTML = `
-            <div class="log-toolbar">
-                <h3 class="log-toolbar-title">Flota de Vehículos</h3>
-                ${!readOnly ? '<button class="log-btn-add" id="logAddVehiculo">+ Nuevo Vehículo</button>' : ''}
-            </div>
-            ${this._vehiculos.length === 0 ? `
-                <div class="log-empty">
-                    <div class="log-empty-icon">🚛</div>
-                    <h3>Sin vehículos cargados</h3>
-                    <p>Agregá vehículos propios y terceros frecuentes para gestionar la flota</p>
-                </div>
-            ` : `
-                <div class="log-table-wrap">
-                    <table class="log-table">
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Tipo</th>
-                                <th>Patente</th>
-                                <th>Contacto / Chofer</th>
-                                <th>Estado</th>
-                                <th>VTV</th>
-                                <th>Seguro</th>
-                                <th>Últ. Service</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${this._vehiculos.map(v => {
-                                const estadoColor = this._getEstadoVehiculoColor(v.estado);
-                                const vtvClass = this._getVencimientoClass(v.vtv_vencimiento);
-                                const segClass = this._getVencimientoClass(v.seguro_vencimiento);
-                                const vtvLabel = this._getVencimientoLabel(v.vtv_vencimiento);
-                                const segLabel = this._getVencimientoLabel(v.seguro_vencimiento);
-
-                                return `
-                                    <tr class="log-row" data-id="${v.id}">
-                                        <td class="log-cell-name">${v.nombre}</td>
-                                        <td><span class="log-badge log-badge-${v.tipo}">${v.tipo === 'propio' ? 'Propio' : 'Tercero'}</span></td>
-                                        <td class="log-cell-mono">${v.patente || '—'}</td>
-                                        <td>${v.contacto || '—'}</td>
-                                        <td><span class="log-estado-dot" style="background:${estadoColor};"></span> ${this._getEstadoVehiculoLabel(v.estado)}</td>
-                                        <td class="${vtvClass}">${this._formatDate(v.vtv_vencimiento)} ${vtvLabel ? `<span class="log-alert-tag ${vtvClass}">${vtvLabel}</span>` : ''}</td>
-                                        <td class="${segClass}">${this._formatDate(v.seguro_vencimiento)} ${segLabel ? `<span class="log-alert-tag ${segClass}">${segLabel}</span>` : ''}</td>
-                                        <td>${this._formatDate(v.ultimo_service)}</td>
-                                    </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `}
-        `;
-
-        // Events
-        if (!readOnly) {
-            document.getElementById('logAddVehiculo')?.addEventListener('click', () => this._showVehiculoModal());
-        }
-        lc.querySelectorAll('.log-row[data-id]').forEach(row => {
-            row.addEventListener('click', () => {
-                this._selectedVehiculoId = row.dataset.id;
-                this._renderFichaVehiculo();
-            });
-        });
-    },
-
-    // ─── Ficha Vehículo ───
-
-    async _renderFichaVehiculo() {
-        const lc = document.getElementById('logisticaContent');
-        if (!lc) return;
-
-        const v = this._vehiculos.find(x => String(x.id) === String(this._selectedVehiculoId));
-        if (!v) { this._selectedVehiculoId = null; this._renderVehiculos(); return; }
-
-        // Spinner mientras lazy-loadeamos personal + movimientos (Fase 5)
-        lc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
-
-        const readOnly = this._isReadOnly();
-        const estadoColor = this._getEstadoVehiculoColor(v.estado);
-        const vtvClass = this._getVencimientoClass(v.vtv_vencimiento);
-        const segClass = this._getVencimientoClass(v.seguro_vencimiento);
-        const vtvLabel = this._getVencimientoLabel(v.vtv_vencimiento);
-        const segLabel = this._getVencimientoLabel(v.seguro_vencimiento);
-
-        // Lazy-load personal para resolver chofer habitual (Fase 5)
-        if (!this._personalListChoferes) {
-            try {
-                const { data } = await supabaseClient
-                    .from('rrhh_personal')
-                    .select('id, nombre, rol')
-                    .eq('_deleted', false)
-                    .eq('estado', 'activo')
-                    .order('nombre');
-                this._personalListChoferes = data || [];
-            } catch { this._personalListChoferes = []; }
-        }
-
-        // Load movimientos del vehículo (vista inversa, Fase 5)
-        let movimientos = [];
-        try {
-            movimientos = await API.getMovimientosDeVehiculo(v.id);
-        } catch (e) { /* continue */ }
-
-        lc.innerHTML = `
-            <div class="log-ficha">
-                <div class="log-ficha-topbar">
-                    <button class="log-btn-back" id="logBack">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                        Volver
-                    </button>
-                    <div class="log-ficha-actions">
-                        ${!readOnly ? `
-                            <button class="log-btn-action" id="logEditVehiculo">Editar</button>
-                            <button class="log-btn-action log-btn-danger" id="logDeleteVehiculo">Dar de baja</button>
-                        ` : ''}
-                    </div>
-                </div>
-
-                <div class="log-ficha-header">
-                    <h2 class="log-ficha-title">${v.nombre}</h2>
-                    <div class="log-ficha-badges">
-                        <span class="log-badge log-badge-${v.tipo}">${v.tipo === 'propio' ? 'Propio' : 'Tercero'}</span>
-                        <span class="log-estado-badge" style="color:${estadoColor};border-color:${estadoColor}40;background:${estadoColor}15;">
-                            ${this._getEstadoVehiculoLabel(v.estado)}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="log-ficha-grid">
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Patente</span>
-                        <span class="log-field-value log-mono">${v.patente || '—'}</span>
-                    </div>
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Chofer habitual</span>
-                        <span class="log-field-value">${this._getChoferHabitualName(v)}</span>
-                    </div>
-                    ${v.contacto ? `
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Contacto adicional</span>
-                        <span class="log-field-value">${v.contacto}</span>
-                    </div>
-                    ` : ''}
-                    <div class="log-ficha-field ${vtvClass}">
-                        <span class="log-field-label">VTV Vencimiento ${vtvLabel ? `<span class="log-alert-tag ${vtvClass}">${vtvLabel}</span>` : ''}</span>
-                        <span class="log-field-value">${this._formatDate(v.vtv_vencimiento)}</span>
-                    </div>
-                    <div class="log-ficha-field ${segClass}">
-                        <span class="log-field-label">Seguro Vencimiento ${segLabel ? `<span class="log-alert-tag ${segClass}">${segLabel}</span>` : ''}</span>
-                        <span class="log-field-value">${this._formatDate(v.seguro_vencimiento)}</span>
-                    </div>
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Último Service</span>
-                        <span class="log-field-value">${this._formatDate(v.ultimo_service)}</span>
-                    </div>
-                </div>
-
-                ${v.notas ? `
-                    <div class="log-ficha-notas">
-                        <span class="log-field-label">Notas</span>
-                        <p>${v.notas}</p>
-                    </div>
-                ` : ''}
-
-                <!-- Movimientos del vehículo (vista inversa, Fase 5) -->
-                <div class="log-section">
-                    <h3 class="log-section-title">
-                        Movimientos
-                        <span class="log-section-count">${movimientos.length > 0 ? movimientos.length : ''}</span>
-                    </h3>
-                    ${movimientos.length === 0 ? '<p class="log-empty-small">Sin movimientos registrados</p>' : `
-                        <table class="log-table log-table-compact">
-                            <thead><tr><th>Fecha</th><th>Hora</th><th>Origen → Destino</th><th>Evento</th><th>Estado</th></tr></thead>
-                            <tbody>
-                                ${movimientos.slice(0, 20).map(m => `
-                                    <tr class="log-mov-row" data-mov-id="${m.id}" style="cursor:pointer" title="Abrir movimiento">
-                                        <td class="log-mono">${this._formatDate(m.fecha)}</td>
-                                        <td class="log-mono">${m.horaProgramada || '—'}</td>
-                                        <td>${m.origen} → ${m.destino}</td>
-                                        <td>${m.eventoNombre || '—'}</td>
-                                        <td>${m.estado || 'pendiente'}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                        ${movimientos.length > 20 ? `<p class="log-empty-small" style="margin-top:6px;font-size:11px;">Mostrando 20 más recientes de ${movimientos.length}</p>` : ''}
-                    `}
-                </div>
-            </div>
-        `;
-
-        // Events
-        document.getElementById('logBack')?.addEventListener('click', () => {
-            this._selectedVehiculoId = null;
-            this._renderVehiculos();
-        });
-        if (!readOnly) {
-            document.getElementById('logEditVehiculo')?.addEventListener('click', () => this._showVehiculoModal(v.id));
-            document.getElementById('logDeleteVehiculo')?.addEventListener('click', () => this._deleteVehiculo(v.id));
-        }
-
-        // Click en fila de movimiento → abrir ficha del movimiento
-        document.querySelectorAll('.log-mov-row[data-mov-id]').forEach(row => {
-            row.addEventListener('click', () => {
-                const movId = row.dataset.movId;
-                if (!movId) return;
-                this._activeView = 'movimientos';
-                this._selectedVehiculoId = null;
-                this._selectedMovimientoId = movId;
-                // Forzar re-render del shell para que muestre la pestaña Movimientos
-                if (typeof this.render === 'function') {
-                    this.render();
-                } else {
-                    this._renderMovimientos();
-                }
-            });
-        });
-    },
-
-    // ─── Modal Vehículo ───
-
-    async _showVehiculoModal(editId) {
-        const item = editId ? this._vehiculos.find(v => String(v.id) === String(editId)) : null;
-        const title = item ? 'Editar Vehículo' : 'Nuevo Vehículo';
-
-        // Cargar personal para selector de chofer habitual (Fase 5)
-        if (!this._personalListChoferes) {
-            try {
-                const { data } = await supabaseClient
-                    .from('rrhh_personal')
-                    .select('id, nombre, rol')
-                    .eq('_deleted', false)
-                    .eq('estado', 'activo')
-                    .order('nombre');
-                this._personalListChoferes = data || [];
-            } catch { this._personalListChoferes = []; }
-        }
-        const choferes = (this._personalListChoferes || []).filter(p => (p.rol || '').toLowerCase() === 'chofer');
-        const otrosPers = (this._personalListChoferes || []).filter(p => (p.rol || '').toLowerCase() !== 'chofer');
-
-        Modal.open({
-            title,
-            size: 'medium',
-            body: `
-                <div style="display:flex;flex-direction:column;gap:16px;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Nombre</label>
-                            <input type="text" id="logVNombre" class="form-input" value="${item ? item.nombre : ''}" placeholder="Ej: Cargo 915" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Tipo</label>
-                            <select id="logVTipo" class="form-input form-select" style="font-size:1rem;padding:12px;">
-                                <option value="propio" ${item?.tipo === 'propio' ? 'selected' : ''}>Propio</option>
-                                <option value="tercero" ${item?.tipo === 'tercero' ? 'selected' : ''}>Tercero</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Patente</label>
-                            <input type="text" id="logVPatente" class="form-input" value="${item?.patente || ''}" placeholder="Ej: AB 123 CD" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Chofer habitual</label>
-                            <select id="logVChoferHabitual" class="form-input form-select" style="font-size:1rem;padding:12px;">
-                                <option value="">— Sin asignar (o tercero) —</option>
-                                ${choferes.length > 0 ? `<optgroup label="Choferes">${choferes.map(p => `<option value="${p.id}" ${item?.chofer_habitual_id === p.id ? 'selected' : ''}>${p.nombre}</option>`).join('')}</optgroup>` : ''}
-                                ${otrosPers.length > 0 ? `<optgroup label="Otros">${otrosPers.map(p => `<option value="${p.id}" ${item?.chofer_habitual_id === p.id ? 'selected' : ''}>${p.nombre} (${p.rol || ''})</option>`).join('')}</optgroup>` : ''}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="form-label">Contacto adicional</label>
-                        <input type="text" id="logVContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Teléfono, email u otro contacto (opcional)" style="font-size:1rem;padding:12px;">
-                    </div>
-                    <div>
-                        <label class="form-label">Estado</label>
-                        <select id="logVEstado" class="form-input form-select" style="font-size:1rem;padding:12px;">
-                            <option value="disponible" ${(!item || item.estado === 'disponible') ? 'selected' : ''}>Disponible</option>
-                            <option value="en_uso" ${item?.estado === 'en_uso' ? 'selected' : ''}>En uso</option>
-                            <option value="en_service" ${item?.estado === 'en_service' ? 'selected' : ''}>En service</option>
-                            <option value="baja" ${item?.estado === 'baja' ? 'selected' : ''}>Baja</option>
-                        </select>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">VTV Vencimiento</label>
-                            <input type="date" id="logVVtv" class="form-input" value="${item?.vtv_vencimiento || ''}" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Seguro Vencimiento</label>
-                            <input type="date" id="logVSeguro" class="form-input" value="${item?.seguro_vencimiento || ''}" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Último Service</label>
-                            <input type="date" id="logVService" class="form-input" value="${item?.ultimo_service || ''}" style="font-size:1rem;padding:12px;">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="form-label">Notas</label>
-                        <textarea id="logVNotas" class="form-input" rows="2" placeholder="Opcional" style="font-size:1rem;padding:12px;">${item?.notas || ''}</textarea>
-                    </div>
-                </div>
-            `,
-            footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn-primary" id="logVSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
-            `,
-        });
-
-        setTimeout(() => {
-            document.getElementById('logVSave')?.addEventListener('click', async () => {
-                const nombre = document.getElementById('logVNombre')?.value?.trim();
-                if (!nombre) { Toast.warning('Ingresá el nombre del vehículo'); return; }
-
-                const payload = {
-                    nombre,
-                    tipo: document.getElementById('logVTipo')?.value || 'propio',
-                    patente: document.getElementById('logVPatente')?.value?.trim() || null,
-                    chofer_habitual_id: document.getElementById('logVChoferHabitual')?.value || null,
-                    contacto: document.getElementById('logVContacto')?.value?.trim() || null,
-                    estado: document.getElementById('logVEstado')?.value || 'disponible',
-                    vtv_vencimiento: document.getElementById('logVVtv')?.value || null,
-                    seguro_vencimiento: document.getElementById('logVSeguro')?.value || null,
-                    ultimo_service: document.getElementById('logVService')?.value || null,
-                    notas: document.getElementById('logVNotas')?.value?.trim() || null,
-                    _deleted: false,
-                };
-
-                try {
-                    if (editId) {
-                        await supabaseClient.from('logistica_vehiculos').update(payload).eq('id', editId);
-                        Toast.success('Vehículo actualizado');
-                    } else {
-                        await supabaseClient.from('logistica_vehiculos').insert(payload);
-                        Toast.success('Vehículo creado');
-                    }
-                    Modal.close();
-                    await this._loadVehiculos();
-                } catch (e) {
-                    console.error('[Logistica] Error saving vehiculo:', e);
-                    Toast.error('Error al guardar');
-                }
-            });
-            document.getElementById('logVNombre')?.focus();
-        }, 100);
-    },
-
-    async _deleteVehiculo(id) {
-        const ok = await Modal.confirm({ title: 'Dar de baja vehículo', message: '¿Dar de baja este vehículo?', danger: true });
-        if (!ok) return;
-        try {
-            await supabaseClient.from('logistica_vehiculos').update({ _deleted: true }).eq('id', id);
-            Toast.success('Vehículo dado de baja');
-            this._selectedVehiculoId = null;
-            await this._loadVehiculos();
-        } catch (e) {
-            Toast.error('Error al eliminar');
-        }
-    },
-
-
-    // ════════════════════════════════════════════════════
-    //  TAB: MOVIMIENTOS
-    // ════════════════════════════════════════════════════
-
-    async _loadMovimientos() {
-        try {
-            const [movRes, vehRes, evRes, projRes, persRes] = await Promise.all([
-                supabaseClient.from('logistica_movimientos').select('*').eq('_deleted', false).order('fecha', { ascending: false }),
-                supabaseClient.from('logistica_vehiculos').select('*').eq('_deleted', false).order('nombre'),
-                API.getEvents(),
-                API.getProjects(),
-                supabaseClient.from('rrhh_personal').select('id, nombre, rol').eq('_deleted', false).eq('estado', 'activo').order('nombre'),
+            const filters = {};
+            if (this._filterEvento) filters.eventoId = this._filterEvento;
+            if (this._filterFase) filters.fase = this._filterFase;
+            if (this._filterEstado) filters.estado = this._filterEstado;
+            const [cargas, eventos, vehiculos, personas] = await Promise.all([
+                API.getCargas(filters),
+                this._eventos.length ? Promise.resolve(this._eventos) : API.getEvents(),
+                API.getVehiculos({ soloActivos: false }),
+                API.getPersonas({ soloActivos: false }),
             ]);
-            if (movRes.error) throw movRes.error;
-            this._movimientos = movRes.data || [];
-            this._vehiculos = vehRes.data || [];
-            this._events = evRes || [];
-            this._projects = projRes || [];
-            this._personalListChoferes = persRes.data || [];
+            this._cargas = cargas || [];
+            this._eventos = eventos || [];
+            this._vehiculos = vehiculos || [];
+            this._personas = personas || [];
+            this._renderCargasTab();
         } catch (e) {
-            console.warn('[Logistica] Error loading movimientos:', e);
-            this._movimientos = [];
+            console.warn('[Logistica] Error _loadCargas:', e.message);
+            this._renderCargasTab();
         }
-        this._renderMovimientos();
     },
 
-    _getMovimientoEstado(m) {
-        if (m.check_retorno) return { label: 'Completado', color: '#00CC88', icon: '✅' };
-        if (m.check_descarga) return { label: 'En destino', color: '#9B7DFF', icon: '📍' };
-        if (m.check_llegada) return { label: 'Llegó', color: '#00A9C1', icon: '🏁' };
-        if (m.check_salida) return { label: 'En viaje', color: '#F28D15', icon: '🚛' };
-        return { label: 'Programado', color: '#888', icon: '📋' };
-    },
+    _renderCargasTab() {
+        const c = document.getElementById('logisticaContent');
+        if (!c) return;
+        const user = Auth.getUser();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
 
-    _getEventName(eventoId) {
-        if (!eventoId) return '—';
-        const ev = this._events.find(e => String(e.id) === String(eventoId));
-        return ev ? (ev.name || ev.nombre || '—') : '—';
-    },
-
-    _getProjectName(proyectoId) {
-        if (!proyectoId) return '—';
-        const p = this._projects.find(x => String(x.id) === String(proyectoId));
-        return p ? (p.name || p.nombre || '—') : '—';
-    },
-
-    _getVehiculoName(vehiculoId) {
-        if (!vehiculoId) return '—';
-        const v = this._vehiculos.find(x => String(x.id) === String(vehiculoId));
-        return v ? v.nombre : '—';
-    },
-
-    _getChoferDisplay(m) {
-        // Post-Fase 1: chofer es FK a rrhh_personal (chofer_id) con fallback a
-        // texto libre (chofer_nombre_libre) para terceros.
-        if (m?.chofer_id && this._personalListChoferes) {
-            const p = this._personalListChoferes.find(x => x.id === m.chofer_id);
-            if (p) return p.nombre;
-        }
-        return m?.chofer_nombre_libre || '—';
-    },
-
-    _getChoferHabitualName(v) {
-        // Fase 5: vehículos con FK chofer_habitual_id → rrhh_personal.
-        if (!v?.chofer_habitual_id) return '—';
-        const list = this._personalListChoferes || [];
-        const p = list.find(x => x.id === v.chofer_habitual_id);
-        return p ? p.nombre : '(no encontrado)';
-    },
-
-    _renderMovimientos() {
-        const lc = document.getElementById('logisticaContent');
-        if (!lc) return;
-
-        if (this._selectedMovimientoId) {
-            this._renderFichaMovimiento();
-            return;
+        // Filter visible cargas by fecha (search opcional)
+        let visible = this._cargas;
+        if (this._filterFecha) {
+            visible = visible.filter(x => x.fecha === this._filterFecha);
         }
 
-        const readOnly = this._isReadOnly();
+        // Count pending approval (admin banner)
+        const pendientes = this._cargas.filter(x => x.estado === 'borrador').length;
 
-        // Apply filters
-        let filtered = [...this._movimientos];
-        if (this._filterEvento) filtered = filtered.filter(m => String(m.evento_id) === String(this._filterEvento));
-        if (this._filterVehiculo) filtered = filtered.filter(m => String(m.vehiculo_id) === String(this._filterVehiculo));
-        if (this._filterEstado) {
-            filtered = filtered.filter(m => {
-                const est = this._getMovimientoEstado(m);
-                return est.label === this._filterEstado;
-            });
-        }
-        if (this._filterFecha) filtered = filtered.filter(m => m.fecha === this._filterFecha);
-
-        // Unique events for filter
-        const eventIds = [...new Set(this._movimientos.map(m => m.evento_id).filter(Boolean))];
-
-        lc.innerHTML = `
+        c.innerHTML = `
+            ${isAdmin && pendientes > 0 ? `
+                <div class="log-admin-banner">
+                    <span class="log-admin-icon">⏳</span>
+                    <span><strong>${pendientes}</strong> carga${pendientes === 1 ? '' : 's'} pendiente${pendientes === 1 ? '' : 's'} de aprobación</span>
+                </div>
+            ` : ''}
             <div class="log-toolbar">
-                <h3 class="log-toolbar-title">Movimientos</h3>
-                ${!readOnly ? '<button class="log-btn-add" id="logAddMov">+ Nuevo Movimiento</button>' : ''}
-            </div>
-            <div class="log-filters">
-                <select class="log-filter-select" id="logFilterEvento">
-                    <option value="">Todos los eventos</option>
-                    ${eventIds.map(id => `<option value="${id}" ${this._filterEvento === String(id) ? 'selected' : ''}>${this._getEventName(id)}</option>`).join('')}
-                </select>
-                <select class="log-filter-select" id="logFilterVehiculo">
-                    <option value="">Todos los vehículos</option>
-                    ${this._vehiculos.map(v => `<option value="${v.id}" ${this._filterVehiculo === String(v.id) ? 'selected' : ''}>${v.nombre}</option>`).join('')}
-                </select>
-                <select class="log-filter-select" id="logFilterEstado">
-                    <option value="">Todos los estados</option>
-                    <option value="Programado" ${this._filterEstado === 'Programado' ? 'selected' : ''}>Programado</option>
-                    <option value="En viaje" ${this._filterEstado === 'En viaje' ? 'selected' : ''}>En viaje</option>
-                    <option value="Llegó" ${this._filterEstado === 'Llegó' ? 'selected' : ''}>Llegó</option>
-                    <option value="En destino" ${this._filterEstado === 'En destino' ? 'selected' : ''}>En destino</option>
-                    <option value="Completado" ${this._filterEstado === 'Completado' ? 'selected' : ''}>Completado</option>
-                </select>
-                <input type="date" class="log-filter-select" id="logFilterFecha" value="${this._filterFecha}" placeholder="Fecha">
+                <div class="log-filters">
+                    <select class="log-filter" id="logFiltroEvento">
+                        <option value="">Todos los eventos</option>
+                        ${this._eventos.map(ev => `
+                            <option value="${ev.id}" ${this._filterEvento === ev.id ? 'selected' : ''}>${this._esc(ev.name || '—')}</option>
+                        `).join('')}
+                    </select>
+                    <select class="log-filter" id="logFiltroFase">
+                        <option value="">Todas las fases</option>
+                        <option value="armado" ${this._filterFase === 'armado' ? 'selected' : ''}>Armado</option>
+                        <option value="desarme" ${this._filterFase === 'desarme' ? 'selected' : ''}>Desarme</option>
+                        <option value="intermedio" ${this._filterFase === 'intermedio' ? 'selected' : ''}>Intermedio</option>
+                    </select>
+                    <select class="log-filter" id="logFiltroEstado">
+                        <option value="">Todos los estados</option>
+                        <option value="borrador" ${this._filterEstado === 'borrador' ? 'selected' : ''}>Borrador</option>
+                        <option value="aprobada" ${this._filterEstado === 'aprobada' ? 'selected' : ''}>Aprobada</option>
+                        <option value="en_curso" ${this._filterEstado === 'en_curso' ? 'selected' : ''}>En curso</option>
+                        <option value="completada" ${this._filterEstado === 'completada' ? 'selected' : ''}>Completada</option>
+                        <option value="cancelada" ${this._filterEstado === 'cancelada' ? 'selected' : ''}>Cancelada</option>
+                    </select>
+                    <input type="date" class="log-filter" id="logFiltroFecha" value="${this._filterFecha}">
+                </div>
+                <button class="btn-primary" id="logNuevaCarga">
+                    <span style="font-size:1rem;line-height:1">＋</span> Nueva carga
+                </button>
             </div>
 
-            ${filtered.length === 0 ? `
+            <div class="log-split">
+                <div class="log-table-wrap">
+                    ${this._renderCargasTable(visible, isAdmin)}
+                </div>
+                <div class="log-panel" id="logPanel">
+                    ${this._selectedCargaId ? '' : this._renderEmptyPanel('Seleccioná una carga para ver el detalle')}
+                </div>
+            </div>
+        `;
+
+        this._attachCargasEvents();
+        if (this._selectedCargaId) {
+            this._renderCargaPanel(this._selectedCargaId);
+        }
+    },
+
+    _renderCargasTable(rows, isAdmin) {
+        if (!rows.length) {
+            return `
                 <div class="log-empty">
-                    <div class="log-empty-icon">📦</div>
-                    <h3>Sin movimientos</h3>
-                    <p>Creá un movimiento para registrar un viaje de transporte</p>
+                    <div class="log-empty-icon">🚚</div>
+                    <p>No hay cargas con esos filtros.</p>
+                    <p class="log-empty-hint">Creá una nueva con el botón de arriba.</p>
                 </div>
-            ` : `
-                <div class="log-mov-grid">
-                    ${filtered.map(m => this._buildMovCard(m)).join('')}
-                </div>
-            `}
-        `;
-
-        // Filter events
-        document.getElementById('logFilterEvento')?.addEventListener('change', (e) => { this._filterEvento = e.target.value; this._renderMovimientos(); });
-        document.getElementById('logFilterVehiculo')?.addEventListener('change', (e) => { this._filterVehiculo = e.target.value; this._renderMovimientos(); });
-        document.getElementById('logFilterEstado')?.addEventListener('change', (e) => { this._filterEstado = e.target.value; this._renderMovimientos(); });
-        document.getElementById('logFilterFecha')?.addEventListener('change', (e) => { this._filterFecha = e.target.value; this._renderMovimientos(); });
-
-        if (!readOnly) {
-            document.getElementById('logAddMov')?.addEventListener('click', () => this._showMovimientoModal());
+            `;
         }
-        lc.querySelectorAll('.log-mov-card[data-id]').forEach(card => {
-            card.addEventListener('click', () => {
-                this._selectedMovimientoId = card.dataset.id;
-                this._renderFichaMovimiento();
-            });
-        });
-    },
-
-    _buildMovCard(m) {
-        const estado = this._getMovimientoEstado(m);
-        const vehiculo = this._getVehiculoName(m.vehiculo_id);
-        const evento = this._getEventName(m.evento_id);
-
         return `
-            <div class="log-mov-card" data-id="${m.id}">
-                <div class="log-mov-card-top">
-                    <span class="log-mov-estado" style="color:${estado.color};border-color:${estado.color}40;background:${estado.color}15;">
-                        ${estado.icon} ${estado.label}
-                    </span>
-                    <span class="log-mov-fecha">${this._formatDate(m.fecha)}${m.hora_programada ? ' ' + m.hora_programada : ''}</span>
-                </div>
-                <div class="log-mov-ruta">
-                    <span class="log-mov-punto">${m.origen || '?'}</span>
-                    <span class="log-mov-arrow">→</span>
-                    <span class="log-mov-punto">${m.destino || '?'}</span>
-                </div>
-                <div class="log-mov-info">
-                    <div class="log-mov-row"><span class="log-mov-label">Evento</span><span>${evento}</span></div>
-                    <div class="log-mov-row"><span class="log-mov-label">Vehículo</span><span>${vehiculo}</span></div>
-                    <div class="log-mov-row"><span class="log-mov-label">Chofer</span><span>${this._getChoferDisplay(m)}</span></div>
-                </div>
-                <div class="log-mov-checks">
-                    <div class="log-check-mini ${m.check_salida ? 'done' : ''}">Salió</div>
-                    <div class="log-check-mini ${m.check_llegada ? 'done' : ''}">Llegó</div>
-                    <div class="log-check-mini ${m.check_descarga ? 'done' : ''}">Carga</div>
-                    <div class="log-check-mini ${m.check_retorno ? 'done' : ''}">Volvió</div>
-                </div>
-            </div>
-        `;
-    },
-
-
-    // ─── Ficha Movimiento ───
-
-    async _renderFichaMovimiento() {
-        const lc = document.getElementById('logisticaContent');
-        if (!lc) return;
-
-        const m = this._movimientos.find(x => String(x.id) === String(this._selectedMovimientoId));
-        if (!m) { this._selectedMovimientoId = null; this._renderMovimientos(); return; }
-
-        // Load remito
-        lc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
-        await this._loadRemito(m.id);
-
-        const estado = this._getMovimientoEstado(m);
-        const readOnly = this._isReadOnly();
-
-        lc.innerHTML = `
-            <div class="log-ficha">
-                <div class="log-ficha-topbar">
-                    <button class="log-btn-back" id="logBack">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                        Volver
-                    </button>
-                    <div class="log-ficha-actions">
-                        ${!readOnly ? `
-                            <button class="log-btn-action" id="logEditMov">Editar</button>
-                            <button class="log-btn-action log-btn-danger" id="logDeleteMov">Eliminar</button>
-                        ` : ''}
-                    </div>
-                </div>
-
-                <div class="log-ficha-header">
-                    <div class="log-mov-ruta" style="font-size:1.3rem;">
-                        <span class="log-mov-punto">${m.origen || '?'}</span>
-                        <span class="log-mov-arrow">→</span>
-                        <span class="log-mov-punto">${m.destino || '?'}</span>
-                    </div>
-                    <span class="log-mov-estado" style="color:${estado.color};border-color:${estado.color}40;background:${estado.color}15;font-size:1rem;">
-                        ${estado.icon} ${estado.label}
-                    </span>
-                </div>
-
-                <div class="log-ficha-grid">
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Evento</span>
-                        <span class="log-field-value">${this._getEventName(m.evento_id)}</span>
-                    </div>
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Proyecto</span>
-                        <span class="log-field-value">${this._getProjectName(m.proyecto_id)}</span>
-                    </div>
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Vehículo</span>
-                        <span class="log-field-value">${this._getVehiculoName(m.vehiculo_id)}</span>
-                    </div>
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Chofer</span>
-                        <span class="log-field-value">${this._getChoferDisplay(m)}</span>
-                    </div>
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Fecha</span>
-                        <span class="log-field-value">${this._formatDate(m.fecha)}</span>
-                    </div>
-                    <div class="log-ficha-field">
-                        <span class="log-field-label">Hora programada</span>
-                        <span class="log-field-value log-mono">${m.hora_programada || '—'}</span>
-                    </div>
-                </div>
-
-                ${m.notas ? `<div class="log-ficha-notas"><span class="log-field-label">Notas</span><p>${m.notas}</p></div>` : ''}
-
-                <!-- Checks de estado — GRANDES para celular -->
-                <div class="log-section">
-                    <h3 class="log-section-title">Estado del Viaje</h3>
-                    <div class="log-checks-grid">
-                        ${this._buildBigCheck('salida', 'Salí', '🚀', m.check_salida, m)}
-                        ${this._buildBigCheck('llegada', 'Llegué', '🏁', m.check_llegada, m)}
-                        ${this._buildBigCheck('descarga', 'Descargué / Cargué', '📦', m.check_descarga, m)}
-                        ${this._buildBigCheck('retorno', 'Volví', '🏠', m.check_retorno, m)}
-                    </div>
-                </div>
-
-                <!-- Remito de carga -->
-                <div class="log-section">
-                    <h3 class="log-section-title">
-                        Remito de Carga
-                        ${!readOnly ? '<button class="log-btn-add-sm" id="logAddRemito">+ Agregar item</button>' : ''}
-                    </h3>
-                    <div id="logRemitoContent">
-                        ${this._renderRemitoTable(m.id)}
-                    </div>
-                </div>
-            </div>
-        `;
-
-        this._attachFichaMovEvents(m);
-    },
-
-    _buildBigCheck(key, label, icon, timestamp, mov) {
-        const done = !!timestamp;
-        const readOnly = this._isReadOnly();
-        // Determine if this check should be interactive:
-        // only the next unchecked step is clickable
-        const order = ['salida', 'llegada', 'descarga', 'retorno'];
-        const checkFields = ['check_salida', 'check_llegada', 'check_descarga', 'check_retorno'];
-        const idx = order.indexOf(key);
-        let canClick = false;
-        if (!done && !readOnly) {
-            // Can click if all previous are done
-            canClick = true;
-            for (let i = 0; i < idx; i++) {
-                if (!mov[checkFields[i]]) { canClick = false; break; }
-            }
-        }
-
-        return `
-            <button class="log-big-check ${done ? 'log-big-check-done' : ''} ${canClick ? 'log-big-check-active' : ''}"
-                    data-check="${key}" ${!canClick && !done ? 'disabled' : ''}>
-                <span class="log-big-check-icon">${icon}</span>
-                <span class="log-big-check-label">${label}</span>
-                ${done ? `<span class="log-big-check-time">${this._formatDateTime(timestamp)}</span>` : ''}
-            </button>
-        `;
-    },
-
-    _renderRemitoTable(movimientoId) {
-        const items = this._remito.filter(r => String(r.movimiento_id) === String(movimientoId));
-        if (items.length === 0) {
-            return '<p class="log-empty-small">Sin items en el remito</p>';
-        }
-        const readOnly = this._isReadOnly();
-        return `
-            <table class="log-table log-table-compact">
+            <table class="log-table">
                 <thead>
-                    <tr><th>Item</th><th>Cant.</th><th>Notas</th>${!readOnly ? '<th></th>' : ''}</tr>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Evento</th>
+                        <th>Fase</th>
+                        <th>Vehículo</th>
+                        <th>Chofer</th>
+                        <th>Stands</th>
+                        <th>Estado</th>
+                        ${isAdmin ? '<th>Acción</th>' : ''}
+                    </tr>
                 </thead>
                 <tbody>
-                    ${items.map(r => `
-                        <tr>
-                            <td>${r.item_nombre}</td>
-                            <td class="log-mono">${r.cantidad || '—'}</td>
-                            <td>${r.notas || ''}</td>
-                            ${!readOnly ? `<td><button class="log-btn-del" data-remito-id="${r.id}" title="Quitar">✕</button></td>` : ''}
-                        </tr>
-                    `).join('')}
+                    ${rows.map(c => this._renderCargaRow(c, isAdmin)).join('')}
                 </tbody>
             </table>
         `;
     },
 
-    async _loadRemito(movimientoId) {
+    _renderCargaRow(c, isAdmin) {
+        const sel = c.id === this._selectedCargaId ? ' selected' : '';
+        const fecha = c.fecha ? new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—';
+        const evNombre = c.evento?.nombre || '—';
+        const veh = c.vehiculo?.descripcion || '—';
+        const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : '—';
+        const numStands = (c.carga_proyectos || []).length;
+        const estadoBadge = this._estadoBadge(c.estado);
+        const accion = isAdmin && c.estado === 'borrador'
+            ? `<button class="log-mini-btn approve" data-action="approve" data-id="${c.id}">✓ Aprobar</button>`
+            : '';
+        return `
+            <tr class="log-mov-row${sel}" data-id="${c.id}">
+                <td>${fecha}${c.hora_carga ? `<br><span class="log-hora">${c.hora_carga.slice(0,5)}</span>` : ''}</td>
+                <td>${this._esc(evNombre)}</td>
+                <td><span class="log-fase log-fase-${c.fase}">${this._faseLabel(c.fase)}</span></td>
+                <td>${this._esc(veh)}${c.vehiculo?.patente ? `<br><span class="log-mini">${this._esc(c.vehiculo.patente)}</span>` : ''}</td>
+                <td>${this._esc(chofer)}</td>
+                <td><span class="log-stands-count">${numStands}</span></td>
+                <td>${estadoBadge}</td>
+                ${isAdmin ? `<td>${accion}</td>` : ''}
+            </tr>
+        `;
+    },
+
+    _attachCargasEvents() {
+        document.getElementById('logFiltroEvento')?.addEventListener('change', e => {
+            this._filterEvento = e.target.value;
+            this._loadCargas();
+        });
+        document.getElementById('logFiltroFase')?.addEventListener('change', e => {
+            this._filterFase = e.target.value;
+            this._loadCargas();
+        });
+        document.getElementById('logFiltroEstado')?.addEventListener('change', e => {
+            this._filterEstado = e.target.value;
+            this._loadCargas();
+        });
+        document.getElementById('logFiltroFecha')?.addEventListener('change', e => {
+            this._filterFecha = e.target.value;
+            this._renderCargasTab();
+        });
+        document.getElementById('logNuevaCarga')?.addEventListener('click', () => this._openNuevaCargaModal());
+
+        // Row click → seleccionar
+        document.querySelectorAll('.log-mov-row').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('button')) return;
+                this._selectedCargaId = row.dataset.id;
+                document.querySelectorAll('.log-mov-row').forEach(r => r.classList.toggle('selected', r === row));
+                this._renderCargaPanel(this._selectedCargaId);
+            });
+        });
+
+        // Approve buttons
+        document.querySelectorAll('[data-action="approve"]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.id;
+                await this._aprobarCarga(id);
+            });
+        });
+    },
+
+    async _renderCargaPanel(cargaId) {
+        const panel = document.getElementById('logPanel');
+        if (!panel) return;
+        panel.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:200px;"><div class="spinner"></div></div>';
+
+        const carga = await API.getCargaById(cargaId);
+        if (!carga) {
+            panel.innerHTML = this._renderEmptyPanel('No se encontró la carga');
+            return;
+        }
+
+        const user = Auth.getUser();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+        const canEdit = isAdmin || carga.created_by === (user?.uid || user?.id);
+
+        const evNombre = carga.evento?.nombre || '—';
+        const venue = carga.destino_override || carga.evento?.predio || '—';
+        const fechaTxt = carga.fecha ? new Date(carga.fecha + 'T00:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }) : '—';
+        const chofer = carga.chofer ? `${carga.chofer.nombre}${carga.chofer.apellido ? ' ' + carga.chofer.apellido : ''}` : '—';
+        const veh = carga.vehiculo
+            ? `${carga.vehiculo.descripcion}${carga.vehiculo.patente ? ` · ${carga.vehiculo.patente}` : ''}${carga.vehiculo.propietario === 'tercero' ? ' (tercero)' : ''}`
+            : '—';
+
+        const stands = (carga.carga_proyectos || []).map(cp => cp.proyecto).filter(Boolean);
+        const ayudantes = (carga.carga_personas || []).map(cp => cp.persona).filter(Boolean);
+
+        // Action button según estado
+        let actionHtml = '';
+        if (carga.estado === 'borrador') {
+            if (isAdmin) {
+                actionHtml = `<button class="btn-primary log-action-btn" data-action="approve">✓ Aprobar carga</button>`;
+            }
+            if (canEdit) {
+                actionHtml += `<button class="btn-secondary log-action-btn" data-action="edit">✎ Editar</button>`;
+            }
+        } else if (carga.estado === 'aprobada') {
+            if (carga.remito_pdf_url) {
+                actionHtml = `<button class="btn-primary log-action-btn" data-action="download-pdf">⬇ Descargar remito</button>`;
+            } else {
+                actionHtml = `<button class="btn-primary log-action-btn" data-action="regen-pdf">↻ Regenerar PDF</button>`;
+            }
+            actionHtml += `<button class="btn-secondary log-action-btn" data-action="set-en-curso">→ Marcar en curso</button>`;
+        } else if (carga.estado === 'en_curso') {
+            actionHtml = `
+                <button class="btn-primary log-action-btn" data-action="upload-firmado">📸 Subir foto del remito firmado</button>
+                <input type="file" id="firmadoFileInput" accept="image/*" capture="environment" style="display:none">
+            `;
+        } else if (carga.estado === 'completada' && carga.remito_pdf_url) {
+            actionHtml = `<button class="btn-secondary log-action-btn" data-action="download-pdf">⬇ Ver remito</button>`;
+        }
+
+        // Delete button (solo admin)
+        if (isAdmin) {
+            actionHtml += `<button class="btn-danger log-action-btn" data-action="delete">🗑 Eliminar</button>`;
+        }
+
+        panel.innerHTML = `
+            <div class="log-panel-header">
+                <div>
+                    <div class="log-panel-eyebrow">CARGA #${carga.id.slice(0, 8)}</div>
+                    <h3 class="log-panel-title">${this._esc(evNombre)}</h3>
+                </div>
+                <button class="log-panel-close" data-action="close-panel" title="Cerrar (Esc)">✕</button>
+            </div>
+            <div class="log-panel-body">
+                <div class="log-panel-row">
+                    <span class="log-label">Estado</span>
+                    <span>${this._estadoBadge(carga.estado)}</span>
+                </div>
+                <div class="log-panel-row">
+                    <span class="log-label">Fase</span>
+                    <span class="log-fase log-fase-${carga.fase}">${this._faseLabel(carga.fase)}</span>
+                </div>
+                <div class="log-panel-row">
+                    <span class="log-label">Fecha</span>
+                    <span>${this._esc(fechaTxt)}${carga.hora_carga ? ` · ${carga.hora_carga.slice(0,5)}` : ''}</span>
+                </div>
+                <div class="log-panel-row">
+                    <span class="log-label">Vehículo</span>
+                    <span>${this._esc(veh)}</span>
+                </div>
+                <div class="log-panel-row">
+                    <span class="log-label">Chofer</span>
+                    <span>${this._esc(chofer)}${carga.chofer?.telefono ? ` · <a href="tel:${this._escAttr(carga.chofer.telefono)}" class="log-tel">${this._esc(carga.chofer.telefono)}</a>` : ''}</span>
+                </div>
+                <div class="log-panel-row">
+                    <span class="log-label">Destino</span>
+                    <span>${this._esc(venue)}</span>
+                </div>
+                ${ayudantes.length ? `
+                <div class="log-panel-block">
+                    <div class="log-label">Ayudantes</div>
+                    <div class="log-chips">
+                        ${ayudantes.map(p => `<span class="log-chip">${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</span>`).join('')}
+                    </div>
+                </div>
+                ` : ''}
+                <div class="log-panel-block">
+                    <div class="log-label">Stands cargados (${stands.length})</div>
+                    ${stands.length ? `
+                        <ul class="log-stands-list">
+                            ${stands.map(p => `<li>${this._esc(p.nombre || 'Sin nombre')}</li>`).join('')}
+                        </ul>
+                    ` : `<p class="log-empty-hint">Sin proyectos vinculados.</p>`}
+                </div>
+                ${carga.notas ? `
+                <div class="log-panel-block">
+                    <div class="log-label">Notas</div>
+                    <div class="log-notas">${this._esc(carga.notas)}</div>
+                </div>
+                ` : ''}
+                ${carga.aprobada_at ? `
+                <div class="log-panel-row">
+                    <span class="log-label">Aprobada</span>
+                    <span class="log-mini">${this._fmtFecha(carga.aprobada_at)} · ${this._esc(carga.aprobador?.name || '—')}</span>
+                </div>
+                ` : ''}
+                ${carga.remito_firmado_url ? `
+                <div class="log-panel-block">
+                    <div class="log-label">Remito firmado</div>
+                    <button class="btn-secondary" data-action="view-firmado">📸 Ver foto firmada</button>
+                </div>
+                ` : ''}
+            </div>
+            <div class="log-panel-actions">
+                ${actionHtml}
+            </div>
+        `;
+
+        this._attachCargaPanelEvents(carga);
+    },
+
+    _attachCargaPanelEvents(carga) {
+        const cargaId = carga.id;
+
+        document.querySelector('[data-action="close-panel"]')?.addEventListener('click', () => {
+            this._selectedCargaId = null;
+            document.querySelectorAll('.log-mov-row').forEach(r => r.classList.remove('selected'));
+            const panel = document.getElementById('logPanel');
+            if (panel) panel.innerHTML = this._renderEmptyPanel('Seleccioná una carga para ver el detalle');
+        });
+
+        document.querySelector('[data-action="approve"]')?.addEventListener('click', () => this._aprobarCarga(cargaId));
+        document.querySelector('[data-action="edit"]')?.addEventListener('click', () => this._openEditCargaModal(cargaId));
+        document.querySelector('[data-action="delete"]')?.addEventListener('click', () => this._deleteCarga(cargaId));
+        document.querySelector('[data-action="download-pdf"]')?.addEventListener('click', () => this._downloadRemito(carga));
+        document.querySelector('[data-action="regen-pdf"]')?.addEventListener('click', () => this._regenerarPDF(cargaId));
+        document.querySelector('[data-action="set-en-curso"]')?.addEventListener('click', () => this._setEstado(cargaId, 'en_curso'));
+        document.querySelector('[data-action="view-firmado"]')?.addEventListener('click', () => this._viewFirmado(carga));
+
+        // Upload firmado
+        const uploadBtn = document.querySelector('[data-action="upload-firmado"]');
+        const fileInput = document.getElementById('firmadoFileInput');
+        if (uploadBtn && fileInput) {
+            uploadBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                await this._uploadFirmado(cargaId, file);
+            });
+        }
+    },
+
+    async _aprobarCarga(cargaId) {
+        const confirm = await Confirm.action(
+            'Aprobar carga',
+            '¿Confirmás la aprobación? Se generará el PDF del remito automáticamente.',
+        );
+        if (!confirm) return;
+
+        Toast.info('Aprobando carga y generando remito...');
+        try {
+            const ok = await API.approveCarga(cargaId);
+            if (!ok) { Toast.error('No se pudo aprobar la carga.'); return; }
+
+            // Generar PDF + subir a Storage
+            if (typeof RemitoPDF !== 'undefined') {
+                const blob = await RemitoPDF.generate(cargaId);
+                if (blob) {
+                    const path = await API.uploadRemitoPDF(cargaId, blob);
+                    if (path) await API.setCargaRemitoPDF(cargaId, path);
+                }
+            }
+            Toast.success('Carga aprobada — remito listo');
+            await this._loadCargas();
+            if (this._selectedCargaId === cargaId) this._renderCargaPanel(cargaId);
+        } catch (e) {
+            console.error('[Logistica] approve error:', e);
+            Toast.error('Error al aprobar.');
+        }
+    },
+
+    async _regenerarPDF(cargaId) {
+        if (typeof RemitoPDF === 'undefined') {
+            Toast.error('Generador de PDF no disponible.');
+            return;
+        }
+        Toast.info('Regenerando PDF...');
+        try {
+            const blob = await RemitoPDF.generate(cargaId);
+            if (!blob) { Toast.error('No se pudo generar el PDF.'); return; }
+            const path = await API.uploadRemitoPDF(cargaId, blob);
+            if (path) await API.setCargaRemitoPDF(cargaId, path);
+            Toast.success('Remito regenerado');
+            if (this._selectedCargaId === cargaId) this._renderCargaPanel(cargaId);
+        } catch (e) {
+            console.error('[Logistica] regen error:', e);
+            Toast.error('Error al regenerar.');
+        }
+    },
+
+    async _setEstado(cargaId, estado) {
+        const ok = await API.setCargaEstado(cargaId, estado);
+        if (!ok) { Toast.error('No se pudo cambiar el estado.'); return; }
+        Toast.success(`Estado actualizado a: ${estado.replace('_', ' ')}`);
+        await this._loadCargas();
+        if (this._selectedCargaId === cargaId) this._renderCargaPanel(cargaId);
+    },
+
+    async _uploadFirmado(cargaId, file) {
+        Toast.info('Subiendo foto del remito...');
+        try {
+            const path = await API.uploadRemitoFirmado(cargaId, file);
+            if (!path) { Toast.error('No se pudo subir la foto.'); return; }
+            await API.setCargaRemitoFirmado(cargaId, path);
+            Toast.success('Foto subida. Carga completada.');
+            await this._loadCargas();
+            if (this._selectedCargaId === cargaId) this._renderCargaPanel(cargaId);
+        } catch (e) {
+            console.error('[Logistica] upload firmado error:', e);
+            Toast.error('Error al subir.');
+        }
+    },
+
+    async _downloadRemito(carga) {
+        const path = carga.remito_pdf_url;
+        if (!path) { Toast.error('No hay remito PDF para esta carga.'); return; }
+        const url = await API.getRemitoSignedUrl(path, 3600);
+        if (!url) { Toast.error('No se pudo generar el enlace.'); return; }
+        window.open(url, '_blank', 'noopener');
+    },
+
+    async _viewFirmado(carga) {
+        const path = carga.remito_firmado_url;
+        if (!path) return;
+        const url = await API.getRemitoSignedUrl(path, 3600);
+        if (!url) { Toast.error('No se pudo generar el enlace.'); return; }
+        window.open(url, '_blank', 'noopener');
+    },
+
+    async _deleteCarga(cargaId) {
+        const confirm = await Confirm.delete('esta carga');
+        if (!confirm) return;
+        const ok = await API.deleteCarga(cargaId);
+        if (!ok) { Toast.error('No se pudo eliminar.'); return; }
+        Toast.success('Carga eliminada');
+        this._selectedCargaId = null;
+        await this._loadCargas();
+    },
+
+    // ─── Modal Nueva / Editar Carga ───
+    async _openNuevaCargaModal(existingId = null) {
+        // Preload proyectos si hay evento seleccionado
+        const carga = existingId ? await API.getCargaById(existingId) : null;
+        const isEdit = !!carga;
+        const initialEventoId = carga?.evento_id || '';
+        const initialFecha = carga?.fecha || '';
+        const initialFase = carga?.fase || 'armado';
+        const initialVehId = carga?.vehiculo_id || '';
+        const initialChoferId = carga?.chofer_persona_id || '';
+        const initialHora = carga?.hora_carga ? carga.hora_carga.slice(0, 5) : '';
+        const initialEta = carga?.hora_estimada_llegada ? carga.hora_estimada_llegada.slice(0, 5) : '';
+        const initialNotas = carga?.notas || '';
+        const initialProyectoIds = (carga?.carga_proyectos || []).map(cp => cp.proyecto?.id).filter(Boolean);
+        const initialAyudanteIds = (carga?.carga_personas || []).map(cp => cp.persona?.id).filter(Boolean);
+
+        // Proyectos del evento inicial
+        let proyectosEv = [];
+        if (initialEventoId) {
+            proyectosEv = this._proyectosPorEvento[initialEventoId] || await this._loadProyectosPorEvento(initialEventoId);
+        }
+
+        const choferes = this._personas.filter(p =>
+            (p.roles_operativos || []).includes('chofer') && p.activo && !p._deleted
+        );
+        const ayudantes = this._personas.filter(p =>
+            !((p.roles_operativos || []).length === 1 && p.roles_operativos[0] === 'chofer') &&
+            p.activo && !p._deleted
+        );
+
+        const body = `
+            <div class="log-form">
+                <div class="log-form-row">
+                    <label>Evento *</label>
+                    <select id="cgEvento">
+                        <option value="">— Elegí evento —</option>
+                        ${this._eventos.map(ev => `
+                            <option value="${ev.id}" ${ev.id === initialEventoId ? 'selected' : ''}>${this._esc(ev.name || '')}</option>
+                        `).join('')}
+                    </select>
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Fase</label>
+                        <select id="cgFase">
+                            <option value="armado" ${initialFase === 'armado' ? 'selected' : ''}>Armado</option>
+                            <option value="desarme" ${initialFase === 'desarme' ? 'selected' : ''}>Desarme</option>
+                            <option value="intermedio" ${initialFase === 'intermedio' ? 'selected' : ''}>Intermedio</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Fecha *</label>
+                        <input type="date" id="cgFecha" value="${initialFecha}">
+                    </div>
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Hora carga</label>
+                        <input type="time" id="cgHora" value="${initialHora}">
+                    </div>
+                    <div>
+                        <label>Hora estimada llegada</label>
+                        <input type="time" id="cgEta" value="${initialEta}">
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Vehículo</label>
+                    <select id="cgVehiculo">
+                        <option value="">— Sin asignar —</option>
+                        ${this._vehiculos.filter(v => v.activo && !v._deleted).map(v => `
+                            <option value="${v.id}" ${v.id === initialVehId ? 'selected' : ''}>${this._esc(v.descripcion)}${v.patente ? ` · ${this._esc(v.patente)}` : ''}${v.propietario === 'tercero' ? ' (tercero)' : ''}</option>
+                        `).join('')}
+                    </select>
+                </div>
+                <div class="log-form-row">
+                    <label>Chofer</label>
+                    <select id="cgChofer">
+                        <option value="">— Sin asignar —</option>
+                        ${choferes.map(p => `
+                            <option value="${p.id}" ${p.id === initialChoferId ? 'selected' : ''}>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</option>
+                        `).join('')}
+                    </select>
+                    <div class="log-form-hint">¿Falta alguien? Cargalo en la pestaña Personas con rol "chofer".</div>
+                </div>
+                <div class="log-form-row">
+                    <label>Ayudantes</label>
+                    <div class="log-multi-select" id="cgAyudantes">
+                        ${ayudantes.map(p => `
+                            <label class="log-multi-opt">
+                                <input type="checkbox" value="${p.id}" ${initialAyudanteIds.includes(p.id) ? 'checked' : ''}>
+                                <span>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</span>
+                            </label>
+                        `).join('') || '<div class="log-empty-hint">Sin personas cargadas. Agregalas en la pestaña Personas.</div>'}
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Proyectos / stands a cargar</label>
+                    <div class="log-multi-select" id="cgProyectos">
+                        ${this._renderProyectosMultiSelect(proyectosEv, initialProyectoIds)}
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Notas</label>
+                    <textarea id="cgNotas" rows="3" placeholder="Observaciones, instrucciones especiales...">${this._esc(initialNotas)}</textarea>
+                </div>
+            </div>
+        `;
+
+        const modalId = Modal.open({
+            title: isEdit ? 'Editar carga' : 'Nueva carga',
+            body,
+            size: 'lg',
+            footer: `
+                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                <button class="btn-primary" id="cgSave">${isEdit ? 'Guardar' : 'Crear carga'}</button>
+            `,
+        });
+
+        // Cambio de evento → recargar proyectos
+        document.getElementById('cgEvento')?.addEventListener('change', async (e) => {
+            const evId = e.target.value;
+            const cont = document.getElementById('cgProyectos');
+            if (!cont) return;
+            if (!evId) { cont.innerHTML = '<div class="log-empty-hint">Elegí un evento para ver sus proyectos.</div>'; return; }
+            cont.innerHTML = '<div class="log-empty-hint">Cargando proyectos...</div>';
+            const proys = await this._loadProyectosPorEvento(evId);
+            cont.innerHTML = this._renderProyectosMultiSelect(proys, []);
+        });
+
+        document.getElementById('cgSave')?.addEventListener('click', async () => {
+            const eventoId = document.getElementById('cgEvento')?.value || '';
+            const fecha = document.getElementById('cgFecha')?.value || '';
+            if (!eventoId || !fecha) { Toast.warning('Evento y fecha son obligatorios.'); return; }
+            const payload = {
+                eventoId,
+                fecha,
+                fase: document.getElementById('cgFase')?.value || 'armado',
+                vehiculoId: document.getElementById('cgVehiculo')?.value || null,
+                choferPersonaId: document.getElementById('cgChofer')?.value || null,
+                horaCarga: document.getElementById('cgHora')?.value || null,
+                horaEstimadaLlegada: document.getElementById('cgEta')?.value || null,
+                notas: document.getElementById('cgNotas')?.value || null,
+                proyectoIds: [...document.querySelectorAll('#cgProyectos input:checked')].map(i => i.value),
+                ayudanteIds: [...document.querySelectorAll('#cgAyudantes input:checked')].map(i => i.value),
+            };
+            try {
+                if (isEdit) {
+                    await API.updateCarga(existingId, payload);
+                    await API.setCargaProyectos(existingId, payload.proyectoIds);
+                    await API.setCargaAyudantes(existingId, payload.ayudanteIds);
+                    Toast.success('Carga actualizada.');
+                    this._selectedCargaId = existingId;
+                } else {
+                    const row = await API.createCarga(payload);
+                    if (!row) { Toast.error('No se pudo crear la carga.'); return; }
+                    Toast.success('Carga creada en borrador — admin va a aprobar.');
+                    this._selectedCargaId = row.id;
+                }
+                Modal.close(modalId);
+                await this._loadCargas();
+                if (this._selectedCargaId) this._renderCargaPanel(this._selectedCargaId);
+            } catch (e) {
+                console.error('[Logistica] save carga error:', e);
+                Toast.error('Error al guardar.');
+            }
+        });
+    },
+
+    async _openEditCargaModal(cargaId) {
+        return this._openNuevaCargaModal(cargaId);
+    },
+
+    async _loadProyectosPorEvento(eventoId) {
         try {
             const { data, error } = await supabaseClient
-                .from('logistica_remito')
-                .select('*')
-                .eq('movimiento_id', movimientoId)
-                .order('created_at', { ascending: true });
+                .from('proyectos')
+                .select('id, nombre')
+                .eq('evento_id', eventoId)
+                .eq('_deleted', false)
+                .order('nombre', { ascending: true });
             if (error) throw error;
-            this._remito = data || [];
+            const list = data || [];
+            this._proyectosPorEvento[eventoId] = list;
+            return list;
         } catch (e) {
-            console.warn('[Logistica] Error loading remito:', e);
-            this._remito = [];
+            console.warn('[Logistica] _loadProyectosPorEvento error:', e.message);
+            return [];
         }
     },
 
-    _attachFichaMovEvents(m) {
-        const readOnly = this._isReadOnly();
-
-        document.getElementById('logBack')?.addEventListener('click', () => {
-            this._selectedMovimientoId = null;
-            this._renderMovimientos();
-        });
-
-        if (!readOnly) {
-            document.getElementById('logEditMov')?.addEventListener('click', () => this._showMovimientoModal(m.id));
-            document.getElementById('logDeleteMov')?.addEventListener('click', () => this._deleteMovimiento(m.id));
-            document.getElementById('logAddRemito')?.addEventListener('click', () => this._showAddRemitoModal(m));
+    _renderProyectosMultiSelect(proys, selectedIds) {
+        if (!proys || !proys.length) {
+            return '<div class="log-empty-hint">No hay proyectos vinculados a este evento.</div>';
         }
-
-        // Big check buttons
-        document.querySelectorAll('.log-big-check-active').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const key = btn.dataset.check;
-                await this._toggleBigCheck(m.id, key);
-            });
-        });
-
-        // Delete remito items
-        document.querySelectorAll('.log-btn-del[data-remito-id]').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const id = btn.dataset.remitoId;
-                try {
-                    await supabaseClient.from('logistica_remito').delete().eq('id', id);
-                    Toast.success('Item eliminado del remito');
-                    await this._loadRemito(m.id);
-                    const rc = document.getElementById('logRemitoContent');
-                    if (rc) rc.innerHTML = this._renderRemitoTable(m.id);
-                    this._reattachRemitoDelete(m);
-                } catch (e2) {
-                    Toast.error('Error al eliminar');
-                }
-            });
-        });
+        return proys.map(p => `
+            <label class="log-multi-opt">
+                <input type="checkbox" value="${p.id}" ${selectedIds.includes(p.id) ? 'checked' : ''}>
+                <span>${this._esc(p.nombre || 'Sin nombre')}</span>
+            </label>
+        `).join('');
     },
 
-    _reattachRemitoDelete(m) {
-        document.querySelectorAll('.log-btn-del[data-remito-id]').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const id = btn.dataset.remitoId;
-                try {
-                    await supabaseClient.from('logistica_remito').delete().eq('id', id);
-                    Toast.success('Item eliminado del remito');
-                    await this._loadRemito(m.id);
-                    const rc = document.getElementById('logRemitoContent');
-                    if (rc) rc.innerHTML = this._renderRemitoTable(m.id);
-                    this._reattachRemitoDelete(m);
-                } catch (e2) {
-                    Toast.error('Error al eliminar');
-                }
-            });
-        });
-    },
+    // ═════════════════════════════════════════════════════════════
+    //  TAB VEHÍCULOS
+    // ═════════════════════════════════════════════════════════════
 
-    async _toggleBigCheck(movId, key) {
-        const field = 'check_' + key;
-        const now = new Date().toISOString();
+    async _loadVehiculos() {
         try {
-            await supabaseClient.from('logistica_movimientos').update({ [field]: now }).eq('id', movId);
-            // Update local
-            const m = this._movimientos.find(x => String(x.id) === String(movId));
-            if (m) m[field] = now;
-            Toast.success('Check registrado');
-            this._renderFichaMovimiento();
+            this._vehiculos = await API.getVehiculos({ soloActivos: false });
+            this._renderVehiculosTab();
         } catch (e) {
-            console.error('[Logistica] Error toggling check:', e);
-            Toast.error('Error al registrar');
+            console.warn('[Logistica] Error _loadVehiculos:', e.message);
+            this._renderVehiculosTab();
         }
     },
 
+    _renderVehiculosTab() {
+        const c = document.getElementById('logisticaContent');
+        if (!c) return;
+        const user = Auth.getUser();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
 
-    // ─── Modal Movimiento ───
+        const visibles = this._vehiculos.filter(v => !v._deleted);
 
-    async _showMovimientoModal(editId) {
-        const item = editId ? this._movimientos.find(x => String(x.id) === String(editId)) : null;
-        const title = item ? 'Editar Movimiento' : 'Nuevo Movimiento';
+        c.innerHTML = `
+            <div class="log-toolbar">
+                <div></div>
+                <button class="btn-primary" id="logNuevoVeh">＋ Nuevo vehículo</button>
+            </div>
+            ${visibles.length === 0 ? `
+                <div class="log-empty">
+                    <div class="log-empty-icon">🚛</div>
+                    <p>Sin vehículos cargados.</p>
+                    <p class="log-empty-hint">Agregá la flota propia y los terceros que usás.</p>
+                </div>
+            ` : `
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Descripción</th>
+                            <th>Patente</th>
+                            <th>Propietario</th>
+                            <th>Capacidad</th>
+                            <th>Contacto</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${visibles.map(v => `
+                            <tr class="log-mov-row" data-id="${v.id}">
+                                <td>${this._esc(v.descripcion)}</td>
+                                <td>${this._esc(v.patente || '—')}</td>
+                                <td><span class="log-prop-${v.propietario}">${v.propietario === 'mepex' ? 'MEPEX' : 'Tercero'}</span></td>
+                                <td>${this._esc(v.capacidad_descriptiva || '—')}</td>
+                                <td>${v.contacto_nombre ? `${this._esc(v.contacto_nombre)}${v.contacto_telefono ? ` · ${this._esc(v.contacto_telefono)}` : ''}` : '—'}</td>
+                                <td>${v.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-ghost">Inactivo</span>'}</td>
+                                <td>
+                                    <button class="log-mini-btn" data-action="edit-veh" data-id="${v.id}">✎</button>
+                                    ${isAdmin ? `<button class="log-mini-btn danger" data-action="del-veh" data-id="${v.id}">🗑</button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `}
+        `;
 
-        // Ensure vehicles, events, projects and personal (choferes) are loaded
-        if (this._vehiculos.length === 0 || this._events.length === 0 || !this._personalListChoferes) {
+        document.getElementById('logNuevoVeh')?.addEventListener('click', () => this._openVehiculoModal(null));
+        document.querySelectorAll('[data-action="edit-veh"]').forEach(btn => {
+            btn.addEventListener('click', () => this._openVehiculoModal(btn.dataset.id));
+        });
+        document.querySelectorAll('[data-action="del-veh"]').forEach(btn => {
+            btn.addEventListener('click', () => this._deleteVehiculo(btn.dataset.id));
+        });
+    },
+
+    _openVehiculoModal(vehId) {
+        const v = vehId ? this._vehiculos.find(x => x.id === vehId) : null;
+        const isEdit = !!v;
+        const body = `
+            <div class="log-form">
+                <div class="log-form-row">
+                    <label>Descripción *</label>
+                    <input type="text" id="vhDesc" value="${this._escAttr(v?.descripcion || '')}" placeholder="Ej: Iveco propio, Camión Claudio">
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Patente</label>
+                        <input type="text" id="vhPatente" value="${this._escAttr(v?.patente || '')}">
+                    </div>
+                    <div>
+                        <label>Propietario</label>
+                        <select id="vhProp">
+                            <option value="mepex" ${(v?.propietario || 'mepex') === 'mepex' ? 'selected' : ''}>MEPEX</option>
+                            <option value="tercero" ${v?.propietario === 'tercero' ? 'selected' : ''}>Tercero</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Capacidad descriptiva</label>
+                    <input type="text" id="vhCap" value="${this._escAttr(v?.capacidad_descriptiva || '')}" placeholder="Ej: 4 stands chicos, 8 metros lineales">
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Contacto (si es tercero)</label>
+                        <input type="text" id="vhContNombre" value="${this._escAttr(v?.contacto_nombre || '')}">
+                    </div>
+                    <div>
+                        <label>Teléfono</label>
+                        <input type="text" id="vhContTel" value="${this._escAttr(v?.contacto_telefono || '')}">
+                    </div>
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Costo referencial</label>
+                        <input type="number" step="0.01" id="vhCosto" value="${v?.costo_referencial ?? ''}">
+                    </div>
+                    <div>
+                        <label>Activo</label>
+                        <select id="vhActivo">
+                            <option value="true" ${v?.activo !== false ? 'selected' : ''}>Sí</option>
+                            <option value="false" ${v?.activo === false ? 'selected' : ''}>No</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Notas</label>
+                    <textarea id="vhNotas" rows="2">${this._esc(v?.notas || '')}</textarea>
+                </div>
+            </div>
+        `;
+
+        const modalId = Modal.open({
+            title: isEdit ? 'Editar vehículo' : 'Nuevo vehículo',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                <button class="btn-primary" id="vhSave">${isEdit ? 'Guardar' : 'Crear'}</button>
+            `,
+        });
+
+        document.getElementById('vhSave')?.addEventListener('click', async () => {
+            const payload = {
+                descripcion: document.getElementById('vhDesc')?.value.trim(),
+                patente: document.getElementById('vhPatente')?.value.trim() || null,
+                propietario: document.getElementById('vhProp')?.value,
+                capacidadDescriptiva: document.getElementById('vhCap')?.value.trim() || null,
+                contactoNombre: document.getElementById('vhContNombre')?.value.trim() || null,
+                contactoTelefono: document.getElementById('vhContTel')?.value.trim() || null,
+                costoReferencial: parseFloat(document.getElementById('vhCosto')?.value) || null,
+                activo: document.getElementById('vhActivo')?.value === 'true',
+                notas: document.getElementById('vhNotas')?.value.trim() || null,
+            };
+            if (!payload.descripcion) { Toast.warning('La descripción es obligatoria.'); return; }
             try {
-                const [vehRes, evRes, projRes, persRes] = await Promise.all([
-                    supabaseClient.from('logistica_vehiculos').select('*').eq('_deleted', false).order('nombre'),
-                    API.getEvents(),
-                    API.getProjects(),
-                    supabaseClient.from('rrhh_personal').select('id, nombre, rol').eq('_deleted', false).eq('estado', 'activo').order('nombre'),
-                ]);
-                this._vehiculos = vehRes.data || [];
-                this._events = evRes || [];
-                this._projects = projRes || [];
-                this._personalListChoferes = persRes.data || [];
-            } catch (e) { /* continue */ }
-        }
-
-        const lugares = ['Depósito', 'Taller', 'Oficina'];
-        // Add unique venues from events
-        this._events.forEach(ev => {
-            const venue = ev.venue || ev.lugar;
-            if (venue && !lugares.includes(venue)) lugares.push(venue);
-        });
-
-        Modal.open({
-            title,
-            size: 'medium',
-            body: `
-                <div style="display:flex;flex-direction:column;gap:16px;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Evento</label>
-                            <select id="logMEvento" class="form-input form-select" style="font-size:1rem;padding:12px;">
-                                <option value="">— Sin evento —</option>
-                                ${this._events.map(ev => `<option value="${ev.id}" ${item?.evento_id == ev.id ? 'selected' : ''}>${ev.name || ev.nombre || 'Sin nombre'}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="form-label">Proyecto</label>
-                            <select id="logMProyecto" class="form-input form-select" style="font-size:1rem;padding:12px;">
-                                <option value="">— Sin proyecto —</option>
-                                ${this._projects.map(p => `<option value="${p.id}" ${item?.proyecto_id == p.id ? 'selected' : ''}>${p.name || p.nombre || 'Sin nombre'}</option>`).join('')}
-                            </select>
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;">
-                        <div>
-                            <label class="form-label">Origen</label>
-                            <input type="text" id="logMOrigen" class="form-input" list="logLugares" value="${item?.origen || ''}" placeholder="Ej: Depósito" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <span style="color:var(--text-dim);font-size:1.5rem;padding-bottom:12px;">→</span>
-                        <div>
-                            <label class="form-label">Destino</label>
-                            <input type="text" id="logMDestino" class="form-input" list="logLugares" value="${item?.destino || ''}" placeholder="Ej: Venue" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <datalist id="logLugares">
-                            ${lugares.map(l => `<option value="${l}">`).join('')}
-                        </datalist>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Vehículo</label>
-                            <select id="logMVehiculo" class="form-input form-select" style="font-size:1rem;padding:12px;">
-                                <option value="">— Seleccionar —</option>
-                                ${this._vehiculos.map(v => `<option value="${v.id}" ${item?.vehiculo_id == v.id ? 'selected' : ''}>${v.nombre} (${v.tipo === 'propio' ? 'Propio' : 'Tercero'})</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="form-label">Chofer</label>
-                            <select id="logMChoferId" class="form-input form-select" style="font-size:1rem;padding:12px;">
-                                <option value="">— Sin asignar —</option>
-                                ${(this._personalListChoferes || []).map(p => `<option value="${p.id}" ${item?.chofer_id === p.id ? 'selected' : ''}>${p.nombre}${p.rol ? ' · ' + p.rol : ''}</option>`).join('')}
-                            </select>
-                            <input type="text" id="logMChoferLibre" class="form-input" value="${item?.chofer_nombre_libre || ''}" placeholder="Chofer externo (texto libre)" style="font-size:0.9rem;padding:8px;margin-top:6px;">
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Fecha</label>
-                            <input type="date" id="logMFecha" class="form-input" value="${item?.fecha || ''}" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Hora programada</label>
-                            <input type="time" id="logMHora" class="form-input" value="${item?.hora_programada || ''}" style="font-size:1rem;padding:12px;">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="form-label">Notas</label>
-                        <textarea id="logMNotas" class="form-input" rows="2" placeholder="Opcional" style="font-size:1rem;padding:12px;">${item?.notas || ''}</textarea>
-                    </div>
-                    ${!editId ? `
-                        <label class="log-precarga-check">
-                            <input type="checkbox" id="logMPrecarga" checked>
-                            <span>Precargar remito desde materiales del proyecto (Taller)</span>
-                        </label>
-                    ` : ''}
-                </div>
-            `,
-            footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn-primary" id="logMSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
-            `,
-        });
-
-        setTimeout(() => {
-            document.getElementById('logMSave')?.addEventListener('click', async () => {
-                const origen = document.getElementById('logMOrigen')?.value?.trim();
-                const destino = document.getElementById('logMDestino')?.value?.trim();
-                if (!origen || !destino) { Toast.warning('Ingresá origen y destino'); return; }
-
-                const choferId = document.getElementById('logMChoferId')?.value || null;
-                const choferLibre = document.getElementById('logMChoferLibre')?.value?.trim() || null;
-                const payload = {
-                    evento_id: document.getElementById('logMEvento')?.value || null,
-                    proyecto_id: document.getElementById('logMProyecto')?.value || null,
-                    vehiculo_id: document.getElementById('logMVehiculo')?.value || null,
-                    chofer_id: choferId,
-                    chofer_nombre_libre: choferId ? null : choferLibre,
-                    origen,
-                    destino,
-                    fecha: document.getElementById('logMFecha')?.value || null,
-                    hora_programada: document.getElementById('logMHora')?.value || null,
-                    notas: document.getElementById('logMNotas')?.value?.trim() || null,
-                    _deleted: false,
-                };
-
-                try {
-                    let newMovId = null;
-                    if (editId) {
-                        await supabaseClient.from('logistica_movimientos').update(payload).eq('id', editId);
-                        Toast.success('Movimiento actualizado');
-                    } else {
-                        const { data: inserted, error } = await supabaseClient.from('logistica_movimientos').insert(payload).select('id').single();
-                        if (error) throw error;
-                        newMovId = inserted?.id;
-                        Toast.success('Movimiento creado');
-
-                        // Precarga remito desde taller_materiales
-                        const shouldPrecarga = document.getElementById('logMPrecarga')?.checked;
-                        const proyectoId = payload.proyecto_id;
-                        if (shouldPrecarga && proyectoId && newMovId) {
-                            await this._precargarRemito(newMovId, proyectoId);
-                        }
-                    }
-                    Modal.close();
-                    await this._loadMovimientos();
-                } catch (e) {
-                    console.error('[Logistica] Error saving movimiento:', e);
-                    Toast.error('Error al guardar');
+                if (isEdit) {
+                    await API.updateVehiculo(vehId, payload);
+                    Toast.success('Vehículo actualizado.');
+                } else {
+                    await API.createVehiculo(payload);
+                    Toast.success('Vehículo creado.');
                 }
-            });
-        }, 100);
+                Modal.close(modalId);
+                await this._loadVehiculos();
+            } catch (e) {
+                console.error('[Logistica] save vehiculo error:', e);
+                Toast.error('Error al guardar.');
+            }
+        });
     },
 
-    async _precargarRemito(movimientoId, proyectoId) {
-        try {
-            const { data: materiales, error } = await supabaseClient
-                .from('taller_materiales')
-                .select('item_nombre, cantidad, notas')
-                .eq('proyecto_id', proyectoId)
-                .eq('_deleted', false);
-            if (error) throw error;
-            if (!materiales || materiales.length === 0) return;
-
-            const remitoItems = materiales.map(m => ({
-                movimiento_id: movimientoId,
-                item_nombre: m.item_nombre,
-                cantidad: m.cantidad,
-                notas: m.notas || null,
-            }));
-            await supabaseClient.from('logistica_remito').insert(remitoItems);
-            Toast.info(`Remito precargado con ${remitoItems.length} items desde Taller`);
-        } catch (e) {
-            console.warn('[Logistica] Error precargando remito:', e);
-        }
-    },
-
-    async _deleteMovimiento(id) {
-        const ok = await Modal.confirm({ title: 'Eliminar movimiento', message: '¿Eliminar este movimiento?', danger: true });
+    async _deleteVehiculo(id) {
+        const ok = await Confirm.delete('este vehículo');
         if (!ok) return;
+        const r = await API.deleteVehiculo(id);
+        if (!r) { Toast.error('No se pudo eliminar.'); return; }
+        Toast.success('Vehículo eliminado.');
+        await this._loadVehiculos();
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TAB PERSONAS
+    // ═════════════════════════════════════════════════════════════
+
+    async _loadPersonas() {
         try {
-            await supabaseClient.from('logistica_movimientos').update({ _deleted: true }).eq('id', id);
-            Toast.success('Movimiento eliminado');
-            this._selectedMovimientoId = null;
-            await this._loadMovimientos();
+            this._personas = await API.getPersonas({ soloActivos: false });
+            this._renderPersonasTab();
         } catch (e) {
-            Toast.error('Error al eliminar');
+            console.warn('[Logistica] Error _loadPersonas:', e.message);
+            this._renderPersonasTab();
         }
     },
 
-    // ─── Modal agregar item al remito ───
+    _renderPersonasTab() {
+        const c = document.getElementById('logisticaContent');
+        if (!c) return;
+        const user = Auth.getUser();
+        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
 
-    _showAddRemitoModal(mov) {
-        Modal.open({
-            title: 'Agregar Item al Remito',
-            size: 'small',
-            body: `
-                <div style="display:flex;flex-direction:column;gap:16px;">
+        let visibles = this._personas.filter(p => !p._deleted);
+        if (this._personasFilterRol) {
+            visibles = visibles.filter(p => (p.roles_operativos || []).includes(this._personasFilterRol));
+        }
+
+        c.innerHTML = `
+            <div class="log-toolbar">
+                <div class="log-filters">
+                    <select class="log-filter" id="logFiltroRol">
+                        <option value="">Todos los roles</option>
+                        <option value="armador" ${this._personasFilterRol === 'armador' ? 'selected' : ''}>Armador</option>
+                        <option value="chofer" ${this._personasFilterRol === 'chofer' ? 'selected' : ''}>Chofer</option>
+                        <option value="ayudante" ${this._personasFilterRol === 'ayudante' ? 'selected' : ''}>Ayudante</option>
+                        <option value="tecnico" ${this._personasFilterRol === 'tecnico' ? 'selected' : ''}>Técnico</option>
+                        <option value="azafata" ${this._personasFilterRol === 'azafata' ? 'selected' : ''}>Azafata</option>
+                    </select>
+                </div>
+                <button class="btn-primary" id="logNuevaPersona">＋ Nueva persona</button>
+            </div>
+            ${visibles.length === 0 ? `
+                <div class="log-empty">
+                    <div class="log-empty-icon">👤</div>
+                    <p>Sin personas cargadas con esos filtros.</p>
+                    <p class="log-empty-hint">Cargá choferes y ayudantes para asignarlos a las cargas.</p>
+                </div>
+            ` : `
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Tipo</th>
+                            <th>Roles</th>
+                            <th>Teléfono</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${visibles.map(p => `
+                            <tr class="log-mov-row" data-id="${p.id}">
+                                <td>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</td>
+                                <td><span class="log-tipo-${p.tipo}">${p.tipo === 'interna' ? 'Interna' : 'Eventual'}</span></td>
+                                <td>${(p.roles_operativos || []).map(r => `<span class="log-rol-chip">${this._esc(r)}</span>`).join('') || '<span class="log-mini">—</span>'}</td>
+                                <td>${p.telefono ? `<a href="tel:${this._escAttr(p.telefono)}" class="log-tel">${this._esc(p.telefono)}</a>` : '—'}</td>
+                                <td>${p.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-ghost">Inactiva</span>'}</td>
+                                <td>
+                                    <button class="log-mini-btn" data-action="edit-per" data-id="${p.id}">✎</button>
+                                    ${isAdmin ? `<button class="log-mini-btn danger" data-action="del-per" data-id="${p.id}">🗑</button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `}
+        `;
+
+        document.getElementById('logNuevaPersona')?.addEventListener('click', () => this._openPersonaModal(null));
+        document.getElementById('logFiltroRol')?.addEventListener('change', e => {
+            this._personasFilterRol = e.target.value;
+            this._renderPersonasTab();
+        });
+        document.querySelectorAll('[data-action="edit-per"]').forEach(btn => {
+            btn.addEventListener('click', () => this._openPersonaModal(btn.dataset.id));
+        });
+        document.querySelectorAll('[data-action="del-per"]').forEach(btn => {
+            btn.addEventListener('click', () => this._deletePersona(btn.dataset.id));
+        });
+    },
+
+    _openPersonaModal(personaId) {
+        const p = personaId ? this._personas.find(x => x.id === personaId) : null;
+        const isEdit = !!p;
+        const rolesAll = ['armador', 'chofer', 'ayudante', 'tecnico', 'azafata'];
+        const rolesActuales = p?.roles_operativos || [];
+        const body = `
+            <div class="log-form">
+                <div class="log-form-row log-form-2col">
                     <div>
-                        <label class="form-label" style="font-size:1rem;">Item</label>
-                        <input type="text" id="logRItemNombre" class="form-input" placeholder="Ej: Paneles blancos 100x250" style="font-size:1rem;padding:12px;">
+                        <label>Nombre *</label>
+                        <input type="text" id="pNombre" value="${this._escAttr(p?.nombre || '')}">
                     </div>
                     <div>
-                        <label class="form-label" style="font-size:1rem;">Cantidad</label>
-                        <input type="number" id="logRCantidad" class="form-input" placeholder="Ej: 12" style="font-size:1rem;padding:12px;">
-                    </div>
-                    <div>
-                        <label class="form-label" style="font-size:1rem;">Notas</label>
-                        <input type="text" id="logRNotas" class="form-input" placeholder="Opcional" style="font-size:1rem;padding:12px;">
+                        <label>Apellido</label>
+                        <input type="text" id="pApellido" value="${this._escAttr(p?.apellido || '')}">
                     </div>
                 </div>
-            `,
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Tipo</label>
+                        <select id="pTipo">
+                            <option value="eventual" ${(p?.tipo || 'eventual') === 'eventual' ? 'selected' : ''}>Eventual</option>
+                            <option value="interna" ${p?.tipo === 'interna' ? 'selected' : ''}>Interna</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Activa</label>
+                        <select id="pActivo">
+                            <option value="true" ${p?.activo !== false ? 'selected' : ''}>Sí</option>
+                            <option value="false" ${p?.activo === false ? 'selected' : ''}>No</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Roles operativos</label>
+                    <div class="log-multi-select">
+                        ${rolesAll.map(r => `
+                            <label class="log-multi-opt">
+                                <input type="checkbox" data-rol value="${r}" ${rolesActuales.includes(r) ? 'checked' : ''}>
+                                <span>${r}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Teléfono</label>
+                        <input type="text" id="pTel" value="${this._escAttr(p?.telefono || '')}">
+                    </div>
+                    <div>
+                        <label>Documento</label>
+                        <input type="text" id="pDoc" value="${this._escAttr(p?.documento || '')}">
+                    </div>
+                </div>
+                <div class="log-form-row">
+                    <label>Costo diario referencial</label>
+                    <input type="number" step="0.01" id="pCosto" value="${p?.costo_dia_referencial ?? ''}">
+                </div>
+                <div class="log-form-row">
+                    <label>Notas</label>
+                    <textarea id="pNotas" rows="2">${this._esc(p?.notas || '')}</textarea>
+                </div>
+            </div>
+        `;
+
+        const modalId = Modal.open({
+            title: isEdit ? 'Editar persona' : 'Nueva persona',
+            body,
+            size: 'md',
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn-primary" id="logRSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
+                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                <button class="btn-primary" id="pSave">${isEdit ? 'Guardar' : 'Crear'}</button>
             `,
         });
 
-        setTimeout(() => {
-            document.getElementById('logRSave')?.addEventListener('click', async () => {
-                const nombre = document.getElementById('logRItemNombre')?.value?.trim();
-                if (!nombre) { Toast.warning('Ingresá el nombre del item'); return; }
-
-                try {
-                    await supabaseClient.from('logistica_remito').insert({
-                        movimiento_id: mov.id,
-                        item_nombre: nombre,
-                        cantidad: parseInt(document.getElementById('logRCantidad')?.value) || null,
-                        notas: document.getElementById('logRNotas')?.value?.trim() || null,
-                    });
-                    Modal.close();
-                    Toast.success('Item agregado al remito');
-                    await this._loadRemito(mov.id);
-                    const rc = document.getElementById('logRemitoContent');
-                    if (rc) rc.innerHTML = this._renderRemitoTable(mov.id);
-                    this._reattachRemitoDelete(mov);
-                } catch (e) {
-                    console.error('[Logistica] Error adding remito item:', e);
-                    Toast.error('Error al guardar');
+        document.getElementById('pSave')?.addEventListener('click', async () => {
+            const payload = {
+                nombre: document.getElementById('pNombre')?.value.trim(),
+                apellido: document.getElementById('pApellido')?.value.trim() || null,
+                tipo: document.getElementById('pTipo')?.value,
+                rolesOperativos: [...document.querySelectorAll('[data-rol]:checked')].map(i => i.value),
+                telefono: document.getElementById('pTel')?.value.trim() || null,
+                documento: document.getElementById('pDoc')?.value.trim() || null,
+                costoDiaReferencial: parseFloat(document.getElementById('pCosto')?.value) || null,
+                notas: document.getElementById('pNotas')?.value.trim() || null,
+                activo: document.getElementById('pActivo')?.value === 'true',
+            };
+            if (!payload.nombre) { Toast.warning('El nombre es obligatorio.'); return; }
+            try {
+                if (isEdit) {
+                    await API.updatePersona(personaId, payload);
+                    Toast.success('Persona actualizada.');
+                } else {
+                    await API.createPersona(payload);
+                    Toast.success('Persona creada.');
                 }
-            });
-            document.getElementById('logRItemNombre')?.focus();
-        }, 100);
+                Modal.close(modalId);
+                await this._loadPersonas();
+            } catch (e) {
+                console.error('[Logistica] save persona error:', e);
+                Toast.error('Error al guardar.');
+            }
+        });
+    },
+
+    async _deletePersona(id) {
+        const ok = await Confirm.delete('esta persona');
+        if (!ok) return;
+        const r = await API.deletePersona(id);
+        if (!r) { Toast.error('No se pudo eliminar.'); return; }
+        Toast.success('Persona eliminada.');
+        await this._loadPersonas();
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  Helpers
+    // ═════════════════════════════════════════════════════════════
+
+    _estadoBadge(estado) {
+        const map = {
+            borrador:   { cls: 'log-est-borrador',   label: 'Borrador' },
+            aprobada:   { cls: 'log-est-aprobada',   label: 'Aprobada' },
+            en_curso:   { cls: 'log-est-encurso',    label: 'En curso' },
+            completada: { cls: 'log-est-completada', label: 'Completada' },
+            cancelada:  { cls: 'log-est-cancelada',  label: 'Cancelada' },
+        };
+        const m = map[estado] || { cls: 'log-est-borrador', label: estado };
+        return `<span class="log-estado ${m.cls}">${m.label}</span>`;
+    },
+
+    _faseLabel(fase) {
+        return { armado: 'Armado', desarme: 'Desarme', intermedio: 'Intermedio' }[fase] || fase;
+    },
+
+    _renderEmptyPanel(msg) {
+        return `
+            <div class="log-empty">
+                <div class="log-empty-icon">📦</div>
+                <p>${this._esc(msg)}</p>
+            </div>
+        `;
+    },
+
+    _fmtFecha(iso) {
+        if (!iso) return '—';
+        try {
+            return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        } catch { return iso; }
+    },
+
+    _esc(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    },
+
+    _escAttr(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;');
+    },
+
+    // ─── CSS inyectado ───
+    _injectStyles() {
+        if (document.getElementById('logistica-tanda2-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'logistica-tanda2-styles';
+        style.textContent = `
+            .logistica-module .log-admin-banner {
+                margin: 12px 24px 0 24px;
+                padding: 10px 14px;
+                background: rgba(242, 141, 21, 0.08);
+                border: 1px solid rgba(242, 141, 21, 0.3);
+                border-radius: 8px;
+                display: flex; align-items: center; gap: 10px;
+                color: #F28D15;
+                font-family: var(--font-main, 'Outfit', sans-serif);
+                font-size: 0.9rem;
+            }
+            .logistica-module .log-admin-icon { font-size: 1.1rem; }
+
+            .logistica-module .log-toolbar {
+                display: flex; justify-content: space-between; align-items: center;
+                gap: 12px; padding: 16px 24px; flex-wrap: wrap;
+            }
+            .logistica-module .log-filters {
+                display: flex; gap: 8px; flex-wrap: wrap;
+            }
+            .logistica-module .log-filter {
+                background: #111; border: 1px solid #2a2a2a; color: #E8E8E8;
+                padding: 6px 10px; border-radius: 6px;
+                font-family: var(--font-mono, 'Space Mono', monospace);
+                font-size: 0.78rem; min-width: 140px;
+            }
+            .logistica-module .log-filter:focus { outline: none; border-color: #00A9C1; }
+
+            .logistica-module .log-split {
+                display: grid;
+                grid-template-columns: 1fr 420px;
+                gap: 12px;
+                padding: 0 24px 24px 24px;
+                min-height: 60vh;
+            }
+            @media (max-width: 1100px) {
+                .logistica-module .log-split { grid-template-columns: 1fr; }
+            }
+
+            .logistica-module .log-table-wrap {
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                overflow: auto;
+            }
+            .logistica-module .log-table {
+                width: 100%; border-collapse: collapse;
+                font-family: var(--font-main, 'Outfit', sans-serif);
+                font-size: 0.85rem;
+            }
+            .logistica-module .log-table thead th {
+                position: sticky; top: 0; z-index: 2;
+                background: #111;
+                color: #888; font-weight: 600;
+                font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+                padding: 10px 12px; text-align: left;
+                border-bottom: 1px solid #2a2a2a;
+            }
+            .logistica-module .log-table tbody td {
+                padding: 10px 12px; border-bottom: 1px solid #1a1a1a;
+                color: #E8E8E8; vertical-align: top;
+            }
+            .logistica-module .log-mov-row {
+                cursor: pointer; transition: background 150ms ease;
+            }
+            .logistica-module .log-mov-row:hover { background: rgba(0,169,193,0.05); }
+            .logistica-module .log-mov-row.selected { background: rgba(0,169,193,0.10); }
+            .logistica-module .log-mov-row.selected td { border-left: 2px solid #00A9C1; }
+            .logistica-module .log-mov-row.selected td:first-child { border-left-width: 4px; }
+
+            .logistica-module .log-hora { font-family: var(--font-mono); font-size: 0.7rem; color: #888; }
+            .logistica-module .log-mini { font-family: var(--font-mono); font-size: 0.7rem; color: #666; }
+            .logistica-module .log-stands-count {
+                display: inline-block; min-width: 24px; padding: 2px 8px;
+                background: rgba(0,169,193,0.15); color: #00A9C1; border-radius: 4px;
+                font-family: var(--font-mono); font-size: 0.75rem; text-align: center;
+            }
+
+            .logistica-module .log-fase {
+                display: inline-block; padding: 2px 8px; border-radius: 4px;
+                font-family: var(--font-mono); font-size: 0.7rem;
+                text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .logistica-module .log-fase-armado     { background: rgba(0,204,136,0.15); color: #00CC88; }
+            .logistica-module .log-fase-desarme    { background: rgba(242,141,21,0.15); color: #F28D15; }
+            .logistica-module .log-fase-intermedio { background: rgba(155,125,255,0.15); color: #9B7DFF; }
+
+            .logistica-module .log-estado {
+                display: inline-block; padding: 2px 8px; border-radius: 4px;
+                font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+            }
+            .logistica-module .log-est-borrador   { background: #1a1a1a; color: #888; }
+            .logistica-module .log-est-aprobada   { background: rgba(0,169,193,0.15); color: #00A9C1; }
+            .logistica-module .log-est-encurso    { background: rgba(242,141,21,0.15); color: #F28D15; }
+            .logistica-module .log-est-completada { background: rgba(0,204,136,0.15); color: #00CC88; }
+            .logistica-module .log-est-cancelada  { background: rgba(255,68,68,0.15); color: #ff4444; }
+
+            .logistica-module .log-mini-btn {
+                background: transparent; border: 1px solid #2a2a2a; color: #888;
+                padding: 4px 8px; border-radius: 4px; cursor: pointer;
+                font-family: var(--font-mono); font-size: 0.72rem;
+                margin-right: 4px;
+                transition: all 200ms ease;
+            }
+            .logistica-module .log-mini-btn:hover { border-color: #00A9C1; color: #00A9C1; }
+            .logistica-module .log-mini-btn.approve { color: #00CC88; border-color: rgba(0,204,136,0.3); }
+            .logistica-module .log-mini-btn.approve:hover { background: rgba(0,204,136,0.1); border-color: #00CC88; }
+            .logistica-module .log-mini-btn.danger { color: #ff4444; }
+            .logistica-module .log-mini-btn.danger:hover { border-color: #ff4444; background: rgba(255,68,68,0.08); }
+
+            .logistica-module .log-prop-mepex { color: #00A9C1; font-family: var(--font-mono); font-size: 0.75rem; }
+            .logistica-module .log-prop-tercero { color: #F28D15; font-family: var(--font-mono); font-size: 0.75rem; }
+            .logistica-module .log-tipo-interna { color: #00CC88; font-family: var(--font-mono); font-size: 0.75rem; }
+            .logistica-module .log-tipo-eventual { color: #9B7DFF; font-family: var(--font-mono); font-size: 0.75rem; }
+
+            .logistica-module .log-rol-chip {
+                display: inline-block; padding: 1px 7px; border-radius: 3px;
+                background: rgba(0,169,193,0.12); color: #00A9C1;
+                font-family: var(--font-mono); font-size: 0.68rem;
+                margin-right: 4px;
+            }
+            .logistica-module .log-tel { color: #00A9C1; text-decoration: none; }
+            .logistica-module .log-tel:hover { text-decoration: underline; }
+
+            .logistica-module .log-panel {
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                display: flex; flex-direction: column; min-height: 0;
+                overflow: hidden;
+            }
+            .logistica-module .log-panel-header {
+                display: flex; justify-content: space-between; align-items: flex-start;
+                padding: 14px 16px; border-bottom: 1px solid #1a1a1a; background: #111;
+            }
+            .logistica-module .log-panel-eyebrow {
+                font-family: var(--font-mono); font-size: 0.65rem;
+                color: #00A9C1; letter-spacing: 0.08em;
+            }
+            .logistica-module .log-panel-title {
+                font-family: var(--font-main); font-size: 1.05rem; font-weight: 600;
+                color: #E8E8E8; margin: 4px 0 0 0;
+            }
+            .logistica-module .log-panel-close {
+                background: transparent; border: none; color: #666; cursor: pointer;
+                font-size: 1.1rem; padding: 4px 8px; border-radius: 4px;
+                transition: all 200ms ease;
+            }
+            .logistica-module .log-panel-close:hover { color: #E8E8E8; background: #1a1a1a; }
+            .logistica-module .log-panel-body {
+                flex: 1; overflow-y: auto; padding: 14px 16px;
+                display: flex; flex-direction: column; gap: 10px;
+            }
+            .logistica-module .log-panel-row {
+                display: flex; justify-content: space-between; align-items: baseline;
+                gap: 12px; font-family: var(--font-main); font-size: 0.85rem;
+                color: #E8E8E8;
+            }
+            .logistica-module .log-label {
+                color: #888; font-family: var(--font-mono); font-size: 0.7rem;
+                text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .logistica-module .log-panel-block {
+                padding-top: 8px; border-top: 1px solid #1a1a1a;
+            }
+            .logistica-module .log-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+            .logistica-module .log-chip {
+                background: rgba(0,169,193,0.10); color: #00A9C1;
+                padding: 3px 8px; border-radius: 4px;
+                font-family: var(--font-main); font-size: 0.78rem;
+            }
+            .logistica-module .log-stands-list {
+                margin: 6px 0 0 0; padding: 0 0 0 18px;
+                font-family: var(--font-main); font-size: 0.85rem; color: #E8E8E8;
+            }
+            .logistica-module .log-stands-list li { margin: 3px 0; }
+            .logistica-module .log-notas {
+                margin-top: 4px; padding: 8px 10px; background: #0a0a0a;
+                border: 1px solid #1a1a1a; border-radius: 4px;
+                font-family: var(--font-main); font-size: 0.82rem; color: #ccc;
+                white-space: pre-wrap; word-wrap: break-word;
+            }
+            .logistica-module .log-panel-actions {
+                padding: 12px 16px; border-top: 1px solid #1a1a1a; background: #0a0a0a;
+                display: flex; flex-direction: column; gap: 8px;
+            }
+            .logistica-module .log-action-btn {
+                width: 100%; padding: 9px 12px; border-radius: 6px;
+                font-family: var(--font-mono); font-size: 0.8rem;
+                cursor: pointer; border: 1px solid transparent;
+                transition: all 200ms ease;
+            }
+
+            .logistica-module .log-empty {
+                display: flex; flex-direction: column; align-items: center;
+                justify-content: center; min-height: 240px; gap: 8px;
+                color: #555; font-family: var(--font-main); padding: 40px;
+            }
+            .logistica-module .log-empty-icon { font-size: 2.2rem; opacity: 0.6; }
+            .logistica-module .log-empty-hint { font-size: 0.78rem; color: #444; margin: 0; }
+
+            .logistica-module .log-form {
+                display: flex; flex-direction: column; gap: 12px;
+            }
+            .logistica-module .log-form-row { display: flex; flex-direction: column; gap: 4px; }
+            .logistica-module .log-form-2col { flex-direction: row; gap: 12px; }
+            .logistica-module .log-form-2col > div { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+            .logistica-module .log-form label {
+                color: #888; font-family: var(--font-mono); font-size: 0.7rem;
+                text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .logistica-module .log-form input,
+            .logistica-module .log-form select,
+            .logistica-module .log-form textarea {
+                background: #0a0a0a; border: 1px solid #2a2a2a; color: #E8E8E8;
+                padding: 8px 10px; border-radius: 6px;
+                font-family: var(--font-main); font-size: 0.88rem;
+            }
+            .logistica-module .log-form input:focus,
+            .logistica-module .log-form select:focus,
+            .logistica-module .log-form textarea:focus {
+                outline: none; border-color: #00A9C1;
+            }
+            .logistica-module .log-form-hint {
+                font-family: var(--font-main); font-size: 0.72rem; color: #555;
+                margin-top: 2px;
+            }
+            .logistica-module .log-multi-select {
+                display: flex; flex-wrap: wrap; gap: 6px;
+                max-height: 200px; overflow-y: auto;
+                background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 6px;
+                padding: 8px;
+            }
+            .logistica-module .log-multi-opt {
+                display: flex; align-items: center; gap: 6px;
+                background: #111; border: 1px solid #1a1a1a; padding: 4px 10px;
+                border-radius: 4px; cursor: pointer;
+                font-family: var(--font-main); font-size: 0.82rem; color: #ccc;
+                transition: all 150ms ease;
+            }
+            .logistica-module .log-multi-opt:hover { border-color: #00A9C1; }
+            .logistica-module .log-multi-opt input { margin: 0; accent-color: #00A9C1; }
+            .logistica-module .log-multi-opt input:checked + span { color: #00A9C1; font-weight: 600; }
+        `;
+        document.head.appendChild(style);
     },
 };
