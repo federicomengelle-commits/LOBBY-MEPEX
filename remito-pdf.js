@@ -14,22 +14,46 @@
 const RemitoPDF = {
 
     _logoDataUrl: null,
+    _logoFormat: 'PNG',
 
+    // Carga el logo y lo optimiza: lo dibuja en canvas reducido (max 400px ancho)
+    // y exporta como JPEG calidad 0.88 con fondo blanco. Reduce de ~5MB PNG
+    // original a ~30-60KB JPEG sin pérdida visible para el PDF.
     async _loadLogo() {
         if (this._logoDataUrl) return this._logoDataUrl;
         try {
             const res = await fetch('assets/logo_full.png');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const blob = await res.blob();
-            return await new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    this._logoDataUrl = reader.result;
-                    resolve(reader.result);
-                };
-                reader.onerror = () => resolve(null);
-                reader.readAsDataURL(blob);
+
+            // Cargar como Image para poder dibujar en canvas
+            const img = await new Promise((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = reject;
+                i.src = URL.createObjectURL(blob);
             });
+
+            // Resize a max 400px de ancho, manteniendo aspect ratio
+            const maxW = 400;
+            const scale = Math.min(1, maxW / img.naturalWidth);
+            const w = Math.round(img.naturalWidth * scale);
+            const h = Math.round(img.naturalHeight * scale);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            // Fondo blanco para que el JPEG no muestre el alpha como negro
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+
+            // Exportar como JPEG (mucho más liviano que PNG para un logo)
+            this._logoDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+            this._logoFormat = 'JPEG';
+            URL.revokeObjectURL(img.src);
+            return this._logoDataUrl;
         } catch (e) {
             console.warn('[RemitoPDF] No se pudo cargar logo:', e.message);
             return null;
@@ -70,8 +94,8 @@ const RemitoPDF = {
         // ─── Header: logo + título ───
         if (this._logoDataUrl) {
             try {
-                // Logo aprox 50mm de ancho, ratio nativo (más ancho que alto).
-                doc.addImage(this._logoDataUrl, 'PNG', MARGIN, y, 45, 14);
+                // Logo ~45mm ancho. Formato detectado en _loadLogo (JPEG optimizado).
+                doc.addImage(this._logoDataUrl, this._logoFormat || 'JPEG', MARGIN, y, 45, 14);
             } catch (e) {
                 console.warn('[RemitoPDF] addImage failed:', e.message);
             }

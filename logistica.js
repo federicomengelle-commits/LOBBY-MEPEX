@@ -383,6 +383,9 @@ const LogisticaModule = {
                 actionHtml = `<button class="btn-primary log-action-btn" data-action="regen-pdf">↻ Regenerar PDF</button>`;
             }
             actionHtml += `<button class="btn-secondary log-action-btn" data-action="set-en-curso">→ Marcar en curso</button>`;
+            if (canEdit) {
+                actionHtml += `<button class="btn-secondary log-action-btn log-action-btn-ghost" data-action="edit">✎ Editar</button>`;
+            }
         } else if (carga.estado === 'en_curso') {
             actionHtml = `
                 <button class="btn-primary log-action-btn" data-action="upload-firmado">📸 Subir foto del remito firmado</button>
@@ -392,10 +395,26 @@ const LogisticaModule = {
             actionHtml = `<button class="btn-secondary log-action-btn" data-action="download-pdf">⬇ Ver remito</button>`;
         }
 
-        // Delete button (solo admin)
-        if (isAdmin) {
-            actionHtml += `<button class="btn-danger log-action-btn" data-action="delete">🗑 Eliminar</button>`;
-        }
+        // Warning visual si la carga aprobada/en_curso no tiene vehículo o chofer asignado
+        const faltaVehiculo = !carga.vehiculo_id;
+        const faltaChofer = !carga.chofer_persona_id;
+        const necesitaWarn = (carga.estado === 'aprobada' || carga.estado === 'en_curso') && (faltaVehiculo || faltaChofer);
+        const warningHtml = necesitaWarn ? `
+            <div class="log-panel-warning">
+                <span class="log-panel-warning-icon">⚠</span>
+                <span>${[
+                    faltaVehiculo ? '<strong>Sin vehículo</strong>' : '',
+                    faltaChofer ? '<strong>Sin chofer</strong>' : '',
+                ].filter(Boolean).join(' · ')}. ${canEdit ? 'Asignalos antes de salir de viaje.' : 'Pedile al creador que los asigne.'}</span>
+            </div>
+        ` : '';
+
+        // Delete button (solo admin) — SEPARADO del bloque de acciones primarias
+        const dangerZone = isAdmin ? `
+            <div class="log-panel-danger-zone">
+                <button class="btn-danger log-action-btn" data-action="delete">🗑 Eliminar carga</button>
+            </div>
+        ` : '';
 
         panel.innerHTML = `
             <div class="log-panel-header">
@@ -405,6 +424,7 @@ const LogisticaModule = {
                 </div>
                 <button class="log-panel-close" data-action="close-panel" title="Cerrar (Esc)">✕</button>
             </div>
+            ${warningHtml}
             <div class="log-panel-body">
                 <div class="log-panel-row">
                     <span class="log-label">Estado</span>
@@ -468,6 +488,7 @@ const LogisticaModule = {
             <div class="log-panel-actions">
                 ${actionHtml}
             </div>
+            ${dangerZone}
         `;
 
         this._attachCargaPanelEvents(carga);
@@ -1535,6 +1556,52 @@ const LogisticaModule = {
             }
             .logistica-module .log-card-action.approve:hover {
                 background: rgba(0,204,136,0.22);
+            }
+
+            /* Warning si falta vehiculo/chofer cuando ya está aprobada */
+            .logistica-module .log-panel-warning {
+                display: flex; align-items: flex-start; gap: 8px;
+                margin: 0 0 0 0;
+                padding: 10px 16px;
+                background: rgba(242, 141, 21, 0.10);
+                border-bottom: 1px solid rgba(242, 141, 21, 0.3);
+                color: #F28D15;
+                font-family: var(--font-main);
+                font-size: 0.82rem;
+                line-height: 1.35;
+            }
+            .logistica-module .log-panel-warning-icon {
+                font-size: 1rem; line-height: 1.2; padding-top: 1px;
+            }
+            .logistica-module .log-panel-warning strong {
+                color: #FFAA40; font-weight: 700;
+            }
+
+            /* Danger zone (Eliminar) — separado del bloque de acciones */
+            .logistica-module .log-panel-danger-zone {
+                padding: 14px 16px 16px 16px;
+                margin-top: 6px;
+                background: rgba(255, 68, 68, 0.04);
+                border-top: 1px dashed rgba(255, 68, 68, 0.25);
+            }
+            .logistica-module .log-panel-danger-zone::before {
+                content: 'ZONA DE PELIGRO';
+                display: block;
+                font-family: var(--font-mono);
+                font-size: 0.62rem;
+                color: rgba(255, 68, 68, 0.55);
+                letter-spacing: 0.12em;
+                margin-bottom: 6px;
+                font-weight: 700;
+            }
+            .logistica-module .log-action-btn-ghost {
+                background: transparent !important;
+                border: 1px solid #2a2a2a !important;
+                color: #888 !important;
+            }
+            .logistica-module .log-action-btn-ghost:hover {
+                color: #00A9C1 !important;
+                border-color: #00A9C1 !important;
             }
         `;
         document.head.appendChild(style);

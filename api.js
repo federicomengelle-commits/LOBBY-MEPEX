@@ -3331,18 +3331,22 @@ const API = {
     // ═════════════════════════════════════════════════════════════
 
     // Obtiene notificaciones visibles para el usuario actual.
-    // Segmenta por target_user_id == uid o target_role == role del usuario.
+    // Segmenta por target_user_id == uid o target_role en los roles del usuario.
+    // Superadmin ve también target_role='admin' (jerarquía).
     async getNotifications({ limit = 20, includeRead = true } = {}) {
         const user = Auth.getUser?.();
         if (!user) return [];
         try {
             const uid = user.uid || user.id;
-            // OR composable: para Supabase usamos `or()` con filtros sobre la misma columna.
-            // target_user_id = uid OR target_role = user.role OR target_role IS NULL
+            // Roles que el usuario actual debería ver. Superadmin ve además admin.
+            const visibleRoles = user.role === 'superadmin'
+                ? ['superadmin', 'admin']
+                : [user.role];
+            const roleFilters = visibleRoles.map(r => `target_role.eq.${r}`).join(',');
             const { data, error } = await supabaseClient
                 .from('notifications')
                 .select('*')
-                .or(`target_user_id.eq.${uid},target_role.eq.${user.role},target_role.is.null`)
+                .or(`target_user_id.eq.${uid},${roleFilters},target_role.is.null`)
                 .order('created_at', { ascending: false })
                 .limit(limit);
             if (error) throw error;
