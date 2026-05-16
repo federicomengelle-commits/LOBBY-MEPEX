@@ -1440,7 +1440,7 @@ const API = {
                 // F.2 — campos del modelo nuevo
                 vidaUtilArmadoOverride: i.vida_util_armado_override != null ? parseInt(i.vida_util_armado_override) : null,
                 costoProveedorDirecto: i.costo_proveedor_directo != null ? parseFloat(i.costo_proveedor_directo) : null,
-                proveedorIdDirecto: i.proveedor_id_directo != null ? Number(i.proveedor_id_directo) : null,
+                proveedorIdDirecto: i.proveedor_id_directo != null ? String(i.proveedor_id_directo) : null,  // UUID, no integer
                 snapshotPctIndirectosFabrica: i.snapshot_pct_indirectos_fabrica != null ? parseFloat(i.snapshot_pct_indirectos_fabrica) : null,
                 snapshotPctMarkupEstructura: i.snapshot_pct_markup_estructura != null ? parseFloat(i.snapshot_pct_markup_estructura) : null,
                 snapshotPctMargen: i.snapshot_pct_margen != null ? parseFloat(i.snapshot_pct_margen) : null,
@@ -1522,7 +1522,8 @@ const API = {
                 payload.costo_proveedor_directo = (data.costoProveedorDirecto === '' || data.costoProveedorDirecto === null) ? null : parseFloat(data.costoProveedorDirecto);
             }
             if (data.proveedorIdDirecto !== undefined) {
-                payload.proveedor_id_directo = (data.proveedorIdDirecto === '' || data.proveedorIdDirecto === null) ? null : Number(data.proveedorIdDirecto);
+                // proveedor.id es UUID (string), no integer. Pasar tal cual.
+                payload.proveedor_id_directo = (data.proveedorIdDirecto === '' || data.proveedorIdDirecto === null) ? null : String(data.proveedorIdDirecto);
             }
             if (data.snapshotPctIndirectosFabrica !== undefined) payload.snapshot_pct_indirectos_fabrica = data.snapshotPctIndirectosFabrica;
             if (data.snapshotPctMarkupEstructura !== undefined) payload.snapshot_pct_markup_estructura = data.snapshotPctMarkupEstructura;

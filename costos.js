@@ -2710,8 +2710,11 @@ const CostosModule = {
             if (isNullableOverride) {
                 if (raw === '' || raw == null) {
                     value = null;
-                } else if (field === 'vidaUtilArmadoOverride' || field === 'proveedorIdDirecto') {
+                } else if (field === 'vidaUtilArmadoOverride') {
                     value = parseInt(raw);
+                } else if (field === 'proveedorIdDirecto') {
+                    // proveedor.id es UUID (string), no integer. Pasar tal cual.
+                    value = String(raw);
                 } else {
                     value = parseFloat(raw);
                 }
