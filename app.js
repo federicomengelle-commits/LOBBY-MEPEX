@@ -51,6 +51,11 @@ const App = {
         // Initialize badges (alertas en sidebar)
         Badges.init();
 
+        // Tanda 1 B4 — Initialize notifications bell (polls every 30s)
+        if (typeof Notifications !== 'undefined') {
+            Notifications.init();
+        }
+
         // Check API connection in background
         this._checkConnection();
     },
@@ -106,6 +111,8 @@ const App = {
                 </div>
 
                 <div class="global-header-right">
+                    <!-- Tanda 1 B4 — Notifications bell -->
+                    <div class="notif-wrapper" id="notifBellSlot"></div>
                     <div class="global-user-dropdown" id="userDropdown">
                         <button class="global-user-btn" id="userDropdownBtn">
                             <div class="global-user-avatar">${user.initials}</div>
