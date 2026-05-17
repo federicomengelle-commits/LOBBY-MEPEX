@@ -521,8 +521,41 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 ## 10. ESTADO ACTUAL
 
 - **Fecha:** 2026-05-16
-- **Ultimo commit destacado:** `f096f1a` — pulido pre-Tanda 4 (banner admin + badges asignaciones + conflictos + legacy fallback)
-- **Próximo paso:** **Tanda 4 = UX/Mobile review integral** según `memory/plan_tanda4_ui_review.md`.
+- **Ultimo commit destacado:** `a7b9a21` — Tanda 4 polish (tabs scrollables horizontal + table wrappers overflow para todos los módulos)
+- **Próximo paso:** Verificación end-to-end de Tanda 4 en celu/iPad real (http://195.200.1.250). Decidir si hay polish residual al usar la app real desde mobile.
+- **Tanda 4 completada (UX/Mobile review integral)**:
+  - **T4.1 — Foundation** (`e709569`): `mobile.css` nuevo (768/480 breakpoints) cargado después de `style.css`. Sidebar como drawer overlay con backdrop + body-scroll-lock + cierre on outside/hash change. Modal fullscreen mobile (100vw × 100dvh sin border-radius). Notif dropdown → bottom sheet con backdrop + transition slide-up. Botón búsqueda mobile (ícono lupa) reemplaza el input Ctrl+K + overlay fullscreen separado. Connection badge + user-info text + chevron ocultos en mobile. Header compacto. Inputs `font-size: 16px` (iOS no zoomea). Tap targets mínimos 44px. `app.js`: `App.isMobile()` helper, default sidebar `hidden` si mobile, `toggleSidebar` drawer-aware, `openDrawer/closeDrawer`, `openSearchMobile/closeSearchMobile`, `_handleSearch` con targetId parametrizable. `notifications.js`: `_renderMobileSheet` en `<body>` (el header tiene `backdrop-filter: blur(20px)` que anula `position:fixed` de descendientes — workaround obligatorio).
+  - **T4.2 — Tablas a cards mobile** (`2ee509a`): `crm.js` tabla clientes con `class="table-stack-mobile"` + `data-label="..."` en cada `<td>`. `rrhh.js` tabla Nómina idem. En `mobile.css` la regla `.table-stack-mobile thead { display: none }` + `tr { display: block }` + `td::before { content: attr(data-label) }` transforma cada fila en card vertical con labels desde `data-label`. Wrappers de Inventario/Costos/Compras → `overflow-x: auto` con scroll horizontal touch-friendly (son módulos admin, menos críticos mobile).
+  - **T4.3 — Calendario Operativo vista cards mobile** (`2ee509a`): `calendario-operativo.js _isMobile()` helper + `_init()` detecta mobile y fuerza `viewMode='cards'`. Skip timeline + infinite scroll + scroll-to-today. Toolbar wraps, oculta zoom + view-toggle. `.co-card` full-width. Side panel del evento → bottom sheet 85vh con corners redondeados.
+  - **T4.4 — Polish** (`a7b9a21`): tabs scrollables horizontal con clases específicas por módulo (`.pjd-tabs-bar`, `.crm-tabs`, `.costos-tabs`, `.module-section-tabs`, `.cat-tabs`, `.co-sp-tabs`, `.cont-tabs-bar`, etc.). Tap targets 44px en `.pjd-tab`/`.crm-tab`/etc. Wrappers de tablas adicionales (compras, admin, catalogo, contabilidad) con `overflow-x: auto`.
+- **Decisiones de arquitectura tomadas en Tanda 4**:
+  - **`mobile.css` separado, NO infiltrado en `style.css`**: si algo rompe, se quita el `<link>` y se vuelve a desktop. Carga después del `style.css` así pisa lo necesario. Bumpear `?v=` cuando hay cambios.
+  - **Cards mobile via CSS-only opt-in (`.table-stack-mobile` + `data-label`)**: cada `<td>` necesita su `data-label` pero el JS de cada módulo se toca solo una vez. Helper genérico en `mobile.css`. Aplicado solo a CRM y RRHH Nómina (los más usados desde mobile por personal poco tech). Resto: scroll horizontal en wrappers.
+  - **Notif sheet en `<body>`, NO en header**: el header tiene `backdrop-filter: blur(20px)` que crea nuevo containing block para `position:fixed`. El sheet mobile se crea como hijo de `body` para que `bottom:0` ancle al viewport. Cerrarlo lo remueve.
+  - **Drawer state independiente del `sidebarState` legacy**: `App.drawerOpen` boolean nuevo + clase `.drawer-open` en el sidebar. El `sidebarState` ('open'/'collapsed'/'hidden') sigue existiendo para desktop. En mobile cualquiera de los 3 estados queda detrás del CSS `transform: translateX(-100%)` salvo si se agrega `.drawer-open`.
+  - **Calendario operativo mobile = cards forzadas, NO vista lista por día**: la vista cards ya existía. Decisión pragmática: forzar `viewMode='cards'` en mobile en lugar de construir vista nueva. Las cards son responsive-friendly. Si se quiere agrupar por día, queda para iteración futura.
+  - **Tablet (768px portrait) aplica reglas mobile**: iPad portrait = 768x1024 exactamente. El cutoff `@media (max-width: 768px)` aplica también ahí. iPad landscape (1024x768) usa reglas desktop normal.
+- **Verificación en preview local (375x812 / 768x1024)**:
+  - Header mobile compacto: hamburger + logo + lupa + bell + avatar (sin chevron ni info text). ✓
+  - Sidebar drawer abre + backdrop visible + body lock. ✓
+  - Click backdrop fuera del drawer cierra el drawer. ✓
+  - Modal fullscreen 375x812 sin borders en mobile. ✓
+  - Notif bottom sheet posicionado bottom:0 con sheet en body. ✓
+  - Sin scroll horizontal en viewport mobile/tablet. ✓
+  - CRM `.table-stack-mobile`: `thead` hidden, `tr` block con bg + radius 8px, `td` flex con `::before "Empresa"` (label desde `data-label`). ✓
+  - **NOTA preview headless**: los screenshots se traban (probable issue del entorno preview con polling Supabase + notif refresh, no del código). Verificación funcional vía `preview_eval` + computed styles directos.
+- **Pendientes próximos**:
+  1. Verificación end-to-end manual de Fede en iPhone real + iPad real (portrait + landscape).
+  2. Polish residual posible al usar la app real desde celu (descubrir wrappers/tabs no cubiertos).
+  3. Tablas grandes Inventario/Costos/Compras siguen con scroll horizontal — eventualmente decidir si convertirlas también a cards (más trabajo: tocar muchos `_renderRow` para agregar `data-label`).
+  4. Cleanup tablas legacy `logistica_movimientos`, `logistica_vehiculos`, `rrhh_personal`, `rrhh_asignaciones` (postergado desde Tanda 3+).
+  5. Edge cases defensivos en Costos.
+  6. Módulo de Costos Fijos mensuales + dashboard breakeven.
+- **Bugs conocidos** (al cierre Tanda 4):
+  - Columnas rotadas en `clientes` (mapeado en api.js).
+  - Tablas legacy `logistica_vehiculos` / `logistica_movimientos` con tipos BIGINT vs UUID en FKs.
+  - Modal "Asignar a Evento" solo muestra eventos con fecha futura cargada — es esperado.
+  - Preview headless local timeouts en screenshots cuando hay polling activo (Notifications + Supabase auth refresh) — no afecta producción real.
 - **Tanda 3+ completada (Cierre del blueprint operativo + asignaciones_evento + pulido UX)**:
   - **3.E — Asignaciones de personas a eventos** (`sql/asignaciones_y_notifs.sql` + `api.js` + `logistica.js` + `calendario-operativo.js`): nueva tabla `asignaciones_evento` (UUID) — persona afectada a evento en una fase con rango de fechas + rol + estado (propuesta/aprobada/confirmada/cancelada). Diferente de `carga_personas` (que es por VIAJE). API CRUD completo (`getAsignacionesByEvento`, `getAsignacionesByPersona`, `getAsignacionesActivasBulk`, `getAsignacionesPendientesCount`, `createAsignacionEvento` con notif admin auto, `updateAsignacionEvento`, `approveAsignacionEvento` con notif al creador, `deleteAsignacionEvento`, `detectarConflictosPersona`). Trigger AFTER UPDATE en `encuestas_evento` dispara notif a PM+admin cuando se responde con NPS color-coded (Promotor/Pasivo/Detractor) — `prioridad='alta'` si NPS<7. Documentación SQL de los 9 roles canónicos operativos ampliados (armador/chofer/ayudante/electricista/montajista/encargado_armado/tecnico/azafata/colaborador).
   - **3.E UI Personas refactor según spec Fede** (`logistica.js v=9`): SACA columna Tipo + Estado + botón "→ Ir a RRHH" + banner read-only. Filtro `getPersonasOperativas` muestra solo gente con al menos un rol operativo (excluye internos de oficina/ventas). Teléfonos como links WhatsApp (`wa.me/<intl>`, asume AR si no tiene código). Botones "🚚 Carga" + "📅 Evento" por fila para asignar inline. Banner admin "X convocatorias pendientes" arriba si hay propuestas sin aprobar (clickeable → Calendario). Cada card muestra chips de asignaciones activas color-coded ("📅 Estetica" verde aprobada / naranja propuesta) con +N si hay más. Modal "Asignar a carga" si NO hay cargas próximas → empty state + botón "+ Crear nueva carga" que abre el form. Modal "Asignar a evento" valida solapamiento con `detectarConflictosPersona` y muestra confirm con lista si hay conflictos.
