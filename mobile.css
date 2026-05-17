@@ -367,24 +367,51 @@ html, body {
     [role="tablist"],
     .tabs-bar,
     .tab-bar,
-    .tab-nav {
+    .tab-nav,
+    .pjd-tabs-bar,
+    .crm-tabs,
+    .costos-tabs,
+    .costos-tabs-bar,
+    .module-section-tabs,
+    .cat-tabs,
+    .cat-tabs-bar,
+    .co-sp-tabs,
+    .cont-tabs-bar,
+    .rh-tabs,
+    .inv-tabs,
+    .logi-tabs {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         white-space: nowrap;
         scrollbar-width: thin;
         flex-wrap: nowrap !important;
+        max-width: 100%;
     }
     .tabs::-webkit-scrollbar,
     .tab-list::-webkit-scrollbar,
     [role="tablist"]::-webkit-scrollbar,
     .tabs-bar::-webkit-scrollbar,
     .tab-bar::-webkit-scrollbar,
-    .tab-nav::-webkit-scrollbar {
+    .tab-nav::-webkit-scrollbar,
+    .pjd-tabs-bar::-webkit-scrollbar,
+    .crm-tabs::-webkit-scrollbar,
+    .costos-tabs::-webkit-scrollbar,
+    .module-section-tabs::-webkit-scrollbar,
+    .cat-tabs::-webkit-scrollbar,
+    .co-sp-tabs::-webkit-scrollbar,
+    .cont-tabs-bar::-webkit-scrollbar {
         height: 4px;
     }
     .tab,
     .tab-btn,
-    [role="tab"] {
+    [role="tab"],
+    .pjd-tab,
+    .crm-tab,
+    .costos-tab,
+    .section-tab,
+    .cat-tab,
+    .co-sp-tab,
+    .cont-tab {
         flex-shrink: 0;
         min-height: 44px;
     }
@@ -442,7 +469,13 @@ html, body {
     .inv-table-wrap,
     .costos-table-wrap,
     .rh-table-wrap,
-    .pip-table-wrap {
+    .pip-table-wrap,
+    .cmp-table-wrap,
+    .admpanel-table-wrap,
+    .cat-table-wrapper,
+    .ana-top-table-wrap,
+    .cot-tbl-wrap,
+    .inv-mov-detail-table {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         max-width: 100%;
