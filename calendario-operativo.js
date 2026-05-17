@@ -158,9 +158,19 @@ const CalendarioOperativo = {
         `;
     },
 
+    // Tanda 4 — detectar mobile para forzar vista cards
+    _isMobile() {
+        return window.innerWidth <= 768;
+    },
+
     async _init() {
         // Load events from API (or fallback to localStorage cache)
         await this._loadEvents();
+
+        // Tanda 4 — en mobile forzar vista cards (timeline vertical no escala)
+        if (this._isMobile()) {
+            this._viewMode = 'cards';
+        }
 
         if (this._events.length === 0) {
             this._showEmpty();
@@ -171,7 +181,7 @@ const CalendarioOperativo = {
         // Detect conflicts (uses logistics from localStorage for now)
         this._detectConflicts();
 
-        // Compute lanes
+        // Compute lanes (solo timeline; en cards no se usan)
         this._lanes = this._computeLanes(this._events);
 
         // Set initial date range: today ± 2 months
@@ -182,16 +192,24 @@ const CalendarioOperativo = {
         // Populate filter dropdowns
         this._populateFilters();
 
-        // Render timeline
+        if (this._viewMode === 'cards') {
+            // Mobile mode: skip timeline + infinite scroll + scroll-to-today
+            const vp = document.getElementById('coViewport');
+            const cards = document.getElementById('coCardsContainer');
+            if (vp) vp.style.display = 'none';
+            if (cards) cards.style.display = '';
+            this._renderCardsView();
+            this._attachEvents();
+            // Reflejar estado en los view buttons
+            document.getElementById('coViewTimeline')?.classList.remove('active');
+            document.getElementById('coViewCards')?.classList.add('active');
+            return;
+        }
+
+        // Desktop default: timeline
         this._renderTimeline();
-
-        // Attach events
         this._attachEvents();
-
-        // Setup infinite scroll
         this._setupInfiniteScroll();
-
-        // Scroll to today
         requestAnimationFrame(() => this._scrollToToday(false));
     },
 

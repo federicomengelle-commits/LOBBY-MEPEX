@@ -570,7 +570,7 @@ const CRM = {
 
         return `
             <div class="crm-table-wrap">
-                <table class="crm-table">
+                <table class="crm-table table-stack-mobile">
                     <thead><tr>${thHtml}</tr></thead>
                     <tbody>${rowsHtml}</tbody>
                 </table>
@@ -623,15 +623,15 @@ const CRM = {
 
         return `
             <tr class="crm-row ${isActive ? 'crm-row-active' : ''}" data-id="${c.id}">
-                <td class="crm-td-empresa">${c.name || '\u2014'}</td>
-                <td>${typeBadge}</td>
-                <td class="crm-td-rubro">${rubro}</td>
-                <td>${contacto}</td>
-                <td class="crm-td-email">${c.email || '\u2014'}</td>
-                <td class="crm-td-phone">${c.phone || '\u2014'}</td>
-                <td>${estadoBadge}</td>
-                <td>${scoreBar}</td>
-                <td class="crm-td-center">${projBadge}</td>
+                <td class="crm-td-empresa" data-label="Empresa">${c.name || '\u2014'}</td>
+                <td data-label="Tipo">${typeBadge}</td>
+                <td class="crm-td-rubro" data-label="Rubro">${rubro}</td>
+                <td data-label="Contacto">${contacto}</td>
+                <td class="crm-td-email" data-label="Email">${c.email || '\u2014'}</td>
+                <td class="crm-td-phone" data-label="Tel\u00e9fono">${c.phone || '\u2014'}</td>
+                <td data-label="Estado">${estadoBadge}</td>
+                <td data-label="Score">${scoreBar}</td>
+                <td class="crm-td-center" data-label="Proyectos">${projBadge}</td>
             </tr>
         `;
     },

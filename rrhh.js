@@ -320,7 +320,7 @@ const RRHHModule = {
                 </div>
             ` : `
                 <div class="rh-table-wrap">
-                    <table class="rh-table">
+                    <table class="rh-table table-stack-mobile">
                         <thead>
                             <tr>
                                 <th>Nombre</th>
@@ -341,13 +341,13 @@ const RRHHModule = {
                                     : p.nombre;
                                 return `
                                     <tr class="rh-row" data-id="${p.id}">
-                                        <td class="rh-cell-name">${displayName}</td>
-                                        <td>${p.rol || '—'}</td>
-                                        <td><span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span></td>
-                                        <td>${p.contacto || '—'}</td>
-                                        <td class="rh-mono">${p.telefono || '—'}</td>
-                                        <td class="rh-mono">${this._calcAntiguedad(p.fecha_ingreso)}</td>
-                                        <td><span class="rh-estado-dot" style="background:${estadoColor}"></span> ${p.estado === 'activo' ? 'Activo' : 'Inactivo'}</td>
+                                        <td class="rh-cell-name" data-label="Nombre">${displayName}</td>
+                                        <td data-label="Rol">${p.rol || '—'}</td>
+                                        <td data-label="Tipo"><span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span></td>
+                                        <td data-label="Contacto">${p.contacto || '—'}</td>
+                                        <td class="rh-mono" data-label="Teléfono">${p.telefono || '—'}</td>
+                                        <td class="rh-mono" data-label="Antigüedad">${this._calcAntiguedad(p.fecha_ingreso)}</td>
+                                        <td data-label="Estado"><span class="rh-estado-dot" style="background:${estadoColor}"></span> ${p.estado === 'activo' ? 'Activo' : 'Inactivo'}</td>
                                     </tr>
                                 `;
                             }).join('')}
