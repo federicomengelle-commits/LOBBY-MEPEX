@@ -82,7 +82,8 @@ VALUES
     ('Antonio Damián', 'Morales',    '20-28253180-2', '1980-11-30', 'interna', TRUE),
     ('Gastón Favio',   'Evangelista','20-21810739-4', '1970-07-03', 'interna', TRUE),
     ('Miguel Angel',   'Deluca',     '20-25361229-1', '1976-07-05', 'interna', TRUE)
-ON CONFLICT (cuil) DO NOTHING;
+ON CONFLICT (cuil) WHERE cuil IS NOT NULL AND _deleted = FALSE
+DO NOTHING;
 
 -- 4. Verificación (opcional, devuelve cuántos quedaron).
 SELECT
