@@ -135,6 +135,16 @@ const RRHHModule = {
         return `${months}m`;
     },
 
+    _calcEdad(fechaNac) {
+        if (!fechaNac) return '—';
+        const nac = new Date(fechaNac);
+        const hoy = new Date();
+        let edad = hoy.getFullYear() - nac.getFullYear();
+        const m = hoy.getMonth() - nac.getMonth();
+        if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+        return `${edad}`;
+    },
+
     _getTipoColor(tipo) {
         switch (tipo) {
             case 'fijo': return '#00CC88';
@@ -322,8 +332,9 @@ const RRHHModule = {
                                 <th>Nombre</th>
                                 <th>Rol</th>
                                 <th>Tipo</th>
-                                <th>Contacto</th>
+                                <th>CUIL</th>
                                 <th>Teléfono</th>
+                                <th>Edad</th>
                                 <th>Antigüedad</th>
                                 <th>Estado</th>
                             </tr>
@@ -340,8 +351,9 @@ const RRHHModule = {
                                         <td class="rh-cell-name" data-label="Nombre">${displayName}</td>
                                         <td data-label="Rol">${p.rol || '—'}</td>
                                         <td data-label="Tipo"><span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span></td>
-                                        <td data-label="Contacto">${p.contacto || '—'}</td>
+                                        <td class="rh-mono" data-label="CUIL">${p.cuil || '—'}</td>
                                         <td class="rh-mono" data-label="Teléfono">${p.telefono || '—'}</td>
+                                        <td class="rh-mono" data-label="Edad">${this._calcEdad(p.fecha_nacimiento)}</td>
                                         <td class="rh-mono" data-label="Antigüedad">${this._calcAntiguedad(p.fecha_ingreso)}</td>
                                         <td data-label="Estado"><span class="rh-estado-dot" style="background:${estadoColor}"></span> ${p.estado === 'activo' ? 'Activo' : 'Inactivo'}</td>
                                     </tr>
@@ -436,6 +448,14 @@ const RRHHModule = {
                     <div class="rh-ficha-field">
                         <span class="rh-field-label">Email</span>
                         <span class="rh-field-value">${p.email || '—'}</span>
+                    </div>
+                    <div class="rh-ficha-field">
+                        <span class="rh-field-label">CUIL</span>
+                        <span class="rh-field-value rh-mono">${p.cuil || '—'}</span>
+                    </div>
+                    <div class="rh-ficha-field">
+                        <span class="rh-field-label">Fecha de Nacimiento</span>
+                        <span class="rh-field-value rh-mono">${this._formatDate(p.fecha_nacimiento)}${p.fecha_nacimiento ? ` (${this._calcEdad(p.fecha_nacimiento)} años)` : ''}</span>
                     </div>
                     <div class="rh-ficha-field">
                         <span class="rh-field-label">Fecha Ingreso</span>
@@ -604,6 +624,16 @@ const RRHHModule = {
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div>
+                            <label class="form-label">CUIL</label>
+                            <input type="text" id="rhPCuil" class="form-input" value="${item?.cuil || ''}" placeholder="20-12345678-9" maxlength="13" style="font-size:1rem;padding:12px;font-family:'Space Mono',monospace;">
+                        </div>
+                        <div>
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <input type="date" id="rhPNacimiento" class="form-input" value="${item?.fecha_nacimiento || ''}" style="font-size:1rem;padding:12px;">
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div>
                             <label class="form-label">Estado</label>
                             <select id="rhPEstado" class="form-input" style="font-size:1rem;padding:12px;">
                                 <option value="activo" ${item?.estado === 'activo' || !item ? 'selected' : ''}>Activo</option>
@@ -664,6 +694,8 @@ const RRHHModule = {
                     telefono: document.getElementById('rhPTel')?.value?.trim() || null,
                     email: document.getElementById('rhPEmail')?.value?.trim() || null,
                     fecha_ingreso: document.getElementById('rhPIngreso')?.value || null,
+                    cuil: document.getElementById('rhPCuil')?.value?.trim() || null,
+                    fecha_nacimiento: document.getElementById('rhPNacimiento')?.value || null,
                     activo: estadoUi === 'activo',
                     documentacion: document.getElementById('rhPDoc')?.value?.trim() || null,
                     notas: document.getElementById('rhPNotas')?.value?.trim() || null,
