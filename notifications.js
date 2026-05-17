@@ -49,7 +49,10 @@ const Notifications = {
             const uid = user.uid || user.id;
             this._unread = this._items.filter(n => !this._isReadBy(n, uid)).length;
             this._renderBell();
-            if (this._open) this._renderDropdownBody();
+            if (this._open) {
+                if (this._isMobile()) this._renderMobileSheet();
+                else this._renderDropdownBody();
+            }
         } catch (e) {
             console.warn('[Notifications] refresh error:', e.message);
         }
@@ -174,10 +177,33 @@ const Notifications = {
         if (this._open) this.closeDropdown(); else this.openDropdown();
     },
 
+    _isMobile() {
+        return window.innerWidth <= 768;
+    },
+
+    _ensureBackdrop() {
+        let bd = document.getElementById('notifBackdrop');
+        if (!bd) {
+            bd = document.createElement('div');
+            bd.id = 'notifBackdrop';
+            bd.className = 'notif-backdrop';
+            bd.addEventListener('click', () => this.closeDropdown());
+            document.body.appendChild(bd);
+        }
+        return bd;
+    },
+
     openDropdown() {
         this._open = true;
-        const dd = document.getElementById('notifDropdown');
-        if (dd) dd.style.display = 'block';
+        // Tanda 4 — Mobile: render como sheet a nivel body (header tiene backdrop-filter
+        // que anula position:fixed en descendientes). Desktop: dropdown normal.
+        if (this._isMobile()) {
+            this._renderMobileSheet();
+            this._ensureBackdrop().classList.add('visible');
+        } else {
+            const dd = document.getElementById('notifDropdown');
+            if (dd) dd.style.display = 'block';
+        }
         // Refresh on open para tener data fresca
         this.refresh();
     },
@@ -186,6 +212,33 @@ const Notifications = {
         this._open = false;
         const dd = document.getElementById('notifDropdown');
         if (dd) dd.style.display = 'none';
+        document.getElementById('notifBackdrop')?.classList.remove('visible');
+        // Remover sheet mobile si existe
+        document.getElementById('notifMobileSheet')?.remove();
+    },
+
+    _renderMobileSheet() {
+        let sheet = document.getElementById('notifMobileSheet');
+        const isNew = !sheet;
+        if (isNew) {
+            sheet = document.createElement('div');
+            sheet.id = 'notifMobileSheet';
+            sheet.className = 'notif-dropdown notif-dropdown--mobile';
+            document.body.appendChild(sheet);
+        }
+        sheet.innerHTML = this._renderDropdownInner();
+        sheet.style.display = 'block';
+        // Diferir .open al siguiente tick para que el browser haga layout
+        // del estado inicial (translateY 100%) antes de transition.
+        setTimeout(() => sheet.classList.add('open'), 0);
+        // Re-attach events (los IDs internos como #notifMarkAll son únicos)
+        document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
+        sheet.querySelectorAll('.notif-item').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._onItemClick(btn.dataset.id, btn.dataset.link);
+            });
+        });
     },
 
     // ─── Actions ──────────────────────────────

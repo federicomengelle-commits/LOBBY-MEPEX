@@ -1,0 +1,542 @@
+/* =============================================
+   MEPEX Lobby — Mobile / Tablet Responsive
+   Tanda 4 — viewport adaptativo unificado
+   =============================================
+   Se carga DESPUÉS de style.css → pisa todo lo
+   necesario en breakpoints. Si algo rompe, sacar
+   el <link> de mobile.css y volver a desktop.
+   ============================================= */
+
+/* ─────────────────────────────────────────────
+   0. Global hardening (todas las pantallas)
+   ───────────────────────────────────────────── */
+html, body {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Inputs en iOS no zoomean si font-size >= 16px */
+@media (max-width: 768px) {
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   1. Search button mobile (siempre presente,
+   solo visible en mobile)
+   ───────────────────────────────────────────── */
+.search-btn-mobile {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #888;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+}
+
+.search-btn-mobile:hover {
+    color: var(--primary);
+    border-color: rgba(var(--primary-rgb), 0.3);
+    background: rgba(var(--primary-rgb), 0.08);
+}
+
+.search-overlay-mobile {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    background: rgba(5, 5, 5, 0.97);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 16px;
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.search-overlay-mobile.open {
+    display: flex;
+}
+
+.search-overlay-mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.search-overlay-mobile-input {
+    flex: 1;
+    background: var(--bg-card-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: 16px;
+    outline: none;
+}
+
+.search-overlay-mobile-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.15);
+}
+
+.search-overlay-mobile-close {
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.search-overlay-mobile-results {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 4px;
+}
+
+.search-overlay-mobile-results:empty::before {
+    content: 'Escribí al menos 2 caracteres…';
+    display: block;
+    padding: 24px;
+    text-align: center;
+    color: var(--text-dim);
+    font-family: var(--font-main);
+    font-size: 13px;
+}
+
+/* ─────────────────────────────────────────────
+   2. Sidebar backdrop (mobile drawer)
+   ───────────────────────────────────────────── */
+.sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    top: 56px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 150;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 250ms var(--ease);
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .sidebar-backdrop {
+        display: block;
+    }
+    .sidebar-backdrop.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   3. TABLET (max 1024px)
+   ───────────────────────────────────────────── */
+@media (max-width: 1024px) {
+    /* User dropdown más compacto */
+    .global-user-info-text {
+        display: none;
+    }
+    .global-user-btn {
+        padding: 4px 6px;
+    }
+
+    /* Modals un poco más anchos para usar mejor el viewport */
+    .modal--md { width: 92vw; max-width: 560px; }
+    .modal--lg { width: 95vw; max-width: 780px; }
+}
+
+/* ─────────────────────────────────────────────
+   4. MOBILE (max 768px)
+   ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+
+    /* ─── Header compacto ─── */
+    .global-header {
+        padding: 0 10px;
+        gap: 4px;
+    }
+    .global-header-left {
+        gap: 6px;
+        min-width: 0;
+    }
+    .global-header-center {
+        display: none;
+    }
+    .global-logo {
+        height: 22px;
+    }
+    .connection-badge {
+        display: none;
+    }
+    .search-btn-mobile {
+        display: inline-flex;
+    }
+    .global-user-btn {
+        padding: 4px;
+        gap: 0;
+    }
+    .global-user-chevron {
+        display: none;
+    }
+
+    /* ─── User dropdown menu — ajustar viewport ─── */
+    .global-dropdown-menu {
+        width: 88vw;
+        max-width: 320px;
+        right: 0;
+    }
+
+    /* ─── Sidebar como drawer overlay ─── */
+    .app-sidebar {
+        position: fixed !important;
+        top: 56px;
+        left: 0;
+        bottom: 0;
+        width: 280px !important;
+        min-width: 280px !important;
+        max-width: 85vw;
+        z-index: 200;
+        transform: translateX(-100%);
+        transition: transform 280ms var(--ease);
+        box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+        overflow-y: auto;
+    }
+    .app-sidebar.drawer-open {
+        transform: translateX(0);
+    }
+    /* Forzar full mode dentro del drawer (no strip) */
+    .app-sidebar.drawer-open .sidebar-full {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    .app-sidebar .sidebar-strip {
+        display: none !important;
+    }
+    /* Padding extra footer drawer */
+    .app-sidebar .sidebar-footer {
+        padding-bottom: 20px;
+    }
+
+    /* ─── Body lock cuando drawer abierto ─── */
+    body.body-no-scroll {
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+    }
+
+    /* ─── Modals fullscreen ─── */
+    .modal-overlay {
+        padding: 0;
+        align-items: stretch;
+        justify-content: stretch;
+    }
+    .modal,
+    .modal--sm,
+    .modal--md,
+    .modal--lg {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 100dvh !important;
+        height: 100dvh !important;
+        border-radius: 0 !important;
+        border: none !important;
+        margin: 0 !important;
+    }
+    .modal-header {
+        padding: 14px 16px 12px;
+        position: sticky;
+        top: 0;
+        background: var(--bg-card);
+        z-index: 10;
+    }
+    .modal-title {
+        font-size: 1rem;
+    }
+    .modal-close {
+        font-size: 26px;
+        padding: 6px 10px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+    .modal-body {
+        padding: 14px 16px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .modal-footer {
+        padding: 12px 16px env(safe-area-inset-bottom, 12px);
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-card);
+        z-index: 10;
+        flex-wrap: wrap;
+    }
+    .modal-footer .btn,
+    .modal-footer button {
+        flex: 1;
+        min-width: 120px;
+        min-height: 44px;
+    }
+
+    /* ─── Notif dropdown → bottom sheet ─── */
+    .notif-dropdown--mobile {
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 16px 16px 0 0 !important;
+        max-height: 80vh;
+        overflow: hidden;
+        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.7) !important;
+        transform: translateY(100%);
+        transition: transform 250ms var(--ease);
+    }
+    .notif-dropdown--mobile.open {
+        transform: translateY(0);
+    }
+    .notif-dropdown--mobile .notif-dropdown-body {
+        max-height: calc(80vh - 56px);
+        overflow-y: auto;
+    }
+    /* Backdrop visible cuando notif está abierta */
+    .notif-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+        z-index: 999;
+        display: none;
+    }
+    .notif-backdrop.visible {
+        display: block;
+    }
+    .notif-item {
+        min-height: 44px;
+        padding: 12px 14px !important;
+    }
+
+    /* ─── Toast — más arriba, ancho casi full ─── */
+    .toast-container,
+    .app-toast {
+        left: 12px !important;
+        right: 12px !important;
+        max-width: calc(100vw - 24px) !important;
+    }
+
+    /* ─── Tap targets 44px iOS ─── */
+    .dropdown-item,
+    .se-item,
+    .se-section-header,
+    .sidebar-action-btn,
+    .btn,
+    .modal-footer button,
+    .form-field-actions button {
+        min-height: 44px;
+    }
+    /* Botones mini en filas de tabla — agrandar al menos 36px */
+    .btn-icon-mini,
+    .row-action-btn,
+    .table-action-btn {
+        min-width: 36px;
+        min-height: 36px;
+    }
+
+    /* ─── Tabs scrollables horizontales ─── */
+    .tabs,
+    .tab-list,
+    [role="tablist"],
+    .tabs-bar,
+    .tab-bar,
+    .tab-nav {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+        scrollbar-width: thin;
+        flex-wrap: nowrap !important;
+    }
+    .tabs::-webkit-scrollbar,
+    .tab-list::-webkit-scrollbar,
+    [role="tablist"]::-webkit-scrollbar,
+    .tabs-bar::-webkit-scrollbar,
+    .tab-bar::-webkit-scrollbar,
+    .tab-nav::-webkit-scrollbar {
+        height: 4px;
+    }
+    .tab,
+    .tab-btn,
+    [role="tab"] {
+        flex-shrink: 0;
+        min-height: 44px;
+    }
+
+    /* ─── Lobby KPIs 2×2 mobile (en lugar de 1 col) ─── */
+    .lobby-dashboard {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .lobby-kpi-value,
+    .kpi-value {
+        font-size: 1.4rem !important;
+    }
+    .lobby-content {
+        padding: 16px !important;
+    }
+
+    /* ─── Forms — forzar 1 col en mobile ─── */
+    .form-grid,
+    .form-row,
+    .form-2col,
+    .form-fields,
+    .fb-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+    .form-field,
+    .fb-field {
+        min-width: 0;
+    }
+
+    /* ─── App main padding reducido ─── */
+    .app-main {
+        padding: 0 !important;
+    }
+    .module-page,
+    .module-content,
+    .page-content {
+        padding: 14px !important;
+    }
+    .page-header,
+    .module-header {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .page-header h1,
+    .module-header h1 {
+        font-size: 1.4rem !important;
+    }
+
+    /* ─── Tablas con scroll horizontal por default ─── */
+    .table-wrapper,
+    .data-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   5. PHONE pequeño (max 480px)
+   ───────────────────────────────────────────── */
+@media (max-width: 480px) {
+    .global-header {
+        padding: 0 8px;
+    }
+    .global-logo {
+        height: 20px;
+    }
+    .global-user-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 10px;
+    }
+    .modal-header {
+        padding: 12px 14px 10px;
+    }
+    .modal-body {
+        padding: 12px 14px;
+    }
+    .modal-footer {
+        padding: 10px 14px env(safe-area-inset-bottom, 10px);
+    }
+
+    .lobby-kpi-value,
+    .kpi-value {
+        font-size: 1.2rem !important;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   6. Helper opt-in: tabla → cards mobile
+   Aplicar clase .table-stack-mobile en <table>
+   y data-label="Header" en cada <td>
+   ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+    table.table-stack-mobile {
+        display: block;
+        width: 100%;
+        border: none;
+    }
+    table.table-stack-mobile thead {
+        display: none;
+    }
+    table.table-stack-mobile tbody {
+        display: block;
+    }
+    table.table-stack-mobile tr {
+        display: block;
+        padding: 12px 14px;
+        margin-bottom: 8px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    table.table-stack-mobile td {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 6px 0;
+        border: none;
+        font-size: 13px;
+        text-align: right;
+    }
+    table.table-stack-mobile td::before {
+        content: attr(data-label);
+        color: var(--text-dim);
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 400;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+        text-align: left;
+        margin-right: auto;
+    }
+    /* Filas sin data-label (acciones) ocupan full width */
+    table.table-stack-mobile td:not([data-label]) {
+        justify-content: flex-end;
+    }
+    table.table-stack-mobile td:not([data-label])::before {
+        content: none;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   7. Helper opt-in: hide en mobile / desktop
+   ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .hide-mobile { display: none !important; }
+}
+@media (min-width: 769px) {
+    .show-mobile { display: none !important; }
+}

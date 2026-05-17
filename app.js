@@ -8,12 +8,23 @@
 
 const App = {
     sidebarState: 'open', // 'open' | 'collapsed' | 'hidden'
+    drawerOpen: false,    // Tanda 4 — mobile drawer state (independiente de sidebarState)
     userDropdownOpen: false,
     searchOpen: false,
+    searchMobileOpen: false, // Tanda 4 — overlay búsqueda mobile
     _searchDebounce: null,
+
+    // Tanda 4 — detectar viewport mobile
+    isMobile() {
+        return window.innerWidth <= 768;
+    },
 
     // ─── INIT ───
     init() {
+        // Tanda 4 — en mobile, sidebar arranca cerrado
+        if (this.isMobile()) {
+            this.sidebarState = 'hidden';
+        }
         Router.init();
         // Close dropdowns on outside click
         document.addEventListener('click', (e) => {
@@ -23,6 +34,10 @@ const App = {
             if (this.searchOpen && !e.target.closest('.global-search-wrapper')) {
                 this.closeSearch();
             }
+        });
+        // Tanda 4 — cerrar drawer al cambiar de hash (navegación)
+        window.addEventListener('hashchange', () => {
+            if (this.drawerOpen) this.closeDrawer();
         });
     },
 
@@ -40,8 +55,10 @@ const App = {
             ${this._renderGlobalHeader(user)}
             <div class="app-body">
                 ${this._renderSidebar(user)}
+                <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
                 <main class="app-main" id="mainContent"></main>
             </div>
+            ${this._renderSearchOverlayMobile(user)}
         `;
         this._attachShellEvents(user);
 
@@ -111,6 +128,12 @@ const App = {
                 </div>
 
                 <div class="global-header-right">
+                    ${canSearch ? `
+                    <!-- Tanda 4 — botón búsqueda mobile (oculto en desktop) -->
+                    <button class="search-btn-mobile" id="searchBtnMobile" title="Buscar" aria-label="Buscar">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    </button>
+                    ` : ''}
                     <!-- Tanda 1 B4 — Notifications bell -->
                     <div class="notif-wrapper" id="notifBellSlot"></div>
                     <div class="global-user-dropdown" id="userDropdown">
@@ -298,6 +321,64 @@ const App = {
                 </div>
             </aside>
         `;
+    },
+
+    // ─── SEARCH OVERLAY MOBILE (Tanda 4) ───
+    _renderSearchOverlayMobile(user) {
+        const canSearch = Data.canSearch(user.role);
+        if (!canSearch) return '';
+        return `
+            <div class="search-overlay-mobile" id="searchOverlayMobile">
+                <div class="search-overlay-mobile-header">
+                    <input type="text"
+                           class="search-overlay-mobile-input"
+                           id="searchInputMobile"
+                           placeholder="Buscar clientes, proyectos, eventos…"
+                           autocomplete="off">
+                    <button class="search-overlay-mobile-close" id="searchOverlayClose" aria-label="Cerrar">×</button>
+                </div>
+                <div class="search-overlay-mobile-results" id="searchResultsMobile"></div>
+            </div>
+        `;
+    },
+
+    openSearchMobile() {
+        this.searchMobileOpen = true;
+        const overlay = document.getElementById('searchOverlayMobile');
+        if (overlay) {
+            overlay.classList.add('open');
+            setTimeout(() => document.getElementById('searchInputMobile')?.focus(), 50);
+        }
+    },
+
+    closeSearchMobile() {
+        this.searchMobileOpen = false;
+        const overlay = document.getElementById('searchOverlayMobile');
+        if (overlay) overlay.classList.remove('open');
+        const input = document.getElementById('searchInputMobile');
+        if (input) input.value = '';
+        const results = document.getElementById('searchResultsMobile');
+        if (results) results.innerHTML = '';
+    },
+
+    // ─── DRAWER (Tanda 4 — mobile sidebar overlay) ───
+    openDrawer() {
+        const sidebar = document.getElementById('appSidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (!sidebar) return;
+        sidebar.classList.add('drawer-open');
+        if (backdrop) backdrop.classList.add('visible');
+        document.body.classList.add('body-no-scroll');
+        this.drawerOpen = true;
+    },
+
+    closeDrawer() {
+        const sidebar = document.getElementById('appSidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (sidebar) sidebar.classList.remove('drawer-open');
+        if (backdrop) backdrop.classList.remove('visible');
+        document.body.classList.remove('body-no-scroll');
+        this.drawerOpen = false;
     },
 
     // ─── REFRESH SIDEBAR (re-renders only sidebar, preserves header/main) ───
@@ -490,16 +571,42 @@ const App = {
             });
         }
 
+        // Tanda 4 — Search button mobile + overlay
+        document.getElementById('searchBtnMobile')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.openSearchMobile();
+        });
+        document.getElementById('searchOverlayClose')?.addEventListener('click', () => {
+            this.closeSearchMobile();
+        });
+        const searchInputMobile = document.getElementById('searchInputMobile');
+        if (searchInputMobile) {
+            searchInputMobile.addEventListener('input', (e) => {
+                this._handleSearchMobileDebounced(e.target.value, user);
+            });
+        }
+
+        // Tanda 4 — Backdrop click cierra drawer
+        document.getElementById('sidebarBackdrop')?.addEventListener('click', () => {
+            this.closeDrawer();
+        });
+
         // Global keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Ctrl+K → focus search
+            // Ctrl+K → focus search (mobile: abrir overlay)
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
-                if (searchInput) searchInput.focus();
+                if (this.isMobile()) {
+                    this.openSearchMobile();
+                } else if (searchInput) {
+                    searchInput.focus();
+                }
             }
-            // Escape → close search
-            if (e.key === 'Escape' && this.searchOpen) {
-                this.closeSearch();
+            // Escape → close search / search mobile / drawer
+            if (e.key === 'Escape') {
+                if (this.searchMobileOpen) this.closeSearchMobile();
+                else if (this.searchOpen) this.closeSearch();
+                else if (this.drawerOpen) this.closeDrawer();
             }
             // Ctrl+Z → undo (sidebar edit has priority, then UndoManager)
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -521,13 +628,24 @@ const App = {
         });
     },
 
-    // ─── SIDEBAR TOGGLE (cycles: open → collapsed → hidden → open) ───
+    // ─── SIDEBAR TOGGLE ───
+    // Desktop: cycles open → collapsed → hidden → open
+    // Mobile (Tanda 4): toggle drawer abierto/cerrado
     toggleSidebar() {
         const sidebar = document.getElementById('appSidebar');
         if (!sidebar) return;
+
+        if (this.isMobile()) {
+            if (this.drawerOpen) this.closeDrawer();
+            else this.openDrawer();
+            return;
+        }
+
         const cycle = { open: 'collapsed', collapsed: 'hidden', hidden: 'open' };
         this.sidebarState = cycle[this.sidebarState] || 'open';
-        sidebar.className = 'app-sidebar ' + this.sidebarState + (SidebarEditor.isEditMode() ? ' edit-mode' : '');
+        // Preservar clase drawer-open si la había (poco probable en desktop, defensivo)
+        const drawerCls = sidebar.classList.contains('drawer-open') ? ' drawer-open' : '';
+        sidebar.className = 'app-sidebar ' + this.sidebarState + (SidebarEditor.isEditMode() ? ' edit-mode' : '') + drawerCls;
     },
 
     // ─── USER DROPDOWN ───
@@ -545,11 +663,17 @@ const App = {
     // ─── SEARCH (with API integration) ───
     _handleSearchDebounced(query, user) {
         clearTimeout(this._searchDebounce);
-        this._searchDebounce = setTimeout(() => this._handleSearch(query, user), 300);
+        this._searchDebounce = setTimeout(() => this._handleSearch(query, user, 'searchResults'), 300);
     },
 
-    async _handleSearch(query, user) {
-        const resultsEl = document.getElementById('searchResults');
+    // Tanda 4 — versión mobile (renderiza en otro contenedor)
+    _handleSearchMobileDebounced(query, user) {
+        clearTimeout(this._searchDebounce);
+        this._searchDebounce = setTimeout(() => this._handleSearch(query, user, 'searchResultsMobile'), 300);
+    },
+
+    async _handleSearch(query, user, resultsId = 'searchResults') {
+        const resultsEl = document.getElementById(resultsId);
         if (!resultsEl) return;
 
         if (!query || query.length < 2) {
@@ -647,6 +771,7 @@ const App = {
                     Router.navigate(route);
                 }
                 this.closeSearch();
+                if (this.searchMobileOpen) this.closeSearchMobile();
             });
         });
     },
