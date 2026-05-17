@@ -374,7 +374,9 @@ const LogisticaModule = {
             : '—';
 
         const stands = (carga.carga_proyectos || []).map(cp => cp.proyecto).filter(Boolean);
-        const ayudantes = (carga.carga_personas || []).map(cp => cp.persona).filter(Boolean);
+        const encargado = carga.encargado
+            ? `${carga.encargado.nombre}${carga.encargado.apellido ? ' ' + carga.encargado.apellido : ''}`
+            : '';
 
         // Action button según estado
         let actionHtml = '';
@@ -455,18 +457,16 @@ const LogisticaModule = {
                     <span class="log-label">Chofer</span>
                     <span>${this._esc(chofer)}${carga.chofer?.telefono ? ` · <a href="tel:${this._escAttr(carga.chofer.telefono)}" class="log-tel">${this._esc(carga.chofer.telefono)}</a>` : ''}</span>
                 </div>
+                ${encargado ? `
+                <div class="log-panel-row">
+                    <span class="log-label">Encargado</span>
+                    <span>${this._esc(encargado)}${carga.encargado?.telefono ? ` · <a href="tel:${this._escAttr(carga.encargado.telefono)}" class="log-tel">${this._esc(carga.encargado.telefono)}</a>` : ''}</span>
+                </div>
+                ` : ''}
                 <div class="log-panel-row">
                     <span class="log-label">Destino</span>
                     <span>${this._esc(venue)}</span>
                 </div>
-                ${ayudantes.length ? `
-                <div class="log-panel-block">
-                    <div class="log-label">Ayudantes</div>
-                    <div class="log-chips">
-                        ${ayudantes.map(p => `<span class="log-chip">${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</span>`).join('')}
-                    </div>
-                </div>
-                ` : ''}
                 <div class="log-panel-block">
                     <div class="log-label">Stands cargados (${stands.length})</div>
                     ${stands.length ? `
@@ -649,11 +649,11 @@ const LogisticaModule = {
         const initialFase = carga?.fase || 'armado';
         const initialVehId = carga?.vehiculo_id || '';
         const initialChoferId = carga?.chofer_persona_id || '';
+        const initialEncargadoId = carga?.encargado_persona_id || '';
         const initialHora = carga?.hora_carga ? carga.hora_carga.slice(0, 5) : '';
         const initialEta = carga?.hora_estimada_llegada ? carga.hora_estimada_llegada.slice(0, 5) : '';
         const initialNotas = carga?.notas || '';
         const initialProyectoIds = (carga?.carga_proyectos || []).map(cp => cp.proyecto?.id).filter(Boolean);
-        const initialAyudanteIds = (carga?.carga_personas || []).map(cp => cp.persona?.id).filter(Boolean);
 
         let proyectosEv = [];
         if (initialEventoId) {
@@ -663,9 +663,10 @@ const LogisticaModule = {
         const choferes = this._personas.filter(p =>
             (p.roles_operativos || []).includes('chofer') && p.activo && !p._deleted
         );
-        const ayudantes = this._personas.filter(p =>
-            !((p.roles_operativos || []).length === 1 && p.roles_operativos[0] === 'chofer') &&
-            p.activo && !p._deleted
+        // Encargado: cualquier persona con al menos un rol operativo (interno o eventual).
+        // Excluye los que SOLO son chofer (porque ya están en chofer).
+        const encargados = this._personas.filter(p =>
+            (p.roles_operativos || []).length > 0 && p.activo && !p._deleted
         );
 
         panel.innerHTML = `
@@ -719,33 +720,31 @@ const LogisticaModule = {
                         `).join('')}
                     </select>
                 </div>
-                <div class="log-form-row">
-                    <label>Chofer</label>
-                    <select id="cgChofer">
-                        <option value="">— Sin asignar —</option>
-                        ${choferes.map(p => `
-                            <option value="${p.id}" ${p.id === initialChoferId ? 'selected' : ''}>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</option>
-                        `).join('')}
-                    </select>
-                    ${isAdmin ? `<div class="log-form-hint">¿Falta alguien? Cargalo en <a href="#rrhh" style="color:#00A9C1">RRHH</a> con rol "chofer".</div>` : ''}
+                <div class="log-form-row log-form-2col">
+                    <div>
+                        <label>Chofer *</label>
+                        <select id="cgChofer">
+                            <option value="">— Sin asignar —</option>
+                            ${choferes.map(p => `
+                                <option value="${p.id}" ${p.id === initialChoferId ? 'selected' : ''}>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label>Encargado de carga</label>
+                        <select id="cgEncargado">
+                            <option value="">— Sin asignar —</option>
+                            ${encargados.map(p => `
+                                <option value="${p.id}" ${p.id === initialEncargadoId ? 'selected' : ''}>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</option>
+                            `).join('')}
+                        </select>
+                    </div>
                 </div>
+                ${isAdmin ? `<div class="log-form-hint" style="margin-top:-6px;margin-bottom:10px;">¿Falta alguien? Cargalo en <a href="#rrhh" style="color:#00A9C1">RRHH</a>.</div>` : ''}
                 <div class="log-form-row">
                     <label>Proyectos / stands a cargar</label>
                     <div class="log-multi-select" id="cgProyectos">
                         ${this._renderProyectosMultiSelect(proyectosEv, initialProyectoIds)}
-                    </div>
-                </div>
-                <div class="log-form-row">
-                    <label>Ayudantes</label>
-                    <div class="log-multi-select" id="cgAyudantes">
-                        ${ayudantes.map(p => `
-                            <label class="log-multi-opt">
-                                <input type="checkbox" value="${p.id}" ${initialAyudanteIds.includes(p.id) ? 'checked' : ''}>
-                                <span>${this._esc(p.nombre)}${p.apellido ? ' ' + this._esc(p.apellido) : ''}</span>
-                            </label>
-                        `).join('') || (isAdmin
-                            ? '<div class="log-empty-hint">Sin personas cargadas. Agregalas en <a href="#rrhh" style="color:#00A9C1">RRHH</a>.</div>'
-                            : '<div class="log-empty-hint">Sin personas cargadas.</div>')}
                     </div>
                 </div>
                 <div class="log-form-row">
@@ -791,18 +790,17 @@ const LogisticaModule = {
                 fase: document.getElementById('cgFase')?.value || 'armado',
                 vehiculoId: document.getElementById('cgVehiculo')?.value || null,
                 choferPersonaId: document.getElementById('cgChofer')?.value || null,
+                encargadoPersonaId: document.getElementById('cgEncargado')?.value || null,
                 horaCarga: document.getElementById('cgHora')?.value || null,
                 horaEstimadaLlegada: document.getElementById('cgEta')?.value || null,
                 notas: document.getElementById('cgNotas')?.value || null,
                 proyectoIds: [...document.querySelectorAll('#cgProyectos input:checked')].map(i => i.value),
-                ayudanteIds: [...document.querySelectorAll('#cgAyudantes input:checked')].map(i => i.value),
             };
             try {
                 let savedId = existingId;
                 if (isEdit) {
                     await API.updateCarga(existingId, payload);
                     await API.setCargaProyectos(existingId, payload.proyectoIds);
-                    await API.setCargaAyudantes(existingId, payload.ayudanteIds);
                     Toast.success('Carga actualizada.');
                 } else {
                     const row = await API.createCarga(payload);
@@ -1301,7 +1299,6 @@ const LogisticaModule = {
                                     <td>${this._renderTelefonoWhatsApp(p.telefono)}</td>
                                     <td style="text-align: right;">
                                         <button class="log-mini-btn" data-action="assign-carga" data-id="${p.id}" title="Asignar a una carga">🚚 Carga</button>
-                                        <button class="log-mini-btn" data-action="assign-evento" data-id="${p.id}" title="Asignar a un evento">📅 Evento</button>
                                     </td>
                                 </tr>
                             `;
@@ -1317,9 +1314,6 @@ const LogisticaModule = {
         });
         document.querySelectorAll('[data-action="assign-carga"]').forEach(btn => {
             btn.addEventListener('click', () => this._openAsignarCargaModal(btn.dataset.id));
-        });
-        document.querySelectorAll('[data-action="assign-evento"]').forEach(btn => {
-            btn.addEventListener('click', () => this._openAsignarEventoModal(btn.dataset.id));
         });
         document.querySelector('[data-action="open-pending-convocatorias"]')?.addEventListener('click', () => {
             Router.navigate('calendario');
@@ -1403,15 +1397,13 @@ const LogisticaModule = {
                             }).join('')}
                         </select>
                     </div>
-                    ${esChofer ? `
-                        <div class="log-form-row">
-                            <label>Rol en la carga</label>
-                            <select id="acRol">
-                                <option value="ayudante">Ayudante</option>
-                                <option value="chofer">Chofer principal</option>
-                            </select>
-                        </div>
-                    ` : '<input type="hidden" id="acRol" value="ayudante">'}
+                    <div class="log-form-row">
+                        <label>Rol en la carga</label>
+                        <select id="acRol">
+                            ${esChofer ? '<option value="chofer">Chofer principal</option>' : ''}
+                            <option value="encargado">Encargado de carga</option>
+                        </select>
+                    </div>
                 `}
             </div>
         `;
@@ -1441,140 +1433,18 @@ const LogisticaModule = {
             const cargaId = document.getElementById('acCarga')?.value;
             if (!cargaId) { Toast.warning('Elegí una carga.'); return; }
             const rolElement = document.getElementById('acRol');
-            const rol = rolElement?.value || 'ayudante';
+            const rol = rolElement?.value || 'encargado';
             try {
                 if (rol === 'chofer') {
                     await API.updateCarga(cargaId, { choferPersonaId: personaId });
                 } else {
-                    // Agregar como ayudante respetando los existentes
-                    const carga = await API.getCargaById(cargaId);
-                    const yaIds = (carga?.carga_personas || []).map(cp => cp.persona?.id).filter(Boolean);
-                    if (!yaIds.includes(personaId)) {
-                        await API.setCargaAyudantes(cargaId, [...yaIds, personaId]);
-                    }
+                    await API.updateCarga(cargaId, { encargadoPersonaId: personaId });
                 }
-                Toast.success(`${personaNombre} asignado a la carga.`);
+                Toast.success(`${personaNombre} asignado a la carga como ${rol}.`);
                 Modal.close(modalId);
+                await this._loadCargas();
             } catch (e) {
                 console.error('[Logistica] asignar a carga error:', e);
-                Toast.error('Error al asignar.');
-            }
-        });
-    },
-
-    // Modal: asignar persona a un evento (asignacion_evento, con fase + fechas)
-    async _openAsignarEventoModal(personaId) {
-        const persona = this._personas.find(p => p.id === personaId);
-        if (!persona) return;
-        const personaNombre = `${persona.nombre}${persona.apellido ? ' ' + persona.apellido : ''}`;
-
-        // Eventos futuros
-        const hoy = new Date().toISOString().slice(0, 10);
-        const eventos = ((await API.getEvents()) || []).filter(ev => {
-            const f = ev.teardownEndDate || ev.eventEndDate || ev.setupDate;
-            return f && f >= hoy;
-        });
-
-        const body = `
-            <div class="log-form">
-                <div style="background: rgba(0,169,193,0.08); border: 1px solid rgba(0,169,193,0.3); padding: 10px 14px; border-radius: 6px; margin-bottom: 14px;">
-                    <strong style="color:#00A9C1;">${this._esc(personaNombre)}</strong>
-                    <span style="color:#888; font-size: 0.82rem; margin-left: 8px;">${(persona.roles_operativos || []).map(r => this._rolLabel(r)).join(' · ')}</span>
-                </div>
-                <div class="log-form-row">
-                    <label>Evento *</label>
-                    <select id="aeEvento">
-                        <option value="">— Elegí un evento —</option>
-                        ${eventos.map(ev => `<option value="${ev.id}">${this._esc(ev.name || '—')}</option>`).join('')}
-                    </select>
-                </div>
-                <div class="log-form-row">
-                    <label>Fase *</label>
-                    <select id="aeFase">
-                        <option value="armado">Armado</option>
-                        <option value="funcionamiento">Funcionamiento</option>
-                        <option value="desarme">Desarme</option>
-                    </select>
-                </div>
-                <div class="log-form-row log-form-2col">
-                    <div>
-                        <label>Fecha desde</label>
-                        <input type="datetime-local" id="aeFechaIni">
-                    </div>
-                    <div>
-                        <label>Fecha hasta</label>
-                        <input type="datetime-local" id="aeFechaFin">
-                    </div>
-                </div>
-                <div class="log-form-row">
-                    <label>Rol en el evento</label>
-                    <select id="aeRol">
-                        ${['armador','chofer','ayudante','electricista','montajista','encargado_armado','tecnico','azafata','colaborador']
-                            .filter(r => (persona.roles_operativos || []).includes(r))
-                            .map(r => `<option value="${r}">${this._rolLabel(r)}</option>`).join('') ||
-                            '<option value="">(sin rol específico)</option>'}
-                    </select>
-                </div>
-                <div class="log-form-row">
-                    <label>Notas</label>
-                    <textarea id="aeNotas" rows="2" placeholder="Detalles, horarios, etc."></textarea>
-                </div>
-                <div style="background: rgba(242,141,21,0.08); border: 1px solid rgba(242,141,21,0.3); padding: 8px 12px; border-radius: 6px; font-size: 0.78rem; color: #F28D15;">
-                    ⏳ La asignación queda en estado "propuesta" hasta que admin la apruebe.
-                </div>
-            </div>
-        `;
-        const modalId = Modal.open({
-            title: 'Asignar persona a evento',
-            body,
-            size: 'md',
-            footer: `
-                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
-                <button class="btn-primary" id="aeSave">Proponer asignación</button>
-            `,
-        });
-        document.getElementById('aeSave')?.addEventListener('click', async () => {
-            const eventoId = document.getElementById('aeEvento')?.value;
-            if (!eventoId) { Toast.warning('Elegí un evento.'); return; }
-            const fechaIni = document.getElementById('aeFechaIni')?.value || null;
-            const fechaFin = document.getElementById('aeFechaFin')?.value || null;
-            const payload = {
-                eventoId,
-                personaId,
-                fase: document.getElementById('aeFase')?.value || 'armado',
-                fechaInicio: fechaIni,
-                fechaFin: fechaFin,
-                rol: document.getElementById('aeRol')?.value || null,
-                notas: document.getElementById('aeNotas')?.value.trim() || null,
-            };
-
-            // Validar conflictos de solapamiento si hay rango de fechas
-            if (fechaIni && fechaFin) {
-                const conflictos = await API.detectarConflictosPersona(personaId, fechaIni, fechaFin);
-                if (conflictos.length > 0) {
-                    const lista = conflictos.map(c => {
-                        const ev = c.evento?.nombre || '—';
-                        const desde = c.fecha_inicio ? new Date(c.fecha_inicio).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '?';
-                        const hasta = c.fecha_fin ? new Date(c.fecha_fin).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '?';
-                        return `• <strong>${this._esc(ev)}</strong> · ${c.fase} · ${desde} → ${hasta} (${c.estado})`;
-                    }).join('<br>');
-                    const continuar = await Confirm.action(
-                        '⚠ Conflicto de fechas',
-                        `${this._esc(personaNombre)} ya tiene asignaciones que se solapan con este rango:<br><br>${lista}<br><br>¿Asignar igualmente?`,
-                    );
-                    if (!continuar) return;
-                }
-            }
-
-            try {
-                const r = await API.createAsignacionEvento(payload);
-                if (!r) { Toast.error('No se pudo crear la asignación.'); return; }
-                Toast.success('Asignación propuesta — admin va a aprobar.');
-                Modal.close(modalId);
-                // Reload personas para refrescar badges
-                await this._loadPersonas();
-            } catch (e) {
-                console.error('[Logistica] asignar a evento error:', e);
                 Toast.error('Error al asignar.');
             }
         });

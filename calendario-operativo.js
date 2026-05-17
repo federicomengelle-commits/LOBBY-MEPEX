@@ -889,24 +889,70 @@ const CalendarioOperativo = {
     },
 
     _buildPanelHTML(event) {
-        const fmtDate = (str) => {
-            if (!str) return '—';
-            const d = this._parseDate(str);
-            return `${d.getDate()}/${d.getMonth() + 1}`;
+        const fmtRange = (start, end) => {
+            if (!start && !end) return '—';
+            const s = start ? this._parseDate(start) : null;
+            const e = end ? this._parseDate(end) : null;
+            const fd = (d) => d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+            if (s && e && s.toDateString() === e.toDateString()) return fd(s);
+            if (s && e) return `${fd(s)} → ${fd(e)}`;
+            return fd(s || e);
+        };
+        const fmtTimeRange = (open, close) => {
+            if (!open && !close) return '';
+            const o = (open || '').slice(0,5);
+            const c = (close || '').slice(0,5);
+            if (o && c) return `${o} → ${c}`;
+            return o || c;
         };
 
+        const linkEvento = `<a href="#eventos?id=${event.id}" class="co-sp-link-evento" title="Abrir ficha del evento">Abrir ficha →</a>`;
+
         return `
+            <style>
+                .co-sp-header { padding: 14px 18px 12px; position:relative; border-bottom:1px solid #2a2a2a; }
+                .co-sp-color-bar { position:absolute; top:0; left:0; right:0; height:3px; background:var(--event-color); }
+                .co-sp-close { position:absolute; top:10px; right:10px; background:transparent; border:none; color:#888; font-size:18px; cursor:pointer; padding:4px 8px; border-radius:4px; }
+                .co-sp-close:hover { color:#fff; background:#1a1a1a; }
+                .co-sp-name { font-family:'Outfit',sans-serif; font-size:18px; font-weight:600; margin:0 36px 4px 0; color:#E8E8E8; line-height:1.2; }
+                .co-sp-venue { font-size:12px; color:#888; margin-bottom:10px; }
+                .co-sp-link-evento { font-size:11px; color:#00A9C1; text-decoration:none; font-family:'Space Mono',monospace; }
+                .co-sp-link-evento:hover { color:#fff; }
+                .co-sp-phases { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:10px; }
+                .co-sp-phase { padding:6px 8px; border:1px solid #2a2a2a; border-radius:6px; background:#0d0d0d; border-left:3px solid; }
+                .co-sp-phase-label { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:#888; }
+                .co-sp-phase-date { font-size:12px; color:#E8E8E8; font-weight:500; margin-top:2px; }
+                .co-sp-phase-time { font-size:10px; color:#666; font-family:'Space Mono',monospace; margin-top:1px; }
+                .co-sp-tabs { display:flex; border-bottom:1px solid #2a2a2a; padding:0 10px; }
+                .co-sp-tab { background:transparent; border:none; color:#888; padding:10px 14px; cursor:pointer; font-size:12px; font-family:'Outfit',sans-serif; border-bottom:2px solid transparent; }
+                .co-sp-tab:hover { color:#E8E8E8; }
+                .co-sp-tab.active { color:#00A9C1; border-bottom-color:#00A9C1; }
+                .co-sp-tab-content { padding:14px 18px; }
+                .co-sp-section { margin-bottom:16px; }
+                .co-sp-section-title { font-family:'Outfit',sans-serif; font-size:13px; font-weight:500; color:#E8E8E8; margin:0 0 8px 0; padding-bottom:6px; border-bottom:1px solid #1a1a1a; }
+                .co-sp-empty { color:#555; font-size:11px; font-style:italic; }
+            </style>
             <div class="co-sp-header" style="--event-color: ${event.color}">
                 <button class="co-sp-close">✕</button>
                 <div class="co-sp-color-bar"></div>
                 <h2 class="co-sp-name">${event.name}</h2>
-                <div class="co-sp-venue">${event.venue}</div>
-                <div class="co-sp-dates">
-                    <span>Armado: ${fmtDate(event.setupDate)}–${fmtDate(event.setupEndDate)}</span>
-                    <span class="co-sp-dates-sep">|</span>
-                    <span>Evento: ${fmtDate(event.eventStartDate)}–${fmtDate(event.eventEndDate)}</span>
-                    <span class="co-sp-dates-sep">|</span>
-                    <span>Desarme: ${fmtDate(event.teardownDate)}–${fmtDate(event.teardownEndDate)}</span>
+                <div class="co-sp-venue">${event.venue || '—'} · ${linkEvento}</div>
+                <div class="co-sp-phases">
+                    <div class="co-sp-phase" style="border-left-color:#00CC88;">
+                        <div class="co-sp-phase-label">Armado</div>
+                        <div class="co-sp-phase-date">${fmtRange(event.setupDate, event.setupEndDate)}</div>
+                        ${fmtTimeRange(event.setupTimeOpen, event.setupTimeClose) ? `<div class="co-sp-phase-time">${fmtTimeRange(event.setupTimeOpen, event.setupTimeClose)}</div>` : ''}
+                    </div>
+                    <div class="co-sp-phase" style="border-left-color:#00A9C1;">
+                        <div class="co-sp-phase-label">Evento</div>
+                        <div class="co-sp-phase-date">${fmtRange(event.eventStartDate, event.eventEndDate)}</div>
+                        ${fmtTimeRange(event.eventTimeOpen, event.eventTimeClose) ? `<div class="co-sp-phase-time">${fmtTimeRange(event.eventTimeOpen, event.eventTimeClose)}</div>` : ''}
+                    </div>
+                    <div class="co-sp-phase" style="border-left-color:#F28D15;">
+                        <div class="co-sp-phase-label">Desarme</div>
+                        <div class="co-sp-phase-date">${fmtRange(event.teardownDate, event.teardownEndDate)}</div>
+                        ${fmtTimeRange(event.teardownTimeOpen, event.teardownTimeClose) ? `<div class="co-sp-phase-time">${fmtTimeRange(event.teardownTimeOpen, event.teardownTimeClose)}</div>` : ''}
+                    </div>
                 </div>
             </div>
             <div class="co-sp-tabs">
@@ -922,40 +968,21 @@ const CalendarioOperativo = {
 
     async _loadPanelData(event) {
         try {
-            const [equipo, movimientos, cargasNew, asignacionesNew, docs, historial] = await Promise.all([
-                API.getEventoEquipo(event.id).catch(() => []),
-                API.getEventoTransporte(event.id).catch(() => []),
-                // Tanda 3.D — cargas (schema nuevo UUID)
+            // Schema nuevo únicamente: asignaciones_evento + cargas (UUID).
+            // El legacy (rrhh_asignaciones / logistica_movimientos) se eliminó
+            // del side panel; la única fuente de verdad para personas es la
+            // ficha del evento (eventos.js).
+            const [cargasNew, asignacionesNew] = await Promise.all([
                 API.getCargas({ eventoId: event.id }).catch(() => []),
-                // Tanda 3+ — asignaciones de personas al evento (schema nuevo)
                 API.getAsignacionesByEvento(event.id).catch(() => []),
-                Promise.resolve(null), // TODO Fase 6: API.getEventDocumentos(event.id)
-                Promise.resolve(null), // TODO Fase 6: API.getEventHistorial(event.id)
             ]);
-
-            // Merge API data if available, otherwise keep localStorage enrichment
-            if (equipo && equipo.length > 0) {
-                event._equipo = equipo;
-            } else {
-                event._equipo = (event.logistics?.team || []).map((t, i) => ({
-                    id: `local-${i}`, name: t.name, role: t.role
-                }));
-            }
-            // Fase 5: el render del tab logística itera sobre event._movimientos
-            // directamente. Ya no derivamos {truck, driver, ...} porque no hay
-            // consumer que lo lea (verificado con grep `event._transporte`).
-            event._movimientos = movimientos || [];
-            // Tanda 3.D — cargas del schema nuevo, filtradas no canceladas
             event._cargasNew = (cargasNew || []).filter(c => c.estado !== 'cancelada');
-            // Tanda 3+ — asignaciones de personas al evento, filtradas no canceladas
             event._asignacionesNew = (asignacionesNew || []).filter(a => a.estado !== 'cancelada');
-            event._documentos = docs || (event.documents?.items || []);
-            event._historial = historial || [];
+            event._documentos = event.documents?.items || [];
+            event._historial = [];
         } catch {
-            event._equipo = (event.logistics?.team || []).map((t, i) => ({
-                id: `local-${i}`, name: t.name, role: t.role
-            }));
-            event._movimientos = [];
+            event._cargasNew = [];
+            event._asignacionesNew = [];
             event._documentos = event.documents?.items || [];
             event._historial = [];
         }
@@ -1016,18 +1043,16 @@ const CalendarioOperativo = {
             }).join('');
             conflictsHTML = `
                 <div class="co-sp-section co-sp-conflicts">
-                    <h3 class="co-sp-section-title co-sp-conflict-title">⚠ Conflictos detectados</h3>
+                    <h3 class="co-sp-section-title co-sp-conflict-title" style="color:#F28D15;">⚠ Conflictos detectados</h3>
                     ${items}
                 </div>`;
         }
 
-        // Projects
+        // Projects — solo cliente + tipo (sin estado ni PM, eso se ve en la ficha del evento)
         const projectRows = (event.projects || []).map(p => `
             <tr>
                 <td>${p.client || '—'}</td>
                 <td>${p.type || '—'}</td>
-                <td>${p.pm || '—'}</td>
-                <td><span class="co-sp-status co-sp-status-${p.status === 'Confirmado' ? 'ok' : 'wip'}">${p.status || '—'}</span></td>
             </tr>
         `).join('');
 
@@ -1039,12 +1064,22 @@ const CalendarioOperativo = {
             : '';
 
         return `
+            <style>
+                .co-sp-table { width:100%; border-collapse:collapse; font-size:12px; }
+                .co-sp-table th { text-align:left; padding:6px 8px; color:#888; border-bottom:1px solid #2a2a2a; font-weight:500; font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; }
+                .co-sp-table td { padding:8px; color:#E8E8E8; border-bottom:1px solid #1a1a1a; }
+                .co-sp-table tr:last-child td { border-bottom:none; }
+                .co-sp-notes { font-size:12px; color:#aaa; line-height:1.5; padding:8px 10px; background:#0d0d0d; border-left:2px solid #00A9C1; border-radius:0 4px 4px 0; }
+                .co-sp-conflict-item { padding:8px 10px; background:rgba(242,141,21,0.08); border:1px solid rgba(242,141,21,0.3); border-radius:4px; margin-bottom:4px; font-size:12px; }
+                .co-sp-conflict-item strong { color:#F28D15; display:block; margin-bottom:2px; }
+                .co-sp-conflict-item span { color:#aaa; font-size:11px; }
+            </style>
             ${conflictsHTML}
             <div class="co-sp-section">
-                <h3 class="co-sp-section-title">Proyectos MEPEX (${event.projectCount})</h3>
+                <h3 class="co-sp-section-title">Proyectos vinculados <span style="color:#666;font-family:'Space Mono',monospace;font-size:11px;">(${event.projectCount || 0})</span></h3>
                 ${projectRows
                     ? `<table class="co-sp-table">
-                        <thead><tr><th>Cliente</th><th>Tipo</th><th>PM</th><th>Estado</th></tr></thead>
+                        <thead><tr><th>Cliente</th><th>Tipo</th></tr></thead>
                         <tbody>${projectRows}</tbody>
                        </table>`
                     : '<span class="co-sp-empty">Sin proyectos vinculados</span>'}
@@ -1071,6 +1106,7 @@ const CalendarioOperativo = {
         const renderCarga = (c) => {
             const veh = c.vehiculo?.descripcion || 'Sin vehículo';
             const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : 'Sin chofer';
+            const encargado = c.encargado ? `${c.encargado.nombre}${c.encargado.apellido ? ' ' + c.encargado.apellido : ''}` : '';
             const fechaHora = `${c.fecha || ''}${c.hora_carga ? ' ' + c.hora_carga.slice(0, 5) : ''}`.trim() || '—';
             const numStands = (c.carga_proyectos || []).length;
             const estadoColor = {
@@ -1084,7 +1120,8 @@ const CalendarioOperativo = {
                         <span class="co-sp-carga-estado" style="color:${estadoColor};">${c.estado}</span>
                     </div>
                     <div class="co-sp-carga-meta">
-                        <span>👤 ${chofer}</span>
+                        <span>🧑‍✈️ ${chofer}</span>
+                        ${encargado ? `<span>⭐ ${encargado}</span>` : ''}
                         <span>📅 ${fechaHora}</span>
                         <span>📦 ${numStands} stand${numStands === 1 ? '' : 's'}</span>
                     </div>
@@ -1154,7 +1191,16 @@ const CalendarioOperativo = {
     // permite aprobar inline si el user es admin.
     _renderAsignacionesNewSection(event) {
         const asignaciones = event._asignacionesNew || [];
-        if (asignaciones.length === 0) return '';
+        const linkFicha = `<a href="#eventos?id=${event.id}" class="co-sp-link-evento" style="font-size:11px;color:#00A9C1;text-decoration:none;font-family:'Space Mono',monospace;">+ Asignar →</a>`;
+
+        if (asignaciones.length === 0) {
+            return `
+                <div class="co-sp-section">
+                    <h3 class="co-sp-section-title">Personas asignadas <span style="float:right;">${linkFicha}</span></h3>
+                    <p class="co-sp-empty">Sin personas asignadas. Las asignaciones se hacen desde la ficha del evento.</p>
+                </div>
+            `;
+        }
 
         const byFase = { armado: [], funcionamiento: [], desarme: [] };
         asignaciones.forEach(a => {
@@ -1205,6 +1251,7 @@ const CalendarioOperativo = {
                 <h3 class="co-sp-section-title">
                     Personas asignadas
                     <span style="color:#9B7DFF;font-size:11px;font-family:'Space Mono',monospace;">(${asignaciones.length})</span>
+                    <span style="float:right;">${linkFicha}</span>
                 </h3>
                 <style>
                     .co-sp-asig-item {
@@ -1249,47 +1296,6 @@ const CalendarioOperativo = {
     },
 
     _renderLogisticaTab(event) {
-        // Equipo legacy (rrhh_asignaciones). Solo se muestra como FALLBACK si NO
-        // hay asignaciones nuevas (asignaciones_evento). El sistema nuevo es la
-        // sección "Personas asignadas" que se renderiza separada más abajo.
-        const hayAsignacionesNuevas = (event._asignacionesNew || []).length > 0;
-        const equipo = !hayAsignacionesNuevas
-            ? (event._equipo || (event.logistics?.team || []).map((t, i) => ({ id: `local-${i}`, name: t.name, role: t.role })))
-            : [];
-        const teamRows = equipo.map(t => {
-            const nombre = t.nombre || t.name || '—';
-            const rol = t.rolEvento || t.rolBase || t.role || '—';
-            return `
-                <div class="co-sp-team-row">
-                    <span class="co-sp-team-name">${nombre}</span>
-                    <span class="co-sp-team-role">${rol}</span>
-                </div>
-            `;
-        }).join('');
-
-        // Fase 5: lista completa de movimientos (1-a-N) en vez de un solo {truck, driver}.
-        const movimientos = event._movimientos || [];
-        const movsHTML = movimientos.length > 0
-            ? movimientos.map(m => {
-                const veh = `${m.vehiculoNombre || '—'}${m.vehiculoPatente ? ` · ${m.vehiculoPatente}` : ''}`;
-                const fechaHora = `${m.fecha || ''}${m.horaProgramada ? ' ' + m.horaProgramada : ''}`.trim() || '—';
-                return `
-                    <div class="co-sp-mov-item">
-                        <div class="co-sp-mov-route">
-                            <span>${m.origen || '?'}</span>
-                            <span class="co-sp-mov-arrow">→</span>
-                            <span>${m.destino || '?'}</span>
-                        </div>
-                        <div class="co-sp-mov-meta">
-                            <span>🚚 ${veh}</span>
-                            <span>👤 ${m.choferNombre || '—'}</span>
-                            <span class="co-sp-mov-date">${fechaHora}</span>
-                        </div>
-                    </div>
-                `;
-            }).join('')
-            : '<span class="co-sp-empty">Sin movimientos de transporte</span>';
-
         const docs = event._documentos || event.documents?.items || [];
         const docsHTML = docs.length > 0
             ? docs.map(d => `
@@ -1302,27 +1308,11 @@ const CalendarioOperativo = {
 
         return `
             <style>
-                /* Fase 5 — lista de movimientos en panel del calendario operativo */
-                .co-sp-mov-item { display:flex; flex-direction:column; gap:3px; padding:8px 10px;
-                    background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px;
-                    border-left:3px solid #00CC88; margin-bottom:6px; }
-                .co-sp-mov-route { display:flex; align-items:center; gap:6px; font-family:'Outfit',sans-serif; font-size:13px; color:#E8E8E8; font-weight:500; }
-                .co-sp-mov-arrow { color:#666; }
-                .co-sp-mov-meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:11px; color:#aaa; font-family:'Space Mono',monospace; }
-                .co-sp-mov-date { color:#9B7DFF; }
+                .co-sp-doc-item { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px; margin-bottom:4px; font-size:12px; color:#E8E8E8; }
+                .co-sp-doc-icon { font-size:14px; }
             </style>
-            ${equipo.length > 0 ? `
-            <div class="co-sp-section">
-                <h3 class="co-sp-section-title">Equipo asignado <span style="color:#666;font-size:10px;font-family:'Space Mono',monospace;">(legacy)</span></h3>
-                <div class="co-sp-team">${teamRows}</div>
-            </div>
-            ` : ''}
-            <div class="co-sp-section">
-                <h3 class="co-sp-section-title">Transporte ${movimientos.length > 0 ? `<span style="color:#00CC88;font-size:11px;font-family:'Space Mono',monospace;">(${movimientos.length})</span>` : ''}</h3>
-                <div class="co-sp-movs-list">${movsHTML}</div>
-            </div>
-            ${this._renderCargasNewSection(event)}
             ${this._renderAsignacionesNewSection(event)}
+            ${this._renderCargasNewSection(event)}
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Documentos</h3>
                 <div class="co-sp-docs-list">${docsHTML}</div>

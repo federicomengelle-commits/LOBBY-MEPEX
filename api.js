@@ -3643,19 +3643,23 @@ const API = {
                     evento:eventos!evento_id(id, nombre)
                 `).single();
             if (error) throw error;
-            // Notif a admin para aprobación
-            const personaNombre = `${row.persona?.nombre || ''}${row.persona?.apellido ? ' ' + row.persona.apellido : ''}`.trim();
-            const eventoNombre = row.evento?.nombre || 'evento';
-            await this.createNotification({
-                tipo: 'asignacion_pendiente_aprobacion',
-                titulo: 'Convocatoria pendiente de aprobación',
-                mensaje: `${personaNombre} → ${eventoNombre} (${row.fase})`,
-                target_role: 'admin',
-                entidad_tipo: 'asignacion',
-                entidad_id: row.id,
-                link: `#calendario?ev=${row.evento_id}`,
-                prioridad: 'normal',
-            });
+            // Notif a admin SOLO si quedó en estado 'propuesta' (requiere aprobación).
+            // Si viene 'aprobada' (ej. cargada desde la ficha del evento), no hay
+            // nada que aprobar y la notif solo sería ruido.
+            if (row.estado === 'propuesta') {
+                const personaNombre = `${row.persona?.nombre || ''}${row.persona?.apellido ? ' ' + row.persona.apellido : ''}`.trim();
+                const eventoNombre = row.evento?.nombre || 'evento';
+                await this.createNotification({
+                    tipo: 'asignacion_pendiente_aprobacion',
+                    titulo: 'Convocatoria pendiente de aprobación',
+                    mensaje: `${personaNombre} → ${eventoNombre} (${row.fase})`,
+                    target_role: 'admin',
+                    entidad_tipo: 'asignacion',
+                    entidad_id: row.id,
+                    link: `#calendario?ev=${row.evento_id}`,
+                    prioridad: 'normal',
+                });
+            }
             return row;
         } catch (e) {
             console.warn('[API] Error createAsignacionEvento:', e.message);
@@ -3955,10 +3959,10 @@ const API = {
                     evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio),
                     vehiculo:vehiculos!vehiculo_id(id, descripcion, patente, propietario, contacto_nombre, contacto_telefono),
                     chofer:personas!chofer_persona_id(id, nombre, apellido, telefono),
+                    encargado:personas!encargado_persona_id(id, nombre, apellido, telefono),
                     aprobador:profiles!aprobada_por(id, name, initials),
                     creador:profiles!created_by(id, name, initials),
-                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id)),
-                    carga_personas(id, rol_en_carga, persona:personas!persona_id(id, nombre, apellido))
+                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id))
                 `)
                 .eq('_deleted', false)
                 .order('fecha', { ascending: true });
@@ -3985,11 +3989,11 @@ const API = {
                     evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio),
                     vehiculo:vehiculos!vehiculo_id(*),
                     chofer:personas!chofer_persona_id(*),
+                    encargado:personas!encargado_persona_id(id, nombre, apellido, telefono, roles_operativos),
                     aprobador:profiles!aprobada_por(id, name, initials),
                     creador:profiles!created_by(id, name, initials),
                     responsable:profiles!responsable_mepex_id(id, name, initials),
-                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id, cliente:clientes!cliente_id(id, nombre_empresa, razon_social))),
-                    carga_personas(id, rol_en_carga, persona:personas!persona_id(id, nombre, apellido, telefono, roles_operativos))
+                    carga_proyectos(id, notas, proyecto:proyectos!proyecto_id(id, nombre, cliente_id, cliente:clientes!cliente_id(id, nombre_empresa, razon_social)))
                 `)
                 .eq('id', id)
                 .maybeSingle();
@@ -4019,6 +4023,7 @@ const API = {
             fase: data.fase || 'armado',
             vehiculo_id: data.vehiculoId || data.vehiculo_id || null,
             chofer_persona_id: data.choferPersonaId || data.chofer_persona_id || null,
+            encargado_persona_id: data.encargadoPersonaId || data.encargado_persona_id || null,
             fecha: data.fecha,
             hora_carga: data.horaCarga || data.hora_carga || null,
             hora_estimada_llegada: data.horaEstimadaLlegada || data.hora_estimada_llegada || null,
@@ -4046,18 +4051,6 @@ const API = {
                 }));
                 if (cps.length > 0) {
                     await supabaseClient.from('carga_proyectos').insert(cps);
-                }
-            }
-
-            // Vincular ayudantes (carga_personas)
-            const ayudanteIds = Array.isArray(data.ayudanteIds) ? data.ayudanteIds
-                              : (Array.isArray(data.ayudantes) ? data.ayudantes : []);
-            if (ayudanteIds.length > 0) {
-                const cps = ayudanteIds.filter(Boolean).map(persId => ({
-                    carga_id: row.id, persona_id: persId, rol_en_carga: 'ayudante',
-                }));
-                if (cps.length > 0) {
-                    await supabaseClient.from('carga_personas').insert(cps);
                 }
             }
 
@@ -4091,6 +4084,8 @@ const API = {
         if (data.vehiculo_id !== undefined) payload.vehiculo_id = data.vehiculo_id || null;
         if (data.choferPersonaId !== undefined) payload.chofer_persona_id = data.choferPersonaId || null;
         if (data.chofer_persona_id !== undefined) payload.chofer_persona_id = data.chofer_persona_id || null;
+        if (data.encargadoPersonaId !== undefined) payload.encargado_persona_id = data.encargadoPersonaId || null;
+        if (data.encargado_persona_id !== undefined) payload.encargado_persona_id = data.encargado_persona_id || null;
         if (data.fecha !== undefined) payload.fecha = data.fecha;
         if (data.horaCarga !== undefined) payload.hora_carga = data.horaCarga || null;
         if (data.hora_carga !== undefined) payload.hora_carga = data.hora_carga || null;

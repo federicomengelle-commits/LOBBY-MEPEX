@@ -2,7 +2,10 @@
    MEPEX Lobby — Módulo RRHH
    =============================================
    Categoría: RECURSOS
-   3 tabs: Nómina, Asignación, Vacaciones
+   2 tabs: Nómina, Vacaciones.
+   Las asignaciones de personas a eventos se hacen ahora exclusivamente
+   desde la ficha del evento (asignaciones_evento). El tab "Asignación"
+   legacy contra rrhh_asignaciones se eliminó.
    Solo superadmin y admin.
    ============================================= */
 
@@ -36,8 +39,6 @@ const RRHHModule = {
 
         if (this._activeTab === 'nomina') {
             await this._loadNomina();
-        } else if (this._activeTab === 'asignacion') {
-            await this._loadAsignacion();
         } else {
             await this._loadVacaciones();
         }
@@ -78,10 +79,6 @@ const RRHHModule = {
                             <span class="section-tab-icon">👥</span>
                             <span class="section-tab-text">Nómina</span>
                         </button>
-                        <button class="section-tab ${this._activeTab === 'asignacion' ? 'active' : ''}" data-tab="asignacion">
-                            <span class="section-tab-icon">📌</span>
-                            <span class="section-tab-text">Asignación</span>
-                        </button>
                         <button class="section-tab ${this._activeTab === 'vacaciones' ? 'active' : ''}" data-tab="vacaciones">
                             <span class="section-tab-icon">🏖️</span>
                             <span class="section-tab-text">Vacaciones</span>
@@ -107,7 +104,6 @@ const RRHHModule = {
                 const cc = document.getElementById('rrhhContent');
                 if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
                 if (this._activeTab === 'nomina') await this._loadNomina();
-                else if (this._activeTab === 'asignacion') await this._loadAsignacion();
                 else await this._loadVacaciones();
             });
         });
