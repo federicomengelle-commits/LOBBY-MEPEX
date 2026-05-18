@@ -280,7 +280,7 @@ const Auth = {
             if (result.success) {
                 // Check for start module preference, then role default
                 const startModule = Auth.getStartModule();
-                const defaultRoute = Router.getDefaultRoute(Auth.getUser()?.role);
+                const defaultRoute = Router.getDefaultRoute(Auth.getUser());
                 Router.navigate(startModule || defaultRoute);
             } else {
                 errorEl.textContent = result.error;

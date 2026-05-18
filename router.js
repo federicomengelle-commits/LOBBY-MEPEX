@@ -23,16 +23,47 @@ const Router = {
     },
 
     // ─── Ruta por defecto según rol ───
+    // Si el admin le saca permiso sobre el módulo default a un rol, getDefaultRoute
+    // automáticamente cae al primer módulo que el user SÍ pueda ver (o lobby).
     _defaultRoutes: {
         superadmin: 'lobby',
         admin:      'lobby',
         venta:      'crm',
         pm:         'proyectos',
-        taller:     'taller',
+        taller:     'eventos',   // antes 'taller' — si se le saca el módulo taller, no quedaba en ningún lado
     },
 
-    getDefaultRoute(role) {
-        return this._defaultRoutes[role] || 'lobby';
+    // Acepta string (rol) o user object (con customPermissions). Si el módulo
+    // default no está en los permisos efectivos del user, busca el primero que sí
+    // y cae a 'lobby' como último recurso.
+    getDefaultRoute(roleOrUser) {
+        const user = typeof roleOrUser === 'object' && roleOrUser !== null ? roleOrUser : null;
+        const role = user ? user.role : roleOrUser;
+        const candidate = this._defaultRoutes[role] || 'lobby';
+
+        // 'lobby' siempre es accesible para cualquier user autenticado.
+        if (candidate === 'lobby') return candidate;
+
+        // Permisos efectivos: customPermissions del user > rolePermissions del rol.
+        let allowed = null;
+        if (user && Array.isArray(user.customPermissions) && user.customPermissions.length > 0) {
+            allowed = user.customPermissions;
+        } else if (typeof Data !== 'undefined' && Data.rolePermissions) {
+            allowed = Data.rolePermissions[role] || [];
+        }
+
+        if (!allowed) return candidate; // no podemos validar, mejor intentar
+
+        if (allowed.includes(candidate)) return candidate;
+
+        // Fallback: primer módulo permitido en el orden de Data.modules.
+        try {
+            const mods = Data.getModuleList ? Data.getModuleList() : [];
+            const first = mods.find(m => allowed.includes(m.id));
+            if (first) return first.id;
+        } catch { /* ignore */ }
+
+        return 'lobby';
     },
 
     async init() {
@@ -132,7 +163,7 @@ const Router = {
         if (!route) {
             if (Auth.isAuthenticated()) {
                 const user = Auth.getUser();
-                this.navigate(this.getDefaultRoute(user?.role));
+                this.navigate(this.getDefaultRoute(user));
             } else {
                 this.navigate('login');
             }
@@ -148,7 +179,7 @@ const Router = {
         // Already logged in, trying to access login → go to default route
         if (hash === 'login' && Auth.isAuthenticated()) {
             const user = Auth.getUser();
-            this.navigate(this.getDefaultRoute(user?.role));
+            this.navigate(this.getDefaultRoute(user));
             return;
         }
 
@@ -156,7 +187,7 @@ const Router = {
         if (hash === 'lobby') {
             const user = Auth.getUser();
             if (user && user.role !== 'superadmin' && user.role !== 'admin') {
-                this.navigate(this.getDefaultRoute(user.role));
+                this.navigate(this.getDefaultRoute(user));
                 return;
             }
         }
@@ -165,7 +196,7 @@ const Router = {
         if (route.module && !Auth.hasAccess(route.module)) {
             if (typeof AuditLog !== 'undefined') AuditLog.record('denied', 'sistema', `Acceso denegado a #${hash}`);
             const user = Auth.getUser();
-            this.navigate(this.getDefaultRoute(user?.role));
+            this.navigate(this.getDefaultRoute(user));
             return;
         }
 
@@ -173,7 +204,7 @@ const Router = {
         if (route.superadminOnly && !Auth.isSuperAdmin()) {
             if (typeof AuditLog !== 'undefined') AuditLog.record('denied', 'sistema', `Acceso denegado a #${hash}`);
             const user = Auth.getUser();
-            this.navigate(this.getDefaultRoute(user?.role));
+            this.navigate(this.getDefaultRoute(user));
             return;
         }
 
@@ -181,7 +212,7 @@ const Router = {
         if (route.adminOnly && !Auth.isAdminLevel()) {
             if (typeof AuditLog !== 'undefined') AuditLog.record('denied', 'sistema', `Acceso denegado a #${hash}`);
             const user = Auth.getUser();
-            this.navigate(this.getDefaultRoute(user?.role));
+            this.navigate(this.getDefaultRoute(user));
             return;
         }
 
