@@ -4611,147 +4611,323 @@ const FinanzasModule = {
         });
     },
 
+    // Carga logo optimizado para PDFs (canvas resize a 400px, JPEG 0.88).
+    // Cacheado en this._logoCache para no recargar entre PDFs.
+    async _loadLogoForPDF() {
+        if (this._logoCache) return this._logoCache;
+        try {
+            const res = await fetch('assets/logo_full.png');
+            if (!res.ok) throw new Error('fetch fail');
+            const blob = await res.blob();
+            const img = await new Promise((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = reject;
+                i.src = URL.createObjectURL(blob);
+            });
+            const maxW = 400;
+            const scale = Math.min(1, maxW / img.naturalWidth);
+            const w = Math.round(img.naturalWidth * scale);
+            const h = Math.round(img.naturalHeight * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            this._logoCache = { dataUrl: canvas.toDataURL('image/jpeg', 0.88), w, h };
+            URL.revokeObjectURL(img.src);
+            return this._logoCache;
+        } catch (e) {
+            console.warn('[Finanzas] No se pudo cargar logo:', e.message);
+            return null;
+        }
+    },
+
     async _generarResumenPlanPDF(planId) {
         const plan = this._planes.find(p => p.id === planId);
         if (!plan) { Toast.error('Plan no encontrado'); return; }
-        if (typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') {
+        if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
             Toast.error('jsPDF no está cargado');
             return;
         }
-        const { jsPDF } = (window.jspdf || jspdf);
+        const { jsPDF } = window.jspdf;
 
-        // Cargar cliente desde proyecto
+        // ─── Data ───
+        const proyNombre = this._proyectosMap[plan.proyecto_id] || '—';
         let clienteNombre = '—';
+        let clienteCuit = '';
         try {
             const { data: proy } = await supabaseClient
-                .from('proyectos').select('cliente_id, nombre').eq('id', plan.proyecto_id).maybeSingle();
+                .from('proyectos').select('cliente_id').eq('id', plan.proyecto_id).maybeSingle();
             if (proy?.cliente_id) {
                 const { data: cli } = await supabaseClient
-                    .from('clientes').select('nombre').eq('id', proy.cliente_id).maybeSingle();
-                clienteNombre = cli?.nombre || '—';
+                    .from('clientes').select('*').eq('id', proy.cliente_id).maybeSingle();
+                clienteNombre = cli?.nombre_empresa || cli?.razon_social || cli?.nombre || '—';
+                clienteCuit = cli?.cuit || cli?.dni || '';
             }
         } catch (e) { /* ignore */ }
 
-        const items = (plan.plan_cobro_items || []).filter(i => !i._deleted).sort((a,b) => a.orden - b.orden);
+        const items = (plan.plan_cobro_items || []).filter(i => !i._deleted).sort((a, b) => a.orden - b.orden);
+        const totalPlan = Number(plan.total_plan) || 0;
         const totalCobrado = items.reduce((s, i) => s + (Number(i.monto_cobrado) || 0), 0);
-        const saldoPendiente = Number(plan.total_plan) - totalCobrado;
+        const totalFacturado = items.filter(i => i.comprobante_venta_id).reduce((s, i) => s + (Number(i.monto) || 0), 0);
+        const saldoPendiente = totalPlan - totalCobrado;
 
-        // Cuentas oficiales para "datos para transferir"
         const { data: cuentas } = await supabaseClient
             .from('cuentas_financieras')
             .select('nombre, entidad, numero_cuenta, cbu_alias, tipo, canal_default')
-            .eq('_deleted', false)
-            .eq('activa', true)
+            .eq('_deleted', false).eq('activa', true)
             .eq('canal_default', 'oficial')
             .in('tipo', ['banco']);
 
-        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-        const W = 210;
-        let y = 18;
+        // ─── Logo ───
+        const logo = await this._loadLogoForPDF();
 
-        // Header
-        doc.setFillColor(0, 169, 193);
-        doc.rect(0, 0, W, 12, 'F');
-        doc.setTextColor(255, 255, 255);
+        // ─── Doc + constantes ───
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+        const PAGE_W  = 210;
+        const PAGE_H  = 297;
+        const MARGIN  = 18;
+        const TURQUESA = [0, 169, 193];
+        const TEXTO    = [40, 40, 40];
+        const MUTED    = [120, 120, 120];
+
+        const hr = (y, color = [220, 220, 220]) => {
+            doc.setDrawColor(...color);
+            doc.setLineWidth(0.4);
+            doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+        };
+        const row = (y, label, value) => {
+            const LABEL_W = 48;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(...MUTED);
+            doc.text(label, MARGIN, y);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10.5);
+            doc.setTextColor(...TEXTO);
+            const lines = doc.splitTextToSize(value || '—', PAGE_W - 2 * MARGIN - LABEL_W);
+            doc.text(lines, MARGIN + LABEL_W, y);
+            return y + Math.max(7, lines.length * 5);
+        };
+        const fmtM = n => '$ ' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        let y = MARGIN;
+
+        // ═══ HEADER ═══
+        if (logo) {
+            try { doc.addImage(logo.dataUrl, 'JPEG', MARGIN, y, 45, 14); }
+            catch (e) { /* fallback al texto */ }
+        } else {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(22);
+            doc.setTextColor(...TURQUESA);
+            doc.text('MEPEX', MARGIN, y + 10);
+        }
+
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(13);
-        doc.text('MEPEX', 12, 8);
+        doc.setFontSize(18);
+        doc.setTextColor(...TURQUESA);
+        doc.text('PLAN DE PAGOS', PAGE_W - MARGIN, y + 8, { align: 'right' });
+
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.text('Plan de pagos', W - 12, 8, { align: 'right' });
+        doc.setFontSize(9.5);
+        doc.setTextColor(...MUTED);
+        const numero = (plan.id || '').slice(0, 8).toUpperCase();
+        const fechaEm = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        doc.text(`N° ${numero}`, PAGE_W - MARGIN, y + 14, { align: 'right' });
+        doc.text(`Emitido: ${fechaEm}`, PAGE_W - MARGIN, y + 18, { align: 'right' });
 
-        doc.setTextColor(20, 20, 20);
-        y = 22;
+        y += 24;
+        hr(y, TURQUESA);
+        y += 6;
+
+        // ═══ DATOS DEL CLIENTE / PROYECTO ═══
+        y = row(y, 'CLIENTE:', clienteNombre);
+        if (clienteCuit) y = row(y, 'CUIT / DNI:', clienteCuit);
+        y = row(y, 'PROYECTO:', proyNombre);
+        y = row(y, 'TOTAL ACORDADO:', fmtM(totalPlan));
+        if (totalCobrado > 0)   y = row(y, 'COBRADO:',         fmtM(totalCobrado));
+        if (totalFacturado > 0) y = row(y, 'FACTURADO:',       fmtM(totalFacturado));
+
+        y += 2;
+        hr(y, [220, 220, 220]);
+        y += 6;
+
+        // ═══ DETALLE DE CUOTAS ═══
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(15);
-        doc.text(`Plan de pagos`, 12, y);
-        y += 7;
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.text(`Cliente: ${clienteNombre}`, 12, y); y += 5;
-        doc.text(`Proyecto: ${this._proyectosMap[plan.proyecto_id] || '—'}`, 12, y); y += 5;
-        doc.text(`Fecha de emisión: ${new Date().toLocaleDateString('es-AR')}`, 12, y); y += 5;
-        doc.text(`Total contratado: $${Number(plan.total_plan).toLocaleString('es-AR')}`, 12, y); y += 8;
+        doc.setFontSize(11);
+        doc.setTextColor(...TURQUESA);
+        doc.text('DETALLE DE CUOTAS', MARGIN, y);
+        y += 2;
+        hr(y, TURQUESA);
+        y += 6;
 
-        // Tabla cuotas
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text('Cuotas', 12, y); y += 4;
-        doc.setLineWidth(0.2);
-        doc.line(12, y, W - 12, y); y += 5;
+        // Encabezado tabla
+        const X_NUM   = MARGIN + 2;
+        const X_CONC  = MARGIN + 10;
+        const X_FECHA = 100;
+        const X_MONTO = 145;
+        const X_EST   = PAGE_W - MARGIN - 2;
 
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.text('#', 12, y);
-        doc.text('Concepto', 20, y);
-        doc.text('Vence', 95, y);
-        doc.text('Monto', 130, y, { align: 'right' });
-        doc.text('Cobrado', 160, y, { align: 'right' });
-        doc.text('Estado', 195, y, { align: 'right' });
-        y += 1;
-        doc.line(12, y, W - 12, y); y += 4;
+        doc.setFontSize(8.5);
+        doc.setTextColor(...MUTED);
+        doc.text('#',         X_NUM,   y);
+        doc.text('CONCEPTO',  X_CONC,  y);
+        doc.text('VENCE',     X_FECHA, y);
+        doc.text('MONTO',     X_MONTO, y, { align: 'right' });
+        doc.text('ESTADO',    X_EST,   y, { align: 'right' });
+        y += 2;
+        hr(y, [200, 200, 200]);
+        y += 5;
 
-        doc.setFont('helvetica', 'normal');
-        items.forEach(it => {
-            if (y > 260) { doc.addPage(); y = 20; }
-            doc.text(String(it.orden), 12, y);
-            const concepto = (it.concepto || '').substring(0, 38);
-            doc.text(concepto, 20, y);
-            doc.text(it.fecha_estimada || '—', 95, y);
-            doc.text('$' + Number(it.monto || 0).toLocaleString('es-AR'), 130, y, { align: 'right' });
-            doc.text('$' + Number(it.monto_cobrado || 0).toLocaleString('es-AR'), 160, y, { align: 'right' });
-            const estMap = { cobrado: 'Cobrada', parcial: 'Parcial', pendiente: 'Pendiente', facturada: 'Facturada', vencido: 'Vencida', anulada: 'Anulada' };
-            doc.text(estMap[it.estado] || it.estado, 195, y, { align: 'right' });
-            y += 5;
+        const estMap = { cobrado: 'Cobrada', parcial: 'Parcial', pendiente: 'Pendiente', facturada: 'Facturada', vencido: 'Vencida', anulada: 'Anulada' };
+        items.forEach((it, idx) => {
+            if (y > PAGE_H - 80) { doc.addPage(); y = MARGIN; }
+
+            // Fila zebra: fondo alternado tenue
+            if (idx % 2 === 1) {
+                doc.setFillColor(248, 248, 248);
+                doc.rect(MARGIN, y - 4, PAGE_W - 2 * MARGIN, 7, 'F');
+            }
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(...TEXTO);
+            doc.text(String(it.orden), X_NUM, y);
+            const conc = (it.concepto || '—').substring(0, 50);
+            doc.text(conc, X_CONC, y);
+            const venceTxt = it.fecha_estimada
+                ? new Date(it.fecha_estimada + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                : '—';
+            doc.setTextColor(...MUTED);
+            doc.setFontSize(9.5);
+            doc.text(venceTxt, X_FECHA, y);
+            doc.setTextColor(...TEXTO);
+            doc.setFontSize(10);
+            doc.text(fmtM(it.monto), X_MONTO, y, { align: 'right' });
+
+            // Estado con color
+            const estado = it.estado || 'pendiente';
+            let estCol = MUTED;
+            if (estado === 'cobrado')    estCol = [0, 170, 100];
+            if (estado === 'parcial')    estCol = [242, 141, 21];
+            if (estado === 'facturada')  estCol = [...TURQUESA];
+            if (estado === 'vencido')    estCol = [200, 60, 60];
+            doc.setTextColor(...estCol);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8.5);
+            doc.text((estMap[estado] || estado).toUpperCase(), X_EST, y, { align: 'right' });
+
+            y += 7;
         });
 
         y += 2;
-        doc.line(12, y, W - 12, y); y += 6;
+        hr(y, [200, 200, 200]);
+        y += 8;
 
-        // Totales
+        // ═══ TOTALES (caja a la derecha) ═══
+        const totBoxX = PAGE_W - MARGIN - 80;
+        const totBoxW = 80;
+        const totBoxH = saldoPendiente > 0 ? 26 : 20;
+
+        doc.setFillColor(245, 250, 251);
+        doc.setDrawColor(...TURQUESA);
+        doc.setLineWidth(0.4);
+        doc.rect(totBoxX, y, totBoxW, totBoxH, 'FD');
+
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text('Total cobrado:', 130, y, { align: 'right' });
-        doc.text('$' + totalCobrado.toLocaleString('es-AR'), 195, y, { align: 'right' });
-        y += 5;
-        doc.text('Saldo pendiente:', 130, y, { align: 'right' });
-        doc.setTextColor(0, 169, 193);
-        doc.text('$' + saldoPendiente.toLocaleString('es-AR'), 195, y, { align: 'right' });
-        doc.setTextColor(20, 20, 20);
-        y += 12;
+        doc.setFontSize(9);
+        doc.setTextColor(...MUTED);
+        doc.text('TOTAL ACORDADO',  totBoxX + 4,            y + 7);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        doc.setTextColor(...TEXTO);
+        doc.text(fmtM(totalPlan), totBoxX + totBoxW - 4, y + 7, { align: 'right' });
 
-        // Datos para transferir
+        if (saldoPendiente > 0) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(...MUTED);
+            doc.text('COBRADO', totBoxX + 4, y + 14);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10.5);
+            doc.setTextColor(...TEXTO);
+            doc.text(fmtM(totalCobrado), totBoxX + totBoxW - 4, y + 14, { align: 'right' });
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(...TURQUESA);
+            doc.text('SALDO PENDIENTE', totBoxX + 4, y + 22);
+            doc.setFontSize(12);
+            doc.text(fmtM(saldoPendiente), totBoxX + totBoxW - 4, y + 22, { align: 'right' });
+        } else {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(0, 170, 100);
+            doc.text('PAGADO', totBoxX + 4, y + 15);
+            doc.text(fmtM(totalCobrado), totBoxX + totBoxW - 4, y + 15, { align: 'right' });
+        }
+
+        y += totBoxH + 10;
+
+        // ═══ DATOS PARA TRANSFERENCIA ═══
         if (cuentas && cuentas.length) {
+            if (y > PAGE_H - 60) { doc.addPage(); y = MARGIN; }
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(10);
-            doc.text('Datos para transferencia', 12, y); y += 5;
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(9);
+            doc.setFontSize(11);
+            doc.setTextColor(...TURQUESA);
+            doc.text('DATOS PARA TRANSFERENCIA', MARGIN, y);
+            y += 2;
+            hr(y, TURQUESA);
+            y += 6;
             cuentas.forEach(c => {
-                if (y > 270) { doc.addPage(); y = 20; }
-                const linea = `${c.entidad || c.nombre || 'Cuenta'} · ${c.numero_cuenta || ''} · CBU/Alias: ${c.cbu_alias || '—'}`;
-                doc.text(linea, 12, y); y += 5;
+                if (y > PAGE_H - 30) { doc.addPage(); y = MARGIN; }
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.setTextColor(...TEXTO);
+                doc.text(c.entidad || c.nombre || 'Cuenta', MARGIN, y);
+                y += 5;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9.5);
+                doc.setTextColor(...MUTED);
+                if (c.numero_cuenta) { doc.text(`Cuenta:  ${c.numero_cuenta}`, MARGIN + 2, y); y += 4.5; }
+                if (c.cbu_alias)     { doc.text(`CBU / Alias:  ${c.cbu_alias}`, MARGIN + 2, y); y += 4.5; }
+                y += 2;
             });
-            y += 3;
         }
 
+        // ═══ NOTAS ═══
         if (plan.notas) {
-            if (y > 250) { doc.addPage(); y = 20; }
+            if (y > PAGE_H - 40) { doc.addPage(); y = MARGIN; }
+            y += 4;
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(10);
-            doc.text('Notas', 12, y); y += 5;
+            doc.setTextColor(...TURQUESA);
+            doc.text('OBSERVACIONES', MARGIN, y);
+            y += 5;
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(9);
-            const lines = doc.splitTextToSize(plan.notas, W - 24);
-            doc.text(lines, 12, y);
+            doc.setFontSize(9.5);
+            doc.setTextColor(...TEXTO);
+            const lines = doc.splitTextToSize(plan.notas, PAGE_W - 2 * MARGIN);
+            doc.text(lines, MARGIN, y);
+            y += lines.length * 4.5;
         }
 
-        // Footer
-        doc.setFontSize(8);
-        doc.setTextColor(120, 120, 120);
-        doc.text('MEPEX — Montaje y Equipamiento para Exposiciones', W / 2, 290, { align: 'center' });
+        // ═══ FOOTER ═══
+        doc.setFontSize(7.5);
+        doc.setTextColor(...MUTED);
+        doc.text(
+            `MEPEX · Montaje y Equipamiento para Exposiciones · Generado ${new Date().toLocaleString('es-AR')}`,
+            PAGE_W / 2, PAGE_H - 8, { align: 'center' }
+        );
 
-        const filename = `plan-pagos-${(this._proyectosMap[plan.proyecto_id] || 'proyecto').replace(/\s+/g, '_').toLowerCase()}-${new Date().toISOString().slice(0,10)}.pdf`;
+        // ═══ Save ═══
+        const slug = (proyNombre || 'proyecto').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+        const filename = `MEPEX_PLAN-${numero}_${slug}_${new Date().toISOString().slice(0, 10)}.pdf`;
         doc.save(filename);
         Toast.success('PDF generado');
     },
