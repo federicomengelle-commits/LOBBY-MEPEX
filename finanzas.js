@@ -9089,55 +9089,54 @@ const FinanzasModule = {
                 <button class="fin-btn-secondary" id="ivarBtnCancel">Cancelar</button>
                 <button class="fin-btn-primary" id="ivarBtnSave">${isEdit ? 'Actualizar' : 'Crear factura'}</button>
             `,
-            onOpen: () => {
-                // Helper: calcular IVA 21% desde subtotal y total
-                document.getElementById('ivarCalcBtn')?.addEventListener('click', () => {
-                    const subt = parseFloat(document.getElementById('ivarSubt').value) || 0;
-                    const tot = parseFloat(document.getElementById('ivarTot').value) || 0;
-                    if (tot > 0 && subt === 0) {
-                        // Asumir todo IVA 21%: subtotal = total/1.21
-                        const subtCalc = +(tot / 1.21).toFixed(2);
-                        const iva = +(tot - subtCalc).toFixed(2);
-                        document.getElementById('ivarSubt').value = subtCalc;
-                        document.getElementById('ivarIva21').value = iva;
-                    } else if (subt > 0) {
-                        const iva = +(subt * 0.21).toFixed(2);
-                        document.getElementById('ivarIva21').value = iva;
-                        document.getElementById('ivarTot').value = +(subt + iva).toFixed(2);
-                    }
-                });
+        });
 
-                document.getElementById('ivarBtnCancel')?.addEventListener('click', () => Modal.close());
-                document.getElementById('ivarBtnSave')?.addEventListener('click', async () => {
-                    const payload = {
-                        fecha:        document.getElementById('ivarFecha').value,
-                        cuit:         document.getElementById('ivarCuit').value.trim(),
-                        razon_social: document.getElementById('ivarRazon').value.trim(),
-                        descripcion:  document.getElementById('ivarDesc').value.trim(),
-                        subtotal:     parseFloat(document.getElementById('ivarSubt').value) || 0,
-                        iva_21:       parseFloat(document.getElementById('ivarIva21').value) || 0,
-                        iva_10_5:     parseFloat(document.getElementById('ivarIva105').value) || 0,
-                        iva_otros:    parseFloat(document.getElementById('ivarIvaOtros').value) || 0,
-                        total:        parseFloat(document.getElementById('ivarTot').value) || 0,
-                        traido_por:   document.getElementById('ivarTraido').value.trim(),
-                        notas:        document.getElementById('ivarNotas').value.trim(),
-                    };
-                    if (!payload.fecha) { Toast.error('Falta la fecha'); return; }
-                    try {
-                        if (isEdit) {
-                            await API.updateComprobanteIvaRecovery(item.id, payload);
-                            Toast.success('Factura actualizada');
-                        } else {
-                            await API.createComprobanteIvaRecovery(payload);
-                            Toast.success('Factura creada');
-                        }
-                        Modal.close();
-                        await this._loadIvaRecovery();
-                    } catch (e) {
-                        Toast.error('Error al guardar: ' + (e.message || e));
-                    }
-                });
-            },
+        // Modal.open() hace appendChild síncrono → los IDs ya existen aquí.
+        // (Modal.open NO soporta callback onOpen; los listeners van afuera.)
+        document.getElementById('ivarCalcBtn')?.addEventListener('click', () => {
+            const subt = parseFloat(document.getElementById('ivarSubt').value) || 0;
+            const tot = parseFloat(document.getElementById('ivarTot').value) || 0;
+            if (tot > 0 && subt === 0) {
+                const subtCalc = +(tot / 1.21).toFixed(2);
+                const iva = +(tot - subtCalc).toFixed(2);
+                document.getElementById('ivarSubt').value = subtCalc;
+                document.getElementById('ivarIva21').value = iva;
+            } else if (subt > 0) {
+                const iva = +(subt * 0.21).toFixed(2);
+                document.getElementById('ivarIva21').value = iva;
+                document.getElementById('ivarTot').value = +(subt + iva).toFixed(2);
+            }
+        });
+
+        document.getElementById('ivarBtnCancel')?.addEventListener('click', () => Modal.close());
+        document.getElementById('ivarBtnSave')?.addEventListener('click', async () => {
+            const payload = {
+                fecha:        document.getElementById('ivarFecha').value,
+                cuit:         document.getElementById('ivarCuit').value.trim(),
+                razon_social: document.getElementById('ivarRazon').value.trim(),
+                descripcion:  document.getElementById('ivarDesc').value.trim(),
+                subtotal:     parseFloat(document.getElementById('ivarSubt').value) || 0,
+                iva_21:       parseFloat(document.getElementById('ivarIva21').value) || 0,
+                iva_10_5:     parseFloat(document.getElementById('ivarIva105').value) || 0,
+                iva_otros:    parseFloat(document.getElementById('ivarIvaOtros').value) || 0,
+                total:        parseFloat(document.getElementById('ivarTot').value) || 0,
+                traido_por:   document.getElementById('ivarTraido').value.trim(),
+                notas:        document.getElementById('ivarNotas').value.trim(),
+            };
+            if (!payload.fecha) { Toast.error('Falta la fecha'); return; }
+            try {
+                if (isEdit) {
+                    await API.updateComprobanteIvaRecovery(item.id, payload);
+                    Toast.success('Factura actualizada');
+                } else {
+                    await API.createComprobanteIvaRecovery(payload);
+                    Toast.success('Factura creada');
+                }
+                Modal.close();
+                await this._loadIvaRecovery();
+            } catch (e) {
+                Toast.error('Error al guardar: ' + (e.message || e));
+            }
         });
     },
 };
