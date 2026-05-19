@@ -8795,29 +8795,18 @@ const FinanzasModule = {
         return `
             <div class="fin-subtabs" id="finEgresosSubtabs">
                 <button class="fin-subtab ${this._egresosSubtab === 'egresos' ? 'active' : ''}" data-subtab="egresos">Egresos</button>
-                <button class="fin-subtab ${this._egresosSubtab === 'iva_recovery' ? 'active' : ''}" data-subtab="iva_recovery">Recupero IVA extracontable</button>
-            </div>
-
-            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:14px 16px;margin-bottom:12px;display:flex;gap:14px;align-items:flex-start;">
-                <div style="font-size:22px;line-height:1;padding-top:2px;">🧾</div>
-                <div style="flex:1;">
-                    <div style="font-weight:600;color:#E8E8E8;margin-bottom:4px;">¿Qué es esta sección?</div>
-                    <div style="font-size:12px;color:#888;line-height:1.5;">
-                        Facturas con CUIT MEPEX <strong>cuya mercadería/servicio no fue para MEPEX</strong> (familiares, conocidos). <strong>NO generan asiento contable</strong> — el gasto no figura en el P&amp;L oficial.
-                        El IVA <strong>SÍ</strong> se suma al saldo de la cuenta <strong>1.1.04.01 IVA crédito fiscal</strong> de manera virtual para reportes y Libro IVA Compras presentado a AFIP.
-                    </div>
-                </div>
+                <button class="fin-subtab ${this._egresosSubtab === 'iva_recovery' ? 'active' : ''}" data-subtab="iva_recovery">Registros auxiliares</button>
             </div>
 
             <div class="fin-cuentas-toolbar">
                 <div class="fin-search-box">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" class="fin-search-input" id="finIvarSearch" placeholder="Buscar CUIT, razón social, descripción, traído por…" autocomplete="off" value="${this._ivarSearch}">
+                    <input type="text" class="fin-search-input" id="finIvarSearch" placeholder="Buscar CUIT, razón social, descripción, referencia…" autocomplete="off" value="${this._ivarSearch}">
                 </div>
                 ${!this._isRO ? `
                 <button class="fin-btn-new" id="finBtnNewIvar">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Nueva factura
+                    Nuevo registro
                 </button>
                 ` : ''}
             </div>
@@ -8832,7 +8821,7 @@ const FinanzasModule = {
 
             <div class="fin-body">
                 <div class="fin-main" id="finIvarMain">
-                    <div class="fin-loading"><div class="spinner"></div> Cargando facturas extracontables…</div>
+                    <div class="fin-loading"><div class="spinner"></div> Cargando…</div>
                 </div>
             </div>
         `;
@@ -8889,7 +8878,7 @@ const FinanzasModule = {
                 <div style="font-size:20px;font-weight:700;color:#E8E8E8;font-family:var(--font-mono);">${fmt(totSubt)}</div>
             </div>
             <div style="background:#111;border:1px solid #00A9C1;border-radius:8px;padding:12px;">
-                <div style="font-size:10px;color:#00A9C1;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${periodoLabel} · IVA recuperado</div>
+                <div style="font-size:10px;color:#00A9C1;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${periodoLabel} · IVA</div>
                 <div style="font-size:20px;font-weight:700;color:#00A9C1;font-family:var(--font-mono);">${fmt(totIva)}</div>
             </div>
             <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:12px;">
@@ -8909,11 +8898,11 @@ const FinanzasModule = {
             main.innerHTML = `
                 <div class="fin-empty">
                     <div class="fin-empty-icon">🧾</div>
-                    <div class="fin-empty-text">${this._ivar.length === 0 ? 'No hay facturas extracontables cargadas. Cargá la primera para empezar a sumar IVA virtual.' : 'Sin resultados con los filtros actuales'}</div>
+                    <div class="fin-empty-text">${this._ivar.length === 0 ? 'Sin registros en el periodo.' : 'Sin resultados con los filtros actuales'}</div>
                     ${!this._isRO && this._ivar.length === 0 ? `
                     <button class="fin-btn-new" id="finBtnNewIvarEmpty">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Nueva factura
+                        Nuevo registro
                     </button>
                     ` : ''}
                 </div>
@@ -8930,7 +8919,7 @@ const FinanzasModule = {
                         <th>CUIT</th>
                         <th>Razón social</th>
                         <th>Descripción</th>
-                        <th>Traído por</th>
+                        <th>Referencia</th>
                         <th class="num">Subtotal</th>
                         <th class="num">IVA</th>
                         <th class="num">Total</th>
@@ -8944,7 +8933,7 @@ const FinanzasModule = {
                             <td data-label="CUIT" style="font-family:var(--font-mono);font-size:11px;">${i.cuit || '—'}</td>
                             <td data-label="Razón social">${i.razon_social || '—'}</td>
                             <td data-label="Descripción" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(i.descripcion || '').replace(/"/g, '&quot;')}">${i.descripcion || '—'}</td>
-                            <td data-label="Traído por">${i.traido_por || '—'}</td>
+                            <td data-label="Referencia">${i.traido_por || '—'}</td>
                             <td data-label="Subtotal" class="num" style="font-family:var(--font-mono);">${fmt(i.subtotal)}</td>
                             <td data-label="IVA" class="num" style="font-family:var(--font-mono);color:#00A9C1;font-weight:600;">${fmt(i.iva_total)}</td>
                             <td data-label="Total" class="num" style="font-family:var(--font-mono);font-weight:600;">${fmt(i.total)}</td>
@@ -8974,11 +8963,11 @@ const FinanzasModule = {
                 const id = btn.dataset.id;
                 const item = this._ivar.find(x => x.id === id);
                 if (!item) return;
-                const ok = await Confirm.delete(`la factura de ${item.razon_social || 'sin nombre'} (IVA $${parseFloat(item.iva_total || 0).toLocaleString('es-AR')})`);
+                const ok = await Confirm.delete(`el registro de ${item.razon_social || 'sin nombre'} (IVA $${parseFloat(item.iva_total || 0).toLocaleString('es-AR')})`);
                 if (!ok) return;
                 try {
                     await API.deleteComprobanteIvaRecovery(id);
-                    Toast.success('Factura eliminada');
+                    Toast.success('Registro eliminado');
                     await this._loadIvaRecovery();
                 } catch (e) {
                     Toast.error('Error al eliminar');
@@ -9032,7 +9021,7 @@ const FinanzasModule = {
         };
 
         const _modal = Modal.open({
-            title: isEdit ? 'Editar factura extracontable' : 'Nueva factura extracontable',
+            title: isEdit ? 'Editar registro' : 'Nuevo registro',
             size: 'medium',
             body: `
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
@@ -9041,8 +9030,8 @@ const FinanzasModule = {
                         <input type="date" id="ivarFecha" value="${v.fecha}" class="fin-input">
                     </div>
                     <div>
-                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Traído por</label>
-                        <input type="text" id="ivarTraido" value="${v.traido_por.replace(/"/g, '&quot;')}" placeholder="Cuñada Pedro" class="fin-input">
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Referencia</label>
+                        <input type="text" id="ivarTraido" value="${v.traido_por.replace(/"/g, '&quot;')}" placeholder="—" class="fin-input">
                     </div>
                     <div>
                         <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">CUIT proveedor</label>
@@ -9087,7 +9076,7 @@ const FinanzasModule = {
             `,
             footer: `
                 <button class="fin-btn-secondary" id="ivarBtnCancel">Cancelar</button>
-                <button class="fin-btn-primary" id="ivarBtnSave">${isEdit ? 'Actualizar' : 'Crear factura'}</button>
+                <button class="fin-btn-primary" id="ivarBtnSave">${isEdit ? 'Actualizar' : 'Crear registro'}</button>
             `,
         });
 
@@ -9127,10 +9116,10 @@ const FinanzasModule = {
             try {
                 if (isEdit) {
                     await API.updateComprobanteIvaRecovery(item.id, payload);
-                    Toast.success('Factura actualizada');
+                    Toast.success('Registro actualizado');
                 } else {
                     await API.createComprobanteIvaRecovery(payload);
-                    Toast.success('Factura creada');
+                    Toast.success('Registro creado');
                 }
                 Modal.close(_modal.id);
                 await this._loadIvaRecovery();

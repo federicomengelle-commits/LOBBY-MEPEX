@@ -4006,9 +4006,9 @@ const ContabilidadModule = {
         ];
         const mostrarOrigenToggle = (this._ivaSubtab === 'compras' || this._ivaSubtab === 'posicion');
         const origenes = [
-            { key: 'oficial', label: 'Oficial' },
-            { key: 'virtual', label: 'Virtual' },
-            { key: 'ambos',   label: 'Ambos'   },
+            { key: 'oficial',  label: 'Oficial'  },
+            { key: 'auxiliar', label: 'Auxiliar' },
+            { key: 'ambos',    label: 'Ambos'    },
         ];
         return `
             <div class="cont-iva-toolbar">
@@ -4040,12 +4040,12 @@ const ContabilidadModule = {
 
     _buildIvaNotaContenido() {
         if (this._ivaSubtab === 'ventas') {
-            return '\u{1F512} IVA Ventas refleja solo comprobantes oficiales emitidos (canal A).';
+            return 'IVA Ventas \u2014 canal A.';
         }
         const origen = this._ivaComprasOrigen;
-        if (origen === 'oficial') return '\u{1F512} Vista <strong>Oficial</strong>: solo comprobantes recibidos cargados como gasto real.';
-        if (origen === 'virtual') return '\u{1F441}\ufe0f Vista <strong>Virtual</strong>: facturas extracontables (recupero IVA "de familiares"). No figuran en P&amp;L.';
-        return '\u2295 Vista <strong>Ambos</strong>: oficial + virtual. Es el IVA cr\u00e9dito real presentable a AFIP.';
+        if (origen === 'oficial')  return 'Vista <strong>Oficial</strong>.';
+        if (origen === 'auxiliar') return 'Vista <strong>Auxiliar</strong>.';
+        return 'Vista <strong>Ambos</strong> (oficial + auxiliar).';
     },
 
     _attachLibrosIVAEvents() {
@@ -4117,11 +4117,11 @@ const ContabilidadModule = {
         const origen = this._ivaComprasOrigen || 'oficial';
         const isPosicion = (this._ivaSubtab === 'posicion');
         // En Posición SIEMPRE traemos ambos para poder comparar.
-        const oficialNeeded = isPosicion || origen === 'oficial' || origen === 'ambos';
-        const virtualNeeded = isPosicion || origen === 'virtual' || origen === 'ambos';
+        const oficialNeeded  = isPosicion || origen === 'oficial'  || origen === 'ambos';
+        const auxiliarNeeded = isPosicion || origen === 'auxiliar' || origen === 'ambos';
 
         let oficial = [];
-        let virtual = [];
+        let auxiliar = [];
 
         if (oficialNeeded) {
             const { data, error } = await supabaseClient
@@ -4135,26 +4135,26 @@ const ContabilidadModule = {
             if (!error && data) oficial = data.map(r => ({ ...r, _origen: 'oficial' }));
         }
 
-        if (virtualNeeded) {
+        if (auxiliarNeeded) {
             try {
                 const data = await API.getComprobantesIvaRecovery({ fechaDesde: desde, fechaHasta: hasta });
-                virtual = (data || []).map(r => ({ ...r, _origen: 'virtual' }));
+                auxiliar = (data || []).map(r => ({ ...r, _origen: 'auxiliar' }));
             } catch (e) {
-                console.warn('[Contabilidad] No se pudo cargar IVA recovery virtual:', e?.message);
+                console.warn('[Contabilidad] No se pudo cargar registros auxiliares:', e?.message);
             }
         }
 
-        this._ivaComprasVirtual = virtual;
+        this._ivaComprasVirtual = auxiliar;
 
         // Para subtab Compras, _ivaCompras respeta exactamente el origen elegido.
         // Para Posición, _ivaCompras tiene ambos (la función render hace los cálculos parciales).
         let visibles;
         if (this._ivaSubtab === 'compras') {
-            if (origen === 'oficial')      visibles = oficial;
-            else if (origen === 'virtual') visibles = virtual;
-            else                            visibles = [...oficial, ...virtual];
+            if (origen === 'oficial')       visibles = oficial;
+            else if (origen === 'auxiliar') visibles = auxiliar;
+            else                             visibles = [...oficial, ...auxiliar];
         } else {
-            visibles = [...oficial, ...virtual];
+            visibles = [...oficial, ...auxiliar];
         }
         this._ivaCompras = visibles.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
     },
@@ -4266,22 +4266,22 @@ const ContabilidadModule = {
         }
 
         let totalNeto = 0, totalIva = 0, totalTotal = 0;
-        let totIvaOficial = 0, totIvaVirtual = 0;
+        let totIvaOficial = 0, totIvaAuxiliar = 0;
         const rows = this._ivaCompras.map(c => {
-            const esVirtual = c._origen === 'virtual';
+            const esAuxiliar = c._origen === 'auxiliar';
             const fecha = c.fecha ? new Date(c.fecha + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '\u2014';
-            const tipo = esVirtual ? 'Factura' : (c.tipo || c.tipo_comprobante || '\u2014');
-            const numero = esVirtual ? '\u2014' : (c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero));
-            const proveedor = esVirtual ? (c.razon_social || '\u2014') : (c.proveedor_nombre || c.razon_social || c.proveedor || '\u2014');
+            const tipo = esAuxiliar ? 'Factura' : (c.tipo || c.tipo_comprobante || '\u2014');
+            const numero = esAuxiliar ? '\u2014' : (c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero));
+            const proveedor = esAuxiliar ? (c.razon_social || '\u2014') : (c.proveedor_nombre || c.razon_social || c.proveedor || '\u2014');
             const cuit = c.cuit || c.cuit_proveedor || '\u2014';
 
-            // Para virtuales siempre discrimina IVA. Para oficiales depende del tipo.
+            // Para auxiliares siempre discrimina IVA. Para oficiales depende del tipo.
             const tipoUpper = (tipo || '').toUpperCase();
-            const discriminaIVA = esVirtual || tipoUpper.includes('A') || tipoUpper.includes('M');
+            const discriminaIVA = esAuxiliar || tipoUpper.includes('A') || tipoUpper.includes('M');
 
-            const neto = esVirtual ? (c.subtotal || 0)
+            const neto = esAuxiliar ? (c.subtotal || 0)
                          : (discriminaIVA ? (c.neto || c.subtotal || 0) : null);
-            const iva = esVirtual ? (parseFloat(c.iva_total) || 0)
+            const iva = esAuxiliar ? (parseFloat(c.iva_total) || 0)
                         : (discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) : null);
             const total = c.total || c.monto || 0;
             const esCF = iva !== null && iva > 0;
@@ -4289,21 +4289,21 @@ const ContabilidadModule = {
             if (neto !== null) totalNeto += neto;
             if (iva !== null) totalIva += iva;
             totalTotal += total;
-            if (esVirtual) totIvaVirtual += (iva || 0);
+            if (esAuxiliar) totIvaAuxiliar += (iva || 0);
             else totIvaOficial += (iva || 0);
 
-            const traidoChip = esVirtual && c.traido_por
-                ? `<div style="font-size:10px;color:#888;margin-top:2px;">v\u00eda ${c.traido_por}</div>` : '';
+            const refChip = esAuxiliar && c.traido_por
+                ? `<div style="font-size:10px;color:#888;margin-top:2px;">ref. ${c.traido_por}</div>` : '';
 
-            const origenBadge = esVirtual
-                ? '<span style="display:inline-block;padding:1px 6px;background:#9B7DFF;color:#000;border-radius:3px;font-size:9px;font-weight:700;margin-left:4px;letter-spacing:0.5px;">VIRTUAL</span>'
+            const origenBadge = esAuxiliar
+                ? '<span style="display:inline-block;padding:1px 6px;background:#9B7DFF;color:#000;border-radius:3px;font-size:9px;font-weight:700;margin-left:4px;letter-spacing:0.5px;">AUXILIAR</span>'
                 : '';
 
             return `<tr>
                 <td class="mono">${fecha}</td>
                 <td>${tipo}${esCF ? '<span class="cont-iva-cf-badge">CF</span>' : ''}${origenBadge}</td>
                 <td class="mono">${numero}</td>
-                <td>${proveedor}${traidoChip}</td>
+                <td>${proveedor}${refChip}</td>
                 <td class="mono">${cuit}</td>
                 <td class="right">${neto !== null ? this._formatMoney(neto) : '\u2014'}</td>
                 <td class="right">${iva !== null ? this._formatMoney(iva) : '\u2014'}</td>
@@ -4311,9 +4311,9 @@ const ContabilidadModule = {
             </tr>`;
         }).join('');
 
-        const ambosOMixto = (this._ivaComprasOrigen === 'ambos' && totIvaVirtual > 0);
+        const ambosOMixto = (this._ivaComprasOrigen === 'ambos' && totIvaAuxiliar > 0);
         const desgloseIva = ambosOMixto
-            ? `<div style="font-size:10px;color:#888;margin-top:2px;font-weight:400;">Oficial ${this._formatMoney(totIvaOficial)} \u00b7 Virtual ${this._formatMoney(totIvaVirtual)}</div>`
+            ? `<div style="font-size:10px;color:#888;margin-top:2px;font-weight:400;">Oficial ${this._formatMoney(totIvaOficial)} \u00b7 Auxiliar ${this._formatMoney(totIvaAuxiliar)}</div>`
             : '';
 
         container.innerHTML = `
@@ -4360,46 +4360,46 @@ const ContabilidadModule = {
         const exportWrap = document.getElementById('contIvaExportWrap');
         if (exportWrap) exportWrap.innerHTML = '';
 
-        const sumIva = (rows, ofVirtual) => rows
-            .filter(c => ofVirtual === undefined || c._origen === ofVirtual || (ofVirtual === 'oficial' && !c._origen))
+        const sumIva = (rows, origen) => rows
+            .filter(c => origen === undefined || c._origen === origen || (origen === 'oficial' && !c._origen))
             .reduce((s, c) => s + (parseFloat(c.iva_total) || parseFloat(c.iva) || parseFloat(c.iva_21) || parseFloat(c.monto_iva) || 0), 0);
 
         const debito = this._ivaVentas.reduce((s, c) => s + (c.iva || c.iva_21 || c.monto_iva || 0), 0);
-        const creditoOficial = sumIva(this._ivaCompras, 'oficial');
-        const creditoVirtual = sumIva(this._ivaCompras, 'virtual');
-        const creditoTotal = creditoOficial + creditoVirtual;
+        const creditoOficial  = sumIva(this._ivaCompras, 'oficial');
+        const creditoAuxiliar = sumIva(this._ivaCompras, 'auxiliar');
+        const creditoTotal    = creditoOficial + creditoAuxiliar;
 
         const posicionOficial = debito - creditoOficial;
-        const posicionTotal = debito - creditoTotal;
-        const ahorro = creditoVirtual; // IVA que dej\u00e1s de pagar al sumar las virtuales
+        const posicionTotal   = debito - creditoTotal;
+        const diferencia      = creditoAuxiliar;
 
         const statusOf = (p) => p > 0.01
-            ? { cls: 'cont-iva-pos-pagar', label: 'A pagar a ARCA', amountClass: 'cont-eerr-negativo' }
+            ? { cls: 'cont-iva-pos-pagar', label: 'A pagar', amountClass: 'cont-eerr-negativo' }
             : p < -0.01
-                ? { cls: 'cont-iva-pos-favor', label: 'Saldo a favor',  amountClass: 'cont-eerr-positivo' }
-                : { cls: 'cont-iva-pos-neutro', label: 'Neutro',         amountClass: 'cont-eerr-cero' };
+                ? { cls: 'cont-iva-pos-favor', label: 'A favor', amountClass: 'cont-eerr-positivo' }
+                : { cls: 'cont-iva-pos-neutro', label: 'Neutro', amountClass: 'cont-eerr-cero' };
 
-        const sOf = statusOf(posicionOficial);
+        const sOf  = statusOf(posicionOficial);
         const sTot = statusOf(posicionTotal);
 
         container.innerHTML = `
             <div class="cont-iva-pos-cards">
                 <div class="cont-iva-pos-card">
-                    <div class="cont-iva-pos-label">IVA D\u00e9bito Fiscal (ventas oficiales)</div>
+                    <div class="cont-iva-pos-label">IVA D\u00e9bito Fiscal</div>
                     <div class="cont-iva-pos-monto">${this._formatMoney(debito)}</div>
                 </div>
                 <div class="cont-iva-pos-card">
-                    <div class="cont-iva-pos-label">IVA Cr\u00e9dito Fiscal \u2014 desglose</div>
+                    <div class="cont-iva-pos-label">IVA Cr\u00e9dito Fiscal</div>
                     <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:13px;margin-top:6px;">
                         <span style="color:#888;">Oficial</span>
                         <span style="color:#E8E8E8;">${this._formatMoney(creditoOficial)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:13px;margin-top:4px;">
-                        <span style="color:#9B7DFF;">Virtual</span>
-                        <span style="color:#9B7DFF;">${this._formatMoney(creditoVirtual)}</span>
+                        <span style="color:#9B7DFF;">Auxiliar</span>
+                        <span style="color:#9B7DFF;">${this._formatMoney(creditoAuxiliar)}</span>
                     </div>
                     <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:14px;font-weight:700;margin-top:8px;padding-top:6px;border-top:1px solid #2a2a2a;">
-                        <span style="color:#00A9C1;">TOTAL</span>
+                        <span style="color:#00A9C1;">Total</span>
                         <span style="color:#00A9C1;">${this._formatMoney(creditoTotal)}</span>
                     </div>
                 </div>
@@ -4407,29 +4407,25 @@ const ContabilidadModule = {
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
                 <div class="cont-iva-pos-card resultado" style="border-color:#2a2a2a;">
-                    <div class="cont-iva-pos-label">Posici\u00f3n SOLO OFICIAL</div>
+                    <div class="cont-iva-pos-label">Posici\u00f3n Oficial</div>
                     <div class="cont-iva-pos-monto ${sOf.amountClass}">${this._formatMoney(Math.abs(posicionOficial))}</div>
                     <div class="cont-iva-pos-status ${sOf.cls}">${sOf.label}</div>
                 </div>
                 <div class="cont-iva-pos-card resultado" style="border-color:#00A9C1;">
-                    <div class="cont-iva-pos-label">Posici\u00f3n REAL (con virtual)</div>
+                    <div class="cont-iva-pos-label">Posici\u00f3n Total</div>
                     <div class="cont-iva-pos-monto ${sTot.amountClass}">${this._formatMoney(Math.abs(posicionTotal))}</div>
                     <div class="cont-iva-pos-status ${sTot.cls}">${sTot.label}</div>
                 </div>
             </div>
 
-            ${creditoVirtual > 0.01 ? `
-            <div style="background:#0d1f1f;border:1px solid #00A9C1;border-radius:8px;padding:12px 14px;margin-top:12px;display:flex;align-items:center;gap:12px;">
-                <div style="font-size:24px;">\ud83d\udcb0</div>
-                <div>
-                    <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Ahorro fiscal del periodo (IVA virtual)</div>
-                    <div style="font-size:22px;font-weight:700;color:#00A9C1;font-family:var(--font-mono);">${this._formatMoney(ahorro)}</div>
-                    <div style="font-size:11px;color:#888;margin-top:3px;">IVA cr\u00e9dito que dej\u00e1s de pagar a ARCA al presentar las facturas extracontables.</div>
-                </div>
+            ${creditoAuxiliar > 0.01 ? `
+            <div style="display:flex;justify-content:space-between;align-items:center;background:#111;border:1px solid #2a2a2a;border-radius:6px;padding:10px 14px;margin-top:12px;font-family:var(--font-mono);">
+                <span style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Diferencia</span>
+                <span style="font-size:16px;font-weight:700;color:#00A9C1;">${this._formatMoney(diferencia)}</span>
             </div>
             ` : ''}
 
-            <div class="cont-iva-nota" style="margin-top:12px">Periodo: ${this._getPeriodoLabel()} \u2014 Ventas: solo canal A. Las virtuales NO generan asiento contable; solo entran en Libro IVA AFIP.</div>
+            <div class="cont-iva-nota" style="margin-top:12px">${this._getPeriodoLabel()}</div>
         `;
     },
 
