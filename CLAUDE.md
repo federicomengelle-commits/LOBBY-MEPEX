@@ -558,9 +558,18 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 
 ## 10. ESTADO ACTUAL
 
-- **Fecha:** 2026-05-19
-- **Ultimo commit destacado:** `795e6f1` — Fase C completa (plan de pagos avanzado + cobros parciales + PDF resumen).
-- **Próximo paso:** Fede pulea el VPS + ejecuta `sql/finanzas_fase_c_plan_pagos.sql` en Supabase. Luego seguimos con **Fase E (multi-moneda) → G (reportes) → H (saldos apertura 2027) → F (conciliación) → D (ARCA, bloqueado por trámite cert)**.
+- **Fecha:** 2026-05-19 (sesión extensa)
+- **Ultimo commit destacado:** `b7541c5` — Sidebar fix + acciones inline normalizadas en Registros aux y Planes.
+- **Próximo paso:** Fede pulea VPS para `b7541c5` + ejecuta `sql/fix_trigger_asiento_auto.sql` en Supabase. Luego **Fase E (multi-moneda) → G (reportes) → H (saldos apertura 2027) → F (conciliación) → D (ARCA, bloqueado por trámite cert)**.
+
+- **Sesión 2026-05-19 (parte 4) — Pulido UI Finanzas + fixes**:
+  - **Bug trigger contable (commit `38ce47e`)**: `fn_asiento_auto_ingreso`/`egreso` en prod referenciaba columnas inexistentes (`descripcion`/`estado` en asientos, `debe`/`haber` en asiento_lineas). Cualquier ingreso/egreso con estado `confirmado`/`pagado` rompía con `column "cuenta_id" does not exist`. Fix: `sql/fix_trigger_asiento_auto.sql` recrea ambos triggers contra schema real (concepto, tipo_movimiento/monto, sin estado). Si la cuenta financiera no tiene plan_cuentas vinculado, sale en silencio sin romper el INSERT.
+  - **PDF plan de pagos rediseñado (commit `2fe3e56`)**: estilo cotización MEPEX. Logo optimizado (canvas 400px + JPEG 0.88), header turquesa con "PLAN DE PAGOS" + N° + fecha, rows con labels uppercase muted, tabla cuotas con zebra + estado coloreado, caja de totales con borde turquesa, datos bancarios automáticos (lee `cuentas_financieras` oficial+banco), notas opcionales. Filename `MEPEX_PLAN-<id>_<proyecto>_<fecha>.pdf`.
+  - **Acciones inline en tablas Ingresos+Egresos (commit `8367e2c`)**: nueva columna "Acciones" con botones ✏️ Editar / ⎘ Duplicar / 🗑 Eliminar por fila. Edición inline de Concepto (doble click → input → Enter/Esc/blur). Estilos via `_ensureInlineStyles()` inyectado 1 vez.
+  - **Sidebar fix + Registros aux + Planes (commit `b7541c5`)**: el side panel de detalle de Ingresos/Egresos quedaba colapsado a la altura de la fila clickeada (clientHeight=141, scrollHeight=632). Fix CSS override: position:fixed, top:80, right:16, width:420, max-height:calc(100vh-100px), scroll interno. En <900px cae a bottom sheet 75vh. Sacado `.fin-inline-editable` del guard de click — click simple abre panel, doble click edita inline. Registros auxiliares: reemplazado fin-btn-icon por fin-btn-row + botón Duplicar. Planes de cobro: botón Eliminar plan en header + botones editar/eliminar por cuota + modal `_showEditPlanItem`.
+  - **Cleanup BD**: 1 registro IVA recovery TEST borrado, 0 planes huérfanos. Ingresos TEST ya estaban limpios.
+  - **Versiones finales**: `finanzas.js?v=13`, `contabilidad.js?v=6`, `api.js?v=20` (sin bump, agregados aditivos).
+  - **Verificado en prod via Chrome MCP**: sidebar arreglado se ve completo (DETALLE + REGISTRO + botones Editar/Anular/Eliminar). Plan "Feria del Libro Campana 2026" con 4 cuotas de $5M cada una visible OK. Falta verificación end-to-end de cobros multi-factura, generación PDF y vincular factura (requieren ejecución del `sql/fix_trigger_asiento_auto.sql` para que los ingresos confirmados no rompan).
 
 - **Sesión 2026-05-19 (parte 3) — Fase B chamullo visual + Fase C completa**:
   - **Chamullo visual Fase B** (commit `8ddae6d`): "Recupero IVA extracontable" → **"Registros auxiliares"** en toda la app. Banner explicativo grande eliminado. Modal y textos suavizados: "Factura" → "Registro", "Traído por" → "Referencia", "Virtual" → "Auxiliar" en toggle Libros IVA, badge VIRTUAL violeta → AUXILIAR, chip "vía X" → "ref. X", Posición IVA con cards "Posición Oficial" / "Posición Total" + chip discreto "Diferencia" (sin narrativa "ahorro fiscal"). Internamente el valor `_origen: 'virtual'` se renombró a `'auxiliar'` por coherencia. La tabla SQL sigue siendo `comprobantes_iva_recovery` (no se ve, queda interno).
