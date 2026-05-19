@@ -4281,9 +4281,11 @@ const FinanzasModule = {
                 .filter(i => !i._deleted)
                 .sort((a, b) => a.orden - b.orden);
             const totalCobrado = items.reduce((s, i) => s + (Number(i.monto_cobrado) || 0), 0);
+            const totalFacturado = items.filter(i => i.comprobante_venta_id).reduce((s, i) => s + (Number(i.monto) || 0), 0);
             const totalPlan = Number(plan.total_plan) || 1;
-            const pct = Math.min(100, Math.round((totalCobrado / totalPlan) * 100));
-            const barColor = pct >= 100 ? '#00CC88' : pct > 0 ? '#F28D15' : '#2a2a2a';
+            const pctCob = Math.min(100, Math.round((totalCobrado / totalPlan) * 100));
+            const pctFac = Math.min(100, Math.round((totalFacturado / totalPlan) * 100));
+            const barColor = pctCob >= 100 ? '#00CC88' : pctCob > 0 ? '#F28D15' : '#2a2a2a';
 
             return `
                 <div class="fin-plan-card" data-plan-id="${plan.id}">
@@ -4292,12 +4294,15 @@ const FinanzasModule = {
                             <span class="fin-plan-proyecto">${proyName}</span>
                             <span class="fin-plan-total"> — Total: ${this._formatMoney(plan.total_plan)}</span>
                         </div>
-                        ${!this._isRO ? `
-                        <button class="fin-plan-cobrar-btn" data-add-item="${plan.id}" style="border-color:#4A90D9;color:#4A90D9;">+ Item</button>
-                        ` : ''}
+                        <div style="display:flex;gap:6px;">
+                            ${!this._isRO ? `
+                            <button class="fin-plan-cobrar-btn" data-resumen-pdf="${plan.id}" style="border-color:#9B7DFF;color:#9B7DFF;">📄 Resumen PDF</button>
+                            <button class="fin-plan-cobrar-btn" data-add-item="${plan.id}" style="border-color:#4A90D9;color:#4A90D9;">+ Item</button>
+                            ` : ''}
+                        </div>
                     </div>
-                    <div class="fin-progress-bar"><div class="fin-progress-fill" style="width:${pct}%;background:${barColor};"></div></div>
-                    <div class="fin-progress-label">${pct}% cobrado — ${this._formatMoney(totalCobrado)} de ${this._formatMoney(plan.total_plan)}</div>
+                    <div class="fin-progress-bar"><div class="fin-progress-fill" style="width:${pctCob}%;background:${barColor};"></div></div>
+                    <div class="fin-progress-label">${pctCob}% cobrado · ${pctFac}% facturado — ${this._formatMoney(totalCobrado)} / ${this._formatMoney(totalFacturado)} de ${this._formatMoney(plan.total_plan)}</div>
 
                     ${items.length > 0 ? `
                     <table class="fin-plan-items-table">
@@ -4307,6 +4312,8 @@ const FinanzasModule = {
                                 <th>Concepto</th>
                                 <th style="text-align:right;">Monto</th>
                                 <th>Fecha est.</th>
+                                <th>Facturar</th>
+                                <th>Factura</th>
                                 <th style="text-align:right;">Cobrado</th>
                                 <th>Estado</th>
                                 <th></th>
@@ -4315,16 +4322,26 @@ const FinanzasModule = {
                         <tbody>
                             ${items.map(item => {
                                 const stCls = `fin-plan-item-${item.estado}`;
-                                const stLabel = { cobrado: '✓ Cobrado', parcial: '◐ Parcial', pendiente: '○ Pendiente', vencido: '! Vencido' }[item.estado] || item.estado;
+                                const stLabel = { cobrado: '✓ Cobrado', parcial: '◐ Parcial', pendiente: '○ Pendiente', facturada: '📄 Facturada', vencido: '! Vencido', anulada: 'Ø Anulada' }[item.estado] || item.estado;
+                                const facCheck = item.facturar !== false
+                                    ? '<span style="color:#00A9C1;">✓</span>'
+                                    : '<span style="color:#555;">—</span>';
+                                const facBadge = item.comprobante_venta_id
+                                    ? `<span style="padding:1px 6px;background:#1a3a3a;color:#00A9C1;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:0.3px;">VINCULADA</span>`
+                                    : (item.facturar !== false && !this._isRO
+                                        ? `<button class="fin-plan-cobrar-btn" data-link-fact="${item.id}" data-plan-id="${plan.id}" style="border-color:#00A9C1;color:#00A9C1;font-size:10px;padding:1px 6px;">Vincular</button>`
+                                        : '<span style="color:#555;">—</span>');
                                 return `
                                 <tr>
                                     <td style="color:#555;">${item.orden}</td>
                                     <td>${item.concepto}</td>
                                     <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${this._formatMoney(item.monto)}</td>
                                     <td style="font-size:0.78rem;color:#888;">${item.fecha_estimada ? this._formatDate(item.fecha_estimada) : '—'}</td>
+                                    <td style="text-align:center;">${facCheck}</td>
+                                    <td>${facBadge}</td>
                                     <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;color:${item.monto_cobrado > 0 ? '#00CC88' : '#555'};">${item.monto_cobrado > 0 ? this._formatMoney(item.monto_cobrado) : '—'}</td>
                                     <td><span class="${stCls}">${stLabel}</span></td>
-                                    <td>${item.estado !== 'cobrado' && !this._isRO ? `<button class="fin-plan-cobrar-btn" data-cobrar-item="${item.id}" data-plan-id="${plan.id}">Cobrar</button>` : ''}</td>
+                                    <td>${item.estado !== 'cobrado' && item.estado !== 'anulada' && !this._isRO ? `<button class="fin-plan-cobrar-btn" data-cobrar-item="${item.id}" data-plan-id="${plan.id}">Cobrar</button>` : ''}</td>
                                 </tr>`;
                             }).join('')}
                         </tbody>
@@ -4338,9 +4355,7 @@ const FinanzasModule = {
         main.querySelectorAll('[data-cobrar-item]').forEach(btn => {
             btn.addEventListener('click', (ev) => {
                 ev.stopPropagation();
-                const itemId = btn.dataset.cobrarItem;
-                const planId = btn.dataset.planId;
-                this._cobrarPlanItem(planId, itemId);
+                this._cobrarPlanItem(btn.dataset.planId, btn.dataset.cobrarItem);
             });
         });
 
@@ -4349,6 +4364,22 @@ const FinanzasModule = {
             btn.addEventListener('click', (ev) => {
                 ev.stopPropagation();
                 this._showAddPlanItem(btn.dataset.addItem);
+            });
+        });
+
+        // Link factura buttons
+        main.querySelectorAll('[data-link-fact]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                this._vincularCuotaConFactura(btn.dataset.planId, btn.dataset.linkFact);
+            });
+        });
+
+        // Resumen PDF buttons
+        main.querySelectorAll('[data-resumen-pdf]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                this._generarResumenPlanPDF(btn.dataset.resumenPdf);
             });
         });
     },
@@ -4442,9 +4473,18 @@ const FinanzasModule = {
                             <input type="number" class="fin-form-input" id="finPlanItemPct" step="0.01" placeholder="Auto">
                         </div>
                     </div>
-                    <div class="fin-form-group">
-                        <label class="fin-form-label">Fecha estimada</label>
-                        <input type="date" class="fin-form-input" id="finPlanItemFecha">
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Fecha estimada</label>
+                            <input type="date" class="fin-form-input" id="finPlanItemFecha">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">¿Facturar?</label>
+                            <label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;font-size:0.85rem;color:#888;">
+                                <input type="checkbox" id="finPlanItemFacturar" checked style="cursor:pointer;">
+                                Genera factura propia
+                            </label>
+                        </div>
                     </div>
                 </div>
             `,
@@ -4470,6 +4510,7 @@ const FinanzasModule = {
             const orden = parseInt(document.getElementById('finPlanItemOrden')?.value) || nextOrden;
             const porcentaje = parseFloat(document.getElementById('finPlanItemPct')?.value) || null;
             const fecha_estimada = document.getElementById('finPlanItemFecha')?.value || null;
+            const facturar = !!document.getElementById('finPlanItemFacturar')?.checked;
 
             if (!concepto || !monto || isNaN(monto)) {
                 Toast.warning('Concepto y monto son obligatorios');
@@ -4478,7 +4519,7 @@ const FinanzasModule = {
 
             try {
                 const { error } = await supabaseClient.from('plan_cobro_items').insert([{
-                    plan_cobro_id: planId, concepto, monto, orden, porcentaje, fecha_estimada,
+                    plan_cobro_id: planId, concepto, monto, orden, porcentaje, fecha_estimada, facturar,
                 }]);
                 if (error) throw error;
                 Toast.success('Item agregado');
@@ -4488,6 +4529,222 @@ const FinanzasModule = {
                 Toast.error('Error al agregar item: ' + (e.message || e));
             }
         });
+    },
+
+    // ═══════════════════════════════════════════
+    //  FASE C — Vincular cuota a factura existente + Resumen PDF
+    // ═══════════════════════════════════════════
+
+    async _vincularCuotaConFactura(planId, cuotaId) {
+        const plan = this._planes.find(p => p.id === planId);
+        if (!plan) return;
+        const cuota = (plan.plan_cobro_items || []).find(i => i.id === cuotaId);
+        if (!cuota) return;
+
+        // Buscar facturas del mismo proyecto sin vincular
+        const { data: comprobantes, error } = await supabaseClient
+            .from('comprobantes')
+            .select('id, fecha, tipo, punto_venta, numero, total, cliente_id')
+            .eq('proyecto_id', plan.proyecto_id)
+            .eq('_deleted', false)
+            .order('fecha', { ascending: false });
+
+        if (error || !comprobantes?.length) {
+            Toast.warning('No hay facturas del proyecto disponibles. Emití una factura primero.');
+            return;
+        }
+
+        const opts = comprobantes.map(c => {
+            const num = c.punto_venta && c.numero
+                ? `${String(c.punto_venta).padStart(4,'0')}-${String(c.numero).padStart(8,'0')}`
+                : (c.numero || c.id.slice(0,8));
+            const fmt = '$' + Number(c.total || 0).toLocaleString('es-AR');
+            return `<option value="${c.id}">${c.tipo || 'FC'} ${num} · ${c.fecha} · ${fmt}</option>`;
+        }).join('');
+
+        const _modal = Modal.open({
+            title: 'Vincular cuota a factura',
+            size: 'sm',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Cuota</label>
+                        <div style="padding:8px;background:#1a1a1a;border-radius:4px;font-size:0.85rem;">${cuota.concepto} · ${this._formatMoney(cuota.monto)}</div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Factura del proyecto *</label>
+                        <select class="fin-form-select" id="finCuotaFactSel">${opts}</select>
+                    </div>
+                    <div style="font-size:11px;color:#888;line-height:1.4;">
+                        El estado de la cuota pasará a <strong>Facturada</strong>.
+                        Si después cargás un cobro vinculado, pasará a <strong>Cobrada</strong>.
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" id="finCuotaFactCancel">Cancelar</button>
+                <button class="btn btn-primary" id="finCuotaFactSave">Vincular</button>
+            `,
+        });
+
+        document.getElementById('finCuotaFactCancel')?.addEventListener('click', () => Modal.close(_modal.id));
+        document.getElementById('finCuotaFactSave')?.addEventListener('click', async () => {
+            const compId = document.getElementById('finCuotaFactSel')?.value;
+            if (!compId) return;
+            try {
+                await API.vincularCuotaAComprobante(cuotaId, compId);
+                Toast.success('Cuota vinculada a la factura');
+                Modal.close(_modal.id);
+                await this._loadPlanes();
+            } catch (e) {
+                Toast.error('Error al vincular: ' + (e.message || e));
+            }
+        });
+    },
+
+    async _generarResumenPlanPDF(planId) {
+        const plan = this._planes.find(p => p.id === planId);
+        if (!plan) { Toast.error('Plan no encontrado'); return; }
+        if (typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') {
+            Toast.error('jsPDF no está cargado');
+            return;
+        }
+        const { jsPDF } = (window.jspdf || jspdf);
+
+        // Cargar cliente desde proyecto
+        let clienteNombre = '—';
+        try {
+            const { data: proy } = await supabaseClient
+                .from('proyectos').select('cliente_id, nombre').eq('id', plan.proyecto_id).maybeSingle();
+            if (proy?.cliente_id) {
+                const { data: cli } = await supabaseClient
+                    .from('clientes').select('nombre').eq('id', proy.cliente_id).maybeSingle();
+                clienteNombre = cli?.nombre || '—';
+            }
+        } catch (e) { /* ignore */ }
+
+        const items = (plan.plan_cobro_items || []).filter(i => !i._deleted).sort((a,b) => a.orden - b.orden);
+        const totalCobrado = items.reduce((s, i) => s + (Number(i.monto_cobrado) || 0), 0);
+        const saldoPendiente = Number(plan.total_plan) - totalCobrado;
+
+        // Cuentas oficiales para "datos para transferir"
+        const { data: cuentas } = await supabaseClient
+            .from('cuentas_financieras')
+            .select('nombre, entidad, numero_cuenta, cbu_alias, tipo, canal_default')
+            .eq('_deleted', false)
+            .eq('activa', true)
+            .eq('canal_default', 'oficial')
+            .in('tipo', ['banco']);
+
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        const W = 210;
+        let y = 18;
+
+        // Header
+        doc.setFillColor(0, 169, 193);
+        doc.rect(0, 0, W, 12, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('MEPEX', 12, 8);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text('Plan de pagos', W - 12, 8, { align: 'right' });
+
+        doc.setTextColor(20, 20, 20);
+        y = 22;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(15);
+        doc.text(`Plan de pagos`, 12, y);
+        y += 7;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(`Cliente: ${clienteNombre}`, 12, y); y += 5;
+        doc.text(`Proyecto: ${this._proyectosMap[plan.proyecto_id] || '—'}`, 12, y); y += 5;
+        doc.text(`Fecha de emisión: ${new Date().toLocaleDateString('es-AR')}`, 12, y); y += 5;
+        doc.text(`Total contratado: $${Number(plan.total_plan).toLocaleString('es-AR')}`, 12, y); y += 8;
+
+        // Tabla cuotas
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('Cuotas', 12, y); y += 4;
+        doc.setLineWidth(0.2);
+        doc.line(12, y, W - 12, y); y += 5;
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('#', 12, y);
+        doc.text('Concepto', 20, y);
+        doc.text('Vence', 95, y);
+        doc.text('Monto', 130, y, { align: 'right' });
+        doc.text('Cobrado', 160, y, { align: 'right' });
+        doc.text('Estado', 195, y, { align: 'right' });
+        y += 1;
+        doc.line(12, y, W - 12, y); y += 4;
+
+        doc.setFont('helvetica', 'normal');
+        items.forEach(it => {
+            if (y > 260) { doc.addPage(); y = 20; }
+            doc.text(String(it.orden), 12, y);
+            const concepto = (it.concepto || '').substring(0, 38);
+            doc.text(concepto, 20, y);
+            doc.text(it.fecha_estimada || '—', 95, y);
+            doc.text('$' + Number(it.monto || 0).toLocaleString('es-AR'), 130, y, { align: 'right' });
+            doc.text('$' + Number(it.monto_cobrado || 0).toLocaleString('es-AR'), 160, y, { align: 'right' });
+            const estMap = { cobrado: 'Cobrada', parcial: 'Parcial', pendiente: 'Pendiente', facturada: 'Facturada', vencido: 'Vencida', anulada: 'Anulada' };
+            doc.text(estMap[it.estado] || it.estado, 195, y, { align: 'right' });
+            y += 5;
+        });
+
+        y += 2;
+        doc.line(12, y, W - 12, y); y += 6;
+
+        // Totales
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text('Total cobrado:', 130, y, { align: 'right' });
+        doc.text('$' + totalCobrado.toLocaleString('es-AR'), 195, y, { align: 'right' });
+        y += 5;
+        doc.text('Saldo pendiente:', 130, y, { align: 'right' });
+        doc.setTextColor(0, 169, 193);
+        doc.text('$' + saldoPendiente.toLocaleString('es-AR'), 195, y, { align: 'right' });
+        doc.setTextColor(20, 20, 20);
+        y += 12;
+
+        // Datos para transferir
+        if (cuentas && cuentas.length) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text('Datos para transferencia', 12, y); y += 5;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            cuentas.forEach(c => {
+                if (y > 270) { doc.addPage(); y = 20; }
+                const linea = `${c.entidad || c.nombre || 'Cuenta'} · ${c.numero_cuenta || ''} · CBU/Alias: ${c.cbu_alias || '—'}`;
+                doc.text(linea, 12, y); y += 5;
+            });
+            y += 3;
+        }
+
+        if (plan.notas) {
+            if (y > 250) { doc.addPage(); y = 20; }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text('Notas', 12, y); y += 5;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            const lines = doc.splitTextToSize(plan.notas, W - 24);
+            doc.text(lines, 12, y);
+        }
+
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text('MEPEX — Montaje y Equipamiento para Exposiciones', W / 2, 290, { align: 'center' });
+
+        const filename = `plan-pagos-${(this._proyectosMap[plan.proyecto_id] || 'proyecto').replace(/\s+/g, '_').toLowerCase()}-${new Date().toISOString().slice(0,10)}.pdf`;
+        doc.save(filename);
+        Toast.success('PDF generado');
     },
 
     _cobrarPlanItem(planId, itemId) {

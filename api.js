@@ -4596,4 +4596,160 @@ const API = {
         if (error) { console.warn('[API] getPosicionIvaMes:', error.message); return []; }
         return data || [];
     },
+
+    // ───────────────────────────────────────────────
+    //  FASE C — Plan de pagos avanzado + cobros parciales
+    // ───────────────────────────────────────────────
+
+    async getPlanesCobro({ proyectoId = null, cotizacionId = null } = {}) {
+        let q = supabaseClient.from('plan_cobro')
+            .select('*, plan_cobro_items(*)')
+            .eq('_deleted', false)
+            .order('created_at', { ascending: false });
+        if (proyectoId)   q = q.eq('proyecto_id', proyectoId);
+        if (cotizacionId) q = q.eq('cotizacion_id', cotizacionId);
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getPlanesCobro:', error.message); return []; }
+        return data || [];
+    },
+
+    async getPlanCobroById(id) {
+        const { data, error } = await supabaseClient.from('plan_cobro')
+            .select('*, plan_cobro_items(*)')
+            .eq('id', id).eq('_deleted', false).maybeSingle();
+        if (error) { console.warn('[API] getPlanCobroById:', error.message); return null; }
+        return data;
+    },
+
+    async getPlanCobroResumen(planId = null) {
+        let q = supabaseClient.from('v_plan_cobro_resumen').select('*');
+        if (planId) q = q.eq('plan_id', planId);
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getPlanCobroResumen:', error.message); return []; }
+        return data || [];
+    },
+
+    async createPlanCobro({ proyecto_id, cotizacion_id = null, total_plan, notas = null, items = [] }) {
+        const { data: plan, error } = await supabaseClient.from('plan_cobro').insert({
+            proyecto_id, cotizacion_id, total_plan, notas,
+        }).select().single();
+        if (error) { console.warn('[API] createPlanCobro:', error.message); throw error; }
+
+        if (items.length) {
+            const rows = items.map((it, idx) => ({
+                plan_cobro_id: plan.id,
+                orden:          it.orden ?? (idx + 1),
+                concepto:       it.concepto || `Cuota ${idx + 1}`,
+                monto:          Number(it.monto) || 0,
+                porcentaje:     it.porcentaje != null ? Number(it.porcentaje) : null,
+                fecha_estimada: it.fecha_estimada || null,
+                facturar:       it.facturar !== false,
+                notas:          it.notas || null,
+            }));
+            const { error: errIt } = await supabaseClient.from('plan_cobro_items').insert(rows);
+            if (errIt) { console.warn('[API] createPlanCobro items:', errIt.message); throw errIt; }
+        }
+        return plan;
+    },
+
+    async updatePlanCobro(id, patch) {
+        const { data, error } = await supabaseClient.from('plan_cobro')
+            .update(patch).eq('id', id).select().single();
+        if (error) { console.warn('[API] updatePlanCobro:', error.message); throw error; }
+        return data;
+    },
+
+    async deletePlanCobro(id) {
+        const { error } = await supabaseClient.from('plan_cobro')
+            .update({ _deleted: true }).eq('id', id);
+        if (error) { console.warn('[API] deletePlanCobro:', error.message); throw error; }
+        return true;
+    },
+
+    async createPlanCobroItem(payload) {
+        const { data, error } = await supabaseClient.from('plan_cobro_items')
+            .insert(payload).select().single();
+        if (error) { console.warn('[API] createPlanCobroItem:', error.message); throw error; }
+        return data;
+    },
+
+    async updatePlanCobroItem(id, patch) {
+        const { data, error } = await supabaseClient.from('plan_cobro_items')
+            .update(patch).eq('id', id).select().single();
+        if (error) { console.warn('[API] updatePlanCobroItem:', error.message); throw error; }
+        return data;
+    },
+
+    async deletePlanCobroItem(id) {
+        const { error } = await supabaseClient.from('plan_cobro_items')
+            .update({ _deleted: true }).eq('id', id);
+        if (error) { console.warn('[API] deletePlanCobroItem:', error.message); throw error; }
+        return true;
+    },
+
+    // Vincular cuota a una factura ya emitida (el trigger BEFORE marca como 'facturada')
+    async vincularCuotaAComprobante(cuotaId, comprobanteId) {
+        return this.updatePlanCobroItem(cuotaId, { comprobante_venta_id: comprobanteId });
+    },
+
+    // ─── Cobro aplicaciones ───
+
+    async getCobroAplicaciones({ ingresoId = null, comprobanteId = null, planCobroItemId = null } = {}) {
+        let q = supabaseClient.from('cobro_aplicaciones').select('*')
+            .eq('_deleted', false)
+            .order('created_at', { ascending: false });
+        if (ingresoId)       q = q.eq('ingreso_id', ingresoId);
+        if (comprobanteId)   q = q.eq('comprobante_id', comprobanteId);
+        if (planCobroItemId) q = q.eq('plan_cobro_item_id', planCobroItemId);
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getCobroAplicaciones:', error.message); return []; }
+        return data || [];
+    },
+
+    // Aplica un ingreso a 1 o N facturas. Cada aplicación opcionalmente vinculada a una cuota.
+    // payload.aplicaciones = [{ comprobante_id, plan_cobro_item_id?, monto_aplicado, notas? }, ...]
+    async aplicarCobro(ingresoId, aplicaciones) {
+        if (!Array.isArray(aplicaciones) || aplicaciones.length === 0) {
+            throw new Error('aplicarCobro: aplicaciones vacío');
+        }
+        const user = Auth.getUser?.();
+        const rows = aplicaciones.map(a => ({
+            ingreso_id:         ingresoId,
+            comprobante_id:     a.comprobante_id,
+            plan_cobro_item_id: a.plan_cobro_item_id || null,
+            monto_aplicado:     Number(a.monto_aplicado) || 0,
+            notas:              a.notas || null,
+            created_by:         user?.uid || user?.id || null,
+        })).filter(r => r.monto_aplicado > 0);
+        if (!rows.length) throw new Error('aplicarCobro: ningún monto > 0');
+
+        const { data, error } = await supabaseClient.from('cobro_aplicaciones').insert(rows).select();
+        if (error) { console.warn('[API] aplicarCobro:', error.message); throw error; }
+        return data || [];
+    },
+
+    async deleteCobroAplicacion(id) {
+        const { error } = await supabaseClient.from('cobro_aplicaciones')
+            .update({ _deleted: true }).eq('id', id);
+        if (error) { console.warn('[API] deleteCobroAplicacion:', error.message); throw error; }
+        return true;
+    },
+
+    // ─── Saldos via VIEW ───
+
+    async getSaldoComprobante(comprobanteId) {
+        const { data, error } = await supabaseClient.from('v_saldo_comprobante')
+            .select('*').eq('comprobante_id', comprobanteId).maybeSingle();
+        if (error) { console.warn('[API] getSaldoComprobante:', error.message); return null; }
+        return data;
+    },
+
+    async getSaldosComprobantesPorCliente(clienteId, { soloPendientes = true } = {}) {
+        let q = supabaseClient.from('v_saldo_comprobante').select('*').eq('cliente_id', clienteId);
+        if (soloPendientes) q = q.gt('saldo', 0.01);
+        q = q.order('fecha', { ascending: true });
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getSaldosComprobantesPorCliente:', error.message); return []; }
+        return data || [];
+    },
 };
