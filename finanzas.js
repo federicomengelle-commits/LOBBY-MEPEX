@@ -2450,9 +2450,20 @@ const FinanzasModule = {
                             <input type="text" class="fin-form-input" id="finFormCbu" value="${c.cbu_alias || ''}" placeholder="CBU o alias">
                         </div>
                     </div>
-                    <div class="fin-form-group">
-                        <label class="fin-form-label">Saldo inicial</label>
-                        <input type="number" class="fin-form-input" id="finFormSaldo" value="${c.saldo_inicial || 0}" step="0.01" placeholder="0.00">
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Moneda *</label>
+                            <select class="fin-form-select" id="finFormMoneda">
+                                <option value="ARS" ${(c.moneda || 'ARS') === 'ARS' ? 'selected' : ''}>🇦🇷 ARS · Peso</option>
+                                <option value="USD" ${c.moneda === 'USD' ? 'selected' : ''}>🇺🇸 USD · Dólar</option>
+                                <option value="EUR" ${c.moneda === 'EUR' ? 'selected' : ''}>🇪🇺 EUR · Euro</option>
+                            </select>
+                            <small style="color:var(--text-muted);font-size:11px;display:block;margin-top:4px;">Moneda nativa de la cuenta. Inmutable post-creación.</small>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Saldo inicial</label>
+                            <input type="number" class="fin-form-input" id="finFormSaldo" value="${c.saldo_inicial || 0}" step="0.01" placeholder="0.00">
+                        </div>
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Color</label>
@@ -2495,6 +2506,7 @@ const FinanzasModule = {
             const numero_cuenta = document.getElementById('finFormNroCuenta')?.value.trim() || null;
             const cbu_alias = document.getElementById('finFormCbu')?.value.trim() || null;
             const saldo_inicial = parseFloat(document.getElementById('finFormSaldo')?.value) || 0;
+            const moneda = document.getElementById('finFormMoneda')?.value || 'ARS';
             const notas = document.getElementById('finFormNotas')?.value.trim() || null;
 
             if (!nombre) {
@@ -2504,7 +2516,7 @@ const FinanzasModule = {
 
             const payload = {
                 nombre, tipo, canal_default, entidad,
-                numero_cuenta, cbu_alias, saldo_inicial,
+                numero_cuenta, cbu_alias, saldo_inicial, moneda,
                 color: currentColor, notas,
             };
 
@@ -2883,13 +2895,16 @@ const FinanzasModule = {
                                     <button class="fin-btn-row" data-action="dup" data-id="${i.id}" title="Duplicar">⎘</button>
                                     <button class="fin-btn-row" data-action="del" data-id="${i.id}" title="Eliminar">🗑</button>
                                 </td>` : '';
+                            const monedaChip = (i.moneda && i.moneda !== 'ARS')
+                                ? `<span class="fin-moneda-chip" style="font-size:9px;font-weight:700;color:var(--accent,#F28D15);background:rgba(242,141,21,.12);padding:1px 5px;border-radius:3px;margin-left:6px;vertical-align:middle;letter-spacing:.5px;" title="Cotización: ${i.cotizacion || '—'} · Equivalente ARS: ${this._formatMoney(i.total_en_ars || 0)}">${i.moneda}</span>`
+                                : '';
                             return `
                             <tr class="fin-row ${this._activePanel === i.id ? 'active' : ''}" data-id="${i.id}">
                                 <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(i.fecha)}</td>
                                 <td class="fin-td">${proyNombre}</td>
                                 <td class="fin-td">${cliNombre}</td>
                                 <td class="fin-td fin-td-name fin-td-inline" data-id="${i.id}">${conceptoCell}</td>
-                                <td class="fin-td fin-td-money">${this._formatMoney(i.monto)}</td>
+                                <td class="fin-td fin-td-money">${this._formatMoney(i.monto)}${monedaChip}</td>
                                 <td class="fin-td">${this._medioBadge(i.medio)}</td>
                                 <td class="fin-td">${this._canalBadge(i.canal)}</td>
                                 <td class="fin-td">${cuentaNombre}</td>
@@ -3193,6 +3208,128 @@ const FinanzasModule = {
     },
 
     // ═══════════════════════════════════════════
+    //  HELPERS MULTI-MONEDA (Fase E)
+    //  Reutilizables por modales Ingreso / Egreso / Comprobante / Transfer.
+    //  Convención de IDs por prefijo:
+    //    <prefix>FormMoneda, <prefix>FormCotizacion, <prefix>FormMonto,
+    //    <prefix>FormCotGroup, <prefix>FormEquivalente, <prefix>FormEquivalenteVal
+    // ═══════════════════════════════════════════
+
+    _renderMonedaFields(prefix, item = {}) {
+        const moneda = item.moneda || 'ARS';
+        const cot = (item.cotizacion != null && item.cotizacion !== '') ? item.cotizacion : '';
+        const showCot = moneda !== 'ARS';
+        const monedas = (typeof API !== 'undefined' && API.MONEDAS_DISPONIBLES) || [
+            { code: 'ARS', label: 'Peso argentino', flag: '🇦🇷' },
+            { code: 'USD', label: 'Dólar', flag: '🇺🇸' },
+            { code: 'EUR', label: 'Euro', flag: '🇪🇺' },
+        ];
+        const opts = monedas.map(m => `<option value="${m.code}" ${moneda === m.code ? 'selected' : ''}>${m.flag || ''} ${m.code} · ${m.label}</option>`).join('');
+
+        return `
+            <div class="fin-form-row">
+                <div class="fin-form-group">
+                    <label class="fin-form-label">Moneda *</label>
+                    <select class="fin-form-select" id="${prefix}FormMoneda">${opts}</select>
+                </div>
+                <div class="fin-form-group" id="${prefix}FormCotGroup" style="display:${showCot ? 'flex' : 'none'};">
+                    <label class="fin-form-label">Cotización <small style="color:var(--text-muted);font-weight:400;">(ARS x 1)</small></label>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <input type="number" class="fin-form-input" id="${prefix}FormCotizacion" value="${cot}" step="0.0001" placeholder="ARS por unidad" style="flex:1;">
+                        <button type="button" class="btn btn-ghost" id="${prefix}FormCotSugerir" title="Sugerir cotización oficial del día" style="padding:6px 10px;white-space:nowrap;">🔄 Sugerir</button>
+                    </div>
+                </div>
+            </div>
+            <div class="fin-equivalente-box" id="${prefix}FormEquivalente" style="display:${showCot ? 'block' : 'none'};padding:8px 12px;background:rgba(0,169,193,.08);border-left:2px solid var(--primary);border-radius:4px;margin-top:-4px;font-size:12px;color:var(--text-muted);">
+                Equivalente en ARS: <strong id="${prefix}FormEquivalenteVal" style="color:var(--primary);font-family:var(--font-mono,'Space Mono',monospace);">—</strong>
+            </div>
+        `;
+    },
+
+    _attachMonedaListeners(prefix, montoFieldId = null) {
+        const monEl = document.getElementById(`${prefix}FormMoneda`);
+        const cotEl = document.getElementById(`${prefix}FormCotizacion`);
+        const cotGroup = document.getElementById(`${prefix}FormCotGroup`);
+        const equivBox = document.getElementById(`${prefix}FormEquivalente`);
+        const equivVal = document.getElementById(`${prefix}FormEquivalenteVal`);
+        const montoEl = document.getElementById(montoFieldId || `${prefix}FormMonto`);
+        const sugBtn = document.getElementById(`${prefix}FormCotSugerir`);
+        if (!monEl) return;
+
+        const updateEquiv = () => {
+            const mon = monEl.value || 'ARS';
+            const cot = parseFloat(cotEl?.value) || 0;
+            const monto = parseFloat(montoEl?.value) || 0;
+            if (mon === 'ARS') {
+                if (cotGroup) cotGroup.style.display = 'none';
+                if (equivBox) equivBox.style.display = 'none';
+            } else {
+                if (cotGroup) cotGroup.style.display = 'flex';
+                if (equivBox) equivBox.style.display = 'block';
+                if (equivVal) {
+                    if (!cot || !monto) {
+                        equivVal.textContent = '—';
+                    } else {
+                        const eq = Math.round(monto * cot * 100) / 100;
+                        equivVal.textContent = '$ ' + eq.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    }
+                }
+            }
+        };
+
+        monEl.addEventListener('change', async () => {
+            const mon = monEl.value;
+            if (mon !== 'ARS' && cotEl && !cotEl.value && typeof API.getCotizacionSugerida === 'function') {
+                cotEl.disabled = true;
+                cotEl.placeholder = 'Consultando…';
+                try {
+                    const sug = await API.getCotizacionSugerida(mon);
+                    if (sug) cotEl.value = sug;
+                } finally {
+                    cotEl.disabled = false;
+                    cotEl.placeholder = 'ARS por unidad';
+                }
+            }
+            updateEquiv();
+        });
+        cotEl?.addEventListener('input', updateEquiv);
+        montoEl?.addEventListener('input', updateEquiv);
+        sugBtn?.addEventListener('click', async () => {
+            const mon = monEl.value;
+            if (!mon || mon === 'ARS') return;
+            cotEl.disabled = true;
+            const prev = cotEl.placeholder; cotEl.placeholder = 'Consultando…';
+            try {
+                const sug = await API.getCotizacionSugerida(mon);
+                if (sug) {
+                    cotEl.value = sug;
+                    Toast?.info?.(`Cotización ${mon} sugerida: $${sug}`);
+                } else {
+                    Toast?.warning?.('No se pudo obtener cotización online — ingresá a mano');
+                }
+            } finally {
+                cotEl.disabled = false;
+                cotEl.placeholder = prev;
+                updateEquiv();
+            }
+        });
+
+        updateEquiv();
+    },
+
+    _readMonedaFields(prefix) {
+        const monEl = document.getElementById(`${prefix}FormMoneda`);
+        const cotEl = document.getElementById(`${prefix}FormCotizacion`);
+        const moneda = monEl?.value || 'ARS';
+        if (moneda === 'ARS') return { moneda: 'ARS', cotizacion: 1, error: null };
+        const cotizacion = parseFloat(cotEl?.value);
+        if (!cotizacion || cotizacion <= 0 || isNaN(cotizacion)) {
+            return { moneda, cotizacion: null, error: `Ingresá la cotización para ${moneda}` };
+        }
+        return { moneda, cotizacion, error: null };
+    },
+
+    // ═══════════════════════════════════════════
     //  TAB: INGRESOS — MODAL CREATE/EDIT
     // ═══════════════════════════════════════════
 
@@ -3243,6 +3380,7 @@ const FinanzasModule = {
                             <input type="number" class="fin-form-input" id="finIngFormMonto" value="${i.monto || ''}" step="0.01" placeholder="0.00">
                         </div>
                     </div>
+                    ${this._renderMonedaFields('finIng', i)}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Concepto *</label>
                         <input type="text" class="fin-form-input" id="finIngFormConcepto" value="${i.concepto || ''}" placeholder="Seña 40%, Parcial 1, Saldo…">
@@ -3305,6 +3443,8 @@ const FinanzasModule = {
             `,
         });
 
+        this._attachMonedaListeners('finIng');
+
         document.getElementById('finBtnSaveIngreso')?.addEventListener('click', async () => {
             const fecha = document.getElementById('finIngFormFecha')?.value;
             const monto = parseFloat(document.getElementById('finIngFormMonto')?.value);
@@ -3314,6 +3454,7 @@ const FinanzasModule = {
             const cuenta_id = document.getElementById('finIngFormCuenta')?.value || null;
             const estado = document.getElementById('finIngFormEstado')?.value;
             const notas = document.getElementById('finIngFormNotas')?.value.trim() || null;
+            const monedaData = this._readMonedaFields('finIng');
 
             // Proyecto/Cliente
             const proyEl = document.getElementById('finIngFormProyecto');
@@ -3325,11 +3466,14 @@ const FinanzasModule = {
                 Toast.warning('Fecha, concepto y monto son obligatorios');
                 return;
             }
+            if (monedaData.error) { Toast.warning(monedaData.error); return; }
 
             const payload = {
                 fecha, concepto, monto, medio, canal,
                 cuenta_id, estado, notas,
                 proyecto_id, cliente_id,
+                moneda: monedaData.moneda,
+                cotizacion: monedaData.cotizacion,
             };
 
             // If linked to a plan item (defensivo: rechazar "undefined" como string)
@@ -3607,6 +3751,9 @@ const FinanzasModule = {
                                     <button class="fin-btn-row" data-action="dup" data-id="${e.id}" title="Duplicar">⎘</button>
                                     <button class="fin-btn-row" data-action="del" data-id="${e.id}" title="Eliminar">🗑</button>
                                 </td>` : '';
+                            const monedaChip = (e.moneda && e.moneda !== 'ARS')
+                                ? `<span class="fin-moneda-chip" style="font-size:9px;font-weight:700;color:var(--accent,#F28D15);background:rgba(242,141,21,.12);padding:1px 5px;border-radius:3px;margin-left:6px;vertical-align:middle;letter-spacing:.5px;" title="Cotización: ${e.cotizacion || '—'} · Equivalente ARS: ${this._formatMoney(e.total_en_ars || 0)}">${e.moneda}</span>`
+                                : '';
                             return `
                             <tr class="fin-row ${this._activePanel === e.id ? 'active' : ''}" data-id="${e.id}">
                                 <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(e.fecha)}</td>
@@ -3614,7 +3761,7 @@ const FinanzasModule = {
                                 <td class="fin-td">${e.destinatario || '<span class="fin-td-muted">—</span>'}</td>
                                 <td class="fin-td">${proyNombre}</td>
                                 <td class="fin-td fin-td-name fin-td-inline" data-id="${e.id}"><span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(e.concepto)}</span></td>
-                                <td class="fin-td fin-td-money" style="color:#E84855;">${this._formatMoney(e.monto)}</td>
+                                <td class="fin-td fin-td-money" style="color:#E84855;">${this._formatMoney(e.monto)}${monedaChip}</td>
                                 <td class="fin-td">${this._medioBadge(e.medio)}</td>
                                 <td class="fin-td">${this._canalBadge(e.canal)}</td>
                                 <td class="fin-td">${cuentaNombre}</td>
@@ -4009,6 +4156,7 @@ const FinanzasModule = {
                         <label class="fin-form-label">Concepto *</label>
                         <input type="text" class="fin-form-input" id="finEgrFormConcepto" value="${e.concepto || ''}" placeholder="Descripción del pago">
                     </div>
+                    ${this._renderMonedaFields('finEgr', e)}
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Proyecto</label>
@@ -4130,6 +4278,9 @@ const FinanzasModule = {
         // Proveedor autocomplete
         this._initProveedorAutocomplete();
 
+        // Multi-moneda listeners
+        this._attachMonedaListeners('finEgr');
+
         // Save
         document.getElementById('finBtnSaveEgreso')?.addEventListener('click', async () => {
             const fecha = document.getElementById('finEgrFormFecha')?.value;
@@ -4143,6 +4294,7 @@ const FinanzasModule = {
             const cuenta_id = document.getElementById('finEgrFormCuenta')?.value || null;
             const estado = document.getElementById('finEgrFormEstado')?.value;
             const fecha_programada = estado === 'programado' ? (document.getElementById('finEgrFormFechaProg')?.value || null) : null;
+            const monedaData = this._readMonedaFields('finEgr');
 
             const proyEl = document.getElementById('finEgrFormProyecto');
             const proyecto_id = (proyEl && proyEl.tagName === 'SELECT') ? (proyEl.value || null) : null;
@@ -4151,6 +4303,7 @@ const FinanzasModule = {
                 Toast.warning('Fecha, categoría, concepto y monto son obligatorios');
                 return;
             }
+            if (monedaData.error) { Toast.warning(monedaData.error); return; }
 
             // Build notas
             let notas = null;
@@ -4172,6 +4325,8 @@ const FinanzasModule = {
                 fecha, categoria, subcategoria, destinatario, concepto,
                 monto, medio, canal, cuenta_id, estado, fecha_programada,
                 proyecto_id, proveedor_id, notas,
+                moneda: monedaData.moneda,
+                cotizacion: monedaData.cotizacion,
             };
 
             try {
@@ -4352,6 +4507,11 @@ const FinanzasModule = {
 
         const today = new Date().toISOString().slice(0, 10);
 
+        const cuentaMoneda = (id) => (cuentasActivas.find(c => c.id === id)?.moneda) || 'ARS';
+        const optsConMoneda = cuentasActivas.map(c =>
+            `<option value="${c.id}" data-moneda="${c.moneda || 'ARS'}">${c.nombre} · ${c.moneda || 'ARS'}</option>`
+        ).join('');
+
         Modal.open({
             title: 'Transferencia entre cuentas',
             size: 'md',
@@ -4360,21 +4520,37 @@ const FinanzasModule = {
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Cuenta origen *</label>
-                            <select class="fin-form-select" id="finTransOrigen">${opts}</select>
+                            <select class="fin-form-select" id="finTransOrigen">${optsConMoneda}</select>
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Cuenta destino *</label>
-                            <select class="fin-form-select" id="finTransDestino">${opts}</select>
+                            <select class="fin-form-select" id="finTransDestino">${optsConMoneda}</select>
                         </div>
+                    </div>
+                    <div id="finTransMonedaWarn" style="display:none;padding:8px 12px;background:rgba(255,68,68,.08);border-left:2px solid var(--color-error,#ff4444);border-radius:4px;font-size:12px;color:var(--color-error,#ff4444);">
+                        ⚠ Las cuentas tienen monedas diferentes. La transferencia entre monedas (cambio) no se soporta todavía — usar un par origen/destino con la misma moneda, o registrar manualmente como ingreso/egreso.
                     </div>
                     <div class="fin-form-row">
                         <div class="fin-form-group">
-                            <label class="fin-form-label">Monto *</label>
+                            <label class="fin-form-label">Monto * <small id="finTransMonedaHint" style="color:var(--text-muted);font-weight:400;">(ARS)</small></label>
                             <input type="number" class="fin-form-input" id="finTransMonto" step="0.01" placeholder="0.00">
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Fecha</label>
                             <input type="date" class="fin-form-input" id="finTransFecha" value="${today}">
+                        </div>
+                    </div>
+                    <div class="fin-form-row" id="finTransCotRow" style="display:none;">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Cotización <small style="color:var(--text-muted);font-weight:400;">(ARS x 1)</small></label>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <input type="number" class="fin-form-input" id="finTransCotizacion" step="0.0001" placeholder="ARS por unidad" style="flex:1;">
+                                <button type="button" class="btn btn-ghost" id="finTransCotSugerir" style="padding:6px 10px;white-space:nowrap;">🔄 Sugerir</button>
+                            </div>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Equivalente</label>
+                            <div id="finTransEquivalente" style="padding:8px;background:rgba(0,169,193,.08);border-left:2px solid var(--primary);border-radius:4px;color:var(--primary);font-family:var(--font-mono,monospace);font-size:13px;">—</div>
                         </div>
                     </div>
                     <div class="fin-form-group">
@@ -4393,19 +4569,77 @@ const FinanzasModule = {
         const destSelect = document.getElementById('finTransDestino');
         if (destSelect && cuentasActivas.length >= 2) destSelect.value = cuentasActivas[1].id;
 
+        // Sync moneda de origen → hint + bloqueo si cuentas distinta moneda
+        const origenSel = document.getElementById('finTransOrigen');
+        const destSel = document.getElementById('finTransDestino');
+        const monHint = document.getElementById('finTransMonedaHint');
+        const monWarn = document.getElementById('finTransMonedaWarn');
+        const cotRow = document.getElementById('finTransCotRow');
+        const cotInput = document.getElementById('finTransCotizacion');
+        const equivBox = document.getElementById('finTransEquivalente');
+        const montoInput = document.getElementById('finTransMonto');
+
+        const syncMoneda = () => {
+            const mOrigen = cuentaMoneda(origenSel.value);
+            const mDest = cuentaMoneda(destSel.value);
+            const mismatch = mOrigen !== mDest;
+            monWarn.style.display = mismatch ? 'block' : 'none';
+            monHint.textContent = '(' + mOrigen + ')';
+            cotRow.style.display = (mOrigen !== 'ARS') ? 'flex' : 'none';
+            updateEquiv();
+        };
+        const updateEquiv = () => {
+            const mOrigen = cuentaMoneda(origenSel.value);
+            if (mOrigen === 'ARS') return;
+            const monto = parseFloat(montoInput.value) || 0;
+            const cot = parseFloat(cotInput.value) || 0;
+            if (!monto || !cot) { equivBox.textContent = '—'; return; }
+            const eq = Math.round(monto * cot * 100) / 100;
+            equivBox.textContent = '$ ' + eq.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ARS';
+        };
+        origenSel.addEventListener('change', syncMoneda);
+        destSel.addEventListener('change', syncMoneda);
+        cotInput?.addEventListener('input', updateEquiv);
+        montoInput?.addEventListener('input', updateEquiv);
+        document.getElementById('finTransCotSugerir')?.addEventListener('click', async () => {
+            const mOrigen = cuentaMoneda(origenSel.value);
+            if (mOrigen === 'ARS') return;
+            cotInput.disabled = true;
+            try {
+                const sug = await API.getCotizacionSugerida(mOrigen);
+                if (sug) { cotInput.value = sug; Toast.info(`Cotización ${mOrigen}: $${sug}`); }
+                else Toast.warning('No se pudo obtener cotización');
+            } finally {
+                cotInput.disabled = false;
+                updateEquiv();
+            }
+        });
+        syncMoneda();
+
         document.getElementById('finBtnDoTransfer')?.addEventListener('click', async () => {
             const origenId = document.getElementById('finTransOrigen')?.value;
             const destinoId = document.getElementById('finTransDestino')?.value;
             const monto = parseFloat(document.getElementById('finTransMonto')?.value);
             const fecha = document.getElementById('finTransFecha')?.value;
             const concepto = document.getElementById('finTransConcepto')?.value.trim() || 'Transferencia interna';
+            const mOrigen = cuentaMoneda(origenId);
+            const mDest = cuentaMoneda(destinoId);
 
             if (!origenId || !destinoId || origenId === destinoId) {
                 Toast.warning('Seleccioná dos cuentas diferentes');
                 return;
             }
+            if (mOrigen !== mDest) {
+                Toast.warning(`No se puede transferir entre ${mOrigen} y ${mDest}. Usar ingreso + egreso por separado.`);
+                return;
+            }
             if (!monto || isNaN(monto) || monto <= 0) {
                 Toast.warning('Ingresá un monto válido');
+                return;
+            }
+            const cotizacion = mOrigen === 'ARS' ? 1 : (parseFloat(document.getElementById('finTransCotizacion')?.value) || 0);
+            if (mOrigen !== 'ARS' && (!cotizacion || cotizacion <= 0)) {
+                Toast.warning(`Ingresá la cotización para ${mOrigen}`);
                 return;
             }
 
@@ -4414,13 +4648,14 @@ const FinanzasModule = {
             const uid = Auth.getUser()?.uid || null;
 
             try {
-                // 1. Create egreso (salida desde origen)
+                // 1. Create egreso (salida desde origen) — hereda moneda+cotización
                 const { data: egresoData, error: e1 } = await supabaseClient
                     .from('egresos')
                     .insert([{
                         fecha, categoria: 'otro', concepto: `Transf. a ${destinoName} — ${concepto}`,
                         monto, medio: 'transferencia', canal: 'oficial',
                         cuenta_id: origenId, estado: 'pagado', created_by: uid,
+                        moneda: mOrigen, cotizacion,
                     }])
                     .select('id').single();
                 if (e1) throw e1;
@@ -4432,6 +4667,7 @@ const FinanzasModule = {
                         fecha, concepto: `Transf. desde ${origenName} — ${concepto}`,
                         monto, medio: 'transferencia', canal: 'oficial',
                         cuenta_id: destinoId, estado: 'confirmado', created_by: uid,
+                        moneda: mOrigen, cotizacion,
                     }])
                     .select('id').single();
                 if (e2) throw e2;
@@ -4445,6 +4681,7 @@ const FinanzasModule = {
                         egreso_id: egresoData?.id || null,
                         ingreso_id: ingresoData?.id || null,
                         created_by: uid,
+                        moneda: mOrigen, cotizacion,
                     }]);
                 if (e3) throw e3;
 
@@ -7548,6 +7785,7 @@ const FinanzasModule = {
                             <input type="number" class="fin-form-input" id="finRecFormTotal" value="${c.total || ''}" step="0.01" placeholder="0.00">
                         </div>
                     </div>
+                    ${this._renderMonedaFields('finRec', c)}
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Categoría *</label>
@@ -7606,6 +7844,9 @@ const FinanzasModule = {
             }
         });
 
+        // Multi-moneda: el campo base de monto es Total (no Monto)
+        this._attachMonedaListeners('finRec', 'finRecFormTotal');
+
         document.getElementById('finBtnSaveRecibido')?.addEventListener('click', async () => {
             const fecha = document.getElementById('finRecFormFecha')?.value;
             const tipo = document.getElementById('finRecFormTipo')?.value;
@@ -7623,15 +7864,19 @@ const FinanzasModule = {
             const archivo_url = document.getElementById('finRecFormArchivo')?.value.trim() || null;
             const notas = document.getElementById('finRecFormNotas')?.value.trim() || null;
 
+            const monedaData = this._readMonedaFields('finRec');
             if (!fecha || !tipo || !concepto || !total || isNaN(total) || !categoria) {
                 Toast.warning('Fecha, tipo, concepto, total y categoría son obligatorios');
                 return;
             }
+            if (monedaData.error) { Toast.warning(monedaData.error); return; }
 
             const payload = {
                 fecha, tipo, numero, proveedor_nombre, cuit,
                 concepto, neto, iva, total, categoria, canal,
                 proyecto_id, egreso_id, archivo_url, notas,
+                moneda: monedaData.moneda,
+                cotizacion: monedaData.cotizacion,
             };
 
             try {
@@ -9878,6 +10123,9 @@ const FinanzasModule = {
                         <button id="ivarCalcBtn" class="fin-btn-secondary" style="width:100%;height:34px;font-size:11px;">Calcular desde Total y 21%</button>
                     </div>
                     <div style="grid-column:1/-1;">
+                        ${this._renderMonedaFields('ivar', item || {})}
+                    </div>
+                    <div style="grid-column:1/-1;">
                         <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Notas</label>
                         <textarea id="ivarNotas" rows="2" class="fin-input">${v.notas}</textarea>
                     </div>
@@ -9906,8 +10154,12 @@ const FinanzasModule = {
             }
         });
 
+        // Multi-moneda: campo de monto base es ivarTot (total)
+        this._attachMonedaListeners('ivar', 'ivarTot');
+
         document.getElementById('ivarBtnCancel')?.addEventListener('click', () => Modal.close(_modal.id));
         document.getElementById('ivarBtnSave')?.addEventListener('click', async () => {
+            const monedaData = this._readMonedaFields('ivar');
             const payload = {
                 fecha:        document.getElementById('ivarFecha').value,
                 cuit:         document.getElementById('ivarCuit').value.trim(),
@@ -9920,8 +10172,11 @@ const FinanzasModule = {
                 total:        parseFloat(document.getElementById('ivarTot').value) || 0,
                 traido_por:   document.getElementById('ivarTraido').value.trim(),
                 notas:        document.getElementById('ivarNotas').value.trim(),
+                moneda:       monedaData.moneda,
+                cotizacion:   monedaData.cotizacion,
             };
             if (!payload.fecha) { Toast.error('Falta la fecha'); return; }
+            if (monedaData.error) { Toast.error(monedaData.error); return; }
             try {
                 if (isEdit) {
                     await API.updateComprobanteIvaRecovery(item.id, payload);

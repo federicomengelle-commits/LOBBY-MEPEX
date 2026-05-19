@@ -558,9 +558,49 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 
 ## 10. ESTADO ACTUAL
 
-- **Fecha:** 2026-05-19 (sesión extensa)
-- **Ultimo commit destacado:** `b7541c5` — Sidebar fix + acciones inline normalizadas en Registros aux y Planes.
-- **Próximo paso:** Fede pulea VPS para `b7541c5` + ejecuta `sql/fix_trigger_asiento_auto.sql` en Supabase. Luego **Fase E (multi-moneda) → G (reportes) → H (saldos apertura 2027) → F (conciliación) → D (ARCA, bloqueado por trámite cert)**.
+- **Fecha:** 2026-05-19 (sesión extensa, parte 5)
+- **Ultimo commit destacado:** *pendiente de commit en este worktree* — Fase E (multi-moneda) implementada.
+- **Próximo paso:** Fede ejecuta `sql/fix_trigger_asiento_auto.sql` **+** `sql/finanzas_fase_e_multimoneda.sql` en Supabase, hace pull en VPS para versiones `api.js?v=21` + `finanzas.js?v=14`, prueba cargar un ingreso USD en prod. Luego **Fase G (reportes) → H (saldos apertura 2027) → F (conciliación) → D (ARCA, bloqueado por trámite cert)**.
+
+- **Sesión 2026-05-19 (parte 5) — Fase E (multi-moneda) implementada**:
+  - **SQL** (`sql/finanzas_fase_e_multimoneda.sql`, idempotente):
+    - **E1** ALTER de 8 tablas con `moneda TEXT NOT NULL DEFAULT 'ARS' CHECK IN (ARS, USD, EUR)`, `cotizacion NUMERIC(15,4) NOT NULL DEFAULT 1 CHECK > 0`, `total_en_ars NUMERIC(15,2)`. Tablas afectadas: `cuentas_financieras` (solo `moneda`), `ingresos`, `egresos`, `comprobantes`, `comprobantes_recibidos`, `comprobantes_iva_recovery`, `asientos` (solo `moneda`+`cotizacion` informativos), `transferencias_internas`.
+    - **E2** función `fn_calcular_total_ars(monto, moneda, cotizacion)` — IMMUTABLE. Convención: cotización = ARS por 1 unidad de moneda extranjera. Si moneda=ARS → devuelve monto. Si cotización inválida → fallback al monto (defensivo).
+    - **E3** triggers BEFORE INSERT/UPDATE en las 6 tablas con monto/total: `fn_snapshot_total_ars_monto` (ingresos/egresos/transferencias) y `fn_snapshot_total_ars_total` (comprobantes/comprobantes_recibidos/comprobantes_iva_recovery). Fuerzan `moneda='ARS' ⇒ cotizacion=1` y materializan `total_en_ars`. Backfill incluido para filas existentes (todas en ARS).
+    - **E4** seed idempotente de cuentas `4.2.02 Diferencia de cambio positiva` (resultado_positivo, acreedora) y `5.4.02 Diferencia de cambio negativa` (resultado_negativo, deudora) en `plan_cuentas` — crea también padres `4`, `4.2`, `5`, `5.4` si no existen. Mapeos `dif_cambio_positiva` y `dif_cambio_negativa` en `mapeo_cuentas`.
+    - **E5** **`fn_asiento_auto_ingreso`/`egreso` actualizados**: el asiento contable SIEMPRE usa `total_en_ars` (la contabilidad va en ARS). Si moneda ≠ ARS, se agrega nota informativa al concepto del asiento (`[USD 100 @ 1420]`). El asiento guarda `moneda` y `cotizacion` para auditoría.
+    - **E6** helper `fn_registrar_diferencia_cambio(p_ingreso_id, p_monto_ars, p_actor)` — genera asiento tipo='manual' con líneas debe/haber contra la cuenta de diferencia según signo. **No se invoca automáticamente** desde los triggers — pensado para que el JS lo llame manualmente cuando aplica un cobro a una factura USD con cotización distinta. Caso completo (cobro USD → factura USD con cotización vieja → ajuste automático) queda para Fase G.
+    - **E7** índices parciales en `moneda` (filtran ARS) para tablas con mayor volumen.
+  - **API** (`api.js?v=21`, agregado al final): `MONEDAS_DISPONIBLES` (ARS/USD/EUR con flag+label+symbol), `formatMontoMoneda`, `getCotizacionSugerida(moneda)` (fetch a `https://dolarapi.com/v1/dolares/oficial` y `/v1/cotizaciones/eur`, cache 1h en memoria, devuelve null si falla), `calcularTotalArs(monto, moneda, cotizacion)` (cálculo client-side sin pegarle a la BD), `registrarDiferenciaCambio(ingresoId, montoArs)` (wrapper de RPC), `getMovimientosExtranjeros(tabla, filtros)`. La función `createComprobanteIvaRecovery` ahora propaga `moneda`+`cotizacion`.
+  - **UI** (`finanzas.js?v=14`): 3 helpers nuevos del módulo Finanzas:
+    - `_renderMonedaFields(prefix, item)` devuelve HTML con select moneda + input cotización + chip equivalente. Genera IDs `<prefix>FormMoneda`, `<prefix>FormCotizacion`, `<prefix>FormCotGroup`, `<prefix>FormEquivalente`, `<prefix>FormEquivalenteVal`. **Si moneda=ARS la cotización y el equivalente quedan ocultos** (no clutter visual para el 95% de los casos).
+    - `_attachMonedaListeners(prefix, montoFieldId?)` setea listeners para: cambio de moneda → sugerencia automática de cotización vía `API.getCotizacionSugerida`; botón manual "🔄 Sugerir"; live preview del equivalente al tipear monto/cotización. `montoFieldId` permite usar un input de monto custom (ej. Total en lugar de Monto para comprobantes).
+    - `_readMonedaFields(prefix)` devuelve `{ moneda, cotizacion, error }` para validación pre-submit.
+  - **Modales actualizados con el bloque de moneda**:
+    - `_showCuentaModal`: selector simple de moneda nativa (sin cotización; es atributo permanente de la cuenta). Aviso "inmutable post-creación".
+    - `_showIngresoModal` + `_showEgresoModal`: bloque completo, helper `_attachMonedaListeners` con auto-sugerir.
+    - `_showTransferModal`: **especial** — la moneda se deriva automáticamente de la cuenta origen. Si origen y destino tienen monedas distintas, warning rojo + bloqueo del botón Transferir ("usar ingreso/egreso por separado, no se soporta cambio cambiario"). Cotización pedida solo si moneda ≠ ARS.
+    - `_showRecibidoModal` (comprobantes recibidos): `_attachMonedaListeners('finRec', 'finRecFormTotal')` — usa Total como base, no Monto.
+    - `_showIvarModal` (IVA recovery): mismo patrón con `_attachMonedaListeners('ivar', 'ivarTot')`.
+  - **Tablas con chip de moneda**: en `_renderIngresosTable` y `_renderEgresosTable` el chip naranja `USD`/`EUR` aparece al lado del monto cuando moneda ≠ ARS. Tooltip muestra cotización y equivalente ARS. Tablas en ARS no muestran nada (limpio).
+  - **Verificación local** (preview node server, `localhost:3000`): el modal renderea OK con los 3 IDs nuevos, el listener de cambio de moneda dispara la sugerencia de dolarapi.com (USD oficial $1420 al 2026-05-19), el equivalente se calcula en vivo ($142.000 ARS para USD 100 @ 1420), `_readMonedaFields` devuelve los valores correctos. Screenshot validado.
+  - **Decisiones de arquitectura tomadas en esta fase**:
+    - **`total_en_ars` materializado por trigger, no calculado en VIEW**: snapshot persistente. Si en el futuro cambiamos la cotización del día, los movimientos viejos NO se recalculan automáticamente. Esto es deseado (snapshot al momento del hecho económico).
+    - **Cotización por movimiento, no global por día**: cada ingreso/egreso/factura guarda su cotización propia. Permite registrar tres cobros del mismo día con cotizaciones distintas (caso "MEP del banco" vs "blue del cliente").
+    - **dolarapi.com como fuente sugerida**: API pública argentina, sin auth, free. BCRA WS requiere certificado X.509 (overkill para una sugerencia). El usuario puede ignorar la sugerencia y tipear a mano.
+    - **Transferencias NO soportan conversión**: si origen y destino son cuentas en monedas distintas, hay que registrar ingreso+egreso por separado con cotizaciones explícitas. Forzar conversión en una transferencia "interna" oculta la operación cambiaria.
+    - **Diferencia de cambio NO automática en esta fase**: el caso end-to-end (factura USD → cobro USD a cotización distinta → ajuste por diferencia) requiere un flujo bidireccional comprometido con Fase C (plan de pagos avanzado) y Fase D (ARCA, que conoce las cotizaciones AFIP). El helper `fn_registrar_diferencia_cambio` queda disponible para que el JS lo llame manualmente. Automatización en Fase G.
+  - **Pendientes inmediatos al pasar el SQL a prod**:
+    1. Ejecutar primero `sql/fix_trigger_asiento_auto.sql` (sigue siendo pre-requisito de la sesión parte 4).
+    2. Ejecutar después `sql/finanzas_fase_e_multimoneda.sql`.
+    3. Verificar NOTICES: las 8 ALTER tablas deberían terminar con `[Fase E]` y las cuentas 4.2.02 / 5.4.02 creadas.
+    4. Smoke test: crear un ingreso USD 100 a cotización 1420 → confirmar → el asiento contable resultante debe tener `total_debe = total_haber = 142000` y el concepto incluir `[USD 100 @ 1420]`.
+    5. Pull en VPS para `api.js?v=21` + `finanzas.js?v=14`.
+  - **Cosas conocidas a mejorar en próximas fases**:
+    - Plan de pagos en moneda extranjera: hoy `plan_cobro.total_plan` es NUMERIC sin moneda. Heredar moneda de la cotización origen requiere ALTER + lógica de aplicación de cobros.
+    - Vencimientos recurrentes en moneda extranjera (alquiler USD): mismo caso.
+    - Listado consolidado de movimientos extranjeros en un nuevo subtab del módulo Finanzas — la API `getMovimientosExtranjeros` ya está lista, falta la UI.
+    - Selector de moneda en wizard de Facturación (comprobantes emitidos): el modal de emisión vive en otro lado (probablemente `_showComprobanteModal` o equivalente para La PyME). Pendiente para cuando esté Fase D (ARCA) — La PyME hoy solo soporta ARS de todos modos.
 
 - **Sesión 2026-05-19 (parte 4) — Pulido UI Finanzas + fixes**:
   - **Bug trigger contable (commit `38ce47e`)**: `fn_asiento_auto_ingreso`/`egreso` en prod referenciaba columnas inexistentes (`descripcion`/`estado` en asientos, `debe`/`haber` en asiento_lineas). Cualquier ingreso/egreso con estado `confirmado`/`pagado` rompía con `column "cuenta_id" does not exist`. Fix: `sql/fix_trigger_asiento_auto.sql` recrea ambos triggers contra schema real (concepto, tipo_movimiento/monto, sin estado). Si la cuenta financiera no tiene plan_cuentas vinculado, sale en silencio sin romper el INSERT.

@@ -4553,6 +4553,8 @@ const API = {
             traido_por:    payload.traido_por || null,
             archivo_url:   payload.archivo_url || null,
             notas:         payload.notas || null,
+            moneda:        payload.moneda || 'ARS',
+            cotizacion:    Number(payload.cotizacion) || 1,
             created_by:    user?.uid || user?.id || null,
         };
         const { data, error } = await supabaseClient
@@ -4750,6 +4752,109 @@ const API = {
         q = q.order('fecha', { ascending: true });
         const { data, error } = await q;
         if (error) { console.warn('[API] getSaldosComprobantesPorCliente:', error.message); return []; }
+        return data || [];
+    },
+
+    // ───────────────────────────────────────────────
+    //  FASE E — Multi-moneda (ARS / USD / EUR)
+    //  Snapshot de cotización por movimiento.
+    //  Helpers de cotización sugerida + diferencia de cambio.
+    // ───────────────────────────────────────────────
+
+    MONEDAS_DISPONIBLES: [
+        { code: 'ARS', label: 'Peso argentino', symbol: '$',  flag: '🇦🇷' },
+        { code: 'USD', label: 'Dólar estadounidense', symbol: 'US$', flag: '🇺🇸' },
+        { code: 'EUR', label: 'Euro', symbol: '€', flag: '🇪🇺' },
+    ],
+
+    // Cache en memoria (sesión) — la cotización del día no cambia tan seguido
+    _cotizacionCache: { USD: null, EUR: null, ts: 0 },
+
+    formatMontoMoneda(monto, moneda) {
+        const n = Number(monto) || 0;
+        const m = (this.MONEDAS_DISPONIBLES || []).find(x => x.code === moneda) || { symbol: '$' };
+        try {
+            return m.symbol + ' ' + n.toLocaleString('es-AR', { minimumFractionDigits: moneda === 'ARS' ? 0 : 2, maximumFractionDigits: 2 });
+        } catch (e) { return m.symbol + ' ' + n; }
+    },
+
+    /**
+     * Devuelve cotización sugerida ARS por 1 unidad de moneda extranjera.
+     * Fuente: dolarapi.com (free, sin auth). Cache 1h en memoria.
+     * Si falla, devuelve null → el usuario ingresa a mano.
+     */
+    async getCotizacionSugerida(moneda) {
+        if (!moneda || moneda === 'ARS') return 1;
+        const cache = this._cotizacionCache;
+        const fresca = (Date.now() - cache.ts) < 60 * 60 * 1000; // 1h
+        if (fresca && cache[moneda] != null) return cache[moneda];
+
+        try {
+            let url;
+            if (moneda === 'USD') url = 'https://dolarapi.com/v1/dolares/oficial';
+            else if (moneda === 'EUR') url = 'https://dolarapi.com/v1/cotizaciones/eur';
+            else return null;
+
+            const r = await fetch(url, { method: 'GET' });
+            if (!r.ok) return null;
+            const d = await r.json();
+            const valor = Number(d?.venta) || null;
+            if (valor) {
+                cache[moneda] = valor;
+                cache.ts = Date.now();
+            }
+            return valor;
+        } catch (e) {
+            console.warn('[API] getCotizacionSugerida ' + moneda + ':', e?.message || e);
+            return null;
+        }
+    },
+
+    /**
+     * Calcula el monto convertido a ARS sin pegarle a la BD.
+     * Útil para mostrar el preview en wizards mientras el usuario tipea.
+     */
+    calcularTotalArs(monto, moneda, cotizacion) {
+        const n = Number(monto) || 0;
+        if (!moneda || moneda === 'ARS') return n;
+        const c = Number(cotizacion);
+        if (!c || c <= 0) return n;
+        return Math.round(n * c * 100) / 100;
+    },
+
+    /**
+     * Registra una diferencia de cambio manual sobre un ingreso ya confirmado.
+     * Llama la función PL/pgSQL `fn_registrar_diferencia_cambio`.
+     * @param {string} ingresoId  UUID del ingreso de referencia
+     * @param {number} montoArs   monto signado (+ ganancia, − pérdida)
+     * @returns {Promise<string|null>} asiento_id generado
+     */
+    async registrarDiferenciaCambio(ingresoId, montoArs) {
+        const user = Auth.getUser?.();
+        const { data, error } = await supabaseClient.rpc('fn_registrar_diferencia_cambio', {
+            p_ingreso_id: ingresoId,
+            p_monto_ars: Number(montoArs),
+            p_actor: user?.uid || user?.id || null,
+        });
+        if (error) { console.warn('[API] registrarDiferenciaCambio:', error.message); throw error; }
+        return data || null;
+    },
+
+    /**
+     * Lista movimientos en moneda extranjera (para reporte / dashboard).
+     * @param {string} tabla — 'ingresos' | 'egresos' | 'comprobantes' | 'comprobantes_recibidos'
+     */
+    async getMovimientosExtranjeros(tabla, { fechaDesde = null, fechaHasta = null, moneda = null } = {}) {
+        if (!['ingresos','egresos','comprobantes','comprobantes_recibidos','comprobantes_iva_recovery','transferencias_internas'].includes(tabla)) {
+            throw new Error('getMovimientosExtranjeros: tabla inválida ' + tabla);
+        }
+        let q = supabaseClient.from(tabla).select('*').eq('_deleted', false).neq('moneda', 'ARS');
+        if (moneda)      q = q.eq('moneda', moneda);
+        if (fechaDesde)  q = q.gte('fecha', fechaDesde);
+        if (fechaHasta)  q = q.lte('fecha', fechaHasta);
+        q = q.order('fecha', { ascending: false });
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getMovimientosExtranjeros:', error.message); return []; }
         return data || [];
     },
 };

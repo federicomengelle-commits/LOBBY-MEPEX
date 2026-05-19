@@ -126,7 +126,7 @@ Cotización ($5.000.000)
 | Tabla auxiliar compras familiares (BUSCAR_V virtual) | ❌ | Fase B |
 | Plan de pagos avanzado + cobros parciales | ⚠️ parcial | Fase C |
 | Facturación directa ARCA | ❌ (solo La PyME) | Fase D |
-| Multi-moneda USD/EUR | ❌ | Fase E |
+| Multi-moneda USD/EUR | ✅ Fase E | E (SQL+API+UI, ejecutar SQL en Supabase) |
 | Conciliación bancaria semi-automática | ⚠️ esqueleto | Fase F |
 | Reportes exportables (PDF/XLSX, Libros IVA AFIP) | ❌ (tabs vacíos) | Fase G |
 | Saldos de apertura + bloqueo ejercicio 2027 | ❌ | Fase H |
@@ -196,15 +196,32 @@ Arreglar problemas estructurales sin agregar features. **No rompe nada.**
 
 **Tiempo estimado:** 2 semanas (incluye trámite).
 
-### Fase E — Multi-moneda
+### Fase E — Multi-moneda ✅ (2026-05-19, parte 5)
 
-- ALTER tablas: agregar `moneda TEXT DEFAULT 'ARS'` y `cotizacion NUMERIC` en:
-  `comprobantes`, `comprobantes_recibidos`, `ingresos`, `egresos`, `asientos`, `cobros`, `pagos`, `comprobantes_iva_recovery`.
-- Campo `total_en_ars` snapshot al crear el movimiento (para reportes).
-- Lógica de diferencias de cambio automática (cuentas `4.2.02` y `5.4.02` en el plan).
-- Selector de moneda en wizards de facturación, cobros, pagos. Si moneda ≠ ARS, sugerir cotización del día (BCRA/MEP — opcional cachear).
+**Implementado** (`sql/finanzas_fase_e_multimoneda.sql`):
+- ALTER de 8 tablas con `moneda TEXT NOT NULL DEFAULT 'ARS' CHECK IN (ARS,USD,EUR)`, `cotizacion NUMERIC(15,4) NOT NULL DEFAULT 1 CHECK > 0`, `total_en_ars NUMERIC(15,2)`. Tablas: `cuentas_financieras`, `ingresos`, `egresos`, `comprobantes`, `comprobantes_recibidos`, `comprobantes_iva_recovery`, `asientos`, `transferencias_internas`.
+- Función `fn_calcular_total_ars(monto, moneda, cotizacion)` IMMUTABLE.
+- Triggers BEFORE INSERT/UPDATE en 6 tablas con monto/total para materializar `total_en_ars` automáticamente. Backfill incluido.
+- Seed plan_cuentas: `4.2.02 Diferencia de cambio positiva` (acreedora) y `5.4.02 Diferencia de cambio negativa` (deudora) + padres si faltan + mapeos `dif_cambio_positiva` / `dif_cambio_negativa`.
+- Triggers `fn_asiento_auto_ingreso`/`egreso` actualizados: asientos contables SIEMPRE en ARS usando `total_en_ars`; concepto incluye nota `[USD 100 @ 1420]` si moneda extranjera; asiento guarda moneda+cotización para auditoría.
+- Helper `fn_registrar_diferencia_cambio(ingreso_id, monto_ars, actor)` para ajustes manuales — el JS lo invoca cuando aplica un cobro a una factura con cotización vieja. Lógica end-to-end automática queda para Fase G.
 
-**Tiempo estimado:** 4-5 días.
+**API** (`api.js?v=21`): `MONEDAS_DISPONIBLES`, `formatMontoMoneda`, `getCotizacionSugerida(moneda)` (vía dolarapi.com, cache 1h), `calcularTotalArs`, `registrarDiferenciaCambio`, `getMovimientosExtranjeros`. `createComprobanteIvaRecovery` propaga moneda+cotización.
+
+**UI** (`finanzas.js?v=14`): 3 helpers `_renderMonedaFields(prefix, item)` / `_attachMonedaListeners(prefix, montoFieldId?)` / `_readMonedaFields(prefix)`. Cuando moneda=ARS los campos de cotización + equivalente quedan ocultos (no clutter). Modales actualizados: `_showCuentaModal` (moneda nativa simple), `_showIngresoModal`, `_showEgresoModal`, `_showTransferModal` (bloquea cambio entre monedas), `_showRecibidoModal`, `_showIvarModal`. Tablas Ingresos/Egresos muestran chip naranja USD/EUR al lado del monto con tooltip de cotización + equivalente ARS.
+
+**Decisiones**:
+- `total_en_ars` materializado por trigger (snapshot persistente, no se recalcula).
+- Cotización por movimiento (no global por día) — permite registrar 3 cobros del mismo día con cotizaciones distintas.
+- dolarapi.com como fuente sugerida (free, sin auth). Usuario puede ignorar y tipear a mano.
+- Transferencias entre monedas no soportadas — hay que registrar ingreso+egreso por separado.
+
+**No incluido en Fase E**:
+- Plan de pagos en moneda extranjera (ALTER de `plan_cobro` pendiente).
+- Diferencia de cambio AUTOMÁTICA en aplicación de cobros — el helper `fn_registrar_diferencia_cambio` existe pero no se invoca solo. Fase G.
+- Selector de moneda en wizard de Facturación (La PyME hoy solo ARS; coordinado con Fase D / ARCA).
+
+**Tiempo real**: ~3-4h efectivas (SQL + API + UI + verificación).
 
 ### Fase F — Conciliación bancaria semi-automática
 
