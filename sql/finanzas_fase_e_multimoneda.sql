@@ -26,59 +26,21 @@
 --   Triggers fn_asiento_auto_ingreso/egreso actualizados para usar
 --   total_en_ars (la contabilidad SIEMPRE va en ARS). Si la moneda
 --   no es ARS, se agrega nota informativa al concepto.
+--   Schema real de mapeo_cuentas: tipo_movimiento + campo_origen +
+--   valor_origen + cuenta_contable_id + posicion.
 --
--- Plan de cuentas:
---   Nuevas cuentas 4.2.02 (Diferencia de cambio +) y 5.4.02 (Dif. cambio -).
---   Idempotentes — INSERT solo si codigo no existe.
---   Mapeos 'dif_cambio_positiva' y 'dif_cambio_negativa' en mapeo_cuentas.
---
--- Diferencia de cambio automática:
---   NO se implementa en esta fase. Helper fn_registrar_diferencia_cambio
---   queda disponible para uso desde JS o futura automatización (Fase G).
---   La lógica end-to-end (cobro de factura USD con cotización distinta)
---   se completará cuando esté Fase D (ARCA) y el flujo de cobros maduro.
+-- Cuentas de diferencia de cambio (4.2.02 / 5.4.02) y mapeos:
+--   NO se crean en esta fase — quedaron diferidos a Fase G cuando definamos
+--   el plan de cuentas final. Helper fn_registrar_diferencia_cambio recibe
+--   las cuentas como parámetro para no depender de mapeos previos.
 --
 -- IDEMPOTENTE — re-ejecutar es seguro.
 -- =============================================
 
 
 -- ════════════════════════════════════════════════
---  E0 — Pre-check: trigger fn_asiento_auto_* parcheado
--- ════════════════════════════════════════════════
--- Si los triggers de asiento_auto no están en su versión fix
--- (sql/fix_trigger_asiento_auto.sql) los INSERTs en ingresos
--- con estado='confirmado' rompen. Esta fase asume que el fix
--- está aplicado. Sólo emite un NOTICE; no falla.
-
-DO $$
-DECLARE
-    v_fn_def TEXT;
-BEGIN
-    SELECT pg_get_functiondef(p.oid) INTO v_fn_def
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE p.proname = 'fn_asiento_auto_ingreso'
-      AND n.nspname = 'public'
-    LIMIT 1;
-
-    IF v_fn_def IS NULL THEN
-        RAISE NOTICE '[Fase E] fn_asiento_auto_ingreso no existe — se creará al final.';
-    ELSIF v_fn_def LIKE '%tipo_movimiento%' AND v_fn_def LIKE '%concepto%' THEN
-        RAISE NOTICE '[Fase E] fn_asiento_auto_ingreso tiene el fix base aplicado.';
-    ELSE
-        RAISE WARNING '[Fase E] fn_asiento_auto_ingreso NO tiene el fix base. Ejecutar sql/fix_trigger_asiento_auto.sql primero.';
-    END IF;
-END $$;
-
-
--- ════════════════════════════════════════════════
 --  E1 — ALTER de las 8 tablas
 -- ════════════════════════════════════════════════
--- Cada tabla recibe: moneda, cotizacion, total_en_ars.
--- Para tablas con columna 'monto'  → total_en_ars = monto * cotizacion.
--- Para tablas con columna 'total'  → total_en_ars = total * cotizacion.
--- cuentas_financieras: solo moneda (es el shape nativo de la cuenta).
--- asientos: moneda informativa; total_debe/_haber ya están en ARS.
 
 -- 1) cuentas_financieras: la cuenta misma es de una moneda
 ALTER TABLE cuentas_financieras
@@ -86,11 +48,8 @@ ALTER TABLE cuentas_financieras
 
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'chk_cuentas_financieras_moneda'
-    ) THEN
-        ALTER TABLE cuentas_financieras
-            ADD CONSTRAINT chk_cuentas_financieras_moneda
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_cuentas_financieras_moneda') THEN
+        ALTER TABLE cuentas_financieras ADD CONSTRAINT chk_cuentas_financieras_moneda
             CHECK (moneda IN ('ARS', 'USD', 'EUR'));
     END IF;
 END $$;
@@ -103,12 +62,10 @@ ALTER TABLE ingresos
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_ingresos_moneda') THEN
-        ALTER TABLE ingresos ADD CONSTRAINT chk_ingresos_moneda
-            CHECK (moneda IN ('ARS', 'USD', 'EUR'));
+        ALTER TABLE ingresos ADD CONSTRAINT chk_ingresos_moneda CHECK (moneda IN ('ARS','USD','EUR'));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_ingresos_cotizacion_positiva') THEN
-        ALTER TABLE ingresos ADD CONSTRAINT chk_ingresos_cotizacion_positiva
-            CHECK (cotizacion > 0);
+        ALTER TABLE ingresos ADD CONSTRAINT chk_ingresos_cotizacion_positiva CHECK (cotizacion > 0);
     END IF;
 END $$;
 
@@ -120,12 +77,10 @@ ALTER TABLE egresos
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_egresos_moneda') THEN
-        ALTER TABLE egresos ADD CONSTRAINT chk_egresos_moneda
-            CHECK (moneda IN ('ARS', 'USD', 'EUR'));
+        ALTER TABLE egresos ADD CONSTRAINT chk_egresos_moneda CHECK (moneda IN ('ARS','USD','EUR'));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_egresos_cotizacion_positiva') THEN
-        ALTER TABLE egresos ADD CONSTRAINT chk_egresos_cotizacion_positiva
-            CHECK (cotizacion > 0);
+        ALTER TABLE egresos ADD CONSTRAINT chk_egresos_cotizacion_positiva CHECK (cotizacion > 0);
     END IF;
 END $$;
 
@@ -137,12 +92,10 @@ ALTER TABLE comprobantes
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_comprobantes_moneda') THEN
-        ALTER TABLE comprobantes ADD CONSTRAINT chk_comprobantes_moneda
-            CHECK (moneda IN ('ARS', 'USD', 'EUR'));
+        ALTER TABLE comprobantes ADD CONSTRAINT chk_comprobantes_moneda CHECK (moneda IN ('ARS','USD','EUR'));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_comprobantes_cotizacion_positiva') THEN
-        ALTER TABLE comprobantes ADD CONSTRAINT chk_comprobantes_cotizacion_positiva
-            CHECK (cotizacion > 0);
+        ALTER TABLE comprobantes ADD CONSTRAINT chk_comprobantes_cotizacion_positiva CHECK (cotizacion > 0);
     END IF;
 END $$;
 
@@ -154,12 +107,10 @@ ALTER TABLE comprobantes_recibidos
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_comprobantes_rec_moneda') THEN
-        ALTER TABLE comprobantes_recibidos ADD CONSTRAINT chk_comprobantes_rec_moneda
-            CHECK (moneda IN ('ARS', 'USD', 'EUR'));
+        ALTER TABLE comprobantes_recibidos ADD CONSTRAINT chk_comprobantes_rec_moneda CHECK (moneda IN ('ARS','USD','EUR'));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_comprobantes_rec_cotizacion_positiva') THEN
-        ALTER TABLE comprobantes_recibidos ADD CONSTRAINT chk_comprobantes_rec_cotizacion_positiva
-            CHECK (cotizacion > 0);
+        ALTER TABLE comprobantes_recibidos ADD CONSTRAINT chk_comprobantes_rec_cotizacion_positiva CHECK (cotizacion > 0);
     END IF;
 END $$;
 
@@ -171,12 +122,10 @@ ALTER TABLE comprobantes_iva_recovery
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_civar_moneda') THEN
-        ALTER TABLE comprobantes_iva_recovery ADD CONSTRAINT chk_civar_moneda
-            CHECK (moneda IN ('ARS', 'USD', 'EUR'));
+        ALTER TABLE comprobantes_iva_recovery ADD CONSTRAINT chk_civar_moneda CHECK (moneda IN ('ARS','USD','EUR'));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_civar_cotizacion_positiva') THEN
-        ALTER TABLE comprobantes_iva_recovery ADD CONSTRAINT chk_civar_cotizacion_positiva
-            CHECK (cotizacion > 0);
+        ALTER TABLE comprobantes_iva_recovery ADD CONSTRAINT chk_civar_cotizacion_positiva CHECK (cotizacion > 0);
     END IF;
 END $$;
 
@@ -187,8 +136,7 @@ ALTER TABLE asientos
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_asientos_moneda') THEN
-        ALTER TABLE asientos ADD CONSTRAINT chk_asientos_moneda
-            CHECK (moneda IN ('ARS', 'USD', 'EUR'));
+        ALTER TABLE asientos ADD CONSTRAINT chk_asientos_moneda CHECK (moneda IN ('ARS','USD','EUR'));
     END IF;
 END $$;
 
@@ -200,12 +148,10 @@ ALTER TABLE transferencias_internas
 
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_transfer_moneda') THEN
-        ALTER TABLE transferencias_internas ADD CONSTRAINT chk_transfer_moneda
-            CHECK (moneda IN ('ARS', 'USD', 'EUR'));
+        ALTER TABLE transferencias_internas ADD CONSTRAINT chk_transfer_moneda CHECK (moneda IN ('ARS','USD','EUR'));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_transfer_cotizacion_positiva') THEN
-        ALTER TABLE transferencias_internas ADD CONSTRAINT chk_transfer_cotizacion_positiva
-            CHECK (cotizacion > 0);
+        ALTER TABLE transferencias_internas ADD CONSTRAINT chk_transfer_cotizacion_positiva CHECK (cotizacion > 0);
     END IF;
 END $$;
 
@@ -221,14 +167,12 @@ CREATE OR REPLACE FUNCTION fn_calcular_total_ars(
 )
 RETURNS NUMERIC AS $$
 BEGIN
-    -- Convención: cotización = cuántos ARS por 1 unidad de moneda extranjera.
-    -- Si la moneda es ARS, la cotización debe ser 1 (lo forzamos defensivamente).
     IF p_monto IS NULL THEN RETURN NULL; END IF;
     IF p_moneda IS NULL OR p_moneda = 'ARS' THEN
         RETURN p_monto;
     END IF;
     IF p_cotizacion IS NULL OR p_cotizacion <= 0 THEN
-        RETURN p_monto;  -- fallback defensivo: no romper
+        RETURN p_monto;  -- fallback defensivo
     END IF;
     RETURN ROUND(p_monto * p_cotizacion, 2);
 END;
@@ -238,11 +182,8 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 -- ════════════════════════════════════════════════
 --  E3 — Triggers BEFORE INSERT/UPDATE para snapshot total_en_ars
 -- ════════════════════════════════════════════════
--- Un trigger por tabla (los nombres de columna de monto difieren).
--- Todos: si moneda=ARS → cotizacion forzada a 1 y total_en_ars = monto base.
 
 -- 3.1 — ingresos / egresos / transferencias_internas (columna 'monto')
-
 CREATE OR REPLACE FUNCTION fn_snapshot_total_ars_monto()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -270,7 +211,6 @@ CREATE TRIGGER trg_snapshot_total_ars_transfer
     FOR EACH ROW EXECUTE FUNCTION fn_snapshot_total_ars_monto();
 
 -- 3.2 — comprobantes / comprobantes_recibidos / comprobantes_iva_recovery (columna 'total')
-
 CREATE OR REPLACE FUNCTION fn_snapshot_total_ars_total()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -297,155 +237,44 @@ CREATE TRIGGER trg_snapshot_total_ars_civar
     BEFORE INSERT OR UPDATE OF total, moneda, cotizacion ON comprobantes_iva_recovery
     FOR EACH ROW EXECUTE FUNCTION fn_snapshot_total_ars_total();
 
--- 3.3 — Backfill: filas existentes que tengan total_en_ars=NULL
-UPDATE ingresos
-    SET total_en_ars = fn_calcular_total_ars(monto, moneda, cotizacion)
-    WHERE total_en_ars IS NULL;
-
-UPDATE egresos
-    SET total_en_ars = fn_calcular_total_ars(monto, moneda, cotizacion)
-    WHERE total_en_ars IS NULL;
-
-UPDATE transferencias_internas
-    SET total_en_ars = fn_calcular_total_ars(monto, moneda, cotizacion)
-    WHERE total_en_ars IS NULL;
-
-UPDATE comprobantes
-    SET total_en_ars = fn_calcular_total_ars(total, moneda, cotizacion)
-    WHERE total_en_ars IS NULL;
-
-UPDATE comprobantes_recibidos
-    SET total_en_ars = fn_calcular_total_ars(total, moneda, cotizacion)
-    WHERE total_en_ars IS NULL;
-
-UPDATE comprobantes_iva_recovery
-    SET total_en_ars = fn_calcular_total_ars(total, moneda, cotizacion)
-    WHERE total_en_ars IS NULL;
+-- 3.3 — Backfill: filas existentes con total_en_ars=NULL
+UPDATE ingresos                SET total_en_ars = fn_calcular_total_ars(monto, moneda, cotizacion) WHERE total_en_ars IS NULL;
+UPDATE egresos                 SET total_en_ars = fn_calcular_total_ars(monto, moneda, cotizacion) WHERE total_en_ars IS NULL;
+UPDATE transferencias_internas SET total_en_ars = fn_calcular_total_ars(monto, moneda, cotizacion) WHERE total_en_ars IS NULL;
+UPDATE comprobantes            SET total_en_ars = fn_calcular_total_ars(total, moneda, cotizacion) WHERE total_en_ars IS NULL;
+UPDATE comprobantes_recibidos  SET total_en_ars = fn_calcular_total_ars(total, moneda, cotizacion) WHERE total_en_ars IS NULL;
+UPDATE comprobantes_iva_recovery SET total_en_ars = fn_calcular_total_ars(total, moneda, cotizacion) WHERE total_en_ars IS NULL;
 
 
 -- ════════════════════════════════════════════════
---  E4 — Plan de cuentas: cuentas de diferencia de cambio
+--  E4 — Plan de cuentas de diferencia de cambio
 -- ════════════════════════════════════════════════
--- Estructura argentina típica:
---   4 — Resultados positivos (Ingresos)
---     4.2 — Resultados financieros positivos
---       4.2.02 — Diferencia de cambio positiva (ganancia)
---   5 — Resultados negativos (Egresos)
---     5.4 — Resultados financieros negativos
---       5.4.02 — Diferencia de cambio negativa (pérdida)
+-- DEFERIDO A FASE G. Las cuentas 4.2 y 4.2.02 ya existen en prod con
+-- otro significado ("Otros ingresos"); los códigos finales se definirán
+-- al diseñar el plan contable definitivo. Por ahora dejamos pendiente.
 --
--- Idempotente: solo inserta si el codigo no existe.
--- Asume que ya existen 4, 4.2, 5, 5.4 como cuentas padre.
--- Si no existen, las crea como grupo no imputable.
-
--- IMPORTANTE: heredamos `tipo` de las cuentas raíz 4 y 5 — NO hardcodeamos.
--- El CHECK de plan_cuentas.tipo en prod puede usar enums distintos a
--- 'resultado_positivo' / 'resultado_negativo'. Leemos el valor real del padre.
-DO $$
-DECLARE
-    v_id_42       UUID;
-    v_id_54       UUID;
-    v_id_4        UUID;
-    v_id_5        UUID;
-    v_tipo_pos    TEXT;
-    v_tipo_neg    TEXT;
-    v_existe      BOOLEAN;
-BEGIN
-    -- 4 — Resultados positivos (debe existir; si no, abort y avisar)
-    SELECT id, tipo INTO v_id_4, v_tipo_pos
-    FROM plan_cuentas WHERE codigo = '4' AND _deleted = false LIMIT 1;
-    IF v_id_4 IS NULL THEN
-        RAISE WARNING '[Fase E] Cuenta raíz "4" no existe. Skip seed de diferencias de cambio +.';
-        v_tipo_pos := NULL;
-    END IF;
-
-    -- 5 — Resultados negativos (debe existir; si no, abort y avisar)
-    SELECT id, tipo INTO v_id_5, v_tipo_neg
-    FROM plan_cuentas WHERE codigo = '5' AND _deleted = false LIMIT 1;
-    IF v_id_5 IS NULL THEN
-        RAISE WARNING '[Fase E] Cuenta raíz "5" no existe. Skip seed de diferencias de cambio -.';
-        v_tipo_neg := NULL;
-    END IF;
-
-    -- 4.2 — Resultados financieros positivos
-    IF v_tipo_pos IS NOT NULL THEN
-        SELECT id INTO v_id_42 FROM plan_cuentas WHERE codigo = '4.2' AND _deleted = false LIMIT 1;
-        IF v_id_42 IS NULL THEN
-            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
-            VALUES ('4.2', 'Resultados financieros positivos', v_tipo_pos, 2, '4', true, 'acreedora', true, false, 420)
-            RETURNING id INTO v_id_42;
-            RAISE NOTICE '[Fase E] Cuenta 4.2 creada (tipo=%)', v_tipo_pos;
-        END IF;
-
-        -- 4.2.02 — Diferencia de cambio positiva
-        SELECT EXISTS (SELECT 1 FROM plan_cuentas WHERE codigo = '4.2.02' AND _deleted = false) INTO v_existe;
-        IF NOT v_existe THEN
-            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden, notas)
-            VALUES ('4.2.02', 'Diferencia de cambio positiva', v_tipo_pos, 3, '4.2', false, 'acreedora', true, true, 422,
-                    'Ganancia por variación cotización USD/EUR entre emisión y cobro/pago.');
-            RAISE NOTICE '[Fase E] Cuenta 4.2.02 creada.';
-        ELSE
-            RAISE NOTICE '[Fase E] Cuenta 4.2.02 ya existe — skip.';
-        END IF;
-    END IF;
-
-    -- 5.4 — Resultados financieros negativos
-    IF v_tipo_neg IS NOT NULL THEN
-        SELECT id INTO v_id_54 FROM plan_cuentas WHERE codigo = '5.4' AND _deleted = false LIMIT 1;
-        IF v_id_54 IS NULL THEN
-            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
-            VALUES ('5.4', 'Resultados financieros negativos', v_tipo_neg, 2, '5', true, 'deudora', true, false, 540)
-            RETURNING id INTO v_id_54;
-            RAISE NOTICE '[Fase E] Cuenta 5.4 creada (tipo=%)', v_tipo_neg;
-        END IF;
-
-        -- 5.4.02 — Diferencia de cambio negativa
-        SELECT EXISTS (SELECT 1 FROM plan_cuentas WHERE codigo = '5.4.02' AND _deleted = false) INTO v_existe;
-        IF NOT v_existe THEN
-            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden, notas)
-            VALUES ('5.4.02', 'Diferencia de cambio negativa', v_tipo_neg, 3, '5.4', false, 'deudora', true, true, 542,
-                    'Pérdida por variación cotización USD/EUR entre emisión y cobro/pago.');
-            RAISE NOTICE '[Fase E] Cuenta 5.4.02 creada.';
-        ELSE
-            RAISE NOTICE '[Fase E] Cuenta 5.4.02 ya existe — skip.';
-        END IF;
-    END IF;
-END $$;
-
-
--- Mapeos en mapeo_cuentas para uso desde JS / triggers
-DO $$
-DECLARE
-    v_cuenta_id UUID;
-BEGIN
-    -- dif_cambio_positiva → 4.2.02
-    SELECT id INTO v_cuenta_id FROM plan_cuentas WHERE codigo = '4.2.02' AND _deleted = false LIMIT 1;
-    IF v_cuenta_id IS NOT NULL THEN
-        IF NOT EXISTS (SELECT 1 FROM mapeo_cuentas WHERE clave = 'dif_cambio_positiva' AND _deleted = false) THEN
-            INSERT INTO mapeo_cuentas (clave, cuenta_id, descripcion)
-            VALUES ('dif_cambio_positiva', v_cuenta_id, 'Ganancia por diferencia de cambio (moneda extranjera).');
-            RAISE NOTICE '[Fase E] Mapeo "dif_cambio_positiva" → 4.2.02 creado.';
-        END IF;
-    END IF;
-
-    -- dif_cambio_negativa → 5.4.02
-    SELECT id INTO v_cuenta_id FROM plan_cuentas WHERE codigo = '5.4.02' AND _deleted = false LIMIT 1;
-    IF v_cuenta_id IS NOT NULL THEN
-        IF NOT EXISTS (SELECT 1 FROM mapeo_cuentas WHERE clave = 'dif_cambio_negativa' AND _deleted = false) THEN
-            INSERT INTO mapeo_cuentas (clave, cuenta_id, descripcion)
-            VALUES ('dif_cambio_negativa', v_cuenta_id, 'Pérdida por diferencia de cambio (moneda extranjera).');
-            RAISE NOTICE '[Fase E] Mapeo "dif_cambio_negativa" → 5.4.02 creado.';
-        END IF;
-    END IF;
-END $$;
+-- Cuando se necesiten, crear manualmente desde el módulo Contabilidad
+-- (UI plan_cuentas) o con un SQL ad-hoc. fn_registrar_diferencia_cambio
+-- (E6 abajo) recibe las cuentas como parámetros para no depender de
+-- mapeos pre-existentes.
 
 
 -- ════════════════════════════════════════════════
---  E5 — Actualizar fn_asiento_auto_ingreso/egreso para usar total_en_ars
+--  E5 — fn_asiento_auto_ingreso/egreso actualizados
 -- ════════════════════════════════════════════════
--- La contabilidad SIEMPRE va en ARS. Si el ingreso/egreso es en moneda
--- extranjera, el asiento toma el valor convertido (total_en_ars) y se
--- agrega nota al concepto con la moneda original.
+-- Reemplaza versiones previas. Cambios respecto al fix_trigger_asiento_auto:
+--   1. Schema REAL de mapeo_cuentas (tipo_movimiento + campo_origen +
+--      valor_origen + cuenta_contable_id + posicion). NO `clave`/`cuenta_id`.
+--   2. Monto del asiento usa total_en_ars (siempre ARS).
+--   3. Si moneda extranjera, nota en concepto: "[USD 100 @ 1420]".
+--   4. Si los mapeos no existen, sale en silencio sin romper (mismo
+--      comportamiento anterior — el ingreso queda registrado sin asiento).
+--
+-- Estrategia de búsqueda de cuenta contable:
+--   a) Match específico: tipo_movimiento + campo_origen='categoria'/'medio' + valor_origen
+--   b) Fallback: tipo_movimiento sin filtro de campo (mapeo genérico)
+--
+-- Si nada matchea, no se genera asiento.
 
 CREATE OR REPLACE FUNCTION fn_asiento_auto_ingreso()
 RETURNS TRIGGER AS $$
@@ -455,14 +284,13 @@ DECLARE
     v_asiento_id      UUID;
     v_desc            TEXT;
     v_monto_asiento   NUMERIC(15,2);
-    v_clave_mapeo     TEXT;
 BEGIN
     -- Solo cuando pasa a 'confirmado'
     IF NEW.estado IS DISTINCT FROM 'confirmado' THEN RETURN NEW; END IF;
     IF TG_OP = 'UPDATE' AND OLD.estado = 'confirmado' THEN RETURN NEW; END IF;
 
     IF NEW.cuenta_id IS NULL THEN
-        RAISE NOTICE '[Contabilidad] Ingreso % sin cuenta_id, no se generó asiento.', NEW.id;
+        RAISE NOTICE '[Contabilidad] Ingreso % sin cuenta_id — sin asiento.', NEW.id;
         RETURN NEW;
     END IF;
 
@@ -478,40 +306,45 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Cuenta de ingreso vía mapeo
-    v_clave_mapeo := 'ingreso_otros';
-    SELECT cuenta_id INTO v_cuenta_ingreso
+    -- Cuenta de ingreso vía mapeo_cuentas (schema real)
+    -- Buscamos por tipo_movimiento='ingreso' + match específico por medio o genérico.
+    SELECT cuenta_contable_id INTO v_cuenta_ingreso
     FROM mapeo_cuentas
-    WHERE clave = v_clave_mapeo AND _deleted = false
+    WHERE tipo_movimiento = 'ingreso'
+      AND activo = true
+      AND _deleted = false
+      AND (
+          (campo_origen = 'medio'   AND valor_origen = NEW.medio)
+       OR (campo_origen = 'canal'   AND valor_origen = NEW.canal)
+       OR (campo_origen IS NULL)
+      )
+    ORDER BY CASE WHEN campo_origen IS NOT NULL THEN 1 ELSE 2 END
     LIMIT 1;
 
     IF v_cuenta_ingreso IS NULL THEN
-        RAISE WARNING '[Contabilidad] No hay mapeo "ingreso_otros". Ingreso % sin asiento.', NEW.id;
+        RAISE NOTICE '[Contabilidad] No hay mapeo para ingreso. Ingreso % sin asiento.', NEW.id;
         RETURN NEW;
     END IF;
 
-    -- Monto del asiento: SIEMPRE en ARS (usa el snapshot)
+    -- Monto del asiento: SIEMPRE en ARS (snapshot)
     v_monto_asiento := COALESCE(NEW.total_en_ars, NEW.monto);
 
-    -- Descripción: si es moneda extranjera, anotarlo
+    -- Descripción
     v_desc := 'Ingreso: ' || COALESCE(NEW.concepto, 'Sin concepto');
     IF NEW.moneda IS NOT NULL AND NEW.moneda <> 'ARS' THEN
         v_desc := v_desc || ' [' || NEW.moneda || ' ' || NEW.monto::TEXT
                || ' @ ' || NEW.cotizacion::TEXT || ']';
     END IF;
 
-    -- Cabecera (asientos: 'concepto', NO 'estado')
     INSERT INTO asientos (fecha, concepto, tipo, ingreso_id, canal, total_debe, total_haber, moneda, cotizacion)
     VALUES (NEW.fecha, v_desc, 'automatico', NEW.id, COALESCE(NEW.canal,'oficial'),
             v_monto_asiento, v_monto_asiento,
             COALESCE(NEW.moneda, 'ARS'), COALESCE(NEW.cotizacion, 1))
     RETURNING id INTO v_asiento_id;
 
-    -- DEBE: cuenta financiera (activo)
     INSERT INTO asiento_lineas (asiento_id, cuenta_id, tipo_movimiento, monto, descripcion, orden)
     VALUES (v_asiento_id, v_cuenta_activo, 'debe', v_monto_asiento, v_desc, 1);
 
-    -- HABER: ingreso
     INSERT INTO asiento_lineas (asiento_id, cuenta_id, tipo_movimiento, monto, descripcion, orden)
     VALUES (v_asiento_id, v_cuenta_ingreso, 'haber', v_monto_asiento, v_desc, 2);
 
@@ -528,13 +361,12 @@ DECLARE
     v_asiento_id     UUID;
     v_desc           TEXT;
     v_monto_asiento  NUMERIC(15,2);
-    v_clave_mapeo    TEXT;
 BEGIN
     IF NEW.estado IS DISTINCT FROM 'pagado' THEN RETURN NEW; END IF;
     IF TG_OP = 'UPDATE' AND OLD.estado = 'pagado' THEN RETURN NEW; END IF;
 
     IF NEW.cuenta_id IS NULL THEN
-        RAISE NOTICE '[Contabilidad] Egreso % sin cuenta_id, no se generó asiento.', NEW.id;
+        RAISE NOTICE '[Contabilidad] Egreso % sin cuenta_id — sin asiento.', NEW.id;
         RETURN NEW;
     END IF;
 
@@ -549,21 +381,21 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    v_clave_mapeo := 'egreso_' || COALESCE(NEW.categoria, 'otros');
-    SELECT cuenta_id INTO v_cuenta_gasto
+    -- Match por categoría primero, después genérico
+    SELECT cuenta_contable_id INTO v_cuenta_gasto
     FROM mapeo_cuentas
-    WHERE clave = v_clave_mapeo AND _deleted = false
+    WHERE tipo_movimiento = 'egreso'
+      AND activo = true
+      AND _deleted = false
+      AND (
+          (campo_origen = 'categoria' AND valor_origen = NEW.categoria)
+       OR (campo_origen IS NULL)
+      )
+    ORDER BY CASE WHEN campo_origen IS NOT NULL THEN 1 ELSE 2 END
     LIMIT 1;
 
     IF v_cuenta_gasto IS NULL THEN
-        SELECT cuenta_id INTO v_cuenta_gasto
-        FROM mapeo_cuentas
-        WHERE clave = 'egreso_otros' AND _deleted = false
-        LIMIT 1;
-    END IF;
-
-    IF v_cuenta_gasto IS NULL THEN
-        RAISE WARNING '[Contabilidad] No hay mapeo "egreso_*". Egreso % sin asiento.', NEW.id;
+        RAISE NOTICE '[Contabilidad] No hay mapeo para egreso categoria=%. Egreso % sin asiento.', NEW.categoria, NEW.id;
         RETURN NEW;
     END IF;
 
@@ -604,34 +436,37 @@ CREATE TRIGGER trg_asiento_auto_egreso
 
 
 -- ════════════════════════════════════════════════
---  E6 — Helper de diferencia de cambio (opcional, uso futuro)
+--  E6 — Helper de diferencia de cambio (uso futuro)
 -- ════════════════════════════════════════════════
--- No se invoca automáticamente desde los triggers. Pensado para que
--- el JS lo llame manualmente cuando aplica un cobro a una factura con
--- cotización diferente. El asiento generado es manual (tipo='manual').
+-- Recibe las cuentas como parámetros (NO depende de mapeo_cuentas).
+-- Pensado para que el JS lo invoque cuando aplica un cobro a una factura
+-- con cotización distinta. Automatización en Fase G.
 --
--- Argumentos:
---   p_ingreso_id  → ingreso que genera el ajuste
---   p_monto       → monto de la diferencia en ARS (signed: + ganancia, − pérdida)
---   p_actor       → quién lo dispara (auditoría)
+-- Args:
+--   p_ingreso_id      → ingreso de referencia
+--   p_monto_ars       → monto signed (+ ganancia, − pérdida)
+--   p_cuenta_pos_id   → cuenta contable para ganancia (uuid)
+--   p_cuenta_neg_id   → cuenta contable para pérdida (uuid)
+--   p_actor           → quién lo dispara
+-- Devuelve: asiento_id
 
 CREATE OR REPLACE FUNCTION fn_registrar_diferencia_cambio(
-    p_ingreso_id UUID,
-    p_monto_ars NUMERIC,
-    p_actor UUID DEFAULT NULL
+    p_ingreso_id    UUID,
+    p_monto_ars     NUMERIC,
+    p_cuenta_pos_id UUID,
+    p_cuenta_neg_id UUID,
+    p_actor         UUID DEFAULT NULL
 )
 RETURNS UUID AS $$
 DECLARE
     v_ingreso        RECORD;
     v_cuenta_activo  UUID;
     v_cuenta_dif     UUID;
-    v_clave          TEXT;
     v_asiento_id     UUID;
     v_desc           TEXT;
     v_monto_abs      NUMERIC(15,2);
 BEGIN
     IF p_monto_ars IS NULL OR p_monto_ars = 0 THEN
-        RAISE NOTICE 'fn_registrar_diferencia_cambio: monto 0, skip.';
         RETURN NULL;
     END IF;
 
@@ -640,7 +475,6 @@ BEGIN
         RAISE EXCEPTION 'Ingreso % no encontrado.', p_ingreso_id;
     END IF;
 
-    -- Cuenta del activo (la cuenta financiera del cobro)
     SELECT id INTO v_cuenta_activo
     FROM plan_cuentas
     WHERE cuenta_financiera_id = v_ingreso.cuenta_id AND _deleted = false
@@ -650,15 +484,10 @@ BEGIN
         RAISE EXCEPTION 'Ingreso %: cuenta financiera sin vínculo contable.', p_ingreso_id;
     END IF;
 
-    -- Cuenta de diferencia según signo
-    v_clave := CASE WHEN p_monto_ars > 0 THEN 'dif_cambio_positiva' ELSE 'dif_cambio_negativa' END;
-    SELECT cuenta_id INTO v_cuenta_dif
-    FROM mapeo_cuentas
-    WHERE clave = v_clave AND _deleted = false
-    LIMIT 1;
-
+    v_cuenta_dif := CASE WHEN p_monto_ars > 0 THEN p_cuenta_pos_id ELSE p_cuenta_neg_id END;
     IF v_cuenta_dif IS NULL THEN
-        RAISE EXCEPTION 'Mapeo % no existe en mapeo_cuentas.', v_clave;
+        RAISE EXCEPTION 'fn_registrar_diferencia_cambio: cuenta % requerida.',
+            CASE WHEN p_monto_ars > 0 THEN 'positiva' ELSE 'negativa' END;
     END IF;
 
     v_monto_abs := ABS(p_monto_ars);
@@ -672,13 +501,11 @@ BEGIN
     RETURNING id INTO v_asiento_id;
 
     IF p_monto_ars > 0 THEN
-        -- Ganancia: DEBE activo, HABER 4.2.02
         INSERT INTO asiento_lineas (asiento_id, cuenta_id, tipo_movimiento, monto, descripcion, orden)
         VALUES (v_asiento_id, v_cuenta_activo, 'debe', v_monto_abs, v_desc, 1);
         INSERT INTO asiento_lineas (asiento_id, cuenta_id, tipo_movimiento, monto, descripcion, orden)
         VALUES (v_asiento_id, v_cuenta_dif, 'haber', v_monto_abs, v_desc, 2);
     ELSE
-        -- Pérdida: DEBE 5.4.02, HABER activo
         INSERT INTO asiento_lineas (asiento_id, cuenta_id, tipo_movimiento, monto, descripcion, orden)
         VALUES (v_asiento_id, v_cuenta_dif, 'debe', v_monto_abs, v_desc, 1);
         INSERT INTO asiento_lineas (asiento_id, cuenta_id, tipo_movimiento, monto, descripcion, orden)
@@ -720,15 +547,15 @@ BEGIN
     RAISE NOTICE 'Fase E — Multi-moneda completada.';
     RAISE NOTICE '  E1 ✓ 8 tablas con moneda/cotizacion/total_en_ars';
     RAISE NOTICE '  E2 ✓ fn_calcular_total_ars';
-    RAISE NOTICE '  E3 ✓ Triggers BEFORE INSERT/UPDATE para snapshot';
-    RAISE NOTICE '  E4 ✓ Plan de cuentas 4.2.02 + 5.4.02 + mapeos';
-    RAISE NOTICE '  E5 ✓ fn_asiento_auto_ingreso/egreso → usan total_en_ars';
-    RAISE NOTICE '  E6 ✓ fn_registrar_diferencia_cambio (helper, uso futuro)';
+    RAISE NOTICE '  E3 ✓ Triggers BEFORE INSERT/UPDATE para snapshot + backfill';
+    RAISE NOTICE '  E4 ⏸ Plan cuentas dif. cambio — diferido a Fase G';
+    RAISE NOTICE '  E5 ✓ fn_asiento_auto_ingreso/egreso → schema real mapeo_cuentas + total_en_ars';
+    RAISE NOTICE '  E6 ✓ fn_registrar_diferencia_cambio (recibe cuentas como params)';
     RAISE NOTICE '  E7 ✓ Índices parciales por moneda';
     RAISE NOTICE '  → Movimientos en moneda extranjera actuales: % ing / % egr / % comp', v_ing_extranjeros, v_egr_extranjeros, v_comp_extranjeros;
     RAISE NOTICE '═══════════════════════════════════════════';
-    RAISE NOTICE 'Próximos pasos:';
-    RAISE NOTICE '  • UI selector de moneda en wizards Finanzas (finanzas.js)';
-    RAISE NOTICE '  • Diferencia de cambio AUTOMÁTICA (cobro con cot. distinta) — Fase G';
-    RAISE NOTICE '  • Cotización sugerida BCRA — opcional cachear en api.js';
+    RAISE NOTICE 'Para que se generen asientos automáticos, falta seedear';
+    RAISE NOTICE 'mapeo_cuentas con tipo_movimiento=ingreso/egreso. Mientras';
+    RAISE NOTICE 'no haya mapeos, los ingresos/egresos se guardan sin asiento';
+    RAISE NOTICE '(mismo comportamiento que antes de Fase E).';
 END $$;
