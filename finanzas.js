@@ -9031,7 +9031,7 @@ const FinanzasModule = {
             notas:        item?.notas || '',
         };
 
-        Modal.open({
+        const _modal = Modal.open({
             title: isEdit ? 'Editar factura extracontable' : 'Nueva factura extracontable',
             size: 'medium',
             body: `
@@ -9108,7 +9108,7 @@ const FinanzasModule = {
             }
         });
 
-        document.getElementById('ivarBtnCancel')?.addEventListener('click', () => Modal.close());
+        document.getElementById('ivarBtnCancel')?.addEventListener('click', () => Modal.close(_modal.id));
         document.getElementById('ivarBtnSave')?.addEventListener('click', async () => {
             const payload = {
                 fecha:        document.getElementById('ivarFecha').value,
@@ -9132,7 +9132,7 @@ const FinanzasModule = {
                     await API.createComprobanteIvaRecovery(payload);
                     Toast.success('Factura creada');
                 }
-                Modal.close();
+                Modal.close(_modal.id);
                 await this._loadIvaRecovery();
             } catch (e) {
                 Toast.error('Error al guardar: ' + (e.message || e));
