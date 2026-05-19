@@ -2761,7 +2761,26 @@ const FinanzasModule = {
         this._ingresosFiltered = items;
     },
 
+    _ensureInlineStyles() {
+        if (document.getElementById('fin-inline-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'fin-inline-styles';
+        s.textContent = `
+            .fin-btn-row { background:transparent; border:1px solid #2a2a2a; color:#888; padding:3px 7px; border-radius:3px; cursor:pointer; font-size:13px; margin-left:3px; line-height:1; transition: all 0.15s ease; }
+            .fin-btn-row:hover { border-color:#00A9C1; color:#00A9C1; background:rgba(0,169,193,0.08); }
+            .fin-btn-row[data-action="del"]:hover { border-color:#ff4444; color:#ff4444; background:rgba(255,68,68,0.08); }
+            .fin-inline-editable { cursor:text; border-bottom: 1px dashed transparent; padding-bottom:1px; transition: border-color 0.12s; }
+            .fin-inline-editable:hover { border-bottom-color:#00A9C1; }
+            .fin-td-inline { position: relative; }
+            .fin-actions-cell { opacity: 0.45; transition: opacity 0.15s; }
+            .fin-row:hover .fin-actions-cell { opacity: 1; }
+            .fin-inline-input { width:100%; background:#0a0a0a; border:1px solid #00A9C1; color:#E8E8E8; padding:4px 6px; border-radius:3px; font-size:0.85rem; font-family:inherit; }
+        `;
+        document.head.appendChild(s);
+    },
+
     _renderIngresosTable() {
+        this._ensureInlineStyles();
         const main = document.getElementById('finIngresosMain');
         if (!main) return;
 
@@ -2802,6 +2821,7 @@ const FinanzasModule = {
             .filter(i => i.estado !== 'anulado')
             .reduce((s, i) => s + (parseFloat(i.monto) || 0), 0);
 
+        const esc = s => (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         main.innerHTML = `
             <div class="fin-table-wrapper">
                 <table class="fin-table">
@@ -2816,6 +2836,7 @@ const FinanzasModule = {
                             <th class="fin-th">Canal</th>
                             <th class="fin-th sortable" data-sort="cuenta">Cuenta ${sortIcon('cuenta')}</th>
                             <th class="fin-th sortable" data-sort="estado">Estado ${sortIcon('estado')}</th>
+                            ${!this._isRO ? `<th class="fin-th" style="width:96px;text-align:right;">Acciones</th>` : ''}
                         </tr>
                     </thead>
                     <tbody>
@@ -2823,17 +2844,25 @@ const FinanzasModule = {
                             const proyNombre = this._proyectosMap[i.proyecto_id] || '—';
                             const cliNombre = this._clientesMap[i.cliente_id] || '—';
                             const cuentaNombre = (i.cuentas_financieras || {}).nombre || '—';
+                            const conceptoCell = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(i.concepto)}</span>`;
+                            const acciones = !this._isRO ? `
+                                <td class="fin-td fin-actions-cell" style="text-align:right;white-space:nowrap;">
+                                    <button class="fin-btn-row" data-action="edit" data-id="${i.id}" title="Editar">✏️</button>
+                                    <button class="fin-btn-row" data-action="dup" data-id="${i.id}" title="Duplicar">⎘</button>
+                                    <button class="fin-btn-row" data-action="del" data-id="${i.id}" title="Eliminar">🗑</button>
+                                </td>` : '';
                             return `
                             <tr class="fin-row ${this._activePanel === i.id ? 'active' : ''}" data-id="${i.id}">
                                 <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(i.fecha)}</td>
                                 <td class="fin-td">${proyNombre}</td>
                                 <td class="fin-td">${cliNombre}</td>
-                                <td class="fin-td fin-td-name">${i.concepto}</td>
+                                <td class="fin-td fin-td-name fin-td-inline" data-id="${i.id}">${conceptoCell}</td>
                                 <td class="fin-td fin-td-money">${this._formatMoney(i.monto)}</td>
                                 <td class="fin-td">${this._medioBadge(i.medio)}</td>
                                 <td class="fin-td">${this._canalBadge(i.canal)}</td>
                                 <td class="fin-td">${cuentaNombre}</td>
                                 <td class="fin-td">${this._estadoIngresoBadge(i.estado)}</td>
+                                ${acciones}
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -2860,9 +2889,88 @@ const FinanzasModule = {
             });
         });
 
+        // Action buttons (Editar / Duplicar / Eliminar) — stopPropagation para no abrir panel
+        main.querySelectorAll('.fin-btn-row').forEach(btn => {
+            btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                const id = btn.dataset.id;
+                const action = btn.dataset.action;
+                const ingreso = this._ingresos.find(x => x.id === id);
+                if (!ingreso) return;
+                if (action === 'edit') {
+                    this._showIngresoModal(ingreso);
+                } else if (action === 'dup') {
+                    // Copia el ingreso sin id/created_at + concepto con "(copia)"
+                    const dup = { ...ingreso };
+                    delete dup.id;
+                    delete dup.created_at;
+                    delete dup.updated_at;
+                    delete dup.created_by;
+                    dup.concepto = (ingreso.concepto || '') + ' (copia)';
+                    dup.fecha = new Date().toISOString().slice(0, 10);
+                    this._showIngresoModal(dup);
+                } else if (action === 'del') {
+                    const ok = await Confirm.delete(`el ingreso "${ingreso.concepto}" (${this._formatMoney(ingreso.monto)})`);
+                    if (!ok) return;
+                    try {
+                        const { error } = await supabaseClient.from('ingresos')
+                            .update({ _deleted: true }).eq('id', id);
+                        if (error) throw error;
+                        Toast.success('Ingreso eliminado');
+                        await this._loadIngresos();
+                    } catch (e) {
+                        Toast.error('Error al eliminar: ' + (e.message || e));
+                    }
+                }
+            });
+        });
+
+        // Inline edit en celda Concepto: doble click → input → Enter/blur guarda
+        main.querySelectorAll('.fin-td-inline').forEach(td => {
+            td.addEventListener('dblclick', (ev) => {
+                ev.stopPropagation();
+                const id = td.dataset.id;
+                const ingreso = this._ingresos.find(x => x.id === id);
+                if (!ingreso) return;
+                const original = ingreso.concepto || '';
+                td.innerHTML = `<input type="text" class="fin-inline-input" value="${(original).replace(/"/g, '&quot;')}" style="width:100%;background:#0a0a0a;border:1px solid #00A9C1;color:#E8E8E8;padding:4px 6px;border-radius:3px;font-size:0.85rem;">`;
+                const input = td.querySelector('input');
+                input.focus();
+                input.select();
+                const commit = async () => {
+                    const nuevo = input.value.trim();
+                    if (nuevo === original || !nuevo) {
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(original)}</span>`;
+                        return;
+                    }
+                    try {
+                        const { error } = await supabaseClient.from('ingresos')
+                            .update({ concepto: nuevo }).eq('id', id);
+                        if (error) throw error;
+                        ingreso.concepto = nuevo;
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(nuevo)}</span>`;
+                        Toast.success('Concepto actualizado');
+                    } catch (e) {
+                        Toast.error('Error: ' + (e.message || e));
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(original)}</span>`;
+                    }
+                };
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+                    if (e.key === 'Escape') {
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(original)}</span>`;
+                    }
+                });
+                input.addEventListener('blur', commit);
+            });
+        });
+
         // Row click → panel
         main.querySelectorAll('.fin-row').forEach(row => {
-            row.addEventListener('click', () => this._openIngresoPanel(row.dataset.id));
+            row.addEventListener('click', (ev) => {
+                if (ev.target.closest('.fin-btn-row, .fin-inline-input, .fin-inline-editable')) return;
+                this._openIngresoPanel(row.dataset.id);
+            });
         });
     },
 
@@ -3398,6 +3506,7 @@ const FinanzasModule = {
     },
 
     _renderEgresosTable() {
+        this._ensureInlineStyles();
         const main = document.getElementById('finEgresosMain');
         if (!main) return;
 
@@ -3437,6 +3546,7 @@ const FinanzasModule = {
             .filter(e => e.estado !== 'anulado')
             .reduce((s, e) => s + (parseFloat(e.monto) || 0), 0);
 
+        const esc = s => (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         main.innerHTML = `
             <div class="fin-table-wrapper">
                 <table class="fin-table">
@@ -3452,24 +3562,32 @@ const FinanzasModule = {
                             <th class="fin-th">Canal</th>
                             <th class="fin-th sortable" data-sort="cuenta">Cuenta ${sortIcon('cuenta')}</th>
                             <th class="fin-th sortable" data-sort="estado">Estado ${sortIcon('estado')}</th>
+                            ${!this._isRO ? `<th class="fin-th" style="width:96px;text-align:right;">Acciones</th>` : ''}
                         </tr>
                     </thead>
                     <tbody>
                         ${this._egresosFiltered.map(e => {
                             const proyNombre = this._proyectosMap[e.proyecto_id] || '—';
                             const cuentaNombre = (e.cuentas_financieras || {}).nombre || '—';
+                            const acciones = !this._isRO ? `
+                                <td class="fin-td fin-actions-cell" style="text-align:right;white-space:nowrap;">
+                                    <button class="fin-btn-row" data-action="edit" data-id="${e.id}" title="Editar">✏️</button>
+                                    <button class="fin-btn-row" data-action="dup" data-id="${e.id}" title="Duplicar">⎘</button>
+                                    <button class="fin-btn-row" data-action="del" data-id="${e.id}" title="Eliminar">🗑</button>
+                                </td>` : '';
                             return `
                             <tr class="fin-row ${this._activePanel === e.id ? 'active' : ''}" data-id="${e.id}">
                                 <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(e.fecha)}</td>
                                 <td class="fin-td">${this._categoriaBadge(e.categoria)}</td>
                                 <td class="fin-td">${e.destinatario || '<span class="fin-td-muted">—</span>'}</td>
                                 <td class="fin-td">${proyNombre}</td>
-                                <td class="fin-td fin-td-name">${e.concepto}</td>
+                                <td class="fin-td fin-td-name fin-td-inline" data-id="${e.id}"><span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(e.concepto)}</span></td>
                                 <td class="fin-td fin-td-money" style="color:#E84855;">${this._formatMoney(e.monto)}</td>
                                 <td class="fin-td">${this._medioBadge(e.medio)}</td>
                                 <td class="fin-td">${this._canalBadge(e.canal)}</td>
                                 <td class="fin-td">${cuentaNombre}</td>
                                 <td class="fin-td">${this._estadoEgresoBadge(e.estado)}</td>
+                                ${acciones}
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -3496,7 +3614,86 @@ const FinanzasModule = {
         });
 
         main.querySelectorAll('.fin-row').forEach(row => {
-            row.addEventListener('click', () => this._openEgresoPanel(row.dataset.id));
+            row.addEventListener('click', (ev) => {
+                // Si clickearon un botón o input dentro de la fila, no abrir panel
+                if (ev.target.closest('.fin-btn-row, .fin-inline-input, .fin-inline-editable')) return;
+                this._openEgresoPanel(row.dataset.id);
+            });
+        });
+
+        // Action buttons
+        main.querySelectorAll('.fin-btn-row').forEach(btn => {
+            btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                const id = btn.dataset.id;
+                const action = btn.dataset.action;
+                const egreso = this._egresos.find(x => x.id === id);
+                if (!egreso) return;
+                if (action === 'edit') {
+                    this._showEgresoModal(egreso);
+                } else if (action === 'dup') {
+                    const dup = { ...egreso };
+                    delete dup.id;
+                    delete dup.created_at;
+                    delete dup.updated_at;
+                    delete dup.created_by;
+                    dup.concepto = (egreso.concepto || '') + ' (copia)';
+                    dup.fecha = new Date().toISOString().slice(0, 10);
+                    this._showEgresoModal(dup);
+                } else if (action === 'del') {
+                    const ok = await Confirm.delete(`el egreso "${egreso.concepto}" (${this._formatMoney(egreso.monto)})`);
+                    if (!ok) return;
+                    try {
+                        const { error } = await supabaseClient.from('egresos')
+                            .update({ _deleted: true }).eq('id', id);
+                        if (error) throw error;
+                        Toast.success('Egreso eliminado');
+                        await this._loadEgresos();
+                    } catch (e) {
+                        Toast.error('Error al eliminar: ' + (e.message || e));
+                    }
+                }
+            });
+        });
+
+        // Inline edit concepto
+        main.querySelectorAll('.fin-td-inline').forEach(td => {
+            td.addEventListener('dblclick', (ev) => {
+                ev.stopPropagation();
+                const id = td.dataset.id;
+                const egreso = this._egresos.find(x => x.id === id);
+                if (!egreso) return;
+                const original = egreso.concepto || '';
+                td.innerHTML = `<input type="text" class="fin-inline-input" value="${(original).replace(/"/g, '&quot;')}">`;
+                const input = td.querySelector('input');
+                input.focus();
+                input.select();
+                const commit = async () => {
+                    const nuevo = input.value.trim();
+                    if (nuevo === original || !nuevo) {
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(original)}</span>`;
+                        return;
+                    }
+                    try {
+                        const { error } = await supabaseClient.from('egresos')
+                            .update({ concepto: nuevo }).eq('id', id);
+                        if (error) throw error;
+                        egreso.concepto = nuevo;
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(nuevo)}</span>`;
+                        Toast.success('Concepto actualizado');
+                    } catch (e) {
+                        Toast.error('Error: ' + (e.message || e));
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(original)}</span>`;
+                    }
+                };
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+                    if (e.key === 'Escape') {
+                        td.innerHTML = `<span class="fin-inline-editable" data-field="concepto" title="Doble click para editar">${esc(original)}</span>`;
+                    }
+                });
+                input.addEventListener('blur', commit);
+            });
         });
     },
 
