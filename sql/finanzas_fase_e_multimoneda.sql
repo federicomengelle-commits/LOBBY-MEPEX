@@ -338,70 +338,77 @@ UPDATE comprobantes_iva_recovery
 -- Asume que ya existen 4, 4.2, 5, 5.4 como cuentas padre.
 -- Si no existen, las crea como grupo no imputable.
 
+-- IMPORTANTE: heredamos `tipo` de las cuentas raíz 4 y 5 — NO hardcodeamos.
+-- El CHECK de plan_cuentas.tipo en prod puede usar enums distintos a
+-- 'resultado_positivo' / 'resultado_negativo'. Leemos el valor real del padre.
 DO $$
 DECLARE
-    v_id_42  UUID;
-    v_id_54  UUID;
-    v_id_4   UUID;
-    v_id_5   UUID;
-    v_existe BOOLEAN;
+    v_id_42       UUID;
+    v_id_54       UUID;
+    v_id_4        UUID;
+    v_id_5        UUID;
+    v_tipo_pos    TEXT;
+    v_tipo_neg    TEXT;
+    v_existe      BOOLEAN;
 BEGIN
-    -- 4 — Resultados positivos (grupo raíz)
-    SELECT id INTO v_id_4 FROM plan_cuentas WHERE codigo = '4' AND _deleted = false LIMIT 1;
+    -- 4 — Resultados positivos (debe existir; si no, abort y avisar)
+    SELECT id, tipo INTO v_id_4, v_tipo_pos
+    FROM plan_cuentas WHERE codigo = '4' AND _deleted = false LIMIT 1;
     IF v_id_4 IS NULL THEN
-        INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
-        VALUES ('4', 'Resultados positivos', 'resultado_positivo', 1, NULL, true, 'acreedora', true, false, 400)
-        RETURNING id INTO v_id_4;
-        RAISE NOTICE '[Fase E] Cuenta 4 (Resultados positivos) creada.';
+        RAISE WARNING '[Fase E] Cuenta raíz "4" no existe. Skip seed de diferencias de cambio +.';
+        v_tipo_pos := NULL;
+    END IF;
+
+    -- 5 — Resultados negativos (debe existir; si no, abort y avisar)
+    SELECT id, tipo INTO v_id_5, v_tipo_neg
+    FROM plan_cuentas WHERE codigo = '5' AND _deleted = false LIMIT 1;
+    IF v_id_5 IS NULL THEN
+        RAISE WARNING '[Fase E] Cuenta raíz "5" no existe. Skip seed de diferencias de cambio -.';
+        v_tipo_neg := NULL;
     END IF;
 
     -- 4.2 — Resultados financieros positivos
-    SELECT id INTO v_id_42 FROM plan_cuentas WHERE codigo = '4.2' AND _deleted = false LIMIT 1;
-    IF v_id_42 IS NULL THEN
-        INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
-        VALUES ('4.2', 'Resultados financieros positivos', 'resultado_positivo', 2, '4', true, 'acreedora', true, false, 420)
-        RETURNING id INTO v_id_42;
-        RAISE NOTICE '[Fase E] Cuenta 4.2 (Result. financieros +) creada.';
-    END IF;
+    IF v_tipo_pos IS NOT NULL THEN
+        SELECT id INTO v_id_42 FROM plan_cuentas WHERE codigo = '4.2' AND _deleted = false LIMIT 1;
+        IF v_id_42 IS NULL THEN
+            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
+            VALUES ('4.2', 'Resultados financieros positivos', v_tipo_pos, 2, '4', true, 'acreedora', true, false, 420)
+            RETURNING id INTO v_id_42;
+            RAISE NOTICE '[Fase E] Cuenta 4.2 creada (tipo=%)', v_tipo_pos;
+        END IF;
 
-    -- 4.2.02 — Diferencia de cambio positiva
-    SELECT EXISTS (SELECT 1 FROM plan_cuentas WHERE codigo = '4.2.02' AND _deleted = false) INTO v_existe;
-    IF NOT v_existe THEN
-        INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden, notas)
-        VALUES ('4.2.02', 'Diferencia de cambio positiva', 'resultado_positivo', 3, '4.2', false, 'acreedora', true, true, 422,
-                'Ganancia por variación cotización USD/EUR entre emisión y cobro/pago.');
-        RAISE NOTICE '[Fase E] Cuenta 4.2.02 (Diferencia de cambio +) creada.';
-    ELSE
-        RAISE NOTICE '[Fase E] Cuenta 4.2.02 ya existe — skip.';
-    END IF;
-
-    -- 5 — Resultados negativos
-    SELECT id INTO v_id_5 FROM plan_cuentas WHERE codigo = '5' AND _deleted = false LIMIT 1;
-    IF v_id_5 IS NULL THEN
-        INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
-        VALUES ('5', 'Resultados negativos', 'resultado_negativo', 1, NULL, true, 'deudora', true, false, 500)
-        RETURNING id INTO v_id_5;
-        RAISE NOTICE '[Fase E] Cuenta 5 (Resultados negativos) creada.';
+        -- 4.2.02 — Diferencia de cambio positiva
+        SELECT EXISTS (SELECT 1 FROM plan_cuentas WHERE codigo = '4.2.02' AND _deleted = false) INTO v_existe;
+        IF NOT v_existe THEN
+            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden, notas)
+            VALUES ('4.2.02', 'Diferencia de cambio positiva', v_tipo_pos, 3, '4.2', false, 'acreedora', true, true, 422,
+                    'Ganancia por variación cotización USD/EUR entre emisión y cobro/pago.');
+            RAISE NOTICE '[Fase E] Cuenta 4.2.02 creada.';
+        ELSE
+            RAISE NOTICE '[Fase E] Cuenta 4.2.02 ya existe — skip.';
+        END IF;
     END IF;
 
     -- 5.4 — Resultados financieros negativos
-    SELECT id INTO v_id_54 FROM plan_cuentas WHERE codigo = '5.4' AND _deleted = false LIMIT 1;
-    IF v_id_54 IS NULL THEN
-        INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
-        VALUES ('5.4', 'Resultados financieros negativos', 'resultado_negativo', 2, '5', true, 'deudora', true, false, 540)
-        RETURNING id INTO v_id_54;
-        RAISE NOTICE '[Fase E] Cuenta 5.4 (Result. financieros -) creada.';
-    END IF;
+    IF v_tipo_neg IS NOT NULL THEN
+        SELECT id INTO v_id_54 FROM plan_cuentas WHERE codigo = '5.4' AND _deleted = false LIMIT 1;
+        IF v_id_54 IS NULL THEN
+            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden)
+            VALUES ('5.4', 'Resultados financieros negativos', v_tipo_neg, 2, '5', true, 'deudora', true, false, 540)
+            RETURNING id INTO v_id_54;
+            RAISE NOTICE '[Fase E] Cuenta 5.4 creada (tipo=%)', v_tipo_neg;
+        END IF;
 
-    -- 5.4.02 — Diferencia de cambio negativa
-    SELECT EXISTS (SELECT 1 FROM plan_cuentas WHERE codigo = '5.4.02' AND _deleted = false) INTO v_existe;
-    IF NOT v_existe THEN
-        INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden, notas)
-        VALUES ('5.4.02', 'Diferencia de cambio negativa', 'resultado_negativo', 3, '5.4', false, 'deudora', true, true, 542,
-                'Pérdida por variación cotización USD/EUR entre emisión y cobro/pago.');
-        RAISE NOTICE '[Fase E] Cuenta 5.4.02 (Diferencia de cambio -) creada.';
-    ELSE
-        RAISE NOTICE '[Fase E] Cuenta 5.4.02 ya existe — skip.';
+        -- 5.4.02 — Diferencia de cambio negativa
+        SELECT EXISTS (SELECT 1 FROM plan_cuentas WHERE codigo = '5.4.02' AND _deleted = false) INTO v_existe;
+        IF NOT v_existe THEN
+            INSERT INTO plan_cuentas (codigo, nombre, tipo, nivel, codigo_padre, es_grupo, naturaleza, activa, imputable, orden, notas)
+            VALUES ('5.4.02', 'Diferencia de cambio negativa', v_tipo_neg, 3, '5.4', false, 'deudora', true, true, 542,
+                    'Pérdida por variación cotización USD/EUR entre emisión y cobro/pago.');
+            RAISE NOTICE '[Fase E] Cuenta 5.4.02 creada.';
+        ELSE
+            RAISE NOTICE '[Fase E] Cuenta 5.4.02 ya existe — skip.';
+        END IF;
     END IF;
 END $$;
 
