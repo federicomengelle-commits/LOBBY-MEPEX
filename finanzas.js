@@ -2775,6 +2775,38 @@ const FinanzasModule = {
             .fin-actions-cell { opacity: 0.45; transition: opacity 0.15s; }
             .fin-row:hover .fin-actions-cell { opacity: 1; }
             .fin-inline-input { width:100%; background:#0a0a0a; border:1px solid #00A9C1; color:#E8E8E8; padding:4px 6px; border-radius:3px; font-size:0.85rem; font-family:inherit; }
+
+            /* Side panel arreglado: position fixed al derecho con altura full y scroll interno.
+               Override del CSS legacy que lo colapsaba a la altura de la fila clickeada. */
+            .fin-side-panel.open {
+                position: fixed !important;
+                top: 80px !important;
+                right: 16px !important;
+                width: 420px !important;
+                max-width: calc(100vw - 220px) !important;
+                height: auto !important;
+                max-height: calc(100vh - 100px) !important;
+                overflow-y: auto !important;
+                z-index: 50 !important;
+                box-shadow: -8px 0 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,169,193,0.15) !important;
+                background: #0d0d0d !important;
+                border-radius: 8px !important;
+                border-left: 2px solid #00A9C1 !important;
+            }
+            @media (max-width: 900px) {
+                .fin-side-panel.open {
+                    top: auto !important;
+                    bottom: 0 !important;
+                    right: 0 !important;
+                    left: 0 !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    max-height: 75vh !important;
+                    border-radius: 12px 12px 0 0 !important;
+                    border-left: 0 !important;
+                    border-top: 2px solid #00A9C1 !important;
+                }
+            }
         `;
         document.head.appendChild(s);
     },
@@ -2968,7 +3000,7 @@ const FinanzasModule = {
         // Row click → panel
         main.querySelectorAll('.fin-row').forEach(row => {
             row.addEventListener('click', (ev) => {
-                if (ev.target.closest('.fin-btn-row, .fin-inline-input, .fin-inline-editable')) return;
+                if (ev.target.closest('.fin-btn-row, .fin-inline-input')) return;
                 this._openIngresoPanel(row.dataset.id);
             });
         });
@@ -3616,7 +3648,7 @@ const FinanzasModule = {
         main.querySelectorAll('.fin-row').forEach(row => {
             row.addEventListener('click', (ev) => {
                 // Si clickearon un botón o input dentro de la fila, no abrir panel
-                if (ev.target.closest('.fin-btn-row, .fin-inline-input, .fin-inline-editable')) return;
+                if (ev.target.closest('.fin-btn-row, .fin-inline-input')) return;
                 this._openEgresoPanel(row.dataset.id);
             });
         });
@@ -4468,6 +4500,7 @@ const FinanzasModule = {
     },
 
     _renderPlanes() {
+        this._ensureInlineStyles();
         const main = document.getElementById('finPlanesMain');
         if (!main) return;
 
@@ -4500,10 +4533,11 @@ const FinanzasModule = {
                             <span class="fin-plan-proyecto">${proyName}</span>
                             <span class="fin-plan-total"> — Total: ${this._formatMoney(plan.total_plan)}</span>
                         </div>
-                        <div style="display:flex;gap:6px;">
+                        <div style="display:flex;gap:6px;align-items:center;">
                             ${!this._isRO ? `
                             <button class="fin-plan-cobrar-btn" data-resumen-pdf="${plan.id}" style="border-color:#9B7DFF;color:#9B7DFF;">📄 Resumen PDF</button>
                             <button class="fin-plan-cobrar-btn" data-add-item="${plan.id}" style="border-color:#4A90D9;color:#4A90D9;">+ Item</button>
+                            <button class="fin-btn-row" data-del-plan="${plan.id}" title="Eliminar plan" style="margin-left:4px;">🗑</button>
                             ` : ''}
                         </div>
                     </div>
@@ -4547,7 +4581,11 @@ const FinanzasModule = {
                                     <td>${facBadge}</td>
                                     <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;color:${item.monto_cobrado > 0 ? '#00CC88' : '#555'};">${item.monto_cobrado > 0 ? this._formatMoney(item.monto_cobrado) : '—'}</td>
                                     <td><span class="${stCls}">${stLabel}</span></td>
-                                    <td>${item.estado !== 'cobrado' && item.estado !== 'anulada' && !this._isRO ? `<button class="fin-plan-cobrar-btn" data-cobrar-item="${item.id}" data-plan-id="${plan.id}">Cobrar</button>` : ''}</td>
+                                    <td style="white-space:nowrap;text-align:right;">
+                                        ${item.estado !== 'cobrado' && item.estado !== 'anulada' && !this._isRO ? `<button class="fin-plan-cobrar-btn" data-cobrar-item="${item.id}" data-plan-id="${plan.id}">Cobrar</button>` : ''}
+                                        ${!this._isRO ? `<button class="fin-btn-row" data-edit-item="${item.id}" data-plan-id="${plan.id}" title="Editar">✏️</button>` : ''}
+                                        ${!this._isRO ? `<button class="fin-btn-row" data-del-item="${item.id}" data-plan-id="${plan.id}" title="Eliminar">🗑</button>` : ''}
+                                    </td>
                                 </tr>`;
                             }).join('')}
                         </tbody>
@@ -4587,6 +4625,130 @@ const FinanzasModule = {
                 ev.stopPropagation();
                 this._generarResumenPlanPDF(btn.dataset.resumenPdf);
             });
+        });
+
+        // Eliminar plan
+        main.querySelectorAll('[data-del-plan]').forEach(btn => {
+            btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                const planId = btn.dataset.delPlan;
+                const plan = this._planes.find(p => p.id === planId);
+                if (!plan) return;
+                const ok = await Confirm.delete(`el plan de cobro completo (${this._formatMoney(plan.total_plan)}) — se eliminarán todas las cuotas`);
+                if (!ok) return;
+                try {
+                    await API.deletePlanCobro(planId);
+                    Toast.success('Plan eliminado');
+                    await this._loadPlanes();
+                } catch (e) {
+                    Toast.error('Error: ' + (e.message || e));
+                }
+            });
+        });
+
+        // Editar / eliminar item (cuota)
+        main.querySelectorAll('[data-edit-item]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                this._showEditPlanItem(btn.dataset.planId, btn.dataset.editItem);
+            });
+        });
+        main.querySelectorAll('[data-del-item]').forEach(btn => {
+            btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                const planId = btn.dataset.planId;
+                const itemId = btn.dataset.delItem;
+                const plan = this._planes.find(p => p.id === planId);
+                const item = (plan?.plan_cobro_items || []).find(i => i.id === itemId);
+                if (!item) return;
+                const ok = await Confirm.delete(`la cuota "${item.concepto}" (${this._formatMoney(item.monto)})`);
+                if (!ok) return;
+                try {
+                    await API.deletePlanCobroItem(itemId);
+                    Toast.success('Cuota eliminada');
+                    await this._loadPlanes();
+                } catch (e) {
+                    Toast.error('Error: ' + (e.message || e));
+                }
+            });
+        });
+    },
+
+    _showEditPlanItem(planId, itemId) {
+        const plan = this._planes.find(p => p.id === planId);
+        const item = (plan?.plan_cobro_items || []).find(i => i.id === itemId);
+        if (!item) return;
+
+        const _modal = Modal.open({
+            title: 'Editar cuota',
+            size: 'md',
+            body: `
+                <div class="fin-form-grid">
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Concepto *</label>
+                            <input type="text" class="fin-form-input" id="ediCuotaConcepto" value="${(item.concepto || '').replace(/"/g, '&quot;')}">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Orden</label>
+                            <input type="number" class="fin-form-input" id="ediCuotaOrden" value="${item.orden}" min="1">
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Monto *</label>
+                            <input type="number" class="fin-form-input" id="ediCuotaMonto" step="0.01" value="${item.monto || 0}">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">% del total</label>
+                            <input type="number" class="fin-form-input" id="ediCuotaPct" step="0.01" value="${item.porcentaje || ''}">
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Fecha estimada</label>
+                            <input type="date" class="fin-form-input" id="ediCuotaFecha" value="${item.fecha_estimada || ''}">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">¿Facturar?</label>
+                            <label style="display:flex;align-items:center;gap:6px;margin-top:6px;cursor:pointer;font-size:0.85rem;color:#888;">
+                                <input type="checkbox" id="ediCuotaFacturar" ${item.facturar !== false ? 'checked' : ''} style="cursor:pointer;">
+                                Genera factura propia
+                            </label>
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Notas</label>
+                        <textarea class="fin-form-textarea" id="ediCuotaNotas">${item.notas || ''}</textarea>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" id="ediCuotaCancel">Cancelar</button>
+                <button class="btn btn-primary" id="ediCuotaSave">Guardar</button>
+            `,
+        });
+
+        document.getElementById('ediCuotaCancel')?.addEventListener('click', () => Modal.close(_modal.id));
+        document.getElementById('ediCuotaSave')?.addEventListener('click', async () => {
+            const payload = {
+                concepto:       document.getElementById('ediCuotaConcepto')?.value.trim(),
+                orden:          parseInt(document.getElementById('ediCuotaOrden')?.value) || item.orden,
+                monto:          parseFloat(document.getElementById('ediCuotaMonto')?.value) || 0,
+                porcentaje:     parseFloat(document.getElementById('ediCuotaPct')?.value) || null,
+                fecha_estimada: document.getElementById('ediCuotaFecha')?.value || null,
+                facturar:       !!document.getElementById('ediCuotaFacturar')?.checked,
+                notas:          document.getElementById('ediCuotaNotas')?.value.trim() || null,
+            };
+            if (!payload.concepto || !payload.monto) { Toast.warning('Concepto y monto requeridos'); return; }
+            try {
+                await API.updatePlanCobroItem(itemId, payload);
+                Toast.success('Cuota actualizada');
+                Modal.close(_modal.id);
+                await this._loadPlanes();
+            } catch (e) {
+                Toast.error('Error: ' + (e.message || e));
+            }
         });
     },
 
@@ -9528,6 +9690,7 @@ const FinanzasModule = {
     },
 
     _renderIvaRecoveryTable() {
+        this._ensureInlineStyles();
         const main = document.getElementById('finIvarMain');
         if (!main) return;
         const items = this._ivarFiltered;
@@ -9576,10 +9739,11 @@ const FinanzasModule = {
                             <td data-label="Subtotal" class="num" style="font-family:var(--font-mono);">${fmt(i.subtotal)}</td>
                             <td data-label="IVA" class="num" style="font-family:var(--font-mono);color:#00A9C1;font-weight:600;">${fmt(i.iva_total)}</td>
                             <td data-label="Total" class="num" style="font-family:var(--font-mono);font-weight:600;">${fmt(i.total)}</td>
-                            <td data-label="Acciones" style="text-align:right;white-space:nowrap;">
+                            <td data-label="Acciones" class="fin-actions-cell" style="text-align:right;white-space:nowrap;">
                                 ${!this._isRO ? `
-                                <button class="fin-btn-icon" data-action="edit" data-id="${i.id}" title="Editar">✏️</button>
-                                <button class="fin-btn-icon" data-action="delete" data-id="${i.id}" title="Eliminar">🗑️</button>
+                                <button class="fin-btn-row" data-action="edit" data-id="${i.id}" title="Editar">✏️</button>
+                                <button class="fin-btn-row" data-action="dup" data-id="${i.id}" title="Duplicar">⎘</button>
+                                <button class="fin-btn-row" data-action="del" data-id="${i.id}" title="Eliminar">🗑</button>
                                 ` : ''}
                             </td>
                         </tr>
@@ -9588,28 +9752,34 @@ const FinanzasModule = {
             </table>
         `;
 
-        main.querySelectorAll('[data-action="edit"]').forEach(btn => {
-            btn.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                const id = btn.dataset.id;
-                const item = this._ivar.find(x => x.id === id);
-                if (item) this._showIvarModal(item);
-            });
-        });
-        main.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        main.querySelectorAll('.fin-btn-row').forEach(btn => {
             btn.addEventListener('click', async (ev) => {
                 ev.stopPropagation();
                 const id = btn.dataset.id;
+                const action = btn.dataset.action;
                 const item = this._ivar.find(x => x.id === id);
                 if (!item) return;
-                const ok = await Confirm.delete(`el registro de ${item.razon_social || 'sin nombre'} (IVA $${parseFloat(item.iva_total || 0).toLocaleString('es-AR')})`);
-                if (!ok) return;
-                try {
-                    await API.deleteComprobanteIvaRecovery(id);
-                    Toast.success('Registro eliminado');
-                    await this._loadIvaRecovery();
-                } catch (e) {
-                    Toast.error('Error al eliminar');
+                if (action === 'edit') {
+                    this._showIvarModal(item);
+                } else if (action === 'dup') {
+                    const dup = { ...item };
+                    delete dup.id;
+                    delete dup.created_at;
+                    delete dup.updated_at;
+                    delete dup.created_by;
+                    dup.descripcion = (item.descripcion || '') + ' (copia)';
+                    dup.fecha = new Date().toISOString().slice(0, 10);
+                    this._showIvarModal(dup);
+                } else if (action === 'del') {
+                    const ok = await Confirm.delete(`el registro de ${item.razon_social || 'sin nombre'} (IVA $${parseFloat(item.iva_total || 0).toLocaleString('es-AR')})`);
+                    if (!ok) return;
+                    try {
+                        await API.deleteComprobanteIvaRecovery(id);
+                        Toast.success('Registro eliminado');
+                        await this._loadIvaRecovery();
+                    } catch (e) {
+                        Toast.error('Error al eliminar');
+                    }
                 }
             });
         });
