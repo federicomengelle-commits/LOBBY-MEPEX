@@ -3192,10 +3192,19 @@ const FinanzasModule = {
                 proyecto_id, cliente_id,
             };
 
-            // If linked to a plan item
-            if (i.plan_cobro_item_id) {
+            // If linked to a plan item (defensivo: rechazar "undefined" como string)
+            if (i.plan_cobro_item_id && i.plan_cobro_item_id !== 'undefined' && i.plan_cobro_item_id !== 'null') {
                 payload.plan_cobro_item_id = i.plan_cobro_item_id;
             }
+
+            // Sanitizar UUIDs: cualquier "undefined"/"null"/"" → null para evitar 22P02 de Postgres.
+            // Log defensivo para detectar la fuente si vuelve a pasar.
+            ['proyecto_id', 'cliente_id', 'cuenta_id', 'plan_cobro_item_id', 'evento_id', 'comprobante_id', 'created_by'].forEach(k => {
+                if (payload[k] === 'undefined' || payload[k] === 'null' || payload[k] === '') {
+                    console.warn(`[Finanzas] payload.${k} venía como "${payload[k]}" — coerced a null`);
+                    payload[k] = null;
+                }
+            });
 
             try {
                 if (isEdit) {
