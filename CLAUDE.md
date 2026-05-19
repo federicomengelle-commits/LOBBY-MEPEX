@@ -2,9 +2,9 @@
 
 > SPA de gestion interna para MEPEX. Puerta de entrada a todos los modulos del ecosistema.
 
-**Stack:** Vanilla JS (ES6+) SPA, hash routing, Supabase (DB + Auth), deploy estatico (sin build step)
+**Stack:** Vanilla JS (ES6+) SPA, hash routing, Supabase (DB + Auth), deploy estatico (sin build step). + proxy HTTP node en VPS `195.200.1.250:3000` para integraciones que requieren server-side (La PyME → ARCA).
 **Carpeta local:** `C:\Users\Fede\Desktop\APPS ANTIGRAVITY\LOBBY-MEPEX`
-**IMPORTANTE:** Estamos en Windows 11. NUNCA usar comandos Linux (ls, cat, grep, rm). Siempre usar Windows (dir, type, findstr, del, copy).
+**IMPORTANTE:** Windows 11. Shell por defecto del entorno = Bash POSIX (usar `rm`, `ls`, etc. ahí); cuando se requieran herramientas Windows-only (`Remove-Item`, `Get-ChildItem`, gestión de servicios) usar **PowerShell**. NUNCA mezclar — Bash NO entiende `del`/`type`/`copy`/`findstr`.
 
 ---
 
@@ -66,7 +66,7 @@ const MiModulo = {
 - **URL:** `https://selnevalaeykdrgycvdz.supabase.co`
 - Client-side SDK via CDN (`@supabase/supabase-js@2`)
 - Auth con email virtual (`user@mepex.local`)
-- **NO hay backend propio, NO Railway, NO Express** — todo es client-side contra Supabase
+- **Casi todo es client-side contra Supabase.** Excepción: hay un proxy HTTP Node corriendo en VPS `195.200.1.250:3000` para integraciones que requieren server-side (certificados X.509, secrets). Hoy expone `/api/lapyme/facturar`. En Fase D se sumará `/api/arca/facturar`.
 - localStorage solo para preferencias de UI (sidebar state, etc.), NO para datos de negocio
 
 ### Componentes reutilizables (components.js)
@@ -169,11 +169,17 @@ LOBBY-MEPEX/
 │   ├── mepex_iso.png       # Isotipo X (favicon)
 │   └── COLORES MEPEX.png   # Paleta de referencia
 │
-├── sql/
-│   ├── calendario_operativo_v2.sql  # Schema eventos con fases operativas
-│   ├── pipeline_comercial.sql       # Schema pipeline + seguimientos + KPIs
-│   ├── v4_pyme_integration.sql      # Integracion La PyME API
-│   └── fix_rls_authenticated.sql    # Fix de RLS policies
+├── sql/                            # ~45 archivos de migración acumulados.
+│   │                               # Las migraciones viejas YA están aplicadas en prod —
+│   │                               # NO asumir que reflejan schema actual. Verificar con
+│   │                               # `SELECT * FROM information_schema.columns WHERE table_name=...`
+│   │                               # antes de tocar.
+│   ├── contabilidad_fase_a_hardening.sql   # Fase A hardening contabilidad (CHECK, saldos, audit)
+│   ├── finanzas_fase1..8.sql              # Schema finanzas — VERIFICADO 2026-05-19 que coincide con prod
+│   ├── costos_fase1.sql, fase3.sql        # Schema módulo Costos
+│   ├── taller_logistica_v1.sql, v2.sql    # Schema taller/logística
+│   ├── rrhh_to_personas_migration.sql     # Unificación RRHH→personas
+│   └── ...                                 # Ver `Glob sql/*.sql` para lista actual
 │
 └── *.md                    # Documentacion y blueprints (ver seccion 9)
 ```
@@ -215,8 +221,9 @@ LOBBY-MEPEX/
 | **Produccion** | `modules.js` | En desarrollo | Tabla basica, ficha |
 | **Inventario** | `modules.js` | En desarrollo | Insumos base + catalogo items con receta, selects editables |
 | **Costos** | `costos.js` | **Completo** | 4 tabs (Insumos / Recetas / Listas de precio / Parámetros). Cálculo via RPC PL/pgSQL `calcular_receta`. Soporta items propios y subalquilados, BOM jerárquico, snapshots, márgenes por item, VU armado "duro" (regla 1:N), exportar PDF en 3 modos. **Ver sección 6.5 — Modelo de Costeo.** |
-| **Finanzas** | `modules.js` | Pendiente | Estructura registrada, sin funcionalidad |
-| **RRHH** | `modules.js` | Pendiente | Estructura registrada, sin funcionalidad |
+| **Finanzas** | `finanzas.js` (~8700 líneas) | En desarrollo avanzado | 8 tabs (Panel / Ingresos / Egresos / Facturación / Cuentas / Conciliación / Calendario / Reportes). Toggle A/B (canal `oficial`/`interno`) sincronizado con Contabilidad. Facturación operativa via proxy La PyME en VPS. Conciliación bancaria y Calendario aún en esqueleto. **Ver `docs/finanzas_blueprint_v2.md` para roadmap (Fases A-H, ARCA directo, multi-moneda, plan de pagos avanzado, etc).** |
+| **Contabilidad** | `contabilidad.js` (~4500 líneas) | En desarrollo avanzado | 6 tabs (Plan cuentas / Libro diario / Libro mayor / Asiento manual / Libros IVA / Reportes). Partida doble vía triggers `fn_asiento_auto_ingreso`/`egreso` que mapean ingresos/egresos a asientos contables vía `mapeo_cuentas`. Libros IVA y Reportes pendientes. **Ver `docs/finanzas_blueprint_v2.md`.** |
+| **RRHH** | `rrhh.js` | Operativo | Tab Nómina contra `personas` (migrada desde `rrhh_personal`). Tabs Asignación/Vacaciones aún contra tablas legacy con banner aclaratorio. |
 | **Proveedores** | `modules.js` | Pendiente | Estructura registrada, sin funcionalidad |
 | **Admin Panel** | `admin-panel.js` | Completo | Metricas del sistema, tabla usuarios, audit log feed |
 | **Settings** | `settings.js` | Completo | Mi Perfil, Usuarios y Roles (admin), Notificaciones |
@@ -416,7 +423,37 @@ Defaults: si no hay snapshot del item, usa `parametros_globales` actuales. Si es
 | `proveedor` | Catálogo de proveedores (id es **UUID**, no integer). Usado en combobox de Insumos y Subalquilado. |
 | `cotizaciones` | Cotizaciones del pipeline comercial |
 | `pipeline_comercial` | Estados y seguimiento de cotizaciones |
-| `audit_logs` | Registro de auditoria del sistema |
+| `audit_logs` | Registro de auditoría del sistema. Tabla creada en Fase A contabilidad (2026-05-19). Trigger automático en `asientos` (INSERT/UPDATE/DELETE). Solo admin/superadmin lee. |
+
+### Schema real de Finanzas y Contabilidad (verificado 2026-05-19)
+
+**OJO: los archivos `sql/contabilidad_fase1_*.sql` fueron borrados porque NO reflejaban el schema real de prod.** El SQL `sql/contabilidad_fase_a_hardening.sql` está alineado con producción.
+
+#### Tablas Contabilidad
+- **`plan_cuentas`**: `id UUID`, `codigo TEXT`, `nombre`, `tipo` (activo/pasivo/patrimonio_neto/resultado_positivo/resultado_negativo/orden), `nivel` (1-3), `codigo_padre`, `es_grupo BOOLEAN`, `cuenta_financiera_id UUID` (FK), `naturaleza` (deudora/acreedora), `activa`, `orden`, `notas`, `_deleted`. **Fase A agregó**: `imputable BOOLEAN`, `controla_subdiario TEXT` (cliente/proveedor/evento/proyecto).
+- **`asientos`**: `id UUID`, `numero SERIAL`, `fecha`, **`concepto TEXT`** (NO `descripcion`), `tipo` (manual/automatico), `canal` (oficial/interno), `ingreso_id`, `egreso_id`, `comprobante_id`, `comprobante_recibido_id`, `transferencia_id`, `total_debe`, `total_haber`, `notas`, `created_by`, `_deleted`. **NO tiene columna `estado`** — vigencia se controla con `_deleted`. **Fase A agregó**: CHECK `chk_partida_doble` `ABS(total_debe - total_haber) < 0.01` (NOT VALID).
+- **`asiento_lineas`**: `id UUID`, `asiento_id`, `cuenta_id`, **`tipo_movimiento TEXT`** (`'debe'` o `'haber'`), **`monto NUMERIC`** (NO columnas `debe`/`haber` separadas), `descripcion`, `orden`.
+- **`mapeo_cuentas`**: `id`, `clave TEXT` (ej `ingreso_alquiler`, `egreso_otros`), `cuenta_id`, `descripcion`, `_deleted`. Es la tabla pivote que decide qué cuenta contable usar para cada tipo de movimiento de Finanzas.
+- **`saldos_mensuales`**: `id`, `cuenta_id`, `periodo TEXT` (formato `YYYY-MM`), `canal`, `saldo_anterior`, `total_debe`, `total_haber`, `saldo_final`. Materializado vía trigger `trg_saldos_lineas` (Fase A) con cascada a meses posteriores. UNIQUE `(cuenta_id, periodo, canal)`.
+
+#### Tablas Finanzas
+- **`cuentas_financieras`**: tesorería (banco / billetera digital / caja). `tipo`, `canal_default`, `saldo_inicial`, `numero_cuenta`, `cbu_alias`. Vínculo a `plan_cuentas` vía `plan_cuentas.cuenta_financiera_id`.
+- **`ingresos`** / **`egresos`**: movimientos de caja con FK a `cuentas_financieras`, `proyecto_id`, `cliente_id`/`proveedor_id`, `evento_id`. Estados: `pendiente`/`confirmado`/`anulado` (ingresos) y `pagado`/`pendiente`/`programado`/`anulado` (egresos). Campo `canal` (oficial/interno), `medio` (transferencia/efectivo/cheque/mercadopago/etc), `categoria`. Cuando pasan a estado final, triggers `fn_asiento_auto_*` generan asiento contable.
+- **`transferencias_internas`**: entre `cuentas_financieras`.
+- **`plan_cobro`** / **`plan_cobro_items`**: cuotas por proyecto. Item: estado (pendiente/cobrado/parcial/vencido) y `monto_cobrado`. **Falta integración con comprobantes para marcar facturadas.** Fase C.
+- **`comprobantes`** (emitidos): vinculados a La PyME, FK `cliente_id`/`proyecto_id`/`ingreso_id`, almacena `cae`, `cae_vencimiento`, `pdf_url`, `lapyme_response` JSONB.
+- **`comprobantes_recibidos`** (proveedor): sin CAE, carga manual. Categoría, `neto`, `iva`, `total`, FK a `orden_compra_id`/`egreso_id`.
+- **`vencimientos_recurrentes`** / **`vencimientos_generados`**: plantillas + instancias.
+- **`conciliaciones`** / **`extracto_bancario_lineas`**: matching ingresos/egresos vs extracto. Matching es manual hoy. Fase F.
+
+#### Funciones / Triggers Contabilidad
+- `fn_asiento_auto_ingreso()` / `fn_asiento_auto_egreso()` — disparan al confirmar ingreso o pagar egreso. Generan asiento via `mapeo_cuentas`.
+- **Fase A** (`sql/contabilidad_fase_a_hardening.sql`):
+  - `fn_refresh_saldo_periodo(cuenta, periodo, canal)` — recalcula 1 bucket de `saldos_mensuales`.
+  - `fn_refresh_saldo_cascada(cuenta, periodo_desde, canal)` — recalcula desde periodo hacia adelante.
+  - `trg_saldos_lineas` (en `asiento_lineas`) — refresca saldo afectado.
+  - `trg_saldos_asiento_cabecera` (en `asientos`) — refresca si cambia fecha/canal/_deleted.
+  - `fn_audit_asientos()` + `trg_audit_asientos` — registra cambios en `audit_logs`.
 
 ### Funciones PL/pgSQL en Supabase
 
@@ -458,12 +495,12 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 4. **Mostrar resultado antes de avanzar.** No encadenar cambios sin validacion.
 5. **Dark theme MEPEX siempre.**
 6. **Leer `CLAUDE.md` (raiz) y los `.md` relevantes en `docs/` antes de empezar a codear.**
-7. **Actualizar "Estado actual" al final de cada sesion.**
+7. **Actualizar `CLAUDE.md` AL CIERRE de cada sesión** y especialmente al completar una fase de trabajo o detectar discrepancias entre código/SQL del repo y la realidad de producción. Este archivo es la fuente de verdad para futuras sesiones; si está desactualizado, mentí.
 8. **Interfaces de rol Taller = ultra simples.**
-9. **NUNCA usar comandos Linux.** Solo Windows (type, dir, findstr, del, copy).
+9. **Shell por defecto del entorno = Bash POSIX.** Usar `rm`, `ls` ahí. Para herramientas Windows-only (`Remove-Item`, gestión de servicios) usar la PowerShell tool. NUNCA mezclar comandos: Bash no entiende `del`/`type`/`findstr`.
 10. **Fede = superadmin del sistema.**
 11. **Supabase es la fuente de verdad.** localStorage es para preferencias UI, no datos de negocio.
-12. **SQL migrations en `/sql/`.** Documentar cambios de schema.
+12. **Schema real > SQL del repo.** Las migraciones en `/sql/` están aplicadas hace tiempo y la BD pudo modificarse manualmente. ANTES de tocar contabilidad/finanzas o cualquier tabla con incertidumbre, ejecutar `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '...'` para verificar el schema vigente. Si encontrás un archivo SQL desfasado, borralo y dejá nota en `Estado actual`.
 13. **El bug de columnas rotadas en `clientes` se maneja en `api.js`**, no se corrige en Supabase.
 
 ### Eficiencia operativa (preferencias del usuario)
@@ -514,15 +551,55 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 | `docs/prompts/tanda-1-base.md` | Prompt ejecutable Tanda 1 (schema · API · Drive · notifs · novedades) |
 | `docs/prompts/tanda-2-operativo.md` | Prompt ejecutable Tanda 2 (módulos Taller / Logística + remito) |
 | `docs/prompts/tanda-3-cierre.md` | Prompt ejecutable Tanda 3 (RRHH / convocatorias / encuesta cliente) |
+| `docs/finanzas_blueprint_v2.md` | **Blueprint Finanzas + Contabilidad v2** (2026-05-19): partida doble, lado A/B, plan de pagos avanzado, compras familiares con IVA virtual, ARCA directo (deprecar La PyME), multi-moneda, conciliación bancaria, saldos apertura 2027. Plan plug & play en 8 fases (A-H). Schema real verificado vs prod. |
 | `docs/CLAUDE.md.old` | Version anterior de CLAUDE.md (referencia historica) |
 
 ---
 
 ## 10. ESTADO ACTUAL
 
-- **Fecha:** 2026-05-16
-- **Ultimo commit destacado:** `a7b9a21` — Tanda 4 polish (tabs scrollables horizontal + table wrappers overflow para todos los módulos)
-- **Próximo paso:** Verificación end-to-end de Tanda 4 en celu/iPad real (http://195.200.1.250). Decidir si hay polish residual al usar la app real desde mobile.
+- **Fecha:** 2026-05-19
+- **Ultimo commit destacado:** `a7b9a21` — Tanda 4 polish. Cambios de Fase A y B contabilidad/finanzas SIN COMMITEAR todavía (Fede valida primero en prod).
+- **Próximo paso:** Fede ejecuta `sql/contabilidad_fase_a_hardening.sql` + `sql/finanzas_fase_b_iva_recovery.sql` en Supabase SQL Editor + valida en prod. Cuando esté OK → **Fase C (plan de pagos avanzado + cobros parciales)** del blueprint v2.
+
+- **Sesión 2026-05-19 (parte 2) — Fase B: IVA Recovery completada**:
+  - **SQL** (`sql/finanzas_fase_b_iva_recovery.sql`): tabla auxiliar `comprobantes_iva_recovery` (admin/superadmin RLS) — NO genera asiento. VIEW `v_libro_iva_compras_extendido` une oficiales (`comprobantes_recibidos`) + virtuales para Libro IVA AFIP. VIEW `v_posicion_iva_mes` agrega por periodo con desglose oficial/virtual.
+  - **API** (`api.js`): bloque "FASE B" con `getComprobantesIvaRecovery({periodo, fechaDesde, fechaHasta})`, `createComprobanteIvaRecovery`, `updateComprobanteIvaRecovery`, `deleteComprobanteIvaRecovery`, `getLibroIvaComprasExtendido`, `getPosicionIvaMes`.
+  - **UI Finanzas** (`finanzas.js?v=5`): nuevo subtab "Recupero IVA extracontable" dentro de tab Egresos. State `_egresosSubtab` (`egresos`|`iva_recovery`). Banner explicativo + filtro por periodo + KPIs (cantidad, subtotal, IVA recuperado, total) + tabla CRUD con modal de carga (fecha, CUIT, razón social, descripción, subtotal, IVA 21/10.5/otros, total, traído por, notas). Helper "Calcular desde Total y 21%" que infiere subtotal e IVA.
+  - **UI Contabilidad** (`contabilidad.js?v=5`): Libros IVA > Compras suma toggle "Oficial / Virtual / Ambos". Tabla muestra badge VIRTUAL violeta + chip "vía [traído por]" cuando aplica. Footer con desglose oficial/virtual cuando "Ambos". Posición IVA rediseñada con 2 cards lado a lado: "Solo oficial" y "Real (con virtual)", + card "Ahorro fiscal del periodo" si hay IVA virtual.
+  - **Filosofía respetada**: las facturas extracontables NO impactan el P&amp;L oficial (no generan asiento). Sí entran al Libro IVA AFIP. Solo visible a admin/superadmin (RLS en BD + check de rol en UI).
+
+- **Sesión 2026-05-18/19 — Blueprint Finanzas+Contabilidad v2 + Fase A hardening contabilidad**:
+  - **Descubrimiento crítico**: CLAUDE.md decía que Finanzas y Contabilidad estaban "Pendiente — sin funcionalidad". FALSO. Hay ~13.000 líneas de JS (`finanzas.js` 8756 + `contabilidad.js` 4560) + 8 SQLs de finanzas + tablas reales pobladas. La auditoría inicial (vía agent Explore) creyó que el SQL del repo reflejaba prod — ERROR. **El schema de prod difiere significativamente del que el SQL del repo describe.**
+  - **Schema real verificado de tablas contables** (vía `information_schema.columns`):
+    - `asiento_lineas` usa `tipo_movimiento`/`monto` (NO `debe`/`haber` como decía el repo).
+    - `asientos` usa `concepto` (NO `descripcion`) y NO tiene columna `estado` (sólo `_deleted`).
+    - `saldos_mensuales` usa `periodo TEXT 'YYYY-MM'` + `saldo_anterior` + `saldo_final` (NO `anio`/`mes` separados ni `debe`/`haber`/`saldo`).
+  - **Pasos hechos**:
+    1. **Blueprint v2 escrito** en `docs/finanzas_blueprint_v2.md` — partida doble formal, lado A/B con flag `canal`, plan de pagos avanzado (cotización $5M con cuotas y facturación parcial), compras familiares "IVA recovery" como tabla auxiliar con VIEW virtual (no contamina contabilidad real), ARCA directo (reemplazar La PyME, vía endpoint nuevo en proxy HTTP del VPS usando `arcasdk` TypeScript), multi-moneda USD/EUR con snapshot de cotización, conciliación bancaria semi-automática, saldos apertura para arrancar uso real Enero 2027. Plan en 8 fases (A-H) ~5-7 semanas.
+    2. **Bug aparente en `contabilidad.js:3669`** identificado por la auditoría (uso de `tipo_movimiento`/`monto`) → "fixeado" → REVERTIDO al verificar schema real (el JS estaba correcto, el SQL del repo era el erróneo). Versión final `contabilidad.js?v=4` igual a la original.
+    3. **Fase A hardening contabilidad escrita en `sql/contabilidad_fase_a_hardening.sql`** (idempotente):
+       - A1: CHECK partida doble en `asientos` (NOT VALID, validar con `ALTER TABLE asientos VALIDATE CONSTRAINT chk_partida_doble` después de limpiar histórico).
+       - A2: Funciones `fn_refresh_saldo_periodo` + `fn_refresh_saldo_cascada` + triggers `trg_saldos_lineas` y `trg_saldos_asiento_cabecera` + backfill + UNIQUE `(cuenta_id, periodo, canal)`. Cascada propaga cambios a meses posteriores.
+       - A3: ALTER `plan_cuentas` agregando `imputable BOOLEAN` (backfill = NOT es_grupo) y `controla_subdiario TEXT` (cliente/proveedor/evento/proyecto).
+       - A4: Tabla `audit_logs` (nueva) + trigger `trg_audit_asientos` (registra INSERT/UPDATE/DELETE en `asientos`). RLS read solo admin/superadmin.
+    4. **Limpieza**: borrados 4 archivos SQL desfasados (`sql/contabilidad_fase1_tablas.sql`, `_seed.sql`, `_mapeos.sql`, `_triggers.sql`). Reflejaban schema viejo que no coincide con prod. Si necesito ver el plan de cuentas seedeado o los mapeos actuales, leer directo de la BD.
+  - **Decisiones de arquitectura tomadas en este blueprint**:
+    - **Lado A/B con flag `canal` por movimiento** (no plan de cuentas duplicado). Reportes filtran. Permisos por rol.
+    - **Compras familiares**: tabla auxiliar `comprobantes_iva_recovery` (Fase B, pendiente) que NO genera asiento contable. Una VIEW suma el IVA de la auxiliar al saldo de "1.1.04.01 IVA crédito fiscal" para reportes gerenciales. La contabilidad oficial queda limpia; el IVA presentado a AFIP incluye el ahorro.
+    - **Proyecto = centro de costo principal · Evento = agregador**. Las facturas y asientos imputan a `proyecto_id`; el `evento_id` se hereda y se usa solo para agregaciones.
+    - **UI sin tab Económico ni en evento ni en proyecto**: toda la evaluación económica vive dentro del módulo Finanzas (admin/superadmin only). Selector de proyecto/evento desde adentro.
+    - **ARCA directo via proxy HTTP del VPS** (mismo `195.200.1.250:3000` donde corre La PyME) usando `arcasdk` TypeScript. NO se usa Supabase Edge Functions (es overkill, ya hay backend). Fase D.
+    - **Saldos apertura "borrador → bloquear y activar"**: pantalla editable hasta que superadmin clickea bloquear → genera asiento de apertura → ejercicio 2027 abierto. Uso real arranca Enero 2027.
+  - **Pendientes próximos**:
+    1. Fede ejecuta `sql/contabilidad_fase_a_hardening.sql` en SQL Editor → confirma NOTICEs OK.
+    2. Fede prueba guardar asiento manual en prod → debe funcionar igual (el JS no cambió).
+    3. ✅ Schema de Finanzas verificado (2026-05-19): los `sql/finanzas_fase1..8.sql` COINCIDEN con prod — no se borran. Cubren las 12 tablas exactas (cuentas_financieras, ingresos, egresos, plan_cobro, plan_cobro_items, transferencias_internas, comprobantes, comprobantes_recibidos, vencimientos_recurrentes, vencimientos_generados, conciliaciones, extracto_bancario_lineas).
+    4. Arrancar Fase B (compras familiares + IVA recovery).
+  - **Bugs conocidos al cierre de esta sesión**:
+    - Columnas rotadas en `clientes` (mapeado en api.js, no se corrige en Supabase).
+    - Tablas legacy `logistica_vehiculos` / `logistica_movimientos` con tipos BIGINT vs UUID en FKs.
+    - Los archivos `sql/finanzas_fase*.sql` PUEDEN estar desfasados vs schema real (no verificado todavía).
 - **Tanda 4 completada (UX/Mobile review integral)**:
   - **T4.1 — Foundation** (`e709569`): `mobile.css` nuevo (768/480 breakpoints) cargado después de `style.css`. Sidebar como drawer overlay con backdrop + body-scroll-lock + cierre on outside/hash change. Modal fullscreen mobile (100vw × 100dvh sin border-radius). Notif dropdown → bottom sheet con backdrop + transition slide-up. Botón búsqueda mobile (ícono lupa) reemplaza el input Ctrl+K + overlay fullscreen separado. Connection badge + user-info text + chevron ocultos en mobile. Header compacto. Inputs `font-size: 16px` (iOS no zoomea). Tap targets mínimos 44px. `app.js`: `App.isMobile()` helper, default sidebar `hidden` si mobile, `toggleSidebar` drawer-aware, `openDrawer/closeDrawer`, `openSearchMobile/closeSearchMobile`, `_handleSearch` con targetId parametrizable. `notifications.js`: `_renderMobileSheet` en `<body>` (el header tiene `backdrop-filter: blur(20px)` que anula `position:fixed` de descendientes — workaround obligatorio).
   - **T4.2 — Tablas a cards mobile** (`2ee509a`): `crm.js` tabla clientes con `class="table-stack-mobile"` + `data-label="..."` en cada `<td>`. `rrhh.js` tabla Nómina idem. En `mobile.css` la regla `.table-stack-mobile thead { display: none }` + `tr { display: block }` + `td::before { content: attr(data-label) }` transforma cada fila en card vertical con labels desde `data-label`. Wrappers de Inventario/Costos/Compras → `overflow-x: auto` con scroll horizontal touch-friendly (son módulos admin, menos críticos mobile).

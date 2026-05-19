@@ -4516,4 +4516,84 @@ const API = {
             return null;
         }
     },
+
+    // ───────────────────────────────────────────────
+    //  FASE B — IVA Recovery (compras "de familiares")
+    //  Tabla auxiliar comprobantes_iva_recovery: NO genera asiento.
+    //  Solo suma IVA virtual para reportes gerenciales y libros AFIP.
+    // ───────────────────────────────────────────────
+
+    async getComprobantesIvaRecovery({ periodo = null, fechaDesde = null, fechaHasta = null } = {}) {
+        let q = supabaseClient.from('comprobantes_iva_recovery')
+            .select('*')
+            .eq('_deleted', false)
+            .order('fecha', { ascending: false });
+        if (periodo)     q = q.eq('periodo', periodo);
+        if (fechaDesde)  q = q.gte('fecha', fechaDesde);
+        if (fechaHasta)  q = q.lte('fecha', fechaHasta);
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getComprobantesIvaRecovery:', error.message); return []; }
+        return data || [];
+    },
+
+    async createComprobanteIvaRecovery(payload) {
+        const user = Auth.getUser?.();
+        const periodo = payload.periodo || (payload.fecha ? payload.fecha.slice(0, 7) : null);
+        const row = {
+            fecha:         payload.fecha,
+            cuit:          payload.cuit || null,
+            razon_social:  payload.razon_social || null,
+            descripcion:   payload.descripcion || null,
+            subtotal:      Number(payload.subtotal) || 0,
+            iva_21:        Number(payload.iva_21) || 0,
+            iva_10_5:      Number(payload.iva_10_5) || 0,
+            iva_otros:     Number(payload.iva_otros) || 0,
+            total:         Number(payload.total) || 0,
+            periodo:       periodo,
+            traido_por:    payload.traido_por || null,
+            archivo_url:   payload.archivo_url || null,
+            notas:         payload.notas || null,
+            created_by:    user?.uid || user?.id || null,
+        };
+        const { data, error } = await supabaseClient
+            .from('comprobantes_iva_recovery')
+            .insert(row).select().single();
+        if (error) { console.warn('[API] createComprobanteIvaRecovery:', error.message); throw error; }
+        return data;
+    },
+
+    async updateComprobanteIvaRecovery(id, patch) {
+        if (patch.fecha && !patch.periodo) patch.periodo = patch.fecha.slice(0, 7);
+        const { data, error } = await supabaseClient
+            .from('comprobantes_iva_recovery')
+            .update(patch).eq('id', id).select().single();
+        if (error) { console.warn('[API] updateComprobanteIvaRecovery:', error.message); throw error; }
+        return data;
+    },
+
+    async deleteComprobanteIvaRecovery(id) {
+        const { error } = await supabaseClient
+            .from('comprobantes_iva_recovery')
+            .update({ _deleted: true }).eq('id', id);
+        if (error) { console.warn('[API] deleteComprobanteIvaRecovery:', error.message); throw error; }
+        return true;
+    },
+
+    async getLibroIvaComprasExtendido({ periodo = null, origen = null } = {}) {
+        let q = supabaseClient.from('v_libro_iva_compras_extendido').select('*');
+        if (periodo) q = q.eq('periodo', periodo);
+        if (origen && origen !== 'ambos') q = q.eq('origen', origen);
+        q = q.order('fecha', { ascending: false });
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getLibroIvaComprasExtendido:', error.message); return []; }
+        return data || [];
+    },
+
+    async getPosicionIvaMes(periodo = null) {
+        let q = supabaseClient.from('v_posicion_iva_mes').select('*');
+        if (periodo) q = q.eq('periodo', periodo);
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getPosicionIvaMes:', error.message); return []; }
+        return data || [];
+    },
 };

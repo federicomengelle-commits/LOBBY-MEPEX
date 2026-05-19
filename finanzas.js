@@ -67,6 +67,16 @@ const FinanzasModule = {
     // Ingresos subtab
     _ingresosSubtab: 'cobros', // 'cobros' | 'planes'
 
+    // Egresos subtab (Fase B — IVA recovery)
+    _egresosSubtab: 'egresos', // 'egresos' | 'iva_recovery'
+
+    // IVA Recovery state
+    _ivar: [],
+    _ivarFiltered: [],
+    _ivarPeriodoFilter: '', // 'YYYY-MM' o '' (todos)
+    _ivarSearch: '',
+    _ivarEditId: null,
+
     // Plan de cobro
     _planes: [],
 
@@ -1865,10 +1875,16 @@ const FinanzasModule = {
                 }
                 break;
             case 'egresos':
-                container.innerHTML = this._buildEgresosHTML();
                 await this._loadLookups();
-                await this._loadEgresos();
-                this._attachEgresosEvents();
+                if (this._egresosSubtab === 'iva_recovery') {
+                    container.innerHTML = this._buildIvaRecoveryHTML();
+                    await this._loadIvaRecovery();
+                    this._attachIvaRecoveryEvents();
+                } else {
+                    container.innerHTML = this._buildEgresosHTML();
+                    await this._loadEgresos();
+                    this._attachEgresosEvents();
+                }
                 break;
             case 'facturacion':
                 await this._loadLookups();
@@ -3243,6 +3259,10 @@ const FinanzasModule = {
             .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
 
         return `
+            <div class="fin-subtabs" id="finEgresosSubtabs">
+                <button class="fin-subtab ${this._egresosSubtab === 'egresos' ? 'active' : ''}" data-subtab="egresos">Egresos</button>
+                <button class="fin-subtab ${this._egresosSubtab === 'iva_recovery' ? 'active' : ''}" data-subtab="iva_recovery">Recupero IVA extracontable</button>
+            </div>
             <div class="fin-cuentas-toolbar">
                 <div class="fin-search-box">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -4506,6 +4526,14 @@ const FinanzasModule = {
     // ═══════════════════════════════════════════
 
     _attachEgresosEvents() {
+        // Subtab switching: Egresos ↔ Recupero IVA
+        document.querySelectorAll('#finEgresosSubtabs .fin-subtab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._egresosSubtab = btn.dataset.subtab;
+                this._renderTabContent();
+            });
+        });
+
         const searchInput = document.getElementById('finEgresosSearch');
         if (searchInput) {
             searchInput.addEventListener('input', () => {
@@ -8752,5 +8780,364 @@ const FinanzasModule = {
             console.error('Error creating from extracto:', e);
             Toast.error('Error al crear movimiento');
         }
+    },
+
+    // ═══════════════════════════════════════════
+    //  FASE B — RECUPERO IVA EXTRACONTABLE
+    //  Compras "de familiares": NO genera asiento.
+    //  Solo suma IVA virtual al saldo de IVA crédito fiscal.
+    //  Visible solo a admin/superadmin (RLS en BD).
+    // ═══════════════════════════════════════════
+
+    _buildIvaRecoveryHTML() {
+        const hoy = new Date();
+        const periodoActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+        return `
+            <div class="fin-subtabs" id="finEgresosSubtabs">
+                <button class="fin-subtab ${this._egresosSubtab === 'egresos' ? 'active' : ''}" data-subtab="egresos">Egresos</button>
+                <button class="fin-subtab ${this._egresosSubtab === 'iva_recovery' ? 'active' : ''}" data-subtab="iva_recovery">Recupero IVA extracontable</button>
+            </div>
+
+            <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:14px 16px;margin-bottom:12px;display:flex;gap:14px;align-items:flex-start;">
+                <div style="font-size:22px;line-height:1;padding-top:2px;">🧾</div>
+                <div style="flex:1;">
+                    <div style="font-weight:600;color:#E8E8E8;margin-bottom:4px;">¿Qué es esta sección?</div>
+                    <div style="font-size:12px;color:#888;line-height:1.5;">
+                        Facturas con CUIT MEPEX <strong>cuya mercadería/servicio no fue para MEPEX</strong> (familiares, conocidos). <strong>NO generan asiento contable</strong> — el gasto no figura en el P&amp;L oficial.
+                        El IVA <strong>SÍ</strong> se suma al saldo de la cuenta <strong>1.1.04.01 IVA crédito fiscal</strong> de manera virtual para reportes y Libro IVA Compras presentado a AFIP.
+                    </div>
+                </div>
+            </div>
+
+            <div class="fin-cuentas-toolbar">
+                <div class="fin-search-box">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" class="fin-search-input" id="finIvarSearch" placeholder="Buscar CUIT, razón social, descripción, traído por…" autocomplete="off" value="${this._ivarSearch}">
+                </div>
+                ${!this._isRO ? `
+                <button class="fin-btn-new" id="finBtnNewIvar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Nueva factura
+                </button>
+                ` : ''}
+            </div>
+
+            <div class="fin-filters">
+                <span class="fin-filter-label">Periodo</span>
+                <input type="month" class="fin-filter-date" id="finIvarPeriodoFilter" value="${this._ivarPeriodoFilter || periodoActual}">
+                <button class="fin-filter-toggle ${this._ivarPeriodoFilter === '' ? 'active' : ''}" id="finIvarTodos">Todos los periodos</button>
+            </div>
+
+            <div id="finIvarKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;"></div>
+
+            <div class="fin-body">
+                <div class="fin-main" id="finIvarMain">
+                    <div class="fin-loading"><div class="spinner"></div> Cargando facturas extracontables…</div>
+                </div>
+            </div>
+        `;
+    },
+
+    async _loadIvaRecovery() {
+        try {
+            const filtros = {};
+            if (this._ivarPeriodoFilter) filtros.periodo = this._ivarPeriodoFilter;
+            this._ivar = await API.getComprobantesIvaRecovery(filtros);
+            this._applyIvarFilter();
+            this._renderIvarKpis();
+            this._renderIvaRecoveryTable();
+        } catch (e) {
+            console.error('[Finanzas] Error cargando IVA recovery:', e);
+            Toast.error('Error al cargar facturas extracontables');
+            this._ivar = [];
+            this._ivarFiltered = [];
+            this._renderIvaRecoveryTable();
+        }
+    },
+
+    _applyIvarFilter() {
+        let items = [...this._ivar];
+        if (this._ivarSearch) {
+            const q = (this._ivarSearch || '').toLowerCase();
+            items = items.filter(i =>
+                (i.cuit || '').toLowerCase().includes(q) ||
+                (i.razon_social || '').toLowerCase().includes(q) ||
+                (i.descripcion || '').toLowerCase().includes(q) ||
+                (i.traido_por || '').toLowerCase().includes(q)
+            );
+        }
+        items.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+        this._ivarFiltered = items;
+    },
+
+    _renderIvarKpis() {
+        const cont = document.getElementById('finIvarKpis');
+        if (!cont) return;
+        const items = this._ivar || [];
+        const totIva = items.reduce((s, i) => s + (parseFloat(i.iva_total) || 0), 0);
+        const totSubt = items.reduce((s, i) => s + (parseFloat(i.subtotal) || 0), 0);
+        const totTotal = items.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+        const periodoLabel = this._ivarPeriodoFilter || 'Todos los periodos';
+        const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');
+        cont.innerHTML = `
+            <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:12px;">
+                <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${periodoLabel} · Cantidad</div>
+                <div style="font-size:20px;font-weight:700;color:#E8E8E8;font-family:var(--font-mono);">${items.length}</div>
+            </div>
+            <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:12px;">
+                <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${periodoLabel} · Subtotal</div>
+                <div style="font-size:20px;font-weight:700;color:#E8E8E8;font-family:var(--font-mono);">${fmt(totSubt)}</div>
+            </div>
+            <div style="background:#111;border:1px solid #00A9C1;border-radius:8px;padding:12px;">
+                <div style="font-size:10px;color:#00A9C1;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${periodoLabel} · IVA recuperado</div>
+                <div style="font-size:20px;font-weight:700;color:#00A9C1;font-family:var(--font-mono);">${fmt(totIva)}</div>
+            </div>
+            <div style="background:#111;border:1px solid #2a2a2a;border-radius:8px;padding:12px;">
+                <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${periodoLabel} · Total</div>
+                <div style="font-size:20px;font-weight:700;color:#E8E8E8;font-family:var(--font-mono);">${fmt(totTotal)}</div>
+            </div>
+        `;
+    },
+
+    _renderIvaRecoveryTable() {
+        const main = document.getElementById('finIvarMain');
+        if (!main) return;
+        const items = this._ivarFiltered;
+        const fmt = n => '$' + (parseFloat(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        if (items.length === 0) {
+            main.innerHTML = `
+                <div class="fin-empty">
+                    <div class="fin-empty-icon">🧾</div>
+                    <div class="fin-empty-text">${this._ivar.length === 0 ? 'No hay facturas extracontables cargadas. Cargá la primera para empezar a sumar IVA virtual.' : 'Sin resultados con los filtros actuales'}</div>
+                    ${!this._isRO && this._ivar.length === 0 ? `
+                    <button class="fin-btn-new" id="finBtnNewIvarEmpty">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Nueva factura
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+            document.getElementById('finBtnNewIvarEmpty')?.addEventListener('click', () => this._showIvarModal());
+            return;
+        }
+
+        main.innerHTML = `
+            <table class="fin-table table-stack-mobile">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>CUIT</th>
+                        <th>Razón social</th>
+                        <th>Descripción</th>
+                        <th>Traído por</th>
+                        <th class="num">Subtotal</th>
+                        <th class="num">IVA</th>
+                        <th class="num">Total</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.map(i => `
+                        <tr data-id="${i.id}" class="fin-row-clickable">
+                            <td data-label="Fecha">${i.fecha || '—'}</td>
+                            <td data-label="CUIT" style="font-family:var(--font-mono);font-size:11px;">${i.cuit || '—'}</td>
+                            <td data-label="Razón social">${i.razon_social || '—'}</td>
+                            <td data-label="Descripción" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(i.descripcion || '').replace(/"/g, '&quot;')}">${i.descripcion || '—'}</td>
+                            <td data-label="Traído por">${i.traido_por || '—'}</td>
+                            <td data-label="Subtotal" class="num" style="font-family:var(--font-mono);">${fmt(i.subtotal)}</td>
+                            <td data-label="IVA" class="num" style="font-family:var(--font-mono);color:#00A9C1;font-weight:600;">${fmt(i.iva_total)}</td>
+                            <td data-label="Total" class="num" style="font-family:var(--font-mono);font-weight:600;">${fmt(i.total)}</td>
+                            <td data-label="Acciones" style="text-align:right;white-space:nowrap;">
+                                ${!this._isRO ? `
+                                <button class="fin-btn-icon" data-action="edit" data-id="${i.id}" title="Editar">✏️</button>
+                                <button class="fin-btn-icon" data-action="delete" data-id="${i.id}" title="Eliminar">🗑️</button>
+                                ` : ''}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        main.querySelectorAll('[data-action="edit"]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const id = btn.dataset.id;
+                const item = this._ivar.find(x => x.id === id);
+                if (item) this._showIvarModal(item);
+            });
+        });
+        main.querySelectorAll('[data-action="delete"]').forEach(btn => {
+            btn.addEventListener('click', async (ev) => {
+                ev.stopPropagation();
+                const id = btn.dataset.id;
+                const item = this._ivar.find(x => x.id === id);
+                if (!item) return;
+                const ok = await Confirm.delete(`la factura de ${item.razon_social || 'sin nombre'} (IVA $${parseFloat(item.iva_total || 0).toLocaleString('es-AR')})`);
+                if (!ok) return;
+                try {
+                    await API.deleteComprobanteIvaRecovery(id);
+                    Toast.success('Factura eliminada');
+                    await this._loadIvaRecovery();
+                } catch (e) {
+                    Toast.error('Error al eliminar');
+                }
+            });
+        });
+    },
+
+    _attachIvaRecoveryEvents() {
+        // Subtab switching
+        document.querySelectorAll('#finEgresosSubtabs .fin-subtab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._egresosSubtab = btn.dataset.subtab;
+                this._renderTabContent();
+            });
+        });
+
+        document.getElementById('finIvarSearch')?.addEventListener('input', (ev) => {
+            this._ivarSearch = ev.target.value.trim();
+            this._applyIvarFilter();
+            this._renderIvaRecoveryTable();
+        });
+
+        document.getElementById('finBtnNewIvar')?.addEventListener('click', () => this._showIvarModal());
+
+        document.getElementById('finIvarPeriodoFilter')?.addEventListener('change', (ev) => {
+            this._ivarPeriodoFilter = ev.target.value;
+            this._loadIvaRecovery();
+        });
+        document.getElementById('finIvarTodos')?.addEventListener('click', () => {
+            this._ivarPeriodoFilter = '';
+            this._loadIvaRecovery();
+        });
+    },
+
+    _showIvarModal(item = null) {
+        const isEdit = !!item;
+        const hoy = new Date().toISOString().slice(0, 10);
+        const v = {
+            fecha:        item?.fecha || hoy,
+            cuit:         item?.cuit || '',
+            razon_social: item?.razon_social || '',
+            descripcion:  item?.descripcion || '',
+            subtotal:     item?.subtotal || 0,
+            iva_21:       item?.iva_21 || 0,
+            iva_10_5:     item?.iva_10_5 || 0,
+            iva_otros:    item?.iva_otros || 0,
+            total:        item?.total || 0,
+            traido_por:   item?.traido_por || '',
+            notas:        item?.notas || '',
+        };
+
+        Modal.open({
+            title: isEdit ? 'Editar factura extracontable' : 'Nueva factura extracontable',
+            size: 'medium',
+            body: `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Fecha *</label>
+                        <input type="date" id="ivarFecha" value="${v.fecha}" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Traído por</label>
+                        <input type="text" id="ivarTraido" value="${v.traido_por.replace(/"/g, '&quot;')}" placeholder="Cuñada Pedro" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">CUIT proveedor</label>
+                        <input type="text" id="ivarCuit" value="${v.cuit}" placeholder="20-12345678-9" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Razón social</label>
+                        <input type="text" id="ivarRazon" value="${v.razon_social.replace(/"/g, '&quot;')}" class="fin-input">
+                    </div>
+                    <div style="grid-column:1/-1;">
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Descripción</label>
+                        <input type="text" id="ivarDesc" value="${v.descripcion.replace(/"/g, '&quot;')}" placeholder="Compra de electrodomésticos" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Subtotal (sin IVA)</label>
+                        <input type="number" id="ivarSubt" value="${v.subtotal}" step="0.01" min="0" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Total (con IVA)</label>
+                        <input type="number" id="ivarTot" value="${v.total}" step="0.01" min="0" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">IVA 21%</label>
+                        <input type="number" id="ivarIva21" value="${v.iva_21}" step="0.01" min="0" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">IVA 10,5%</label>
+                        <input type="number" id="ivarIva105" value="${v.iva_10_5}" step="0.01" min="0" class="fin-input">
+                    </div>
+                    <div>
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">IVA otros</label>
+                        <input type="number" id="ivarIvaOtros" value="${v.iva_otros}" step="0.01" min="0" class="fin-input">
+                    </div>
+                    <div style="display:flex;align-items:flex-end;">
+                        <button id="ivarCalcBtn" class="fin-btn-secondary" style="width:100%;height:34px;font-size:11px;">Calcular desde Total y 21%</button>
+                    </div>
+                    <div style="grid-column:1/-1;">
+                        <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Notas</label>
+                        <textarea id="ivarNotas" rows="2" class="fin-input">${v.notas}</textarea>
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="fin-btn-secondary" id="ivarBtnCancel">Cancelar</button>
+                <button class="fin-btn-primary" id="ivarBtnSave">${isEdit ? 'Actualizar' : 'Crear factura'}</button>
+            `,
+            onOpen: () => {
+                // Helper: calcular IVA 21% desde subtotal y total
+                document.getElementById('ivarCalcBtn')?.addEventListener('click', () => {
+                    const subt = parseFloat(document.getElementById('ivarSubt').value) || 0;
+                    const tot = parseFloat(document.getElementById('ivarTot').value) || 0;
+                    if (tot > 0 && subt === 0) {
+                        // Asumir todo IVA 21%: subtotal = total/1.21
+                        const subtCalc = +(tot / 1.21).toFixed(2);
+                        const iva = +(tot - subtCalc).toFixed(2);
+                        document.getElementById('ivarSubt').value = subtCalc;
+                        document.getElementById('ivarIva21').value = iva;
+                    } else if (subt > 0) {
+                        const iva = +(subt * 0.21).toFixed(2);
+                        document.getElementById('ivarIva21').value = iva;
+                        document.getElementById('ivarTot').value = +(subt + iva).toFixed(2);
+                    }
+                });
+
+                document.getElementById('ivarBtnCancel')?.addEventListener('click', () => Modal.close());
+                document.getElementById('ivarBtnSave')?.addEventListener('click', async () => {
+                    const payload = {
+                        fecha:        document.getElementById('ivarFecha').value,
+                        cuit:         document.getElementById('ivarCuit').value.trim(),
+                        razon_social: document.getElementById('ivarRazon').value.trim(),
+                        descripcion:  document.getElementById('ivarDesc').value.trim(),
+                        subtotal:     parseFloat(document.getElementById('ivarSubt').value) || 0,
+                        iva_21:       parseFloat(document.getElementById('ivarIva21').value) || 0,
+                        iva_10_5:     parseFloat(document.getElementById('ivarIva105').value) || 0,
+                        iva_otros:    parseFloat(document.getElementById('ivarIvaOtros').value) || 0,
+                        total:        parseFloat(document.getElementById('ivarTot').value) || 0,
+                        traido_por:   document.getElementById('ivarTraido').value.trim(),
+                        notas:        document.getElementById('ivarNotas').value.trim(),
+                    };
+                    if (!payload.fecha) { Toast.error('Falta la fecha'); return; }
+                    try {
+                        if (isEdit) {
+                            await API.updateComprobanteIvaRecovery(item.id, payload);
+                            Toast.success('Factura actualizada');
+                        } else {
+                            await API.createComprobanteIvaRecovery(payload);
+                            Toast.success('Factura creada');
+                        }
+                        Modal.close();
+                        await this._loadIvaRecovery();
+                    } catch (e) {
+                        Toast.error('Error al guardar: ' + (e.message || e));
+                    }
+                });
+            },
+        });
     },
 };
