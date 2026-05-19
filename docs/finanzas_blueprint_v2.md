@@ -165,15 +165,25 @@ Arreglar problemas estructurales sin agregar features. **No rompe nada.**
 
 **Tiempo estimado:** 2-3 días.
 
-### Fase C — Plan de pagos avanzado + cobros parciales
+### Fase C — Plan de pagos avanzado + cobros parciales ✅ (commit `795e6f1`)
 
-- ALTER `plan_cobro_items`: agregar `facturar BOOLEAN`, `comprobante_venta_id UUID` (FK), `monto_cobrado NUMERIC`, refinar `estado` (pendiente/facturada/cobrada_parcial/cobrada/vencida).
-- Nueva tabla `cobro_aplicaciones` (junction `cobro_id` ↔ `comprobante_id`, `monto_aplicado`).
-- UI visual del plan: cards con cuotas, barra de progreso, estado por cuota.
-- PDF resumen del plan para enviar al cliente (jsPDF, branding MEPEX, datos bancarios incluidos).
-- Botón "Generar factura de cuota" en cada cuota.
+**Implementado** (`sql/finanzas_fase_c_plan_pagos.sql`):
+- ALTER `plan_cobro_items`: `facturar BOOLEAN DEFAULT true` + `comprobante_venta_id UUID FK comprobantes`. CHECK estado: `pendiente / facturada / parcial / cobrado / vencido / anulada`.
+- Tabla `cobro_aplicaciones` (junction `ingresos.id` ↔ `comprobantes.id` ↔ `plan_cobro_items.id`, `monto_aplicado`, soft delete, RLS admin).
+- VIEW `v_saldo_comprobante`: total − Σ aplicaciones = saldo + `estado_cobranza`.
+- VIEW `v_plan_cobro_resumen`: total_a_facturar/facturado/cobrado/saldo_pendiente + conteos.
+- Trigger `fn_sync_cuota_desde_aplicacion`: AFTER en aplicaciones recalcula `monto_cobrado`/`estado` de cuota.
+- Trigger `fn_marcar_cuota_facturada`: BEFORE UPDATE marca 'facturada' al vincular comprobante.
 
-**Tiempo estimado:** 1 semana.
+**API**: CRUD planes/items, `vincularCuotaAComprobante`, `aplicarCobro` (multi-factura), `getSaldoComprobante`, `getSaldosComprobantesPorCliente`, `getPlanCobroResumen`.
+
+**UI** (`finanzas.js?v=9`): columnas Facturar/Factura en tabla items, barra de progreso doble (cobrado + facturado), modal vincular cuota con factura existente, checkbox `facturar` en modal "Agregar item", botón "📄 Resumen PDF" por plan.
+
+**PDF resumen**: A4 jsPDF, header turquesa MEPEX, tabla cuotas, totales, datos bancarios automáticos (cuentas_financieras oficial+banco), notas.
+
+**No incluido en Fase C**: generar factura desde cuota (queda para Fase D con ARCA). Hoy se vincula factura ya emitida.
+
+**Tiempo real**: ~3-4h efectivas.
 
 ### Fase D — ARCA directo (deprecar La PyME)
 
