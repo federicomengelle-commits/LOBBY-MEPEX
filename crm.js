@@ -805,6 +805,9 @@ const CRM = {
                         </button>
                         ${!isReadOnly ? `
                         <div class="crm-panel-actions">
+                            <button class="crm-panel-btn" id="crmPanelEncuesta" title="Enviar encuesta de evento al cliente" style="color:#00A9C1;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                            </button>
                             <button class="crm-panel-btn" id="crmPanelEdit" title="Editar">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
@@ -938,6 +941,10 @@ const CRM = {
         const editBtn = document.getElementById('crmPanelEdit');
         if (editBtn) editBtn.addEventListener('click', () => this._openEditModal(client));
 
+        // Encuesta a cliente (elige evento del cliente y reusa modal de eventos.js)
+        const encuestaBtn = document.getElementById('crmPanelEncuesta');
+        if (encuestaBtn) encuestaBtn.addEventListener('click', () => this._openEncuestaPicker(client));
+
         // Delete
         const deleteBtn = document.getElementById('crmPanelDelete');
         if (deleteBtn) deleteBtn.addEventListener('click', () => this._deleteClient(client));
@@ -1046,6 +1053,102 @@ const CRM = {
             await this._loadData();
         } else {
             Toast.error('Error al eliminar cliente');
+        }
+    },
+
+    // Picker de evento del cliente para enviar encuesta NPS. Lista los eventos
+    // \u00FAnicos vinculados a sus proyectos. Si solo hay uno, lo elige autom\u00E1tico.
+    // Despu\u00E9s delega en EventosModule._openEncuestaModal para reusar la UI.
+    async _openEncuestaPicker(client) {
+        const loadingModal = Modal.open({
+            title: 'Encuesta al cliente',
+            body: `<div style="display:flex;align-items:center;justify-content:center;min-height:120px;"><div class="spinner"></div></div>`,
+            size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button>`,
+        });
+
+        try {
+            // Eventos \u00FAnicos del cliente (v\u00EDa proyectos)
+            const { data, error } = await supabaseClient
+                .from('proyectos')
+                .select('evento:eventos!evento_id(id, nombre, cliente_id, fecha_evento_inicio)')
+                .eq('cliente_id', client.id)
+                .eq('_deleted', false)
+                .not('evento_id', 'is', null);
+            if (error) throw error;
+
+            const eventosUnicos = [...new Map(
+                (data || [])
+                    .filter(p => p.evento)
+                    .map(p => [p.evento.id, p.evento])
+            ).values()];
+
+            if (eventosUnicos.length === 0) {
+                Modal.close(loadingModal.id);
+                Toast.warning(`${client.name || 'Este cliente'} no tiene eventos vinculados todav\u00EDa.`);
+                return;
+            }
+
+            // Si hay solo 1 evento, salta directo al modal de encuesta de Eventos.
+            if (eventosUnicos.length === 1) {
+                Modal.close(loadingModal.id);
+                const ev = eventosUnicos[0];
+                if (typeof EventosModule !== 'undefined' && EventosModule._openEncuestaModal) {
+                    EventosModule._openEncuestaModal({ id: ev.id, name: ev.nombre, cliente_id: client.id });
+                } else {
+                    Toast.error('No se pudo abrir el modal de encuesta.');
+                }
+                return;
+            }
+
+            // Varios eventos: mostrar picker
+            const body = `
+                <div style="padding: 8px 4px;">
+                    <p style="color: #aaa; font-size: 0.88rem; margin-bottom: 12px;">
+                        ${client.name || 'El cliente'} tiene ${eventosUnicos.length} eventos. Eleg\u00ED el de la encuesta:
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${eventosUnicos.map(ev => {
+                            const fecha = ev.fecha_evento_inicio
+                                ? new Date(ev.fecha_evento_inicio + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+                                : '\u2014 sin fecha';
+                            return `
+                                <button class="crm-enc-event-btn" data-event-id="${ev.id}" data-event-name="${(ev.nombre || '').replace(/"/g, '&quot;')}" style="background:#0e0e0e; border:1px solid #2a2a2a; color:#E8E8E8; padding:10px 12px; border-radius:6px; text-align:left; cursor:pointer; font-family:var(--font-main); transition:all 180ms ease;">
+                                    <div style="font-weight:600;">${ev.nombre || 'Sin nombre'}</div>
+                                    <div style="font-family:var(--font-mono); font-size:0.72rem; color:#666; margin-top:2px;">${fecha}</div>
+                                </button>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+                <style>
+                    .crm-enc-event-btn:hover { border-color: #00A9C1 !important; background:#1a1a1a !important; }
+                </style>
+            `;
+
+            // Reemplazar el contenido del modal (no abrir uno nuevo)
+            const modalBody = document.querySelector(`#modal-${loadingModal.id} .modal-body`)
+                           || document.querySelector('.modal-body');
+            if (modalBody) modalBody.innerHTML = body;
+
+            setTimeout(() => {
+                document.querySelectorAll('.crm-enc-event-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const evId = btn.dataset.eventId;
+                        const evName = btn.dataset.eventName;
+                        Modal.close(loadingModal.id);
+                        if (typeof EventosModule !== 'undefined' && EventosModule._openEncuestaModal) {
+                            EventosModule._openEncuestaModal({ id: evId, name: evName, cliente_id: client.id });
+                        } else {
+                            Toast.error('No se pudo abrir el modal de encuesta.');
+                        }
+                    });
+                });
+            }, 50);
+        } catch (e) {
+            console.error('[CRM] Encuesta picker error:', e);
+            Modal.close(loadingModal.id);
+            Toast.error('Error al cargar eventos del cliente.');
         }
     },
 
