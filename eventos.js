@@ -663,12 +663,11 @@ const EventosModule = {
                 ${this._renderPanelNotas(ev, notas)}
 
                 <!-- Actions -->
+                <!-- "Enviar encuesta al cliente" removido del panel del Evento.
+                     El método _openEncuestaModal queda definido para conectarlo
+                     a otro lado (probablemente Proyectos). -->
                 ${!this._isRO ? `
                 <div class="ev-panel-section ev-panel-actions">
-                    <button class="btn btn-ghost ev-btn-encuesta" data-event-id="${ev.id}" style="border-color: rgba(0,169,193,0.4); color: #00A9C1;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                        Enviar encuesta al cliente
-                    </button>
                     <button class="btn btn-ghost ev-btn-delete-event" data-event-id="${ev.id}">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         Eliminar evento
@@ -1282,13 +1281,109 @@ const EventosModule = {
         const container = document.getElementById('evTransporteContent');
         if (!container) return;
         try {
-            const movimientos = await API.getEventoTransporte(eventoId);
+            // Cargas nuevas (schema UUID) en paralelo con transporte legacy.
+            const [cargasNew, movimientos] = await Promise.all([
+                API.getCargas({ eventoId }).then(rs => (rs || []).filter(c => c.estado !== 'cancelada')),
+                API.getEventoTransporte(eventoId),
+            ]);
             this._transporteCache[eventoId] = movimientos;
-            container.innerHTML = this._renderPanelTransporte(eventoId, movimientos);
-            this._attachTransporteEvents(eventoId, movimientos);
+
+            // Si hay cargas nuevas, mostramos esa sección (más completa). El
+            // transporte legacy queda como fallback solo cuando no hay cargas
+            // nuevas, para no duplicar visualmente.
+            if (cargasNew.length > 0) {
+                container.innerHTML = this._renderPanelCargasNew(eventoId, cargasNew);
+                this._attachCargasNewEvents();
+            } else {
+                container.innerHTML = this._renderPanelTransporte(eventoId, movimientos);
+                this._attachTransporteEvents(eventoId, movimientos);
+            }
         } catch (e) {
             container.innerHTML = `<div class="ev-panel-section"><p class="ev-section-empty" style="color:#F28D15">Error cargando transporte</p></div>`;
         }
+    },
+
+    // Render compacto de cargas nuevas (schema UUID) en el side panel del evento.
+    // La vista completa con CRUD está en el módulo Logística. Acá solo info y deep-link.
+    _renderPanelCargasNew(eventoId, cargas) {
+        const byFase = { armado: [], desarme: [], intermedio: [] };
+        cargas.forEach(c => { (byFase[c.fase || 'armado'] || byFase.armado).push(c); });
+        const faseColor = { armado: '#00CC88', desarme: '#F28D15', intermedio: '#9B7DFF' };
+        const faseLabel = { armado: 'Armado', desarme: 'Desarme', intermedio: 'Intermedio' };
+        const estadoColor = {
+            borrador: '#888', aprobada: '#00A9C1', en_curso: '#F28D15',
+            completada: '#00CC88', cancelada: '#ff4444'
+        };
+
+        const renderCarga = (c) => {
+            const veh = c.vehiculo?.descripcion || 'Sin vehículo';
+            const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : 'Sin chofer';
+            const fechaHora = c.fecha
+                ? `${this._fmtDate(c.fecha)}${c.hora_carga ? ' ' + c.hora_carga.slice(0,5) : ''}`
+                : '—';
+            const numStands = (c.carga_proyectos || []).length;
+            return `
+                <div class="ev-cargaN-item" data-carga-id="${c.id}" style="border-left-color:${estadoColor[c.estado] || '#888'};">
+                    <div class="ev-cargaN-head">
+                        <span class="ev-cargaN-veh">🚚 ${this._escAttr(veh)}</span>
+                        <span class="ev-cargaN-estado" style="color:${estadoColor[c.estado] || '#888'};">${c.estado}</span>
+                    </div>
+                    <div class="ev-cargaN-meta">
+                        <span>👤 ${this._escAttr(chofer)}</span>
+                        <span>📅 ${fechaHora}</span>
+                        <span>📦 ${numStands} stand${numStands === 1 ? '' : 's'}</span>
+                    </div>
+                </div>
+            `;
+        };
+
+        const faseBlock = (key) => {
+            const list = byFase[key];
+            if (!list || list.length === 0) return '';
+            return `
+                <div class="ev-cargaN-fase">
+                    <div class="ev-cargaN-fase-label" style="color:${faseColor[key]};">${faseLabel[key]} (${list.length})</div>
+                    ${list.map(renderCarga).join('')}
+                </div>
+            `;
+        };
+
+        return `
+            <style>
+                .ev-cargaN-item {
+                    background:#1a1a1a; border:1px solid #2a2a2a;
+                    border-left:3px solid #888; border-radius:6px;
+                    padding:8px 10px; margin-bottom:6px; cursor:pointer;
+                    transition: all 150ms ease;
+                }
+                .ev-cargaN-item:hover { background:#222; border-color:#00A9C1; }
+                .ev-cargaN-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:4px; }
+                .ev-cargaN-veh { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
+                .ev-cargaN-estado { font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; font-weight:700; }
+                .ev-cargaN-meta { display:flex; flex-wrap:wrap; gap:10px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; }
+                .ev-cargaN-fase { margin-bottom: 8px; }
+                .ev-cargaN-fase-label { font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px; font-weight:700; }
+            </style>
+            <div class="ev-panel-section" id="evSecTransporte">
+                <div class="ev-section-header">
+                    <h3 class="ev-section-title">Cargas
+                        <span class="ev-equipo-count">${cargas.length}</span>
+                    </h3>
+                    <a href="#logistica?tab=cargas" class="ev-add-persona-btn" style="text-decoration:none;">→ Ver / crear en Logística</a>
+                </div>
+                ${faseBlock('armado')}
+                ${faseBlock('intermedio')}
+                ${faseBlock('desarme')}
+            </div>
+        `;
+    },
+
+    _attachCargasNewEvents() {
+        document.querySelectorAll('.ev-cargaN-item[data-carga-id]').forEach(el => {
+            el.addEventListener('click', () => {
+                window.location.hash = `logistica?tab=cargas&id=${el.dataset.cargaId}`;
+            });
+        });
     },
 
     _renderPanelTransporte(eventoId, movimientos) {
@@ -1797,7 +1892,8 @@ const EventosModule = {
             }
         });
 
-        // Enviar encuesta al cliente (Tanda 3.B)
+        // Botón encuesta removido del panel de Evento. El handler queda inerte
+        // por seguridad si en alguna iteración futura vuelve el botón.
         document.querySelector('.ev-btn-encuesta')?.addEventListener('click', () => {
             this._openEncuestaModal(ev);
         });
