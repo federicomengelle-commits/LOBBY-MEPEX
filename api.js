@@ -1587,6 +1587,9 @@ const API = {
         }
     },
 
+    // F.13 — contrato { ok, error?, data?, accumulated?, cantidad?, id? }.
+    // En error devolvemos el mensaje crudo de Postgres para que el frontend
+    // pueda mostrar el motivo real (ej: "Ciclo detectado: ...").
     async addRecetaComponente(data) {
         try {
             const itemId = parseInt(data.itemId, 10);
@@ -1596,7 +1599,7 @@ const API = {
 
             if (!Number.isFinite(itemId) || !Number.isFinite(componenteId)) {
                 console.warn('[API] addRecetaComponente: IDs inválidos', { itemId: data.itemId, componenteId: data.componenteId });
-                return null;
+                return { ok: false, error: 'IDs inválidos' };
             }
 
             // Dedupe acumulativo: si ya existe el mismo (item, tipo, componente)
@@ -1617,7 +1620,7 @@ const API = {
                 await UndoHelpers.updateRecord('receta_componentes', fila.id,
                     { cantidad: nuevaCantidad },
                     'Acumulo cantidad en componente de receta');
-                return { id: fila.id, accumulated: true, cantidad: nuevaCantidad };
+                return { ok: true, id: fila.id, accumulated: true, cantidad: nuevaCantidad };
             }
 
             const payload = {
@@ -1629,10 +1632,14 @@ const API = {
                 notas: data.notas || '',
             };
             const result = await UndoHelpers.createRecord('receta_componentes', payload, 'Nuevo componente de receta');
-            return result || true;
+            return { ok: true, data: result || true };
         } catch (e) {
-            console.warn('[API] Error adding receta componente:', e.message);
-            return null;
+            const raw = e?.message || String(e);
+            // El trigger check_no_ciclo_receta tira mensajes en español ya
+            // formateados, los pasamos tal cual.
+            const friendly = raw;
+            console.warn('[API] Error adding receta componente:', raw);
+            return { ok: false, error: friendly };
         }
     },
 

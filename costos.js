@@ -2926,6 +2926,20 @@ const CostosModule = {
         const fresh = this._catalogoItems.find(i => String(i.id) === String(item.id));
         if (fresh) Object.assign(item, fresh);
 
+        // F.13.2 — Edge case: item propio sin componentes. La RPC devolvería
+        // costo=0 y precio=0 silenciosamente. Avisamos y abortamos.
+        if (item.tipoReceta === 'propio') {
+            let comps = this._recetaCache?.[item.id];
+            if (!Array.isArray(comps)) {
+                comps = await API.getRecetaComponentes(item.id);
+            }
+            if (!comps || comps.length === 0) {
+                Toast.warning('Este item propio no tiene componentes — agregá insumos o sub-recetas antes de recalcular');
+                this._recalcInProgress = false;
+                return;
+            }
+        }
+
         const btn = document.getElementById('costosRecetaRecalcBtn');
         const originalHtml = btn?.innerHTML;
         if (btn) {
@@ -3157,14 +3171,29 @@ const CostosModule = {
 
     // ─── Add insumo to recipe ───
 
+    // F.13.3 — Un insumo "sin VU operativa" rompe la división por vida útil en
+    // la RPC `calcular_receta` (devuelve NULL o ∞). Detectable cuando no tiene
+    // ni tipo_amortizacion ni override > 0.
+    _insumoSinVU(i) {
+        if (!i) return false;
+        const tiene = Boolean(i.tipoAmortizacion) || (Number(i.vidaUtilOverride) > 0);
+        return !tiene;
+    },
+
     _openAddInsumoModal(item) {
-        const insumosList = this._insumos.map(i => `
-            <div class="costos-add-insumo-row" data-insumo-id="${i.id}">
-                <span class="costos-add-insumo-name">${i.nombre}</span>
+        const insumosList = this._insumos.map(i => {
+            const sinVU = this._insumoSinVU(i);
+            const warnBadge = sinVU
+                ? `<span class="costos-add-insumo-warn" title="Sin tipo de amortización: este insumo no tiene VU definida y romperá el cálculo de la receta" style="color:var(--accent); font-size:11px; margin-left:6px;">⚠ sin VU</span>`
+                : '';
+            return `
+            <div class="costos-add-insumo-row${sinVU ? ' costos-add-insumo-row--warn' : ''}" data-insumo-id="${i.id}" data-sin-vu="${sinVU ? '1' : '0'}">
+                <span class="costos-add-insumo-name">${i.nombre}${warnBadge}</span>
                 <span class="costos-add-insumo-code">${i.codigo || ''}</span>
                 <span class="costos-add-insumo-cost">${API.formatCurrency(i.costoUnitario)}/${i.unidadBase}</span>
             </div>
-        `).join('');
+        `;
+        }).join('');
 
         const instance = Modal.open({
             title: '📦 Agregar insumo a la receta',
@@ -3230,6 +3259,20 @@ const CostosModule = {
                     const cantidad = parseFloat(document.getElementById('costosAddInsumoCantidad')?.value) || 1;
                     const insumo = this._insumos.find(i => String(i.id) === String(selectedInsumoId));
 
+                    // F.13.3 — Si el insumo no tiene VU operativa, advertir.
+                    // Permitir continuar (el usuario puede querer cargarla después)
+                    // pero que sepa que el recalcular fallará/dará costo=0.
+                    if (this._insumoSinVU(insumo)) {
+                        const proceed = await Modal.confirm({
+                            title: '⚠ Insumo sin amortización',
+                            message: `<p style="margin:0 0 8px 0"><strong>${insumo?.nombre}</strong> no tiene tipo de amortización asignado ni vida útil override.</p>
+                                      <p style="margin:0; color:var(--text-muted); font-size:13px;">La RPC <code>calcular_receta</code> no podrá amortizar este componente y el costo por uso dará 0 o error. Recomendado: cargar tipo de amortización en el tab Insumos antes de continuar.</p>`,
+                            confirmText: 'Agregar igual',
+                            cancelText: 'Cancelar',
+                        });
+                        if (!proceed) return;
+                    }
+
                     const result = await API.addRecetaComponente({
                         itemId: item.id,
                         componenteType: 'insumo',
@@ -3238,12 +3281,12 @@ const CostosModule = {
                         unidadUso: insumo?.unidadBase || '',
                     });
 
-                    if (result) {
+                    if (result?.ok) {
                         Toast.success(`Insumo "${insumo?.nombre}" agregado a la receta`);
                         Modal.close(instance);
                         await this._loadRecetaContent(item);
                     } else {
-                        Toast.error('Error al agregar insumo');
+                        Toast.error(result?.error || 'Error al agregar insumo');
                     }
                 });
             }
@@ -3360,13 +3403,16 @@ const CostosModule = {
                         unidadUso: childItem?.unidad || 'u',
                     });
 
-                    if (result) {
+                    if (result?.ok) {
                         Toast.success(`Receta "${childItem?.nombre}" agregada como componente`);
                         Modal.close(instance);
                         this._invalidateSubcompsCache(selectedChildId);
                         await this._loadRecetaContent(item);
                     } else {
-                        Toast.error('Error al agregar receta');
+                        // F.13.1 — el trigger SQL puede devolver "Ciclo detectado..."
+                        // si el guard de validarNoCiclo falló (race condition o
+                        // datos stale). Mostramos el mensaje real.
+                        Toast.error(result?.error || 'Error al agregar receta');
                         confirmBtn.disabled = false;
                         confirmBtn.textContent = 'Agregar';
                     }
@@ -3452,6 +3498,8 @@ const CostosModule = {
                     }
 
                     let added = 0;
+                    let failed = 0;
+                    let lastError = '';
                     for (const comp of sourceComps) {
                         const result = await API.addRecetaComponente({
                             itemId: item.id,
@@ -3460,11 +3508,23 @@ const CostosModule = {
                             cantidad: comp.cantidad,
                             unidadUso: comp.unidadUso,
                         });
-                        if (result) added++;
+                        if (result?.ok) {
+                            added++;
+                        } else {
+                            failed++;
+                            if (result?.error) lastError = result.error;
+                        }
                     }
 
                     const sourceItem = this._catalogoItems.find(i => String(i.id) === String(selectedItemId));
-                    Toast.success(`Receta de "${sourceItem?.nombre}" copiada (${added} componentes)`);
+                    if (failed === 0) {
+                        Toast.success(`Receta de "${sourceItem?.nombre}" copiada (${added} componentes)`);
+                    } else if (added > 0) {
+                        // F.13.1 — algunos fallaron (típicamente por ciclo BOM).
+                        Toast.warning(`Copiados ${added} · ${failed} fallaron${lastError ? ' · ' + lastError : ''}`);
+                    } else {
+                        Toast.error(lastError || `No se pudo copiar la receta`);
+                    }
                     Modal.close(instance);
                     await this._loadRecetaContent(item);
                 });
