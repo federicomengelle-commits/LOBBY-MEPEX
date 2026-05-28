@@ -115,7 +115,8 @@ const FinanzasModule = {
     _panelKPIs: {},
 
     // Reportes
-    _repSubtab: 'estado', // 'estado' | 'proyecto' | 'cliente' | 'cashflow' | 'iva'
+    _repSubtab: 'estado', // 'estado' | 'proyecto' | 'cliente' | 'cashflow' | 'iva' | 'me'
+    _meMonedaFiltro: '', // '' = todas | 'USD' | 'EUR'
     _repPeriodo: 'mes', // 'mes' | 'trimestre' | 'anio' | 'custom'
     _repDesde: '',
     _repHasta: '',
@@ -6075,6 +6076,7 @@ const FinanzasModule = {
                 <button class="fin-subtab ${this._repSubtab === 'cliente' ? 'active' : ''}" data-reptab="cliente">Rent. Cliente</button>
                 <button class="fin-subtab ${this._repSubtab === 'cashflow' ? 'active' : ''}" data-reptab="cashflow">Cashflow Proy.</button>
                 <button class="fin-subtab ${this._repSubtab === 'iva' ? 'active' : ''}" data-reptab="iva">IVA</button>
+                <button class="fin-subtab ${this._repSubtab === 'me' ? 'active' : ''}" data-reptab="me">🌐 Mov. ME</button>
             </div>
             <div class="fin-report-toolbar">
                 <span class="fin-filter-label">Período</span>
@@ -6125,6 +6127,140 @@ const FinanzasModule = {
         else if (this._repSubtab === 'cliente') await this._renderRentCliente(main, desde, hasta, canal);
         else if (this._repSubtab === 'cashflow') await this._renderCashflowProy(main);
         else if (this._repSubtab === 'iva') await this._renderReporteIVA(main, desde, hasta);
+        else if (this._repSubtab === 'me') await this._renderMovExtranjeros(main, desde, hasta);
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTE: MOVIMIENTOS EN MONEDA EXTRANJERA
+    //  (Fase G.4 — consolida ingresos/egresos/comprobantes
+    //   con moneda != ARS, muestra cotización + total_en_ars)
+    // ═══════════════════════════════════════════
+
+    async _renderMovExtranjeros(main, desde, hasta) {
+        if (!main) return;
+        main.innerHTML = '<div class="fin-loading"><div class="spinner"></div> Cargando movimientos en moneda extranjera…</div>';
+
+        const monedaFiltro = this._meMonedaFiltro || null;
+        const tablas = [
+            { key: 'ingresos',               label: 'Ingreso',       conceptField: 'concepto' },
+            { key: 'egresos',                label: 'Egreso',        conceptField: 'concepto' },
+            { key: 'comprobantes',           label: 'Factura emit.', conceptField: 'razon_social_cliente' },
+            { key: 'comprobantes_recibidos', label: 'Factura recib.',conceptField: 'razon_social_proveedor' },
+        ];
+
+        let rows = [];
+        try {
+            const results = await Promise.all(
+                tablas.map(t => API.getMovimientosExtranjeros(t.key, { fechaDesde: desde, fechaHasta: hasta, moneda: monedaFiltro }))
+            );
+            results.forEach((data, idx) => {
+                const t = tablas[idx];
+                data.forEach(r => {
+                    const monto = Number(r.monto != null ? r.monto : r.total) || 0;
+                    rows.push({
+                        fecha: r.fecha || '',
+                        tipo: t.label,
+                        tabla: t.key,
+                        concepto: r[t.conceptField] || r.concepto || r.razon_social_cliente || r.razon_social_proveedor || '—',
+                        moneda: r.moneda || 'ARS',
+                        monto,
+                        cotizacion: Number(r.cotizacion) || 1,
+                        total_ars: Number(r.total_en_ars) || (monto * (Number(r.cotizacion) || 1)),
+                    });
+                });
+            });
+        } catch (e) {
+            console.warn('[Finanzas] _renderMovExtranjeros:', e);
+            main.innerHTML = `<div class="fin-empty">Error al cargar movimientos en moneda extranjera.</div>`;
+            return;
+        }
+
+        // Sort por fecha desc
+        rows.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+
+        // KPIs por moneda
+        const porMoneda = {};
+        rows.forEach(r => {
+            if (!porMoneda[r.moneda]) porMoneda[r.moneda] = { count: 0, totalME: 0, totalARS: 0 };
+            porMoneda[r.moneda].count++;
+            porMoneda[r.moneda].totalME += r.monto;
+            porMoneda[r.moneda].totalARS += r.total_ars;
+        });
+
+        const kpis = Object.entries(porMoneda).map(([mon, v]) => `
+            <div class="fin-kpi">
+                <div class="fin-kpi-label">${mon}</div>
+                <div class="fin-kpi-value">${v.totalME.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div class="fin-kpi-sub">${v.count} mov · equiv. ${this._formatMoney(v.totalARS)}</div>
+            </div>
+        `).join('');
+
+        // Para CSV
+        this._lastReportData = rows.map(r => ({
+            fecha: r.fecha,
+            tipo: r.tipo,
+            concepto: r.concepto,
+            moneda: r.moneda,
+            monto: r.monto,
+            cotizacion: r.cotizacion,
+            total_ars: r.total_ars,
+        }));
+
+        const filtrosHtml = `
+            <div class="fin-report-toolbar" style="margin-bottom:12px;">
+                <span class="fin-filter-label">Moneda</span>
+                <select class="fin-filter-select" id="finMeMonedaFiltro">
+                    <option value="" ${!this._meMonedaFiltro ? 'selected' : ''}>Todas</option>
+                    <option value="USD" ${this._meMonedaFiltro === 'USD' ? 'selected' : ''}>USD</option>
+                    <option value="EUR" ${this._meMonedaFiltro === 'EUR' ? 'selected' : ''}>EUR</option>
+                </select>
+            </div>
+        `;
+
+        const tablaHtml = rows.length === 0
+            ? `<div class="fin-empty">Sin movimientos en moneda extranjera en el período seleccionado.</div>`
+            : `
+                <table class="fin-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Tipo</th>
+                            <th>Concepto</th>
+                            <th style="text-align:right;">Moneda</th>
+                            <th style="text-align:right;">Monto</th>
+                            <th style="text-align:right;">Cotización</th>
+                            <th style="text-align:right;">Equiv. ARS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(r => `
+                            <tr>
+                                <td>${r.fecha || '—'}</td>
+                                <td><span class="fin-chip fin-chip-${r.tabla}">${r.tipo}</span></td>
+                                <td>${r.concepto}</td>
+                                <td style="text-align:right;"><span class="fin-moneda-chip" style="background:rgba(242,141,21,0.15); color:var(--accent); padding:2px 6px; border-radius:4px; font-size:11px;">${r.moneda}</span></td>
+                                <td style="text-align:right; font-variant-numeric: tabular-nums;">${r.monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                <td style="text-align:right; color:var(--text-muted); font-variant-numeric: tabular-nums;">${r.cotizacion.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+                                <td style="text-align:right; font-variant-numeric: tabular-nums;">${this._formatMoney(r.total_ars)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+        main.innerHTML = `
+            ${filtrosHtml}
+            <div class="fin-kpis" style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+                ${kpis || '<div style="color:var(--text-muted); font-size:13px;">Sin movimientos para mostrar KPIs.</div>'}
+            </div>
+            ${tablaHtml}
+        `;
+
+        // Listener para el filtro de moneda
+        document.getElementById('finMeMonedaFiltro')?.addEventListener('change', (e) => {
+            this._meMonedaFiltro = e.target.value || '';
+            this._loadReporteData();
+        });
     },
 
     // ═══════════════════════════════════════════
