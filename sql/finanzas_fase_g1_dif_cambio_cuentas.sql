@@ -26,18 +26,19 @@
 
 BEGIN;
 
--- Validación previa: las raíces 4 y 5 tienen que existir.
+-- Validación previa: las raíces 4 y 5 tienen que existir, y reportar las
+-- columnas que vamos a heredar (tipo + naturaleza, ambas NOT NULL).
 DO $$
 DECLARE
     v_raiz_4 RECORD;
     v_raiz_5 RECORD;
 BEGIN
-    SELECT codigo, nombre, tipo INTO v_raiz_4
+    SELECT codigo, nombre, tipo, naturaleza INTO v_raiz_4
     FROM plan_cuentas
     WHERE codigo = '4' AND _deleted = false
     LIMIT 1;
 
-    SELECT codigo, nombre, tipo INTO v_raiz_5
+    SELECT codigo, nombre, tipo, naturaleza INTO v_raiz_5
     FROM plan_cuentas
     WHERE codigo = '5' AND _deleted = false
     LIMIT 1;
@@ -48,6 +49,12 @@ BEGIN
     IF v_raiz_5.codigo IS NULL THEN
         RAISE EXCEPTION '[Fase G.1] No existe cuenta raíz codigo=5 en plan_cuentas. Crear primero.';
     END IF;
+    IF v_raiz_4.naturaleza IS NULL THEN
+        RAISE EXCEPTION '[Fase G.1] Cuenta raíz 4 tiene naturaleza=NULL — corregir antes de continuar.';
+    END IF;
+    IF v_raiz_5.naturaleza IS NULL THEN
+        RAISE EXCEPTION '[Fase G.1] Cuenta raíz 5 tiene naturaleza=NULL — corregir antes de continuar.';
+    END IF;
 
     IF v_raiz_4.tipo <> 'ingreso' THEN
         RAISE WARNING '[Fase G.1] Cuenta raíz 4 tiene tipo=% (esperaba ingreso). 4.9.01 heredará ese tipo.', v_raiz_4.tipo;
@@ -56,33 +63,34 @@ BEGIN
         RAISE WARNING '[Fase G.1] Cuenta raíz 5 tiene tipo=% (esperaba egreso). 5.9.01 heredará ese tipo.', v_raiz_5.tipo;
     END IF;
 
-    RAISE NOTICE '[Fase G.1] Raíces verificadas: 4=% (%) · 5=% (%)',
-        v_raiz_4.nombre, v_raiz_4.tipo, v_raiz_5.nombre, v_raiz_5.tipo;
+    RAISE NOTICE '[Fase G.1] Raíces verificadas: 4=% (tipo=%, nat=%) · 5=% (tipo=%, nat=%)',
+        v_raiz_4.nombre, v_raiz_4.tipo, v_raiz_4.naturaleza,
+        v_raiz_5.nombre, v_raiz_5.tipo, v_raiz_5.naturaleza;
 END $$;
 
 
 -- ─── 4.9 Resultados financieros (grupo bajo Ingresos) ───
-INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, nivel, es_grupo, imputable, _deleted)
-SELECT '4.9', '4', 'Resultados financieros', tipo, 2, true, false, false
+INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, naturaleza, nivel, es_grupo, imputable, _deleted)
+SELECT '4.9', '4', 'Resultados financieros', tipo, naturaleza, 2, true, false, false
 FROM plan_cuentas WHERE codigo = '4' AND _deleted = false
 ON CONFLICT (codigo) DO NOTHING;
 
 -- ─── 4.9.01 Diferencia de cambio positiva (hoja imputable) ───
-INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, nivel, es_grupo, imputable, _deleted)
-SELECT '4.9.01', '4.9', 'Diferencia de cambio positiva', tipo, 3, false, true, false
+INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, naturaleza, nivel, es_grupo, imputable, _deleted)
+SELECT '4.9.01', '4.9', 'Diferencia de cambio positiva', tipo, naturaleza, 3, false, true, false
 FROM plan_cuentas WHERE codigo = '4' AND _deleted = false
 ON CONFLICT (codigo) DO NOTHING;
 
 
 -- ─── 5.9 Resultados financieros (grupo bajo Egresos) ───
-INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, nivel, es_grupo, imputable, _deleted)
-SELECT '5.9', '5', 'Resultados financieros', tipo, 2, true, false, false
+INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, naturaleza, nivel, es_grupo, imputable, _deleted)
+SELECT '5.9', '5', 'Resultados financieros', tipo, naturaleza, 2, true, false, false
 FROM plan_cuentas WHERE codigo = '5' AND _deleted = false
 ON CONFLICT (codigo) DO NOTHING;
 
 -- ─── 5.9.01 Diferencia de cambio negativa (hoja imputable) ───
-INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, nivel, es_grupo, imputable, _deleted)
-SELECT '5.9.01', '5.9', 'Diferencia de cambio negativa', tipo, 3, false, true, false
+INSERT INTO plan_cuentas (codigo, codigo_padre, nombre, tipo, naturaleza, nivel, es_grupo, imputable, _deleted)
+SELECT '5.9.01', '5.9', 'Diferencia de cambio negativa', tipo, naturaleza, 3, false, true, false
 FROM plan_cuentas WHERE codigo = '5' AND _deleted = false
 ON CONFLICT (codigo) DO NOTHING;
 
@@ -93,10 +101,10 @@ DECLARE
     v_pos RECORD;
     v_neg RECORD;
 BEGIN
-    SELECT codigo, nombre, tipo, imputable INTO v_pos
+    SELECT codigo, nombre, tipo, naturaleza, imputable INTO v_pos
     FROM plan_cuentas WHERE codigo = '4.9.01' AND _deleted = false LIMIT 1;
 
-    SELECT codigo, nombre, tipo, imputable INTO v_neg
+    SELECT codigo, nombre, tipo, naturaleza, imputable INTO v_neg
     FROM plan_cuentas WHERE codigo = '5.9.01' AND _deleted = false LIMIT 1;
 
     IF v_pos.codigo IS NULL OR v_neg.codigo IS NULL THEN
@@ -105,8 +113,8 @@ BEGIN
 
     RAISE NOTICE '═══════════════════════════════════════════';
     RAISE NOTICE 'Fase G.1 — Cuentas dif. cambio listas.';
-    RAISE NOTICE '  ✓ 4.9.01 % (tipo=%, imputable=%)', v_pos.nombre, v_pos.tipo, v_pos.imputable;
-    RAISE NOTICE '  ✓ 5.9.01 % (tipo=%, imputable=%)', v_neg.nombre, v_neg.tipo, v_neg.imputable;
+    RAISE NOTICE '  ✓ 4.9.01 % (tipo=%, nat=%, imputable=%)', v_pos.nombre, v_pos.tipo, v_pos.naturaleza, v_pos.imputable;
+    RAISE NOTICE '  ✓ 5.9.01 % (tipo=%, nat=%, imputable=%)', v_neg.nombre, v_neg.tipo, v_neg.naturaleza, v_neg.imputable;
     RAISE NOTICE '';
     RAISE NOTICE 'Próximo: usar estos UUIDs en el front al llamar';
     RAISE NOTICE 'fn_registrar_diferencia_cambio(...) desde el JS de cobros.';
