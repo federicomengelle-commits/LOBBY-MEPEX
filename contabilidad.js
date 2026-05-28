@@ -16,9 +16,14 @@ const ContabilidadModule = {
         { key: 'libro_diario',    label: 'Libro diario',    icon: '\u{1F4D6}' },
         { key: 'libro_mayor',     label: 'Libro mayor',     icon: '\u{1F4CB}' },
         { key: 'asiento_manual',  label: 'Asiento manual',  icon: '\u270F\uFE0F' },
+        { key: 'mapeos',          label: 'Mapeos auto.',    icon: '\u{1F517}' },
         { key: 'libros_iva',      label: 'Libros IVA',      icon: '\u{1F9FE}' },
         { key: 'reportes',        label: 'Reportes',        icon: '\u{1F4CA}' },
     ],
+
+    // Mapeos autom\u00E1ticos state (Fase G.2 \u2014 destraba asientos auto)
+    _mapeos: [],
+    _mapeoFiltroTipo: '',  // '' | 'ingreso' | 'egreso'
 
     // Toggle A/B — SINCRONIZADO con Finanzas (mismo localStorage key)
     get _canalVista() {
@@ -1891,6 +1896,12 @@ const ContabilidadModule = {
                 container.innerHTML = this._buildLibrosIVAShell();
                 this._attachLibrosIVAEvents();
                 await this._renderIVASubtab();
+                break;
+            case 'mapeos':
+                container.innerHTML = this._buildMapeosHTML();
+                await Promise.all([this._loadMapeos(), this._loadCuentasImputables()]);
+                this._renderMapeosTable();
+                this._attachMapeosEvents();
                 break;
             case 'reportes':
                 container.innerHTML = this._buildReportesShell();
@@ -4680,5 +4691,303 @@ const ContabilidadModule = {
                 this._renderTabContent();
             });
         });
+    },
+
+
+    // ═══════════════════════════════════════════════════════════════
+    //  TAB: MAPEOS AUTOMÁTICOS (Fase G.2)
+    //  Reglas para que fn_asiento_auto_ingreso / fn_asiento_auto_egreso
+    //  encuentren la cuenta contable correcta al confirmar/pagar.
+    //  Match por tipo_movimiento + campo_origen + valor_origen.
+    //  fallback genérico = campo_origen IS NULL.
+    // ═══════════════════════════════════════════════════════════════
+
+    _buildMapeosHTML() {
+        return `
+            <div class="cont-mapeos-wrap" style="padding:16px;">
+                <div style="margin-bottom:12px; color:var(--text-muted); font-size:13px; line-height:1.5;">
+                    Reglas que el sistema usa para generar <strong>asientos contables automáticos</strong> al
+                    confirmar un ingreso o pagar un egreso. Por cada regla configurás:
+                    <em>qué tipo de movimiento</em>, <em>qué campo y valor</em> hay que matchear, y
+                    <em>qué cuenta contable</em> usar como contrapartida.
+                    Una regla con campo vacío actúa como <strong>fallback genérico</strong>
+                    (se usa cuando ningún match específico aplica).
+                </div>
+                <div class="cont-toolbar" style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                    <select id="contMapeoFiltroTipo" class="cont-form-select" style="width:160px;">
+                        <option value="" ${!this._mapeoFiltroTipo ? 'selected' : ''}>Todos los tipos</option>
+                        <option value="ingreso" ${this._mapeoFiltroTipo === 'ingreso' ? 'selected' : ''}>Ingresos</option>
+                        <option value="egreso"  ${this._mapeoFiltroTipo === 'egreso'  ? 'selected' : ''}>Egresos</option>
+                    </select>
+                    <button class="btn btn-primary" id="contMapeoNuevoBtn" style="margin-left:auto;">+ Nuevo mapeo</button>
+                </div>
+                <div id="contMapeosTableWrap"></div>
+            </div>
+        `;
+    },
+
+    async _loadMapeos() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('mapeo_cuentas')
+                .select(`
+                    id, tipo_movimiento, campo_origen, valor_origen,
+                    cuenta_contable_id, posicion, activo, descripcion
+                `)
+                .eq('_deleted', false)
+                .order('tipo_movimiento')
+                .order('posicion');
+            if (error) throw error;
+            this._mapeos = data || [];
+        } catch (e) {
+            console.warn('[Contabilidad] _loadMapeos:', e.message);
+            this._mapeos = [];
+        }
+    },
+
+    _renderMapeosTable() {
+        const wrap = document.getElementById('contMapeosTableWrap');
+        if (!wrap) return;
+
+        let rows = this._mapeos;
+        if (this._mapeoFiltroTipo) rows = rows.filter(r => r.tipo_movimiento === this._mapeoFiltroTipo);
+
+        if (rows.length === 0) {
+            wrap.innerHTML = `
+                <div class="cont-empty" style="text-align:center; padding:32px; color:var(--text-muted);">
+                    <div style="font-size:32px; margin-bottom:8px;">🔗</div>
+                    <div>No hay mapeos configurados.</div>
+                    <div style="font-size:12px; margin-top:6px;">Sin mapeos, los ingresos/egresos confirmados no generan asiento automático.</div>
+                </div>
+            `;
+            return;
+        }
+
+        const cuentasMap = {};
+        (this._cuentasImputables || []).forEach(c => { cuentasMap[c.id] = c; });
+
+        wrap.innerHTML = `
+            <table class="cont-table" style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr style="text-align:left; border-bottom:1px solid var(--border); color:var(--text-muted); font-size:12px; text-transform:uppercase;">
+                        <th style="padding:8px;">Tipo</th>
+                        <th style="padding:8px;">Campo</th>
+                        <th style="padding:8px;">Valor</th>
+                        <th style="padding:8px;">Cuenta contable</th>
+                        <th style="padding:8px; text-align:center;">Pos.</th>
+                        <th style="padding:8px; text-align:center;">Activo</th>
+                        <th style="padding:8px;">Descripción</th>
+                        <th style="padding:8px; width:120px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(r => {
+                        const c = cuentasMap[r.cuenta_contable_id];
+                        const cuentaLabel = c ? `<strong>${c.codigo}</strong> · ${c.nombre}` : `<em style="color:var(--color-error);">cuenta no encontrada</em>`;
+                        const campo = r.campo_origen
+                            ? `<code style="font-size:11px;">${r.campo_origen}</code>`
+                            : `<span style="color:var(--text-muted); font-style:italic;">(genérico)</span>`;
+                        const valor = r.valor_origen
+                            ? `<code style="font-size:11px;">${r.valor_origen}</code>`
+                            : '—';
+                        const tipoBadge = r.tipo_movimiento === 'ingreso'
+                            ? `<span style="background:rgba(0,204,136,0.15); color:var(--color-success); padding:2px 8px; border-radius:4px; font-size:11px;">INGRESO</span>`
+                            : `<span style="background:rgba(255,68,68,0.15); color:var(--color-error); padding:2px 8px; border-radius:4px; font-size:11px;">${(r.tipo_movimiento || '').toUpperCase()}</span>`;
+                        return `
+                            <tr style="border-bottom:1px solid var(--border);" data-mapeo-id="${r.id}">
+                                <td style="padding:8px;">${tipoBadge}</td>
+                                <td style="padding:8px;">${campo}</td>
+                                <td style="padding:8px;">${valor}</td>
+                                <td style="padding:8px;">${cuentaLabel}</td>
+                                <td style="padding:8px; text-align:center; color:var(--text-muted);">${r.posicion ?? 0}</td>
+                                <td style="padding:8px; text-align:center;">${r.activo ? '✓' : '✗'}</td>
+                                <td style="padding:8px; color:var(--text-muted); font-size:12px;">${r.descripcion || ''}</td>
+                                <td style="padding:8px; text-align:right;">
+                                    <button class="btn btn-ghost btn-sm" data-mapeo-edit="${r.id}">Editar</button>
+                                    <button class="btn btn-ghost btn-sm" data-mapeo-del="${r.id}" style="color:var(--color-error);">×</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+
+        // Listeners de la tabla
+        wrap.querySelectorAll('[data-mapeo-edit]').forEach(b => {
+            b.addEventListener('click', () => {
+                const m = this._mapeos.find(x => String(x.id) === b.dataset.mapeoEdit);
+                if (m) this._openMapeoModal(m);
+            });
+        });
+        wrap.querySelectorAll('[data-mapeo-del]').forEach(b => {
+            b.addEventListener('click', async () => {
+                const ok = await Confirm.delete('este mapeo');
+                if (!ok) return;
+                await this._deleteMapeo(b.dataset.mapeoDel);
+            });
+        });
+    },
+
+    _attachMapeosEvents() {
+        document.getElementById('contMapeoFiltroTipo')?.addEventListener('change', (e) => {
+            this._mapeoFiltroTipo = e.target.value;
+            this._renderMapeosTable();
+        });
+        document.getElementById('contMapeoNuevoBtn')?.addEventListener('click', () => {
+            this._openMapeoModal(null);
+        });
+    },
+
+    _openMapeoModal(mapeo) {
+        const isEdit = !!mapeo;
+        const m = mapeo || { tipo_movimiento: 'ingreso', campo_origen: '', valor_origen: '', cuenta_contable_id: '', posicion: 0, activo: true, descripcion: '' };
+
+        // Opciones de campo_origen según tipo_movimiento (de fn_asiento_auto_*)
+        // Ingreso → medio / canal / (vacío = genérico)
+        // Egreso  → categoria / (vacío = genérico)
+        const cuentaOptions = (this._cuentasImputables || []).map(c =>
+            `<option value="${c.id}" ${String(c.id) === String(m.cuenta_contable_id) ? 'selected' : ''}>${c.codigo} · ${c.nombre}</option>`
+        ).join('');
+
+        const instance = Modal.open({
+            title: isEdit ? '✏️ Editar mapeo' : '➕ Nuevo mapeo automático',
+            size: 'md',
+            body: `
+                <div class="cont-form" style="display:grid; gap:12px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Tipo de movimiento *</label>
+                        <select id="mapeoTipo" class="cont-form-select" style="width:100%;">
+                            <option value="ingreso" ${m.tipo_movimiento === 'ingreso' ? 'selected' : ''}>Ingreso</option>
+                            <option value="egreso"  ${m.tipo_movimiento === 'egreso'  ? 'selected' : ''}>Egreso</option>
+                        </select>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                        <div>
+                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Campo origen</label>
+                            <select id="mapeoCampo" class="cont-form-select" style="width:100%;">
+                                <option value="">— Genérico (fallback) —</option>
+                                <option value="medio"     ${m.campo_origen === 'medio' ? 'selected' : ''}>medio (solo ingresos)</option>
+                                <option value="canal"     ${m.campo_origen === 'canal' ? 'selected' : ''}>canal (solo ingresos)</option>
+                                <option value="categoria" ${m.campo_origen === 'categoria' ? 'selected' : ''}>categoría (solo egresos)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Valor origen</label>
+                            <input type="text" id="mapeoValor" class="cont-form-input" value="${m.valor_origen || ''}" placeholder="ej: efectivo / oficial / servicios" style="width:100%;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Cuenta contable destino *</label>
+                        <select id="mapeoCuenta" class="cont-form-select" style="width:100%;">
+                            <option value="">— Elegir cuenta —</option>
+                            ${cuentaOptions}
+                        </select>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 100px 100px 1fr; gap:12px; align-items:end;">
+                        <div>
+                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Posición</label>
+                            <input type="number" id="mapeoPos" class="cont-form-input" value="${m.posicion ?? 0}" style="width:100%;">
+                        </div>
+                        <div>
+                            <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding-bottom:8px;">
+                                <input type="checkbox" id="mapeoActivo" ${m.activo !== false ? 'checked' : ''}> Activo
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Descripción</label>
+                            <input type="text" id="mapeoDesc" class="cont-form-input" value="${m.descripcion || ''}" placeholder="opcional — para distinguir reglas similares" style="width:100%;">
+                        </div>
+                    </div>
+                    <div style="background:rgba(0,169,193,0.08); border-left:3px solid var(--primary); padding:10px 12px; font-size:12px; color:var(--text-muted); line-height:1.5;">
+                        <strong style="color:var(--primary);">Cómo se aplica:</strong> al confirmar un ingreso o pagar un egreso,
+                        el sistema busca el mapeo con campo+valor que coincide. Si no hay match específico, usa el genérico (campo vacío).
+                        Si tampoco hay genérico, el movimiento queda sin asiento contable.
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="mapeoSaveBtn">${isEdit ? 'Guardar cambios' : 'Crear mapeo'}</button>
+            `,
+        });
+
+        setTimeout(() => {
+            document.getElementById('mapeoSaveBtn')?.addEventListener('click', async () => {
+                await this._saveMapeo(mapeo, instance);
+            });
+        }, 50);
+    },
+
+    async _saveMapeo(existing, instance) {
+        const tipo    = document.getElementById('mapeoTipo')?.value;
+        const campo   = document.getElementById('mapeoCampo')?.value || null;
+        const valorRaw = document.getElementById('mapeoValor')?.value?.trim() || '';
+        const valor   = campo ? (valorRaw || null) : null; // si no hay campo, valor se ignora
+        const cuenta  = document.getElementById('mapeoCuenta')?.value || null;
+        const pos     = parseInt(document.getElementById('mapeoPos')?.value, 10) || 0;
+        const activo  = document.getElementById('mapeoActivo')?.checked;
+        const desc    = document.getElementById('mapeoDesc')?.value?.trim() || '';
+
+        if (!tipo) { Toast.error('Tipo de movimiento es obligatorio'); return; }
+        if (!cuenta) { Toast.error('Tenés que elegir la cuenta contable destino'); return; }
+        if (campo && !valor) { Toast.error('Si elegís un campo origen, también necesitás el valor a matchear'); return; }
+
+        // Validación: campo/tipo coherente con las fn SQL
+        if (tipo === 'ingreso' && campo && !['medio','canal'].includes(campo)) {
+            Toast.warning('Para ingresos el sistema solo lee campo=medio o campo=canal — la regla no va a matchear');
+        }
+        if (tipo === 'egreso' && campo && campo !== 'categoria') {
+            Toast.warning('Para egresos el sistema solo lee campo=categoria — la regla no va a matchear');
+        }
+
+        const payload = {
+            tipo_movimiento: tipo,
+            campo_origen: campo,
+            valor_origen: valor,
+            cuenta_contable_id: cuenta,
+            posicion: pos,
+            activo,
+            descripcion: desc || null,
+        };
+
+        try {
+            if (existing?.id) {
+                const { error } = await supabaseClient
+                    .from('mapeo_cuentas')
+                    .update(payload)
+                    .eq('id', existing.id);
+                if (error) throw error;
+                Toast.success('Mapeo actualizado');
+            } else {
+                const { error } = await supabaseClient
+                    .from('mapeo_cuentas')
+                    .insert(payload);
+                if (error) throw error;
+                Toast.success('Mapeo creado');
+            }
+            Modal.close(instance);
+            await this._loadMapeos();
+            this._renderMapeosTable();
+        } catch (e) {
+            console.warn('[Contabilidad] _saveMapeo:', e);
+            Toast.error('Error al guardar: ' + (e?.message || e));
+        }
+    },
+
+    async _deleteMapeo(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('mapeo_cuentas')
+                .update({ _deleted: true })
+                .eq('id', id);
+            if (error) throw error;
+            Toast.success('Mapeo eliminado');
+            await this._loadMapeos();
+            this._renderMapeosTable();
+        } catch (e) {
+            console.warn('[Contabilidad] _deleteMapeo:', e);
+            Toast.error('Error al eliminar: ' + (e?.message || e));
+        }
     },
 };
