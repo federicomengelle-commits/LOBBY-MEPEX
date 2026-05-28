@@ -4783,12 +4783,26 @@ const FinanzasModule = {
             const pctFac = Math.min(100, Math.round((totalFacturado / totalPlan) * 100));
             const barColor = pctCob >= 100 ? '#00CC88' : pctCob > 0 ? '#F28D15' : '#2a2a2a';
 
+            // Fase G.5 — chip moneda + equivalente ARS si plan es ME
+            const planMoneda = plan.moneda || 'ARS';
+            const planCotizacion = Number(plan.cotizacion) || 1;
+            const monedaChip = planMoneda !== 'ARS'
+                ? ` <span title="Cotización: $${planCotizacion.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ARS x 1 ${planMoneda}" style="display:inline-block;padding:1px 6px;background:rgba(242,141,21,0.15);color:var(--accent);border-radius:3px;font-size:10px;font-weight:700;margin-left:4px;">${planMoneda}</span>`
+                : '';
+            const totalEquivAR = (planMoneda !== 'ARS')
+                ? ` <span style="color:var(--text-muted);font-size:0.78rem;">(equiv. ${this._formatMoney(plan.total_en_ars || totalPlan * planCotizacion)} ARS)</span>`
+                : '';
+            const formatMontoCuota = (monto, moneda) =>
+                moneda === 'ARS'
+                    ? this._formatMoney(monto)
+                    : `${(Number(monto) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda}`;
+
             return `
                 <div class="fin-plan-card" data-plan-id="${plan.id}">
                     <div class="fin-plan-header">
                         <div>
                             <span class="fin-plan-proyecto">${proyName}</span>
-                            <span class="fin-plan-total"> — Total: ${this._formatMoney(plan.total_plan)}</span>
+                            <span class="fin-plan-total"> — Total: ${formatMontoCuota(plan.total_plan, planMoneda)}${monedaChip}${totalEquivAR}</span>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center;">
                             ${!this._isRO ? `
@@ -4799,7 +4813,7 @@ const FinanzasModule = {
                         </div>
                     </div>
                     <div class="fin-progress-bar"><div class="fin-progress-fill" style="width:${pctCob}%;background:${barColor};"></div></div>
-                    <div class="fin-progress-label">${pctCob}% cobrado · ${pctFac}% facturado — ${this._formatMoney(totalCobrado)} / ${this._formatMoney(totalFacturado)} de ${this._formatMoney(plan.total_plan)}</div>
+                    <div class="fin-progress-label">${pctCob}% cobrado · ${pctFac}% facturado — ${formatMontoCuota(totalCobrado, planMoneda)} / ${formatMontoCuota(totalFacturado, planMoneda)} de ${formatMontoCuota(plan.total_plan, planMoneda)}</div>
 
                     ${items.length > 0 ? `
                     <table class="fin-plan-items-table">
@@ -4828,11 +4842,12 @@ const FinanzasModule = {
                                     : (item.facturar !== false && !this._isRO
                                         ? `<button class="fin-plan-cobrar-btn" data-link-fact="${item.id}" data-plan-id="${plan.id}" style="border-color:#00A9C1;color:#00A9C1;font-size:10px;padding:1px 6px;">Vincular</button>`
                                         : '<span style="color:#555;">—</span>');
+                                const itemMoneda = item.moneda || planMoneda;
                                 return `
                                 <tr>
                                     <td style="color:#555;">${item.orden}</td>
                                     <td>${item.concepto}</td>
-                                    <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${this._formatMoney(item.monto)}</td>
+                                    <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${formatMontoCuota(item.monto, itemMoneda)}</td>
                                     <td style="font-size:0.78rem;color:#888;">${item.fecha_estimada ? this._formatDate(item.fecha_estimada) : '—'}</td>
                                     <td style="text-align:center;">${facCheck}</td>
                                     <td>${facBadge}</td>
@@ -5022,7 +5037,7 @@ const FinanzasModule = {
 
         Modal.open({
             title: 'Nuevo plan de cobro',
-            size: 'sm',
+            size: 'md',
             body: `
                 <div class="fin-form-grid">
                     <div class="fin-form-group">
@@ -5033,6 +5048,7 @@ const FinanzasModule = {
                         <label class="fin-form-label">Total del plan *</label>
                         <input type="number" class="fin-form-input" id="finPlanTotal" step="0.01" placeholder="Monto total contratado">
                     </div>
+                    ${this._renderMonedaFields('finPlan', {})}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
                         <textarea class="fin-form-textarea" id="finPlanNotas" placeholder="Referencia cotización, condiciones…"></textarea>
@@ -5045,19 +5061,30 @@ const FinanzasModule = {
             `,
         });
 
+        // Listeners de moneda (Fase G.5): muestra cotización + equivalente ARS
+        // y dispara getCotizacionSugerida al cambiar moneda.
+        this._attachMonedaListeners('finPlan', 'finPlanTotal');
+
         document.getElementById('finBtnSavePlan')?.addEventListener('click', async () => {
             const proyecto_id = document.getElementById('finPlanProyecto')?.value;
             const total_plan = parseFloat(document.getElementById('finPlanTotal')?.value);
             const notas = document.getElementById('finPlanNotas')?.value.trim() || null;
+            const monedaData = this._readMonedaFields('finPlan');
 
             if (!proyecto_id || !total_plan || isNaN(total_plan)) {
                 Toast.warning('Proyecto y total son obligatorios');
                 return;
             }
+            if (monedaData.error) { Toast.warning(monedaData.error); return; }
 
             try {
-                const { error } = await supabaseClient.from('plan_cobro').insert([{ proyecto_id, total_plan, notas }]);
-                if (error) throw error;
+                await API.createPlanCobro({
+                    proyecto_id,
+                    total_plan,
+                    notas,
+                    moneda: monedaData.moneda,
+                    cotizacion: monedaData.cotizacion,
+                });
                 Toast.success('Plan de cobro creado');
                 Modal.closeAll();
                 await this._loadPlanes();
@@ -5557,12 +5584,17 @@ const FinanzasModule = {
         const remaining = Number(item.monto) - Number(item.monto_cobrado || 0);
         const proyName = this._proyectosMap[plan.proyecto_id] || '';
 
-        // Open ingreso modal pre-filled with plan item data
+        // Fase G.5 — la cuota hereda moneda+cotización del plan (via trigger SQL).
+        // Prefilleamos el modal de ingreso para que el cobro arranque con la
+        // misma moneda. La cotización queda editable: si el usuario la cambia,
+        // el flow G.3 dispara dif. cambio automática al guardar.
         this._showIngresoModal({
             concepto: item.concepto,
             monto: remaining,
             proyecto_id: plan.proyecto_id,
             plan_cobro_item_id: itemId,
+            moneda: item.moneda || plan.moneda || 'ARS',
+            cotizacion: item.cotizacion || plan.cotizacion || 1,
             _prefillPlanItem: { planId, itemId, remaining },
         });
     },

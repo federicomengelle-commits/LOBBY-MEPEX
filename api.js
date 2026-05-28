@@ -4638,9 +4638,12 @@ const API = {
         return data || [];
     },
 
-    async createPlanCobro({ proyecto_id, cotizacion_id = null, total_plan, notas = null, items = [] }) {
+    // Fase G.5 — acepta moneda + cotizacion. Las cuotas las hereda automáticamente
+    // el trigger fn_plan_cobro_item_snapshot_ars al INSERT (no hace falta pasarlas).
+    async createPlanCobro({ proyecto_id, cotizacion_id = null, total_plan, notas = null, moneda = 'ARS', cotizacion = 1, items = [] }) {
         const { data: plan, error } = await supabaseClient.from('plan_cobro').insert({
             proyecto_id, cotizacion_id, total_plan, notas,
+            moneda, cotizacion: Number(cotizacion) || 1,
         }).select().single();
         if (error) { console.warn('[API] createPlanCobro:', error.message); throw error; }
 
