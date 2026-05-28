@@ -17,55 +17,60 @@
 -- sin efecto si ya existen.
 --
 -- PRE-REQUISITOS:
---   - Existir nivel 1 codigo '4' tipo 'ingreso'
---   - Existir nivel 1 codigo '5' tipo 'egreso'
+--   - Existir nivel 1 codigo '4' tipo 'ingreso'  con naturaleza NOT NULL
+--   - Existir nivel 1 codigo '5' tipo 'egreso'   con naturaleza NOT NULL
 --   Si alguno falta, el script lanza EXCEPTION y no hace nada.
 --
--- POST: ejecutar diagnóstico al final del DO $$ block (RAISE NOTICE).
+-- Cada bloque corre con su propia transacción implícita (Supabase SQL Editor).
 -- ════════════════════════════════════════════════════════════════════════════
 
-BEGIN;
-
--- Validación previa: las raíces 4 y 5 tienen que existir, y reportar las
--- columnas que vamos a heredar (tipo + naturaleza, ambas NOT NULL).
+-- ─── Validación previa con variables escalares (evita ambigüedad de RECORD) ───
 DO $$
 DECLARE
-    v_raiz_4 RECORD;
-    v_raiz_5 RECORD;
+    v_codigo_4     TEXT;
+    v_nombre_4     TEXT;
+    v_tipo_4       TEXT;
+    v_naturaleza_4 TEXT;
+    v_codigo_5     TEXT;
+    v_nombre_5     TEXT;
+    v_tipo_5       TEXT;
+    v_naturaleza_5 TEXT;
 BEGIN
-    SELECT codigo, nombre, tipo, naturaleza INTO v_raiz_4
+    SELECT codigo, nombre, tipo, naturaleza
+      INTO v_codigo_4, v_nombre_4, v_tipo_4, v_naturaleza_4
     FROM plan_cuentas
     WHERE codigo = '4' AND _deleted = false
     LIMIT 1;
 
-    SELECT codigo, nombre, tipo, naturaleza INTO v_raiz_5
+    SELECT codigo, nombre, tipo, naturaleza
+      INTO v_codigo_5, v_nombre_5, v_tipo_5, v_naturaleza_5
     FROM plan_cuentas
     WHERE codigo = '5' AND _deleted = false
     LIMIT 1;
 
-    IF v_raiz_4.codigo IS NULL THEN
+    IF v_codigo_4 IS NULL THEN
         RAISE EXCEPTION '[Fase G.1] No existe cuenta raíz codigo=4 en plan_cuentas. Crear primero.';
     END IF;
-    IF v_raiz_5.codigo IS NULL THEN
+    IF v_codigo_5 IS NULL THEN
         RAISE EXCEPTION '[Fase G.1] No existe cuenta raíz codigo=5 en plan_cuentas. Crear primero.';
     END IF;
-    IF v_raiz_4.naturaleza IS NULL THEN
+    IF v_naturaleza_4 IS NULL THEN
         RAISE EXCEPTION '[Fase G.1] Cuenta raíz 4 tiene naturaleza=NULL — corregir antes de continuar.';
     END IF;
-    IF v_raiz_5.naturaleza IS NULL THEN
+    IF v_naturaleza_5 IS NULL THEN
         RAISE EXCEPTION '[Fase G.1] Cuenta raíz 5 tiene naturaleza=NULL — corregir antes de continuar.';
     END IF;
 
-    IF v_raiz_4.tipo <> 'ingreso' THEN
-        RAISE WARNING '[Fase G.1] Cuenta raíz 4 tiene tipo=% (esperaba ingreso). 4.9.01 heredará ese tipo.', v_raiz_4.tipo;
+    IF v_tipo_4 <> 'ingreso' THEN
+        RAISE WARNING '[Fase G.1] Cuenta raíz 4 tiene tipo=% (esperaba ingreso). 4.9.01 heredará ese tipo.', v_tipo_4;
     END IF;
-    IF v_raiz_5.tipo <> 'egreso' THEN
-        RAISE WARNING '[Fase G.1] Cuenta raíz 5 tiene tipo=% (esperaba egreso). 5.9.01 heredará ese tipo.', v_raiz_5.tipo;
+    IF v_tipo_5 <> 'egreso' THEN
+        RAISE WARNING '[Fase G.1] Cuenta raíz 5 tiene tipo=% (esperaba egreso). 5.9.01 heredará ese tipo.', v_tipo_5;
     END IF;
 
     RAISE NOTICE '[Fase G.1] Raíces verificadas: 4=% (tipo=%, nat=%) · 5=% (tipo=%, nat=%)',
-        v_raiz_4.nombre, v_raiz_4.tipo, v_raiz_4.naturaleza,
-        v_raiz_5.nombre, v_raiz_5.tipo, v_raiz_5.naturaleza;
+        v_nombre_4, v_tipo_4, v_naturaleza_4,
+        v_nombre_5, v_tipo_5, v_naturaleza_5;
 END $$;
 
 
@@ -95,30 +100,36 @@ FROM plan_cuentas WHERE codigo = '5' AND _deleted = false
 ON CONFLICT (codigo) DO NOTHING;
 
 
--- ─── Diagnóstico de cierre ───
+-- ─── Diagnóstico de cierre con variables escalares ───
 DO $$
 DECLARE
-    v_pos RECORD;
-    v_neg RECORD;
+    v_pos_codigo     TEXT;
+    v_pos_nombre     TEXT;
+    v_pos_tipo       TEXT;
+    v_pos_naturaleza TEXT;
+    v_pos_imputable  BOOLEAN;
+    v_neg_codigo     TEXT;
+    v_neg_nombre     TEXT;
+    v_neg_tipo       TEXT;
+    v_neg_naturaleza TEXT;
+    v_neg_imputable  BOOLEAN;
 BEGIN
-    SELECT codigo, nombre, tipo, naturaleza, imputable INTO v_pos
+    SELECT codigo, nombre, tipo, naturaleza, imputable
+      INTO v_pos_codigo, v_pos_nombre, v_pos_tipo, v_pos_naturaleza, v_pos_imputable
     FROM plan_cuentas WHERE codigo = '4.9.01' AND _deleted = false LIMIT 1;
 
-    SELECT codigo, nombre, tipo, naturaleza, imputable INTO v_neg
+    SELECT codigo, nombre, tipo, naturaleza, imputable
+      INTO v_neg_codigo, v_neg_nombre, v_neg_tipo, v_neg_naturaleza, v_neg_imputable
     FROM plan_cuentas WHERE codigo = '5.9.01' AND _deleted = false LIMIT 1;
 
-    IF v_pos.codigo IS NULL OR v_neg.codigo IS NULL THEN
+    IF v_pos_codigo IS NULL OR v_neg_codigo IS NULL THEN
         RAISE EXCEPTION '[Fase G.1] FALLA: 4.9.01 o 5.9.01 no fueron creadas.';
     END IF;
 
     RAISE NOTICE '═══════════════════════════════════════════';
     RAISE NOTICE 'Fase G.1 — Cuentas dif. cambio listas.';
-    RAISE NOTICE '  ✓ 4.9.01 % (tipo=%, nat=%, imputable=%)', v_pos.nombre, v_pos.tipo, v_pos.naturaleza, v_pos.imputable;
-    RAISE NOTICE '  ✓ 5.9.01 % (tipo=%, nat=%, imputable=%)', v_neg.nombre, v_neg.tipo, v_neg.naturaleza, v_neg.imputable;
-    RAISE NOTICE '';
-    RAISE NOTICE 'Próximo: usar estos UUIDs en el front al llamar';
-    RAISE NOTICE 'fn_registrar_diferencia_cambio(...) desde el JS de cobros.';
+    RAISE NOTICE '  4.9.01 % (tipo=%, nat=%, imputable=%)', v_pos_nombre, v_pos_tipo, v_pos_naturaleza, v_pos_imputable;
+    RAISE NOTICE '  5.9.01 % (tipo=%, nat=%, imputable=%)', v_neg_nombre, v_neg_tipo, v_neg_naturaleza, v_neg_imputable;
+    RAISE NOTICE 'Próximo: el JS ya las usa via getCuentasDifCambio() en api.js.';
     RAISE NOTICE '═══════════════════════════════════════════';
 END $$;
-
-COMMIT;
