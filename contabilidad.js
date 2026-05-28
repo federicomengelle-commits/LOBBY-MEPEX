@@ -25,6 +25,9 @@ const ContabilidadModule = {
     _mapeos: [],
     _mapeoFiltroTipo: '',  // '' | 'ingreso' | 'egreso'
 
+    // Reportes contables \u2014 subtab (Fase G.6.a agrega Balance)
+    _repContSubtab: 'eerr',  // 'eerr' | 'balance'
+
     // Toggle A/B — SINCRONIZADO con Finanzas (mismo localStorage key)
     get _canalVista() {
         return localStorage.getItem('finanzas_vista_canal') || 'oficial';
@@ -1906,7 +1909,7 @@ const ContabilidadModule = {
             case 'reportes':
                 container.innerHTML = this._buildReportesShell();
                 this._attachReportesEvents();
-                await this._loadReporteEERR();
+                await this._loadReporteContent();
                 break;
             default:
                 container.innerHTML = this._buildPlaceholder();
@@ -4461,10 +4464,15 @@ const ContabilidadModule = {
     _buildReportesShell() {
         const canal = this._getCanalFilter();
         const canalLabel = canal ? (canal === 'oficial' ? 'Oficial' : 'Interno') : 'Total (A+B)';
+        const periodoLabel = this._repContSubtab === 'balance' ? 'Al \u00faltimo d\u00eda del per\u00edodo' : 'Per\u00edodo';
         return `
+            <div class="cont-subtabs" style="display:flex; gap:4px; padding:8px 16px 0 16px; border-bottom:1px solid var(--border);">
+                <button class="cont-subtab ${this._repContSubtab === 'eerr' ? 'active' : ''}" data-repcont="eerr" style="padding:8px 14px; background:transparent; border:none; border-bottom:2px solid ${this._repContSubtab === 'eerr' ? 'var(--primary)' : 'transparent'}; color:${this._repContSubtab === 'eerr' ? 'var(--primary)' : 'var(--text-muted)'}; cursor:pointer; font-size:13px; font-weight:600;">\ud83d\udcca Estado de Resultados</button>
+                <button class="cont-subtab ${this._repContSubtab === 'balance' ? 'active' : ''}" data-repcont="balance" style="padding:8px 14px; background:transparent; border:none; border-bottom:2px solid ${this._repContSubtab === 'balance' ? 'var(--primary)' : 'transparent'}; color:${this._repContSubtab === 'balance' ? 'var(--primary)' : 'var(--text-muted)'}; cursor:pointer; font-size:13px; font-weight:600;">\u2696\ufe0f Balance General</button>
+            </div>
             <div class="cont-rep-toolbar">
                 <div class="cont-rep-toolbar-left">
-                    <span class="cont-diario-filter-label">Per\u00edodo</span>
+                    <span class="cont-diario-filter-label">${periodoLabel}</span>
                     <input type="month" class="cont-diario-filter-input" id="contRepPeriodo" value="${this._reportePeriodo}">
                     <span class="cont-diario-filter-label" style="margin-left:8px">Modo: <strong style="color:#E8E8E8">${canalLabel}</strong></span>
                 </div>
@@ -4477,7 +4485,16 @@ const ContabilidadModule = {
     _attachReportesEvents() {
         document.getElementById('contRepPeriodo')?.addEventListener('change', (e) => {
             this._reportePeriodo = e.target.value;
-            this._loadReporteEERR();
+            this._loadReporteContent();
+        });
+
+        // Subtab Reportes contables (EERR \u2194 Balance)
+        document.querySelectorAll('.cont-subtab[data-repcont]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._repContSubtab = btn.dataset.repcont;
+                // Re-render shell para actualizar el label del per\u00edodo + estilos subtabs
+                this._renderTabContent();
+            });
         });
 
         // Toggle A/B
@@ -4490,6 +4507,15 @@ const ContabilidadModule = {
                 this._renderTabContent();
             });
         });
+    },
+
+    // Router de contenido del tab Reportes \u2014 decide EERR o Balance.
+    async _loadReporteContent() {
+        if (this._repContSubtab === 'balance') {
+            await this._loadReporteBalance();
+        } else {
+            await this._loadReporteEERR();
+        }
     },
 
     async _loadReporteEERR() {
@@ -4665,6 +4691,227 @@ const ContabilidadModule = {
                 Toast.success('CSV exportado');
             });
         }
+    },
+
+    // ═══════════════════════════════════════════
+    //  REPORTE — BALANCE GENERAL (Fase G.6.a)
+    //  Activos / Pasivos / Patrimonio a fecha de corte + Resultado del ejercicio.
+    //  Fecha de corte = último día del período seleccionado.
+    //  Cuadre: Activo = Pasivo + Patrimonio + Resultado.
+    // ═══════════════════════════════════════════
+
+    async _loadReporteBalance() {
+        const container = document.getElementById('cont-rep-content');
+        if (!container) return;
+        container.innerHTML = '<div class="cont-placeholder"><div style="color:#555">Calculando balance…</div></div>';
+
+        // Fecha de corte = último día del mes del período
+        const [y, m] = this._reportePeriodo.split('-').map(Number);
+        const hasta = `${y}-${String(m).padStart(2,'0')}-${new Date(y, m, 0).getDate()}`;
+        const canal = this._getCanalFilter();
+
+        // Paso 1: traer todos los asientos hasta la fecha de corte
+        let q = supabaseClient.from('asientos').select('id')
+            .eq('_deleted', false)
+            .lte('fecha', hasta);
+        if (canal) q = q.eq('canal', canal);
+        const { data: asientos, error: errA } = await q;
+
+        if (errA || !asientos || asientos.length === 0) {
+            container.innerHTML = `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">⚖️</div>
+                    <div class="cont-empty-text">Sin movimientos contables al ${this._formatFechaArg(hasta)}.</div>
+                </div>`;
+            const exportWrap = document.getElementById('contRepExportWrap');
+            if (exportWrap) exportWrap.innerHTML = '';
+            return;
+        }
+
+        const ids = asientos.map(a => a.id);
+
+        // Paso 2: líneas con datos de la cuenta. Como ids puede ser largo,
+        // chunkeo de a 500 por las limitaciones del operator IN de PostgREST.
+        const lineasAll = [];
+        const chunkSize = 500;
+        for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            const { data: lineas, error: errL } = await supabaseClient
+                .from('asiento_lineas')
+                .select('monto, tipo_movimiento, plan_cuentas(codigo, nombre, tipo, codigo_padre)')
+                .in('asiento_id', chunk);
+            if (errL) {
+                container.innerHTML = '<div class="cont-empty"><div class="cont-empty-text">Error al cargar líneas de asientos.</div></div>';
+                return;
+            }
+            lineasAll.push(...(lineas || []));
+        }
+
+        // Paso 3: agrupar por cuenta y calcular saldos
+        const cuentaMap = {};
+        lineasAll.forEach(l => {
+            const pc = l.plan_cuentas;
+            if (!pc) return;
+            const key = pc.codigo;
+            if (!cuentaMap[key]) {
+                cuentaMap[key] = {
+                    codigo: pc.codigo, nombre: pc.nombre, tipo: pc.tipo,
+                    codigo_padre: pc.codigo_padre, debe: 0, haber: 0,
+                };
+            }
+            const monto = Number(l.monto) || 0;
+            if (l.tipo_movimiento === 'debe') cuentaMap[key].debe += monto;
+            else cuentaMap[key].haber += monto;
+        });
+
+        // Paso 4: clasificar por sección y calcular saldo natural
+        const activos = [], pasivos = [], patrimonio = [], ingresos = [], egresos = [];
+        Object.values(cuentaMap).forEach(c => {
+            const saldoDeudor    = c.debe - c.haber;
+            const saldoAcreedor  = c.haber - c.debe;
+            // Resolver tipo: usar c.tipo si existe, sino derivar del primer dígito del código
+            const tipoEfectivo = c.tipo || (
+                c.codigo?.startsWith('1') ? 'activo'     :
+                c.codigo?.startsWith('2') ? 'pasivo'     :
+                c.codigo?.startsWith('3') ? 'patrimonio' :
+                c.codigo?.startsWith('4') ? 'ingreso'    :
+                c.codigo?.startsWith('5') ? 'egreso'     : null
+            );
+            if (!tipoEfectivo) return;
+
+            if (tipoEfectivo === 'activo') {
+                if (Math.abs(saldoDeudor) > 0.01) activos.push({ ...c, saldo: saldoDeudor });
+            } else if (tipoEfectivo === 'pasivo') {
+                if (Math.abs(saldoAcreedor) > 0.01) pasivos.push({ ...c, saldo: saldoAcreedor });
+            } else if (tipoEfectivo === 'patrimonio') {
+                if (Math.abs(saldoAcreedor) > 0.01) patrimonio.push({ ...c, saldo: saldoAcreedor });
+            } else if (tipoEfectivo === 'ingreso') {
+                if (Math.abs(saldoAcreedor) > 0.01) ingresos.push({ ...c, saldo: saldoAcreedor });
+            } else if (tipoEfectivo === 'egreso') {
+                if (Math.abs(saldoDeudor) > 0.01) egresos.push({ ...c, saldo: saldoDeudor });
+            }
+        });
+
+        const sortByCode = (arr) => arr.sort((a, b) => a.codigo.localeCompare(b.codigo));
+        sortByCode(activos); sortByCode(pasivos); sortByCode(patrimonio); sortByCode(ingresos); sortByCode(egresos);
+
+        const totalActivos    = activos.reduce((s, c) => s + c.saldo, 0);
+        const totalPasivos    = pasivos.reduce((s, c) => s + c.saldo, 0);
+        const totalPatrimonio = patrimonio.reduce((s, c) => s + c.saldo, 0);
+        const totalIngresos   = ingresos.reduce((s, c) => s + c.saldo, 0);
+        const totalEgresos    = egresos.reduce((s, c) => s + c.saldo, 0);
+        const resultadoEjercicio = totalIngresos - totalEgresos;
+
+        const totalPasivoPlusPatrim = totalPasivos + totalPatrimonio + resultadoEjercicio;
+        const descuadre = totalActivos - totalPasivoPlusPatrim;
+        const cuadra = Math.abs(descuadre) < 0.5;
+
+        const canalLabel = canal ? (canal === 'oficial' ? 'Oficial' : 'Interno') : 'Total (A+B)';
+
+        const buildRows = (items) => items.map(c => `
+            <div class="cont-eerr-row">
+                <div><span class="cont-eerr-row-code">${c.codigo}</span><span class="cont-eerr-row-name">${c.nombre}</span></div>
+                <div class="cont-eerr-row-monto">${this._formatMoney(c.saldo)}</div>
+            </div>
+        `).join('');
+
+        const emptyMsg = (label) =>
+            `<div class="cont-eerr-row"><div style="color:#555;font-style:italic;">Sin ${label}</div><div class="cont-eerr-row-monto">—</div></div>`;
+
+        container.innerHTML = `
+            <div class="cont-eerr">
+                <div class="cont-eerr-title">Balance General — al ${this._formatFechaArg(hasta)}</div>
+                <div class="cont-eerr-subtitle">Modo: ${canalLabel}</div>
+
+                <div class="cont-eerr-section">
+                    <div class="cont-eerr-section-header">ACTIVO</div>
+                    ${activos.length > 0 ? buildRows(activos) : emptyMsg('activos')}
+                    <div class="cont-eerr-subtotal">
+                        <span class="cont-eerr-subtotal-label">Total Activo</span>
+                        <span class="cont-eerr-subtotal-monto">${this._formatMoney(totalActivos)}</span>
+                    </div>
+                </div>
+
+                <div class="cont-eerr-section">
+                    <div class="cont-eerr-section-header">PASIVO</div>
+                    ${pasivos.length > 0 ? buildRows(pasivos) : emptyMsg('pasivos')}
+                    <div class="cont-eerr-subtotal">
+                        <span class="cont-eerr-subtotal-label">Total Pasivo</span>
+                        <span class="cont-eerr-subtotal-monto">${this._formatMoney(totalPasivos)}</span>
+                    </div>
+                </div>
+
+                <div class="cont-eerr-section">
+                    <div class="cont-eerr-section-header">PATRIMONIO NETO</div>
+                    ${patrimonio.length > 0 ? buildRows(patrimonio) : emptyMsg('patrimonio inicial')}
+                    <div class="cont-eerr-row">
+                        <div><span class="cont-eerr-row-code">—</span><span class="cont-eerr-row-name"><em>Resultado del ejercicio</em></span></div>
+                        <div class="cont-eerr-row-monto">${this._formatMoney(resultadoEjercicio)}</div>
+                    </div>
+                    <div class="cont-eerr-subtotal">
+                        <span class="cont-eerr-subtotal-label">Total Patrimonio Neto</span>
+                        <span class="cont-eerr-subtotal-monto">${this._formatMoney(totalPatrimonio + resultadoEjercicio)}</span>
+                    </div>
+                </div>
+
+                <div class="cont-eerr-resultado">
+                    <span class="cont-eerr-resultado-label">Total Pasivo + Patrimonio</span>
+                    <span class="cont-eerr-resultado-monto">${this._formatMoney(totalPasivoPlusPatrim)}</span>
+                </div>
+
+                <div class="cont-eerr-resultado" style="border-top:1px dashed var(--border); margin-top:8px;">
+                    <span class="cont-eerr-resultado-label" style="color:${cuadra ? 'var(--color-success)' : 'var(--color-error)'};">
+                        ${cuadra ? '✓ Cuadra' : '✗ Descuadre'}
+                    </span>
+                    <span class="cont-eerr-resultado-monto" style="color:${cuadra ? 'var(--color-success)' : 'var(--color-error)'};">
+                        ${cuadra ? this._formatMoney(0) : this._formatMoney(descuadre)}
+                    </span>
+                </div>
+
+                ${!cuadra ? `
+                <div style="margin-top:12px; padding:10px 14px; background:rgba(255,68,68,0.08); border-left:3px solid var(--color-error); font-size:12px; color:var(--text-muted);">
+                    <strong style="color:var(--color-error);">Atención:</strong> el balance no cuadra. Posibles causas: asientos sin partida doble validada,
+                    cuentas faltantes en plan_cuentas (sin tipo asignado), saldos de apertura no cargados,
+                    o asientos manuales mal balanceados. Revisar Libro Diario en el período.
+                </div>
+                ` : ''}
+            </div>
+        `;
+
+        // Export CSV
+        const exportWrap = document.getElementById('contRepExportWrap');
+        if (exportWrap) {
+            exportWrap.innerHTML = '<button class="cont-btn-export" id="contRepExportBtn">📥 Exportar CSV</button>';
+            document.getElementById('contRepExportBtn')?.addEventListener('click', () => {
+                const csvRows = [];
+                const addSection = (label, items, total) => {
+                    csvRows.push({ seccion: label, codigo: '', nombre: '', saldo: '' });
+                    items.forEach(c => csvRows.push({ seccion: label, codigo: c.codigo, nombre: c.nombre, saldo: c.saldo }));
+                    csvRows.push({ seccion: 'TOTAL ' + label, codigo: '', nombre: '', saldo: total });
+                    csvRows.push({ seccion: '', codigo: '', nombre: '', saldo: '' });
+                };
+                addSection('ACTIVO', activos, totalActivos);
+                addSection('PASIVO', pasivos, totalPasivos);
+                addSection('PATRIMONIO', patrimonio, totalPatrimonio);
+                csvRows.push({ seccion: 'RESULTADO DEL EJERCICIO', codigo: '', nombre: '', saldo: resultadoEjercicio });
+                csvRows.push({ seccion: 'TOTAL PASIVO + PATRIMONIO', codigo: '', nombre: '', saldo: totalPasivoPlusPatrim });
+                csvRows.push({ seccion: 'DESCUADRE', codigo: '', nombre: '', saldo: descuadre });
+
+                this._exportCSV(csvRows, [
+                    { key: 'seccion', label: 'Sección' },
+                    { key: 'codigo',  label: 'Código' },
+                    { key: 'nombre',  label: 'Cuenta' },
+                    { key: 'saldo',   label: 'Saldo' },
+                ], `balance_${this._reportePeriodo}.csv`);
+                Toast.success('CSV exportado');
+            });
+        }
+    },
+
+    _formatFechaArg(dateStr) {
+        if (!dateStr) return '';
+        const [y, m, d] = dateStr.split('-');
+        return `${d}/${m}/${y}`;
     },
 
     // ═══════════════════════════════════════════
