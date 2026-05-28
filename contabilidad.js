@@ -4607,6 +4607,14 @@ const ContabilidadModule = {
 
         const canalLabel = canal ? (canal === 'oficial' ? 'Oficial' : 'Interno') : 'Total (A+B)';
 
+        // Guardamos los datos para que _exportEERRPDF / _exportEERRCSV los reutilicen
+        // sin recalcular.
+        this._lastEERRData = {
+            ingresos, costosOp, gastosAdmin,
+            totalIngresos, totalCostosOp, resultadoBruto, totalGastosAdmin, resultadoNeto,
+            canalLabel, periodoLabel: this._getReportePeriodoLabel(),
+        };
+
         const buildRows = (items) => items.map(c => `
             <div class="cont-eerr-row">
                 <div><span class="cont-eerr-row-code">${c.codigo}</span><span class="cont-eerr-row-name">${c.nombre}</span></div>
@@ -4664,10 +4672,14 @@ const ContabilidadModule = {
             </div>
         `;
 
-        // Export button
+        // Export buttons (CSV + PDF Fase G.6.b)
         const exportWrap = document.getElementById('contRepExportWrap');
         if (exportWrap) {
-            exportWrap.innerHTML = '<button class="cont-btn-export" id="contRepExportBtn">\u{1F4E5} Exportar CSV</button>';
+            exportWrap.innerHTML = `
+                <button class="cont-btn-export" id="contRepExportPDFBtn" style="margin-right:6px;">📄 PDF</button>
+                <button class="cont-btn-export" id="contRepExportBtn">📥 CSV</button>
+            `;
+            document.getElementById('contRepExportPDFBtn')?.addEventListener('click', () => this._exportEERRPDF());
             document.getElementById('contRepExportBtn')?.addEventListener('click', () => {
                 const csvRows = [];
                 const addSection = (label, items, total) => {
@@ -4912,6 +4924,206 @@ const ContabilidadModule = {
         if (!dateStr) return '';
         const [y, m, d] = dateStr.split('-');
         return `${d}/${m}/${y}`;
+    },
+
+    // ═══════════════════════════════════════════
+    //  PDF EXPORT — Estado de Resultados (Fase G.6.b)
+    //  Estilo MEPEX (turquesa, logo, tabla zebra).
+    // ═══════════════════════════════════════════
+
+    _logoCache: null,
+    async _loadLogoForPDF() {
+        if (this._logoCache) return this._logoCache;
+        try {
+            const res = await fetch('assets/logo_full.png');
+            if (!res.ok) throw new Error('fetch fail');
+            const blob = await res.blob();
+            const img = await new Promise((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = reject;
+                i.src = URL.createObjectURL(blob);
+            });
+            const maxW = 400;
+            const scale = Math.min(1, maxW / img.naturalWidth);
+            const w = Math.round(img.naturalWidth * scale);
+            const h = Math.round(img.naturalHeight * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            this._logoCache = { dataUrl: canvas.toDataURL('image/jpeg', 0.88), w, h };
+            URL.revokeObjectURL(img.src);
+            return this._logoCache;
+        } catch (e) {
+            console.warn('[Contabilidad] No se pudo cargar logo:', e.message);
+            return null;
+        }
+    },
+
+    async _exportEERRPDF() {
+        const d = this._lastEERRData;
+        if (!d) { Toast.warning('Cargá el reporte primero'); return; }
+        if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+            Toast.error('jsPDF no está cargado'); return;
+        }
+        const { jsPDF } = window.jspdf;
+
+        const logo = await this._loadLogoForPDF();
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+        const PAGE_W = 210, PAGE_H = 297, MARGIN = 18;
+        const TURQUESA = [0, 169, 193];
+        const TEXTO = [40, 40, 40];
+        const MUTED = [120, 120, 120];
+        const VERDE = [0, 170, 100];
+        const ROJO  = [200, 60, 60];
+
+        const hr = (y, color = [220, 220, 220], w = 0.4) => {
+            doc.setDrawColor(...color);
+            doc.setLineWidth(w);
+            doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+        };
+        const fmtM = n => '$ ' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        let y = MARGIN;
+
+        // ═══ HEADER ═══
+        if (logo) {
+            try { doc.addImage(logo.dataUrl, 'JPEG', MARGIN, y, 45, 14); }
+            catch (e) { /* fallback texto */ }
+        } else {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(22);
+            doc.setTextColor(...TURQUESA);
+            doc.text('MEPEX', MARGIN, y + 10);
+        }
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.setTextColor(...TURQUESA);
+        doc.text('ESTADO DE RESULTADOS', PAGE_W - MARGIN, y + 8, { align: 'right' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9.5);
+        doc.setTextColor(...MUTED);
+        doc.text(`Período: ${d.periodoLabel}`, PAGE_W - MARGIN, y + 14, { align: 'right' });
+        doc.text(`Modo: ${d.canalLabel}`,      PAGE_W - MARGIN, y + 18, { align: 'right' });
+        doc.text(`Emitido: ${new Date().toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })}`,
+                 PAGE_W - MARGIN, y + 22, { align: 'right' });
+
+        y += 28;
+        hr(y, TURQUESA, 0.6);
+        y += 8;
+
+        // Helper para una sección con sus filas
+        const renderSection = (title, items, total, totalColor = TEXTO) => {
+            if (y > PAGE_H - 40) { doc.addPage(); y = MARGIN; }
+
+            // Título sección
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(...TURQUESA);
+            doc.text(title.toUpperCase(), MARGIN, y);
+            y += 2;
+            hr(y, [220, 220, 220]);
+            y += 5;
+
+            // Filas
+            doc.setFontSize(9.5);
+            items.forEach((c, idx) => {
+                if (y > PAGE_H - 25) { doc.addPage(); y = MARGIN; }
+                if (idx % 2 === 1) {
+                    doc.setFillColor(250, 250, 250);
+                    doc.rect(MARGIN, y - 4, PAGE_W - 2 * MARGIN, 6, 'F');
+                }
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(...MUTED);
+                doc.text(c.codigo || '', MARGIN, y);
+                doc.setTextColor(...TEXTO);
+                doc.text((c.nombre || '').substring(0, 60), MARGIN + 20, y);
+                doc.text(fmtM(c.monto), PAGE_W - MARGIN, y, { align: 'right' });
+                y += 6;
+            });
+
+            if (items.length === 0) {
+                doc.setFont('helvetica', 'italic');
+                doc.setTextColor(...MUTED);
+                doc.text('Sin movimientos', MARGIN + 4, y);
+                y += 6;
+            }
+
+            // Subtotal de la sección
+            y += 1;
+            hr(y, [200, 200, 200]);
+            y += 5;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(...MUTED);
+            doc.text(`TOTAL ${title.toUpperCase()}`, MARGIN, y);
+            doc.setTextColor(...totalColor);
+            doc.text(fmtM(total), PAGE_W - MARGIN, y, { align: 'right' });
+            y += 9;
+        };
+
+        renderSection('Ingresos', d.ingresos, d.totalIngresos, VERDE);
+        renderSection('Costos Operativos', d.costosOp, d.totalCostosOp, ROJO);
+
+        // Resultado bruto — caja destacada
+        if (y > PAGE_H - 50) { doc.addPage(); y = MARGIN; }
+        const brutoColor = d.resultadoBruto >= 0 ? VERDE : ROJO;
+        doc.setFillColor(245, 250, 251);
+        doc.setDrawColor(...TURQUESA);
+        doc.setLineWidth(0.4);
+        doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 10, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(...TURQUESA);
+        doc.text('RESULTADO BRUTO', MARGIN + 4, y + 7);
+        doc.setFontSize(12);
+        doc.setTextColor(...brutoColor);
+        doc.text(fmtM(d.resultadoBruto), PAGE_W - MARGIN - 4, y + 7, { align: 'right' });
+        y += 16;
+
+        renderSection('Gastos Administrativos', d.gastosAdmin, d.totalGastosAdmin, ROJO);
+
+        // Resultado neto — caja destacada en turquesa
+        if (y > PAGE_H - 30) { doc.addPage(); y = MARGIN; }
+        const netoColor = d.resultadoNeto >= 0 ? VERDE : ROJO;
+        doc.setFillColor(...TURQUESA);
+        doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 12, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(255, 255, 255);
+        doc.text('RESULTADO NETO', MARGIN + 4, y + 8);
+        doc.setFontSize(14);
+        doc.text(fmtM(d.resultadoNeto), PAGE_W - MARGIN - 4, y + 8.5, { align: 'right' });
+
+        // Si neto es negativo, banner abajo
+        if (d.resultadoNeto < 0) {
+            y += 16;
+            doc.setFillColor(255, 240, 240);
+            doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 8, 'F');
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.setTextColor(...ROJO);
+            doc.text('⚠ Resultado negativo del período', MARGIN + 4, y + 5.5);
+        }
+
+        // Footer
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MUTED);
+        doc.text(
+            `MEPEX · Montaje y Equipamiento para Exposiciones · Generado ${new Date().toLocaleString('es-AR')}`,
+            PAGE_W / 2, PAGE_H - 8, { align: 'center' }
+        );
+
+        const filename = `MEPEX_EERR_${this._reportePeriodo}.pdf`;
+        doc.save(filename);
+        Toast.success('PDF generado');
     },
 
     // ═══════════════════════════════════════════
