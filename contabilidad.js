@@ -17,6 +17,7 @@ const ContabilidadModule = {
         { key: 'libro_mayor',     label: 'Libro mayor',     icon: '\u{1F4CB}' },
         { key: 'asiento_manual',  label: 'Asiento manual',  icon: '\u270F\uFE0F' },
         { key: 'mapeos',          label: 'Mapeos auto.',    icon: '\u{1F517}' },
+        { key: 'apertura',        label: 'Apertura',        icon: '\u{1F511}' },
         { key: 'libros_iva',      label: 'Libros IVA',      icon: '\u{1F9FE}' },
         { key: 'reportes',        label: 'Reportes',        icon: '\u{1F4CA}' },
     ],
@@ -27,6 +28,13 @@ const ContabilidadModule = {
 
     // Reportes contables \u2014 subtab (Fase G.6.a agrega Balance)
     _repContSubtab: 'eerr',  // 'eerr' | 'balance'
+
+    // Saldos apertura (Fase H)
+    _aperturaEjercicio: new Date().getFullYear() + 1,  // default a\u00F1o siguiente (uso real 2027)
+    _aperturaSaldos: [],
+    _aperturaBloqueado: false,
+    _aperturaAsientoId: null,
+    _aperturaSaveDebounce: null,
 
     // Toggle A/B — SINCRONIZADO con Finanzas (mismo localStorage key)
     get _canalVista() {
@@ -1905,6 +1913,12 @@ const ContabilidadModule = {
                 await Promise.all([this._loadMapeos(), this._loadCuentasImputables()]);
                 this._renderMapeosTable();
                 this._attachMapeosEvents();
+                break;
+            case 'apertura':
+                container.innerHTML = this._buildAperturaHTML();
+                await this._loadAperturaData();
+                this._renderAperturaTable();
+                this._attachAperturaEvents();
                 break;
             case 'reportes':
                 container.innerHTML = this._buildReportesShell();
@@ -5447,6 +5461,388 @@ const ContabilidadModule = {
         } catch (e) {
             console.warn('[Contabilidad] _deleteMapeo:', e);
             Toast.error('Error al eliminar: ' + (e?.message || e));
+        }
+    },
+
+
+    // ═══════════════════════════════════════════════════════════════
+    //  TAB: SALDOS DE APERTURA POR EJERCICIO (Fase H)
+    //  Carga editable de saldos iniciales + bloqueo + asiento de apertura.
+    //  Solo cuentas patrimoniales imputables (activo / pasivo / patrimonio).
+    // ═══════════════════════════════════════════════════════════════
+
+    _buildAperturaHTML() {
+        const thisYear = new Date().getFullYear();
+        const years = [];
+        for (let y = thisYear - 1; y <= thisYear + 3; y++) years.push(y);
+        const yearOpts = years.map(y => `<option value="${y}" ${y === this._aperturaEjercicio ? 'selected' : ''}>${y}</option>`).join('');
+
+        return `
+            <div class="cont-apertura-wrap" style="padding:16px;">
+                <div style="margin-bottom:12px; color:var(--text-muted); font-size:13px; line-height:1.5;">
+                    Saldos iniciales de cuentas patrimoniales (activo / pasivo / patrimonio neto)
+                    al primer día del ejercicio. Solo se cargan cuentas imputables (las hojas
+                    del plan de cuentas). Las cuentas de resultado (ingreso/egreso) no llevan
+                    apertura — se cierran cada año contra el resultado del ejercicio.
+                </div>
+                <div class="cont-toolbar" style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+                    <label style="font-size:13px; color:var(--text-muted);">Ejercicio:</label>
+                    <select id="contAperturaEjercicio" class="cont-form-select" style="width:120px;">
+                        ${yearOpts}
+                    </select>
+                    <span id="contAperturaStatus" style="margin-left:auto;"></span>
+                </div>
+                <div id="contAperturaTable"></div>
+                <div id="contAperturaFooter" style="margin-top:16px;"></div>
+            </div>
+        `;
+    },
+
+    async _loadAperturaData() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('v_saldos_apertura_ejercicio')
+                .select('*')
+                .eq('ejercicio', this._aperturaEjercicio);
+            if (error) throw error;
+
+            // La VIEW devuelve TODAS las cuentas patrimoniales imputables.
+            // Para cuentas sin saldo cargado, ejercicio viene NULL del LEFT JOIN —
+            // hay que filtrar manualmente o forzar el ejercicio en el frontend.
+            // Mejor: traer SIEMPRE las cuentas patrimoniales y JOIN manual con saldos.
+            const cuentas = (data || []).filter(r => r.codigo); // tiene cuenta válida
+
+            // Si la VIEW está vacía (sin filtro funcionó mal), fallback:
+            if (cuentas.length === 0) {
+                const { data: planData } = await supabaseClient
+                    .from('plan_cuentas')
+                    .select('id, codigo, nombre, tipo, codigo_padre, nivel')
+                    .eq('_deleted', false)
+                    .eq('imputable', true)
+                    .in('tipo', ['activo','pasivo','patrimonio'])
+                    .order('codigo');
+                this._aperturaSaldos = (planData || []).map(c => ({
+                    cuenta_id: c.id, codigo: c.codigo, nombre: c.nombre, tipo: c.tipo,
+                    codigo_padre: c.codigo_padre, nivel: c.nivel, imputable: true,
+                    saldo_id: null, ejercicio: this._aperturaEjercicio,
+                    monto: 0, moneda: 'ARS', cotizacion: 1, monto_en_ars: 0,
+                    bloqueado: false, asiento_id: null,
+                }));
+            } else {
+                this._aperturaSaldos = cuentas;
+            }
+
+            // Detectar si el ejercicio ya está bloqueado (al menos un saldo bloqueado)
+            const algunBloqueado = this._aperturaSaldos.find(s => s.bloqueado);
+            this._aperturaBloqueado = !!algunBloqueado;
+            this._aperturaAsientoId = algunBloqueado?.asiento_id || null;
+        } catch (e) {
+            console.warn('[Contabilidad] _loadAperturaData:', e);
+            this._aperturaSaldos = [];
+            this._aperturaBloqueado = false;
+        }
+    },
+
+    _renderAperturaTable() {
+        const tbl = document.getElementById('contAperturaTable');
+        const footer = document.getElementById('contAperturaFooter');
+        const status = document.getElementById('contAperturaStatus');
+        if (!tbl) return;
+
+        // Status badge
+        if (status) {
+            status.innerHTML = this._aperturaBloqueado
+                ? `<span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:rgba(242,141,21,0.15); color:var(--accent); border-radius:4px; font-size:12px; font-weight:700;">🔒 Bloqueado — Asiento ${(this._aperturaAsientoId || '').slice(0,8).toUpperCase()}</span>`
+                : `<span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:rgba(74,144,217,0.15); color:#4A90D9; border-radius:4px; font-size:12px; font-weight:700;">📝 Borrador editable</span>`;
+        }
+
+        if (this._aperturaSaldos.length === 0) {
+            tbl.innerHTML = `
+                <div class="cont-empty" style="text-align:center; padding:32px; color:var(--text-muted);">
+                    <div style="font-size:32px; margin-bottom:8px;">🔑</div>
+                    <div>No hay cuentas patrimoniales imputables.</div>
+                    <div style="font-size:12px; margin-top:6px;">Cargá primero el plan de cuentas con cuentas tipo activo / pasivo / patrimonio.</div>
+                </div>
+            `;
+            if (footer) footer.innerHTML = '';
+            return;
+        }
+
+        // Agrupar por tipo
+        const grupos = {
+            activo:     { label: 'ACTIVO',           items: [], total: 0 },
+            pasivo:     { label: 'PASIVO',           items: [], total: 0 },
+            patrimonio: { label: 'PATRIMONIO NETO',  items: [], total: 0 },
+        };
+        this._aperturaSaldos.forEach(s => {
+            const g = grupos[s.tipo];
+            if (g) {
+                g.items.push(s);
+                g.total += Number(s.monto_en_ars) || 0;
+            }
+        });
+
+        const totalActivo = grupos.activo.total;
+        const totalPasPatr = grupos.pasivo.total + grupos.patrimonio.total;
+        const descuadre = totalActivo - totalPasPatr;
+        const cuadra = Math.abs(descuadre) < 0.5;
+
+        const readonly = this._aperturaBloqueado;
+        const inputAttr = readonly ? 'readonly disabled' : '';
+
+        const renderGrupo = (g) => {
+            if (g.items.length === 0) return '';
+            return `
+                <div style="margin-bottom:16px;">
+                    <div style="background:rgba(0,169,193,0.08); color:var(--primary); padding:6px 12px; font-size:11px; font-weight:700; letter-spacing:1px; border-radius:4px 4px 0 0;">
+                        ${g.label}
+                    </div>
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); font-size:11px; text-transform:uppercase;">
+                                <th style="text-align:left; padding:6px 12px; width:100px;">Código</th>
+                                <th style="text-align:left; padding:6px 12px;">Cuenta</th>
+                                <th style="text-align:right; padding:6px 12px; width:180px;">Monto</th>
+                                <th style="text-align:left; padding:6px 12px; width:80px;">Moneda</th>
+                                <th style="text-align:right; padding:6px 12px; width:120px;">Cotiz.</th>
+                                <th style="text-align:right; padding:6px 12px; width:160px;">Equiv. ARS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${g.items.map(s => `
+                                <tr style="border-bottom:1px solid var(--border);" data-cuenta-id="${s.cuenta_id}">
+                                    <td style="padding:6px 12px; color:var(--text-muted); font-family:var(--font-mono,'Space Mono',monospace); font-size:12px;">${s.codigo}</td>
+                                    <td style="padding:6px 12px;">${s.nombre}</td>
+                                    <td style="padding:6px 12px; text-align:right;">
+                                        <input type="number" step="0.01" min="0"
+                                            class="cont-form-input cont-apertura-monto"
+                                            data-cuenta-id="${s.cuenta_id}"
+                                            value="${Number(s.monto) || ''}"
+                                            placeholder="0.00"
+                                            style="width:100%; text-align:right; font-family:var(--font-mono,'Space Mono',monospace);"
+                                            ${inputAttr}>
+                                    </td>
+                                    <td style="padding:6px 12px;">
+                                        <select class="cont-form-select cont-apertura-moneda"
+                                            data-cuenta-id="${s.cuenta_id}"
+                                            style="width:100%;"
+                                            ${inputAttr}>
+                                            <option value="ARS" ${s.moneda === 'ARS' ? 'selected' : ''}>ARS</option>
+                                            <option value="USD" ${s.moneda === 'USD' ? 'selected' : ''}>USD</option>
+                                            <option value="EUR" ${s.moneda === 'EUR' ? 'selected' : ''}>EUR</option>
+                                        </select>
+                                    </td>
+                                    <td style="padding:6px 12px; text-align:right;">
+                                        <input type="number" step="0.0001" min="0.0001"
+                                            class="cont-form-input cont-apertura-cotiz"
+                                            data-cuenta-id="${s.cuenta_id}"
+                                            value="${Number(s.cotizacion) || 1}"
+                                            style="width:100%; text-align:right; font-family:var(--font-mono,'Space Mono',monospace);"
+                                            ${inputAttr}>
+                                    </td>
+                                    <td style="padding:6px 12px; text-align:right; color:var(--text-muted); font-family:var(--font-mono,'Space Mono',monospace); font-size:12px;" class="cont-apertura-equiv" data-cuenta-id="${s.cuenta_id}">
+                                        ${this._formatMoney(s.monto_en_ars)}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                            <tr style="background:rgba(0,169,193,0.03); font-weight:700;">
+                                <td colspan="5" style="padding:8px 12px; text-align:right; color:var(--text-muted); font-size:11px; text-transform:uppercase;">Total ${g.label}</td>
+                                <td style="padding:8px 12px; text-align:right; color:var(--primary); font-family:var(--font-mono,'Space Mono',monospace);">${this._formatMoney(g.total)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        };
+
+        tbl.innerHTML = renderGrupo(grupos.activo) + renderGrupo(grupos.pasivo) + renderGrupo(grupos.patrimonio);
+
+        // Footer: cuadre + botones
+        const cuadreColor = cuadra ? 'var(--color-success)' : 'var(--color-error)';
+        const cuadreIcon = cuadra ? '✓' : '✗';
+        const cuadreText = cuadra ? 'Cuadra' : `Descuadre de ${this._formatMoney(descuadre)}`;
+
+        if (footer) {
+            footer.innerHTML = `
+                <div style="display:flex; gap:24px; align-items:center; padding:14px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px;">
+                    <div style="flex:1;">
+                        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Total Activo</div>
+                        <div style="font-size:18px; font-weight:700; color:var(--text-primary); font-family:var(--font-mono,'Space Mono',monospace);">${this._formatMoney(totalActivo)}</div>
+                    </div>
+                    <div style="color:var(--text-muted); font-size:24px;">=</div>
+                    <div style="flex:1;">
+                        <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Total Pasivo + Patrimonio</div>
+                        <div style="font-size:18px; font-weight:700; color:var(--text-primary); font-family:var(--font-mono,'Space Mono',monospace);">${this._formatMoney(totalPasPatr)}</div>
+                    </div>
+                    <div style="padding:8px 16px; border-radius:6px; background:rgba(${cuadra ? '0,204,136' : '255,68,68'},0.1); color:${cuadreColor}; font-weight:700;">
+                        ${cuadreIcon} ${cuadreText}
+                    </div>
+                    ${!readonly ? `
+                        <button class="btn btn-primary" id="contAperturaBloquearBtn" ${!cuadra ? 'disabled title="Resolvé el descuadre antes de bloquear"' : ''} style="min-width:200px;">
+                            🔒 Bloquear y generar asiento
+                        </button>
+                    ` : `
+                        <span style="color:var(--text-muted); font-size:12px; font-style:italic;">Ejercicio cerrado — para corregir, asentar ajustes manuales</span>
+                    `}
+                </div>
+            `;
+
+            document.getElementById('contAperturaBloquearBtn')?.addEventListener('click', () => this._bloquearApertura());
+        }
+    },
+
+    _attachAperturaEvents() {
+        document.getElementById('contAperturaEjercicio')?.addEventListener('change', async (e) => {
+            this._aperturaEjercicio = parseInt(e.target.value, 10);
+            await this._loadAperturaData();
+            this._renderAperturaTable();
+            this._attachAperturaEvents();
+        });
+
+        // Inputs de monto / moneda / cotización: auto-save con debounce 600ms
+        const triggerSave = (cuentaId) => {
+            clearTimeout(this._aperturaSaveDebounce);
+            this._aperturaSaveDebounce = setTimeout(() => this._saveSaldoApertura(cuentaId), 600);
+        };
+
+        document.querySelectorAll('.cont-apertura-monto').forEach(input => {
+            input.addEventListener('input', () => {
+                const cuentaId = input.dataset.cuentaId;
+                // Update equiv display en vivo
+                const cotiz = parseFloat(document.querySelector(`.cont-apertura-cotiz[data-cuenta-id="${cuentaId}"]`)?.value) || 1;
+                const monto = parseFloat(input.value) || 0;
+                const equiv = monto * cotiz;
+                const cell = document.querySelector(`.cont-apertura-equiv[data-cuenta-id="${cuentaId}"]`);
+                if (cell) cell.textContent = this._formatMoney(equiv);
+                triggerSave(cuentaId);
+            });
+        });
+        document.querySelectorAll('.cont-apertura-moneda').forEach(sel => {
+            sel.addEventListener('change', () => {
+                triggerSave(sel.dataset.cuentaId);
+            });
+        });
+        document.querySelectorAll('.cont-apertura-cotiz').forEach(input => {
+            input.addEventListener('input', () => {
+                const cuentaId = input.dataset.cuentaId;
+                const cotiz = parseFloat(input.value) || 1;
+                const monto = parseFloat(document.querySelector(`.cont-apertura-monto[data-cuenta-id="${cuentaId}"]`)?.value) || 0;
+                const equiv = monto * cotiz;
+                const cell = document.querySelector(`.cont-apertura-equiv[data-cuenta-id="${cuentaId}"]`);
+                if (cell) cell.textContent = this._formatMoney(equiv);
+                triggerSave(cuentaId);
+            });
+        });
+    },
+
+    async _saveSaldoApertura(cuentaId) {
+        if (this._aperturaBloqueado) return;
+        const saldo = this._aperturaSaldos.find(s => String(s.cuenta_id) === String(cuentaId));
+        if (!saldo) return;
+
+        const monto = parseFloat(document.querySelector(`.cont-apertura-monto[data-cuenta-id="${cuentaId}"]`)?.value) || 0;
+        const moneda = document.querySelector(`.cont-apertura-moneda[data-cuenta-id="${cuentaId}"]`)?.value || 'ARS';
+        const cotizacion = parseFloat(document.querySelector(`.cont-apertura-cotiz[data-cuenta-id="${cuentaId}"]`)?.value) || 1;
+
+        try {
+            const user = Auth.getUser?.();
+            const payload = {
+                ejercicio: this._aperturaEjercicio,
+                cuenta_id: cuentaId,
+                monto, moneda, cotizacion,
+                created_by: user?.uid || user?.id || null,
+            };
+
+            if (saldo.saldo_id) {
+                // Update existente
+                const { error } = await supabaseClient
+                    .from('saldos_apertura')
+                    .update({ monto, moneda, cotizacion })
+                    .eq('id', saldo.saldo_id);
+                if (error) throw error;
+            } else {
+                // Insert nuevo
+                const { data, error } = await supabaseClient
+                    .from('saldos_apertura')
+                    .insert(payload)
+                    .select('id, monto_en_ars')
+                    .single();
+                if (error) throw error;
+                saldo.saldo_id = data.id;
+            }
+
+            // Update local state + footer totals (sin re-renderizar tabla entera para no perder focus)
+            saldo.monto = monto;
+            saldo.moneda = moneda;
+            saldo.cotizacion = cotizacion;
+            saldo.monto_en_ars = monto * cotizacion;
+            this._renderAperturaFooterOnly();
+        } catch (e) {
+            console.warn('[Contabilidad] _saveSaldoApertura:', e);
+            Toast.error('Error guardando: ' + (e?.message || e));
+        }
+    },
+
+    _renderAperturaFooterOnly() {
+        // Recalcular totales y re-renderizar el footer (sin tocar la tabla)
+        // para no perder focus mientras el usuario tipea. Re-uso _renderAperturaTable
+        // sería simple pero perdería el cursor — esto es más quirúrgico.
+        const totalActivo = this._aperturaSaldos.filter(s => s.tipo === 'activo').reduce((a, s) => a + (Number(s.monto_en_ars) || 0), 0);
+        const totalPasivo = this._aperturaSaldos.filter(s => s.tipo === 'pasivo').reduce((a, s) => a + (Number(s.monto_en_ars) || 0), 0);
+        const totalPatrim = this._aperturaSaldos.filter(s => s.tipo === 'patrimonio').reduce((a, s) => a + (Number(s.monto_en_ars) || 0), 0);
+        const totalPasPatr = totalPasivo + totalPatrim;
+        const descuadre = totalActivo - totalPasPatr;
+        const cuadra = Math.abs(descuadre) < 0.5;
+        const cuadreColor = cuadra ? 'var(--color-success)' : 'var(--color-error)';
+        const cuadreIcon = cuadra ? '✓' : '✗';
+        const cuadreText = cuadra ? 'Cuadra' : `Descuadre de ${this._formatMoney(descuadre)}`;
+
+        const footer = document.getElementById('contAperturaFooter');
+        if (!footer || this._aperturaBloqueado) return;
+        footer.innerHTML = `
+            <div style="display:flex; gap:24px; align-items:center; padding:14px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px;">
+                <div style="flex:1;">
+                    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Total Activo</div>
+                    <div style="font-size:18px; font-weight:700; color:var(--text-primary); font-family:var(--font-mono,'Space Mono',monospace);">${this._formatMoney(totalActivo)}</div>
+                </div>
+                <div style="color:var(--text-muted); font-size:24px;">=</div>
+                <div style="flex:1;">
+                    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Total Pasivo + Patrimonio</div>
+                    <div style="font-size:18px; font-weight:700; color:var(--text-primary); font-family:var(--font-mono,'Space Mono',monospace);">${this._formatMoney(totalPasPatr)}</div>
+                </div>
+                <div style="padding:8px 16px; border-radius:6px; background:rgba(${cuadra ? '0,204,136' : '255,68,68'},0.1); color:${cuadreColor}; font-weight:700;">
+                    ${cuadreIcon} ${cuadreText}
+                </div>
+                <button class="btn btn-primary" id="contAperturaBloquearBtn" ${!cuadra ? 'disabled title="Resolvé el descuadre antes de bloquear"' : ''} style="min-width:200px;">
+                    🔒 Bloquear y generar asiento
+                </button>
+            </div>
+        `;
+        document.getElementById('contAperturaBloquearBtn')?.addEventListener('click', () => this._bloquearApertura());
+    },
+
+    async _bloquearApertura() {
+        const ok = await Confirm.action(
+            `Bloquear apertura ${this._aperturaEjercicio}`,
+            `Esta acción genera el asiento de apertura del ejercicio ${this._aperturaEjercicio} y bloquea los saldos. Para corregir después, hay que hacer asientos de ajuste posteriores. ¿Continuar?`,
+        );
+        if (!ok) return;
+
+        try {
+            const user = Auth.getUser?.();
+            const { data, error } = await supabaseClient.rpc('fn_generar_asiento_apertura', {
+                p_ejercicio: this._aperturaEjercicio,
+                p_actor: user?.uid || user?.id || null,
+            });
+            if (error) throw error;
+            Toast.success(`Apertura ${this._aperturaEjercicio} asentada — Asiento ${(data || '').slice(0,8).toUpperCase()}`);
+            // Recargar para reflejar bloqueo
+            await this._loadAperturaData();
+            this._renderAperturaTable();
+            this._attachAperturaEvents();
+        } catch (e) {
+            console.warn('[Contabilidad] _bloquearApertura:', e);
+            Toast.error('No se pudo bloquear: ' + (e?.message || e));
         }
     },
 };
