@@ -4829,22 +4829,137 @@ const API = {
         return Math.round(n * c * 100) / 100;
     },
 
+    // ─── Diferencia de cambio (Fase G.3) ────────────────────────────────
+    //
+    // fn_registrar_diferencia_cambio (Fase E.E6) recibe las cuentas como
+    // parámetros. Las cuentas dif. cambio se crean en SQL G.1 con códigos
+    // fijos 4.9.01 (+) y 5.9.01 (−). Las cacheamos acá para no re-fetchearlas
+    // en cada cobro.
+    //
+    _difCambioCuentasCache: null,
+    _CODIGO_DIF_CAMBIO_POS: '4.9.01',
+    _CODIGO_DIF_CAMBIO_NEG: '5.9.01',
+
+    async getCuentasDifCambio() {
+        if (this._difCambioCuentasCache) return this._difCambioCuentasCache;
+        const { data, error } = await supabaseClient
+            .from('plan_cuentas')
+            .select('id, codigo')
+            .in('codigo', [this._CODIGO_DIF_CAMBIO_POS, this._CODIGO_DIF_CAMBIO_NEG])
+            .eq('_deleted', false);
+        if (error) { console.warn('[API] getCuentasDifCambio:', error.message); return null; }
+        const pos = (data || []).find(c => c.codigo === this._CODIGO_DIF_CAMBIO_POS)?.id || null;
+        const neg = (data || []).find(c => c.codigo === this._CODIGO_DIF_CAMBIO_NEG)?.id || null;
+        if (!pos || !neg) {
+            console.warn(`[API] Cuentas dif. cambio incompletas (pos=${pos}, neg=${neg}). Ejecutar sql/finanzas_fase_g1_dif_cambio_cuentas.sql.`);
+            return null; // no cacheamos para reintentar después de ejecutar el SQL
+        }
+        this._difCambioCuentasCache = { pos, neg };
+        return this._difCambioCuentasCache;
+    },
+
     /**
-     * Registra una diferencia de cambio manual sobre un ingreso ya confirmado.
+     * Registra una diferencia de cambio sobre un ingreso ya confirmado.
      * Llama la función PL/pgSQL `fn_registrar_diferencia_cambio`.
-     * @param {string} ingresoId  UUID del ingreso de referencia
-     * @param {number} montoArs   monto signado (+ ganancia, − pérdida)
-     * @returns {Promise<string|null>} asiento_id generado
+     * Si no se pasan cuentas, las busca por código (4.9.01 / 5.9.01).
+     * Devuelve { ok, asientoId? , error? }.
      */
-    async registrarDiferenciaCambio(ingresoId, montoArs) {
-        const user = Auth.getUser?.();
-        const { data, error } = await supabaseClient.rpc('fn_registrar_diferencia_cambio', {
-            p_ingreso_id: ingresoId,
-            p_monto_ars: Number(montoArs),
-            p_actor: user?.uid || user?.id || null,
-        });
-        if (error) { console.warn('[API] registrarDiferenciaCambio:', error.message); throw error; }
-        return data || null;
+    async registrarDiferenciaCambio(ingresoId, montoArs, opts = {}) {
+        if (!ingresoId) return { ok: false, error: 'ingresoId requerido' };
+        const monto = Number(montoArs);
+        if (!Number.isFinite(monto) || monto === 0) return { ok: false, error: 'monto inválido o 0' };
+
+        let pos = opts.cuentaPosId || null;
+        let neg = opts.cuentaNegId || null;
+        if (!pos || !neg) {
+            const cuentas = await this.getCuentasDifCambio();
+            if (!cuentas) return { ok: false, error: 'Cuentas dif. cambio no configuradas (4.9.01 / 5.9.01)' };
+            pos = pos || cuentas.pos;
+            neg = neg || cuentas.neg;
+        }
+
+        try {
+            const user = Auth.getUser?.();
+            const { data, error } = await supabaseClient.rpc('fn_registrar_diferencia_cambio', {
+                p_ingreso_id:    ingresoId,
+                p_monto_ars:     monto,
+                p_cuenta_pos_id: pos,
+                p_cuenta_neg_id: neg,
+                p_actor:         user?.uid || user?.id || null,
+            });
+            if (error) throw error;
+            return { ok: true, asientoId: data || null };
+        } catch (e) {
+            console.warn('[API] registrarDiferenciaCambio:', e?.message || e);
+            return { ok: false, error: e?.message || String(e) };
+        }
+    },
+
+    /**
+     * Detecta y registra diferencia de cambio para un ingreso recién creado
+     * que está vinculado a un plan_cobro_item con comprobante_venta_id.
+     * Devuelve { detected: bool, montoArs?, asientoId?, motivo? }.
+     *
+     * Reglas:
+     *  - Solo si el ingreso tiene plan_cobro_item_id (caso plan de cobro).
+     *  - Solo si el plan_cobro_item está vinculado a un comprobante_venta_id.
+     *  - Solo si ambos (comprobante e ingreso) tienen la misma moneda != ARS.
+     *  - Diferencia = (cotiz_ingreso − cotiz_comprobante) × monto_aplicado_ME.
+     *  - Si difiere de 0, dispara fn_registrar_diferencia_cambio.
+     */
+    async detectarYRegistrarDifCambio(ingresoId) {
+        if (!ingresoId) return { detected: false, motivo: 'sin ingresoId' };
+        try {
+            const { data: ing, error: e1 } = await supabaseClient
+                .from('ingresos')
+                .select('id, monto, moneda, cotizacion, plan_cobro_item_id')
+                .eq('id', ingresoId)
+                .single();
+            if (e1) throw e1;
+            if (!ing.plan_cobro_item_id) return { detected: false, motivo: 'no vinculado a plan' };
+
+            const { data: item, error: e2 } = await supabaseClient
+                .from('plan_cobro_items')
+                .select('id, comprobante_venta_id')
+                .eq('id', ing.plan_cobro_item_id)
+                .single();
+            if (e2) throw e2;
+            if (!item?.comprobante_venta_id) return { detected: false, motivo: 'plan sin factura vinculada' };
+
+            const { data: comp, error: e3 } = await supabaseClient
+                .from('comprobantes')
+                .select('id, moneda, cotizacion')
+                .eq('id', item.comprobante_venta_id)
+                .single();
+            if (e3) throw e3;
+
+            const monedaIng  = ing.moneda || 'ARS';
+            const monedaComp = comp.moneda || 'ARS';
+
+            // Ambos ARS → no aplica
+            if (monedaIng === 'ARS' && monedaComp === 'ARS') return { detected: false, motivo: 'ambos en ARS' };
+            // Monedas distintas → no se puede calcular dif (caso raro, salir con warn)
+            if (monedaIng !== monedaComp) {
+                console.warn(`[API] detectarYRegistrarDifCambio: monedas distintas (ing=${monedaIng} / comp=${monedaComp}). Skip.`);
+                return { detected: false, motivo: 'monedas distintas' };
+            }
+
+            const cotIng  = Number(ing.cotizacion)  || 0;
+            const cotComp = Number(comp.cotizacion) || 0;
+            if (cotIng <= 0 || cotComp <= 0) return { detected: false, motivo: 'cotización inválida' };
+            if (Math.abs(cotIng - cotComp) < 0.0001) return { detected: false, motivo: 'cotizaciones iguales' };
+
+            const montoME = Number(ing.monto) || 0;
+            const difArs = Math.round((cotIng - cotComp) * montoME * 100) / 100;
+            if (difArs === 0) return { detected: false, motivo: 'diferencia 0' };
+
+            const res = await this.registrarDiferenciaCambio(ingresoId, difArs);
+            if (!res.ok) return { detected: true, montoArs: difArs, motivo: 'falló registro: ' + res.error };
+            return { detected: true, montoArs: difArs, asientoId: res.asientoId };
+        } catch (e) {
+            console.warn('[API] detectarYRegistrarDifCambio:', e?.message || e);
+            return { detected: false, motivo: 'error: ' + (e?.message || e) };
+        }
     },
 
     /**

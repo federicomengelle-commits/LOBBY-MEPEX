@@ -3501,9 +3501,11 @@ const FinanzasModule = {
                     Toast.success('Ingreso actualizado');
                 } else {
                     payload.created_by = Auth.getUser()?.uid || null;
-                    const { error } = await supabaseClient
+                    const { data: ingInserted, error } = await supabaseClient
                         .from('ingresos')
-                        .insert([payload]);
+                        .insert([payload])
+                        .select('id')
+                        .single();
                     if (error) throw error;
                     Toast.success('Ingreso registrado');
 
@@ -3525,6 +3527,23 @@ const FinanzasModule = {
                             }
                         } catch (planErr) {
                             console.warn('[Finanzas] Error actualizando plan item:', planErr);
+                        }
+                    }
+
+                    // Fase G.3 — diferencia de cambio automática.
+                    // Si el ingreso cobra una factura ME con cotización distinta,
+                    // disparamos el asiento de dif. cambio sobre la marcha.
+                    if (ingInserted?.id && payload.plan_cobro_item_id) {
+                        try {
+                            const res = await API.detectarYRegistrarDifCambio(ingInserted.id);
+                            if (res?.detected && res.asientoId) {
+                                const signo = res.montoArs > 0 ? '+' : '−';
+                                Toast.info(`Diferencia de cambio registrada: ${signo}${this._formatMoney(Math.abs(res.montoArs))} (cuenta ${res.montoArs > 0 ? '4.9.01' : '5.9.01'})`);
+                            } else if (res?.detected && !res.asientoId) {
+                                Toast.warning(`Dif. de cambio detectada pero no se pudo registrar — ${res.motivo}`);
+                            }
+                        } catch (dcErr) {
+                            console.warn('[Finanzas] Dif. cambio falló silenciosamente:', dcErr);
                         }
                     }
                 }
