@@ -184,7 +184,14 @@ UPDATE vencimientos_generados   SET cotizacion = cotizacion WHERE monto_estimado
 -- ─── G5.10 Recrear VIEW v_plan_cobro_resumen con totales ARS ───────────
 -- Mantengo el contrato actual de la VIEW pero agrego total_plan_en_ars y
 -- una columna moneda para que el front pueda mostrar chip + tooltip.
-CREATE OR REPLACE VIEW v_plan_cobro_resumen AS
+--
+-- CREATE OR REPLACE VIEW no permite cambiar orden ni nombre de columnas
+-- existentes — solo permite AGREGAR al final. Como la VIEW de Fase C tenía
+-- otro orden de columnas, hacemos DROP + CREATE limpio. CASCADE por si hay
+-- dependientes (no debería — esta VIEW se consume solo desde el JS).
+DROP VIEW IF EXISTS v_plan_cobro_resumen CASCADE;
+
+CREATE VIEW v_plan_cobro_resumen AS
 SELECT
     p.id AS plan_id,
     p.proyecto_id,
