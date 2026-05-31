@@ -558,6 +558,27 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 
 ## 10. ESTADO ACTUAL
 
+- **Sesión 2026-05-30 — Barrido global UI 4.8 + tanda de fixes (en prod)**:
+  - **Objetivo**: pasada completa por todos los módulos vía Chrome MCP buscando bugs/anomalías/mejoras, fixeando de a poco con confirmación de Fede. Cero errores de consola en toda la app.
+  - **Sidebar default para TODOS los superadmin** (commit `9062a0e`): el sidebar se persiste en **localStorage por navegador** (`mepex_sidebar_config`), NO en Supabase ni por usuario. El default real vive en `Data.categories` (`data.js`). Se actualizó el default a la estructura vigente de Fede: PRINCIPAL=[lobby], OPERACIONES=[calendario,proyectos,eventos,taller,logistica], RECURSOS=[compras,inventario,locaciones], ADMIN&FINANZAS=[rrhh,finanzas,contabilidad,costos]. Bump `_configVersion` 4→5 en `sidebar-editor.js` para forzar rebuild en todos los navegadores. **Side effect**: arregló el breadcrumb de RRHH (decía RECURSOS porque la categoría en data.js lo tenía ahí).
+  - **Fixes de código** (commits `9062a0e`, `a79561b`, `143901b`, `91e721a`, todos en `origin/main`):
+    - `contabilidad.js`: sub-cuentas (nivel 2 y 3) del Plan de cuentas ahora ordenadas por código numérico (4.9 aparecía antes de 4.1/4.2).
+    - `eventos.js`: validación de orden cronológico de fases (Armado ≤ Inicio ≤ Fin ≤ Desarme) al crear y editar (nuevo helper `_validateFaseDates`).
+    - `taller.js`: tab Hoy "Próximos días" descarta fechas pasadas (`d > hoy`). El flujo de cierre por estado quedó pendiente de charlar.
+    - `logistica.js`: headers de tablas Vehículos/Personas alinean (el global `.log-mov-row` de style.css tenía `display:flex` que rompía el layout; se forzó `display:table-row` en el scoped).
+    - `finanzas.js`: (a) chart Cashflow del Panel pasó de **24 queries secuenciales a 2 en paralelo + bucketing JS** (se veía en blanco al cargar); (b) subtab "Recupero IVA extracontable" → **"Registros auxiliares"** para coherencia con Contabilidad (que usa "Auxiliar"); (c) KPI "Saldo disponible" ahora **respeta el toggle de canal** (antes sumaba todas las cuentas sin filtrar → daba $8.75M Oficial que no reconciliaba con el Balance contable $6.5M).
+    - `crm.js`: columna "Fecha" de la tabla de Cotizaciones usa `fecha_emision`(fallback `created_at`) en vez de `fecha_evento` que estaba NULL (columna vacía). El resumen lateral no cambió (ahí "Fecha"=del evento + "Fecha emisión" aparte).
+    - `compras.js`: relabel "Contacto" → "Dirección" en Proveedores. `compras_proveedores` **no tiene columna de dirección** (solo contacto/telefono/email/notas); el campo `contacto` venía conteniendo direcciones. Se relabeló sin tocar el nombre interno. Si se quiere un campo separado de persona de contacto, es un add de schema futuro.
+  - **Cambios de DATOS en prod** (vía consola, autorizado por Fede):
+    - Borrados (soft-delete `_deleted=true`) los asientos de prueba #10 "AJUSTE PRUEBA" ($500K) y #11 "PRUEBA Fase A" ($1) que ensuciaban Libro Diario/Estado de Resultados y dejaban Caja Oficina en -$1. Verificado: Libro Diario quedó en 4 asientos, Balance limpio = Banco Galicia CC $6.5M (reconcilia $7M ingresos − $500K egreso).
+    - Corregido evento "Estetica": `fecha_armado_fin` 2026-05-12 → 2026-05-14 (estaba antes del inicio).
+  - **Pendientes / no tocados (decisión de Fede)**:
+    - Cliente duplicado "Artesanías Graciela" (borrar requiere saber cuál tiene proyectos vinculados).
+    - Eventos sin fechas marcados "Próximo" (Feria Libro Infantil, Beauty Day) — comportamiento esperado hasta cargar fechas.
+    - Inventario: los movimientos de entrada/ajuste NO se reflejan en el stock (Stock Piezas/Materiales en 0). A confirmar si es bug o módulo aún sin cablear (Inventario figura "En desarrollo"). **No investigado a fondo esta sesión.**
+    - Taller: flujo de cierre de proyecto por cambio de estado (mover a otra solapa al pasar fecha/estado) — a diseñar más adelante.
+  - **Aprendizaje**: el sidebar NO es configurable por rol/usuario en backend; es localStorage por navegador con default en `data.js`. Para cambiar lo que ven todos hay que tocar `data.js` + bump de `_configVersion`.
+
 - **Fecha:** 2026-05-19 (sesión extensa, parte 5 + testeo en prod)
 - **Ultimo commit destacado:** `d25fc72` — Fase E SQL final (schema real `mapeo_cuentas`, sin seed cuentas). Pusheado a `origin/main`.
 - **Próximo paso:** **Fase G (reportes) → H (saldos apertura 2027) → F (conciliación) → D (ARCA, bloqueado por trámite cert)**. Antes de Fase G hay 2 sub-tareas previas pendientes: (a) seed manual de `mapeo_cuentas` para que los ingresos/egresos confirmados generen asientos automáticos; (b) decidir códigos finales del plan_cuentas para cuentas de diferencia de cambio (4.2 y 4.2.02 ya están ocupadas por "Otros ingresos" en prod).
