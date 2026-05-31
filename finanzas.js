@@ -5846,19 +5846,25 @@ const FinanzasModule = {
             kpi.prevPagado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
         } catch (_) {}
 
-        // Saldo disponible (cuentas activas)
+        // Saldo disponible (cuentas activas) — respeta el toggle de canal.
+        // Con canal activo: solo cuentas cuyo canal_default coincide + movimientos del canal.
+        // Sin canal (Total): todas las cuentas + todos los movimientos.
         try {
-            // Simple: sum saldo_inicial + sum ingresos - sum egresos for each active account
-            const cuentasActivas = this._cuentas.length > 0 ? this._cuentas.filter(c => c.activa) : [];
+            let cuentasActivas = this._cuentas.length > 0 ? this._cuentas.filter(c => c.activa) : [];
+            if (canal) cuentasActivas = cuentasActivas.filter(c => c.canal_default === canal);
             let totalSaldo = 0;
             for (const cuenta of cuentasActivas) {
                 let saldo = Number(cuenta.saldo_inicial) || 0;
                 try {
-                    const { data: ing } = await supabaseClient.from('ingresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'confirmado');
+                    let qi = supabaseClient.from('ingresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'confirmado');
+                    if (canal) qi = qi.eq('canal', canal);
+                    const { data: ing } = await qi;
                     saldo += (ing || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
                 } catch (_) {}
                 try {
-                    const { data: egr } = await supabaseClient.from('egresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'pagado');
+                    let qe = supabaseClient.from('egresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'pagado');
+                    if (canal) qe = qe.eq('canal', canal);
+                    const { data: egr } = await qe;
                     saldo -= (egr || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
                 } catch (_) {}
                 totalSaldo += saldo;
