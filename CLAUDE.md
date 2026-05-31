@@ -575,9 +575,16 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
   - **Pendientes / no tocados (decisión de Fede)**:
     - Cliente duplicado "Artesanías Graciela" (borrar requiere saber cuál tiene proyectos vinculados).
     - Eventos sin fechas marcados "Próximo" (Feria Libro Infantil, Beauty Day) — comportamiento esperado hasta cargar fechas.
-    - Inventario: los movimientos de entrada/ajuste NO se reflejan en el stock (Stock Piezas/Materiales en 0). A confirmar si es bug o módulo aún sin cablear (Inventario figura "En desarrollo"). **No investigado a fondo esta sesión.**
     - Taller: flujo de cierre de proyecto por cambio de estado (mover a otra solapa al pasar fecha/estado) — a diseñar más adelante.
-  - **Aprendizaje**: el sidebar NO es configurable por rol/usuario en backend; es localStorage por navegador con default en `data.js`. Para cambiar lo que ven todos hay que tocar `data.js` + bump de `_configVersion`.
+  - **Inventario — verificado SANO (no era bug)**: el "stock no refleja movimientos" fue falso positivo del barrido (solo se vieron los ítems alfabéticos de arriba, sin movimientos). El stock SÍ se actualiza: insumo Placa karikal=20, catalogo Taburete JB=78, Reflector 100w=50, etc. — coinciden con los 8 movimientos. Las columnas `insumos_base.stock_actual`/`stock_minimo` están **sin usar** (la UI usa `stock`). El update de stock es read-modify-write con valor cacheado (`current + qty`), no atómico → **limitación conocida**: race si dos usuarios editan el mismo ítem a la vez (impacto casi nulo en equipo chico; fix futuro = RPC `stock = stock + qty`).
+  - **Segunda pasada profunda (bug-hunt con 2 agentes en finanzas/contabilidad/inventario/costos/eventos)**: se reportaron ~19 "bugs" pero al **verificar uno por uno contra el código y la BD, casi todos eran FALSOS POSITIVOS**. Importante para futuras sesiones — NO confiar en reportes de agentes sin verificar:
+    - "Falta filtro `_deleted` en asiento_lineas" (reportado crítico) → **`asiento_lineas` NO tiene columna `_deleted`**; el soft-delete vive en `asientos`, y TODAS las queries (Mayor 3159, EERR 4546, etc.) filtran `asientos._deleted=false` y descartan líneas huérfanas. Correcto.
+    - "Suma sin `Number()`" → `monto` ya viene como `number` de Supabase. No rompe.
+    - "Falta parseFloat en `_qty`" → se parsea en el change handler (inventario.js:2012). OK.
+    - "Falta `_deleted` en `_loadMovimientos`" → ya lo filtra (1715). OK.
+    - "Listeners duplicados en equipo de eventos" → `container.innerHTML=` re-renderiza (890), los listeners viejos mueren. OK.
+    - **Único real y arreglado**: `console.log('[... DEBUG]')` olvidados en prod en Libro Mayor y Libro Diario → limpiados (commit `16f2f2d`).
+  - **Aprendizaje**: (1) el sidebar NO es configurable por rol/usuario en backend; es localStorage por navegador con default en `data.js` — para cambiar lo que ven todos hay que tocar `data.js` + bump de `_configVersion`. (2) Los reportes de bug-hunting de subagentes tienen muchos falsos positivos en este repo — verificar SIEMPRE contra schema real (`information_schema`/query) y el flujo de código antes de "arreglar".
 
 - **Fecha:** 2026-05-19 (sesión extensa, parte 5 + testeo en prod)
 - **Ultimo commit destacado:** `d25fc72` — Fase E SQL final (schema real `mapeo_cuentas`, sin seed cuentas). Pusheado a `origin/main`.
