@@ -2266,7 +2266,8 @@ const CRM = {
     _renderCotRow(cot) {
         const est = this._getCotEstadoConfig(cot.estado);
         const vencida = this._isCotVencida(cot);
-        const fecha = cot.fechaEvento ? new Date(cot.fechaEvento).toLocaleDateString('es-AR') : '\u2014';
+        const fechaRef = cot.fechaEmision || cot.createdAt;
+        const fecha = fechaRef ? new Date(fechaRef).toLocaleDateString('es-AR') : '\u2014';
         const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '\u2014';
         const vendedor = this._getVendedorName(cot.vendedorId);
         const isActive = this._cotPanelId === cot.id;

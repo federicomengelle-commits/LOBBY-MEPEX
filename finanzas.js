@@ -3574,7 +3574,7 @@ const FinanzasModule = {
         return `
             <div class="fin-subtabs" id="finEgresosSubtabs">
                 <button class="fin-subtab ${this._egresosSubtab === 'egresos' ? 'active' : ''}" data-subtab="egresos">Egresos</button>
-                <button class="fin-subtab ${this._egresosSubtab === 'iva_recovery' ? 'active' : ''}" data-subtab="iva_recovery">Recupero IVA extracontable</button>
+                <button class="fin-subtab ${this._egresosSubtab === 'iva_recovery' ? 'active' : ''}" data-subtab="iva_recovery">Registros auxiliares</button>
             </div>
             <div class="fin-cuentas-toolbar">
                 <div class="fin-search-box">
@@ -5943,28 +5943,29 @@ const FinanzasModule = {
         const netData = [];
         const mNames = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
+        // Ventana de 12 meses (1er día del mes -11 → último día del mes actual)
+        const first = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+        const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const desde = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-01`;
+        const hasta = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+
+        // 2 queries (en paralelo) + bucketing por mes en JS, en vez de 24 queries secuenciales
+        const ingByMonth = {}, egrByMonth = {};
+        try {
+            let qi = supabaseClient.from('ingresos').select('fecha, monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
+            let qe = supabaseClient.from('egresos').select('fecha, monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
+            if (canal) { qi = qi.eq('canal', canal); qe = qe.eq('canal', canal); }
+            const [{ data: ingRows }, { data: egrRows }] = await Promise.all([qi, qe]);
+            (ingRows || []).forEach(r => { const k = (r.fecha || '').slice(0, 7); ingByMonth[k] = (ingByMonth[k] || 0) + (Number(r.monto) || 0); });
+            (egrRows || []).forEach(r => { const k = (r.fecha || '').slice(0, 7); egrByMonth[k] = (egrByMonth[k] || 0) + (Number(r.monto) || 0); });
+        } catch (_) {}
+
         for (let i = 11; i >= 0; i--) {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const y = d.getFullYear();
-            const m = d.getMonth() + 1;
-            const desde = `${y}-${String(m).padStart(2, '0')}-01`;
-            const hasta = `${y}-${String(m).padStart(2, '0')}-${new Date(y, m, 0).getDate()}`;
-            labels.push(`${mNames[m - 1]} ${String(y).slice(2)}`);
-
-            let ingSum = 0, egrSum = 0;
-            try {
-                let q = supabaseClient.from('ingresos').select('monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
-                if (canal) q = q.eq('canal', canal);
-                const { data } = await q;
-                ingSum = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-            } catch (_) {}
-            try {
-                let q = supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
-                if (canal) q = q.eq('canal', canal);
-                const { data } = await q;
-                egrSum = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-            } catch (_) {}
-
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            labels.push(`${mNames[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`);
+            const ingSum = ingByMonth[key] || 0;
+            const egrSum = egrByMonth[key] || 0;
             ingData.push(ingSum);
             egrData.push(egrSum);
             netData.push(ingSum - egrSum);
@@ -10070,7 +10071,7 @@ const FinanzasModule = {
             this._renderIvaRecoveryTable();
         } catch (e) {
             console.error('[Finanzas] Error cargando IVA recovery:', e);
-            Toast.error('Error al cargar facturas extracontables');
+            Toast.error('Error al cargar registros auxiliares');
             this._ivar = [];
             this._ivarFiltered = [];
             this._renderIvaRecoveryTable();
