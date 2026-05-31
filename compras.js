@@ -294,7 +294,7 @@ const ComprasModule = {
                             <tr>
                                 <th>Nombre</th>
                                 <th>Rubro</th>
-                                <th>Contacto</th>
+                                <th>Dirección</th>
                                 <th>Teléfono</th>
                                 <th>Email</th>
                                 <th>Calificación</th>
@@ -387,7 +387,7 @@ const ComprasModule = {
                         <span class="cmp-field-value">${p.razon_social}</span>
                     </div>` : ''}
                     <div class="cmp-ficha-field">
-                        <span class="cmp-field-label">Contacto</span>
+                        <span class="cmp-field-label">Dirección</span>
                         <span class="cmp-field-value">${p.contacto || '—'}</span>
                     </div>
                     <div class="cmp-ficha-field">
@@ -486,8 +486,8 @@ const ComprasModule = {
                             </datalist>
                         </div>
                         <div>
-                            <label class="form-label">Contacto</label>
-                            <input type="text" id="cmpPContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Persona de contacto" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Dirección</label>
+                            <input type="text" id="cmpPContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Domicilio / dirección" style="font-size:1rem;padding:12px;">
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
