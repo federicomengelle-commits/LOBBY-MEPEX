@@ -1566,7 +1566,7 @@ const LogisticaModule = {
                 color: #E8E8E8; vertical-align: top;
             }
             .logistica-module .log-mov-row {
-                cursor: pointer; transition: background 150ms ease;
+                display: table-row; cursor: pointer; transition: background 150ms ease;
             }
             .logistica-module .log-mov-row:hover { background: rgba(0,169,193,0.05); }
             .logistica-module .log-mov-row.selected { background: rgba(0,169,193,0.10); }

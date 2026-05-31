@@ -182,7 +182,7 @@ const TallerModule = {
         const itemsHoy = items[hoyStr] || [];
         const sinFecha = items['_sin_fecha'] || [];
         const proximosDays = Object.keys(items)
-            .filter(d => d !== hoyStr && d !== '_sin_fecha')
+            .filter(d => d > hoyStr && d !== '_sin_fecha')
             .sort();
 
         c.innerHTML = `

@@ -2056,7 +2056,8 @@ const ContabilidadModule = {
 
         for (const grupo1 of n1) {
             const isExpanded1 = this._expandedGroups.has(grupo1.codigo);
-            const n2 = cuentas.filter(c => c.nivel === 2 && c.codigo_padre === grupo1.codigo);
+            const n2 = cuentas.filter(c => c.nivel === 2 && c.codigo_padre === grupo1.codigo)
+                .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || '', undefined, { numeric: true }));
 
             html += `
                 <div class="cont-tree-n1 ${isExpanded1 ? 'expanded' : ''}" data-codigo="${grupo1.codigo}">
@@ -2072,7 +2073,8 @@ const ContabilidadModule = {
 
             for (const grupo2 of n2) {
                 const isExpanded2 = this._expandedGroups.has(grupo2.codigo);
-                const n3 = cuentas.filter(c => c.nivel === 3 && c.codigo_padre === grupo2.codigo);
+                const n3 = cuentas.filter(c => c.nivel === 3 && c.codigo_padre === grupo2.codigo)
+                    .sort((a, b) => (a.codigo || '').localeCompare(b.codigo || '', undefined, { numeric: true }));
 
                 html += `
                         <div class="cont-tree-n2 ${isExpanded2 ? 'expanded' : ''}" data-codigo="${grupo2.codigo}">

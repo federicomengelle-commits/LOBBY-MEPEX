@@ -1989,6 +1989,18 @@ const EventosModule = {
             const sEvEnd = this._splitDatetime(getVal('dtEventEnd'));
             const sTeardown = this._splitDatetime(getVal('dtTeardown'));
 
+            // Validar orden cronológico: Armado ≤ Inicio evento ≤ Fin evento ≤ Desarme
+            const dateErr = this._validateFaseDates([
+                { label: 'Armado', d: sSetup },
+                { label: 'Inicio del evento', d: sEvStart },
+                { label: 'Fin del evento', d: sEvEnd },
+                { label: 'Desarme', d: sTeardown },
+            ]);
+            if (dateErr) {
+                Toast.error(dateErr);
+                return;
+            }
+
             const update = {
                 setupDate: sSetup.date,
                 setupEndDate: sSetup.date,
@@ -2143,6 +2155,18 @@ const EventosModule = {
             const sEvStart = split('dtEventStart');
             const sEvEnd = split('dtEventEnd');
             const sTeardown = split('dtTeardown');
+
+            const dateErr = this._validateFaseDates([
+                { label: 'Armado', d: sSetup },
+                { label: 'Inicio del evento', d: sEvStart },
+                { label: 'Fin del evento', d: sEvEnd },
+                { label: 'Desarme', d: sTeardown },
+            ]);
+            if (dateErr) {
+                Toast.error(dateErr);
+                return;
+            }
+
             const venue = (getVal('venue') || '').trim();
             const data = {
                 name,
@@ -2535,6 +2559,24 @@ const EventosModule = {
         if (!datetimeVal) return { date: '', time: '' };
         const parts = datetimeVal.split('T');
         return { date: parts[0] || '', time: parts[1] ? parts[1].slice(0, 5) : '' };
+    },
+
+    // Valida que las fases estén en orden cronológico no decreciente.
+    // Recibe [{label, d:{date,time}}, ...] ya en orden esperado.
+    // Devuelve string de error si alguna fecha rompe el orden, o null si OK.
+    _validateFaseDates(fases) {
+        const stamp = (d) => d && d.date ? `${d.date}T${d.time || '00:00'}` : null;
+        let prev = null, prevLabel = '';
+        for (const f of fases) {
+            const cur = stamp(f.d);
+            if (!cur) continue;
+            if (prev && cur < prev) {
+                return `"${f.label}" no puede ser anterior a "${prevLabel}".`;
+            }
+            prev = cur;
+            prevLabel = f.label;
+        }
+        return null;
     },
 
     _getDocIcon(tipo) {
