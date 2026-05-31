@@ -2756,14 +2756,6 @@ const ContabilidadModule = {
             }
 
             this._diarioAsientos = asientos || [];
-
-            // DEBUG: log first asiento structure to verify field names
-            if (this._diarioAsientos.length > 0) {
-                console.log('[Contabilidad DEBUG] Asiento sample:', JSON.stringify(this._diarioAsientos[0], null, 2));
-                if (this._diarioAsientos[0]._lineas?.length > 0) {
-                    console.log('[Contabilidad DEBUG] Linea sample:', JSON.stringify(this._diarioAsientos[0]._lineas[0], null, 2));
-                }
-            }
         } catch (e) {
             console.error('[Contabilidad] Error loading asientos:', e);
             this._diarioAsientos = [];
@@ -3132,15 +3124,7 @@ const ContabilidadModule = {
                 .select('*')
                 .eq('cuenta_id', this._mayorCuentaId);
 
-            // DEBUG
-            console.log('[Mayor DEBUG] cuenta_id:', this._mayorCuentaId);
-            console.log('[Mayor DEBUG] allLineas:', allLineas?.length, allLineas);
-            if (linErr) console.error('[Mayor DEBUG] lineas error:', linErr);
-            // If no lineas by cuenta_id, try checking all lineas for debugging
-            if (!allLineas || allLineas.length === 0) {
-                const { data: allCheck } = await supabaseClient.from('asiento_lineas').select('cuenta_id').limit(10);
-                console.log('[Mayor DEBUG] sample cuenta_ids in asiento_lineas:', allCheck);
-            }
+            if (linErr) console.warn('[Mayor] Error cargando líneas:', linErr.message);
 
             if (!allLineas || allLineas.length === 0) {
                 this._mayorMovimientos = [];
@@ -3151,7 +3135,6 @@ const ContabilidadModule = {
 
             // 3. Fetch all related asientos
             const asientoIds = [...new Set(allLineas.map(l => l.asiento_id))];
-            console.log('[Mayor DEBUG] canal filter:', JSON.stringify(canal), 'asientoIds:', asientoIds);
 
             let asientosQuery = supabaseClient
                 .from('asientos')
@@ -3165,7 +3148,7 @@ const ContabilidadModule = {
             }
 
             const { data: asientos, error: asErr } = await asientosQuery;
-            console.log('[Mayor DEBUG] asientos result:', asientos?.length, asientos, 'error:', asErr);
+            if (asErr) console.warn('[Mayor] Error cargando asientos:', asErr.message);
             const asientosMap = {};
             (asientos || []).forEach(a => { asientosMap[a.id] = a; });
 
