@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 22%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 24%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -145,6 +145,15 @@ Maestro completo y sano (Lugares · Documentación con vencimientos · Stock, ad
 
 ### Falta de Fase 3
 Estandarizar códigos/naming del catálogo (recetas) + showcase comercial (a definir por Fede). Inventario y Locaciones ya son maestros sanos.
+
+## FASE 4 — Operaciones (EN CURSO)
+
+### 4.1 — Eventos: constructor de jornadas ✅ HECHO (commit `2ef6566`)
+Tabla `evento_jornadas` (DDL `sql/fase4_evento_jornadas.sql`) + trigger `fn_evento_jornadas_sync` que **deriva** `fecha_*/hora_*` de `eventos` desde las jornadas (compat: calendario/lobby/badges sin tocar). **Trigger verificado en prod** (insert → inicio=min, fin=max, apertura=primer día, cierre=último día, exacto; data de prueba limpiada y evento restaurado). UI en la ficha de Eventos: sección Jornadas (tabla por fase screenshot-able) + modal constructor (agregar/quitar jornadas: día + hora inicio + hora fin). Additivo (el form rápido de Fechas sigue intacto). Absorbe el `teardownEndDate` de localStorage. ⚠️ Falta pull del server para ver la UI (`eventos.js?v=9`).
+**Edge conocido:** si se borran TODAS las jornadas de una fase, sus columnas derivadas quedan con el último valor (el guard no las nulea). Menor.
+
+### Falta de Fase 4
+4.2 gente por jornada (headcount + roles) · reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas).
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
