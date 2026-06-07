@@ -91,9 +91,6 @@ const CalendarioOperativo = {
                         <select class="co-select co-filter" id="coFilterVenue">
                             <option value="">Todos los predios</option>
                         </select>
-                        <select class="co-select co-filter" id="coFilterPM">
-                            <option value="">Todos los PM</option>
-                        </select>
                         <div class="co-view-toggle">
                             <button class="co-view-btn active" id="coViewTimeline" title="Timeline">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -103,10 +100,11 @@ const CalendarioOperativo = {
                             </button>
                         </div>
                         <div class="co-zoom">
+                            <svg class="co-zoom-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#888;flex-shrink:0;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                             <button class="co-zoom-btn" id="coZoomOut" title="Alejar">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             </button>
-                            <span class="co-zoom-label" id="coZoomLabel">48px</span>
+                            <span class="co-zoom-label" id="coZoomLabel">100%</span>
                             <button class="co-zoom-btn" id="coZoomIn" title="Acercar">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             </button>
@@ -141,18 +139,9 @@ const CalendarioOperativo = {
                 <div class="co-tooltip" id="coTooltip"></div>
 
                 <div class="co-legend">
-                    <div class="co-legend-item">
-                        <div class="co-legend-swatch co-phase-armado" style="--event-color:#00BCD4"></div>
-                        <span>Armado</span>
-                    </div>
-                    <div class="co-legend-item">
-                        <div class="co-legend-swatch co-phase-funcionamiento" style="--event-color:#00BCD4"></div>
-                        <span>Evento</span>
-                    </div>
-                    <div class="co-legend-item">
-                        <div class="co-legend-swatch co-phase-desarme" style="--event-color:#00BCD4"></div>
-                        <span>Desarme</span>
-                    </div>
+                    <span class="co-legend-item">🔧 Armado</span>
+                    <span class="co-legend-item">📅 Evento</span>
+                    <span class="co-legend-item">🔽 Desarme</span>
                 </div>
             </div>
         `;
@@ -412,7 +401,6 @@ const CalendarioOperativo = {
     _getFilteredEvents() {
         return this._events.filter(ev => {
             if (this._filters.venue && ev.venue !== this._filters.venue) return false;
-            if (this._filters.pm && ev.pm !== this._filters.pm) return false;
             return true;
         });
     },
@@ -678,10 +666,6 @@ const CalendarioOperativo = {
             this._filters.venue = e.target.value || null;
             this._applyFilters();
         });
-        document.getElementById('coFilterPM')?.addEventListener('change', (e) => {
-            this._filters.pm = e.target.value || null;
-            this._applyFilters();
-        });
 
         // Zoom
         document.getElementById('coZoomIn')?.addEventListener('click', () => {
@@ -779,7 +763,9 @@ const CalendarioOperativo = {
 
     _setZoom() {
         this._dayHeight = this._zoomLevels[this._zoomIndex];
-        document.getElementById('coZoomLabel').textContent = this._dayHeight + 'px';
+        // El nivel 48px (índice 2) es el 100%; el resto se muestra relativo a ese.
+        const zl = document.getElementById('coZoomLabel');
+        if (zl) zl.textContent = Math.round(this._dayHeight / 48 * 100) + '%';
 
         // Re-render timeline at new scale
         const viewport = this._scrollContainer;
@@ -1495,9 +1481,7 @@ const CalendarioOperativo = {
     // ═══════════════════════════════════════════
 
     _populateFilters() {
-        const venues = [...new Set(this._events.map(e => e.venue))].sort();
-        const pms = [...new Set(this._events.map(e => e.pm))].sort();
-
+        const venues = [...new Set(this._events.map(e => e.venue))].filter(Boolean).sort();
         const venueSelect = document.getElementById('coFilterVenue');
         if (venueSelect) {
             venues.forEach(v => {
@@ -1505,16 +1489,6 @@ const CalendarioOperativo = {
                 opt.value = v;
                 opt.textContent = v;
                 venueSelect.appendChild(opt);
-            });
-        }
-
-        const pmSelect = document.getElementById('coFilterPM');
-        if (pmSelect) {
-            pms.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p;
-                opt.textContent = p;
-                pmSelect.appendChild(opt);
             });
         }
     },
