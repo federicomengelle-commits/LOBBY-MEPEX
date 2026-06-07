@@ -582,42 +582,61 @@ const CalendarioOperativo = {
         const dayHeight = this._dayHeight;
         const rangeStart = this._rangeStart;
 
-        // Overall block position
-        const blockTop = this._daysBetween(rangeStart, setupStart) * dayHeight;
-        const blockHeight = (this._daysBetween(setupStart, teardownEnd) + 1) * dayHeight;
-
-        // Phase heights
-        const armadoH = (this._daysBetween(setupStart, setupEnd) + 1) * dayHeight;
-        const funcH = (this._daysBetween(eventStart, eventEnd) + 1) * dayHeight;
-        const desarmeH = (this._daysBetween(teardownStart, teardownEnd) + 1) * dayHeight;
+        // El bloque va desde el inicio del armado hasta el último fin (desarme normalmente).
+        const blockStart = setupStart;
+        const blockEnd = [setupEnd, eventEnd, teardownEnd]
+            .filter(d => d instanceof Date && !isNaN(d))
+            .reduce((m, d) => (d > m ? d : m), setupStart);
+        const blockTop = this._daysBetween(rangeStart, blockStart) * dayHeight;
+        const blockHeight = (this._daysBetween(blockStart, blockEnd) + 1) * dayHeight;
 
         // Check visibility
         if (blockTop + blockHeight < 0 || blockTop > totalDays * dayHeight) return '';
 
         const colorVar = `--event-color: ${event.color}`;
+        const baseBg = this._hexToRgba(event.color, 0.12);
         const hasConflict = event._conflicts && event._conflicts.length > 0;
         const conflictBadge = hasConflict
             ? '<span class="co-conflict-badge" title="Conflicto de recursos">⚠</span>'
             : '';
 
+        const fmtTime = (t) => (t ? String(t).slice(0, 5) : '');
+
+        // Cada fase posicionada por su FECHA REAL dentro del bloque (no apiladas).
+        // Así los gaps entre fases (ej. desarme un día después del evento) se respetan.
+        const phaseDiv = (cls, start, end, label, time) => {
+            if (!(start instanceof Date) || isNaN(start)) return '';
+            const e = (end instanceof Date && !isNaN(end)) ? end : start;
+            const top = this._daysBetween(blockStart, start) * dayHeight;
+            const h = (this._daysBetween(start, e) + 1) * dayHeight;
+            const timeHtml = time ? `<span class="co-phase-time">${time}</span>` : '';
+            return `<div class="co-phase ${cls}" style="top:${top}px;height:${h}px">
+                        <span class="co-phase-label">${label}${timeHtml}</span>
+                    </div>`;
+        };
+
         return `
             <div class="co-event-block ${hasConflict ? 'co-has-conflict' : ''}" data-event-id="${event.id}"
-                 style="top:${blockTop}px;height:${blockHeight}px;${colorVar}">
+                 style="top:${blockTop}px;height:${blockHeight}px;background:${baseBg};${colorVar}">
                 ${conflictBadge}
                 <span class="co-event-count">${event.projectCount} proy.</span>
-                <div class="co-phase co-phase-armado" style="height:${armadoH}px">
-                    <span class="co-phase-label">Armado</span>
-                </div>
-                <div class="co-phase co-phase-funcionamiento" style="height:${funcH}px"></div>
-                <div class="co-phase co-phase-desarme" style="height:${desarmeH}px">
-                    <span class="co-phase-label">Desarme</span>
-                </div>
+                ${phaseDiv('co-phase-armado', setupStart, setupEnd, 'ARMADO', fmtTime(event.setupTimeOpen))}
+                ${phaseDiv('co-phase-funcionamiento', eventStart, eventEnd, 'EVENTO', fmtTime(event.eventTimeOpen))}
+                ${phaseDiv('co-phase-desarme', teardownStart, teardownEnd, 'DESARME', fmtTime(event.teardownTimeOpen))}
                 <div class="co-event-info">
                     <span class="co-event-name">${event.name}</span>
                     <span class="co-event-venue">${event.venue}</span>
                 </div>
             </div>
         `;
+    },
+
+    // Convierte un color hex (#RRGGBB) a rgba con alpha. Fallback al color tal cual.
+    _hexToRgba(hex, alpha) {
+        if (!hex || typeof hex !== 'string') return `rgba(0,169,193,${alpha})`;
+        const m = hex.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+        if (!m) return hex;
+        return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`;
     },
 
     // ═══════════════════════════════════════════
