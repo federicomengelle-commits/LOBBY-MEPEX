@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 18%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 21%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -8,10 +8,10 @@
 
 ---
 
-## Estado general — AVANCE ≈ 18%
-- **Hecho:** Fase 1 completa (nav + roles). **Fase 2 ✅ COMPLETA** (saneamiento localStorage→Supabase + 2C limpieza + 2B auditada/diferida). Calendario operativo rediseñado (solo vista, espejo de Eventos). CRM depurado (Marketing eliminado).
-- **Próximo paso (charla nueva):** arrancar fase pesada. Recomendado **Fase 3 — Capa de Activos** (fundacional, SQL pesado: Catálogo OCTEXA, Flota, Locaciones) o **Fase 4 — Eventos** (constructor de jornadas) según priorice Fede. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` al día con Fase 2 (2026-06-07). Branch dev: `rediseno` (= main).
+## Estado general — AVANCE ≈ 21%
+- **Hecho:** Fase 1 completa. **Fase 2 ✅ COMPLETA**. **Fase 3 EN CURSO:** Flota (3.1a) ✅ — módulo nuevo en ACTIVOS, verificado en prod.
+- **Próximo paso:** seguir Fase 3 (Locaciones + estandarizar catálogo/recetas + showcase comercial a definir). 3.1b (repuntar legacy) + repensar Logística → Fase 4. Ver `PLAN-MAESTRO`.
+- **Baseline:** `origin/main` al día (2026-06-07, `95eceb1`). Branch dev: `rediseno` (= main).
 - **Última actualización:** 2026-06-07.
 
 ---
@@ -131,6 +131,17 @@ Reemplaza el form actual de fechas (que tiene 1 fecha + 1 hora apertura/cierre p
 - **Marketing ELIMINADO del CRM** (decisión Fede: del todo). Sacado: tab, estado (`_campanias`/`_mktFilterEstado`), config (`_mktEstados`/`_mktCanales`), counts, lógica (load / quick-action / render-case) y las 5 funciones de marketing + el localStorage `crm_campanias`. **Reemplaza el sub-bloque 2.3** (ya no hay marketing→Supabase). Bump `crm.js?v=12`. Verificado en preview. **Pendiente trivial:** borrar el CSS `.mkt-*` muerto (crm.js ~5164-5437, marcado "ELIMINADO — borrar en cleanup"; invisible, no se genera markup).
 - **PENDIENTE (feature) — Auditoría de TODOS los cambios del CRM:** registrar quién hace cada cambio (editar cliente, mover pipeline, editar cotización), no solo interacciones. Engancha con el `audit_log` global. A diseñar/construir.
 - **VISIÓN FUTURA — chat multicanal:** centralizar todas las charlas con cada cliente (multicanal) dentro del CRM → ficha del cliente = historial completo de conversaciones + interacciones, para estar siempre actualizado de cada cliente.
+
+## FASE 3 — Capa de Activos (EN CURSO)
+
+### 3.1a — Flota ✅ HECHO (commit `6a2d0a0`)
+Módulo `flota.js` en ACTIVOS (patrón canónico). Maestro `vehiculos` extendido (uso + plata) + mantenimiento como cola del activo (`produccion_mantenimiento.vehiculo_id`, motor único con Taller). Vistas por rol (plata solo admin). Registrado en data/router/index; `api.js` extendido. SQL `sql/fase3_flota.sql` (idempotente) corrido + perms `flota` en tabla `roles` (write super/admin, read pm/taller). **Verificado en prod (Chrome):** módulo anda, 2 vehículos reales, sin errores de consola. El "link no anda" era falta del perm `flota` en `roles` (aplicado directo vía consola, persistido; el SQL queda como registro).
+
+### 3.1b — Repuntar legacy → DIFERIDO a Fase 4
+Repuntar `badges.js` (VTV/seguro) + `eventos.js` (select transporte) a `vehiculos` y retirar `logistica_vehiculos`. Va junto con la **reformulación de Logística** en Fase 4 (decisión Fede: mejor todo junto). El legacy sigue vivo, no molesta.
+
+### Falta de Fase 3
+Locaciones (revisar maestro existente) + estandarizar códigos/naming del catálogo (recetas) + showcase comercial (a definir por Fede). Ver PLAN-MAESTRO.
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
