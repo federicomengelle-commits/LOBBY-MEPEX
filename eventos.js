@@ -610,10 +610,7 @@ const EventosModule = {
                     </div>
                 </div>
 
-                <!-- Fechas -->
-                ${this._renderPanelFechas(ev)}
-
-                <!-- Jornadas (constructor tipo tabla) -->
+                <!-- Jornadas + personal por día (única fuente de fechas/horarios) -->
                 ${this._renderPanelJornadas(ev)}
 
                 <!-- Proyectos vinculados (cargados async desde proyectos.evento_id) -->
@@ -739,7 +736,7 @@ const EventosModule = {
         return `
             <div class="ev-panel-section" id="evJornadasSection">
                 <div class="ev-section-header">
-                    <h3 class="ev-section-title">Jornadas</h3>
+                    <h3 class="ev-section-title">Jornadas y personal <span style="font-size:0.64rem;color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0;">(días · horario · gente por día)</span></h3>
                     <button class="ev-edit-btn" id="evJornadasEdit" title="Editar jornadas">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                     </button>
@@ -798,18 +795,40 @@ const EventosModule = {
 
     _renderJornadaCard(j, people) {
         const horas = `${(j.hora_inicio || '').slice(0, 5) || '—'}${j.hora_fin ? '–' + j.hora_fin.slice(0, 5) : ''}`;
+        const dur = this._jornadaDur(j.hora_inicio, j.hora_fin);
+        const n = people.length;
+        const sorted = [...people].sort((a, b) => (a.rol || 'zzz').localeCompare(b.rol || 'zzz'));
         return `
             <div class="ev-jc" data-jid="${j.id}">
                 <div class="ev-jc-head">
-                    <span class="ev-jc-fecha">${this._fmtDate(j.fecha)}</span>
-                    <span class="ev-jc-horas">${horas}</span>
-                    <span class="ev-jc-count">${people.length} 👤</span>
+                    <span class="ev-jc-fecha">${this._fmtDiaFecha(j.fecha)}</span>
+                    <span class="ev-jc-horas">${horas}${dur ? ` · ${dur}` : ''}</span>
+                    <span class="ev-jc-count ${n ? 'has' : ''}">${n} ${n === 1 ? 'persona' : 'personas'}</span>
                 </div>
                 <div class="ev-jc-people">
-                    ${people.map(a => this._renderAsigRow(a)).join('')}
+                    ${sorted.map(a => this._renderAsigRow(a)).join('')}
                     <button class="ev-jc-add" data-jid="${j.id}" data-fase="${j.fase}" data-fecha="${j.fecha}">＋ persona</button>
                 </div>
             </div>`;
+    },
+
+    _jornadaDur(ini, fin) {
+        if (!ini || !fin) return '';
+        const [h1, m1] = ini.split(':').map(Number);
+        const [h2, m2] = fin.split(':').map(Number);
+        let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins <= 0) mins += 24 * 60; // cruza medianoche
+        const h = Math.floor(mins / 60), m = mins % 60;
+        return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+    },
+
+    _fmtDiaFecha(fecha) {
+        if (!fecha) return '—';
+        const p = fecha.split('-').map(Number);
+        const d = new Date(p[0], p[1] - 1, p[2]);
+        const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        return `${dias[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}-${meses[d.getMonth()]}`;
     },
 
     _renderAsigRow(a) {
@@ -957,10 +976,11 @@ const EventosModule = {
             .ev-j-del:hover{color:#ff4444;}
             .ev-j-hint{font-size:0.72rem;color:var(--text-dim);margin:0;}
             .ev-jc{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;}
-            .ev-jc-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:0.8rem;}
-            .ev-jc-fecha{font-weight:600;color:var(--text-primary);}
+            .ev-jc-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:0.8rem;border-bottom:1px solid var(--border);padding-bottom:6px;}
+            .ev-jc-fecha{font-weight:700;color:var(--text-primary);font-size:0.88rem;}
             .ev-jc-horas{font-family:var(--font-mono);color:var(--text-muted);font-size:0.72rem;}
-            .ev-jc-count{margin-left:auto;font-size:0.7rem;color:var(--text-dim);white-space:nowrap;}
+            .ev-jc-count{margin-left:auto;font-size:0.74rem;color:var(--text-dim);white-space:nowrap;font-family:var(--font-mono);}
+            .ev-jc-count.has{color:var(--primary);font-weight:700;}
             .ev-jc-people{display:flex;flex-direction:column;gap:4px;}
             .ev-jc-row{display:flex;align-items:center;gap:6px;}
             .ev-jc-name{flex:1;font-size:0.82rem;color:var(--text-primary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
