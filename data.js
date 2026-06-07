@@ -19,11 +19,11 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'finanzas', 'contabilidad', 'costos'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'contabilidad', 'costos', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'contabilidad', 'costos'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
-        pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
-        taller:     ['proyectos', 'eventos', 'taller', 'logistica', 'inventario'],
+        pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'flota'],
+        taller:     ['proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'flota'],
     },
 
     // ─── PERMISOS DE SOLO LECTURA (FALLBACK OFFLINE) ───
@@ -33,8 +33,8 @@ const Data = {
         superadmin: [],
         admin:      [],
         venta:      ['catalogo'],
-        pm:         ['crm', 'catalogo', 'inventario'],
-        taller:     ['proyectos', 'eventos', 'inventario'],
+        pm:         ['crm', 'catalogo', 'inventario', 'flota'],
+        taller:     ['proyectos', 'eventos', 'inventario', 'flota'],
         // Note: 'taller' in readOnly refers to the role, not the module
     },
 
@@ -81,7 +81,7 @@ const Data = {
             name: 'ACTIVOS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
             color: '#9B7DFF',
-            moduleIds: ['inventario', 'locaciones', 'compras'],
+            moduleIds: ['inventario', 'locaciones', 'compras', 'flota'],
         },
         {
             id: 'admin',
@@ -368,6 +368,25 @@ const Data = {
             ],
             connections: [
                 { to: 'inventario', label: 'Ver Inventario', context: 'Stock total del sistema' },
+            ],
+        },
+
+        flota: {
+            id: 'flota',
+            name: 'Flota',
+            shortName: 'Flota',
+            icon: '🚛',
+            description: 'Vehículos: uso, choferes, VTV/seguro, amortización. Logística los consume.',
+            status: 'development',
+            color: '#9B7DFF',
+            order: 11.5,
+            sections: [
+                { id: 'vehiculos', name: 'Vehículos', icon: '🚛', description: 'Flota propia + terceros: datos, estado, chofer, capacidad', fields: [] },
+                { id: 'mantenimiento', name: 'Mantenimiento', icon: '🔧', description: 'VTV, seguro, service con vencimientos y alertas', fields: [] },
+            ],
+            connections: [
+                { to: 'logistica', label: 'Ver Logística', context: 'Cargas y transporte' },
+                { to: 'finanzas', label: 'Ver Finanzas', context: 'Amortización y costos de flota' },
             ],
         },
 

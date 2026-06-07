@@ -3839,6 +3839,14 @@ const API = {
             costo_referencial: data.costoReferencial ?? data.costo_referencial ?? null,
             activo: data.activo !== false,
             notas: data.notas || null,
+            // Fase 3 Flota: uso + plata
+            tipo: data.tipo || null,
+            estado: data.estado || 'disponible',
+            chofer_habitual_id: data.choferHabitualId || data.chofer_habitual_id || null,
+            titular: data.titular || null,
+            valor_compra: data.valorCompra ?? data.valor_compra ?? null,
+            fecha_compra: data.fechaCompra || data.fecha_compra || null,
+            amortizacion_meses: data.amortizacionMeses ?? data.amortizacion_meses ?? null,
         };
         if (!payload.descripcion) {
             console.warn('[API] createVehiculo: descripcion obligatoria');
@@ -3883,6 +3891,17 @@ const API = {
         if (data.costo_referencial !== undefined) payload.costo_referencial = data.costo_referencial;
         if (data.activo !== undefined) payload.activo = !!data.activo;
         if (data.notas !== undefined) payload.notas = data.notas || null;
+        if (data.tipo !== undefined) payload.tipo = data.tipo || null;
+        if (data.estado !== undefined) payload.estado = data.estado;
+        if (data.choferHabitualId !== undefined) payload.chofer_habitual_id = data.choferHabitualId || null;
+        if (data.chofer_habitual_id !== undefined) payload.chofer_habitual_id = data.chofer_habitual_id || null;
+        if (data.titular !== undefined) payload.titular = data.titular || null;
+        if (data.valorCompra !== undefined) payload.valor_compra = data.valorCompra;
+        if (data.valor_compra !== undefined) payload.valor_compra = data.valor_compra;
+        if (data.fechaCompra !== undefined) payload.fecha_compra = data.fechaCompra || null;
+        if (data.fecha_compra !== undefined) payload.fecha_compra = data.fecha_compra || null;
+        if (data.amortizacionMeses !== undefined) payload.amortizacion_meses = data.amortizacionMeses;
+        if (data.amortizacion_meses !== undefined) payload.amortizacion_meses = data.amortizacion_meses;
         try {
             const { error } = await supabaseClient
                 .from('vehiculos').update(payload).eq('id', id);
@@ -4476,7 +4495,7 @@ const API = {
     // ═════════════════════════════════════════════════════════════
     // Reusa tabla `produccion_mantenimiento` (BIGSERIAL standalone).
 
-    async getMantenimiento({ soloActivos = true } = {}) {
+    async getMantenimiento({ soloActivos = true, vehiculoId, soloFlota = false } = {}) {
         try {
             let q = supabaseClient
                 .from('produccion_mantenimiento')
@@ -4484,6 +4503,10 @@ const API = {
                 .eq('_deleted', false)
                 .order('fecha_proximo_vencimiento', { ascending: true, nullsLast: true });
             if (soloActivos) q = q.neq('estado', 'baja');
+            // Fase 3 Flota: vehiculo_id NULL = items de Taller; set = items de Flota.
+            if (vehiculoId !== undefined && vehiculoId !== null) q = q.eq('vehiculo_id', vehiculoId);
+            else if (soloFlota) q = q.not('vehiculo_id', 'is', null);
+            else q = q.is('vehiculo_id', null);
             const { data, error } = await q;
             if (error) throw error;
             return data || [];
@@ -4501,6 +4524,7 @@ const API = {
             fecha_ultimo_service: data.fechaUltimoService || data.fecha_ultimo_service || null,
             fecha_proximo_vencimiento: data.fechaProximoVencimiento || data.fecha_proximo_vencimiento || null,
             notas: data.notas || null,
+            vehiculo_id: data.vehiculoId || data.vehiculo_id || null,
         };
         if (!payload.nombre) {
             console.warn('[API] createMantenimiento: nombre obligatorio');
@@ -4527,6 +4551,8 @@ const API = {
         if (data.fechaProximoVencimiento !== undefined) payload.fecha_proximo_vencimiento = data.fechaProximoVencimiento;
         if (data.fecha_proximo_vencimiento !== undefined) payload.fecha_proximo_vencimiento = data.fecha_proximo_vencimiento;
         if (data.notas !== undefined) payload.notas = data.notas;
+        if (data.vehiculoId !== undefined) payload.vehiculo_id = data.vehiculoId;
+        if (data.vehiculo_id !== undefined) payload.vehiculo_id = data.vehiculo_id;
         try {
             const { error } = await supabaseClient
                 .from('produccion_mantenimiento').update(payload).eq('id', id);

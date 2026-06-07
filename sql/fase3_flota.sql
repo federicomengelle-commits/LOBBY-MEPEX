@@ -59,6 +59,16 @@ CREATE INDEX IF NOT EXISTS idx_prod_mant_vehiculo
 -- ─────────────────────────────────────────────
 
 
+-- ─────────────────────────────────────────────
+-- 3. Permisos del módulo `flota` en la tabla roles (para que aparezca en el menú).
+--    getAccessLevel lee roles.permissions (JSONB); sin esto, flota = 'none' para todos.
+-- ─────────────────────────────────────────────
+UPDATE public.roles SET permissions = COALESCE(permissions, '{}'::jsonb) || '{"flota":"write"}'::jsonb
+    WHERE id IN ('superadmin', 'admin');
+UPDATE public.roles SET permissions = COALESCE(permissions, '{}'::jsonb) || '{"flota":"read"}'::jsonb
+    WHERE id IN ('pm', 'taller');
+
+
 -- =============================================
 -- Notas de migración (NO ejecuta nada, solo doc):
 -- * `logistica_vehiculos` (legacy) queda en desuso una vez repunteados

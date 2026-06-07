@@ -93,6 +93,7 @@ const Router = {
             'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras' },
             'inventario':       { render: () => InventarioModule.render(), requiresAuth: true, module: 'inventario' },
             'locaciones':       { render: () => LocacionesModule.render(), requiresAuth: true, module: 'locaciones' },
+            'flota':            { render: () => FlotaModule.render(), requiresAuth: true, module: 'flota' },
 
             // ── Admin & Finanzas ──
             'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
