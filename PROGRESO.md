@@ -85,6 +85,19 @@ Sub-bloques:
 >
 > **⭐ Calendario ACEPTADO como está (2026-06-07).** Su **segundo pase** (reflejar historial real + asignaciones por día + vehículos) es **POST-arreglo de Eventos**. No volver a tocar el calendario hasta entonces.
 
+### ⭐⭐ Constructor de FECHAS/HORARIOS tipo TABLA (jornadas) — eventos.js (spec Fede 2026-06-07)
+Reemplaza el form actual de fechas (que tiene 1 fecha + 1 hora apertura/cierre por fase). El nuevo:
+- Por fase (**armado / evento / desarme**): **MÚLTIPLES días = jornadas**. Cada jornada = fecha + hora inicio + hora fin.
+- **Tiempo continuo/lineal** a lo largo de los días. Ejemplo textual de Fede:
+  - **Armado:** día 8 `08:00→20:00` · día 9 `08:00→24:00` · día 10 (víspera) `00:00→10:00`.
+  - **Evento:** día 10 `10:00→20:00` · día 11 `10:00→20:00` · día 12 `10:00→20:00`.
+  - **Desarme:** día 12 `20:30→...`.
+- **Objetivo:** una TABLA clara, cómoda y entendible de los horarios con sus jornadas. Tiene que poder **mandarse como captura** → ser "fuente de info de verdad" para quien pregunte.
+- **Datos:** requiere modelo per-día → probable tabla nueva **`evento_jornadas`** (`evento_id, fase, fecha, hora_inicio, hora_fin, orden`) — **DDL**. (O JSONB en `eventos`; a decidir en el diseño.) Reemplaza/extiende las columnas single `fecha_*_inicio/fin` + `hora_*_apertura/cierre` actuales.
+- El **calendario** refleja las jornadas (fases multi-día con sus horarios por día).
+- **Absorbe** el teardown→columna de 2.2 (cuando se haga este constructor, la sección Fechas se reescribe entera).
+- Se combina con la **asignación de gente por día** (item 1 abajo): cada jornada tiene su headcount + roles.
+
 1. **Asignación de personas POR DÍA dentro del evento** (no solo por fase). Ej.: armado de 2 días → día 1 van 8 personas, día 2 van 4; a la apertura va 1–2 de guardia hasta abrir. Cada día/fase con su headcount y su gente.
 2. **Roles discriminados y agrupados, desplegables/colapsables:** gente de armado vs eléctricos vs chofer, etc. Agrupar la gente por rol dentro de cada día/fase.
 3. **Vehículos en logística:** que figure el/los vehículo(s) que van (hoy falta verlos claros). Probablemente como desplegable/agrupado. Vive en Eventos/Logística, se refleja en calendario.
