@@ -6,6 +6,9 @@
    and connection status indicator.
    ============================================= */
 
+// Chevron icon for sidebar section headers (antes vivía en SidebarEditor.EditorIcons)
+const SIDEBAR_CHEVRON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
 const App = {
     sidebarState: 'open', // 'open' | 'collapsed' | 'hidden'
     drawerOpen: false,    // Tanda 4 — mobile drawer state (independiente de sidebarState)
@@ -46,8 +49,10 @@ const App = {
         const user = Auth.getUser();
         if (!user) return;
 
-        // Initialize sidebar editor (loads from localStorage or builds default)
-        SidebarEditor.init();
+        // El sidebar se construye directo de Data.categories (sin editor / sin localStorage).
+        // Limpieza one-time de las claves del viejo SidebarEditor, si quedaron.
+        localStorage.removeItem('mepex_sidebar_config');
+        localStorage.removeItem('mepex_sidebar_version');
 
         const app = document.getElementById('app');
         // UndoUI.init() is called after innerHTML is set (see below after _attachShellEvents)
@@ -180,85 +185,58 @@ const App = {
         `;
     },
 
-    // ─── SIDEBAR (Quick Actions + Category Nav + Editor) ───
+    // ─── SIDEBAR (Quick Actions + Category Nav) ───
+    // Construido directo de Data.categories filtrado por permisos. Sin editor, sin localStorage.
     _renderSidebar(user) {
         const actions = Data.getQuickActionsForRole(user.role);
-        const isAdmin = user.role === 'superadmin' || user.role === 'admin';
-        const editMode = SidebarEditor.isEditMode();
         const currentHash = Router.getHash();
         const allowed = Data.rolePermissions[user.role] || [];
+        const sections = this._buildSidebarSections();
 
-        // Sections from SidebarEditor config
-        const sections = SidebarEditor.getConfig();
+        const filterItems = (items) => items.filter(item => {
+            if (item.route === 'lobby' || item.route === 'calendario') return true;
+            return allowed.includes(item.route);
+        });
 
         // Build categories HTML
         const categoriesHtml = sections.map(section => {
-            const visibleItems = editMode
-                ? section.items
-                : section.items.filter(item => {
-                    if (item.route === 'lobby' || item.route === 'calendario') return true;
-                    return allowed.includes(item.route);
-                });
-            if (!editMode && visibleItems.length === 0) return '';
+            const visibleItems = filterItems(section.items);
+            if (visibleItems.length === 0) return '';
 
-            const isOpen = !section.collapsed;
             const hasActive = visibleItems.some(i => i.route === currentHash);
-            const iconSvg = CategoryIcons[section.icon] || CategoryIcons.default;
 
             return `
                 <div class="se-section" data-section-id="${section.id}">
-                    <div class="se-section-header${isOpen || hasActive ? ' open' : ''}"
+                    <div class="se-section-header${hasActive ? ' open' : ''}"
                          data-section-id="${section.id}"
-                         style="--cat-color: ${section.color}"
-                         ${editMode ? 'draggable="true"' : ''}>
-                        ${editMode ? `<span class="se-drag-handle">${EditorIcons.drag}</span>` : ''}
-                        <span class="se-section-icon">${iconSvg}</span>
-                        <span class="se-section-label" data-section-id="${section.id}">${section.label}</span>
-                        ${editMode ? `
-                        <div class="se-section-actions">
-                            <button class="se-action-btn se-color-btn" data-section-id="${section.id}" title="Color">${EditorIcons.palette}</button>
-                            <button class="se-action-btn se-add-item-btn" data-section-id="${section.id}" title="Agregar">${EditorIcons.plus}</button>
-                            <button class="se-action-btn se-delete-section-btn" data-section-id="${section.id}" title="Eliminar">${EditorIcons.trash}</button>
-                        </div>
-                        ` : ''}
-                        <span class="se-section-chevron">${EditorIcons.chevron}</span>
+                         style="--cat-color: ${section.color}">
+                        <span class="se-section-icon">${section.iconSvg}</span>
+                        <span class="se-section-label">${section.label}</span>
+                        <span class="se-section-chevron">${SIDEBAR_CHEVRON}</span>
                     </div>
-                    <div class="se-items${isOpen || hasActive ? ' open' : ''}">
+                    <div class="se-items${hasActive ? ' open' : ''}">
                         ${visibleItems.map(item => `
                         <div class="se-item${currentHash === item.route ? ' active' : ''}"
-                             data-item-id="${item.id}"
-                             data-section-id="${section.id}"
                              data-route="${item.route}"
-                             ${editMode ? 'draggable="true"' : ''}
                              style="--cat-color: ${section.color}">
-                            ${editMode ? `<span class="se-drag-handle">${EditorIcons.drag}</span>` : ''}
                             <span class="se-item-emoji">${item.emoji}</span>
-                            <span class="se-item-label" data-item-id="${item.id}">${item.label}</span>
-                            ${editMode ? `
-                            <div class="se-item-actions">
-                                <button class="se-action-btn se-delete-item-btn" data-section-id="${section.id}" data-item-id="${item.id}" title="Eliminar">${EditorIcons.trash}</button>
-                            </div>
-                            ` : ''}
+                            <span class="se-item-label">${item.label}</span>
                         </div>
                         `).join('')}
                     </div>
                 </div>`;
         }).join('');
 
-        // Build collapsed strip HTML
+        // Build collapsed strip HTML (flyouts)
         const stripHtml = sections.map(section => {
-            const visibleItems = section.items.filter(item => {
-                if (item.route === 'lobby' || item.route === 'calendario') return true;
-                return allowed.includes(item.route);
-            });
+            const visibleItems = filterItems(section.items);
             if (visibleItems.length === 0) return '';
 
             const hasActive = visibleItems.some(i => i.route === currentHash);
-            const iconSvg = CategoryIcons[section.icon] || CategoryIcons.default;
 
             return `
                 <div class="sidebar-strip-item${hasActive ? ' active' : ''}" style="--cat-color: ${section.color}" title="${section.label}">
-                    <span class="sidebar-strip-icon">${iconSvg}</span>
+                    <span class="sidebar-strip-icon">${section.iconSvg}</span>
                     <div class="sidebar-strip-flyout">
                         <div class="sidebar-strip-flyout-label">${section.label}</div>
                         ${visibleItems.map(item => `
@@ -272,9 +250,8 @@ const App = {
         }).join('');
 
         return `
-            <aside class="app-sidebar ${this.sidebarState}${editMode ? ' edit-mode' : ''}" id="appSidebar">
+            <aside class="app-sidebar ${this.sidebarState}" id="appSidebar">
                 <div class="sidebar-full">
-                    ${!editMode ? `
                     <div class="sidebar-section">
                         <div class="sidebar-section-label">ACCIONES RÁPIDAS</div>
                         <div class="sidebar-quick-actions">
@@ -287,33 +264,10 @@ const App = {
                         </div>
                     </div>
                     <div class="sidebar-divider"></div>
-                    ` : ''}
 
                     <nav class="sidebar-categories" id="sidebarCategories">
                         ${categoriesHtml}
                     </nav>
-
-                    ${editMode ? `
-                    <button class="se-add-section" id="seAddSection">
-                        ${EditorIcons.plus} Agregar sección
-                    </button>
-                    ` : ''}
-
-                    ${isAdmin ? `
-                    <div class="sidebar-footer" id="sidebarFooter">
-                        <button class="sidebar-edit-btn${editMode ? ' active' : ''}" id="sidebarEditBtn">
-                            ${EditorIcons.edit}
-                            <span>${editMode ? 'Listo' : 'Editar sidebar'}</span>
-                        </button>
-                        ${editMode && SidebarEditor.canUndo() ? `
-                        <button class="sidebar-undo-btn" id="sidebarUndoBtn">
-                            ${EditorIcons.undo}
-                            <span>Deshacer</span>
-                            <span class="undo-count">${SidebarEditor.undoCount()}</span>
-                        </button>
-                        ` : ''}
-                    </div>
-                    ` : ''}
                 </div>
 
                 <div class="sidebar-strip">
@@ -321,6 +275,45 @@ const App = {
                 </div>
             </aside>
         `;
+    },
+
+    // ─── BUILD SIDEBAR SECTIONS (desde Data.categories) ───
+    // Devuelve [{ id, label, iconSvg, color, items:[{label, emoji, route}] }].
+    // Replica el mapeo del viejo SidebarEditor._buildDefaultFromData (sin generar ids).
+    _buildSidebarSections() {
+        return Data.categories.map(cat => {
+            let items = [];
+            if (cat.modules) {
+                items = cat.modules.map(m => ({
+                    label: m.shortName || m.id,
+                    emoji: this._extractEmoji(m.icon),
+                    route: m.id,
+                }));
+            } else if (cat.moduleIds) {
+                items = cat.moduleIds.map(id => {
+                    const mod = Data.getModuleById(id);
+                    return {
+                        label: mod ? mod.shortName : id,
+                        emoji: mod ? this._extractEmoji(mod.icon) : '📄',
+                        route: id,
+                    };
+                });
+            }
+            return {
+                id: cat.id,
+                label: cat.name,
+                iconSvg: cat.icon || '',
+                color: cat.color || '#00A9C1',
+                items,
+            };
+        });
+    },
+
+    // ─── Extraer emoji de un icon string (emoji o SVG) ───
+    _extractEmoji(icon) {
+        if (!icon) return '📄';
+        if (icon.length <= 4 && !icon.startsWith('<')) return icon;
+        return '📄';
     },
 
     // ─── SEARCH OVERLAY MOBILE (Tanda 4) ───
@@ -399,31 +392,21 @@ const App = {
 
     // ─── SIDEBAR EVENTS (called after every sidebar render) ───
     _attachSidebarEvents(user) {
-        const editMode = SidebarEditor.isEditMode();
-        const isAdmin = user.role === 'superadmin' || user.role === 'admin';
-
-        // Section accordion toggle (not in edit mode)
+        // Section accordion toggle
         document.querySelectorAll('.se-section-header').forEach(header => {
-            header.addEventListener('click', (e) => {
-                if (e.target.closest('.se-action-btn') || e.target.closest('.se-drag-handle')) return;
-                if (editMode) return;
-
-                const sId = header.dataset.sectionId;
+            header.addEventListener('click', () => {
                 header.classList.toggle('open');
                 const itemsEl = header.nextElementSibling;
                 if (itemsEl) itemsEl.classList.toggle('open');
-                SidebarEditor.toggleSection(sId);
             });
         });
 
-        // Item click → navigate (not in edit mode)
-        if (!editMode) {
-            document.querySelectorAll('.se-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    Router.navigate(item.dataset.route);
-                });
+        // Item click → navigate
+        document.querySelectorAll('.se-item').forEach(item => {
+            item.addEventListener('click', () => {
+                Router.navigate(item.dataset.route);
             });
-        }
+        });
 
         // Quick actions
         document.querySelectorAll('.sidebar-action-btn').forEach(btn => {
@@ -441,68 +424,6 @@ const App = {
                 }
             });
         });
-
-        // ── Edit mode events ──
-        if (editMode && isAdmin) {
-            // Double-click to rename sections
-            document.querySelectorAll('.se-section-label').forEach(label => {
-                label.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    SidebarEditor.startInlineEdit(label, 'section');
-                });
-            });
-            // Double-click to rename items
-            document.querySelectorAll('.se-item-label').forEach(label => {
-                label.addEventListener('dblclick', (e) => {
-                    e.stopPropagation();
-                    SidebarEditor.startInlineEdit(label, 'item');
-                });
-            });
-            // Color picker
-            document.querySelectorAll('.se-color-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    SidebarEditor.openColorPicker(btn, btn.dataset.sectionId);
-                });
-            });
-            // Add item
-            document.querySelectorAll('.se-add-item-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    SidebarEditor.addItem(btn.dataset.sectionId);
-                });
-            });
-            // Delete section
-            document.querySelectorAll('.se-delete-section-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    SidebarEditor.deleteSection(btn.dataset.sectionId);
-                });
-            });
-            // Delete item
-            document.querySelectorAll('.se-delete-item-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    SidebarEditor.deleteItem(btn.dataset.sectionId, btn.dataset.itemId);
-                });
-            });
-            // Add section
-            document.getElementById('seAddSection')?.addEventListener('click', () => {
-                SidebarEditor.addSection();
-            });
-            // Drag & drop
-            SidebarEditor.attachDragEvents();
-        }
-
-        // Edit toggle button (footer)
-        if (isAdmin) {
-            document.getElementById('sidebarEditBtn')?.addEventListener('click', () => {
-                SidebarEditor.toggleEditMode();
-            });
-            document.getElementById('sidebarUndoBtn')?.addEventListener('click', () => {
-                SidebarEditor.undo();
-            });
-        }
     },
 
     // ─── UPDATE SIDEBAR ACTIVE STATE ───
@@ -608,12 +529,9 @@ const App = {
                 else if (this.searchOpen) this.closeSearch();
                 else if (this.drawerOpen) this.closeDrawer();
             }
-            // Ctrl+Z → undo (sidebar edit has priority, then UndoManager)
+            // Ctrl+Z → undo
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                if (SidebarEditor.isEditMode() && SidebarEditor.canUndo()) {
-                    e.preventDefault();
-                    SidebarEditor.undo();
-                } else if (UndoManager.canUndo()) {
+                if (UndoManager.canUndo()) {
                     e.preventDefault();
                     UndoManager.undo();
                 }
@@ -645,7 +563,7 @@ const App = {
         this.sidebarState = cycle[this.sidebarState] || 'open';
         // Preservar clase drawer-open si la había (poco probable en desktop, defensivo)
         const drawerCls = sidebar.classList.contains('drawer-open') ? ' drawer-open' : '';
-        sidebar.className = 'app-sidebar ' + this.sidebarState + (SidebarEditor.isEditMode() ? ' edit-mode' : '') + drawerCls;
+        sidebar.className = 'app-sidebar ' + this.sidebarState + drawerCls;
     },
 
     // ─── USER DROPDOWN ───
