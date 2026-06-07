@@ -604,33 +604,47 @@ const CalendarioOperativo = {
             : '';
 
         const fmtTime = (t) => (t ? String(t).slice(0, 5) : '');
+        const HEADER_H = 54; // zona del header (nombre + sub) sobre el bloque; chips solo si despejan
 
-        // Cada fase posicionada por su FECHA REAL dentro del bloque (no apiladas).
-        // Así los gaps entre fases (ej. desarme un día después del evento) se respetan.
-        const phaseDiv = (cls, start, end, label, time) => {
+        // Banda de color por fase, posicionada por su fecha real (sin texto adentro).
+        // El fin no puede ser anterior al inicio (datos viejos/null → fase de 1 día).
+        const band = (cls, start, end) => {
             if (!(start instanceof Date) || isNaN(start)) return '';
-            // el fin no puede ser anterior al inicio (datos viejos/null → fase de 1 día)
             const e = (end instanceof Date && !isNaN(end) && end >= start) ? end : start;
             const top = this._daysBetween(blockStart, start) * dayHeight;
             const h = (this._daysBetween(start, e) + 1) * dayHeight;
-            const timeHtml = time ? `<span class="co-phase-time">${time}</span>` : '';
-            return `<div class="co-phase ${cls}" style="top:${top}px;height:${h}px">
-                        <span class="co-phase-label">${label}${timeHtml}</span>
-                    </div>`;
+            return `<div class="co-phase ${cls}" style="top:${top}px;height:${h}px"></div>`;
         };
+
+        // Chip de fase (etiqueta + hora) anclado al inicio de su banda. Solo se muestra
+        // si despeja el header y la banda tiene altura suficiente (si no, se omite para
+        // no superponer textos — el color de la banda igual marca la fase).
+        const chip = (start, end, icon, label, time) => {
+            if (!(start instanceof Date) || isNaN(start)) return '';
+            const e = (end instanceof Date && !isNaN(end) && end >= start) ? end : start;
+            const top = this._daysBetween(blockStart, start) * dayHeight;
+            const h = (this._daysBetween(start, e) + 1) * dayHeight;
+            if (top < HEADER_H || h < 20) return '';
+            const timeHtml = time ? `<span class="co-phase-time">${time}</span>` : '';
+            return `<div class="co-phase-chip" style="top:${top + 4}px">${icon} ${label}${timeHtml}</div>`;
+        };
+
+        const armadoTime = fmtTime(event.setupTimeOpen);
 
         return `
             <div class="co-event-block ${hasConflict ? 'co-has-conflict' : ''}" data-event-id="${event.id}"
                  style="top:${blockTop}px;height:${blockHeight}px;background:${baseBg};${colorVar}">
-                ${conflictBadge}
+                ${band('co-phase-armado', setupStart, setupEnd)}
+                ${band('co-phase-funcionamiento', eventStart, eventEnd)}
+                ${band('co-phase-desarme', teardownStart, teardownEnd)}
+                ${chip(eventStart, eventEnd, '📅', 'EVENTO', fmtTime(event.eventTimeOpen))}
+                ${chip(teardownStart, teardownEnd, '🔽', 'DESARME', fmtTime(event.teardownTimeOpen))}
                 <span class="co-event-count">${event.projectCount} proy.</span>
-                ${phaseDiv('co-phase-armado', setupStart, setupEnd, 'ARMADO', fmtTime(event.setupTimeOpen))}
-                ${phaseDiv('co-phase-funcionamiento', eventStart, eventEnd, 'EVENTO', fmtTime(event.eventTimeOpen))}
-                ${phaseDiv('co-phase-desarme', teardownStart, teardownEnd, 'DESARME', fmtTime(event.teardownTimeOpen))}
                 <div class="co-event-info">
                     <span class="co-event-name">${event.name}</span>
-                    <span class="co-event-venue">${event.venue}</span>
+                    <span class="co-event-sub"><span class="co-event-armado">🔧 ${armadoTime || 'Armado'}</span> · ${event.venue}</span>
                 </div>
+                ${conflictBadge}
             </div>
         `;
     },
