@@ -3809,6 +3809,37 @@ const API = {
     },
 
     // ═════════════════════════════════════════════════════════════
+    //  FASE 4 — Jornadas de evento
+    // ═════════════════════════════════════════════════════════════
+
+    async getJornadas(eventoId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_jornadas').select('*')
+                .eq('evento_id', eventoId)
+                .order('fase').order('fecha').order('orden');
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getJornadas:', e.message); return []; }
+    },
+
+    // Reemplaza TODAS las jornadas del evento (delete + insert). El trigger deriva fecha_*/hora_*.
+    async setJornadas(eventoId, jornadas) {
+        const { error: delErr } = await supabaseClient.from('evento_jornadas').delete().eq('evento_id', eventoId);
+        if (delErr) throw delErr;
+        if (jornadas && jornadas.length) {
+            const rows = jornadas.map(j => ({
+                evento_id: eventoId, fase: j.fase, fecha: j.fecha,
+                hora_inicio: j.hora_inicio || null, hora_fin: j.hora_fin || null,
+                orden: j.orden ?? 0, notas: j.notas || null,
+            }));
+            const { error: insErr } = await supabaseClient.from('evento_jornadas').insert(rows);
+            if (insErr) throw insErr;
+        }
+        return true;
+    },
+
+    // ═════════════════════════════════════════════════════════════
     //  TANDA 2 — Vehículos
     // ═════════════════════════════════════════════════════════════
 

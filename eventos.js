@@ -577,6 +577,7 @@ const EventosModule = {
         this._loadEquipoSection(eventId);
         this._loadTransporteSection(eventId);
         this._loadProyectosSection(eventId);
+        this._loadJornadasSection(eventId);
     },
 
     _closePanel() {
@@ -612,6 +613,9 @@ const EventosModule = {
 
                 <!-- Fechas -->
                 ${this._renderPanelFechas(ev)}
+
+                <!-- Jornadas (constructor tipo tabla) -->
+                ${this._renderPanelJornadas(ev)}
 
                 <!-- Proyectos vinculados (cargados async desde proyectos.evento_id) -->
                 <div id="evProyectosContent">
@@ -742,6 +746,127 @@ const EventosModule = {
                 </div>
             </div>
         `;
+    },
+
+    // ─── Jornadas (Fase 4.1) ───
+    _renderPanelJornadas(ev) {
+        return `
+            <div class="ev-panel-section" id="evJornadasSection">
+                <div class="ev-section-header">
+                    <h3 class="ev-section-title">Jornadas</h3>
+                    <button class="ev-edit-btn" id="evJornadasEdit" title="Editar jornadas">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    </button>
+                </div>
+                <div id="evJornadasContent"><div class="ev-j-empty">Cargando…</div></div>
+            </div>
+        `;
+    },
+
+    async _loadJornadasSection(eventoId) {
+        this._ensureJornadasStyles();
+        let jornadas = [];
+        try { jornadas = await API.getJornadas(eventoId); } catch (e) { /* noop */ }
+        if (!this._jornadasCache) this._jornadasCache = {};
+        this._jornadasCache[eventoId] = jornadas;
+        const c = document.getElementById('evJornadasContent');
+        if (c) c.innerHTML = this._renderJornadasView(jornadas);
+        document.getElementById('evJornadasEdit')?.addEventListener('click', () =>
+            this._openJornadasModal(eventoId, this._jornadasCache[eventoId] || []));
+    },
+
+    _renderJornadasView(jornadas) {
+        if (!jornadas || jornadas.length === 0) {
+            return `<div class="ev-j-empty">Sin jornadas. Tocá ✎ para armar la tabla de horarios por día.</div>`;
+        }
+        const fases = [{ k: 'armado', label: 'Armado' }, { k: 'evento', label: 'Evento' }, { k: 'desarme', label: 'Desarme' }];
+        return fases.map(f => {
+            const rows = jornadas.filter(j => j.fase === f.k);
+            if (rows.length === 0) return '';
+            return `
+                <div class="ev-j-vfase">
+                    <div class="ev-j-vfase-label">${f.label}</div>
+                    <table class="ev-j-vtable"><tbody>
+                        ${rows.map(j => `<tr><td>${this._fmtDate(j.fecha)}</td><td class="ev-j-vhoras">${(j.hora_inicio || '').slice(0, 5) || '—'}${j.hora_fin ? ' → ' + j.hora_fin.slice(0, 5) : ''}</td></tr>`).join('')}
+                    </tbody></table>
+                </div>`;
+        }).join('');
+    },
+
+    async _openJornadasModal(eventoId, jornadas) {
+        this._ensureJornadasStyles();
+        const fases = [{ k: 'armado', label: 'Armado' }, { k: 'evento', label: 'Evento' }, { k: 'desarme', label: 'Desarme' }];
+        const work = { armado: [], evento: [], desarme: [] };
+        (jornadas || []).forEach(j => { if (work[j.fase]) work[j.fase].push({ fecha: j.fecha || '', hora_inicio: (j.hora_inicio || '').slice(0, 5), hora_fin: (j.hora_fin || '').slice(0, 5) }); });
+        this._jWork = work;
+        const rowHtml = (fase, r, i) => `
+            <div class="ev-j-row" data-fase="${fase}" data-i="${i}">
+                <input type="date" class="ev-j-fecha" value="${r.fecha}">
+                <input type="time" class="ev-j-ini" value="${r.hora_inicio}">
+                <span class="ev-j-sep">→</span>
+                <input type="time" class="ev-j-fin" value="${r.hora_fin}">
+                <button class="ev-j-del" data-fase="${fase}" data-i="${i}" title="Quitar">🗑</button>
+            </div>`;
+        const faseHtml = (f) => `
+            <div class="ev-j-fase">
+                <div class="ev-j-fase-head"><span>${f.label}</span><button class="ev-j-add" data-fase="${f.k}">＋ Jornada</button></div>
+                <div class="ev-j-rows" data-fase="${f.k}">${work[f.k].map((r, i) => rowHtml(f.k, r, i)).join('')}</div>
+            </div>`;
+        const body = `<div class="ev-j-editor">${fases.map(faseHtml).join('')}<p class="ev-j-hint">Cada jornada = día + hora inicio + hora fin. Las filas sin fecha se descartan.</p></div>`;
+        const inst = Modal.open({ title: 'Editar jornadas', body, size: 'md', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evJSave">Guardar</button>` });
+        const ov = inst.overlay;
+        const repaint = (fase) => { const cont = ov.querySelector(`.ev-j-rows[data-fase="${fase}"]`); if (cont) cont.innerHTML = this._jWork[fase].map((r, i) => rowHtml(fase, r, i)).join(''); };
+        ov.addEventListener('click', (e) => {
+            const add = e.target.closest('.ev-j-add'); if (add) { this._jWork[add.dataset.fase].push({ fecha: '', hora_inicio: '', hora_fin: '' }); repaint(add.dataset.fase); return; }
+            const del = e.target.closest('.ev-j-del'); if (del) { this._jWork[del.dataset.fase].splice(+del.dataset.i, 1); repaint(del.dataset.fase); return; }
+        });
+        ov.addEventListener('input', (e) => {
+            const row = e.target.closest('.ev-j-row'); if (!row) return;
+            const fase = row.dataset.fase, i = +row.dataset.i, r = this._jWork[fase] && this._jWork[fase][i]; if (!r) return;
+            if (e.target.classList.contains('ev-j-fecha')) r.fecha = e.target.value;
+            else if (e.target.classList.contains('ev-j-ini')) r.hora_inicio = e.target.value;
+            else if (e.target.classList.contains('ev-j-fin')) r.hora_fin = e.target.value;
+        });
+        ov.querySelector('#evJSave')?.addEventListener('click', async () => {
+            const arr = [];
+            ['armado', 'evento', 'desarme'].forEach(fase => {
+                this._jWork[fase].filter(r => r.fecha).forEach((r, idx) => arr.push({ fase, fecha: r.fecha, hora_inicio: r.hora_inicio || null, hora_fin: r.hora_fin || null, orden: idx }));
+            });
+            try {
+                await API.setJornadas(eventoId, arr);
+                Toast.success('Jornadas guardadas.');
+                Modal.close(inst.id);
+                await this._loadEvents();
+                if (this._activePanel === eventoId) this._openPanel(eventoId);
+            } catch (err) { console.error('[Eventos] setJornadas:', err); Toast.error('Error al guardar jornadas.'); }
+        });
+    },
+
+    _ensureJornadasStyles() {
+        if (document.getElementById('ev-jornadas-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'ev-jornadas-styles';
+        s.textContent = `
+            .ev-j-empty{color:var(--text-muted);font-size:0.82rem;padding:4px 0;}
+            .ev-j-vfase{margin-bottom:8px;}
+            .ev-j-vfase-label{font-family:var(--font-mono);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-dim);margin-bottom:3px;}
+            .ev-j-vtable{width:100%;border-collapse:collapse;}
+            .ev-j-vtable td{padding:3px 6px;font-size:0.82rem;border-bottom:1px solid var(--border);color:var(--text-primary);}
+            .ev-j-vhoras{font-family:var(--font-mono);color:var(--text-muted);text-align:right;white-space:nowrap;}
+            .ev-j-editor{display:flex;flex-direction:column;gap:14px;}
+            .ev-j-fase-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-family:var(--font-mono);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-dim);}
+            .ev-j-add{background:transparent;border:1px solid var(--border);color:var(--primary);border-radius:6px;padding:3px 9px;font-size:0.72rem;cursor:pointer;}
+            .ev-j-add:hover{border-color:var(--primary);}
+            .ev-j-rows{display:flex;flex-direction:column;gap:6px;}
+            .ev-j-row{display:flex;align-items:center;gap:6px;}
+            .ev-j-row input{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text-primary);font-size:0.82rem;font-family:var(--font-main);}
+            .ev-j-row input:focus{border-color:var(--primary);outline:none;}
+            .ev-j-sep{color:var(--text-dim);}
+            .ev-j-del{background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9rem;}
+            .ev-j-del:hover{color:#ff4444;}
+            .ev-j-hint{font-size:0.72rem;color:var(--text-dim);margin:0;}
+        `;
+        document.head.appendChild(s);
     },
 
     async _loadProyectosSection(eventoId) {
