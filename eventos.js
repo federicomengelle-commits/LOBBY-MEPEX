@@ -1571,6 +1571,15 @@ const EventosModule = {
             `;
         };
 
+        // Vehículos distintos que van al evento (agregados de las cargas)
+        const vehMap = {};
+        cargas.forEach(c => { const v = c.vehiculo; if (v && v.id) { if (!vehMap[v.id]) vehMap[v.id] = { ...v, count: 0 }; vehMap[v.id].count++; } });
+        const vehs = Object.values(vehMap);
+        const vehSummary = vehs.length ? `
+            <div class="ev-cargaN-vehs">
+                ${vehs.map(v => `<span class="ev-cargaN-vchip">🚚 ${this._escAttr(v.descripcion)}${v.patente ? ' · ' + this._escAttr(v.patente) : ''}${v.count > 1 ? ` <b>×${v.count}</b>` : ''}</span>`).join('')}
+            </div>` : '';
+
         return `
             <style>
                 .ev-cargaN-item {
@@ -1586,14 +1595,18 @@ const EventosModule = {
                 .ev-cargaN-meta { display:flex; flex-wrap:wrap; gap:10px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; }
                 .ev-cargaN-fase { margin-bottom: 8px; }
                 .ev-cargaN-fase-label { font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px; font-weight:700; }
+                .ev-cargaN-vehs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+                .ev-cargaN-vchip { background:#00A9C115; border:1px solid #00A9C140; border-radius:14px; padding:3px 10px; font-family:'Space Mono',monospace; font-size:11px; color:#E8E8E8; }
+                .ev-cargaN-vchip b { color:#00A9C1; }
             </style>
             <div class="ev-panel-section" id="evSecTransporte">
                 <div class="ev-section-header">
-                    <h3 class="ev-section-title">Cargas
+                    <h3 class="ev-section-title">Vehículos y cargas
                         <span class="ev-equipo-count">${cargas.length}</span>
                     </h3>
                     <a href="#logistica?tab=cargas" class="ev-add-persona-btn" style="text-decoration:none;">→ Ver / crear en Logística</a>
                 </div>
+                ${vehSummary}
                 ${faseBlock('armado')}
                 ${faseBlock('intermedio')}
                 ${faseBlock('desarme')}

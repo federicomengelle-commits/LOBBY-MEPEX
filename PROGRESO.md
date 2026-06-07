@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 27%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 28%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -161,6 +161,9 @@ Decisión Fede: las fechas dejan de editarse a mano; las jornadas son la base (t
 
 ### 4.2 — Gente por jornada ✅ HECHO (commit `f89f2bf` + sig.)
 Reusa `asignaciones_evento` + `jornada_id` (SQL `sql/fase4_2_asignaciones_jornada.sql`). La sección **Equipo se reemplazó** por la gestión dentro de **Jornadas**: cada jornada (día) muestra su gente con **rol editable** (select inline) + **quitar** (×) + **"＋ persona"** (modal persona+rol). Las viejas sin jornada caen en grupo "Generales". Asignaciones desde la ficha entran `estado='aprobada'` (sin notif). `setJornadas` es **upsert** (preserva ids → editar horarios no borra gente). ⚠️ Falta pull del server para ver/probar.
+
+### 4.3 — Vehículos visibles en la ficha ✅ HECHO (commit `4bcc8aa`+sig.)
+En la sección "Vehículos y cargas" de la ficha (la que aparece cuando el evento tiene cargas) se agregó un **resumen de vehículos distintos** (chips 🚚 descripción · patente ×N) arriba de las cargas por fase. Hace "verlos claros" sin entrar a cada carga. ⚠️ Inerte hasta que haya cargas (hoy 0 en el sistema) + pull del server (v15). 4.2 verificado **end-to-end en prod** (jornada→asignar→aparece; upsert; cascade; fix de colisión `_openAsignarJornadaModal`).
 
 ### Falta de Fase 4
 Reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas + gente por día).
