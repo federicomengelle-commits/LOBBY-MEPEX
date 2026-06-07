@@ -165,6 +165,9 @@ Reusa `asignaciones_evento` + `jornada_id` (SQL `sql/fase4_2_asignaciones_jornad
 ### 4.3 — Vehículos visibles en la ficha ✅ HECHO (commit `4bcc8aa`+sig.)
 En la sección "Vehículos y cargas" de la ficha (la que aparece cuando el evento tiene cargas) se agregó un **resumen de vehículos distintos** (chips 🚚 descripción · patente ×N) arriba de las cargas por fase. Hace "verlos claros" sin entrar a cada carga. ⚠️ Inerte hasta que haya cargas (hoy 0 en el sistema) + pull del server (v15). 4.2 verificado **end-to-end en prod** (jornada→asignar→aparece; upsert; cascade; fix de colisión `_openAsignarJornadaModal`).
 
+### 4.4 — UX "Jornadas y personal" más legible ✅ HECHO (commit `ee493f1`)
+Feedback Fede: "no veía bien" la asignación de gente por día. Mejorado: **sacada la sección Fechas** (redundante con jornadas, que son la única fuente); cada día muestra **día-de-semana + horario + duración** (ej. "Mié 08-may · 08:00–20:00 · 12h") + **"N personas" destacado** en turquesa + gente **ordenada por rol**. Verificado visualmente (captura). Tener ubicados los RRHH por día de un vistazo.
+
 ### Falta de Fase 4
 Reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas + gente por día).
 
