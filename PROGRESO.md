@@ -66,7 +66,11 @@ Sub-bloques:
 - **Calendario UI (pedido de Fede):** ⏳ EN CURSO.
   - ✅ **Fix bug fases:** cada fase (armado/evento/desarme) se posiciona por su FECHA REAL dentro del bloque; antes se apilaban contiguas y si había gap (ej. desarme un día después del evento) el desarme caía un día antes y el día real quedaba vacío. Verificado: desarme en su día correcto, gap respetado.
   - ✅ **Cuadro rediseñado:** cada fase muestra etiqueta + hora de inicio (`ARMADO 08:00 / EVENTO 10:00 / DESARME 18:00`), labels más visibles, base con color tenue del evento. Bumps `calendario-operativo.js?v=10`, `style.css?v=13`.
-  - ⏳ **Falta:** modal compacto para editar fechas/horas (decisión Fede: modal conservador) + limpieza de la toolbar (botones "raros").
+  - ⏳ **Falta (corrección Fede 2026-06-07):** el calendario es **SOLO visualización** — la edición de eventos vive en el módulo Eventos, NO en el calendario. Por lo tanto:
+    - (a) El **panel lateral del calendario** debe **replicar (read-only) toda la info del módulo Eventos** (fechas+horas de las 3 fases, venue, equipo/asignaciones, transporte/cargas, proyectos vinculados, notas, docs, conflictos). Es una vista del mismo dato maestro.
+    - (b) Limpieza de la **toolbar** (botones "raros").
+    - ❌ **Descartado:** modal de edición en el calendario (era la dirección anterior; Fede aclaró que NO).
+  - **Visión futura (Fede):** los eventos se crean en la nube (Supabase) y el server hace backup. Refuerza Supabase = única fuente de verdad.
 
 **Principio rector (Fede, 2026-06-07):** data real única, **coherente entre módulos, en tiempo real**. Toda la data de eventos es importante porque alimenta el calendario operativo Y la logística (los viajes se programan desde ahí). Una sola fuente de verdad consumida por todos los módulos. Aplicar este criterio a TODO el rediseño (= "un dato maestro, vistas por rol" del PLAN-MAESTRO).
 
