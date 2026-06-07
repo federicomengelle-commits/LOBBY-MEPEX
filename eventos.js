@@ -344,15 +344,8 @@ const EventosModule = {
         localStorage.setItem(`ev_docs_${eventId}`, JSON.stringify(docs));
     },
 
-    _getNotas(eventId) {
-        try {
-            return localStorage.getItem(`ev_notas_${eventId}`) || '';
-        } catch { return ''; }
-    },
-
     _saveNotas(eventId, notas) {
-        localStorage.setItem(`ev_notas_${eventId}`, notas);
-        // Dual-write: persist to Supabase
+        // Fase 2.2: persiste solo en la columna notas_operativas (Supabase). Sin localStorage.
         API.updateEvent(eventId, { notasOperativas: notas }).catch(() => {});
     },
 
@@ -600,7 +593,7 @@ const EventosModule = {
     _renderPanel(ev) {
         const statusColor = this._getStatusColor(ev.estado);
         const documentos = this._getDocumentos(ev.id);
-        const notas = this._getNotas(ev.id);
+        const notas = ev.notasOperativas || '';
         const conflicts = this._detectConflicts(ev);
 
         return `
@@ -1906,6 +1899,7 @@ const EventosModule = {
                 clearTimeout(debounce);
                 debounce = setTimeout(() => {
                     this._saveNotas(ev.id, notesTextarea.value);
+                    ev.notasOperativas = notesTextarea.value;
                     const indicator = document.getElementById('evNotasSaved');
                     if (indicator) {
                         indicator.style.display = 'inline';
@@ -2396,8 +2390,8 @@ const EventosModule = {
     async _deleteEvent(eventId) {
         const result = await API.deleteEvent(eventId);
         if (result) {
-            // Clean up localStorage data
-            ['ev_ext_', 'ev_docs_', 'ev_notas_'].forEach(prefix => {
+            // Clean up localStorage data (ev_notas_ ya no se usa — Fase 2.2; queda ev_ext_ teardown + ev_docs_ docs hasta Fase 6)
+            ['ev_ext_', 'ev_docs_'].forEach(prefix => {
                 localStorage.removeItem(prefix + eventId);
             });
             Toast.success('Evento eliminado');
