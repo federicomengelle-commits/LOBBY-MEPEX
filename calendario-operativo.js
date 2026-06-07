@@ -1100,11 +1100,12 @@ const CalendarioOperativo = {
                 </div>`;
         }
 
-        // Projects — solo cliente + tipo (sin estado ni PM, eso se ve en la ficha del evento)
+        // Projects — shape real del enrich 2.1: { nombre, estado, cliente:{ nombre_empresa } }
         const projectRows = (event.projects || []).map(p => `
             <tr>
-                <td>${p.client || '—'}</td>
-                <td>${p.type || '—'}</td>
+                <td>${p.cliente?.nombre_empresa || '—'}</td>
+                <td>${p.nombre || '—'}</td>
+                <td>${p.estado || '—'}</td>
             </tr>
         `).join('');
 
@@ -1131,7 +1132,7 @@ const CalendarioOperativo = {
                 <h3 class="co-sp-section-title">Proyectos vinculados <span style="color:#666;font-family:'Space Mono',monospace;font-size:11px;">(${event.projectCount || 0})</span></h3>
                 ${projectRows
                     ? `<table class="co-sp-table">
-                        <thead><tr><th>Cliente</th><th>Tipo</th></tr></thead>
+                        <thead><tr><th>Cliente</th><th>Proyecto</th><th>Estado</th></tr></thead>
                         <tbody>${projectRows}</tbody>
                        </table>`
                     : '<span class="co-sp-empty">Sin proyectos vinculados</span>'}
