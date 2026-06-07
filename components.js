@@ -169,6 +169,8 @@ const Modal = {
     },
 
     close(id) {
+        // Sin id → cierra el modal de arriba del stack (antes era no-op silencioso).
+        if (id === undefined && this._stack.length) id = this._stack[this._stack.length - 1].id;
         const idx = this._stack.findIndex(m => m.id === id);
         if (idx === -1) return;
 

@@ -301,7 +301,7 @@ const FlotaModule = {
         const modalId = Modal.open({
             title: isEdit ? 'Editar vehículo' : 'Nuevo vehículo',
             body, size: 'md',
-            footer: `<button class="btn-secondary" data-modal-cancel>Cancelar</button><button class="btn-primary" id="fvSave">${isEdit ? 'Guardar' : 'Crear'}</button>`,
+            footer: `<button class="btn-secondary" data-modal-close>Cancelar</button><button class="btn-primary" id="fvSave">${isEdit ? 'Guardar' : 'Crear'}</button>`,
         });
         document.getElementById('fvSave')?.addEventListener('click', async () => {
             const payload = {
@@ -364,7 +364,7 @@ const FlotaModule = {
         const modalId = Modal.open({
             title: isEdit ? 'Editar item de mantenimiento' : 'Nuevo item de mantenimiento',
             body, size: 'sm',
-            footer: `<button class="btn-secondary" data-modal-cancel>Cancelar</button><button class="btn-primary" id="fmSave">${isEdit ? 'Guardar' : 'Crear'}</button>`,
+            footer: `<button class="btn-secondary" data-modal-close>Cancelar</button><button class="btn-primary" id="fmSave">${isEdit ? 'Guardar' : 'Crear'}</button>`,
         });
         document.getElementById('fmSave')?.addEventListener('click', async () => {
             const payload = {
