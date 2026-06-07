@@ -11,7 +11,7 @@
 ## Estado general — AVANCE ≈ 18%
 - **Hecho:** Fase 1 completa (nav + roles). **Fase 2 ✅ COMPLETA** (saneamiento localStorage→Supabase + 2C limpieza + 2B auditada/diferida). Calendario operativo rediseñado (solo vista, espejo de Eventos). CRM depurado (Marketing eliminado).
 - **Próximo paso (charla nueva):** arrancar fase pesada. Recomendado **Fase 3 — Capa de Activos** (fundacional, SQL pesado: Catálogo OCTEXA, Flota, Locaciones) o **Fase 4 — Eventos** (constructor de jornadas) según priorice Fede. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` @ `c2439fc`; branch `rediseno` adelantado (2C = `5687973`). Sin pushear todavía.
+- **Baseline:** `origin/main` al día con Fase 2 (2026-06-07). Branch dev: `rediseno` (= main).
 - **Última actualización:** 2026-06-07.
 
 ---
