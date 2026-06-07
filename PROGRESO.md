@@ -45,7 +45,26 @@ Refactor puro, sin cambio visible de estructura.
 ---
 
 ## ✅ FASE 1 COMPLETA (pendiente confirmación de Fede en server)
-Sidebar desacoplado de localStorage + estructura al árbol destino. Próximo: **Fase 2 — Saneamiento de datos** (localStorage→Supabase en eventos/calendario-operativo/CRM marketing; consolidar duplicados con bisturí; matar `calendar.js`).
+Sidebar desacoplado de localStorage + estructura al árbol destino.
+
+---
+
+## FASE 2 — Saneamiento de datos (EN CURSO)
+
+**Hallazgo clave del reconocimiento:** el problema "calendario no multiusuario" NO es falta de tablas. `eventos.js` YA usa tablas reales (proyectos.evento_id, `asignaciones_evento`, `getEventoTransporte`, `evento_documentos`, notas con dual-write a `eventos`). El que quedó atrás es **`calendario-operativo.js`**, que enriquece leyendo localStorage (`ev_proyectos_/ev_equipo_/ev_transporte_/ev_notas_/ev_docs_`). Las claves `ev_proyectos_/ev_equipo_/ev_transporte_` **no tienen escritor** → lecturas huérfanas (data vacía/vieja). ⇒ Fase 2 es más **rewiring/consolidación** que crear tablas; la DDL real es chica.
+
+Mapa localStorage de negocio:
+- `eventos.js`: `ev_ext_<id>` (incluye `teardownEndDate`, sin columna), `ev_docs_<id>` (existe tabla real `evento_documentos`), `ev_notas_<id>` (ya dual-write a `eventos`).
+- `calendario-operativo.js`: lee `ev_proyectos_/ev_equipo_/ev_transporte_/ev_notas_/ev_docs_` (huérfanas) + `co_events_cache` (solo cache UI, no es dato de negocio).
+- `crm.js`: `crm_campanias` (no existe tabla; hay TODO para `marketing_campanias`).
+
+Sub-bloques:
+- **2.0 — Cleanup:** matar `calendar.js` (muerto, confirmado: `Calendar` nunca referenciado). ✅ HECHO. (CSS `cal-*` huérfano en style.css queda; inocuo, se limpia después.)
+- **2.1 — calendario-operativo.js → Supabase:** enrich desde las mismas fuentes reales que `eventos.js`; sacar localStorage. Calendario multiusuario/simultáneo. (casi sin DDL) ⏳
+- **2.2 — eventos.js cerrar localStorage:** `teardownEndDate`→columna real en `eventos`; docs→`evento_documentos`; notas→leer de columna (ya se escribe). DDL chico. ⏳
+- **2.3 — CRM marketing → Supabase:** crear `marketing_campanias`, migrar `crm_campanias`. DDL. ⏳
+
+**Decisión pendiente de Fede:** ¿migrar data vieja de localStorage o arrancar limpio? **Antes de cualquier DDL:** verificar schema real de `eventos` (vía Chrome logueado / information_schema).
 
 ---
 
