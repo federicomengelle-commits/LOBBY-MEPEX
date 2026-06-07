@@ -1058,13 +1058,13 @@ const AdminPanel = {
             { id: 'taller', name: 'Taller', icon: '🔨' },
             { id: 'logistica', name: 'Logística', icon: '🚛' },
         ]},
-        { cat: 'RECURSOS', color: '#9B7DFF', modules: [
-            { id: 'rrhh', name: 'RRHH', icon: '👥' },
-            { id: 'compras', name: 'Compras', icon: '🛒' },
+        { cat: 'ACTIVOS', color: '#9B7DFF', modules: [
             { id: 'inventario', name: 'Inventario', icon: '📦' },
             { id: 'locaciones', name: 'Locaciones', icon: '🏭' },
+            { id: 'compras', name: 'Compras', icon: '🛒' },
         ]},
         { cat: 'ADMIN & FINANZAS', color: '#4A90D9', modules: [
+            { id: 'rrhh', name: 'RRHH', icon: '👥' },
             { id: 'finanzas', name: 'Finanzas', icon: '💰' },
             { id: 'contabilidad', name: 'Contabilidad', icon: '📚' },
             { id: 'costos', name: 'Costos', icon: '🧮' },

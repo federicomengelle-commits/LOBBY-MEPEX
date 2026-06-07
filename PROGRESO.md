@@ -7,7 +7,7 @@
 ---
 
 ## Estado general
-- **Fase actual:** 1 — Cimientos: navegación + roles.
+- **Fase actual:** 1 — Cimientos (1A + 1B implementadas y verificadas en preview; pendiente confirmación de Fede en server). Próximo: **Fase 2 — Saneamiento de datos**.
 - **Última actualización:** 2026-06-07.
 
 ---
@@ -30,14 +30,22 @@ Refactor puro, sin cambio visible de estructura.
 - **Verificado** (preview, pre-login, corriendo el código real): superadmin 16 / pm 9 / venta 7 / taller 7 módulos; sin botón editar; sin edit-mode; flyouts OK; sin errores de consola.
 - **Pendiente de Fede:** confirmar en browser logueado (hard refresh `Ctrl+Shift+R`, F12 sin rojos, navegar, flyouts de sidebar colapsada).
 
-### 1B — Estructura de menú canónica (árbol destino) ⏳ PENDIENTE
+### 1B — Estructura de menú canónica (árbol destino) ✅ HECHO
 - `recursos` → `activos` (id + nombre) en `Data.categories` (`data.js`).
-- OPERACIONES al orden destino: Calendario · Eventos · Proyectos · Taller · Logística (hoy: calendario·proyectos·eventos·taller·logistica → swap eventos/proyectos).
-- ACTIVOS = Inventario · Locaciones · Compras (hoy recursos: compras·inventario·locaciones → reordenar).
-- COMERCIAL queda [crm, cotizador, catalogo]; ADMIN & FINANZAS queda [rrhh, finanzas, contabilidad, costos] (sin cambios).
-- Actualizar breadcrumbs "RECURSOS" → "ACTIVOS" en `inventario.js`, `locaciones.js`, `compras.js` (mismo rename; bump `?v=`). RRHH no se toca (ya estaba en admin).
-- Bump `data.js?v=7`.
-- **Test:** cada rol ve la estructura nueva (ACTIVOS en vez de RECURSOS, orden correcto), sin errores.
+- OPERACIONES reordenado: Calendario · Eventos · Proyectos · Taller · Logística.
+- ACTIVOS = Inventario · Locaciones · Compras.
+- COMERCIAL [crm, cotizador, catalogo] y ADMIN & FINANZAS [rrhh, finanzas, contabilidad, costos] sin cambios.
+- Breadcrumbs "RECURSOS" → "ACTIVOS" en `inventario.js`, `locaciones.js`, `compras.js`. `rrhh.js`: el breadcrumb decía RECURSOS pero RRHH vive en ADMIN & FINANZAS → corregido a "ADMIN & FINANZAS" (#4A90D9).
+- `admin-panel.js` grilla de permisos (`_permModules`): grupo RECURSOS → ACTIVOS [inventario, locaciones, compras]; rrhh movido al grupo ADMIN & FINANZAS. **Solo etiquetas/agrupación visual — CERO valores de permiso, CERO roles tocados.**
+- Bumps: `data.js?v=7`, `inventario.js?v=7`, `locaciones.js?v=2`, `compras.js?v=3`, `rrhh.js?v=7`, `admin-panel.js?v=7`.
+- **Verificado** (preview, reload): categorías = PRINCIPAL/COMERCIAL/OPERACIONES/ACTIVOS/ADMIN&FINANZAS; sin RECURSOS; orden correcto; sintaxis OK en los 6 archivos.
+- **Stale menor (no tocado, invisible):** `admin-panel._getModuleColor` (var local `recursos` que colorea los dots del audit log) + comentarios de cabecera en locaciones/compras/rrhh dicen "RECURSOS". Sin efecto visible; limpiar en pasada futura.
+- **Pendiente de Fede:** confirmar en server (pull + hard refresh `Ctrl+Shift+R`).
+
+---
+
+## ✅ FASE 1 COMPLETA (pendiente confirmación de Fede en server)
+Sidebar desacoplado de localStorage + estructura al árbol destino. Próximo: **Fase 2 — Saneamiento de datos** (localStorage→Supabase en eventos/calendario-operativo/CRM marketing; consolidar duplicados con bisturí; matar `calendar.js`).
 
 ---
 

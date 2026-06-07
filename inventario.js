@@ -928,7 +928,7 @@ const InventarioModule = {
                                 Lobby
                             </a>
                             <span class="breadcrumb-sep">›</span>
-                            <span class="breadcrumb-cat" style="color: #9B7DFF">RECURSOS</span>
+                            <span class="breadcrumb-cat" style="color: #9B7DFF">ACTIVOS</span>
                             <span class="breadcrumb-sep">›</span>
                             <span class="breadcrumb-current">Inventario</span>
                         </div>

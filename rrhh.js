@@ -63,7 +63,7 @@ const RRHHModule = {
                                 Lobby
                             </a>
                             <span class="breadcrumb-sep">›</span>
-                            <span class="breadcrumb-cat" style="color: #9B7DFF">RECURSOS</span>
+                            <span class="breadcrumb-cat" style="color: #4A90D9">ADMIN & FINANZAS</span>
                             <span class="breadcrumb-sep">›</span>
                             <span class="breadcrumb-current">RRHH</span>
                         </div>
