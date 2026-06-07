@@ -582,9 +582,12 @@ const CalendarioOperativo = {
         const dayHeight = this._dayHeight;
         const rangeStart = this._rangeStart;
 
-        // El bloque va desde el inicio del armado hasta el último fin (desarme normalmente).
+        // El bloque va desde el inicio del armado hasta el día más tardío entre TODAS
+        // las fases (inicios y fines). Incluir los inicios asegura que el bloque llegue
+        // al desarme aunque fecha_desarme_fin esté null o con un valor viejo (eventos.js
+        // hoy no persiste el fin a la columna — se limpia en 2.2).
         const blockStart = setupStart;
-        const blockEnd = [setupEnd, eventEnd, teardownEnd]
+        const blockEnd = [setupEnd, eventStart, eventEnd, teardownStart, teardownEnd]
             .filter(d => d instanceof Date && !isNaN(d))
             .reduce((m, d) => (d > m ? d : m), setupStart);
         const blockTop = this._daysBetween(rangeStart, blockStart) * dayHeight;
@@ -606,7 +609,8 @@ const CalendarioOperativo = {
         // Así los gaps entre fases (ej. desarme un día después del evento) se respetan.
         const phaseDiv = (cls, start, end, label, time) => {
             if (!(start instanceof Date) || isNaN(start)) return '';
-            const e = (end instanceof Date && !isNaN(end)) ? end : start;
+            // el fin no puede ser anterior al inicio (datos viejos/null → fase de 1 día)
+            const e = (end instanceof Date && !isNaN(end) && end >= start) ? end : start;
             const top = this._daysBetween(blockStart, start) * dayHeight;
             const h = (this._daysBetween(start, e) + 1) * dayHeight;
             const timeHtml = time ? `<span class="co-phase-time">${time}</span>` : '';
