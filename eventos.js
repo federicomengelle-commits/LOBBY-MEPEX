@@ -837,10 +837,10 @@ const EventosModule = {
             await this._loadJornadasSection(eventoId);
         }));
         c.querySelectorAll('.ev-jc-add').forEach(btn => btn.addEventListener('click', () =>
-            this._openAddPersonaModal(eventoId, { id: btn.dataset.jid, fase: btn.dataset.fase, fecha: btn.dataset.fecha })));
+            this._openAsignarJornadaModal(eventoId, { id: btn.dataset.jid, fase: btn.dataset.fase, fecha: btn.dataset.fecha })));
     },
 
-    async _openAddPersonaModal(eventoId, jornada) {
+    async _openAsignarJornadaModal(eventoId, jornada) {
         if (!this._personasOp) {
             try { this._personasOp = await API.getPersonas({ soloActivos: true }); } catch (e) { this._personasOp = []; }
         }
