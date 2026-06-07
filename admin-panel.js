@@ -83,11 +83,11 @@ const AdminPanel = {
         const m = (mod || '').toLowerCase();
         const comercial = ['crm', 'cotizador', 'catalogo'];
         const operaciones = ['proyectos', 'eventos', 'taller', 'logistica'];
-        const recursos = ['rrhh', 'compras', 'inventario', 'locaciones'];
-        const admin = ['finanzas', 'costos', 'admin-panel'];
+        const activos = ['compras', 'inventario', 'locaciones'];
+        const admin = ['rrhh', 'finanzas', 'contabilidad', 'costos', 'admin-panel'];
         if (comercial.includes(m)) return '#F28D15';
         if (operaciones.includes(m)) return '#00CC88';
-        if (recursos.includes(m)) return '#9B7DFF';
+        if (activos.includes(m)) return '#9B7DFF';
         if (admin.includes(m)) return '#4A90D9';
         return '#7A8599';
     },

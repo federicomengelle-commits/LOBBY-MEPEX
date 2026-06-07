@@ -283,7 +283,7 @@ const Data = {
         },
 
         // ════════════════════════════════════════════
-        //  RECURSOS
+        //  ACTIVOS / RRHH  (RRHH → Admin & Finanzas; Compras/Inventario/Locaciones → Activos)
         // ════════════════════════════════════════════
 
         rrhh: {

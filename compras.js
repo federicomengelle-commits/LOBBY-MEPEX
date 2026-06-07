@@ -1,7 +1,7 @@
 /* =============================================
    MEPEX Lobby — Módulo Compras
    =============================================
-   Categoría: RECURSOS. Reemplaza Proveedores.
+   Categoría: ACTIVOS. Reemplaza Proveedores.
    3 tabs: Proveedores, Órdenes de Compra, Pagos
    Solo superadmin y admin.
    ============================================= */

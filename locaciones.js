@@ -1,7 +1,7 @@
 /* =============================================
    MEPEX Lobby — Módulo Locaciones
    =============================================
-   Categoría: RECURSOS. Lugares físicos de la empresa.
+   Categoría: ACTIVOS. Lugares físicos de la empresa.
    3 tabs: Lugares, Documentación, Stock por Locación
    Solo superadmin y admin.
    ============================================= */

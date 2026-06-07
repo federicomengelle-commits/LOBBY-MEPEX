@@ -1,7 +1,7 @@
 /* =============================================
    MEPEX Lobby — Módulo RRHH
    =============================================
-   Categoría: RECURSOS
+   Categoría: ADMIN & FINANZAS
    2 tabs: Nómina, Vacaciones.
    Las asignaciones de personas a eventos se hacen ahora exclusivamente
    desde la ficha del evento (asignaciones_evento). El tab "Asignación"
