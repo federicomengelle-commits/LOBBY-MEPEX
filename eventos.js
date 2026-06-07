@@ -722,10 +722,7 @@ const EventosModule = {
         return `
             <div class="ev-panel-section" id="evSecFechas">
                 <div class="ev-section-header">
-                    <h3 class="ev-section-title">Fechas</h3>
-                    <button class="ev-edit-btn" data-edit-section="fechas" title="Editar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                    </button>
+                    <h3 class="ev-section-title">Fechas <span style="font-size:0.66rem;color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0;">(resumen — se editan en Jornadas)</span></h3>
                 </div>
                 <div class="ev-dates-grid">
                     <div class="ev-date-item">
@@ -817,7 +814,14 @@ const EventosModule = {
         const ov = inst.overlay;
         const repaint = (fase) => { const cont = ov.querySelector(`.ev-j-rows[data-fase="${fase}"]`); if (cont) cont.innerHTML = this._jWork[fase].map((r, i) => rowHtml(fase, r, i)).join(''); };
         ov.addEventListener('click', (e) => {
-            const add = e.target.closest('.ev-j-add'); if (add) { this._jWork[add.dataset.fase].push({ fecha: '', hora_inicio: '', hora_fin: '' }); repaint(add.dataset.fase); return; }
+            const add = e.target.closest('.ev-j-add'); if (add) {
+                const rows = this._jWork[add.dataset.fase];
+                const last = rows.length ? rows[rows.length - 1] : null;
+                rows.push(last && last.fecha
+                    ? { fecha: this._nextDay(last.fecha), hora_inicio: last.hora_inicio || '', hora_fin: last.hora_fin || '' }
+                    : { fecha: '', hora_inicio: '', hora_fin: '' });
+                repaint(add.dataset.fase); return;
+            }
             const del = e.target.closest('.ev-j-del'); if (del) { this._jWork[del.dataset.fase].splice(+del.dataset.i, 1); repaint(del.dataset.fase); return; }
         });
         ov.addEventListener('input', (e) => {
@@ -840,6 +844,14 @@ const EventosModule = {
                 if (this._activePanel === eventoId) this._openPanel(eventoId);
             } catch (err) { console.error('[Eventos] setJornadas:', err); Toast.error('Error al guardar jornadas.'); }
         });
+    },
+
+    _nextDay(dateStr) {
+        if (!dateStr) return '';
+        const p = dateStr.split('-').map(Number);
+        const dt = new Date(p[0], p[1] - 1, p[2]);
+        dt.setDate(dt.getDate() + 1);
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     },
 
     _ensureJornadasStyles() {
