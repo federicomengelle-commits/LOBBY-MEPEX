@@ -104,6 +104,13 @@ Reemplaza el form actual de fechas (que tiene 1 fecha + 1 hora apertura/cierre p
 4. **Historial del calendario (tab Historial):** hoy NO muestra nada. Debe registrar cambios: fecha modificada, gente asignada, flete asignado. Requiere reactivar `evento_historial` (hoy deshabilitado por schema desalineado — Fase 6) + re-habilitar `logEventChange` en `eventos.js` (está comentado) + cargar el historial en `_loadPanelData` del calendario (hoy hardcodeado `[]`).
 5. **Calendario = inerte:** ✅ HECHO ahora — se quitaron del panel los botones de acción ("+ Asignar", "✓ Aprobar"). El calendario no edita nada; solo refleja + "Abrir ficha →" para ir a Eventos. (Bump `calendario-operativo.js?v=15`.)
 
+## CRM — revisión "bien pro" (2026-06-07)
+
+- **Tabs:** Clientes ✅ · Pipeline ✅ · Cotizaciones ✅ · Interacciones ✅ (ya registra y muestra el **autor** de cada una vía `metadata.usuario`) · Analítica ✅ (solo superadmin).
+- **Marketing ELIMINADO del CRM** (decisión Fede: del todo). Sacado: tab, estado (`_campanias`/`_mktFilterEstado`), config (`_mktEstados`/`_mktCanales`), counts, lógica (load / quick-action / render-case) y las 5 funciones de marketing + el localStorage `crm_campanias`. **Reemplaza el sub-bloque 2.3** (ya no hay marketing→Supabase). Bump `crm.js?v=12`. Verificado en preview. **Pendiente trivial:** borrar el CSS `.mkt-*` muerto (crm.js ~5164-5437, marcado "ELIMINADO — borrar en cleanup"; invisible, no se genera markup).
+- **PENDIENTE (feature) — Auditoría de TODOS los cambios del CRM:** registrar quién hace cada cambio (editar cliente, mover pipeline, editar cotización), no solo interacciones. Engancha con el `audit_log` global. A diseñar/construir.
+- **VISIÓN FUTURA — chat multicanal:** centralizar todas las charlas con cada cliente (multicanal) dentro del CRM → ficha del cliente = historial completo de conversaciones + interacciones, para estar siempre actualizado de cada cliente.
+
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
 - Fases 3–10: capa de Activos, Taller+Logística+Subalquileres, Compras+rentabilidad, Diseño, CRM, Finanzas+Contabilidad, Notificaciones+stats, Remate UI.

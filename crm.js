@@ -2,8 +2,8 @@
    MEPEX Lobby — CRM Module
    =============================================
    Fusión Clientes + Ventas. Módulo independiente.
-   5 tabs: Clientes, Pipeline, Cotizaciones,
-   Interacciones, Marketing.
+   Tabs: Clientes, Pipeline, Cotizaciones,
+   Interacciones, Analítica (superadmin). (Marketing eliminado 2026-06-07.)
    Paso 4a: Estructura base + tab Clientes.
    ============================================= */
 
@@ -53,16 +53,8 @@ const CRM = {
     _interFilterTipo: null,
     _interSearch: '',
 
-    // ─── Marketing tab state ───
-    // TODO: Crear tabla marketing_campanias en Supabase con columnas:
-    //   id (uuid, PK), nombre (text), canal (text), estado (text),
-    //   fecha_inicio (date), fecha_fin (date), contactos (integer),
-    //   descripcion (text), created_at (timestamptz), deleted (boolean default false)
-    _campanias: [],
-    _mktFilterEstado: null,
-
     // ─── Counts per tab ───
-    _counts: { clientes: 0, pipeline: 0, cotizaciones: 0, interacciones: 0, marketing: 0 },
+    _counts: { clientes: 0, pipeline: 0, cotizaciones: 0, interacciones: 0 },
 
     // ─── Client type config ───
     _clientTypes: [
@@ -126,22 +118,6 @@ const CRM = {
         { value: 'estado',   label: 'Estado',   icon: '\uD83D\uDD04', color: '#F28D15' },
     ],
 
-    // ─── Marketing config ───
-    _mktEstados: [
-        { value: 'activa',      label: 'Activa',      color: '#00CC88', icon: '🟢' },
-        { value: 'programada',  label: 'Programada',  color: '#4A90D9', icon: '🔵' },
-        { value: 'planificada', label: 'Planificada', color: '#888888', icon: '⚪' },
-        { value: 'finalizada',  label: 'Finalizada',  color: '#9B7DFF', icon: '🟣' },
-    ],
-    _mktCanales: [
-        { value: 'email',     label: 'Email',       icon: '✉️' },
-        { value: 'whatsapp',  label: 'WhatsApp',    icon: '💬' },
-        { value: 'linkedin',  label: 'LinkedIn',    icon: '💼' },
-        { value: 'telefono',  label: 'Teléfono',    icon: '📞' },
-        { value: 'evento',    label: 'Evento',      icon: '📅' },
-        { value: 'otro',      label: 'Otro',        icon: '📣' },
-    ],
-
     // ─── Tab definitions ───
     _tabs: [
         { id: 'clientes',       label: 'Clientes',       icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
@@ -149,7 +125,6 @@ const CRM = {
         { id: 'cotizaciones',   label: 'Cotizaciones',   icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' },
         { id: 'interacciones',  label: 'Interacciones',  icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
         { id: 'analitica',      label: 'Analítica',      icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/><line x1="3" x2="21" y1="20" y2="20"/></svg>' },
-        { id: 'marketing',      label: 'Marketing',      icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>' },
     ],
 
 
@@ -289,12 +264,6 @@ const CRM = {
                 !['aprobada', 'rechazada'].includes(c.estado)
             ).length;
             this._counts.interacciones = this._allTimeline.length;
-
-            // Load marketing campaigns (local for now until Supabase table exists)
-            if (!this._campanias || this._campanias.length === 0) {
-                this._campanias = this._loadLocalCampanias();
-            }
-            this._counts.marketing = this._campanias.length;
             this._updateTabCounts();
 
         } catch (e) {
@@ -451,7 +420,6 @@ const CRM = {
             case 'cotizaciones':  return { action: 'open-cotizador', label: 'Abrir cotizador', url: 'http://195.200.1.250/cotizador/' };
             case 'interacciones': return { action: 'new-interaccion', label: 'Nueva interacción' };
             case 'analitica':     return null; // sin botón
-            case 'marketing':     return { action: 'new-campania', label: 'Nueva campaña' };
             default:              return null;
         }
     },
@@ -480,10 +448,6 @@ const CRM = {
                 case 'new-interaccion':
                     Toast.info('Abrí una cotización para registrar una interacción.');
                     break;
-                case 'new-campania':
-                    if (typeof this._openCampaniaModal === 'function') this._openCampaniaModal();
-                    else Toast.info('Marketing en desarrollo.');
-                    break;
             }
         });
     },
@@ -508,9 +472,6 @@ const CRM = {
         } else if (this._activeTab === 'analitica') {
             main.innerHTML = this._renderAnaliticaTab();
             this._initAnaliticaCharts();
-        } else if (this._activeTab === 'marketing') {
-            main.innerHTML = this._renderMarketingTab();
-            this._attachMarketingListeners();
         } else {
             main.innerHTML = this._renderPlaceholderTab(this._activeTab);
         }
@@ -3273,309 +3234,7 @@ const CRM = {
     },
 
 
-    // ═══════════════════════════════════════════
-    //  MARKETING TAB
-    // ═══════════════════════════════════════════
-
-    // Local storage for campaigns until Supabase table is created
-    _loadLocalCampanias() {
-        try {
-            const stored = localStorage.getItem('crm_campanias');
-            if (stored) return JSON.parse(stored);
-        } catch (e) { /* ignore */ }
-        return [];
-    },
-
-    _saveLocalCampanias() {
-        try {
-            localStorage.setItem('crm_campanias', JSON.stringify(this._campanias));
-        } catch (e) { /* ignore */ }
-    },
-
-    _renderMarketingTab() {
-        const user = Auth.getUser();
-        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
-
-        // Filter
-        let filtered = [...this._campanias];
-        if (this._mktFilterEstado) {
-            filtered = filtered.filter(c => c.estado === this._mktFilterEstado);
-        }
-
-        // Sort: activa first, then programada, planificada, finalizada
-        const estadoOrder = { activa: 0, programada: 1, planificada: 2, finalizada: 3 };
-        filtered.sort((a, b) => (estadoOrder[a.estado] || 9) - (estadoOrder[b.estado] || 9));
-
-        // Estado filter chips
-        const allEstados = [
-            { value: null, label: 'Todas' },
-            ...this._mktEstados,
-        ];
-        const chipFilter = allEstados.map(e => {
-            const active = this._mktFilterEstado === e.value;
-            const chipColor = e.color || '#00A9C1';
-            return `<button class="mkt-chip ${active ? 'active' : ''}" data-estado="${e.value || ''}" style="${active ? `background: ${chipColor}20; border-color: ${chipColor}60; color: ${chipColor}` : ''}">
-                ${e.icon ? e.icon + ' ' : ''}${e.label}
-            </button>`;
-        }).join('');
-
-        // Cards
-        let cardsHTML = '';
-        if (filtered.length === 0 && !this._mktFilterEstado) {
-            cardsHTML = `
-                <div class="mkt-empty">
-                    <div class="mkt-empty-icon">📣</div>
-                    <h3>Sin campañas</h3>
-                    <p>Creá tu primera campaña de marketing para empezar a trackear el alcance comercial.</p>
-                </div>`;
-        } else {
-            cardsHTML = '<div class="mkt-grid">';
-            filtered.forEach(camp => {
-                const estCfg = this._mktEstados.find(e => e.value === camp.estado) || this._mktEstados[2];
-                const canalCfg = this._mktCanales.find(c => c.value === camp.canal) || { icon: '📣', label: camp.canal || '—' };
-                const fechaInicio = camp.fechaInicio ? new Date(camp.fechaInicio).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—';
-                const fechaFin = camp.fechaFin ? new Date(camp.fechaFin).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '—';
-                const contactos = camp.contactos ? camp.contactos.toLocaleString('es-AR') : '0';
-
-                cardsHTML += `
-                    <div class="mkt-card" data-id="${camp.id}">
-                        <div class="mkt-card-header">
-                            <span class="mkt-card-badge" style="background: ${estCfg.color}18; color: ${estCfg.color}; border-color: ${estCfg.color}30">${estCfg.label}</span>
-                            <div class="mkt-card-actions">
-                                <button class="mkt-card-btn mkt-edit-btn" data-id="${camp.id}" title="Editar">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                                </button>
-                                <button class="mkt-card-btn mkt-del-btn" data-id="${camp.id}" title="Eliminar">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                                </button>
-                            </div>
-                        </div>
-                        <h3 class="mkt-card-name">${camp.nombre || 'Sin nombre'}</h3>
-                        <div class="mkt-card-meta">
-                            <div class="mkt-card-row">
-                                <span class="mkt-card-label">Canal</span>
-                                <span class="mkt-card-value">${canalCfg.icon} ${canalCfg.label}</span>
-                            </div>
-                            <div class="mkt-card-row">
-                                <span class="mkt-card-label">Período</span>
-                                <span class="mkt-card-value">${fechaInicio} → ${fechaFin}</span>
-                            </div>
-                            <div class="mkt-card-row">
-                                <span class="mkt-card-label">Contactos</span>
-                                <span class="mkt-card-value mkt-card-contactos">${contactos}</span>
-                            </div>
-                        </div>
-                    </div>`;
-            });
-
-            // "+ Nueva campaña" card
-            if (!isReadOnly) {
-                cardsHTML += `
-                    <div class="mkt-card mkt-card-new" id="mktNewCard">
-                        <div class="mkt-card-new-inner">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            <span>Nueva campaña</span>
-                        </div>
-                    </div>`;
-            }
-            cardsHTML += '</div>';
-        }
-
-        // If there's no filter active and no campaigns, still show the new card
-        if (filtered.length === 0 && !this._mktFilterEstado && !isReadOnly) {
-            cardsHTML = `
-                <div class="mkt-grid">
-                    <div class="mkt-card mkt-card-new" id="mktNewCard">
-                        <div class="mkt-card-new-inner">
-                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            <span>Nueva campaña</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="mkt-empty" style="margin-top: 16px;">
-                    <div class="mkt-empty-icon">📣</div>
-                    <h3>Sin campañas</h3>
-                    <p>Creá tu primera campaña de marketing para empezar a trackear el alcance comercial.</p>
-                </div>`;
-        }
-
-        return `
-            <div class="mkt-container">
-                <div class="mkt-toolbar">
-                    <div class="mkt-chips" id="mktChips">
-                        ${chipFilter}
-                    </div>
-                    <div class="mkt-count">${filtered.length} campaña${filtered.length !== 1 ? 's' : ''}</div>
-                </div>
-                <div class="mkt-body">
-                    ${cardsHTML}
-                </div>
-            </div>`;
-    },
-
-    _attachMarketingListeners() {
-        const user = Auth.getUser();
-        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
-
-        // Filter chips
-        const chips = document.getElementById('mktChips');
-        if (chips) {
-            chips.addEventListener('click', (e) => {
-                const chip = e.target.closest('.mkt-chip');
-                if (!chip) return;
-                const estado = chip.dataset.estado || null;
-                this._mktFilterEstado = estado || null;
-                const main = document.getElementById('crmMainContent');
-                if (main) {
-                    main.innerHTML = this._renderMarketingTab();
-                    this._attachMarketingListeners();
-                }
-            });
-        }
-
-        // New card
-        const newCard = document.getElementById('mktNewCard');
-        if (newCard && !isReadOnly) {
-            newCard.addEventListener('click', () => this._openMarketingModal(null));
-        }
-
-        // Edit buttons
-        document.querySelectorAll('.mkt-edit-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const id = btn.dataset.id;
-                const camp = this._campanias.find(c => c.id === id);
-                if (camp) this._openMarketingModal(camp);
-            });
-        });
-
-        // Delete buttons
-        document.querySelectorAll('.mkt-del-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const id = btn.dataset.id;
-                const camp = this._campanias.find(c => c.id === id);
-                if (!camp) return;
-                const ok = await Confirm.delete(camp.nombre || 'campaña');
-                if (!ok) return;
-                this._campanias = this._campanias.filter(c => c.id !== id);
-                this._saveLocalCampanias();
-                this._counts.marketing = this._campanias.length;
-                this._updateTabCounts();
-                Toast.success('Campaña eliminada');
-                const main = document.getElementById('crmMainContent');
-                if (main) {
-                    main.innerHTML = this._renderMarketingTab();
-                    this._attachMarketingListeners();
-                }
-            });
-        });
-    },
-
-    _openMarketingModal(existing) {
-        const isEdit = !!existing;
-        const title = isEdit ? 'Editar campaña' : 'Nueva campaña';
-
-        const estadoOpts = this._mktEstados.map(e =>
-            `<option value="${e.value}" ${existing && existing.estado === e.value ? 'selected' : ''}>${e.icon} ${e.label}</option>`
-        ).join('');
-
-        const canalOpts = this._mktCanales.map(c =>
-            `<option value="${c.value}" ${existing && existing.canal === c.value ? 'selected' : ''}>${c.icon} ${c.label}</option>`
-        ).join('');
-
-        const body = `
-            <form id="mktForm" class="mkt-form">
-                <div class="mkt-form-group">
-                    <label class="mkt-form-label">Nombre</label>
-                    <input type="text" class="mkt-form-input" id="mktNombre" value="${existing ? (existing.nombre || '') : ''}" placeholder="Ej: Campaña ferias Q2" required />
-                </div>
-                <div class="mkt-form-row">
-                    <div class="mkt-form-group">
-                        <label class="mkt-form-label">Canal</label>
-                        <select class="mkt-form-select" id="mktCanal">${canalOpts}</select>
-                    </div>
-                    <div class="mkt-form-group">
-                        <label class="mkt-form-label">Estado</label>
-                        <select class="mkt-form-select" id="mktEstado">${estadoOpts}</select>
-                    </div>
-                </div>
-                <div class="mkt-form-row">
-                    <div class="mkt-form-group">
-                        <label class="mkt-form-label">Fecha inicio</label>
-                        <input type="date" class="mkt-form-input" id="mktFechaInicio" value="${existing ? (existing.fechaInicio || '') : ''}" />
-                    </div>
-                    <div class="mkt-form-group">
-                        <label class="mkt-form-label">Fecha fin</label>
-                        <input type="date" class="mkt-form-input" id="mktFechaFin" value="${existing ? (existing.fechaFin || '') : ''}" />
-                    </div>
-                </div>
-                <div class="mkt-form-group">
-                    <label class="mkt-form-label">Contactos alcanzados</label>
-                    <input type="number" class="mkt-form-input" id="mktContactos" value="${existing ? (existing.contactos || 0) : 0}" min="0" />
-                </div>
-            </form>`;
-
-        const instance = Modal.open({
-            title,
-            body,
-            size: 'small',
-            footer: `
-                <button class="btn btn-ghost" id="mktCancel">Cancelar</button>
-                <button class="btn btn-primary" id="mktSave">${isEdit ? 'Guardar' : 'Crear'}</button>
-            `,
-        });
-
-        // Events
-        const cancelBtn = document.getElementById('mktCancel');
-        const saveBtn = document.getElementById('mktSave');
-
-        if (cancelBtn) cancelBtn.addEventListener('click', () => Modal.close(instance.id));
-
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => {
-                const nombre = document.getElementById('mktNombre').value.trim();
-                if (!nombre) {
-                    Toast.warning('El nombre es obligatorio');
-                    return;
-                }
-                const data = {
-                    nombre,
-                    canal: document.getElementById('mktCanal').value,
-                    estado: document.getElementById('mktEstado').value,
-                    fechaInicio: document.getElementById('mktFechaInicio').value || null,
-                    fechaFin: document.getElementById('mktFechaFin').value || null,
-                    contactos: parseInt(document.getElementById('mktContactos').value) || 0,
-                };
-
-                if (isEdit) {
-                    // Update
-                    const idx = this._campanias.findIndex(c => c.id === existing.id);
-                    if (idx >= 0) {
-                        this._campanias[idx] = { ...this._campanias[idx], ...data };
-                    }
-                    Toast.success('Campaña actualizada');
-                } else {
-                    // Create
-                    data.id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-                    data.createdAt = new Date().toISOString();
-                    this._campanias.push(data);
-                    Toast.success('Campaña creada');
-                }
-
-                this._saveLocalCampanias();
-                this._counts.marketing = this._campanias.length;
-                this._updateTabCounts();
-                Modal.close(instance.id);
-
-                const main = document.getElementById('crmMainContent');
-                if (main) {
-                    main.innerHTML = this._renderMarketingTab();
-                    this._attachMarketingListeners();
-                }
-            });
-        }
-    },
+    // (Marketing eliminado del CRM — 2026-06-07. Si vuelve, va como módulo propio en COMERCIAL.)
 
 
     // ═══════════════════════════════════════════
@@ -5503,7 +5162,7 @@ const CRM = {
 }
 
 /* ═══════════════════════════════════════════
-   MARKETING TAB
+   MARKETING TAB — ELIMINADO (2026-06-07). CSS sin uso, borrar en cleanup.
    ═══════════════════════════════════════════ */
 
 .mkt-container {
