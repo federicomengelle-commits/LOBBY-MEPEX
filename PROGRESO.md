@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 28%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 29%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -167,6 +167,9 @@ En la sección "Vehículos y cargas" de la ficha (la que aparece cuando el event
 
 ### 4.4 — UX "Jornadas y personal" más legible ✅ HECHO (commit `ee493f1`)
 Feedback Fede: "no veía bien" la asignación de gente por día. Mejorado: **sacada la sección Fechas** (redundante con jornadas, que son la única fuente); cada día muestra **día-de-semana + horario + duración** (ej. "Mié 08-may · 08:00–20:00 · 12h") + **"N personas" destacado** en turquesa + gente **ordenada por rol**. Verificado visualmente (captura). Tener ubicados los RRHH por día de un vistazo.
+
+### 4.5 — Alta de gente multi-select ✅ HECHO (commit `5762dfa`)
+Feedback Fede: el alta de a uno era un desastre (sobre todo en eventos de muchos días). Nuevo modal **"Asignar gente a jornadas"** (botón "+ gente"): tildás **varias personas** (rol por c/u o **rol por defecto** que las setea), elegís **a qué días** van (multi-check, pre-marca el del botón), y crea todas las asignaciones de una con **dedup** automático. El **chofer no se carga acá** (viene del vehículo/carga). Previewed visualmente (captura).
 
 ### Falta de Fase 4
 Reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas + gente por día).
