@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 24%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 25%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -151,6 +151,13 @@ Estandarizar códigos/naming del catálogo (recetas) + showcase comercial (a def
 ### 4.1 — Eventos: constructor de jornadas ✅ HECHO (commit `2ef6566`)
 Tabla `evento_jornadas` (DDL `sql/fase4_evento_jornadas.sql`) + trigger `fn_evento_jornadas_sync` que **deriva** `fecha_*/hora_*` de `eventos` desde las jornadas (compat: calendario/lobby/badges sin tocar). **Trigger verificado en prod** (insert → inicio=min, fin=max, apertura=primer día, cierre=último día, exacto; data de prueba limpiada y evento restaurado). UI en la ficha de Eventos: sección Jornadas (tabla por fase screenshot-able) + modal constructor (agregar/quitar jornadas: día + hora inicio + hora fin). Additivo (el form rápido de Fechas sigue intacto). Absorbe el `teardownEndDate` de localStorage. ⚠️ Falta pull del server para ver la UI (`eventos.js?v=9`).
 **Edge conocido:** si se borran TODAS las jornadas de una fase, sus columnas derivadas quedan con el último valor (el guard no las nulea). Menor.
+
+### 4.1c — Jornadas como única fuente (commits `f877f59` + sig.)
+Decisión Fede: las fechas dejan de editarse a mano; las jornadas son la base (también para citar gente por jornada en 4.2).
+- Sacado el editor de Fechas de la ficha → queda **read-only** (resumen derivado). El editor es Jornadas.
+- Sacadas las 4 fechas por fase del modal de **crear evento** → ahora **1 rango tentativo opcional** (`tentDesde/tentHasta` → eventStart/End; armado/desarme y horarios salen de las jornadas).
+- Botón **"+ Jornada" hereda** día siguiente + mismo horario de la última (cargar jornadas consecutivas = 1 click). Helper `_nextDay` TZ-safe.
+- **Deuda menor:** el branch `isEditing` de `_renderPanelFechas` quedó muerto (sin trigger) → limpiar en una pasada futura.
 
 ### Falta de Fase 4
 4.2 gente por jornada (headcount + roles) · reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas).

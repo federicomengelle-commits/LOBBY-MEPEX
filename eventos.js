@@ -2210,23 +2210,15 @@ const EventosModule = {
                         </select>
                     </div>
                     <div class="form-field form-field-full">
-                        <label class="form-label">Fechas</label>
+                        <label class="form-label">Fecha tentativa <span style="font-weight:400;color:var(--text-dim);font-size:0.7rem;">(opcional — las jornadas la definen después)</span></label>
                         <div class="ev-dates-inline">
                             <div class="ev-date-inline-field">
-                                <span class="ev-date-inline-label">Armado</span>
-                                <input class="form-input" type="datetime-local" name="dtSetup" title="Inicio armado">
+                                <span class="ev-date-inline-label">Desde</span>
+                                <input class="form-input" type="date" name="tentDesde" title="Fecha tentativa desde">
                             </div>
                             <div class="ev-date-inline-field">
-                                <span class="ev-date-inline-label">Evento inicio</span>
-                                <input class="form-input" type="datetime-local" name="dtEventStart" title="Inicio evento">
-                            </div>
-                            <div class="ev-date-inline-field">
-                                <span class="ev-date-inline-label">Evento fin</span>
-                                <input class="form-input" type="datetime-local" name="dtEventEnd" title="Fin evento">
-                            </div>
-                            <div class="ev-date-inline-field">
-                                <span class="ev-date-inline-label">Desarme</span>
-                                <input class="form-input" type="datetime-local" name="dtTeardown" title="Inicio desarme">
+                                <span class="ev-date-inline-label">Hasta</span>
+                                <input class="form-input" type="date" name="tentHasta" title="Fecha tentativa hasta">
                             </div>
                         </div>
                     </div>
@@ -2281,20 +2273,11 @@ const EventosModule = {
             }
 
             const getVal = (n) => form.querySelector(`[name="${n}"]`)?.value || null;
-            const split = (n) => this._splitDatetime(getVal(n));
-            const sSetup = split('dtSetup');
-            const sEvStart = split('dtEventStart');
-            const sEvEnd = split('dtEventEnd');
-            const sTeardown = split('dtTeardown');
-
-            const dateErr = this._validateFaseDates([
-                { label: 'Armado', d: sSetup },
-                { label: 'Inicio del evento', d: sEvStart },
-                { label: 'Fin del evento', d: sEvEnd },
-                { label: 'Desarme', d: sTeardown },
-            ]);
-            if (dateErr) {
-                Toast.error(dateErr);
+            // Fecha tentativa general (opcional). Armado/desarme y horarios reales salen de las Jornadas (el trigger deriva).
+            const tentDesde = getVal('tentDesde');
+            const tentHasta = getVal('tentHasta') || tentDesde;
+            if (tentDesde && tentHasta && tentHasta < tentDesde) {
+                Toast.error('La fecha "hasta" no puede ser anterior a "desde".');
                 return;
             }
 
@@ -2303,17 +2286,17 @@ const EventosModule = {
                 name,
                 venue,
                 status: getVal('estado'),
-                setupDate: sSetup.date,
-                setupEndDate: sSetup.date,
-                eventStartDate: sEvStart.date,
-                eventEndDate: sEvEnd.date,
-                teardownDate: sTeardown.date,
-                teardownEndDate: sTeardown.date,
-                setupTimeOpen: sSetup.time,
+                setupDate: null,
+                setupEndDate: null,
+                eventStartDate: tentDesde,
+                eventEndDate: tentHasta,
+                teardownDate: null,
+                teardownEndDate: null,
+                setupTimeOpen: '',
                 setupTimeClose: '',
-                eventTimeOpen: sEvStart.time,
-                eventTimeClose: sEvEnd.time,
-                teardownTimeOpen: sTeardown.time,
+                eventTimeOpen: '',
+                eventTimeClose: '',
+                teardownTimeOpen: '',
                 teardownTimeClose: '',
             };
 
