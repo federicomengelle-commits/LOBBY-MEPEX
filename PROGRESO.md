@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 21%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 22%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -140,8 +140,11 @@ Módulo `flota.js` en ACTIVOS (patrón canónico). Maestro `vehiculos` extendido
 ### 3.1b — Repuntar legacy → DIFERIDO a Fase 4
 Repuntar `badges.js` (VTV/seguro) + `eventos.js` (select transporte) a `vehiculos` y retirar `logistica_vehiculos`. Va junto con la **reformulación de Logística** en Fase 4 (decisión Fede: mejor todo junto). El legacy sigue vivo, no molesta.
 
+### 3.2 — Locaciones ✅ REVISADO (commit `7d30229`)
+Maestro completo y sano (Lugares · Documentación con vencimientos · Stock, admin-only). Bug arreglado en la raíz: `Modal.close()` sin id no cerraba nada → Cancelar + cierre post-guardado de los 3 modales de Locaciones estaban rotos (y el mismo patrón latente en compras/rrhh). Fix en `components.js` (close sin id = cierra el topmost). Flota pasó a `data-modal-close`. ⚠️ Para verlo en prod hace falta pull del server (estaba en `6a2d0a0`).
+
 ### Falta de Fase 3
-Locaciones (revisar maestro existente) + estandarizar códigos/naming del catálogo (recetas) + showcase comercial (a definir por Fede). Ver PLAN-MAESTRO.
+Estandarizar códigos/naming del catálogo (recetas) + showcase comercial (a definir por Fede). Inventario y Locaciones ya son maestros sanos.
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
