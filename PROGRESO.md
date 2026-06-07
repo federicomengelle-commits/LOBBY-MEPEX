@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 15%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 18%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -8,10 +8,10 @@
 
 ---
 
-## Estado general — AVANCE ≈ 15%
-- **Hecho:** Fase 1 completa (nav + roles). Fase 2 saneamiento ~60% (2.0 calendar.js / 2.1 calendario enrich / 2.2 notas / calendario UI / CRM-marketing). Calendario operativo rediseñado (solo vista, espejo de Eventos). CRM depurado (Marketing eliminado).
-- **Próximo paso (charla nueva):** cerrar **Fase 2** (2B consolidar duplicados con bisturí + 2C limpieza final), o la fase que Fede priorice. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` @ `c2439fc`. Branch dev: `rediseno`.
+## Estado general — AVANCE ≈ 18%
+- **Hecho:** Fase 1 completa (nav + roles). **Fase 2 ✅ COMPLETA** (saneamiento localStorage→Supabase + 2C limpieza + 2B auditada/diferida). Calendario operativo rediseñado (solo vista, espejo de Eventos). CRM depurado (Marketing eliminado).
+- **Próximo paso (charla nueva):** arrancar fase pesada. Recomendado **Fase 3 — Capa de Activos** (fundacional, SQL pesado: Catálogo OCTEXA, Flota, Locaciones) o **Fase 4 — Eventos** (constructor de jornadas) según priorice Fede. Ver `PLAN-MAESTRO`.
+- **Baseline:** `origin/main` @ `c2439fc`; branch `rediseno` adelantado (2C = `5687973`). Sin pushear todavía.
 - **Última actualización:** 2026-06-07.
 
 ---
@@ -53,7 +53,7 @@ Sidebar desacoplado de localStorage + estructura al árbol destino.
 
 ---
 
-## FASE 2 — Saneamiento de datos (EN CURSO)
+## FASE 2 — Saneamiento de datos ✅ COMPLETA (2026-06-07)
 
 **Hallazgo clave del reconocimiento:** el problema "calendario no multiusuario" NO es falta de tablas. `eventos.js` YA usa tablas reales (proyectos.evento_id, `asignaciones_evento`, `getEventoTransporte`, `evento_documentos`, notas con dual-write a `eventos`). El que quedó atrás es **`calendario-operativo.js`**, que enriquece leyendo localStorage (`ev_proyectos_/ev_equipo_/ev_transporte_/ev_notas_/ev_docs_`). Las claves `ev_proyectos_/ev_equipo_/ev_transporte_` **no tienen escritor** → lecturas huérfanas (data vacía/vieja). ⇒ Fase 2 es más **rewiring/consolidación** que crear tablas; la DDL real es chica.
 
@@ -63,10 +63,10 @@ Mapa localStorage de negocio:
 - `crm.js`: `crm_campanias` (no existe tabla; hay TODO para `marketing_campanias`).
 
 Sub-bloques:
-- **2.0 — Cleanup:** matar `calendar.js` (muerto, confirmado: `Calendar` nunca referenciado). ✅ HECHO. (CSS `cal-*` huérfano en style.css queda; inocuo, se limpia después.)
+- **2.0 — Cleanup:** matar `calendar.js` (muerto, confirmado: `Calendar` nunca referenciado). ✅ HECHO (archivo ya no existe en disco ni en index.html). (⚠️ **Corrección 2C:** el CSS `cal-*` de style.css **NO es huérfano** — lo usa el mini-calendario del Lobby (`lobby.js`: `cal-cell`/`cal-day-name`/`cal-dot`/`cal-dots`). **NO borrar.**)
 - **2.1 — calendario-operativo.js → Supabase:** ✅ HECHO. El enrich de la grilla usa data REAL en 3 bulk queries (`API.getProyectosByEventos / getAsignacionesByEventos / getCargasByEventos`) en vez de localStorage huérfano. `projectCount` real (antes siempre 0); detección de conflictos real (equipo/transporte). Notas y teardownEndDate ya venían reales de `getEvents`. Removidas las claves huérfanas `ev_proyectos_/ev_equipo_/ev_transporte_/ev_notas_`. **Docs siguen en localStorage (`ev_docs_`) → bloqueado por Fase 6** (`evento_documentos` existe pero su API está comentada por schema desalineado). `co_events_cache` queda como fallback offline. Bumps `api.js?v=25`, `calendario-operativo.js?v=9`. Verificado en preview (métodos OK, sin errores). **Pendiente de Fede:** ver el calendario con data real en el server.
 - **2.2 — eventos.js cerrar localStorage:** ✅ **Notas → columna** (`notas_operativas`): `_saveNotas` persiste solo a Supabase (sin localStorage); el panel lee `ev.notasOperativas`; eliminado `_getNotas` + la clave `ev_notas_` del cleanup. Bump `eventos.js?v=8`. **Teardown DIFERIDO:** el `teardownEndDate→columna` se absorbe en el **constructor de fechas/jornadas** (no se hace ahora para no rehacerlo). **Docs** (`ev_docs_`) → Fase 6. Sin DDL.
-- **2.3 — CRM marketing → Supabase:** crear `marketing_campanias`, migrar `crm_campanias`. DDL. ⏳
+- **2.3 — CRM marketing → Supabase:** ✅ **resuelto por eliminación** — Marketing se sacó entero del CRM (no se crea `marketing_campanias`, se descarta `crm_campanias`). Ver sección CRM abajo.
 - **Calendario UI (pedido de Fede):** ⏳ EN CURSO.
   - ✅ **Fix bug fases:** cada fase (armado/evento/desarme) se posiciona por su FECHA REAL dentro del bloque; antes se apilaban contiguas y si había gap (ej. desarme un día después del evento) el desarme caía un día antes y el día real quedaba vacío. Verificado: desarme en su día correcto, gap respetado.
   - ✅ **Cuadro rediseñado:** cada fase muestra etiqueta + hora de inicio (`ARMADO 08:00 / EVENTO 10:00 / DESARME 18:00`), labels más visibles, base con color tenue del evento. Bumps `calendario-operativo.js?v=10`, `style.css?v=13`.
@@ -80,6 +80,23 @@ Sub-bloques:
 **Principio rector (Fede, 2026-06-07):** data real única, **coherente entre módulos, en tiempo real**. Toda la data de eventos es importante porque alimenta el calendario operativo Y la logística (los viajes se programan desde ahí). Una sola fuente de verdad consumida por todos los módulos. Aplicar este criterio a TODO el rediseño (= "un dato maestro, vistas por rol" del PLAN-MAESTRO).
 
 **Decisión sobre data vieja:** arrancar con data real únicamente. Lo importante ya está en Supabase (notas dual-write, proyectos/equipo/transporte en tablas reales, teardown en `fecha_desarme_fin`). Las claves localStorage huérfanas se descartan. Único pendiente real = docs (Fase 6).
+
+### 2C — Limpieza final ✅ HECHO (commit `5687973`)
+- `crm.js`: eliminado el bloque CSS `.mkt-*` (274 líneas) que quedó huérfano al sacar Marketing.
+- `admin-panel.js`: `_getModuleColor` `recursos`→`activos`; `rrhh` y `contabilidad` movidos al azul Admin&Finanzas (los dots del audit-log ahora matchean el árbol canónico).
+- Comentarios header "RECURSOS" → categoría correcta: `compras.js`/`locaciones.js` (ACTIVOS), `rrhh.js` (ADMIN & FINANZAS), banner de `data.js`.
+- `undo.js`: **verificado VIVO** (index.html + app.js + proyectos/proyecto-detalle/modules/audit-log lo usan). Nada que borrar.
+- Bumps: `crm.js?v=13`, `data.js?v=8`, `compras.js?v=4`, `locaciones.js?v=3`, `rrhh.js?v=8`, `admin-panel.js?v=8`. `node --check` OK en los 6.
+- **NO tocado** (bisturí): CSS `.cal-*` de style.css (lo usa el Lobby) + placeholders de badges finanzas/inventario en 0 (su arreglo es scope Fase 8/9).
+
+### 2B — Consolidación de duplicados → AUDITADA y DIFERIDA ✅
+Auditoría read-only en **`AUDITORIA-2B-duplicados.md`**. Veredicto: **NO se consolida nada en Fase 2** (los 3 duplicados caen en el camino de Fases 3/4 → consolidar ahora = retrabajo). Diferidos:
+- `personas` vs `rrhh_*` → **mini-fase RRHH dedicada** (Nómina ya migró; Vacaciones/Asignación siguen legacy).
+- `logistica_vehiculos`/`logistica_movimientos` → **Fase 3** (Flota=`vehiculos`) + **Fase 4** (transporte=`cargas`).
+- `taller_proyecto_checklist` vs `taller_checklist` → **Fase 4**. 1 fix chico candidato (el badge de Taller cuenta de la tabla vieja), pendiente de OK de Fede + verificación de schema.
+
+## ✅ FASE 2 COMPLETA (2026-06-07)
+Saneamiento localStorage→Supabase + limpieza cosmética + auditoría de duplicados con plan de diferimiento. **Pendiente de Fede:** pull + hard refresh `Ctrl+Shift+R`, F12 sin rojos, navegar (CRM anda, dots del audit-log con color correcto, mini-calendario del Lobby intacto).
 
 ---
 

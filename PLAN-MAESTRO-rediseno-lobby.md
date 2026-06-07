@@ -1,4 +1,4 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 85%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 82%
 
 > **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈15%). No repetir acá lo que está en PROGRESO.
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
@@ -37,15 +37,16 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 
 ## FASES RESTANTES
 
-### Fase 2 — Saneamiento de datos *(≈5% · casi cerrada — ver PROGRESO 2.0/2.1/2.2/calendario/CRM)*
-Falta:
-- **2B — Consolidar duplicados CON BISTURÍ:** auditar qué tabla usa REALMENTE cada módulo antes de tocar. Duplicados conocidos: `personas` vs `rrhh_*`; `vehiculos`+`cargas` vs `logistica_*`; `taller_proyecto_checklist` vs `taller_checklist`. Consolidar SOLO donde sea seguro y aporte; nada a lo bestia.
-- **2C — Limpieza final:** verificar `undo.js` global; placeholders conocidos (badges finanzas/inventario en 0, columnas stock sin uso); borrar CSS muerto `.mkt-*` en `crm.js` (~5164-5437) + cualquier resto.
-- **Test:** data en Supabase y multiusuario; sin romper; consola sin errores.
+### Fase 2 — Saneamiento de datos ✅ COMPLETA *(2026-06-07 — ver PROGRESO)*
+- **2C limpieza** hecha (commit `5687973`): CSS muerto `.mkt-*`, comentarios stale RECURSOS→ACTIVOS, color del audit-log. `undo.js` verificado vivo. (`.cal-*` NO se borra: lo usa el mini-calendario del Lobby.)
+- **2B auditada y DIFERIDA** → `AUDITORIA-2B-duplicados.md`. Los 3 duplicados (`personas`/`rrhh_*`; `vehiculos`/`logistica_*`; checklists) **no se consolidan ahora** — se absorben en Fases 3/4 y en la mini-fase RRHH (abajo), porque consolidar antes de reescribir esos módulos sería retrabajo.
+
+### 🆕 Mini-fase RRHH — unificar sobre `personas` *(nueva, salida de la auditoría 2B · ≈3% · DDL)*
+Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `rrhh_*`** (`rrhh_vacaciones`, `rrhh_vacaciones_solicitudes`, `rrhh_asignaciones`, `rrhh_personal`) y `personas` no tiene esas columnas. Migrar vacaciones/asignaciones a `personas` + FKs nuevas, limpiar la doble lectura de Eventos (`personas` 1025 + `rrhh_personal` 1495) y retirar las `rrhh_*`. Sin fase asignada hoy — intercalar antes/junto a Fase 9.
 
 ### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
 - Vistas maestras: **Catálogo OCTEXA/Inventario, Flota, Locaciones.** Dato único + vistas por rol (Operaciones = uso; Finanzas = plata: VTV/seguro/patente/amortización).
-- **Flota:** crear como sección de ACTIVOS (hoy los vehículos viven en Logística). Logística la consume.
+- **Flota:** crear como sección de ACTIVOS (hoy los vehículos viven en Logística). Logística la consume. **Absorbe el duplicado `logistica_vehiculos`→`vehiculos`** (ver `AUDITORIA-2B-duplicados.md`).
 - **Mantenimiento** = cola colgada del activo (vehículo/máquina), motor único.
 - **FUNDACIONAL:** Catálogo OCTEXA consolidado y estandarizado (códigos/naming alineados a Supabase) → habilita Costos, Diseño (Fase 6) y Configurador. Acá está el grueso.
 - **⚠ Carga de SQL pesada.**
@@ -59,9 +60,9 @@ Falta:
   - **Reactivar el historial** del evento (`evento_historial` + `logEventChange`, hoy deshabilitados por schema desalineado).
   - **Docs de evento** → reactivar `evento_documentos` (hoy localStorage + API comentada por schema). Mover a Supabase.
   - **Después: 2º pase del CALENDARIO** para reflejar todo esto (jornadas, asignaciones por día, vehículos, historial). El calendario es SOLO vista; la edición vive en Eventos.
-- **Taller** = tablero de producción por proyecto con tareas **pre-pobladas por plantilla** (proceso completo del stand: corte/soldadura/pintura/armado/gráfica). El encargado mueve estados, no crea tarjetas. *(v2: tareas derivadas del BOM.)*
+- **Taller** = tablero de producción por proyecto con tareas **pre-pobladas por plantilla** (proceso completo del stand: corte/soldadura/pintura/armado/gráfica). El encargado mueve estados, no crea tarjetas. *(v2: tareas derivadas del BOM.)* **Unifica el checklist** (`taller_proyecto_checklist` que usa el módulo vs `taller_checklist` que cuenta el badge — ver AUDITORIA-2B).
 - **🆕 Subalquileres con agregación por proveedor:** cada stand lista items subalquilados + proveedor. **Vista doble:** por EVENTO (totales por proveedor) y por STAND. Dos salidas: lista de TOTALES (taller/pedido) + lista INDIVIDUAL filtrable por proveedor. Conecta con Compras-proveedores y Logística-reparto.
-- **Logística** = mantener parecida a hoy, nucleada y conectada con eventos.
+- **Logística** = mantener parecida a hoy, nucleada y conectada con eventos. **Transporte de Eventos pasa de `logistica_movimientos` a `cargas`** (ver AUDITORIA-2B).
 - **Test:** evento con jornadas + asignación por día reflejados en calendario; producción con tablero; subalquiler agregado por proveedor.
 
 ### Fase 5 — Compras + rentabilidad por proyecto *(≈10% · corazón del valor)*
