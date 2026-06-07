@@ -807,7 +807,7 @@ const EventosModule = {
                 </div>
                 <div class="ev-jc-people">
                     ${sorted.map(a => this._renderAsigRow(a)).join('')}
-                    <button class="ev-jc-add" data-jid="${j.id}" data-fase="${j.fase}" data-fecha="${j.fecha}">＋ persona</button>
+                    <button class="ev-jc-add" data-jid="${j.id}" data-fase="${j.fase}" data-fecha="${j.fecha}">＋ gente</button>
                 </div>
             </div>`;
     },
@@ -864,27 +864,78 @@ const EventosModule = {
             try { this._personasOp = await API.getPersonas({ soloActivos: true }); } catch (e) { this._personasOp = []; }
         }
         const personas = this._personasOp || [];
+        const jornadas = this._jornadasCache[eventoId] || [];
+        const faseLabel = { armado: 'Armado', evento: 'Evento', desarme: 'Desarme' };
+        const diasHtml = ['armado', 'evento', 'desarme'].map(f => {
+            const js = jornadas.filter(j => j.fase === f);
+            if (!js.length) return '';
+            return `<div class="ev-asig-fase"><span class="ev-asig-fase-lbl">${faseLabel[f]}</span>${js.map(j => `<label class="ev-asig-dia"><input type="checkbox" class="ev-asig-diack" value="${j.id}" data-fase="${j.fase}" data-fecha="${j.fecha}" ${j.id === jornada.id ? 'checked' : ''}> ${this._fmtDiaFecha(j.fecha)}</label>`).join('')}</div>`;
+        }).join('');
+        const persRows = personas.map(p => `
+            <div class="ev-asig-prow" data-pid="${p.id}" data-nombre="${this._escAttr(this._personaNombre(p)).toLowerCase()}">
+                <label class="ev-asig-pcheck"><input type="checkbox" class="ev-asig-pck" value="${p.id}"> <span>${this._esc(this._personaNombre(p))}</span></label>
+                <select class="ev-asig-prol"><option value="">rol…</option>${this._ROLES_OP.map(r => `<option value="${r}">${r}</option>`).join('')}</select>
+            </div>`).join('');
         const body = `
-            <div class="ev-jc-addform">
-                <label class="form-label">Persona</label>
-                <select id="evAddPersona" class="form-input form-select">
-                    <option value="">Elegí…</option>
-                    ${personas.map(p => `<option value="${p.id}">${this._esc(this._personaNombre(p))}</option>`).join('')}
-                </select>
-                <label class="form-label" style="margin-top:10px;">Rol</label>
-                <select id="evAddRol" class="form-input form-select">
-                    <option value="">—</option>
-                    ${this._ROLES_OP.map(r => `<option value="${r}">${r}</option>`).join('')}
-                </select>
+            <style>
+                .ev-asig{display:flex;flex-direction:column;gap:14px;}
+                .ev-asig-h{font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-dim);margin-bottom:6px;}
+                .ev-asig-hint{text-transform:none;letter-spacing:0;color:var(--text-dim);font-weight:400;}
+                .ev-asig-dias{display:flex;flex-direction:column;gap:6px;}
+                .ev-asig-fase{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+                .ev-asig-fase-lbl{font-family:var(--font-mono);font-size:0.64rem;text-transform:uppercase;color:var(--text-dim);min-width:62px;}
+                .ev-asig-dia{display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 9px;cursor:pointer;}
+                .ev-asig-plist{display:flex;flex-direction:column;gap:2px;max-height:230px;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:4px;margin-top:6px;}
+                .ev-asig-prow{display:flex;align-items:center;gap:8px;padding:3px 4px;}
+                .ev-asig-pcheck{flex:1;display:flex;align-items:center;gap:7px;font-size:0.84rem;color:var(--text-primary);cursor:pointer;min-width:0;}
+                .ev-asig-pcheck span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+                .ev-asig-prol{background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:3px 6px;color:var(--text-muted);font-size:0.72rem;}
+            </style>
+            <div class="ev-asig">
+                <div>
+                    <div class="ev-asig-h">¿A qué días?</div>
+                    <div class="ev-asig-dias">${diasHtml || '<span class="ev-j-empty">No hay jornadas.</span>'}</div>
+                </div>
+                <div>
+                    <div class="ev-asig-h">Rol por defecto <span class="ev-asig-hint">(se puede cambiar por persona)</span></div>
+                    <select id="evAsigRolDef" class="form-input form-select"><option value="">—</option>${this._ROLES_OP.map(r => `<option value="${r}">${r}</option>`).join('')}</select>
+                </div>
+                <div>
+                    <div class="ev-asig-h">Personas <span class="ev-asig-hint">(tildá las que van)</span></div>
+                    <input type="text" id="evAsigSearch" class="form-input" placeholder="Buscar…">
+                    <div class="ev-asig-plist">${persRows}</div>
+                </div>
             </div>`;
-        const inst = Modal.open({ title: `Asignar a ${this._fmtDate(jornada.fecha)}`, body, size: 'sm', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evAddSave">Agregar</button>` });
-        inst.overlay.querySelector('#evAddSave')?.addEventListener('click', async () => {
-            const pid = inst.overlay.querySelector('#evAddPersona')?.value;
-            const rol = inst.overlay.querySelector('#evAddRol')?.value || null;
-            if (!pid) { Toast.warning('Elegí una persona.'); return; }
-            const r = await API.createAsignacionEvento({ eventoId, personaId: pid, jornadaId: jornada.id, fase: jornada.fase, fechaInicio: jornada.fecha, fechaFin: jornada.fecha, rol, estado: 'aprobada' });
-            if (r) { Toast.success('Persona asignada.'); Modal.close(inst.id); await this._loadJornadasSection(eventoId); }
-            else Toast.error('No se pudo asignar.');
+        const inst = Modal.open({ title: 'Asignar gente a jornadas', body, size: 'md', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evAsigSave">Agregar</button>` });
+        const ov = inst.overlay;
+        ov.querySelector('#evAsigSearch')?.addEventListener('input', (e) => {
+            const q = e.target.value.toLowerCase();
+            ov.querySelectorAll('.ev-asig-prow').forEach(row => { row.style.display = row.dataset.nombre.includes(q) ? '' : 'none'; });
+        });
+        const rolDef = ov.querySelector('#evAsigRolDef');
+        rolDef?.addEventListener('change', () => {
+            ov.querySelectorAll('.ev-asig-prow').forEach(row => { if (row.querySelector('.ev-asig-pck').checked) row.querySelector('.ev-asig-prol').value = rolDef.value; });
+        });
+        ov.querySelectorAll('.ev-asig-pck').forEach(ck => ck.addEventListener('change', () => {
+            if (ck.checked && rolDef.value) ck.closest('.ev-asig-prow').querySelector('.ev-asig-prol').value = rolDef.value;
+        }));
+        ov.querySelector('#evAsigSave')?.addEventListener('click', async () => {
+            const dias = [...ov.querySelectorAll('.ev-asig-diack:checked')].map(c => ({ id: c.value, fase: c.dataset.fase, fecha: c.dataset.fecha }));
+            const pers = [...ov.querySelectorAll('.ev-asig-prow')].filter(row => row.querySelector('.ev-asig-pck').checked).map(row => ({ id: row.dataset.pid, rol: row.querySelector('.ev-asig-prol').value || null }));
+            if (!dias.length) { Toast.warning('Elegí al menos un día.'); return; }
+            if (!pers.length) { Toast.warning('Tildá al menos una persona.'); return; }
+            const existentes = new Set((this._asignCache[eventoId] || []).filter(a => a.jornada_id).map(a => a.jornada_id + '|' + a.persona_id));
+            let creadas = 0, saltadas = 0;
+            for (const d of dias) {
+                for (const p of pers) {
+                    if (existentes.has(d.id + '|' + p.id)) { saltadas++; continue; }
+                    const r = await API.createAsignacionEvento({ eventoId, personaId: p.id, jornadaId: d.id, fase: d.fase, fechaInicio: d.fecha, fechaFin: d.fecha, rol: p.rol, estado: 'aprobada' });
+                    if (r) creadas++;
+                }
+            }
+            Toast.success(`${creadas} agregada${creadas === 1 ? '' : 's'}${saltadas ? ` · ${saltadas} ya estaban` : ''}.`);
+            Modal.close(inst.id);
+            await this._loadJornadasSection(eventoId);
         });
     },
 
