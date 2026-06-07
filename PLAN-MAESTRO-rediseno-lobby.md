@@ -1,138 +1,115 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 85%
 
-> Documento vivo. Nuclea: reconocimiento (Fase 0, hecha) + saneamiento + reorganización de navegación + integración de diseño + remate UI.
-> Companion: `RECONOCIMIENTO-LOBBY.md` (estado real del código).
-> Branch de trabajo: **`rediseno`** (crear con `git checkout -b rediseno`; el repo hoy está en `main`).
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈15%). No repetir acá lo que está en PROGRESO.
+> **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
+> **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
+> **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
+> **Baseline actual:** `origin/main` @ `c2439fc`.
 
 ---
 
 ## Principios rectores
 
-1. **Sanear antes de reorganizar.** No se mueve la fachada sobre cimientos de localStorage.
+1. **Sanear antes de reorganizar a fondo.** No mover la fachada sobre cimientos de localStorage.
 2. **Un dato maestro en un lugar, vistas por rol.** Nunca duplicar la entidad; se filtra por rol (uso vs plata).
-3. **Simplicidad operativa.** Completar info sí; burocracia que da ganas de no usar el sistema, no.
-4. **No romper lo que anda.** Lo viejo que funciona se toca con bisturí, no con maza.
-5. **Separar tracks.** Código de la SPA (lo ejecuta Claude Code) vs tracks paralelos (CAD/diseño en 3dsMax/BricsCAD lo ejecuta Meli; configurador 2D es proyecto aparte).
+3. **Data real única, coherente entre módulos, EN TIEMPO REAL.** (Fede) Toda la data de eventos alimenta calendario Y logística (los viajes se programan desde ahí). Una sola fuente de verdad (Supabase) consumida por todos. *Visión: crear eventos en la nube + backup desde el server.*
+4. **Simplicidad operativa.** Completar info sí; burocracia que da ganas de no usar el sistema, no.
+5. **No romper lo que anda.** Lo viejo que funciona se toca con bisturí, no con maza.
+6. **Separar tracks.** SPA (Claude Code) vs tracks paralelos (CAD/diseño = Meli; configurador 2D = aparte).
 
 ---
 
-## Árbol de navegación destino
+## Árbol de navegación destino (estado acordado)
 
 ```
 PRINCIPAL          Lobby (home por rol)
-COMERCIAL          CRM (Clientes = vista interna) · Cotizador
-OPERACIONES        Calendario · Eventos · Proyectos · Taller (tablero producción) · Logística (movimientos)
-ACTIVOS            Catálogo/Inventario · Flota · Locaciones · Compras
-ADMIN Y FINANZAS   Finanzas · Contabilidad · Costos
-GLOBAL             Panel SuperAdmin (roles + stats) · Centro de notificaciones
+COMERCIAL          CRM (Clientes = vista interna · sin Marketing) · Cotizador · Catálogo (vendible)
+OPERACIONES        Calendario (SOLO vista) · Eventos · Proyectos · Taller · Logística
+ACTIVOS            Inventario · Locaciones · Compras · [Flota — crear Fase 3] · [Catálogo OCTEXA de piezas — Fase 3]
+ADMIN Y FINANZAS   RRHH · Finanzas · Contabilidad · Costos
+GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 ```
-
-Cambios vs hoy: `RECURSOS → ACTIVOS`; `logística/inventario/compras` migran a ACTIVOS; aparece capa GLOBAL.
-
----
-
-## Hallazgos del reconocimiento (resumen)
-
-**Ya construido (no rehacer, solo ajustar/completar):**
-- RBAC completo configurable contra Supabase (`admin-panel`). Fuente de verdad = tabla `roles`; hardcode `data.js` = fallback offline.
-- Notificaciones (`notifications.js`), badges sidebar (`badges.js`), Lobby por rol, Contabilidad avanzada, Costos.
-
-**Deuda a sanear:**
-- Data de negocio en **localStorage**: eventos, calendario-operativo, CRM marketing → calendario NO multiusuario hoy.
-- **Tablas duplicadas** legacy/nuevo: `personas`/`rrhh_*`; `vehiculos`+`cargas`/`logistica_*`; checklists de taller.
-- Menú (`SidebarEditor`) en localStorage. `calendar.js` muerto.
+- ✅ Hecho (Fase 1): RECURSOS→ACTIVOS, reubicación, SidebarEditor eliminado. Ver PROGRESO.
+- Catálogo **vendible** queda en COMERCIAL. El **Catálogo OCTEXA de piezas** (ACTIVOS) es otro, nace en Fase 3.
+- GLOBAL todavía no existe como categoría (Panel = dropdown; Notif = campana) → se arma en Fase 9.
 
 ---
 
-## FASES
+## FASES RESTANTES
 
-### Fase 0 — Reconocimiento ✅ HECHO
+### Fase 2 — Saneamiento de datos *(≈5% · casi cerrada — ver PROGRESO 2.0/2.1/2.2/calendario/CRM)*
+Falta:
+- **2B — Consolidar duplicados CON BISTURÍ:** auditar qué tabla usa REALMENTE cada módulo antes de tocar. Duplicados conocidos: `personas` vs `rrhh_*`; `vehiculos`+`cargas` vs `logistica_*`; `taller_proyecto_checklist` vs `taller_checklist`. Consolidar SOLO donde sea seguro y aporte; nada a lo bestia.
+- **2C — Limpieza final:** verificar `undo.js` global; placeholders conocidos (badges finanzas/inventario en 0, columnas stock sin uso); borrar CSS muerto `.mkt-*` en `crm.js` (~5164-5437) + cualquier resto.
+- **Test:** data en Supabase y multiusuario; sin romper; consola sin errores.
 
-### Fase 1 — Cimientos: navegación + roles  *(chica, bajo riesgo)*
-- Matriz de roles ajustada (`compras` → write en `pm` y `taller`; **ya aplicado por Fede**).
-- **Matar SidebarEditor.** Estructura de menú canónica en código (`Data.categories`), sin hardcode al pedo.
-- Reescribir categorías al árbol destino — **probar RECURSOS→ACTIVOS**, reubicar módulos, preparar GLOBAL.
-- **Test:** cada rol loguea y ve su menú correcto con la estructura nueva.
-
-### Fase 2 — Saneamiento de datos  *(PRIORIDAD)*
-- **2A — localStorage → Supabase:** eventos (docs/notas/teardown), calendario-operativo (equipo/transporte/proyectos vinculados/docs/notas), CRM marketing. Crear tablas faltantes → **calendario bien hecho, simultáneo para todos.**
-- **2B — Consolidar duplicados CON BISTURÍ:** el sistema supuestamente anda → **no romper.** Primero auditar qué tabla usa REALMENTE cada módulo; consolidar SOLO donde sea seguro y aporte; nada de migrar a lo bestia.
-- **2C — Limpieza:** matar `calendar.js` (muerto) + **verificar `undo.js` global** + placeholders conocidos (badges finanzas/inventario en 0, columnas stock sin uso).
-- **Test:** data en Supabase y multiusuario; sin romper lo que andaba; consola sin errores.
-
-### Fase 3 — Capa de Activos (datos maestros)
-- Vistas maestras sobre datos limpios: **Catálogo OCTEXA/Inventario, Flota, Locaciones.** Dato único + vistas por rol (Operaciones = uso; Finanzas = plata: VTV/seguro/patente/amortización).
+### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
+- Vistas maestras: **Catálogo OCTEXA/Inventario, Flota, Locaciones.** Dato único + vistas por rol (Operaciones = uso; Finanzas = plata: VTV/seguro/patente/amortización).
+- **Flota:** crear como sección de ACTIVOS (hoy los vehículos viven en Logística). Logística la consume.
 - **Mantenimiento** = cola colgada del activo (vehículo/máquina), motor único.
-- **FUNDACIONAL:** Catálogo OCTEXA consolidado y estandarizado (códigos/naming alineados a Supabase) → habilita Costos, Diseño (Fase 6) y Configurador. Acá está el grueso del laburo de esta fase.
-- **⚠ Carga de SQL pesada** (consolidación del catálogo). Es donde más se trabaja.
+- **FUNDACIONAL:** Catálogo OCTEXA consolidado y estandarizado (códigos/naming alineados a Supabase) → habilita Costos, Diseño (Fase 6) y Configurador. Acá está el grueso.
+- **⚠ Carga de SQL pesada.**
 - **Test:** cada maestro accesible; vistas por rol correctas.
 
-### Fase 4 — Operaciones: Taller + Logística + Subalquileres
-- **Taller** = tablero de producción por proyecto con tareas **pre-pobladas por plantilla**. Las plantillas = **el proceso completo de un stand** (corte/soldadura/pintura/armado/gráfica). Trabajar bien este proceso. El encargado mueve estados, no crea tarjetas. *(v2: tareas derivadas del BOM/receta.)*
-- **🆕 Subalquileres con agregación por proveedor:**
-  - Cada stand lista sus items subalquilados (muebles, etc.) y su proveedor.
-  - **Vista doble:** por EVENTO (totales agregados por proveedor) y por STAND individual.
-  - Ej: a *Dani JD* → total evento = **3 mesas, 9 banquetas, 1 living** (sumando los 3 stands).
-  - **Dos salidas:** lista de TOTALES (preparación en taller / pedido al proveedor) + lista INDIVIDUAL por proyecto, **filtrable por proveedor.**
-  - "Un par de tablas lo resuelve." Conecta con Compras-proveedores y Logística-reparto; **dónde vive exacto se define en las preguntas de esta fase.**
-- **Logística** = mantener parecida a hoy, nucleada y conectada con eventos. No reinventar.
-- **Test:** proyecto en producción → tablero con tareas; subalquiler agregado por proveedor (total + individual); movimientos sobre flota.
+### Fase 4 — Operaciones: Eventos + Taller + Logística + Subalquileres *(≈15%)*
+- **⭐⭐ Reformulación de EVENTOS (núcleo de esta fase — spec detallada en PROGRESO):**
+  - **Constructor de fechas tipo TABLA con jornadas:** por fase (armado/evento/desarme), múltiples días; cada jornada = fecha + hora inicio + hora fin. Tiempo continuo. Tabla clara/cómoda, screenshot-able como fuente de info. Probable tabla nueva `evento_jornadas` (DDL).
+  - **Asignación de gente POR DÍA** dentro del evento (headcount por jornada) + **roles discriminados y agrupados/desplegables** (armado/eléctricos/chofer…).
+  - **Vehículos** visibles (desplegable).
+  - **Reactivar el historial** del evento (`evento_historial` + `logEventChange`, hoy deshabilitados por schema desalineado).
+  - **Docs de evento** → reactivar `evento_documentos` (hoy localStorage + API comentada por schema). Mover a Supabase.
+  - **Después: 2º pase del CALENDARIO** para reflejar todo esto (jornadas, asignaciones por día, vehículos, historial). El calendario es SOLO vista; la edición vive en Eventos.
+- **Taller** = tablero de producción por proyecto con tareas **pre-pobladas por plantilla** (proceso completo del stand: corte/soldadura/pintura/armado/gráfica). El encargado mueve estados, no crea tarjetas. *(v2: tareas derivadas del BOM.)*
+- **🆕 Subalquileres con agregación por proveedor:** cada stand lista items subalquilados + proveedor. **Vista doble:** por EVENTO (totales por proveedor) y por STAND. Dos salidas: lista de TOTALES (taller/pedido) + lista INDIVIDUAL filtrable por proveedor. Conecta con Compras-proveedores y Logística-reparto.
+- **Logística** = mantener parecida a hoy, nucleada y conectada con eventos.
+- **Test:** evento con jornadas + asignación por día reflejados en calendario; producción con tablero; subalquiler agregado por proveedor.
 
-### Fase 5 — Compras + rentabilidad por proyecto  *(corazón del valor)*
+### Fase 5 — Compras + rentabilidad por proyecto *(≈10% · corazón del valor)*
 - OC de **doble origen** (encargado taller + PM), **siempre imputada a un proyecto**.
-- **⚠ Atención fina:** Compras carga **COSTOS reales como costos**; al cliente se le pasa **PRECIO con márgenes**. Renta = diferencia. Acá no se puede errar.
+- **⚠ Fino:** Compras carga **COSTOS reales**; al cliente va **PRECIO con márgenes**. Renta = diferencia. No errar.
 - **Loop:** Costos (presupuesto) vs Compras (gasto real) → margen por proyecto.
-- **Test:** cargar OC desde taller y PM; ver gasto imputado al proyecto y el margen.
+- **Test:** cargar OC desde taller y PM; ver gasto imputado + margen.
 
-### Fase 6 — Integración de Diseño  *(LIVIANA · capa LOBBY)*
-- **BOM al cierre (manual/CSV):** cruza contra **Costos** → techo de costos, y se usa para **COTIZAR BIEN de movida**. Cero endpoint/script en v1.
-- **Planos y renders → Drive** (tab "Archivos Drive" de `proyecto-detalle`). Seguro.
-- **❌ Stock en vivo: descartado** (demasiado).
-- **✅ GRÁFICAS — RE-INCLUIDAS (Fede las quiere):** generar **mockups con la gráfica colocada**, para dar al cliente (que haga la gráfica), hacerla nosotros, o pasarla al sector/proveedor de gráfica. + fichas de producción (referencia, medidas, sangría, resolución). Alcance simple a definir. **⚡ Mismo motor que el Configurador 2D (spike ImageMagick ya hecho) — pensarlos juntos.**
+### Fase 6 — Integración de Diseño *(≈8% · LIVIANA · capa LOBBY)*
+- **BOM al cierre (manual/CSV):** cruza contra **Costos** → techo de costos + cotizar bien de movida. Cero endpoint en v1.
+- **Planos/renders → Drive** (tab Archivos Drive de `proyecto-detalle`).
+- **❌ Stock en vivo descartado.**
+- **✅ GRÁFICAS (Fede las quiere):** mockups con la gráfica colocada (para cliente/propia/proveedor) + fichas de producción (referencia, medidas, sangría, resolución). **⚡ Mismo motor que el Configurador 2D (spike ImageMagick hecho).**
 - **Depende de:** Catálogo (Fase 3) + Costos.
-- **Test:** BOM en un proyecto cruzado con costos + un mockup con gráfica colocada.
 
-### Fase 7 — CRM: poda + Clientes como vista + armonía
-- **Modificación a fondo** para que funcione armónico, manteniendo la integración con cotizaciones y las de hoy.
-- **Clientes = vista interna** del CRM (no sección duplicada).
-- **🔮 Horizonte (más adelante):** agentes IA en el CRM — agentes de información y de atención al cliente. *(Info pendiente que Fede dará.)*
-- **Test:** CRM más limpio y armónico; clientes accesibles sin duplicar la entidad.
+### Fase 7 — CRM: poda + Clientes como vista + armonía *(≈10%)*
+- **Modificación a fondo** armónica, manteniendo integración con cotizaciones. **Clientes = vista interna** del CRM.
+- ✅ Ya hecho (ver PROGRESO): Marketing eliminado; Interacciones registra autor; Analítica solo superadmin.
+- **🆕 Auditoría de TODOS los cambios del CRM:** registrar quién hace cada cambio (editar cliente, mover pipeline, editar cotización), no solo interacciones. Engancha con `audit_log` global.
+- **🔮 Chat multicanal:** centralizar todas las charlas con cada cliente (multicanal) dentro del CRM → ficha del cliente = historial completo de conversaciones + interacciones. *(agentes IA de info/atención — horizonte, Fede dará más.)*
+- **Test:** CRM limpio y armónico; auditoría de cambios visible.
 
-### Fase 8 — Finanzas + Contabilidad
-- Revisar **todos los endpoints** y la **integridad cruzada** (modificar uno modifica otro: asientos bancarios, libros). **Análisis completo de cómo funciona La PyME.**
-- Contabilidad **ya semi-armada** → ajustar copiando el funcionamiento fino de La PyME.
+### Fase 8 — Finanzas + Contabilidad *(≈10%)*
+- Revisar **todos los endpoints** + **integridad cruzada** (modificar uno modifica otro: asientos, libros). **Análisis completo de La PyME.**
+- Contabilidad ya semi-armada → ajustar copiando el funcionamiento fino de La PyME.
 - **Test:** por definir según el análisis.
 
-### Fase 9 — Transversal: centro único de notificaciones + stats
-- **🔔 UN SOLO centro de notificaciones** — fusionar los 3 sistemas de hoy (Lobby alertas + `Notifications` + `Badges`). Vinculado a **tareas / proyectos / locaciones**. Tipos de notif + **personalizado por rol**. Requiere análisis completo + construcción muy a medida por rol.
-- **Estadísticas por usuario:** tiempo de sesión (desde–hasta), logs de horarios, rendimiento. Base ya existe (`last_login_at`, `audit_log`, dashboard).
-- **Lobby/Home por rol** afinado + implementar placeholders de Taller.
-- **Test:** centro único correcto por rol; stats de sesión visibles en el panel.
+### Fase 9 — Transversal: GLOBAL (centro único de notificaciones + stats) *(≈7%)*
+- **🔔 UN SOLO centro de notificaciones** — fusionar los 3 de hoy (Lobby alertas + `Notifications` + `Badges`). Vinculado a tareas/proyectos/locaciones. Tipos + **personalizado por rol**.
+- **Capa GLOBAL en el menú:** Panel SuperAdmin (roles + stats) + Centro de notificaciones.
+- **Stats por usuario:** tiempo de sesión, logs de horarios, rendimiento (base: `last_login_at`, `audit_log`).
+- **Lobby/Home por rol** afinado + placeholders de Taller.
 
-### Fase 10 — Remate UI/UX (Claude Design)
-- Sistema visual (tokens dark theme + manual de marca) **temprano**, aplicado a cada módulo en el camino + **pasada final de coherencia**. Al detalle, bien hecho.
-- **En PARALELO:** Fede pasa la info a Meli/Leo para arrancar el track CAD.
-
----
-
-## TRACKS PARALELOS  *(fuera de la SPA — conectados por el Catálogo)*
-
-**Track CAD / Diseño 3D** *(ejecuta Meli/Fede en CAD, no Claude Code):*
-- BricsCAD Mechanical (planos automáticos VIEWBASE/VIEWSECTION) + 3dsMax se mantiene para renders.
-- Estandarizar biblioteca OCTEXA: metadata (codigo_pieza, categoria, dimensiones, es_grafica) + naming alineado a Supabase.
-- Scripts de extracción (LISP/MaxScript): en v1 **exportan el BOM a CSV** para carga manual en LOBBY; la integración vía API (endpoints REST) se engancha recién cuando el track madure.
-- Automatización de gráficas en 3 niveles (extracción → render sectorizado → validación/reúso).
-- Capacitar Meli/Leo. Handoff propio: `MEPEX_Handoff_Diseno`. **Fede pasa la info a los chicos para arrancar.**
-
-**⭐ Configurador de stands 2D** *(ANOTADO FUERTE — sube de relevancia):*
-- **Venta rápida SIN diseñador: "lo puede hacer cualquiera".** Prediseñados + brand kit → visual brandeado para vendedores.
-- ImageMagick spike hecho (homografía + shadow maps); DDL sin aplicar.
-- **⚡ Conecta con las gráficas de Fase 6** (los mockups con gráfica colocada salen del mismo motor de compositing). Pensar juntos.
-- A profundizar — Fede tiene más para sumar.
+### Fase 10 — Remate UI/UX (Claude Design) *(≈5%)*
+- Sistema visual (tokens dark theme + manual de marca) aplicado a cada módulo + **pasada final de coherencia**.
+- En PARALELO: Fede pasa info a Meli/Leo para el track CAD.
 
 ---
 
-## Cómo seguimos
-1. Macro **validado por Fede** (orden de fases confirmado).
-2. Bajar **fase por fase** con preguntas de ajuste (una fase por vez) hasta blindar el detalle.
-3. Ejecutar en cadena en Claude Code, branch `rediseno` (un prompt por sub-bloque, un commit, testeable en browser).
+## TRACKS PARALELOS *(fuera de la SPA — conectados por el Catálogo; NO los ejecuta Claude Code)*
+
+**Track CAD / Diseño 3D** *(Meli/Fede):* BricsCAD Mechanical (planos VIEWBASE/VIEWSECTION) + 3dsMax (renders). Estandarizar biblioteca OCTEXA (codigo_pieza, categoria, dimensiones, es_grafica) alineada a Supabase. Scripts LISP/MaxScript → v1 exportan BOM a CSV (carga manual); API REST cuando madure. Handoff: `MEPEX_Handoff_Diseno`.
+
+**⭐ Configurador de stands 2D** *(sube de relevancia):* venta rápida SIN diseñador ("lo hace cualquiera"). Prediseñados + brand kit → visual brandeado. ImageMagick spike hecho. **⚡ Mismo motor que las gráficas de Fase 6.** A profundizar.
+
+---
+
+## Cómo seguir (en la charla nueva)
+1. Leer `PROGRESO.md` (lo hecho + %) + este archivo (lo que falta) + `BRIEF-ARRANQUE-CODE.md` (protocolo).
+2. Preguntar a Fede si hago `git fetch && git reset --hard origin/main` (baseline `c2439fc`) y arrancar en branch `rediseno`.
+3. Tomar la **próxima fase** (recomendado: cerrar **Fase 2** con 2B/2C, o saltar a la fase que Fede priorice) → reconocer código real → proponer + preguntar → ejecutar por sub-bloques (commit + push + test) → al cierre, rebalancear % entre PROGRESO y PLAN-MAESTRO.

@@ -1,13 +1,17 @@
-# PROGRESO — Rediseño LOBBY-MEPEX
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 15%
 
-> Bitácora de ejecución del rediseño. Si la sesión se corta, leer **este archivo + `PLAN-MAESTRO-rediseno-lobby.md`** y retomar donde quedó.
-> Branch de trabajo: **`rediseno`** (no se pushea; Fede valida en browser por sub-bloque).
-> Companion: `BRIEF-ARRANQUE-CODE.md` (protocolo), `RECONOCIMIENTO-LOBBY.md` (estado del código).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
+> **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
+> **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
+> **Baseline:** `origin/main` @ `c2439fc`.
+> Companions: `PLAN-MAESTRO` (lo que falta), `BRIEF-ARRANQUE-CODE.md` (protocolo), `RECONOCIMIENTO-LOBBY.md` (estado del código).
 
 ---
 
-## Estado general
-- **Fase actual:** 1 — Cimientos (1A + 1B implementadas y verificadas en preview; pendiente confirmación de Fede en server). Próximo: **Fase 2 — Saneamiento de datos**.
+## Estado general — AVANCE ≈ 15%
+- **Hecho:** Fase 1 completa (nav + roles). Fase 2 saneamiento ~60% (2.0 calendar.js / 2.1 calendario enrich / 2.2 notas / calendario UI / CRM-marketing). Calendario operativo rediseñado (solo vista, espejo de Eventos). CRM depurado (Marketing eliminado).
+- **Próximo paso (charla nueva):** cerrar **Fase 2** (2B consolidar duplicados con bisturí + 2C limpieza final), o la fase que Fede priorice. Ver `PLAN-MAESTRO`.
+- **Baseline:** `origin/main` @ `c2439fc`. Branch dev: `rediseno`.
 - **Última actualización:** 2026-06-07.
 
 ---
