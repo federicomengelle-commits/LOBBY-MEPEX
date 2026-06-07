@@ -23,14 +23,14 @@
 
 ```
 PRINCIPAL          Lobby (home por rol)
-COMERCIAL          CRM (Clientes = vista interna · sin Marketing) · Cotizador · Catálogo (vendible)
+COMERCIAL          CRM (Clientes = vista interna · sin Marketing) · Cotizador · Catálogo (showcase visual — a definir, Fase 3)
 OPERACIONES        Calendario (SOLO vista) · Eventos · Proyectos · Taller · Logística
-ACTIVOS            Inventario · Locaciones · Compras · [Flota — crear Fase 3] · [Catálogo OCTEXA de piezas — Fase 3]
+ACTIVOS            Inventario · Locaciones · Compras · [Flota — crear Fase 3]
 ADMIN Y FINANZAS   RRHH · Finanzas · Contabilidad · Costos
 GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 ```
 - ✅ Hecho (Fase 1): RECURSOS→ACTIVOS, reubicación, SidebarEditor eliminado. Ver PROGRESO.
-- Catálogo **vendible** queda en COMERCIAL. El **Catálogo OCTEXA de piezas** (ACTIVOS) es otro, nace en Fase 3.
+- **Catálogo = uno solo** (Fede 2026-06-07): el maestro completo de items vive en las **recetas** (Costos: `catalogo_items` + `insumos_base`), con filtros para todo — NO hay un "catálogo OCTEXA de piezas" aparte. La **Lista de Precios** (Costos) = el subconjunto `cotizable` que el **cotizador** levanta desde la app (los items OCTEXA en general no son cotizables). El **Catálogo comercial** (`catalogo.js`) se reconvierte en un **showcase visual** de todo lo que hace MEPEX — enfoque a definir por Fede.
 - GLOBAL todavía no existe como categoría (Panel = dropdown; Notif = campana) → se arma en Fase 9.
 
 ---
@@ -45,10 +45,11 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `rrhh_*`** (`rrhh_vacaciones`, `rrhh_vacaciones_solicitudes`, `rrhh_asignaciones`, `rrhh_personal`) y `personas` no tiene esas columnas. Migrar vacaciones/asignaciones a `personas` + FKs nuevas, limpiar la doble lectura de Eventos (`personas` 1025 + `rrhh_personal` 1495) y retirar las `rrhh_*`. Sin fase asignada hoy — intercalar antes/junto a Fase 9.
 
 ### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
-- Vistas maestras: **Catálogo OCTEXA/Inventario, Flota, Locaciones.** Dato único + vistas por rol (Operaciones = uso; Finanzas = plata: VTV/seguro/patente/amortización).
+- Vistas maestras: **Inventario/Catálogo (= las recetas), Flota, Locaciones.** Dato único + vistas por rol (Operaciones = uso; Finanzas = plata: VTV/seguro/patente/amortización).
 - **Flota:** crear como sección de ACTIVOS (hoy los vehículos viven en Logística). Logística la consume. **Absorbe el duplicado `logistica_vehiculos`→`vehiculos`** (ver `AUDITORIA-2B-duplicados.md`).
 - **Mantenimiento** = cola colgada del activo (vehículo/máquina), motor único.
-- **FUNDACIONAL:** Catálogo OCTEXA consolidado y estandarizado (códigos/naming alineados a Supabase) → habilita Costos, Diseño (Fase 6) y Configurador. Acá está el grueso.
+- **FUNDACIONAL — estandarizar lo que YA existe:** el maestro de items ya vive en las recetas (`catalogo_items`/`insumos_base`); el grueso es **consolidar y estandarizar códigos/naming** alineados a Supabase → habilita Costos, Diseño (Fase 6) y Configurador. **NO se construye un catálogo nuevo.**
+- **🆕 Catálogo comercial = showcase visual (a definir por Fede):** reconvertir `catalogo.js` en un visualizador lindo de todo el abanico de productos/servicios MEPEX (la vitrina, no el maestro de costeo). Fede tiene que encontrarle la vuelta (enfoque/UX). Puede caer acá o en Fase 7 (Comercial).
 - **⚠ Carga de SQL pesada.**
 - **Test:** cada maestro accesible; vistas por rol correctas.
 
