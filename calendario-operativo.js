@@ -1048,21 +1048,6 @@ const CalendarioOperativo = {
                 window.location.hash = 'logistica?tab=cargas&id=' + el.dataset.cargaId;
             });
         });
-        // Tanda 3+: wire aprobar asignación inline
-        container.querySelectorAll('.co-sp-asig-approve[data-asig-id]').forEach(el => {
-            el.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const asigId = el.dataset.asigId;
-                const ok = await API.approveAsignacionEvento(asigId);
-                if (!ok) { Toast.error('No se pudo aprobar.'); return; }
-                Toast.success('Asignación aprobada.');
-                // Recargar panel
-                if (event) {
-                    await this._loadPanelData(event);
-                    this._renderPanelTabContent(event);
-                }
-            });
-        });
     },
 
     _renderInfoTab(event) {
@@ -1230,12 +1215,11 @@ const CalendarioOperativo = {
     // permite aprobar inline si el user es admin.
     _renderAsignacionesNewSection(event) {
         const asignaciones = event._asignacionesNew || [];
-        const linkFicha = `<a href="#eventos?id=${event.id}" class="co-sp-link-evento" style="font-size:11px;color:#00A9C1;text-decoration:none;font-family:'Space Mono',monospace;">+ Asignar →</a>`;
 
         if (asignaciones.length === 0) {
             return `
                 <div class="co-sp-section">
-                    <h3 class="co-sp-section-title">Personas asignadas <span style="float:right;">${linkFicha}</span></h3>
+                    <h3 class="co-sp-section-title">Personas asignadas</h3>
                     <p class="co-sp-empty">Sin personas asignadas. Las asignaciones se hacen desde la ficha del evento.</p>
                 </div>
             `;
@@ -1247,9 +1231,6 @@ const CalendarioOperativo = {
             if (byFase[f]) byFase[f].push(a);
         });
 
-        const user = Auth.getUser?.();
-        const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
-
         const renderAsig = (a) => {
             const persona = a.persona;
             const nombre = persona ? `${persona.nombre}${persona.apellido ? ' ' + persona.apellido : ''}` : '—';
@@ -1258,7 +1239,6 @@ const CalendarioOperativo = {
                 propuesta: '#F28D15', aprobada: '#00CC88',
                 confirmada: '#00A9C1', cancelada: '#ff4444'
             }[a.estado] || '#888';
-            const showApprove = isAdmin && a.estado === 'propuesta';
             return `
                 <div class="co-sp-asig-item" style="border-left-color: ${estadoColor};">
                     <div class="co-sp-asig-head">
@@ -1268,7 +1248,6 @@ const CalendarioOperativo = {
                     <div class="co-sp-asig-meta">
                         ${rol ? `<span>${rol}</span>` : ''}
                         ${a.fecha_inicio ? `<span>${new Date(a.fecha_inicio).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
-                        ${showApprove ? `<button class="co-sp-asig-approve" data-asig-id="${a.id}">✓ Aprobar</button>` : ''}
                     </div>
                 </div>
             `;
@@ -1290,7 +1269,6 @@ const CalendarioOperativo = {
                 <h3 class="co-sp-section-title">
                     Personas asignadas
                     <span style="color:#9B7DFF;font-size:11px;font-family:'Space Mono',monospace;">(${asignaciones.length})</span>
-                    <span style="float:right;">${linkFicha}</span>
                 </h3>
                 <style>
                     .co-sp-asig-item {
@@ -1315,16 +1293,6 @@ const CalendarioOperativo = {
                         display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
                         font-family: 'Space Mono', monospace; font-size: 11px;
                         color: #aaa;
-                    }
-                    .co-sp-asig-approve {
-                        background: rgba(0,204,136,0.15); color: #00CC88;
-                        border: 1px solid rgba(0,204,136,0.4);
-                        padding: 3px 8px; border-radius: 4px;
-                        font-family: 'Space Mono', monospace; font-size: 10px;
-                        font-weight: 700; cursor: pointer; margin-left: auto;
-                    }
-                    .co-sp-asig-approve:hover {
-                        background: rgba(0,204,136,0.25);
                     }
                 </style>
                 ${faseBlock('armado', 'Armado', '#00CC88')}
