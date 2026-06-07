@@ -3565,6 +3565,77 @@ const API = {
         }
     },
 
+    // ═════════════════════════════════════════════════════════════
+    //  BULK enrich para Calendario Operativo (Fase 2.1)
+    //  Devuelven { evento_id: [...] } para varios eventos en UNA query.
+    //  Reemplazan el enrich que el calendario hacía desde localStorage.
+    // ═════════════════════════════════════════════════════════════
+    async getProyectosByEventos(eventoIds) {
+        if (!eventoIds || !eventoIds.length) return {};
+        try {
+            const { data, error } = await supabaseClient
+                .from('proyectos')
+                .select('id, nombre, estado, evento_id, cliente:clientes(id, nombre_empresa)')
+                .in('evento_id', eventoIds)
+                .eq('_deleted', false);
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(p => {
+                if (!map[p.evento_id]) map[p.evento_id] = [];
+                map[p.evento_id].push(p);
+            });
+            return map;
+        } catch (e) {
+            console.warn('[API] Error getProyectosByEventos:', e.message);
+            return {};
+        }
+    },
+
+    async getAsignacionesByEventos(eventoIds) {
+        if (!eventoIds || !eventoIds.length) return {};
+        try {
+            const { data, error } = await supabaseClient
+                .from('asignaciones_evento')
+                .select('id, evento_id, fase, rol, estado, persona:personas!persona_id(id, nombre, apellido)')
+                .in('evento_id', eventoIds)
+                .eq('_deleted', false)
+                .neq('estado', 'cancelada');
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(a => {
+                if (!map[a.evento_id]) map[a.evento_id] = [];
+                map[a.evento_id].push(a);
+            });
+            return map;
+        } catch (e) {
+            console.warn('[API] Error getAsignacionesByEventos:', e.message);
+            return {};
+        }
+    },
+
+    async getCargasByEventos(eventoIds) {
+        if (!eventoIds || !eventoIds.length) return {};
+        try {
+            const { data, error } = await supabaseClient
+                .from('cargas')
+                .select('id, evento_id, fase, fecha, estado, vehiculo:vehiculos!vehiculo_id(id, descripcion, patente), chofer:personas!chofer_persona_id(id, nombre, apellido)')
+                .in('evento_id', eventoIds)
+                .eq('_deleted', false)
+                .neq('estado', 'cancelada')
+                .order('fecha', { ascending: true });
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(c => {
+                if (!map[c.evento_id]) map[c.evento_id] = [];
+                map[c.evento_id].push(c);
+            });
+            return map;
+        } catch (e) {
+            console.warn('[API] Error getCargasByEventos:', e.message);
+            return {};
+        }
+    },
+
     // Detecta conflictos para una persona en un rango. Devuelve las asignaciones
     // existentes (no canceladas) que solapan con [desde, hasta].
     async detectarConflictosPersona(personaId, desde, hasta, excludeAsigId = null) {

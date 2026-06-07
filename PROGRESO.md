@@ -60,11 +60,13 @@ Mapa localStorage de negocio:
 
 Sub-bloques:
 - **2.0 — Cleanup:** matar `calendar.js` (muerto, confirmado: `Calendar` nunca referenciado). ✅ HECHO. (CSS `cal-*` huérfano en style.css queda; inocuo, se limpia después.)
-- **2.1 — calendario-operativo.js → Supabase:** enrich desde las mismas fuentes reales que `eventos.js`; sacar localStorage. Calendario multiusuario/simultáneo. (casi sin DDL) ⏳
-- **2.2 — eventos.js cerrar localStorage:** `teardownEndDate`→columna real en `eventos`; docs→`evento_documentos`; notas→leer de columna (ya se escribe). DDL chico. ⏳
+- **2.1 — calendario-operativo.js → Supabase:** ✅ HECHO. El enrich de la grilla usa data REAL en 3 bulk queries (`API.getProyectosByEventos / getAsignacionesByEventos / getCargasByEventos`) en vez de localStorage huérfano. `projectCount` real (antes siempre 0); detección de conflictos real (equipo/transporte). Notas y teardownEndDate ya venían reales de `getEvents`. Removidas las claves huérfanas `ev_proyectos_/ev_equipo_/ev_transporte_/ev_notas_`. **Docs siguen en localStorage (`ev_docs_`) → bloqueado por Fase 6** (`evento_documentos` existe pero su API está comentada por schema desalineado). `co_events_cache` queda como fallback offline. Bumps `api.js?v=25`, `calendario-operativo.js?v=9`. Verificado en preview (métodos OK, sin errores). **Pendiente de Fede:** ver el calendario con data real en el server.
+- **2.2 — eventos.js cerrar localStorage:** ⏳ HALLAZGO: las columnas YA existen (`fecha_desarme_fin`, `notas_operativas`; `getEvents`/`updateEvent` ya las mapean) → **probablemente sin DDL**. Falta: que `eventos.js` guarde teardownEndDate vía `API.updateEvent` (hoy va a localStorage `ev_ext_`) y lea notas de la columna en vez de localStorage. Docs (`ev_docs_`) queda para Fase 6.
 - **2.3 — CRM marketing → Supabase:** crear `marketing_campanias`, migrar `crm_campanias`. DDL. ⏳
 
-**Decisión pendiente de Fede:** ¿migrar data vieja de localStorage o arrancar limpio? **Antes de cualquier DDL:** verificar schema real de `eventos` (vía Chrome logueado / information_schema).
+**Principio rector (Fede, 2026-06-07):** data real única, **coherente entre módulos, en tiempo real**. Toda la data de eventos es importante porque alimenta el calendario operativo Y la logística (los viajes se programan desde ahí). Una sola fuente de verdad consumida por todos los módulos. Aplicar este criterio a TODO el rediseño (= "un dato maestro, vistas por rol" del PLAN-MAESTRO).
+
+**Decisión sobre data vieja:** arrancar con data real únicamente. Lo importante ya está en Supabase (notas dual-write, proyectos/equipo/transporte en tablas reales, teardown en `fecha_desarme_fin`). Las claves localStorage huérfanas se descartan. Único pendiente real = docs (Fase 6).
 
 ---
 

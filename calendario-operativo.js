@@ -178,7 +178,7 @@ const CalendarioOperativo = {
             return;
         }
 
-        // Detect conflicts (uses logistics from localStorage for now)
+        // Detect conflicts (usa equipo/transporte REALES del enrich de Supabase)
         this._detectConflicts();
 
         // Compute lanes (solo timeline; en cards no se usan)
@@ -228,43 +228,58 @@ const CalendarioOperativo = {
                 e.setupDate && e.eventStartDate && e.teardownDate
             );
 
-            // Enrich with projectCount + projects from localStorage
+            // Enrich con data REAL de Supabase (Fase 2.1) en bulk: proyectos vinculados,
+            // equipo (asignaciones_evento) y transporte (cargas). Notas y teardownEndDate
+            // ya vienen de getEvents (columnas reales notas_operativas / fecha_desarme_fin).
+            // Docs siguen en localStorage hasta Fase 6 (evento_documentos tiene schema
+            // desalineado, su API está deshabilitada en api.js).
+            const ids = valid.map(e => e.id);
+            let proyMap = {}, asigMap = {}, cargaMap = {};
+            try {
+                [proyMap, asigMap, cargaMap] = await Promise.all([
+                    API.getProyectosByEventos(ids),
+                    API.getAsignacionesByEventos(ids),
+                    API.getCargasByEventos(ids),
+                ]);
+            } catch { /* enrich best-effort: si falla, queda vacío */ }
+
             valid.forEach(e => {
-                try {
-                    const proy = JSON.parse(localStorage.getItem(`ev_proyectos_${e.id}`) || '[]');
-                    e.projectCount = proy.length;
-                    e.projects = proy;
-                } catch { e.projectCount = 0; e.projects = []; }
+                // Proyectos vinculados (real)
+                e.projects = proyMap[e.id] || [];
+                e.projectCount = e.projects.length;
 
-                // Enrich with logistics from localStorage (until Supabase tables populated)
-                try {
-                    const eq = JSON.parse(localStorage.getItem(`ev_equipo_${e.id}`) || '[]');
-                    const tr = JSON.parse(localStorage.getItem(`ev_transporte_${e.id}`) || 'null');
-                    const notas = localStorage.getItem(`ev_notas_${e.id}`) || '';
-                    e.logistics = {
-                        team: eq.map(t => ({ name: t.nombre || t.name, role: t.rol || t.role })),
-                        truck: tr?.camion || tr?.truck || null,
-                        driver: tr?.chofer_nombre || tr?.driver || null,
-                        loadDate: tr?.fecha_carga || tr?.loadDate || null,
-                        departureDate: tr?.fecha_salida || tr?.departureDate || null,
-                        returnDate: tr?.fecha_retorno || tr?.returnDate || null,
-                        notes: notas,
-                    };
-                } catch { e.logistics = { team: [], truck: null, driver: null, notes: '' }; }
+                // Equipo + transporte (real) — alimenta detección de conflictos
+                const asigs = asigMap[e.id] || [];
+                const cargas = cargaMap[e.id] || [];
+                const firstCarga = cargas[0] || null;
+                e.logistics = {
+                    team: asigs
+                        .map(a => ({
+                            name: `${a.persona?.nombre || ''} ${a.persona?.apellido || ''}`.trim(),
+                            role: a.rol || '',
+                        }))
+                        .filter(t => t.name),
+                    truck: firstCarga?.vehiculo?.patente || firstCarga?.vehiculo?.descripcion || null,
+                    driver: firstCarga?.chofer
+                        ? `${firstCarga.chofer.nombre || ''} ${firstCarga.chofer.apellido || ''}`.trim()
+                        : null,
+                    loadDate: firstCarga?.fecha || null,
+                    departureDate: firstCarga?.fecha || null,
+                    returnDate: null,
+                    notes: e.notasOperativas || '',
+                };
 
-                // Enrich with documents from localStorage
+                // Docs: localStorage hasta Fase 6 (evento_documentos schema desalineado)
                 try {
                     const docs = JSON.parse(localStorage.getItem(`ev_docs_${e.id}`) || '[]');
                     e.documents = { items: docs };
                 } catch { e.documents = { items: [] }; }
 
-                // Infer PM from first project's pm, or empty
-                if (!e.pm && e.projects.length > 0) {
-                    e.pm = e.projects[0].pm || '';
-                }
+                // PM heredado del primer proyecto si lo tuviera, si no vacío
+                if (!e.pm && e.projects.length > 0) e.pm = e.projects[0].pm || '';
                 if (!e.pm) e.pm = '';
 
-                // teardownEndDate fallback
+                // teardownEndDate ya viene de getEvents; fallback defensivo
                 if (!e.teardownEndDate) e.teardownEndDate = e.teardownDate;
             });
 
