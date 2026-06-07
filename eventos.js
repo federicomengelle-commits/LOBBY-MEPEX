@@ -794,7 +794,7 @@ const EventosModule = {
         this._ensureJornadasStyles();
         const fases = [{ k: 'armado', label: 'Armado' }, { k: 'evento', label: 'Evento' }, { k: 'desarme', label: 'Desarme' }];
         const work = { armado: [], evento: [], desarme: [] };
-        (jornadas || []).forEach(j => { if (work[j.fase]) work[j.fase].push({ fecha: j.fecha || '', hora_inicio: (j.hora_inicio || '').slice(0, 5), hora_fin: (j.hora_fin || '').slice(0, 5) }); });
+        (jornadas || []).forEach(j => { if (work[j.fase]) work[j.fase].push({ id: j.id, fecha: j.fecha || '', hora_inicio: (j.hora_inicio || '').slice(0, 5), hora_fin: (j.hora_fin || '').slice(0, 5) }); });
         this._jWork = work;
         const rowHtml = (fase, r, i) => `
             <div class="ev-j-row" data-fase="${fase}" data-i="${i}">
@@ -834,7 +834,7 @@ const EventosModule = {
         ov.querySelector('#evJSave')?.addEventListener('click', async () => {
             const arr = [];
             ['armado', 'evento', 'desarme'].forEach(fase => {
-                this._jWork[fase].filter(r => r.fecha).forEach((r, idx) => arr.push({ fase, fecha: r.fecha, hora_inicio: r.hora_inicio || null, hora_fin: r.hora_fin || null, orden: idx }));
+                this._jWork[fase].filter(r => r.fecha).forEach((r, idx) => arr.push({ id: r.id, fase, fecha: r.fecha, hora_inicio: r.hora_inicio || null, hora_fin: r.hora_fin || null, orden: idx }));
             });
             try {
                 await API.setJornadas(eventoId, arr);

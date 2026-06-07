@@ -3825,16 +3825,31 @@ const API = {
 
     // Reemplaza TODAS las jornadas del evento (delete + insert). El trigger deriva fecha_*/hora_*.
     async setJornadas(eventoId, jornadas) {
-        const { error: delErr } = await supabaseClient.from('evento_jornadas').delete().eq('evento_id', eventoId);
-        if (delErr) throw delErr;
-        if (jornadas && jornadas.length) {
-            const rows = jornadas.map(j => ({
+        // UPSERT preservando ids: update existentes, insert nuevas, delete quitadas.
+        // No delete-all: las asignaciones de gente cuelgan de jornada_id (ON DELETE CASCADE);
+        // editar horarios NO debe borrar la gente ya citada.
+        const { data: existentes, error: selErr } = await supabaseClient
+            .from('evento_jornadas').select('id').eq('evento_id', eventoId);
+        if (selErr) throw selErr;
+        const keepIds = new Set((jornadas || []).filter(j => j.id).map(j => j.id));
+        const toDelete = (existentes || []).map(r => r.id).filter(id => !keepIds.has(id));
+        if (toDelete.length) {
+            const { error } = await supabaseClient.from('evento_jornadas').delete().in('id', toDelete);
+            if (error) throw error;
+        }
+        for (const j of (jornadas || [])) {
+            const row = {
                 evento_id: eventoId, fase: j.fase, fecha: j.fecha,
                 hora_inicio: j.hora_inicio || null, hora_fin: j.hora_fin || null,
                 orden: j.orden ?? 0, notas: j.notas || null,
-            }));
-            const { error: insErr } = await supabaseClient.from('evento_jornadas').insert(rows);
-            if (insErr) throw insErr;
+            };
+            if (j.id) {
+                const { error } = await supabaseClient.from('evento_jornadas').update(row).eq('id', j.id);
+                if (error) throw error;
+            } else {
+                const { error } = await supabaseClient.from('evento_jornadas').insert(row);
+                if (error) throw error;
+            }
         }
         return true;
     },
