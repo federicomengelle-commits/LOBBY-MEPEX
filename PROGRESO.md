@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 25%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 27%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -159,8 +159,11 @@ Decisión Fede: las fechas dejan de editarse a mano; las jornadas son la base (t
 - Botón **"+ Jornada" hereda** día siguiente + mismo horario de la última (cargar jornadas consecutivas = 1 click). Helper `_nextDay` TZ-safe.
 - **Deuda menor:** el branch `isEditing` de `_renderPanelFechas` quedó muerto (sin trigger) → limpiar en una pasada futura.
 
+### 4.2 — Gente por jornada ✅ HECHO (commit `f89f2bf` + sig.)
+Reusa `asignaciones_evento` + `jornada_id` (SQL `sql/fase4_2_asignaciones_jornada.sql`). La sección **Equipo se reemplazó** por la gestión dentro de **Jornadas**: cada jornada (día) muestra su gente con **rol editable** (select inline) + **quitar** (×) + **"＋ persona"** (modal persona+rol). Las viejas sin jornada caen en grupo "Generales". Asignaciones desde la ficha entran `estado='aprobada'` (sin notif). `setJornadas` es **upsert** (preserva ids → editar horarios no borra gente). ⚠️ Falta pull del server para ver/probar.
+
 ### Falta de Fase 4
-4.2 gente por jornada (headcount + roles) · reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas).
+Reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas + gente por día).
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).

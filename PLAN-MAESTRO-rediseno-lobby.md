@@ -1,4 +1,4 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 76%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 74%
 
 > **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈15%). No repetir acá lo que está en PROGRESO.
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
@@ -56,7 +56,7 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 ### Fase 4 — Operaciones: Eventos + Taller + Logística + Subalquileres *(≈15%)*
 - **⭐⭐ Reformulación de EVENTOS (núcleo de esta fase — spec detallada en PROGRESO):**
   - **Constructor de fechas tipo TABLA con jornadas:** ✅ HECHO (4.1, commit `2ef6566`) — tabla `evento_jornadas` + trigger que deriva `fecha_*/hora_*` para compat + UI constructor en la ficha. Trigger verificado.
-  - **Asignación de gente POR DÍA** dentro del evento (headcount por jornada) + **roles discriminados y agrupados/desplegables** (armado/eléctricos/chofer…).
+  - **Asignación de gente POR DÍA** ✅ HECHO (4.2) — `asignaciones_evento.jornada_id`; cada jornada con su gente + rol editable, reemplaza Equipo. *(Falta: agrupar visualmente por rol desplegable si hace falta.)*
   - **Vehículos** visibles (desplegable).
   - **Reactivar el historial** del evento (`evento_historial` + `logEventChange`, hoy deshabilitados por schema desalineado).
   - **Docs de evento** → reactivar `evento_documentos` (hoy localStorage + API comentada por schema). Mover a Supabase.

@@ -3708,6 +3708,7 @@ const API = {
             rol: data.rol || null,
             estado: data.estado || 'propuesta',
             notas: data.notas || null,
+            jornada_id: data.jornadaId || data.jornada_id || null,
             created_by: user?.uid || user?.id || null,
         };
         if (!payload.evento_id || !payload.persona_id) {

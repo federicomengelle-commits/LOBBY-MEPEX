@@ -574,7 +574,6 @@ const EventosModule = {
         this._attachPanelEvents(ev);
 
         // Cargar secciones async después de renderizar el shell
-        this._loadEquipoSection(eventId);
         this._loadTransporteSection(eventId);
         this._loadProyectosSection(eventId);
         this._loadJornadasSection(eventId);
@@ -622,16 +621,6 @@ const EventosModule = {
                     <div class="ev-panel-section">
                         <div class="ev-section-header">
                             <h3 class="ev-section-title">Proyectos del evento</h3>
-                        </div>
-                        <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
-                    </div>
-                </div>
-
-                <!-- Equipo asignado (cargado async desde rrhh_asignaciones) -->
-                <div id="evEquipoContent">
-                    <div class="ev-panel-section">
-                        <div class="ev-section-header">
-                            <h3 class="ev-section-title">Equipo asignado</h3>
                         </div>
                         <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
                     </div>
@@ -760,34 +749,124 @@ const EventosModule = {
         `;
     },
 
+    _ROLES_OP: ['armador', 'chofer', 'ayudante', 'electricista', 'montajista', 'encargado_armado', 'tecnico', 'azafata', 'colaborador'],
+
     async _loadJornadasSection(eventoId) {
         this._ensureJornadasStyles();
-        let jornadas = [];
-        try { jornadas = await API.getJornadas(eventoId); } catch (e) { /* noop */ }
+        let jornadas = [], asignaciones = [];
+        try {
+            [jornadas, asignaciones] = await Promise.all([
+                API.getJornadas(eventoId),
+                API.getAsignacionesByEvento(eventoId),
+            ]);
+        } catch (e) { /* noop */ }
         if (!this._jornadasCache) this._jornadasCache = {};
+        if (!this._asignCache) this._asignCache = {};
         this._jornadasCache[eventoId] = jornadas;
+        this._asignCache[eventoId] = (asignaciones || []).filter(a => a.estado !== 'cancelada');
         const c = document.getElementById('evJornadasContent');
-        if (c) c.innerHTML = this._renderJornadasView(jornadas);
+        if (c) c.innerHTML = this._renderJornadasView(eventoId, jornadas, this._asignCache[eventoId]);
+        this._attachJornadasViewEvents(eventoId);
         document.getElementById('evJornadasEdit')?.addEventListener('click', () =>
             this._openJornadasModal(eventoId, this._jornadasCache[eventoId] || []));
     },
 
-    _renderJornadasView(jornadas) {
-        if (!jornadas || jornadas.length === 0) {
-            return `<div class="ev-j-empty">Sin jornadas. Tocá ✎ para armar la tabla de horarios por día.</div>`;
-        }
+    _personaNombre(p) { return p ? `${p.nombre || ''}${p.apellido ? ' ' + p.apellido : ''}`.trim() : '—'; },
+
+    _renderJornadasView(eventoId, jornadas, asignaciones) {
+        const byJ = {}; const generales = [];
+        (asignaciones || []).forEach(a => {
+            if (a.jornada_id) (byJ[a.jornada_id] = byJ[a.jornada_id] || []).push(a);
+            else generales.push(a);
+        });
         const fases = [{ k: 'armado', label: 'Armado' }, { k: 'evento', label: 'Evento' }, { k: 'desarme', label: 'Desarme' }];
-        return fases.map(f => {
-            const rows = jornadas.filter(j => j.fase === f.k);
-            if (rows.length === 0) return '';
-            return `
-                <div class="ev-j-vfase">
-                    <div class="ev-j-vfase-label">${f.label}</div>
-                    <table class="ev-j-vtable"><tbody>
-                        ${rows.map(j => `<tr><td>${this._fmtDate(j.fecha)}</td><td class="ev-j-vhoras">${(j.hora_inicio || '').slice(0, 5) || '—'}${j.hora_fin ? ' → ' + j.hora_fin.slice(0, 5) : ''}</td></tr>`).join('')}
-                    </tbody></table>
-                </div>`;
-        }).join('');
+        let html = '';
+        if (!jornadas || jornadas.length === 0) {
+            html += `<div class="ev-j-empty">Sin jornadas. Tocá ✎ para armar la tabla de horarios por día.</div>`;
+        } else {
+            html += fases.map(f => {
+                const rows = jornadas.filter(j => j.fase === f.k);
+                if (rows.length === 0) return '';
+                return `<div class="ev-j-vfase"><div class="ev-j-vfase-label">${f.label}</div>${rows.map(j => this._renderJornadaCard(j, byJ[j.id] || [])).join('')}</div>`;
+            }).join('');
+        }
+        if (generales.length) {
+            html += `<div class="ev-j-vfase"><div class="ev-j-vfase-label">Generales (sin jornada)</div><div class="ev-jc"><div class="ev-jc-people">${generales.map(a => this._renderAsigRow(a)).join('')}</div></div></div>`;
+        }
+        return html || `<div class="ev-j-empty">Sin jornadas ni gente.</div>`;
+    },
+
+    _renderJornadaCard(j, people) {
+        const horas = `${(j.hora_inicio || '').slice(0, 5) || '—'}${j.hora_fin ? '–' + j.hora_fin.slice(0, 5) : ''}`;
+        return `
+            <div class="ev-jc" data-jid="${j.id}">
+                <div class="ev-jc-head">
+                    <span class="ev-jc-fecha">${this._fmtDate(j.fecha)}</span>
+                    <span class="ev-jc-horas">${horas}</span>
+                    <span class="ev-jc-count">${people.length} 👤</span>
+                </div>
+                <div class="ev-jc-people">
+                    ${people.map(a => this._renderAsigRow(a)).join('')}
+                    <button class="ev-jc-add" data-jid="${j.id}" data-fase="${j.fase}" data-fecha="${j.fecha}">＋ persona</button>
+                </div>
+            </div>`;
+    },
+
+    _renderAsigRow(a) {
+        return `
+            <div class="ev-jc-row" data-asig="${a.id}">
+                <span class="ev-jc-name">${this._esc(this._personaNombre(a.persona))}</span>
+                <select class="ev-jc-rol" data-asig="${a.id}">
+                    <option value="">—</option>
+                    ${this._ROLES_OP.map(r => `<option value="${r}" ${a.rol === r ? 'selected' : ''}>${r}</option>`).join('')}
+                </select>
+                <button class="ev-jc-del" data-asig="${a.id}" title="Quitar">×</button>
+            </div>`;
+    },
+
+    _attachJornadasViewEvents(eventoId) {
+        const c = document.getElementById('evJornadasContent');
+        if (!c) return;
+        c.querySelectorAll('.ev-jc-rol').forEach(sel => sel.addEventListener('change', async () => {
+            await API.updateAsignacionEvento(sel.dataset.asig, { rol: sel.value || null });
+            const a = (this._asignCache[eventoId] || []).find(x => String(x.id) === String(sel.dataset.asig));
+            if (a) a.rol = sel.value || null;
+        }));
+        c.querySelectorAll('.ev-jc-del').forEach(btn => btn.addEventListener('click', async () => {
+            await API.deleteAsignacionEvento(btn.dataset.asig);
+            await this._loadJornadasSection(eventoId);
+        }));
+        c.querySelectorAll('.ev-jc-add').forEach(btn => btn.addEventListener('click', () =>
+            this._openAddPersonaModal(eventoId, { id: btn.dataset.jid, fase: btn.dataset.fase, fecha: btn.dataset.fecha })));
+    },
+
+    async _openAddPersonaModal(eventoId, jornada) {
+        if (!this._personasOp) {
+            try { this._personasOp = await API.getPersonas({ soloActivos: true }); } catch (e) { this._personasOp = []; }
+        }
+        const personas = this._personasOp || [];
+        const body = `
+            <div class="ev-jc-addform">
+                <label class="form-label">Persona</label>
+                <select id="evAddPersona" class="form-input form-select">
+                    <option value="">Elegí…</option>
+                    ${personas.map(p => `<option value="${p.id}">${this._esc(this._personaNombre(p))}</option>`).join('')}
+                </select>
+                <label class="form-label" style="margin-top:10px;">Rol</label>
+                <select id="evAddRol" class="form-input form-select">
+                    <option value="">—</option>
+                    ${this._ROLES_OP.map(r => `<option value="${r}">${r}</option>`).join('')}
+                </select>
+            </div>`;
+        const inst = Modal.open({ title: `Asignar a ${this._fmtDate(jornada.fecha)}`, body, size: 'sm', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evAddSave">Agregar</button>` });
+        inst.overlay.querySelector('#evAddSave')?.addEventListener('click', async () => {
+            const pid = inst.overlay.querySelector('#evAddPersona')?.value;
+            const rol = inst.overlay.querySelector('#evAddRol')?.value || null;
+            if (!pid) { Toast.warning('Elegí una persona.'); return; }
+            const r = await API.createAsignacionEvento({ eventoId, personaId: pid, jornadaId: jornada.id, fase: jornada.fase, fechaInicio: jornada.fecha, fechaFin: jornada.fecha, rol, estado: 'aprobada' });
+            if (r) { Toast.success('Persona asignada.'); Modal.close(inst.id); await this._loadJornadasSection(eventoId); }
+            else Toast.error('No se pudo asignar.');
+        });
     },
 
     async _openJornadasModal(eventoId, jornadas) {
@@ -877,6 +956,20 @@ const EventosModule = {
             .ev-j-del{background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9rem;}
             .ev-j-del:hover{color:#ff4444;}
             .ev-j-hint{font-size:0.72rem;color:var(--text-dim);margin:0;}
+            .ev-jc{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;}
+            .ev-jc-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:0.8rem;}
+            .ev-jc-fecha{font-weight:600;color:var(--text-primary);}
+            .ev-jc-horas{font-family:var(--font-mono);color:var(--text-muted);font-size:0.72rem;}
+            .ev-jc-count{margin-left:auto;font-size:0.7rem;color:var(--text-dim);white-space:nowrap;}
+            .ev-jc-people{display:flex;flex-direction:column;gap:4px;}
+            .ev-jc-row{display:flex;align-items:center;gap:6px;}
+            .ev-jc-name{flex:1;font-size:0.82rem;color:var(--text-primary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+            .ev-jc-rol{background:var(--bg-card);border:1px solid var(--border);border-radius:5px;padding:3px 6px;color:var(--text-muted);font-size:0.72rem;}
+            .ev-jc-del{background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:1.05rem;line-height:1;padding:0 4px;}
+            .ev-jc-del:hover{color:#ff4444;}
+            .ev-jc-add{align-self:flex-start;background:transparent;border:1px dashed var(--border);color:var(--primary);border-radius:6px;padding:3px 10px;font-size:0.72rem;cursor:pointer;margin-top:2px;}
+            .ev-jc-add:hover{border-color:var(--primary);}
+            .ev-jc-addform{display:flex;flex-direction:column;}
         `;
         document.head.appendChild(s);
     },
