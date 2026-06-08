@@ -77,11 +77,39 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 - **🆕 Flujo Oficina→Taller + visibilidad por rol (Fede 2026-06-07 · RE IMPORTANTE):** el **último estado del proyecto en la oficina = "en taller"** → ahí se delega y se pasa TODA la info (detalles, planos, todo). **Taller = dashboard de todos los proyectos vendidos** pasados a producción; ahí toma forma. Roles: **Taller VE Eventos + su dashboard de Taller**, **NO ve Proyectos** (eso es oficina). El **PM/vendedor queda como interlocutor y "deudor" directo entre cliente y taller** (nexo). Esto reformula Taller y ajusta la matriz de roles (taller pierde `proyectos`).
 - **Test:** evento con jornadas + asignación por día reflejados en calendario; producción con tablero; subalquiler agregado por proveedor.
 
-### Fase 5 — Compras + rentabilidad por proyecto *(≈10% · corazón del valor)*
-- OC de **doble origen** (encargado taller + PM), **siempre imputada a un proyecto**.
-- **⚠ Fino:** Compras carga **COSTOS reales**; al cliente va **PRECIO con márgenes**. Renta = diferencia. No errar.
-- **Loop:** Costos (presupuesto) vs Compras (gasto real) → margen por proyecto.
-- **Test:** cargar OC desde taller y PM; ver gasto imputado + margen.
+### Fase 5 — Compras (OCs) + rentabilidad por proyecto *(≈12% · corazón del valor · ⚠ DEBATIR ANTES DE CODEAR)*
+
+> **Visión Fede (charla 03, 2026-06-08).** Rediseñar la Orden de Compra como flujo **SIMPLE**: "hay que comprar algo, listo, hacé una OC". **Necesita darle forma fuerte + más definiciones antes de codear** (Fede lo dejó explícito). Reconocimiento del estado actual ✅ hecho (abajo).
+
+**Estado actual reconocido (charla 03):**
+- **OCs** (`compras.js`, tab Órdenes de Compra): `compras_ordenes` = `numero_oc`, `proveedor_id` (**HOY obligatorio**), `evento_id`/`proyecto_id` (**opcionales**), `fecha`, `estado` (pendiente→aprobada→recibida→pagada), `notas`. Items en `compras_orden_items`, pagos en `compras_pagos`. **1 solo proveedor por OC** (sin multi-presupuesto). **Sin** campo link · **sin** categoría de gasto · **NO** dispara egreso automático.
+- **Rentabilidad por proyecto YA existe** en Finanzas (`finanzas.js _renderRentProyecto`, report "Rent. Proyecto" + "Rent. Cliente"). Por proyecto calcula: **facturado** = Σ `comprobantes.total` (emitida) · **cobrado** = Σ `ingresos.monto` (confirmado) · **costo** = Σ `egresos.monto` (pagado, imputado al proyecto) · **rent %** = (cobrado − costo)/cobrado. Filtra por canal A/B. ⇒ El "costo" sale de **egresos imputados al proyecto**, NO de OCs ni del presupuesto.
+- **Desconexión clave:** las OCs **no generan egresos** hoy → el gasto de una OC solo entra al "costo" del report si alguien crea un egreso a mano imputado al proyecto. **El "OC dispara a Egresos" de la visión cierra exactamente este hueco** (OC → egreso → aparece como costo → margen).
+- **Permisos:** `taller` **NO** tiene `compras` (en `data.js rolePermissions`).
+- **Link cotización↔proyecto:** existe vía `proyectos.cotizacion_id`.
+
+**Visión de la OC nueva (darle forma con Fede):**
+1. **OC = algo simple.** Dos sabores:
+   - **(a) Insumos:** elegir ítems del catálogo (`insumos_base`/`catalogo_items`).
+   - **(b) Libre con link:** descripción + **link** (ej. MercadoLibre) para una máquina, repuesto, lo que sea.
+2. **Origen múltiple:** la arma **taller**, **PM** o **superadmin** → `taller` necesita permiso `compras` (hoy no lo tiene; UI taller = ULTRA simple).
+3. **Opciones de proveedor + ganadora (dentro de la misma OC):** cargar **varios proveedores con sus datos + su presupuesto**, y **seleccionar la cotización ganadora**. Hoy es 1 proveedor fijo → **estructura nueva** (OC → N presupuestos de proveedor → 1 ganadora). **DDL** (tabla nueva, ej. `compras_oc_presupuestos`).
+4. **Sin proyecto = OK.** Una OC puede NO tener proyecto: **oficina / vehículo / material / etc.** → **categorías de gasto libres** (taxonomía a definir). **NO obligar proyecto.** *(Descarta el supuesto viejo "siempre imputada a un proyecto".)*
+5. **Dispara a Finanzas → Egresos:** al elegir ganadora / recibir / pagar, la OC **se dirige sola a un egreso** (compras) en Finanzas — quedando ya cargado el gasto. Esto alimenta el "costo" del Rent. Proyecto.
+
+**Rentabilidad — cerrar el loop:**
+- **⚠ Fino:** Compras carga **COSTOS reales**; al cliente va **PRECIO con márgenes** (de Costos/cotización). Renta = diferencia. No mezclar.
+- **Macro (cobrado vs costo):** ya funciona en el report; lo que falta es que el **gasto de OCs** llegue al "costo" (vía el disparo OC→egreso del punto 5).
+- **Presupuesto vs real (enhancement):** sumar el **presupuesto** del proyecto (cotización total vía `proyectos.cotizacion_id` → Costos) como columna para comparar contra el gasto real. El **blocker del cotizador** (`cotizacion_items` vacía) afecta el **detalle por línea**, NO el **total agregado** → la renta macro se cierra sin el cotizador.
+
+**Definiciones pendientes (charlar antes de codear):**
+- Taxonomía de **categorías de gasto** para OCs sin proyecto (oficina/vehículo/material/…).
+- Modelo de **multi-presupuesto** (OC → presupuestos de proveedor → ganadora; campos: proveedor, monto, link, notas, archivo?).
+- **Disparo a egreso:** ¿automático al marcar ganadora/recibida/pagada, o botón "generar egreso"? ¿Qué cuenta/categoría/canal de Finanzas? ¿1 egreso por OC?
+- **UI taller** ULTRA simple para crear OCs (sabor insumo/link) + aprobación PM/admin.
+- ¿La renta se queda en Finanzas (admin-only) o un atajo/resumen en Compras?
+
+**Test:** crear OC (insumo y link) desde taller/PM/superadmin · cargar 2 presupuestos y elegir ganadora · que dispare egreso en Finanzas · ver gasto imputado + margen por proyecto.
 
 ### Fase 6 — Integración de Diseño *(≈8% · LIVIANA · capa LOBBY)*
 - **BOM al cierre (manual/CSV):** cruza contra **Costos** → techo de costos + cotizar bien de movida. Cero endpoint en v1.
