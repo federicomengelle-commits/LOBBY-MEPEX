@@ -4483,15 +4483,28 @@ const API = {
     // ═════════════════════════════════════════════════════════════
     //  TANDA 2 — Checklist de armado por proyecto (taller)
     // ═════════════════════════════════════════════════════════════
-    // Items canónicos: placas, iluminacion, mobiliario, pisos, grafica, embalado.
-    // Schema: taller_proyecto_checklist (UUID, UNIQUE(proyecto_id, item_key)).
+    // Checklist EDITABLE por proyecto (Fase 4). Cada check = una fila con
+    // label editable + orden + soft delete. Se opera por id. La plantilla se
+    // siembra al pasar el proyecto a taller.
+    // ═════════════════════════════════════════════════════════════
+    TALLER_CHECKLIST_TEMPLATE: [
+        { item_key: 'estructura',   label: 'Estructura' },
+        { item_key: 'pintura',      label: 'Pintura' },
+        { item_key: 'grafica',      label: 'Gráfica' },
+        { item_key: 'equipamiento', label: 'Equipamiento' },
+        { item_key: 'iluminacion',  label: 'Iluminación' },
+        { item_key: 'listo',        label: 'Listo para cargar' },
+    ],
 
     async getChecklistByProyecto(proyectoId) {
+        if (!proyectoId) return [];
         try {
             const { data, error } = await supabaseClient
                 .from('taller_proyecto_checklist')
                 .select('*, checked_by_profile:profiles!checked_by(id, name, initials)')
-                .eq('proyecto_id', proyectoId);
+                .eq('proyecto_id', proyectoId)
+                .eq('_deleted', false)
+                .order('orden');
             if (error) throw error;
             return data || [];
         } catch (e) {
@@ -4500,21 +4513,19 @@ const API = {
         }
     },
 
-    // Devuelve un map { proyecto_id: { item_key: row, ... } } para varios proyectos
-    // de una sola query. Útil para hidratar progreso en las cards del taller.
+    // Map { proyecto_id: [ {id,label,checked,orden,...} ordenado ] } para varios proyectos.
     async getChecklistsBulk(proyectoIds) {
         if (!proyectoIds || !proyectoIds.length) return {};
         try {
             const { data, error } = await supabaseClient
                 .from('taller_proyecto_checklist')
-                .select('proyecto_id, item_key, checked')
-                .in('proyecto_id', proyectoIds);
+                .select('id, proyecto_id, label, item_key, checked, orden')
+                .in('proyecto_id', proyectoIds)
+                .eq('_deleted', false)
+                .order('orden');
             if (error) throw error;
             const map = {};
-            (data || []).forEach(r => {
-                if (!map[r.proyecto_id]) map[r.proyecto_id] = {};
-                map[r.proyecto_id][r.item_key] = r;
-            });
+            (data || []).forEach(r => { (map[r.proyecto_id] = map[r.proyecto_id] || []).push(r); });
             return map;
         } catch (e) {
             console.warn('[API] Error getChecklistsBulk:', e.message);
@@ -4522,27 +4533,83 @@ const API = {
         }
     },
 
-    // Toggle/set de un check. Upsert por (proyecto_id, item_key).
-    async setChecklistItem(proyectoId, itemKey, checked, notas = null) {
-        const user = Auth.getUser?.();
-        const payload = {
-            proyecto_id: proyectoId,
-            item_key: itemKey,
-            checked: !!checked,
-            checked_by: checked ? (user?.uid || user?.id || null) : null,
-            checked_at: checked ? new Date().toISOString() : null,
-        };
-        if (notas !== null && notas !== undefined) payload.notas = notas;
+    // Siembra la plantilla si el proyecto no tiene checks vivos. Devuelve el array.
+    async seedChecklistTemplate(proyectoId) {
+        if (!proyectoId) return [];
+        try {
+            const existing = await this.getChecklistByProyecto(proyectoId);
+            if (existing.length > 0) return existing;
+            const rows = this.TALLER_CHECKLIST_TEMPLATE.map((t, i) => ({
+                proyecto_id: proyectoId, item_key: t.item_key, label: t.label, orden: i, checked: false,
+            }));
+            const { data, error } = await supabaseClient
+                .from('taller_proyecto_checklist').insert(rows).select();
+            if (error) throw error;
+            return (data || []).sort((a, b) => a.orden - b.orden);
+        } catch (e) {
+            console.warn('[API] Error seedChecklistTemplate:', e.message);
+            return [];
+        }
+    },
+
+    async addChecklistItem(proyectoId, label, orden = 99) {
+        if (!proyectoId || !label) return null;
         try {
             const { data, error } = await supabaseClient
                 .from('taller_proyecto_checklist')
-                .upsert(payload, { onConflict: 'proyecto_id,item_key' })
-                .select()
-                .single();
+                .insert({ proyecto_id: proyectoId, label, orden, checked: false })
+                .select().single();
             if (error) throw error;
             return data;
         } catch (e) {
-            console.warn('[API] Error setChecklistItem:', e.message);
+            console.warn('[API] Error addChecklistItem:', e.message);
+            return null;
+        }
+    },
+
+    // Toggle de un check por id.
+    async setChecklistItemChecked(itemId, checked) {
+        if (!itemId) return null;
+        const user = Auth.getUser?.();
+        try {
+            const { data, error } = await supabaseClient
+                .from('taller_proyecto_checklist')
+                .update({
+                    checked: !!checked,
+                    checked_by: checked ? (user?.uid || user?.id || null) : null,
+                    checked_at: checked ? new Date().toISOString() : null,
+                })
+                .eq('id', itemId).select().single();
+            if (error) throw error;
+            return data;
+        } catch (e) {
+            console.warn('[API] Error setChecklistItemChecked:', e.message);
+            return null;
+        }
+    },
+
+    async renameChecklistItem(itemId, label) {
+        if (!itemId || !label) return null;
+        try {
+            const { error } = await supabaseClient
+                .from('taller_proyecto_checklist').update({ label }).eq('id', itemId);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error renameChecklistItem:', e.message);
+            return null;
+        }
+    },
+
+    async deleteChecklistItem(itemId) {
+        if (!itemId) return null;
+        try {
+            const { error } = await supabaseClient
+                .from('taller_proyecto_checklist').update({ _deleted: true }).eq('id', itemId);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleteChecklistItem:', e.message);
             return null;
         }
     },

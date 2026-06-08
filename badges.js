@@ -173,7 +173,7 @@ const Badges = {
 
         // 4. Taller: proyectos con checklist incompleto y armado ≤ 3 días
         //    Columnas: eventos.fecha_armado_inicio, proyectos.evento_id (FK real),
-        //    taller_checklist.proyecto_id, taller_checklist.checked
+        //    taller_proyecto_checklist.proyecto_id/.checked/._deleted (tabla real, Fase 4)
         async taller() {
             try {
                 const hoy = Badges._dateOffset(0);
@@ -194,7 +194,7 @@ const Badges = {
                 if (prErr || !proyectos || proyectos.length === 0) return 0;
                 const proyIds = proyectos.map(p => p.id);
                 const { data: checks, error: chErr } = await supabaseClient
-                    .from('taller_checklist')
+                    .from('taller_proyecto_checklist')
                     .select('proyecto_id')
                     .eq('_deleted', false)
                     .eq('checked', false)

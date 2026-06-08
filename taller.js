@@ -10,17 +10,12 @@
 const TallerModule = {
 
     // ─── Items canónicos del checklist (labels solo en frontend) ───
-    CHECK_ITEMS: [
-        { key: 'placas',      label: 'Placas cortadas (pintadas)' },
-        { key: 'iluminacion', label: 'Iluminación testeada' },
-        { key: 'mobiliario',  label: 'Mobiliario seleccionado' },
-        { key: 'pisos',       label: 'Pisos enviados al proveedor' },
-        { key: 'grafica',     label: 'Gráfica revisada y subida' },
-        { key: 'embalado',    label: 'Embalado y listo para carga' },
-    ],
+    // Checklist EDITABLE: los pasos viven en taller_proyecto_checklist (DB);
+    // la plantilla por defecto está en API.TALLER_CHECKLIST_TEMPLATE.
 
     // ─── State ───
     _activeTab: 'hoy',
+    _editing: {},   // { [proyectoId]: true } — modo edición de checks por card
     _eventos: [],
     _proyectos: [],
     _cargas: [],
@@ -41,14 +36,14 @@ const TallerModule = {
 
         content.innerHTML = this._buildShell();
         this._injectStyles();
+        this._injectStylesFase4();
         this._attachTabEvents();
         await this._loadActiveTab();
     },
 
     _buildShell() {
         const tabs = [
-            { id: 'hoy',           icon: '📅', label: 'Hoy' },
-            { id: 'checklist',     icon: '✅', label: 'Checklist' },
+            { id: 'hoy',           icon: '🏗️', label: 'Producción' },
             { id: 'mantenimiento', icon: '🔧', label: 'Mantenimiento' },
         ];
         return `
@@ -105,7 +100,6 @@ const TallerModule = {
 
     async _loadActiveTab() {
         if (this._activeTab === 'hoy') return this._loadHoy();
-        if (this._activeTab === 'checklist') return this._loadChecklist();
         if (this._activeTab === 'mantenimiento') return this._loadMantenimiento();
     },
 
@@ -162,6 +156,13 @@ const TallerModule = {
                     this._novedadesPorProyecto[n.proyecto_id].push(n);
                 });
                 this._checklistsBulk = checks;
+                // Sembrar la plantilla en los proyectos en taller que aún no tienen pasos.
+                const sinChecks = this._proyectos.filter(p => !(checks[p.id] && checks[p.id].length));
+                if (sinChecks.length) {
+                    await Promise.all(sinChecks.map(p =>
+                        API.seedChecklistTemplate(p.id).then(rows => { if (rows.length) this._checklistsBulk[p.id] = rows; })
+                    ));
+                }
             }
         } catch (e) {
             console.warn('[Taller] Error _loadHoy:', e.message);
@@ -286,33 +287,21 @@ const TallerModule = {
         const novedades = this._novedadesPorProyecto[p.id] || [];
         const novedad = novedades[0];
 
-        // Progreso del checklist
-        const checks = this._checklistsBulk[p.id] || {};
-        const total = this.CHECK_ITEMS.length;
-        const done = this.CHECK_ITEMS.reduce((acc, it) => acc + (checks[it.key]?.checked ? 1 : 0), 0);
-        const progressPct = Math.round((done / total) * 100);
-        const allChecked = done === total;
-
-        let actionHtml = '';
-        if (estado === 'pendiente') {
-            actionHtml = `<button class="tlr-card-btn primary" data-action="set-en-armado" data-id="${p.id}">🛠️ Empezar armado</button>`;
-        } else if (estado === 'en_armado') {
-            actionHtml = `<button class="tlr-card-btn success ${allChecked ? '' : 'disabled-soft'}" data-action="set-listo" data-id="${p.id}" title="${allChecked ? '' : 'Completá el checklist primero (o marcá igualmente)'}">${allChecked ? '✅ Marcar listo' : `Marcar listo (${done}/${total})`}</button>`;
-        } else if (estado === 'listo') {
-            actionHtml = `<button class="tlr-card-btn secondary" data-action="set-despachado" data-id="${p.id}">🚚 Marcar despachado</button>`;
-        } else {
-            actionHtml = `<div class="tlr-card-state-done">${this._estadoTallerLabel(estado)}</div>`;
-        }
+        const editing = !!this._editing[p.id];
+        const checks = this._checklistsBulk[p.id] || [];
+        const total = checks.length;
+        const done = checks.reduce((a, c) => a + (c.checked ? 1 : 0), 0);
+        const progressPct = total ? Math.round((done / total) * 100) : 0;
+        const allChecked = total > 0 && done === total;
 
         return `
-            <article class="tlr-card tlr-card-proyecto ${novedades.length ? 'has-novedad' : ''}" data-id="${p.id}">
+            <article class="tlr-card tlr-card-proyecto ${novedades.length ? 'has-novedad' : ''} ${editing ? 'is-editing' : ''}" data-id="${p.id}">
                 <div class="tlr-card-head">
                     <span class="tlr-card-kind">STAND</span>
-                    <span class="tlr-estado-badge tlr-estado-${estado}">${this._estadoTallerLabel(estado)}</span>
-                </div>
-
-                <div class="tlr-card-hero">
-                    <div class="tlr-hero-icon">${p.drive_folder_url ? '📁' : '🏗️'}</div>
+                    <div class="tlr-head-right">
+                        ${this._urgencyChip(p.evento?.fecha_armado_inicio)}
+                        <span class="tlr-estado-badge tlr-estado-${estado}">${this._estadoTallerLabel(estado)}</span>
+                    </div>
                 </div>
 
                 ${novedad ? `
@@ -330,36 +319,68 @@ const TallerModule = {
                         ${venue ? `<div class="tlr-meta-row"><span class="tlr-meta-key">Venue</span><span>${this._esc(venue)}</span></div>` : ''}
                     </div>
 
-                    <button class="tlr-checklist-progress" data-action="open-checklist" data-id="${p.id}" title="Ver checklist completo">
-                        <div class="tlr-progress-row">
-                            <span class="tlr-progress-label">Checklist</span>
-                            <span class="tlr-progress-count ${allChecked ? 'done' : ''}">${done}/${total}</span>
-                        </div>
-                        <div class="tlr-progress-bar">
-                            <div class="tlr-progress-fill ${allChecked ? 'done' : ''}" style="width:${progressPct}%"></div>
-                        </div>
-                    </button>
-
-                    ${typeof p.completitud_pct === 'number' ? `
-                        <div class="tlr-ciclo-progress" title="Avance del ciclo: pendiente → armado → listo → despachado → cerrado">
-                            <div class="tlr-progress-row">
-                                <span class="tlr-progress-label">Ciclo del proyecto</span>
-                                <span class="tlr-progress-count ${p.completitud_pct === 100 ? 'done' : ''}">${p.completitud_pct}%</span>
-                            </div>
-                            <div class="tlr-progress-bar">
-                                <div class="tlr-progress-fill ${p.completitud_pct === 100 ? 'done' : ''}" style="width:${p.completitud_pct}%; background: linear-gradient(90deg, #9B7DFF, #00A9C1);"></div>
-                            </div>
-                        </div>
-                    ` : ''}
+                    <div class="tlr-checks-head">
+                        <span class="tlr-checks-title">Pasos <span class="tlr-checks-count ${allChecked ? 'done' : ''}">${done}/${total}</span></span>
+                        <button class="tlr-checks-edit ${editing ? 'active' : ''}" data-action="toggle-edit" data-id="${p.id}">${editing ? 'Listo ✓' : '✎ Editar'}</button>
+                    </div>
+                    <div class="tlr-progress-bar">
+                        <div class="tlr-progress-fill ${allChecked ? 'done' : ''}" style="width:${progressPct}%"></div>
+                    </div>
+                    <div class="tlr-checks" data-proyecto="${p.id}">
+                        ${this._renderChecks(p.id, checks, editing)}
+                    </div>
                 </div>
 
                 <div class="tlr-card-actions">
-                    ${actionHtml}
-                    ${p.drive_folder_url ? `<button class="tlr-card-btn ghost" data-action="open-drive" data-url="${this._escAttr(p.drive_folder_url)}">📁 Ver carpeta</button>` : ''}
-                    <button class="tlr-card-btn ghost" data-action="open-proyecto" data-id="${p.id}">→ Ver ficha</button>
+                    ${this._estadoBtn(p, allChecked, done, total)}
+                    ${p.drive_folder_url ? `<button class="tlr-card-btn ghost" data-action="open-drive" data-url="${this._escAttr(p.drive_folder_url)}">📁 Planos</button>` : ''}
+                    <button class="tlr-card-btn ghost" data-action="open-proyecto" data-id="${p.id}">→ Ficha</button>
                 </div>
             </article>
         `;
+    },
+
+    _estadoBtn(p, allChecked, done, total) {
+        const estado = p.estado_taller || 'pendiente';
+        if (estado === 'pendiente' || estado === 'en_armado') {
+            return `<button class="tlr-card-btn success ${allChecked ? 'pulse' : 'disabled-soft'}" data-action="set-listo" data-id="${p.id}">${allChecked ? '✅ Marcar listo' : `Faltan ${total - done} paso${total - done === 1 ? '' : 's'}`}</button>`;
+        }
+        if (estado === 'listo') {
+            return `<button class="tlr-card-btn secondary" data-action="set-despachado" data-id="${p.id}">🚚 Despachar</button>`;
+        }
+        return `<div class="tlr-card-state-done">${this._estadoTallerLabel(estado)}</div>`;
+    },
+
+    // Pills del checklist. En modo edición: input renombrable + × + ＋ paso.
+    _renderChecks(proyectoId, checks, editing) {
+        const pills = (checks || []).map(c => {
+            if (editing) {
+                return `<div class="tlr-pill is-edit" data-id="${c.id}">
+                    <input class="tlr-pill-rename" data-id="${c.id}" value="${this._escAttr(c.label || '')}" maxlength="40">
+                    <button class="tlr-pill-del" data-action="del-check" data-id="${c.id}" data-proyecto="${proyectoId}" title="Quitar">×</button>
+                </div>`;
+            }
+            return `<button class="tlr-pill ${c.checked ? 'checked' : ''}" data-action="toggle-pill" data-id="${c.id}" data-proyecto="${proyectoId}">
+                <span class="tlr-pill-check">${c.checked ? '✓' : ''}</span>
+                <span class="tlr-pill-label">${this._esc(c.label || '')}</span>
+            </button>`;
+        }).join('');
+        const add = editing ? `<button class="tlr-pill tlr-pill-add" data-action="add-check" data-proyecto="${proyectoId}">＋ paso</button>` : '';
+        const empty = (!checks || !checks.length) && !editing ? `<span class="tlr-checks-empty">Sin pasos. Tocá ✎ para agregar.</span>` : '';
+        return pills + add + empty;
+    },
+
+    _urgencyChip(fechaArmado) {
+        if (!fechaArmado) return '';
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const f = new Date(fechaArmado + 'T00:00:00');
+        if (isNaN(f)) return '';
+        const dias = Math.round((f - hoy) / 86400000);
+        if (dias < 0) return `<span class="tlr-urg pasado">armó hace ${-dias}d</span>`;
+        if (dias === 0) return `<span class="tlr-urg hoy">🔴 ARMA HOY</span>`;
+        if (dias === 1) return `<span class="tlr-urg hoy">🔴 MAÑANA</span>`;
+        if (dias <= 3) return `<span class="tlr-urg cerca">🟠 en ${dias}d</span>`;
+        return `<span class="tlr-urg lejos">🟢 en ${dias}d</span>`;
     },
 
     _renderCargaCard(c) {
@@ -452,189 +473,136 @@ const TallerModule = {
                 if (url) window.open(url, '_blank', 'noopener');
             });
         });
-        // Click en barra de progreso → ir al tab checklist con ese proyecto seleccionado
-        document.querySelectorAll('[data-action="open-checklist"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this._selectedChecklistProyecto = btn.dataset.id;
-                this._activeTab = 'checklist';
-                document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === 'checklist'));
-                const c = document.getElementById('tallerContent');
-                if (c) c.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
-                this._loadChecklist();
-            });
+        this._attachChecksEvents(document);
+    },
+
+    // Handlers de los pills (toggle / editar / agregar / quitar / renombrar).
+    // root = document (render completo) o un .tlr-checks (re-render de una card).
+    _attachChecksEvents(root) {
+        root.querySelectorAll('[data-action="toggle-pill"]').forEach(btn =>
+            btn.addEventListener('click', () => this._togglePill(btn.dataset.proyecto, btn.dataset.id, btn)));
+        root.querySelectorAll('[data-action="toggle-edit"]').forEach(btn =>
+            btn.addEventListener('click', () => this._toggleEdit(btn.dataset.id)));
+        root.querySelectorAll('[data-action="add-check"]').forEach(btn =>
+            btn.addEventListener('click', () => this._addCheck(btn.dataset.proyecto)));
+        root.querySelectorAll('[data-action="del-check"]').forEach(btn =>
+            btn.addEventListener('click', () => this._deleteCheck(btn.dataset.proyecto, btn.dataset.id)));
+        root.querySelectorAll('.tlr-pill-rename').forEach(inp => {
+            inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+            inp.addEventListener('blur', () => this._renameCheck(inp.dataset.id, inp.value.trim()));
         });
     },
 
-    // ═════════════════════════════════════════════════════════════
-    //  TAB CHECKLIST
-    // ═════════════════════════════════════════════════════════════
-
-    async _loadChecklist() {
-        // Todos los proyectos cuyo estado_taller esté activo (no cerrado).
-        // No filtramos por fecha del evento — si está en taller, debe aparecer.
-        try {
-            const { data, error } = await supabaseClient
-                .from('proyectos')
-                .select(`
-                    id, nombre, evento_id, estado_taller, completitud_pct,
-                    cliente:clientes!cliente_id(id, nombre_empresa, razon_social),
-                    evento:eventos!evento_id(id, nombre, fecha_armado_inicio, predio)
-                `)
-                .eq('_deleted', false)
-                .or('estado_taller.is.null,estado_taller.neq.cerrado')
-                .order('estado_taller', { ascending: true })
-                .order('nombre', { ascending: true });
-            if (error) throw error;
-            this._proyectosChecklist = data || [];
-            const ids = this._proyectosChecklist.map(p => p.id);
-            this._checklistsBulk = ids.length ? await API.getChecklistsBulk(ids) : {};
-        } catch (e) {
-            console.warn('[Taller] Error _loadChecklist:', e.message);
+    async _togglePill(proyectoId, itemId, pillEl) {
+        const arr = this._checklistsBulk[proyectoId] || [];
+        const it = arr.find(c => String(c.id) === String(itemId));
+        if (!it) return;
+        const willCheck = !it.checked;
+        it.checked = willCheck;
+        if (pillEl) {
+            pillEl.classList.toggle('checked', willCheck);
+            const ck = pillEl.querySelector('.tlr-pill-check'); if (ck) ck.textContent = willCheck ? '✓' : '';
         }
-        this._renderChecklist();
+        if (navigator.vibrate) { try { navigator.vibrate(willCheck ? 16 : 8); } catch (e) {} }
+        // Auto-estado: primer check → en_armado.
+        const p = this._proyectos.find(x => x.id === proyectoId);
+        if (p && willCheck && (!p.estado_taller || p.estado_taller === 'pendiente')) {
+            p.estado_taller = 'en_armado';
+            API.setEstadoTaller(proyectoId, 'en_armado');
+        }
+        this._refreshCardMeta(proyectoId);
+        const r = await API.setChecklistItemChecked(itemId, willCheck);
+        if (!r) {
+            it.checked = !willCheck;
+            if (pillEl) { pillEl.classList.toggle('checked', !willCheck); const ck = pillEl.querySelector('.tlr-pill-check'); if (ck) ck.textContent = !willCheck ? '✓' : ''; }
+            this._refreshCardMeta(proyectoId);
+            Toast.error('No se pudo guardar.');
+        }
     },
 
-    _renderChecklist() {
-        const c = document.getElementById('tallerContent');
-        if (!c) return;
+    _toggleEdit(proyectoId) {
+        this._editing[proyectoId] = !this._editing[proyectoId];
+        this._refreshCardChecks(proyectoId);
+    },
 
-        const list = this._proyectosChecklist;
-        if (!list.length) {
-            c.innerHTML = `
-                <div class="taller-empty-day" style="margin: 40px 24px;">
-                    <div class="taller-empty-icon">📋</div>
-                    <p>No hay proyectos activos en taller.</p>
-                </div>
-            `;
-            return;
+    async _addCheck(proyectoId) {
+        const arr = this._checklistsBulk[proyectoId] || (this._checklistsBulk[proyectoId] = []);
+        const orden = arr.length ? Math.max(...arr.map(c => c.orden || 0)) + 1 : 0;
+        const r = await API.addChecklistItem(proyectoId, 'Nuevo paso', orden);
+        if (!r) { Toast.error('No se pudo agregar.'); return; }
+        arr.push(r);
+        this._refreshCardChecks(proyectoId);
+        const card = document.querySelector(`.tlr-card[data-id="${proyectoId}"]`);
+        const inp = card?.querySelector(`.tlr-pill-rename[data-id="${r.id}"]`);
+        if (inp) { inp.focus(); inp.select(); }
+    },
+
+    async _deleteCheck(proyectoId, itemId) {
+        const arr = this._checklistsBulk[proyectoId] || [];
+        const idx = arr.findIndex(c => String(c.id) === String(itemId));
+        if (idx === -1) return;
+        const removed = arr.splice(idx, 1)[0];
+        this._refreshCardChecks(proyectoId);
+        const ok = await API.deleteChecklistItem(itemId);
+        if (!ok) { arr.splice(idx, 0, removed); this._refreshCardChecks(proyectoId); Toast.error('No se pudo quitar.'); }
+    },
+
+    async _renameCheck(itemId, label) {
+        if (!label) return;
+        let found = null;
+        for (const pid of Object.keys(this._checklistsBulk)) {
+            const it = (this._checklistsBulk[pid] || []).find(c => String(c.id) === String(itemId));
+            if (it) { found = it; break; }
         }
+        if (found && found.label === label) return;
+        if (found) found.label = label;
+        await API.renameChecklistItem(itemId, label);
+    },
 
-        c.innerHTML = `
-            <div class="taller-content">
-                <div class="taller-section-header" style="margin-bottom: 16px;">
-                    <span class="taller-section-eyebrow">CHECKLIST DE ARMADO</span>
-                    <h3>${list.length} proyecto${list.length === 1 ? '' : 's'} en taller</h3>
-                </div>
-                <div class="tlr-chk-grid">
-                    ${list.map(p => this._renderChecklistRow(p)).join('')}
-                </div>
-            </div>
-        `;
-
-        this._attachChecklistEvents();
-
-        // Auto-expand si vinimos desde una card
-        if (this._selectedChecklistProyecto) {
-            const target = document.querySelector(`.tlr-chk-row[data-id="${this._selectedChecklistProyecto}"]`);
-            if (target) {
-                target.classList.add('expanded');
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Actualiza barra + contador + botón de estado + badge dentro de la card (sin re-attach global).
+    _refreshCardMeta(proyectoId) {
+        const card = document.querySelector(`.tlr-card[data-id="${proyectoId}"]`);
+        if (!card) return;
+        const arr = this._checklistsBulk[proyectoId] || [];
+        const total = arr.length, done = arr.reduce((a, c) => a + (c.checked ? 1 : 0), 0);
+        const pct = total ? Math.round(done / total * 100) : 0;
+        const all = total > 0 && done === total;
+        const fill = card.querySelector('.tlr-progress-fill');
+        if (fill) { fill.style.width = pct + '%'; fill.classList.toggle('done', all); }
+        const cnt = card.querySelector('.tlr-checks-count');
+        if (cnt) { cnt.textContent = `${done}/${total}`; cnt.classList.toggle('done', all); }
+        const p = this._proyectos.find(x => x.id === proyectoId);
+        const estado = p?.estado_taller || 'pendiente';
+        const badge = card.querySelector('.tlr-estado-badge');
+        if (badge) { badge.className = `tlr-estado-badge tlr-estado-${estado}`; badge.textContent = this._estadoTallerLabel(estado); }
+        const actions = card.querySelector('.tlr-card-actions');
+        if (actions && p) {
+            const first = actions.querySelector('.tlr-card-btn, .tlr-card-state-done');
+            const tmp = document.createElement('div');
+            tmp.innerHTML = this._estadoBtn(p, all, done, total).trim();
+            const el = tmp.firstElementChild;
+            if (first && el) {
+                first.replaceWith(el);
+                if (el.dataset.action === 'set-listo') el.addEventListener('click', () => this._setEstadoProyecto(el.dataset.id, 'listo'));
+                else if (el.dataset.action === 'set-despachado') el.addEventListener('click', () => this._setEstadoProyecto(el.dataset.id, 'despachado'));
             }
-            this._selectedChecklistProyecto = null;
         }
     },
 
-    _renderChecklistRow(p) {
-        const cliente = p.cliente?.nombre_empresa || p.cliente?.razon_social || '—';
-        const evNombre = p.evento?.nombre || '—';
-        const checks = this._checklistsBulk[p.id] || {};
-        const total = this.CHECK_ITEMS.length;
-        const done = this.CHECK_ITEMS.reduce((acc, it) => acc + (checks[it.key]?.checked ? 1 : 0), 0);
-        const progressPct = Math.round((done / total) * 100);
-        const allChecked = done === total;
-        const estado = p.estado_taller || 'pendiente';
-
-        return `
-            <article class="tlr-chk-row" data-id="${p.id}">
-                <button class="tlr-chk-header" data-action="toggle-chk-row" data-id="${p.id}">
-                    <div class="tlr-chk-header-main">
-                        <div class="tlr-chk-row-title">${this._esc(p.nombre || 'Stand')}</div>
-                        <div class="tlr-chk-row-sub">${this._esc(cliente)} · ${this._esc(evNombre)}</div>
-                    </div>
-                    <div class="tlr-chk-header-right">
-                        <span class="tlr-estado-badge tlr-estado-${estado}">${this._estadoTallerLabel(estado)}</span>
-                        <div class="tlr-chk-progress">
-                            <div class="tlr-progress-bar">
-                                <div class="tlr-progress-fill ${allChecked ? 'done' : ''}" style="width:${progressPct}%"></div>
-                            </div>
-                            <span class="tlr-chk-count ${allChecked ? 'done' : ''}">${done}/${total}</span>
-                        </div>
-                        <span class="tlr-chk-chevron">▾</span>
-                    </div>
-                </button>
-                <div class="tlr-chk-body">
-                    ${this.CHECK_ITEMS.map(it => {
-                        const checked = !!checks[it.key]?.checked;
-                        return `
-                            <label class="tlr-chk-item ${checked ? 'checked' : ''}">
-                                <input type="checkbox" data-action="toggle-chk" data-proyecto="${p.id}" data-item="${it.key}" ${checked ? 'checked' : ''}>
-                                <span class="tlr-chk-box">${checked ? '✓' : ''}</span>
-                                <span class="tlr-chk-label">${this._esc(it.label)}</span>
-                            </label>
-                        `;
-                    }).join('')}
-                </div>
-            </article>
-        `;
-    },
-
-    _attachChecklistEvents() {
-        document.querySelectorAll('[data-action="toggle-chk-row"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                btn.closest('.tlr-chk-row')?.classList.toggle('expanded');
-            });
-        });
-        document.querySelectorAll('[data-action="toggle-chk"]').forEach(input => {
-            input.addEventListener('change', async (e) => {
-                e.stopPropagation();
-                const proyectoId = input.dataset.proyecto;
-                const itemKey = input.dataset.item;
-                const checked = input.checked;
-                // Update local state inmediato
-                if (!this._checklistsBulk[proyectoId]) this._checklistsBulk[proyectoId] = {};
-                this._checklistsBulk[proyectoId][itemKey] = { checked };
-                // Re-render row para actualizar progreso
-                this._refreshChecklistRow(proyectoId);
-                // Persist
-                const r = await API.setChecklistItem(proyectoId, itemKey, checked);
-                if (!r) {
-                    Toast.error('No se pudo guardar el cambio.');
-                    // Revert local
-                    this._checklistsBulk[proyectoId][itemKey] = { checked: !checked };
-                    this._refreshChecklistRow(proyectoId);
-                }
-            });
-        });
-    },
-
-    _refreshChecklistRow(proyectoId) {
-        const row = document.querySelector(`.tlr-chk-row[data-id="${proyectoId}"]`);
-        if (!row) return;
-        const p = this._proyectosChecklist.find(x => x.id === proyectoId);
-        if (!p) return;
-        const wasExpanded = row.classList.contains('expanded');
-        const html = this._renderChecklistRow(p);
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        const newRow = tmp.firstElementChild;
-        if (wasExpanded) newRow.classList.add('expanded');
-        row.replaceWith(newRow);
-        // Re-attach events for this row only
-        newRow.querySelector('[data-action="toggle-chk-row"]')?.addEventListener('click', () => {
-            newRow.classList.toggle('expanded');
-        });
-        newRow.querySelectorAll('[data-action="toggle-chk"]').forEach(input => {
-            input.addEventListener('change', async (e) => {
-                e.stopPropagation();
-                const itemKey = input.dataset.item;
-                const checked = input.checked;
-                if (!this._checklistsBulk[proyectoId]) this._checklistsBulk[proyectoId] = {};
-                this._checklistsBulk[proyectoId][itemKey] = { checked };
-                this._refreshChecklistRow(proyectoId);
-                const r = await API.setChecklistItem(proyectoId, itemKey, checked);
-                if (!r) Toast.error('No se pudo guardar.');
-            });
-        });
+    // Re-render del bloque de pills de una card (con re-attach local).
+    _refreshCardChecks(proyectoId) {
+        const card = document.querySelector(`.tlr-card[data-id="${proyectoId}"]`);
+        if (!card) return;
+        const editing = !!this._editing[proyectoId];
+        card.classList.toggle('is-editing', editing);
+        const eb = card.querySelector('[data-action="toggle-edit"]');
+        if (eb) { eb.classList.toggle('active', editing); eb.textContent = editing ? 'Listo ✓' : '✎ Editar'; }
+        const cont = card.querySelector('.tlr-checks');
+        if (cont) {
+            cont.innerHTML = this._renderChecks(proyectoId, this._checklistsBulk[proyectoId] || [], editing);
+            this._attachChecksEvents(cont);
+        }
+        this._refreshCardMeta(proyectoId);
     },
 
     // ═════════════════════════════════════════════════════════════
@@ -972,6 +940,53 @@ const TallerModule = {
     },
     _escAttr(s) {
         return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    },
+
+    _injectStylesFase4() {
+        if (document.getElementById('taller-fase4-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'taller-fase4-styles';
+        s.textContent = `
+            .taller-module .tlr-head-right { display:flex; align-items:center; gap:8px; }
+            .taller-module .tlr-urg { font-family: var(--font-mono); font-size:0.66rem; font-weight:700; letter-spacing:0.03em; padding:3px 8px; border-radius:20px; white-space:nowrap; }
+            .taller-module .tlr-urg.hoy { color:#ff5252; background:rgba(255,68,68,0.12); border:1px solid rgba(255,68,68,0.4); animation: tlrPulse 1.4s ease-in-out infinite; }
+            .taller-module .tlr-urg.cerca { color:#F28D15; background:rgba(242,141,21,0.12); border:1px solid rgba(242,141,21,0.35); }
+            .taller-module .tlr-urg.lejos { color:#00CC88; background:rgba(0,204,136,0.1); border:1px solid rgba(0,204,136,0.28); }
+            .taller-module .tlr-urg.pasado { color:#888; background:#1a1a1a; border:1px solid #2a2a2a; }
+            @keyframes tlrPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(255,68,68,0.35);} 50%{ box-shadow:0 0 0 4px rgba(255,68,68,0);} }
+
+            .taller-module .tlr-checks-head { display:flex; align-items:center; justify-content:space-between; margin:14px 0 6px; }
+            .taller-module .tlr-checks-title { font-family: var(--font-mono); font-size:0.72rem; color:#888; letter-spacing:0.06em; text-transform:uppercase; }
+            .taller-module .tlr-checks-count { color:#00A9C1; font-weight:700; margin-left:4px; }
+            .taller-module .tlr-checks-count.done { color:#00CC88; }
+            .taller-module .tlr-checks-edit { background:transparent; border:1px solid #2a2a2a; color:#888; font-family:var(--font-mono); font-size:0.7rem; padding:4px 10px; border-radius:6px; cursor:pointer; transition:all 150ms ease; min-height:30px; }
+            .taller-module .tlr-checks-edit:hover { border-color:#00A9C1; color:#00A9C1; }
+            .taller-module .tlr-checks-edit.active { background:#00A9C1; color:#04141a; border-color:#00A9C1; font-weight:700; }
+
+            .taller-module .tlr-progress-fill { transition: width 320ms cubic-bezier(0.34,1.4,0.5,1), background 200ms; }
+
+            .taller-module .tlr-checks { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+            .taller-module .tlr-pill { display:inline-flex; align-items:center; gap:6px; background:#141414; border:1px solid #2a2a2a; color:#bbb; border-radius:20px; padding:7px 13px; font-family:var(--font-main); font-size:0.82rem; cursor:pointer; transition:all 160ms ease; min-height:34px; }
+            .taller-module .tlr-pill:hover { border-color:#3a3a3a; }
+            .taller-module .tlr-pill:active { transform: scale(0.96); }
+            .taller-module .tlr-pill-check { width:15px; height:15px; border-radius:50%; border:1.5px solid #444; display:inline-flex; align-items:center; justify-content:center; font-size:0.6rem; color:transparent; transition:all 160ms ease; }
+            .taller-module .tlr-pill.checked { background:rgba(0,204,136,0.13); border-color:rgba(0,204,136,0.5); color:#E8E8E8; }
+            .taller-module .tlr-pill.checked .tlr-pill-check { background:#00CC88; border-color:#00CC88; color:#04140d; animation: tlrPop 280ms ease; }
+            @keyframes tlrPop { 0%{ transform:scale(0.4);} 60%{ transform:scale(1.25);} 100%{ transform:scale(1);} }
+            .taller-module .tlr-pill-add { border-style:dashed; color:#00A9C1; border-color:rgba(0,169,193,0.4); }
+            .taller-module .tlr-pill-add:hover { background:rgba(0,169,193,0.08); }
+            .taller-module .tlr-pill.is-edit { padding:4px 6px 4px 10px; background:#0d0d0d; border-color:#333; cursor:default; }
+            .taller-module .tlr-pill-rename { background:transparent; border:none; color:#E8E8E8; font-family:var(--font-main); font-size:0.82rem; width:100px; outline:none; }
+            .taller-module .tlr-pill-rename:focus { border-bottom:1px solid #00A9C1; }
+            .taller-module .tlr-pill-del { background:transparent; border:none; color:#ff5252; font-size:1.05rem; line-height:1; cursor:pointer; padding:0 4px; }
+            .taller-module .tlr-checks-empty { color:#555; font-size:0.82rem; font-style:italic; }
+            .taller-module .tlr-card.is-editing { border-color:rgba(0,169,193,0.4); }
+
+            .taller-module .tlr-card-btn.pulse { animation: tlrBtnPulse 1.3s ease-in-out infinite; }
+            @keyframes tlrBtnPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(0,204,136,0.4);} 50%{ box-shadow:0 0 0 5px rgba(0,204,136,0);} }
+            .taller-module .tlr-card-btn.disabled-soft { opacity:0.6; }
+        `;
+        document.head.appendChild(s);
     },
 
     _injectStyles() {
