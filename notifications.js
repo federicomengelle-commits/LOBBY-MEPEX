@@ -21,6 +21,20 @@ const Notifications = {
     POLL_MS: 30000,
     LIMIT: 20,
 
+    // Catálogo de avisos silenciables (agrupa los `tipo` crudos en categorías humanas).
+    // Usado por la página de preferencias (#notificaciones) y por el filtro de la campana.
+    TIPO_CATALOG: [
+        { key: 'logistica', label: 'Logística y remitos', icon: '🚚',
+          desc: 'Cargas pendientes/aprobadas, remitos firmados, vehículos de terceros',
+          tipos: ['carga_pendiente_aprobacion', 'carga_aprobada', 'remito_firmado', 'vehiculo_tercero_creado'] },
+        { key: 'asignaciones', label: 'Asignaciones de gente', icon: '👥',
+          desc: 'Gente propuesta o aprobada para eventos',
+          tipos: ['asignacion_pendiente_aprobacion', 'asignacion_aprobada'] },
+        { key: 'taller', label: 'Taller y producción', icon: '🔧',
+          desc: 'Novedades de obra, stands listos, pase a taller',
+          tipos: ['novedad_para_taller', 'proyecto_listo', 'proyecto_en_taller'] },
+    ],
+
     // ─── Lifecycle ────────────────────────────
     async init() {
         if (this._initialized) return;
@@ -60,7 +74,7 @@ const Notifications = {
             this._items = await API.getNotifications({ limit: this.LIMIT, includeRead: true });
             const user = Auth.getUser();
             const uid = user.uid || user.id;
-            this._unread = this._items.filter(n => !this._isReadBy(n, uid)).length;
+            this._unread = this._items.filter(n => !this._isReadBy(n, uid) && !this.isMuted(n.tipo)).length;
             this._renderBell();
             if (this._open) {
                 if (this._isMobile()) this._renderMobileSheet();
@@ -91,6 +105,33 @@ const Notifications = {
     },
     _pendientesCount() {
         return this._pendientes().length;
+    },
+
+    // ─── Preferencias: silenciar tipos (por usuario, localStorage) ──
+    // Silenciar = ocultar ese tipo de aviso de la campana (Novedades). Los
+    // pendientes (estado vivo) y los dots del menú NO se ven afectados.
+    _muteKey() {
+        const u = Auth.getUser?.();
+        const uid = u?.uid || u?.id || 'anon';
+        return `mepex_notif_mute_${uid}`;
+    },
+    getMutedCats() {
+        try { const v = JSON.parse(localStorage.getItem(this._muteKey())); return Array.isArray(v) ? v : []; }
+        catch { return []; }
+    },
+    isCatMuted(key) { return this.getMutedCats().includes(key); },
+    setCatMuted(key, muted) {
+        const set = new Set(this.getMutedCats());
+        if (muted) set.add(key); else set.delete(key);
+        localStorage.setItem(this._muteKey(), JSON.stringify([...set]));
+        this.refresh();   // re-evaluar no-leídas + repintar campana
+    },
+    _catForTipo(tipo) {
+        return this.TIPO_CATALOG.find(c => c.tipos.includes(tipo));
+    },
+    isMuted(tipo) {
+        const cat = this._catForTipo(tipo);
+        return cat ? this.isCatMuted(cat.key) : false;
     },
 
     // ─── Bell render (en header) ──────────────
@@ -168,7 +209,8 @@ const Notifications = {
     },
 
     _renderItems() {
-        if (!this._items.length) {
+        const items = this._items.filter(n => !this.isMuted(n.tipo));
+        if (!items.length) {
             return `
                 <div class="notif-empty">
                     <div class="notif-empty-icon">🔕</div>
@@ -178,7 +220,7 @@ const Notifications = {
         }
         const user = Auth.getUser?.();
         const uid = user?.uid || user?.id;
-        return this._items.map(n => {
+        return items.map(n => {
             const isRead = this._isReadBy(n, uid);
             const prioCls = n.prioridad && n.prioridad !== 'normal' ? `notif-prio-${n.prioridad}` : '';
             const fecha = this._fmtRelative(n.created_at);

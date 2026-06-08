@@ -798,16 +798,11 @@ const Settings = {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
-        const prefs = this._getNotifPrefs();
         const content = document.getElementById('mainContent');
         if (!content) return;
+        this._ensureNotifPageStyles();
 
-        const options = [
-            { key: 'new_projects', label: 'Nuevos proyectos', desc: 'Recibir aviso cuando se crea un proyecto nuevo', icon: '📋' },
-            { key: 'upcoming_events', label: 'Eventos próximos', desc: 'Recordatorio de eventos en los próximos 7 días', icon: '📅' },
-            { key: 'pending_payments', label: 'Cobros pendientes', desc: 'Alerta de cobros por vencer', icon: '💰' },
-            { key: 'sound', label: 'Sonido', desc: 'Reproducir sonido con cada notificación', icon: '🔔' },
-        ];
+        const cats = (typeof Notifications !== 'undefined' && Notifications.TIPO_CATALOG) ? Notifications.TIPO_CATALOG : [];
 
         content.innerHTML = `
             <div class="settings-page">
@@ -818,41 +813,143 @@ const Settings = {
                     <h1 class="title-1">Notificaciones</h1>
                 </div>
 
-                <div class="settings-section" style="max-width:600px">
-                    <div class="settings-section-title">Preferencias</div>
-                    <div class="settings-info-banner" style="margin-bottom:20px">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                        Estas preferencias se activarán cuando el sistema de notificaciones esté implementado.
-                    </div>
-                    <div class="settings-toggle-list">
-                        ${options.map(opt => `
+                <div class="settings-section" style="max-width:680px">
+                    <div class="settings-section-title">Preferencias — silenciar avisos</div>
+                    <div class="settings-toggle-list" id="notifPrefList">
+                        ${cats.map(c => `
                             <div class="settings-toggle-row">
                                 <div class="settings-toggle-info">
-                                    <span class="settings-toggle-icon">${opt.icon}</span>
+                                    <span class="settings-toggle-icon">${c.icon}</span>
                                     <div>
-                                        <span class="settings-toggle-label">${opt.label}</span>
-                                        <span class="settings-toggle-desc">${opt.desc}</span>
+                                        <span class="settings-toggle-label">${c.label}</span>
+                                        <span class="settings-toggle-desc">${c.desc}</span>
                                     </div>
                                 </div>
                                 <label class="settings-switch">
-                                    <input type="checkbox" data-pref="${opt.key}" ${prefs[opt.key] !== false ? 'checked' : ''}>
+                                    <input type="checkbox" data-cat="${c.key}" ${!Notifications.isCatMuted(c.key) ? 'checked' : ''}>
                                     <span class="settings-switch-slider"></span>
                                 </label>
                             </div>
                         `).join('')}
                     </div>
+                    <p class="notif-page-hint">Apagar un aviso lo oculta de tu campana. Los <b>pendientes</b> (estado vivo) y los puntitos del menú no se ven afectados.</p>
+                </div>
+
+                <div class="settings-section" style="max-width:680px">
+                    <div class="notif-page-sec-head">
+                        <div class="settings-section-title" style="margin:0">Actividad reciente</div>
+                        <button class="notif-page-markall" id="notifPageMarkAll">Marcar todas leídas</button>
+                    </div>
+                    <div id="notifPageFeed"><div class="notif-page-empty">Cargando…</div></div>
+                </div>
+
+                <div class="settings-section" style="max-width:680px">
+                    <div class="settings-section-title">Pendientes</div>
+                    <div id="notifPagePend"><div class="notif-page-empty">Cargando…</div></div>
                 </div>
             </div>
         `;
 
-        // Toggle handlers
-        document.querySelectorAll('.settings-switch input').forEach(input => {
+        // Toggles de silenciado (checked = recibir; apagado = silenciar)
+        content.querySelectorAll('#notifPrefList input[data-cat]').forEach(input => {
             input.addEventListener('change', () => {
-                const key = input.dataset.pref;
-                const current = this._getNotifPrefs();
-                current[key] = input.checked;
-                this._setNotifPrefs(current);
+                Notifications.setCatMuted(input.dataset.cat, !input.checked);
+                this._loadNotifFeed();
             });
         });
+
+        content.querySelector('#notifPageMarkAll')?.addEventListener('click', async () => {
+            await API.markAllNotificationsRead();
+            this._loadNotifFeed();
+            if (typeof Notifications !== 'undefined') Notifications.refresh();
+        });
+
+        this._loadNotifFeed();
+        this._loadNotifPend();
+    },
+
+    async _loadNotifFeed() {
+        const el = document.getElementById('notifPageFeed');
+        if (!el) return;
+        const all = await API.getNotifications({ limit: 100, includeRead: true });
+        const items = all.filter(n => !(typeof Notifications !== 'undefined' && Notifications.isMuted(n.tipo)));
+        const user = Auth.getUser?.();
+        const uid = user?.uid || user?.id;
+        if (!items.length) { el.innerHTML = '<div class="notif-page-empty">Sin novedades</div>'; return; }
+        el.innerHTML = items.map(n => {
+            const read = Array.isArray(n.leida_por) && n.leida_por.includes(uid);
+            const link = String(n.link || '').replace(/"/g, '&quot;');
+            return `
+                <button class="notif-page-row ${read ? 'read' : 'unread'}" data-id="${n.id}" data-link="${link}">
+                    <span class="notif-page-dot ${read ? '' : 'on'}"></span>
+                    <div class="notif-page-main">
+                        <div class="notif-page-title">${Notifications._esc(n.titulo || '')}</div>
+                        ${n.mensaje ? `<div class="notif-page-msg">${Notifications._esc(n.mensaje)}</div>` : ''}
+                        <div class="notif-page-meta">${Notifications._esc(n.tipo || '')} · ${Notifications._fmtRelative(n.created_at)}</div>
+                    </div>
+                </button>`;
+        }).join('');
+        el.querySelectorAll('.notif-page-row').forEach(row => {
+            row.addEventListener('click', async () => {
+                if (row.dataset.id) await Notifications.markRead(row.dataset.id);
+                const link = row.dataset.link;
+                if (link) window.location.hash = link.startsWith('#') ? link.slice(1) : link;
+                else this._loadNotifFeed();
+            });
+        });
+    },
+
+    async _loadNotifPend() {
+        const el = document.getElementById('notifPagePend');
+        if (!el) return;
+        if (typeof Alertas !== 'undefined' && Alertas.ensureFresh) await Alertas.ensureFresh();
+        const items = (typeof Alertas !== 'undefined' && Alertas.getItems) ? Alertas.getItems() : [];
+        if (!items.length) { el.innerHTML = '<div class="notif-page-empty">Sin pendientes 🎉</div>'; return; }
+        const order = { danger: 0, warning: 1, info: 2, ok: 2 };
+        el.innerHTML = items.slice()
+            .sort((a, b) => (order[a.severidad] ?? 9) - (order[b.severidad] ?? 9))
+            .map(it => `
+                <a class="notif-page-row pend sev-${it.severidad || 'info'}" href="${it.link || '#'}">
+                    <span class="notif-page-pend-icon">${it.icon || '⚠️'}</span>
+                    <div class="notif-page-main">
+                        <div class="notif-page-title">${Notifications._esc(it.titulo || '')}</div>
+                        <div class="notif-page-msg">${Notifications._esc(it.detalle || '')}</div>
+                    </div>
+                </a>`).join('');
+    },
+
+    _ensureNotifPageStyles() {
+        if (document.getElementById('notif-page-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'notif-page-styles';
+        s.textContent = `
+            .notif-page-hint { font-size:0.78rem; color:#888; margin-top:12px; line-height:1.5; }
+            .notif-page-hint b { color:#aaa; }
+            .notif-page-sec-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
+            .notif-page-markall { background:transparent; border:1px solid rgba(0,169,193,.3); color:#00A9C1;
+                font-family:var(--font-mono,'Space Mono',monospace); font-size:0.7rem; cursor:pointer;
+                padding:5px 10px; border-radius:6px; transition:background 200ms ease; }
+            .notif-page-markall:hover { background:rgba(0,169,193,.1); }
+            .notif-page-empty { padding:24px 12px; text-align:center; color:#555; font-size:0.85rem; }
+            .notif-page-row { width:100%; display:flex; align-items:flex-start; gap:10px; padding:11px 12px;
+                background:#0e0e0e; border:1px solid #1f1f1f; border-radius:8px; margin-bottom:6px;
+                color:#E8E8E8; cursor:pointer; text-align:left; text-decoration:none; transition:background 200ms ease; }
+            .notif-page-row:hover { background:rgba(0,169,193,.05); }
+            .notif-page-row.unread { border-color:rgba(0,169,193,.25); }
+            .notif-page-dot { width:8px; height:8px; border-radius:50%; margin-top:5px; flex-shrink:0; background:transparent; }
+            .notif-page-dot.on { background:#00A9C1; box-shadow:0 0 6px rgba(0,169,193,.6); }
+            .notif-page-pend-icon { font-size:1.05rem; line-height:1; margin-top:2px; flex-shrink:0; }
+            .notif-page-row.pend { border-left-width:3px; }
+            .notif-page-row.pend.sev-danger { border-left-color:#ff4444; }
+            .notif-page-row.pend.sev-warning { border-left-color:#F28D15; }
+            .notif-page-row.pend.sev-info { border-left-color:#00A9C1; }
+            .notif-page-main { min-width:0; flex:1; display:flex; flex-direction:column; gap:3px; }
+            .notif-page-title { font-family:var(--font-main,'Outfit',sans-serif); font-size:0.86rem; font-weight:600; color:#E8E8E8; }
+            .notif-page-row.read .notif-page-title { color:#999; font-weight:500; }
+            .notif-page-msg { font-size:0.78rem; color:#888; line-height:1.4; }
+            .notif-page-meta { font-family:var(--font-mono,'Space Mono',monospace); font-size:0.62rem; color:#555;
+                text-transform:uppercase; letter-spacing:.5px; }
+        `;
+        document.head.appendChild(s);
     },
 };
