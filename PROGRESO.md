@@ -1,6 +1,6 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 41%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 43%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈59%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈57%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
 > **Baseline:** `origin/main` @ `c2439fc`.
@@ -8,7 +8,7 @@
 
 ---
 
-## Estado general — AVANCE ≈ 41%
+## Estado general — AVANCE ≈ 43%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
@@ -17,7 +17,7 @@
 - **Baseline:** `origin/main` al día (`73f98a6`). Branch dev: `rediseno` (= main).
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-08 (charla 03 — Fase 9 centro de notificaciones).
+- **Última actualización:** 2026-06-08 (charla 03 — Fase 9: centro de notificaciones + categoría GLOBAL + stats por usuario). Falta solo Lobby/Home por rol (decisión de producto).
 
 ---
 
@@ -227,7 +227,11 @@ Fusión de los 3 sistemas que vivían sueltos (Lobby-alertas + campana `Notifica
 
 **9.3 — Página centro completo + preferencias ✅** (commit `bc466e8`): `#notificaciones` (era un **stub muerto** de prefs) → centro real con 3 secciones: **Preferencias** (silenciar avisos por categoría: Logística y remitos / Asignaciones de gente / Taller y producción), **Actividad reciente** (feed hasta 100, marcar todas leídas, click navega), **Pendientes** (estado vivo). Silenciado **por usuario** en localStorage (`mepex_notif_mute_<uid>`, consistente con `getStartModule`); `Notifications.isMuted()` filtra la campana (Novedades + conteo no-leídas + badge). Los **pendientes y los dots NO se silencian** (señal ambiental). Verificado: silenciar Logística baja el feed 7→1 y vuelve a 7 al reactivar; persiste por usuario.
 
-**Falta de Fase 9** (otro paquete, ver PLAN-MAESTRO §Fase 9): categoría **GLOBAL** en el menú (Panel + Centro) · **stats por usuario** (sesión/horarios/rendimiento) · **Lobby/Home por rol** afinado.
+**9.4 — Categoría GLOBAL en el menú ✅** (commit `fb3e755`): nueva sección **GLOBAL** en el sidebar (`Data.categories`) con **Panel de Control** (admin-panel, solo superadmin) + **Centro de notificaciones** (todos). Registrado `notificaciones` como módulo; sumado al special-case always-visible del sidebar (como lobby/calendario). En el Lobby, GLOBAL solo le muestra el Panel a superadmin. Sin DDL (el sidebar se construye directo de `Data.categories`). Verificado en prod: sidebar con sección GLOBAL = Admin + Notificaciones, click navega.
+
+**9.5 — Stats por usuario ✅** (commit `0e100ee`): nuevo tab **Actividad** en el Panel de Control (superadmin), analítica temporal desde `audit_log` + `profiles` (complementa el Dashboard, que es foco "hoy"). Métricas: acciones 30d, más activo, promedio/día. Gráfico CSS de actividad del equipo (14 días). Tabla por usuario: acciones 7d/30d, **días activos** (jornadas distintas con actividad), módulo top, última actividad, último login. **Nota:** `audit_log` NO registra login/logout (solo create/edit/update/delete) → se muestra "días activos" en vez de "sesiones"; tiempo de sesión exacto = futura iteración. Verificado en prod (67 acciones/30d, Fede 11 días activos, 16 usuarios).
+
+**Falta de Fase 9** — solo **Lobby/Home por rol** ⏳ **decisión de producto pendiente con Fede:** hoy el lobby está restringido a superadmin/admin (`router.js:188`); venta/pm/taller van directo a su módulo. El código role-specific del lobby para esos roles (KPIs, placeholder "PRÓXIMOS TRABAJOS" de taller) **existe pero es inalcanzable**. Definir: ¿cada rol aterriza en un home propio (activar ese código + placeholders), o se mantiene el salto directo (mejor para taller "ULTRA simple")? Cambia dónde caen TODOS al loguear. Ver PLAN-MAESTRO §Fase 9.
 
 **Deudas menores:** (1) `settings._getNotifPrefs`/`_setNotifPrefs` (placeholders viejos) quedaron muertos → limpiar en una pasada. (2) El silenciado es por navegador (localStorage), no cross-device — futuro `profiles.notif_prefs` con DDL. (3) El badge sigue contando no-leídas + pendientes; si Fede prefiere separarlos visualmente, es un ajuste chico.
 
