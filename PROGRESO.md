@@ -8,15 +8,16 @@
 
 ---
 
-## Estado general — AVANCE ≈ 33%
-- **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones, maestros sanos) ✅ · **Fase 4 — EVENTOS**: reformulación completa (jornadas + gente por jornada + vehículos + UX + alta multi-select) · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** (jornadas + gente por día + vehículos reflejados en el panel).
-- **Próximo paso (Fase 4):** **Taller dashboard + flujo Oficina→Taller** (taller pierde `proyectos`; ve Eventos + su dashboard). Después: subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` al día. Branch dev: `rediseno` (= main). **Server: pull para traer api v30 / eventos v18 / calendario v17 / style v15.**
-- **⚠ Verificación pendiente de Fede (en server logueado):**
-  - (a) Correr **`sql/rls_docs_historial.sql`** (el `rls_eventos_proyectos.sql` completo NO sirve: muere en `evento_equipo`, que ya no existe en prod).
-  - (b) Abrir un evento → **Documentos** (con link) e **Historial** cargan y **persisten** (ficha + calendario). Mover jornadas/gente/flete → entradas en Historial.
-  - (c) Calendario → panel del evento → tab **Info**: tabla "Jornadas y personal" por día con su gente; tab **Logística**: chips de vehículos arriba de las cargas.
-- **Última actualización:** 2026-06-07.
+## Estado general — AVANCE ≈ 35%
+- **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa (jornadas + gente por jornada + vehículos + UX + alta multi-select) · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller dashboard dinámico — checklist editable (SB1+SB2) ✅**.
+- **En curso (Fase 4 — Taller):** falta **SB3** (gatillo "Pasar a Taller" + filtrar el dashboard por `en_taller`) y **SB4** (detalle del stand read-only + sacar `proyectos` del rol taller). Después: subalquileres por proveedor · 3.1b legacy + repensar Logística. Ver `PLAN-MAESTRO` y §"FASE 4 — Taller" abajo.
+- **Baseline:** `origin/main` al día (`d925d5f`). Branch dev: `rediseno` (= main).
+- **⚠ Pendiente de Fede (en server logueado):**
+  - (a) **SQL a correr:** `sql/rls_docs_historial.sql` (RLS docs/historial) + `sql/taller_checklist_editable.sql` (checklist editable). El `rls_eventos_proyectos.sql` completo NO sirve (muere en `evento_equipo`).
+  - (b) `git pull` + **hard refresh** (importante: el bump de api venía mal, ahora **api v31** trae historial/docs Y checklist).
+  - (c) **Eventos:** Documentos (con link) e Historial cargan y persisten (ficha + calendario). **Calendario:** tab Info "Jornadas y personal" por día + tab Logística chips de vehículos.
+  - (d) **Taller:** abrir un stand → 6 pasos como pills, tildar (barra sube, estado pasa a "En armado" solo), ✎ editar (agregar/renombrar/quitar), con todo tildado el botón "Listo" pulsa. Chip de urgencia por fecha de armado.
+- **Última actualización:** 2026-06-08.
 
 ---
 
@@ -190,8 +191,27 @@ El panel del evento en el Calendario Operativo refleja (read-only) la estructura
 - **Tab Logística → vehículos:** resumen de vehículos distintos (chips 🚚 descripción · patente ×N) arriba de las cargas. Se quitó la lista de personas por fase (ahora va por día en Info; `_renderAsignacionesNewSection` queda definida pero sin uso).
 - **Historial** ya se reflejaba (commit `814485f`). Bump calendario v17.
 
-### Falta de Fase 4
-Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística.
+### Falta de Fase 4 (Eventos/Calendario)
+Subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística. (Taller = sección propia abajo.)
+
+## FASE 4 — Taller: dashboard + flujo Oficina→Taller (EN CURSO)
+
+**Naturaleza (no perder de vista):** taller = gente poco tech (Diego/Juan/Carlos/Willy), interfaz **ULTRA simple**, tablet en el galpón, el encargado **mueve** estados (no crea). Ve qué construir + toda la info, y pasa dudas al PM (nexo/deudor con el cliente).
+
+**Diseño cerrado con Fede (2026-06-08):**
+- **Flujo:** el PM, con todo cerrado, aprieta **"Pasar a Taller"** → proyecto `estado='en_taller'` → aparece en el dashboard + aviso. (SB3.)
+- **Etapas = checks EDITABLES.** Plantilla: Estructura · Pintura · Gráfica · Equipamiento · Iluminación · Listo para cargar. El encargado tilda/agrega/renombra/quita por proyecto (cada stand es distinto).
+- **UX decidido (3 forks):** tildar **desde la card** · estado **auto-sugerido** (1er check→armado; todos→"Listo" pulsa; confirma con tap) · editar con botón **"✎"** (evita toques accidentales). Pedido extra de Fede: **"más dinamismo"** → pills, barra animada, chip de urgencia, haptic.
+- **Info delegada que ve el taller:** planos con medidas (técnicos) + renders + notas del PM. Materiales/insumos → **v2**.
+- **Roles:** taller pierde `proyectos` (ve Eventos + Taller). (SB4.)
+
+**SB1 — SQL ✅** (`sql/taller_checklist_editable.sql`, commit `3c32739`): `taller_proyecto_checklist` (vacía) → editable (label/orden/_deleted, item_key opcional, sin UNIQUE). **Pendiente que Fede lo corra.**
+
+**SB2 — Checklist editable en la card ✅** (commit `d925d5f`): la card del stand = tablero vivo. Pills tildables (optimista + barra animada + haptic), modo ✎ (agregar/renombrar/quitar inline), estado auto-sugerido, chip de urgencia por fecha de armado. Tabs → **Producción + Mantenimiento** (la pestaña Checklist se absorbió en la card). API reescrita (array por proyecto + seed/add/rename/delete/setChecked **por id**). Badge repuntado a la tabla real. **Fix:** el bump `api.js?v=30` previo nunca entró (index seguía en v29 → el api.js nuevo no cargaba sin hard-refresh) → ahora **api v31** (historial/docs + checklist), taller v7, badges v3. La siembra de la plantilla es lazy en `_loadHoy` (proyectos sin checks) — en SB3 se mueve al gatillo.
+
+**Falta:**
+- **SB3** — gatillo "Pasar a Taller" en la ficha del proyecto (oficina) → `en_taller` + seed de la plantilla + notif al taller. El dashboard pasa a filtrar por `estado='en_taller'` (hoy filtra por `estado_taller != cerrado` — provisorio).
+- **SB4** — detalle del stand read-only (planos/renders/notas, sin entrar a Proyectos) + sacar `proyectos` del rol taller (data.js + tabla `roles`) + reemplazar "→ Ficha" de la card por ese detalle interno.
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
