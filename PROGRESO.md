@@ -11,12 +11,9 @@
 ## Estado general — AVANCE ≈ 38%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4):** subalquileres por proveedor (agregación) · 3.1b (repuntar legacy badges/eventos a `vehiculos`) + repensar Logística. Después Fases 5–10. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` al día (`52ddce0`). Branch dev: `rediseno` (= main).
-- **⚠ Pendiente de Fede (en server logueado):**
-  - **SQL a correr (3, idempotentes):** `sql/rls_docs_historial.sql` · `sql/taller_checklist_editable.sql` · `sql/taller_rol_sin_proyectos.sql`.
-  - `git pull` + **hard refresh** (api v32 / taller v9 / data v10 / proyecto-detalle v5 / calendario v17 / eventos v18 / style v15).
-  - **Probar:** Eventos docs/historial (persisten) · Calendario jornadas+vehículos · **Taller** (pasos editables, "🔨 Pasar a Taller" desde la ficha del proyecto → aparece en el dashboard + checklist sembrado, "→ Detalle" abre el stand sin entrar a Proyectos, taller logueado ya NO ve el módulo Proyectos).
-  - **Validar los pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) — eso define el catálogo + presets v2.
+- **Baseline:** `origin/main` al día (`73f98a6`). Branch dev: `rediseno` (= main).
+- **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
+- **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
 - **Última actualización:** 2026-06-08.
 
 ---
@@ -194,7 +191,7 @@ El panel del evento en el Calendario Operativo refleja (read-only) la estructura
 ### Falta de Fase 4 (Eventos/Calendario)
 Subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística. (Taller = sección propia abajo.)
 
-## FASE 4 — Taller: dashboard + flujo Oficina→Taller (COMPLETO v1)
+## FASE 4 — Taller: dashboard + flujo Oficina→Taller (COMPLETO v1 · ✅ VERIFICADO EN PROD 2026-06-08)
 
 **Naturaleza (no perder de vista):** taller = gente poco tech (Diego/Juan/Carlos/Willy), interfaz **ULTRA simple**, tablet en el galpón, el encargado **mueve** estados (no crea). Ve qué construir + toda la info, y pasa dudas al PM (nexo/deudor con el cliente).
 
