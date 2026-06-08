@@ -963,14 +963,11 @@ const API = {
         }
     },
 
-    /* ═══════════════════════════════════════════════════════════════
-     * Fase 6 — reactivar cuando se rehaga el módulo de documentos/historial.
-     * Las tablas evento_documentos y evento_historial siguen vivas en la DB
-     * pero su schema actual NO matchea estas funciones (mismatch documentado
-     * en AUDITORIA-EVENTOS-INTEGRACIONES.md). Cuando se aborde Fase 6 hay
-     * que decidir: alinear schema a la API o reescribir API al schema.
-     * ═══════════════════════════════════════════════════════════════ */
-    /*
+    // ═══════════════════════════════════════════════════════════════
+    // Documentos e Historial de evento — schema REAL verificado (2026-06-07)
+    //   evento_documentos: evento_id, nombre, url, tipo, _deleted
+    //   evento_historial:  evento_id, user_id, accion, detalle(jsonb), _deleted
+    // ═══════════════════════════════════════════════════════════════
     async getEventDocumentos(eventoId) {
         if (!eventoId) return [];
         try {
@@ -978,15 +975,15 @@ const API = {
                 .from('evento_documentos')
                 .select('*')
                 .eq('evento_id', eventoId)
-                .order('uploaded_at', { ascending: true });
+                .eq('_deleted', false)
+                .order('created_at', { ascending: true });
             if (error) throw error;
             return (data || []).map(d => ({
                 id: d.id,
                 tipo: d.tipo,
-                nombre: d.nombre_archivo,
-                storagePath: d.storage_path,
-                uploadedAt: d.uploaded_at,
-                uploadedBy: d.uploaded_by,
+                nombre: d.nombre,
+                url: d.url,
+                createdAt: d.created_at,
             }));
         } catch (e) {
             console.warn('[API] Error fetching event documentos:', e.message);
@@ -1000,12 +997,16 @@ const API = {
             const row = {
                 evento_id: eventoId,
                 tipo: doc.tipo || 'otro',
-                nombre_archivo: doc.nombre || doc.nombre_archivo || '',
-                storage_path: doc.storagePath || doc.storage_path || null,
-                uploaded_by: doc.uploadedBy || doc.uploaded_by || null,
+                nombre: doc.nombre || '',
+                url: doc.url || null,
             };
-            const result = await UndoHelpers.createRecord('evento_documentos', row, `Nuevo documento: ${doc.nombre || doc.nombre_archivo || ''}`);
-            return result || true;
+            const { data, error } = await supabaseClient
+                .from('evento_documentos')
+                .insert([row])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
         } catch (e) {
             console.warn('[API] Error adding event documento:', e.message);
             return null;
@@ -1015,7 +1016,11 @@ const API = {
     async deleteEventDocumento(docId) {
         if (!docId) return null;
         try {
-            await UndoHelpers.deleteRecord('evento_documentos', docId, 'Elimino documento de evento');
+            const { error } = await supabaseClient
+                .from('evento_documentos')
+                .update({ _deleted: true })
+                .eq('id', docId);
+            if (error) throw error;
             return true;
         } catch (e) {
             console.warn('[API] Error deleting event documento:', e.message);
@@ -1030,15 +1035,16 @@ const API = {
                 .from('evento_historial')
                 .select('*')
                 .eq('evento_id', eventoId)
+                .eq('_deleted', false)
                 .order('created_at', { ascending: false })
                 .limit(50);
             if (error) throw error;
             return (data || []).map(h => ({
                 id: h.id,
-                tipo: h.tipo,
-                descripcion: h.descripcion,
-                metadata: h.metadata,
-                usuario: h.usuario,
+                accion: h.accion,
+                detalle: h.detalle,
+                usuario: (h.detalle && h.detalle.usuario) || null,
+                userId: h.user_id,
                 createdAt: h.created_at,
             }));
         } catch (e) {
@@ -1047,15 +1053,17 @@ const API = {
         }
     },
 
-    async logEventChange(eventoId, tipo, descripcion, metadata, usuario) {
+    // accion = string corto ("Fechas actualizadas", "Asignó gente", ...)
+    // detalle = objeto opcional; se le inyecta el nombre del usuario automáticamente
+    async logEventChange(eventoId, accion, detalle = {}) {
         if (!eventoId) return null;
         try {
+            const user = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null;
             const row = {
                 evento_id: eventoId,
-                tipo: tipo || 'campo_editado',
-                descripcion: descripcion || '',
-                metadata: metadata || null,
-                usuario: usuario || null,
+                user_id: user?.uid || null,
+                accion: accion || 'cambio',
+                detalle: { ...(detalle || {}), usuario: user?.name || null },
             };
             const { error } = await supabaseClient
                 .from('evento_historial').insert([row]);
@@ -1066,7 +1074,6 @@ const API = {
             return null;
         }
     },
-    */
 
     // ─── Interacciones (Timeline CRM) ────────
     async getInteracciones(clienteId) {
@@ -4209,6 +4216,9 @@ const API = {
                 link: `#logistica?tab=cargas&id=${row.id}`,
                 prioridad: 'normal',
             });
+
+            // Historial del evento: flete asignado
+            this.logEventChange(payload.evento_id, 'Flete asignado', { nombre: `${payload.fase} · ${payload.fecha}` });
 
             return row;
         } catch (e) {

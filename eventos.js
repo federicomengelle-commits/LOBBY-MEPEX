@@ -37,6 +37,10 @@ const EventosModule = {
     _proyectosCache: {},     // { [eventoId]: [...proyectos] }
     _proyectoCounts: {},     // { [eventoId]: number } — contador para columna de la tabla
 
+    // Documentos e Historial (Fase 4 — vía Supabase: evento_documentos / evento_historial)
+    _docsCache: {},          // { [eventoId]: [...documentos] }
+    _historialCache: {},     // { [eventoId]: [...historial] }
+
     _proyectoStatusMap: {
         por_iniciar: { label: 'Por iniciar', color: '#F28D15' },
         en_proceso:  { label: 'En proceso',  color: '#00A9C1' },
@@ -333,15 +337,59 @@ const EventosModule = {
         } catch { /* */ }
     },
 
-    _getDocumentos(eventId) {
-        try {
-            const raw = localStorage.getItem(`ev_docs_${eventId}`);
-            return raw ? JSON.parse(raw) : [];
-        } catch { return []; }
+    // ─── Documentos del evento (Supabase: evento_documentos) ───
+    async _loadDocumentosSection(eventoId) {
+        const container = document.getElementById('evDocsContent');
+        if (!container) return;
+        const ev = this._events.find(e => e.id === eventoId) || this._activePanelData || { id: eventoId };
+        const docs = await API.getEventDocumentos(eventoId);
+        this._docsCache[eventoId] = docs;
+        container.innerHTML = this._renderPanelDocumentos(ev, docs) + this._renderPanelSeguros(ev, docs);
+        this._attachDocsEvents(ev);
     },
 
-    _saveDocumentos(eventId, docs) {
-        localStorage.setItem(`ev_docs_${eventId}`, JSON.stringify(docs));
+    _attachDocsEvents(ev) {
+        const container = document.getElementById('evDocsContent');
+        if (!container) return;
+
+        container.querySelector('.ev-btn-add-doc')?.addEventListener('click', () => {
+            this._showAddDocModal(ev, false);
+        });
+        container.querySelector('.ev-btn-add-seguro')?.addEventListener('click', () => {
+            this._showAddDocModal(ev, true);
+        });
+        container.querySelectorAll('[data-remove-doc]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const docId = btn.dataset.removeDoc;
+                const doc = (this._docsCache[ev.id] || []).find(d => String(d.id) === String(docId));
+                const confirmed = await Modal.confirm({
+                    title: 'Eliminar documento',
+                    message: '¿Eliminar este documento?',
+                    confirmText: 'Eliminar',
+                    danger: true,
+                });
+                if (!confirmed) return;
+                const ok = await API.deleteEventDocumento(docId);
+                if (ok) {
+                    API.logEventChange(ev.id, 'Documento eliminado', { nombre: doc?.nombre || '' });
+                    Toast.success('Documento eliminado');
+                    this._loadDocumentosSection(ev.id);
+                    this._loadHistorialSection(ev.id);
+                } else {
+                    Toast.error('No se pudo eliminar');
+                }
+            });
+        });
+    },
+
+    // ─── Historial del evento (Supabase: evento_historial) ───
+    async _loadHistorialSection(eventoId) {
+        const container = document.getElementById('evHistorialContent');
+        if (!container) return;
+        const historial = await API.getEventHistorial(eventoId);
+        this._historialCache[eventoId] = historial;
+        container.innerHTML = this._renderPanelHistorial(historial);
     },
 
     _saveNotas(eventId, notas) {
@@ -577,6 +625,8 @@ const EventosModule = {
         this._loadTransporteSection(eventId);
         this._loadProyectosSection(eventId);
         this._loadJornadasSection(eventId);
+        this._loadDocumentosSection(eventId);
+        this._loadHistorialSection(eventId);
     },
 
     _closePanel() {
@@ -592,7 +642,6 @@ const EventosModule = {
 
     _renderPanel(ev) {
         const statusColor = this._getStatusColor(ev.estado);
-        const documentos = this._getDocumentos(ev.id);
         const notas = ev.notasOperativas || '';
         const conflicts = this._detectConflicts(ev);
 
@@ -636,14 +685,28 @@ const EventosModule = {
                 <!-- Conflictos -->
                 ${conflicts.length > 0 ? this._renderPanelConflictos(conflicts) : ''}
 
-                <!-- Documentos -->
-                ${this._renderPanelDocumentos(ev, documentos)}
-
-                <!-- Seguros y Acreditaciones -->
-                ${this._renderPanelSeguros(ev, documentos)}
+                <!-- Documentos + Seguros (cargados async desde evento_documentos) -->
+                <div id="evDocsContent">
+                    <div class="ev-panel-section">
+                        <div class="ev-section-header">
+                            <h3 class="ev-section-title">Documentos</h3>
+                        </div>
+                        <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
+                    </div>
+                </div>
 
                 <!-- Notas operativas -->
                 ${this._renderPanelNotas(ev, notas)}
+
+                <!-- Historial (cargado async desde evento_historial) -->
+                <div id="evHistorialContent">
+                    <div class="ev-panel-section">
+                        <div class="ev-section-header">
+                            <h3 class="ev-section-title">Historial</h3>
+                        </div>
+                        <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
+                    </div>
+                </div>
 
                 <!-- Actions -->
                 <!-- "Enviar encuesta al cliente" removido del panel del Evento.
@@ -852,8 +915,11 @@ const EventosModule = {
             if (a) a.rol = sel.value || null;
         }));
         c.querySelectorAll('.ev-jc-del').forEach(btn => btn.addEventListener('click', async () => {
+            const a = (this._asignCache[eventoId] || []).find(x => String(x.id) === String(btn.dataset.asig));
             await API.deleteAsignacionEvento(btn.dataset.asig);
+            API.logEventChange(eventoId, 'Quitó persona', { nombre: a?.persona?.nombre || a?.persona_nombre || '' });
             await this._loadJornadasSection(eventoId);
+            this._loadHistorialSection(eventoId);
         }));
         c.querySelectorAll('.ev-jc-add').forEach(btn => btn.addEventListener('click', () =>
             this._openAsignarJornadaModal(eventoId, { id: btn.dataset.jid, fase: btn.dataset.fase, fecha: btn.dataset.fecha })));
@@ -934,8 +1000,10 @@ const EventosModule = {
                 }
             }
             Toast.success(`${creadas} agregada${creadas === 1 ? '' : 's'}${saltadas ? ` · ${saltadas} ya estaban` : ''}.`);
+            if (creadas > 0) API.logEventChange(eventoId, 'Asignó gente a jornadas', { nombre: `${creadas} asignación${creadas === 1 ? '' : 'es'}` });
             Modal.close(inst.id);
             await this._loadJornadasSection(eventoId);
+            this._loadHistorialSection(eventoId);
         });
     },
 
@@ -987,6 +1055,7 @@ const EventosModule = {
             });
             try {
                 await API.setJornadas(eventoId, arr);
+                API.logEventChange(eventoId, 'Jornadas actualizadas');
                 Toast.success('Jornadas guardadas.');
                 Modal.close(inst.id);
                 await this._loadEvents();
@@ -1968,7 +2037,7 @@ const EventosModule = {
                         ${generalDocs.map(d => `
                             <div class="ev-doc-row">
                                 <span class="ev-doc-icon">${this._getDocIcon(d.tipo)}</span>
-                                <span class="ev-doc-name">${d.nombre}</span>
+                                ${d.url ? `<a class="ev-doc-name ev-doc-link" href="${this._escAttr(d.url)}" target="_blank" rel="noopener">${d.nombre}</a>` : `<span class="ev-doc-name">${d.nombre}</span>`}
                                 <span class="ev-doc-type badge badge-ghost">${this._getDocTypeLabel(d.tipo)}</span>
                                 <button class="ev-doc-remove" data-remove-doc="${d.id}" title="Eliminar">&times;</button>
                             </div>
@@ -2000,7 +2069,7 @@ const EventosModule = {
                         ${seguros.map(d => `
                             <div class="ev-doc-row">
                                 <span class="ev-doc-icon">🛡️</span>
-                                <span class="ev-doc-name">${d.nombre}</span>
+                                ${d.url ? `<a class="ev-doc-name ev-doc-link" href="${this._escAttr(d.url)}" target="_blank" rel="noopener">${d.nombre}</a>` : `<span class="ev-doc-name">${d.nombre}</span>`}
                                 <button class="ev-doc-remove" data-remove-doc="${d.id}" title="Eliminar">&times;</button>
                             </div>
                         `).join('')}
@@ -2010,6 +2079,50 @@ const EventosModule = {
                 `}
             </div>
         `;
+    },
+
+    _renderPanelHistorial(historial) {
+        const items = historial || [];
+        const rows = items.length > 0 ? `
+            <div class="ev-hist-list">
+                ${items.map(h => {
+                    const when = this._fmtHistDate(h.createdAt);
+                    const who = h.usuario ? `<span class="ev-hist-user">${this._escAttr(h.usuario)}</span>` : '';
+                    const d = h.detalle || {};
+                    const extra = d.nombre ? `<span class="ev-hist-extra">${this._escAttr(d.nombre)}</span>` : '';
+                    return `
+                        <div class="ev-hist-row">
+                            <span class="ev-hist-dot"></span>
+                            <div class="ev-hist-body">
+                                <div class="ev-hist-accion">${this._escAttr(h.accion || '—')}${extra ? ` — ${extra}` : ''}</div>
+                                <div class="ev-hist-meta">${who}${who && when ? ' · ' : ''}<span class="ev-hist-when">${when}</span></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        ` : `<p class="ev-section-empty">Sin movimientos registrados</p>`;
+
+        return `
+            <div class="ev-panel-section" id="evSecHistorial">
+                <div class="ev-section-header">
+                    <h3 class="ev-section-title">Historial${items.length > 0 ? ` <span class="ev-equipo-count">${items.length}</span>` : ''}</h3>
+                </div>
+                ${rows}
+            </div>
+        `;
+    },
+
+    _fmtHistDate(iso) {
+        if (!iso) return '';
+        try {
+            const dt = new Date(iso);
+            const dd = String(dt.getDate()).padStart(2, '0');
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
+            const hh = String(dt.getHours()).padStart(2, '0');
+            const mi = String(dt.getMinutes()).padStart(2, '0');
+            return `${dd}/${mm} ${hh}:${mi}`;
+        } catch { return ''; }
     },
 
     _renderPanelNotas(ev, notas) {
@@ -2239,35 +2352,8 @@ const EventosModule = {
             });
         });
 
-        // Add document
-        document.querySelector('.ev-btn-add-doc')?.addEventListener('click', () => {
-            this._showAddDocModal(ev, false);
-        });
-
-        // Add seguro
-        document.querySelector('.ev-btn-add-seguro')?.addEventListener('click', () => {
-            this._showAddDocModal(ev, true);
-        });
-
-        // Remove document
-        document.querySelectorAll('[data-remove-doc]').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const docId = btn.dataset.removeDoc;
-                const confirmed = await Modal.confirm({
-                    title: 'Eliminar documento',
-                    message: '¿Eliminar este documento?',
-                    confirmText: 'Eliminar',
-                    danger: true,
-                });
-                if (confirmed) {
-                    let docs = this._getDocumentos(ev.id);
-                    docs = docs.filter(d => d.id !== docId);
-                    this._saveDocumentos(ev.id, docs);
-                    this._refreshPanel();
-                }
-            });
-        });
+        // (Docs y seguros: sus handlers viven en _attachDocsEvents, attachados
+        //  al cargar la sección async _loadDocumentosSection)
     },
 
     _refreshPanel() {
@@ -2280,6 +2366,12 @@ const EventosModule = {
 
         panel.innerHTML = this._renderPanel(ev);
         this._attachPanelEvents(ev);
+        // Re-cargar las secciones async (si no, quedan en "Cargando…")
+        this._loadTransporteSection(ev.id);
+        this._loadProyectosSection(ev.id);
+        this._loadJornadasSection(ev.id);
+        this._loadDocumentosSection(ev.id);
+        this._loadHistorialSection(ev.id);
     },
 
     // ═══════════════════════════════════════════
@@ -2596,7 +2688,7 @@ const EventosModule = {
     },
 
     _showAddDocModal(ev, isSeguro) {
-        const seguros = this._getDocumentos(ev.id).filter(d => d.tipo === 'seguro_acreditacion');
+        const seguros = (this._docsCache[ev.id] || []).filter(d => d.tipo === 'seguro_acreditacion');
         if (isSeguro && seguros.length >= 5) {
             Toast.warning('Límite de 5 seguros/acreditaciones alcanzado');
             return;
@@ -2615,14 +2707,18 @@ const EventosModule = {
                     </select>
                 </div>
                 <div class="form-field">
-                    <label class="form-label">Nombre del archivo <span class="form-required">*</span></label>
-                    <input class="form-input" type="text" name="nombre" placeholder="Ej: Plano_LaRural_2026.pdf" required>
+                    <label class="form-label">Nombre <span class="form-required">*</span></label>
+                    <input class="form-input" type="text" name="nombre" placeholder="Ej: Plano La Rural 2026" required>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Link (Drive / URL)</label>
+                    <input class="form-input" type="url" name="url" placeholder="https://drive.google.com/…">
                 </div>
             </form>
         `;
 
         const instance = Modal.open({
-            title: isSeguro ? 'Subir seguro / acreditación' : 'Subir documento',
+            title: isSeguro ? 'Agregar seguro / acreditación' : 'Agregar documento',
             body,
             size: 'sm',
             footer: `
@@ -2631,27 +2727,29 @@ const EventosModule = {
             `,
         });
 
-        instance.overlay.querySelector('#evDocSubmit')?.addEventListener('click', () => {
+        instance.overlay.querySelector('#evDocSubmit')?.addEventListener('click', async () => {
             const form = instance.overlay.querySelector('#evDocForm');
             const nombre = form.querySelector('[name="nombre"]').value.trim();
             if (!nombre) {
                 Toast.warning('El nombre es obligatorio');
                 return;
             }
-
+            const url = form.querySelector('[name="url"]').value.trim();
             const tipo = isSeguro ? 'seguro_acreditacion' : form.querySelector('[name="tipo"]').value;
-            let docs = this._getDocumentos(ev.id);
-            docs.push({
-                id: 'doc_' + Date.now(),
-                tipo,
-                nombre,
-                uploadedAt: new Date().toISOString(),
-            });
-            this._saveDocumentos(ev.id, docs);
 
-            Toast.success('Documento agregado');
-            Modal.close(instance.id);
-            this._refreshPanel();
+            const btn = instance.overlay.querySelector('#evDocSubmit');
+            btn.disabled = true;
+            const res = await API.addEventDocumento(ev.id, { tipo, nombre, url: url || null });
+            if (res) {
+                API.logEventChange(ev.id, 'Documento agregado', { nombre });
+                Toast.success('Documento agregado');
+                Modal.close(instance.id);
+                this._loadDocumentosSection(ev.id);
+                this._loadHistorialSection(ev.id);
+            } else {
+                btn.disabled = false;
+                Toast.error('No se pudo agregar el documento');
+            }
         });
     },
 
@@ -2687,8 +2785,8 @@ const EventosModule = {
     async _deleteEvent(eventId) {
         const result = await API.deleteEvent(eventId);
         if (result) {
-            // Clean up localStorage data (ev_notas_ ya no se usa — Fase 2.2; queda ev_ext_ teardown + ev_docs_ docs hasta Fase 6)
-            ['ev_ext_', 'ev_docs_'].forEach(prefix => {
+            // Clean up localStorage residual (ev_ext_ teardown legacy; docs ahora en Supabase)
+            ['ev_ext_'].forEach(prefix => {
                 localStorage.removeItem(prefix + eventId);
             });
             Toast.success('Evento eliminado');

@@ -6566,6 +6566,12 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+a.ev-doc-link {
+    color: #00A9C1;
+    text-decoration: none;
+    cursor: pointer;
+}
+a.ev-doc-link:hover { text-decoration: underline; }
 .ev-doc-type {
     flex-shrink: 0;
 }
@@ -6592,6 +6598,33 @@ body {
     color: #666;
     margin-bottom: 8px;
 }
+
+/* Historial del evento */
+.ev-hist-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.ev-hist-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 4px 6px 10px;
+    border-left: 2px solid rgba(0,169,193,0.25);
+}
+.ev-hist-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #00A9C1;
+    margin-top: 6px;
+    flex-shrink: 0;
+}
+.ev-hist-body { flex: 1; min-width: 0; }
+.ev-hist-accion { font-size: 13px; color: #ddd; }
+.ev-hist-extra { color: #00A9C1; }
+.ev-hist-meta { font-size: 11px; color: #666; margin-top: 1px; }
+.ev-hist-user { color: #888; }
 
 /* Notas */
 .ev-notas-textarea {
