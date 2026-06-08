@@ -1,10 +1,12 @@
 /* =============================================
-   MEPEX Lobby — Notifications (Tanda 1 B4)
+   MEPEX Lobby — Notifications (Fase 9 · centro 2 capas)
    =============================================
-   Feed transversal del sistema. Campana en el
-   header global con badge de no leídas + dropdown
-   con las últimas 20 notificaciones del rol del
-   usuario actual.
+   Campana en el header global con DOS capas:
+   - Novedades  → feed persistido (tabla `notifications`),
+                  eventos discretos con leído/no-leído.
+   - Pendientes → estado vivo del motor único `Alertas`
+                  (los mismos datos que los dots del sidebar).
+   El badge de la campana suma no-leídas + pendientes.
    ============================================= */
 
 const Notifications = {
@@ -12,8 +14,10 @@ const Notifications = {
     _items: [],
     _unread: 0,
     _open: false,
+    _activeTab: 'novedades',   // 'novedades' | 'pendientes'
     _pollHandle: null,
     _initialized: false,
+    _alertasBound: false,
     POLL_MS: 30000,
     LIMIT: 20,
 
@@ -32,9 +36,18 @@ const Notifications = {
             if (!document.hidden) this.refresh();
         });
 
+        // Fase 9: repintar la campana cuando el motor de pendientes recomputa
+        if (!this._alertasBound) {
+            this._alertasBound = true;
+            document.addEventListener('mepex:alertas', () => this._onAlertasUpdate());
+        }
+
         // Click fuera → cerrar dropdown
         document.addEventListener('click', (e) => {
-            if (this._open && !e.target.closest('.notif-wrapper')) {
+            if (this._open
+                && !e.target.closest('.notif-wrapper')
+                && !e.target.closest('#notifMobileSheet')
+                && !e.target.closest('#notifBackdrop')) {
                 this.closeDropdown();
             }
         });
@@ -58,17 +71,35 @@ const Notifications = {
         }
     },
 
+    // Repinta la campana cuando Alertas (pendientes) recomputa.
+    _onAlertasUpdate() {
+        this._renderBell();
+        if (this._open) {
+            if (this._isMobile()) this._renderMobileSheet();
+            else this._renderDropdownBody();
+        }
+    },
+
     _isReadBy(notif, uid) {
         const arr = Array.isArray(notif?.leida_por) ? notif.leida_por : [];
         return arr.includes(uid);
+    },
+
+    // Pendientes vivos (del motor Alertas). Cada item = una alerta accionable.
+    _pendientes() {
+        return (typeof Alertas !== 'undefined' && Alertas.getItems) ? Alertas.getItems() : [];
+    },
+    _pendientesCount() {
+        return this._pendientes().length;
     },
 
     // ─── Bell render (en header) ──────────────
     _renderBell() {
         const slot = document.getElementById('notifBellSlot');
         if (!slot) return;
-        const badge = this._unread > 0
-            ? `<span class="notif-badge">${this._unread > 99 ? '99+' : this._unread}</span>`
+        const total = this._unread + this._pendientesCount();
+        const badge = total > 0
+            ? `<span class="notif-badge">${total > 99 ? '99+' : total}</span>`
             : '';
         slot.innerHTML = `
             <button class="notif-bell-btn" id="notifBellBtn" title="Notificaciones" aria-label="Notificaciones">
@@ -86,34 +117,54 @@ const Notifications = {
         this._attachDropdownEvents();
     },
 
+    _renderTabsInner() {
+        const pend = this._pendientesCount();
+        const novActive = this._activeTab === 'novedades';
+        return `
+            <button class="notif-tab ${novActive ? 'active' : ''}" data-tab="novedades">Novedades${this._unread > 0 ? ` <span class="notif-tab-count">${this._unread}</span>` : ''}</button>
+            <button class="notif-tab ${!novActive ? 'active' : ''}" data-tab="pendientes">Pendientes${pend > 0 ? ` <span class="notif-tab-count">${pend}</span>` : ''}</button>
+        `;
+    },
+
     _renderDropdownInner() {
+        const novActive = this._activeTab === 'novedades';
+        const showMark = novActive && this._unread > 0;
         return `
             <div class="notif-dropdown-header">
                 <span class="notif-dropdown-title">Notificaciones</span>
-                ${this._unread > 0 ? '<button class="notif-mark-all" id="notifMarkAll">Marcar todas leídas</button>' : ''}
+                ${showMark ? '<button class="notif-mark-all" id="notifMarkAll">Marcar todas leídas</button>' : ''}
             </div>
+            <div class="notif-tabs" id="notifTabs">${this._renderTabsInner()}</div>
             <div class="notif-dropdown-body" id="notifDropdownBody">
-                ${this._renderItems()}
+                ${novActive ? this._renderItems() : this._renderPendientes()}
             </div>
         `;
     },
 
+    // Re-render del body según la pestaña activa + estado de tabs/header.
     _renderDropdownBody() {
         const body = document.getElementById('notifDropdownBody');
         if (!body) return;
-        body.innerHTML = this._renderItems();
-        this._attachItemEvents();
-        // Actualizar header (botón "marcar todas")
+        const novActive = this._activeTab === 'novedades';
+        body.innerHTML = novActive ? this._renderItems() : this._renderPendientes();
+
+        // Tabs (active + counts)
+        const tabs = document.getElementById('notifTabs');
+        if (tabs) { tabs.innerHTML = this._renderTabsInner(); this._attachTabEvents(); }
+
+        // Header: botón "marcar todas" solo en Novedades con no-leídas
         const header = document.querySelector('.notif-dropdown-header');
         if (header) {
             const markAllBtn = header.querySelector('#notifMarkAll');
-            if (this._unread > 0 && !markAllBtn) {
+            const showMark = novActive && this._unread > 0;
+            if (showMark && !markAllBtn) {
                 header.insertAdjacentHTML('beforeend', '<button class="notif-mark-all" id="notifMarkAll">Marcar todas leídas</button>');
                 document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
-            } else if (this._unread === 0 && markAllBtn) {
+            } else if (!showMark && markAllBtn) {
                 markAllBtn.remove();
             }
         }
+        this._attachItemEvents();
     },
 
     _renderItems() {
@@ -121,7 +172,7 @@ const Notifications = {
             return `
                 <div class="notif-empty">
                     <div class="notif-empty-icon">🔕</div>
-                    <p>Sin notificaciones</p>
+                    <p>Sin novedades</p>
                 </div>
             `;
         }
@@ -147,9 +198,57 @@ const Notifications = {
         }).join('');
     },
 
+    // Pendientes = estado vivo del motor Alertas (sin leído/no-leído).
+    _renderPendientes() {
+        const items = this._pendientes();
+        if (!items.length) {
+            return `
+                <div class="notif-empty">
+                    <div class="notif-empty-icon">✅</div>
+                    <p>Sin pendientes</p>
+                </div>
+            `;
+        }
+        const order = { danger: 0, warning: 1, info: 2, ok: 2 };
+        return items.slice()
+            .sort((a, b) => (order[a.severidad] ?? 9) - (order[b.severidad] ?? 9))
+            .map(it => {
+                const sev = it.severidad || 'info';
+                return `
+                <button class="notif-item notif-pend notif-prio-${sev}" data-link="${this._escAttr(it.link || '')}">
+                    <span class="notif-pend-icon">${it.icon || '⚠️'}</span>
+                    <div class="notif-item-body">
+                        <div class="notif-item-title">${this._esc(it.titulo || '')}</div>
+                        ${it.detalle ? `<div class="notif-item-msg">${this._esc(it.detalle)}</div>` : ''}
+                        <div class="notif-item-meta">
+                            <span class="notif-item-tipo">${this._esc(it.moduleId || '')}</span>
+                        </div>
+                    </div>
+                </button>
+            `;
+            }).join('');
+    },
+
     _attachDropdownEvents() {
+        this._attachTabEvents();
         document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
         this._attachItemEvents();
+    },
+
+    _attachTabEvents() {
+        document.querySelectorAll('.notif-tab').forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._switchTab(tab.dataset.tab);
+            });
+        });
+    },
+
+    _switchTab(tab) {
+        if (tab !== 'novedades' && tab !== 'pendientes') return;
+        if (this._activeTab === tab) return;
+        this._activeTab = tab;
+        this._renderDropdownBody();
     },
 
     _attachItemEvents() {
@@ -162,12 +261,11 @@ const Notifications = {
     },
 
     async _onItemClick(id, link) {
-        await this.markRead(id);
+        // Novedades tienen data-id (se marcan leídas); pendientes no (solo navegan).
+        if (id) await this.markRead(id);
         this.closeDropdown();
         if (link) {
             // Soportamos hash con query param (ej '#proyectos/<id>?tab=novedades').
-            // Router.navigate usa la parte antes del '?'; el query queda en location.hash
-            // y B5 lo lee desde ahí en ProyectoDetalle.
             window.location.hash = link.startsWith('#') ? link.slice(1) : link;
         }
     },
@@ -204,8 +302,9 @@ const Notifications = {
             const dd = document.getElementById('notifDropdown');
             if (dd) dd.style.display = 'block';
         }
-        // Refresh on open para tener data fresca
+        // Refresh on open para tener data fresca (novedades + pendientes)
         this.refresh();
+        if (typeof Alertas !== 'undefined' && Alertas.ensureFresh) Alertas.ensureFresh();
     },
 
     closeDropdown() {
@@ -232,6 +331,7 @@ const Notifications = {
         // del estado inicial (translateY 100%) antes de transition.
         setTimeout(() => sheet.classList.add('open'), 0);
         // Re-attach events (los IDs internos como #notifMarkAll son únicos)
+        this._attachTabEvents();
         document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
         sheet.querySelectorAll('.notif-item').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -355,6 +455,38 @@ const Notifications = {
                 transition: background 200ms ease;
             }
             .notif-mark-all:hover { background: rgba(0, 169, 193, 0.1); }
+            /* Tabs (Novedades / Pendientes) */
+            .notif-tabs {
+                display: flex; gap: 0;
+                border-bottom: 1px solid #2a2a2a;
+                background: #0c0c0c;
+            }
+            .notif-tab {
+                flex: 1;
+                display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+                padding: 9px 10px;
+                background: transparent; border: none; border-bottom: 2px solid transparent;
+                color: #888; cursor: pointer;
+                font-family: var(--font-main, 'Outfit', sans-serif);
+                font-size: 0.78rem; font-weight: 600;
+                transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+            }
+            .notif-tab:hover { color: #E8E8E8; background: rgba(0, 169, 193, 0.04); }
+            .notif-tab.active {
+                color: #00A9C1;
+                border-bottom-color: #00A9C1;
+            }
+            .notif-tab-count {
+                min-width: 16px; height: 16px; padding: 0 4px;
+                display: inline-flex; align-items: center; justify-content: center;
+                background: rgba(242, 141, 21, 0.15); color: #F28D15;
+                font-family: var(--font-mono, 'Space Mono', monospace);
+                font-size: 0.6rem; font-weight: 700;
+                border-radius: 8px;
+            }
+            .notif-tab.active .notif-tab-count {
+                background: rgba(0, 169, 193, 0.15); color: #00A9C1;
+            }
             .notif-dropdown-body {
                 max-height: 440px; overflow-y: auto;
             }
@@ -387,6 +519,18 @@ const Notifications = {
             }
             .notif-item.notif-prio-alta .notif-dot { background: #F28D15; box-shadow: 0 0 6px rgba(242, 141, 21, 0.6); }
             .notif-item.notif-prio-critica .notif-dot { background: #ff4444; box-shadow: 0 0 6px rgba(255, 68, 68, 0.6); }
+            /* Pendientes (estado vivo) — icono en vez de dot + borde por severidad */
+            .notif-pend {
+                grid-template-columns: 22px 1fr;
+                border-left: 2px solid transparent;
+            }
+            .notif-pend-icon {
+                font-size: 1rem; line-height: 1; margin-top: 2px;
+                text-align: center;
+            }
+            .notif-pend.notif-prio-danger { border-left-color: #ff4444; }
+            .notif-pend.notif-prio-warning { border-left-color: #F28D15; }
+            .notif-pend.notif-prio-info { border-left-color: #00A9C1; }
             .notif-item-body {
                 display: flex; flex-direction: column; gap: 3px;
                 min-width: 0;
