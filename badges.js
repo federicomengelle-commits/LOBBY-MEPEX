@@ -17,7 +17,7 @@ const Badges = {
         proyectos:  ['superadmin', 'admin', 'venta', 'pm'],
         eventos:    ['superadmin', 'admin', 'pm'],
         taller:     ['superadmin', 'admin', 'taller'],
-        logistica:  ['superadmin', 'admin', 'taller'],
+        flota:      ['superadmin', 'admin', 'pm', 'taller'],
         finanzas:   ['superadmin', 'admin'],
         compras:    ['superadmin', 'admin'],
         rrhh:       ['superadmin', 'admin'],
@@ -204,20 +204,21 @@ const Badges = {
             } catch (e) { return 0; }
         },
 
-        // 5. Logística: vehículos con VTV o seguro vencido
-        //    Columnas: logistica_vehiculos.vtv_vencimiento, .seguro_vencimiento (ambas date)
-        async logistica() {
+        // 5. Flota: vehículos con mantenimiento (VTV/seguro/service) vencido o por vencer (≤15 días).
+        //    VTV/seguro/service viven en produccion_mantenimiento (vehiculo_id + fecha_proximo_vencimiento),
+        //    el modelo nuevo de la Flota. (Antes: logistica_vehiculos.vtv/seguro — legacy retirado.)
+        async flota() {
             try {
-                const hoy = Badges._dateOffset(0);
+                const limite = Badges._dateOffset(15);
                 const { data, error } = await supabaseClient
-                    .from('logistica_vehiculos')
-                    .select('id, vtv_vencimiento, seguro_vencimiento')
-                    .eq('_deleted', false);
+                    .from('produccion_mantenimiento')
+                    .select('id, vehiculo_id, fecha_proximo_vencimiento')
+                    .eq('_deleted', false)
+                    .not('vehiculo_id', 'is', null)
+                    .not('fecha_proximo_vencimiento', 'is', null)
+                    .lte('fecha_proximo_vencimiento', limite);
                 if (error || !data) return 0;
-                return data.filter(v =>
-                    (v.vtv_vencimiento && v.vtv_vencimiento <= hoy) ||
-                    (v.seguro_vencimiento && v.seguro_vencimiento <= hoy)
-                ).length;
+                return data.length;
             } catch (e) { return 0; }
         },
 
