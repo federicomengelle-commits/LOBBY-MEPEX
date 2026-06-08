@@ -758,7 +758,7 @@ const TallerModule = {
             body,
             size: 'md',
             footer: `
-                <button class="btn-secondary" data-modal-cancel>Cancelar</button>
+                <button class="btn-secondary" data-modal-close>Cancelar</button>
                 <button class="btn-primary" id="mtSave">${isEdit ? 'Guardar' : 'Crear'}</button>
             `,
         });
@@ -877,7 +877,7 @@ const TallerModule = {
             title: 'Novedad del proyecto',
             body,
             size: 'sm',
-            footer: `<button class="btn-primary" data-modal-cancel>Entendido</button>`,
+            footer: `<button class="btn-primary" data-modal-close>Entendido</button>`,
         });
     },
 
@@ -930,7 +930,7 @@ const TallerModule = {
             title: p.nombre || 'Stand',
             body,
             size: 'lg',
-            footer: `<button class="btn-primary" data-modal-cancel>Cerrar</button>`,
+            footer: `<button class="btn-primary" data-modal-close>Cerrar</button>`,
         });
     },
 
