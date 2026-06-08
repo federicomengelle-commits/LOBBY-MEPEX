@@ -8,11 +8,14 @@
 
 ---
 
-## Estado general — AVANCE ≈ 31%
-- **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones, maestros sanos) ✅ · **Fase 4 — reformulación de EVENTOS COMPLETA**: jornadas + gente por jornada + vehículos visibles + UX legible + alta multi-select · **historial + docs de evento ✅** (a Supabase, schema real verificado).
-- **Próximo paso (en orden de Fase 4):** **2º pase del calendario** (reflejar jornadas + gente por día + vehículos — el historial ya quedó reflejado) y **Taller dashboard + flujo Oficina→Taller**. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` al día. Branch dev: `rediseno` (= main). **Server: pull para traer api v30 / eventos v18 / calendario v16 / style v15.**
-- **⚠ Verificación pendiente de Fede (en server logueado):** abrir un evento → secciones **Documentos** (con link) e **Historial** cargan; agregar un doc y mover jornadas/gente → aparecen en Historial (ficha y calendario). Si los docs/historial NO persisten = falta RLS → correr `sql/rls_eventos_proyectos.sql` (idempotente, ya cubre ambas tablas).
+## Estado general — AVANCE ≈ 33%
+- **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones, maestros sanos) ✅ · **Fase 4 — EVENTOS**: reformulación completa (jornadas + gente por jornada + vehículos + UX + alta multi-select) · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** (jornadas + gente por día + vehículos reflejados en el panel).
+- **Próximo paso (Fase 4):** **Taller dashboard + flujo Oficina→Taller** (taller pierde `proyectos`; ve Eventos + su dashboard). Después: subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística. Ver `PLAN-MAESTRO`.
+- **Baseline:** `origin/main` al día. Branch dev: `rediseno` (= main). **Server: pull para traer api v30 / eventos v18 / calendario v17 / style v15.**
+- **⚠ Verificación pendiente de Fede (en server logueado):**
+  - (a) Correr **`sql/rls_docs_historial.sql`** (el `rls_eventos_proyectos.sql` completo NO sirve: muere en `evento_equipo`, que ya no existe en prod).
+  - (b) Abrir un evento → **Documentos** (con link) e **Historial** cargan y **persisten** (ficha + calendario). Mover jornadas/gente/flete → entradas en Historial.
+  - (c) Calendario → panel del evento → tab **Info**: tabla "Jornadas y personal" por día con su gente; tab **Logística**: chips de vehículos arriba de las cargas.
 - **Última actualización:** 2026-06-07.
 
 ---
@@ -181,8 +184,14 @@ Schema real de prod **verificado vía PostgREST** (no asumido): `evento_document
 - **RLS:** policies de ambas tablas en `sql/rls_eventos_proyectos.sql` (auth CRUD + anon select, idempotente). Si en prod no estuvieran aplicadas, los insert fallan silenciosos → correr ese SQL.
 - Bumps: api v30, eventos v18, calendario v16, style v15. **Pendiente verificación de Fede en server.**
 
+### 4.7 — 2º pase del calendario ✅ HECHO (commit `9003793`)
+El panel del evento en el Calendario Operativo refleja (read-only) la estructura nueva. La edición sigue 100% en Eventos.
+- **Tab Info → "Jornadas y personal":** replica la tabla de horarios por día de la ficha — por fase, cada jornada (día + horario + duración) con su gente agrupada por rol. Carga `evento_jornadas` vía `API.getJornadas` en `_loadPanelData`; agrupa asignaciones por `jornada_id` (las sin jornada → "Generales").
+- **Tab Logística → vehículos:** resumen de vehículos distintos (chips 🚚 descripción · patente ×N) arriba de las cargas. Se quitó la lista de personas por fase (ahora va por día en Info; `_renderAsignacionesNewSection` queda definida pero sin uso).
+- **Historial** ya se reflejaba (commit `814485f`). Bump calendario v17.
+
 ### Falta de Fase 4
-Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas + gente por día + vehículos — el historial ya quedó reflejado).
+Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística.
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
