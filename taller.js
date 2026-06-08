@@ -119,9 +119,9 @@ const TallerModule = {
             const cargas = await API.getCargas({ desde: desdeStr, hasta: hastaStr });
             this._cargas = (cargas || []).filter(c => c.estado !== 'cancelada');
 
-            // Proyectos activos en taller (estado != cerrado). NO filtramos por
-            // ventana de fecha del evento — si está en taller, está en taller,
-            // aunque el evento todavía no tenga fecha cargada.
+            // Solo los proyectos DELEGADOS por la oficina (estado='en_taller')
+            // y que no estén cerrados en producción. NO filtramos por fecha del
+            // evento — si está en taller, está en taller.
             const { data, error } = await supabaseClient
                 .from('proyectos')
                 .select(`
@@ -131,6 +131,7 @@ const TallerModule = {
                     evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio)
                 `)
                 .eq('_deleted', false)
+                .eq('estado', 'en_taller')
                 .or('estado_taller.is.null,estado_taller.neq.cerrado');
             if (error) throw error;
             this._proyectos = data || [];

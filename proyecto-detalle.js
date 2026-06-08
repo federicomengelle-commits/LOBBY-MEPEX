@@ -212,6 +212,11 @@ const ProyectoDetalle = {
                             </div>
                         </div>
                         <div class="pjd-header-right">
+                            ${!this._isRO && p.estado !== 'en_taller' && p.estado !== 'finalizado' && p.estado !== 'rechazado' ? `
+                                <button class="btn pjd-btn-taller" id="pjdBtnTaller" title="Delegar al taller con toda la info cargada" style="background:#F28D15;color:#0a0a0a;border:none;font-weight:700;">
+                                    🔨 Pasar a Taller
+                                </button>
+                            ` : ''}
                             ${!this._isRO ? `
                                 <div class="pjd-status-dropdown" id="pjdStatusDropdown">
                                     <button class="btn btn-ghost pjd-btn-status" id="pjdBtnStatus">
@@ -1020,6 +1025,9 @@ const ProyectoDetalle = {
 
         // Delete (superadmin only)
         document.getElementById('pjdBtnDelete')?.addEventListener('click', () => this._deleteProject());
+
+        // Pasar a Taller (delegación oficina → taller)
+        document.getElementById('pjdBtnTaller')?.addEventListener('click', () => this._pasarATaller());
     },
 
     _attachNotFoundEvents() {
@@ -1040,6 +1048,38 @@ const ProyectoDetalle = {
         } catch (e) {
             console.warn('[ProyectoDetalle] Error cambiando estado:', e.message);
             Toast.error('Error al cambiar estado');
+        }
+    },
+
+    // Delegar el proyecto al taller: estado='en_taller' + sembrar checklist + avisar al taller.
+    async _pasarATaller() {
+        const p = this._project;
+        const ok = await Confirm.action('Pasar a Taller',
+            `¿Delegar "${p.nombre}" al taller? Se le pasa toda la info cargada (planos, fechas) y empiezan a verlo en su tablero de producción.`);
+        if (!ok) return;
+        try {
+            await UndoHelpers.updateRecord('proyectos', this._projectId, { estado: 'en_taller' }, `Pasó a taller: ${p.nombre}`);
+            await API.seedChecklistTemplate(this._projectId);
+            await API.createNotification({
+                tipo: 'proyecto_a_taller',
+                titulo: `Nuevo stand en taller: ${p.nombre}`,
+                mensaje: `${Auth.getUser()?.name || 'Oficina'} pasó "${p.nombre}" a producción`,
+                target_role: 'taller',
+                entidad_tipo: 'proyecto',
+                entidad_id: this._projectId,
+                link: `#taller`,
+                prioridad: 'normal',
+            });
+            if (typeof API?.clearCache === 'function') API.clearCache();
+            Toast.success('Pasado a taller. El equipo ya lo ve en su tablero.');
+            await this._loadProject();
+            const content = document.getElementById('mainContent');
+            content.innerHTML = this._buildShell();
+            this._attachShellEvents();
+            await this._renderTabContent();
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error pasarATaller:', e.message);
+            Toast.error('No se pudo pasar a taller');
         }
     },
 
