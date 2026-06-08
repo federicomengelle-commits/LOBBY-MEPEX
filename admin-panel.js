@@ -164,6 +164,10 @@ const AdminPanel = {
                             <span class="section-tab-icon">🖥️</span>
                             <span class="section-tab-text">Dashboard</span>
                         </button>
+                        <button class="section-tab ${this._activeTab === 'actividad' ? 'active' : ''}" data-admtab="actividad">
+                            <span class="section-tab-icon">📊</span>
+                            <span class="section-tab-text">Actividad</span>
+                        </button>
                         <button class="section-tab ${this._activeTab === 'usuarios' ? 'active' : ''}" data-admtab="usuarios">
                             <span class="section-tab-icon">👥</span>
                             <span class="section-tab-text">Usuarios</span>
@@ -232,6 +236,10 @@ const AdminPanel = {
             case 'dashboard':
                 container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
                 this._loadDashboardTab();
+                break;
+            case 'actividad':
+                container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+                this._loadActividadTab();
                 break;
             case 'usuarios':
                 container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
@@ -331,6 +339,164 @@ const AdminPanel = {
             ${this._renderMetrics()}
             ${this._renderUsersStatsSection()}
         `;
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: ACTIVIDAD (stats por usuario — Fase 9)
+    //  Analítica temporal (7d/30d, sesiones, módulo top, gráfico 14d)
+    //  desde audit_log + profiles. Complementa el Dashboard (foco "hoy").
+    // ═══════════════════════════════════════════
+    async _loadActividadTab() {
+        this._ensureActStyles();
+        let profiles = [], logs = [];
+        try {
+            const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
+            const [profs, logsRes] = await Promise.all([
+                API.getProfiles(),
+                supabaseClient.from('audit_log')
+                    .select('user_id, module, action, created_at')
+                    .gte('created_at', since30)
+                    .order('created_at', { ascending: false })
+                    .limit(20000),
+            ]);
+            profiles = profs || [];
+            logs = (logsRes && logsRes.data) || [];
+        } catch (e) {
+            console.error('[AdminPanel] Error loading actividad:', e);
+        }
+        this._actProfiles = profiles;
+        this._actStats = this._computeActividad(logs);
+        const container = document.getElementById('admTabContent');
+        if (container) container.innerHTML = this._renderActividadTab();
+    },
+
+    _computeActividad(logs) {
+        const now = Date.now();
+        const d7 = now - 7 * 86400000;
+        const perUser = {};
+        const dailyMap = {};
+        const days14 = [];
+        for (let i = 13; i >= 0; i--) {
+            const k = new Date(now - i * 86400000).toISOString().split('T')[0];
+            dailyMap[k] = 0; days14.push(k);
+        }
+        logs.forEach(l => {
+            const uid = l.user_id; if (!uid) return;
+            const t = new Date(l.created_at).getTime();
+            const u = perUser[uid] || (perUser[uid] = { actions7: 0, actions30: 0, days: new Set(), lastActivity: null, modules: {} });
+            u.actions30++;
+            if (t >= d7) u.actions7++;
+            if (!u.lastActivity || t > u.lastActivity) u.lastActivity = t;
+            if (l.module) u.modules[l.module] = (u.modules[l.module] || 0) + 1;
+            const k = new Date(l.created_at).toISOString().split('T')[0];
+            u.days.add(k);
+            if (k in dailyMap) dailyMap[k]++;
+        });
+        Object.values(perUser).forEach(u => {
+            u.topModule = Object.entries(u.modules).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+            u.activeDays = u.days.size;
+        });
+        let topUserId = null, topN = -1;
+        Object.entries(perUser).forEach(([uid, u]) => { if (u.actions30 > topN) { topN = u.actions30; topUserId = uid; } });
+        return { perUser, daily14: days14.map(k => ({ date: k, count: dailyMap[k] })), totals30: logs.length, topUserId };
+    },
+
+    _renderActividadTab() {
+        const s = this._actStats || { perUser: {}, daily14: [], totals30: 0, topUserId: null };
+        const profiles = (this._actProfiles || []).filter(u => u.active);
+        const topUser = profiles.find(u => u.id === s.topUserId);
+        const avgDay = Math.round((s.totals30 || 0) / 30);
+        const maxDaily = Math.max(1, ...s.daily14.map(d => d.count));
+
+        const rows = profiles
+            .map(u => ({ u, st: s.perUser[u.id] || { actions7: 0, actions30: 0, activeDays: 0, lastActivity: null, topModule: '—' } }))
+            .sort((a, b) => (b.st.actions30 || 0) - (a.st.actions30 || 0));
+
+        const chart = s.daily14.map(d => {
+            const h = Math.max(2, Math.round((d.count / maxDaily) * 100));
+            const lbl = new Date(d.date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit' });
+            return `<div class="admact-bar-wrap" title="${d.date}: ${d.count} acciones"><div class="admact-bar" style="height:${h}%"></div><span class="admact-bar-lbl">${lbl}</span></div>`;
+        }).join('');
+
+        return `
+            <div class="admpanel-metrics">
+                <div class="admpanel-metric-card">
+                    <div class="admpanel-metric-icon" style="color:#00A9C1;">📊</div>
+                    <div class="admpanel-metric-data">
+                        <span class="admpanel-metric-value">${s.totals30 || 0}</span>
+                        <span class="admpanel-metric-label">ACCIONES (30 DÍAS)</span>
+                    </div>
+                </div>
+                <div class="admpanel-metric-card">
+                    <div class="admpanel-metric-icon" style="color:#F28D15;">🏆</div>
+                    <div class="admpanel-metric-data">
+                        <span class="admpanel-metric-value" style="font-size:1.1rem;">${topUser ? (topUser.name || '—') : '—'}</span>
+                        <span class="admpanel-metric-label">MÁS ACTIVO (30D)</span>
+                    </div>
+                </div>
+                <div class="admpanel-metric-card">
+                    <div class="admpanel-metric-icon" style="color:#00CC88;">📈</div>
+                    <div class="admpanel-metric-data">
+                        <span class="admpanel-metric-value">${avgDay}</span>
+                        <span class="admpanel-metric-label">PROMEDIO / DÍA</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="admpanel-section">
+                <div class="admpanel-section-header"><h2 class="admpanel-section-title">Actividad del equipo · últimos 14 días</h2></div>
+                <div class="admact-chart">${chart}</div>
+            </div>
+
+            <div class="admpanel-section">
+                <div class="admpanel-section-header"><h2 class="admpanel-section-title">Por usuario · últimos 30 días</h2></div>
+                <div class="admpanel-table-wrap">
+                    <table class="admpanel-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th><th>Rol</th>
+                                <th>Acc. 7d</th><th>Acc. 30d</th><th>Días activos</th>
+                                <th>Módulo top</th><th>Última actividad</th><th>Último login</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map(({ u, st }) => {
+                                const rc = this._getRoleColor(u.role);
+                                return `
+                                <tr class="admpanel-user-row">
+                                    <td><div class="admpanel-user-cell">
+                                        <span class="admpanel-user-avatar" style="background:${rc}20; color:${rc}; border:1px solid ${rc}40;">${u.initials || '??'}</span>
+                                        <span class="admpanel-user-name">${u.name || '—'}</span>
+                                    </div></td>
+                                    <td><span class="admpanel-role-badge" style="background:${rc}18; color:${rc}; border:1px solid ${rc}35;">${this._getRoleLabel(u.role)}</span></td>
+                                    <td class="admpanel-cell-mono">${st.actions7 || 0}</td>
+                                    <td class="admpanel-cell-mono">${st.actions30 || 0}</td>
+                                    <td class="admpanel-cell-mono">${st.activeDays || 0}</td>
+                                    <td class="admpanel-cell-muted">${st.topModule || '—'}</td>
+                                    <td class="admpanel-cell-muted">${this._formatLastLogin(st.lastActivity ? new Date(st.lastActivity).toISOString() : null)}</td>
+                                    <td class="admpanel-cell-muted">${this._formatLastLogin(u.last_login_at)}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <p style="font-size:0.72rem; color:#666; margin-top:10px;">Días activos = jornadas distintas con actividad en los últimos 30 días. (Los eventos de login/logout no se registran en el audit log; el tiempo de sesión exacto queda para una próxima iteración.)</p>
+            </div>
+        `;
+    },
+
+    _ensureActStyles() {
+        if (document.getElementById('admact-styles')) return;
+        const st = document.createElement('style');
+        st.id = 'admact-styles';
+        st.textContent = `
+            .admact-chart { display:flex; align-items:flex-end; gap:6px; height:140px; padding:10px 4px 0; }
+            .admact-bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:5px; }
+            .admact-bar { width:100%; max-width:30px; background:linear-gradient(180deg,#00A9C1,#0a6e7d); border-radius:3px 3px 0 0; transition:height .3s ease; min-height:2px; }
+            .admact-bar-wrap:hover .admact-bar { background:linear-gradient(180deg,#22c7dd,#0a6e7d); }
+            .admact-bar-lbl { font-family:var(--font-mono,'Space Mono',monospace); font-size:0.6rem; color:#666; }
+        `;
+        document.head.appendChild(st);
     },
 
     _renderMetrics() {
