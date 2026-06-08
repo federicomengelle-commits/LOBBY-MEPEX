@@ -250,7 +250,14 @@ const Lobby = {
         if (!el) return;
 
         try {
-            const alerts = await this._fetchAlertsForRole(user, role);
+            // Fase 9: los pendientes salen del motor único `Alertas` (mismos datos
+            // que los dots del sidebar). Mostramos los más severos, capados a 6.
+            await Alertas.ensureFresh();
+            const order = { danger: 0, warning: 1, info: 2, ok: 2 };
+            const alerts = Alertas.getItems()
+                .slice()
+                .sort((a, b) => (order[a.severidad] ?? 9) - (order[b.severidad] ?? 9))
+                .slice(0, 6);
             if (alerts.length === 0) {
                 el.innerHTML = '';
                 return;
@@ -270,139 +277,37 @@ const Lobby = {
         }
     },
 
-    async _fetchAlertsForRole(user, role) {
-        const alerts = [];
-        const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
-
-        if (role === 'superadmin' || role === 'admin') {
-            const [cots, proys, evts] = await Promise.allSettled([
-                this._safeFetch(() => API.getCotizaciones()),
-                this._safeFetch(() => API.getProjects()),
-                this._safeFetch(() => API.getEvents()),
-            ]);
-            this._checkCotizacionesVencer(cots.value, now, alerts);
-            this._checkEventosSinEquipo(evts.value, todayStr, alerts);
-            this._checkProyectosTrabados(proys.value, now, alerts);
-        } else if (role === 'venta') {
-            const cots = await this._safeFetch(() => API.getCotizaciones()) || [];
-            const myCots = cots.filter(c => c.vendedorId === user.id || c.vendedorId === user.uid);
-            this._checkCotizacionesVencer(myCots, now, alerts);
-            this._checkClientesSinFollowUp(myCots, now, alerts);
-        } else if (role === 'pm') {
-            const [proys, evts] = await Promise.allSettled([
-                this._safeFetch(() => API.getProjects()),
-                this._safeFetch(() => API.getEvents()),
-            ]);
-            this._checkProyectosTrabados(proys.value, now, alerts);
-            this._checkEventosSinEquipo(evts.value, todayStr, alerts);
-        }
-        // Taller alerts: placeholder — vehiculos/mantenimiento tables don't exist yet
-        if (role === 'taller' || role === 'superadmin' || role === 'admin') {
-            // Future: check vehiculos VTV/service vencido, items mantenimiento
-        }
-
-        return alerts;
-    },
-
-    _checkCotizacionesVencer(cots, now, alerts) {
-        if (!cots || cots.length === 0) return;
-        const weekFromNow = new Date(now);
-        weekFromNow.setDate(weekFromNow.getDate() + 7);
-
-        const porVencer = cots.filter(c => {
-            if (!['enviada', 'negociacion'].includes(c.estado)) return false;
-            // Check created date + 30 days as proxy for expiry if no explicit vigencia
-            const created = new Date(c.createdAt || c.created_at);
-            if (isNaN(created.getTime())) return false;
-            const expiry = new Date(created);
-            expiry.setDate(expiry.getDate() + 30);
-            return expiry <= weekFromNow && expiry >= now;
-        });
-
-        if (porVencer.length > 0) {
-            alerts.push({
-                type: 'danger',
-                icon: '⏰',
-                title: `${porVencer.length} cotización${porVencer.length > 1 ? 'es' : ''} por vencer`,
-                detail: porVencer.slice(0, 3).map(c => c.numero || c.clienteNombre || 'Sin número').join(', '),
-            });
-        }
-    },
-
-    _checkEventosSinEquipo(evts, todayStr, alerts) {
-        if (!evts || evts.length === 0) return;
-        const sinEquipo = evts.filter(e =>
-            e.eventStartDate && e.eventStartDate >= todayStr && !e.equipoAsignado && !e.team
-        );
-        if (sinEquipo.length > 0) {
-            alerts.push({
-                type: 'warning',
-                icon: '👥',
-                title: `${sinEquipo.length} evento${sinEquipo.length > 1 ? 's' : ''} sin equipo asignado`,
-                detail: sinEquipo.slice(0, 3).map(e => e.name).join(', '),
-            });
-        }
-    },
-
-    _checkProyectosTrabados(proys, now, alerts) {
-        if (!proys || proys.length === 0) return;
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-        const trabados = proys.filter(p => {
-            if (['Finalizado', 'Rechazado', 'finalizado', 'rechazado'].includes(p.status)) return false;
-            const updated = new Date(p.updatedAt || p.updated_at || p.created_at);
-            return !isNaN(updated.getTime()) && updated < sevenDaysAgo;
-        });
-
-        if (trabados.length > 0) {
-            alerts.push({
-                type: 'warning',
-                icon: '⚠️',
-                title: `${trabados.length} proyecto${trabados.length > 1 ? 's' : ''} trabado${trabados.length > 1 ? 's' : ''}`,
-                detail: 'Más de 7 días sin actualización',
-            });
-        }
-    },
-
-    _checkClientesSinFollowUp(cots, now, alerts) {
-        if (!cots || cots.length === 0) return;
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-        const sinFollow = cots.filter(c => {
-            if (!['enviada', 'negociacion'].includes(c.estado)) return false;
-            const updated = new Date(c.updatedAt || c.updated_at || c.createdAt);
-            return !isNaN(updated.getTime()) && updated < sevenDaysAgo;
-        });
-
-        if (sinFollow.length > 0) {
-            alerts.push({
-                type: 'warning',
-                icon: '📞',
-                title: `${sinFollow.length} cliente${sinFollow.length > 1 ? 's' : ''} sin follow-up`,
-                detail: 'Más de 7 días sin interacción',
-            });
-        }
-    },
+    // (Pendientes/alertas movidos al motor único `Alertas` — Fase 9.1.
+    //  Antes acá vivían _fetchAlertsForRole + _checkCotizacionesVencer/
+    //  _checkEventosSinEquipo/_checkProyectosTrabados/_checkClientesSinFollowUp,
+    //  con definiciones que no coincidían con los dots del sidebar.)
 
     _renderAlert(alert) {
         const colorMap = {
             danger: { bg: 'rgba(255, 68, 68, 0.08)', border: 'rgba(255, 68, 68, 0.3)', text: '#ff4444' },
             warning: { bg: 'rgba(242, 141, 21, 0.08)', border: 'rgba(242, 141, 21, 0.3)', text: '#F28D15' },
+            info: { bg: 'rgba(0, 169, 193, 0.08)', border: 'rgba(0, 169, 193, 0.3)', text: '#00A9C1' },
             ok: { bg: 'rgba(0, 204, 136, 0.08)', border: 'rgba(0, 204, 136, 0.3)', text: '#00CC88' },
         };
-        const c = colorMap[alert.type] || colorMap.warning;
+        // Soporta el shape nuevo del motor Alertas (severidad/titulo/detalle/link)
+        const sev = alert.severidad || alert.type || 'warning';
+        const c = colorMap[sev] || colorMap.warning;
+        const title = alert.titulo || alert.title || '';
+        const detail = alert.detalle || alert.detail || '';
+        const link = alert.link || '';
+        const tag = link ? 'a' : 'div';
+        const href = link ? ` href="${link}"` : '';
+        const clickable = link ? ' lobby-alert-clickable' : '';
+        const extra = link ? ' text-decoration:none; cursor:pointer;' : '';
 
         return `
-            <div class="lobby-alert-card" style="background:${c.bg}; border-color:${c.border}">
-                <span class="lobby-alert-icon">${alert.icon}</span>
+            <${tag} class="lobby-alert-card${clickable}"${href} style="background:${c.bg}; border-color:${c.border};${extra}">
+                <span class="lobby-alert-icon">${alert.icon || '⚠️'}</span>
                 <div class="lobby-alert-info">
-                    <span class="lobby-alert-title" style="color:${c.text}">${alert.title}</span>
-                    <span class="lobby-alert-detail">${alert.detail}</span>
+                    <span class="lobby-alert-title" style="color:${c.text}">${title}</span>
+                    <span class="lobby-alert-detail">${detail}</span>
                 </div>
-            </div>
+            </${tag}>
         `;
     },
 
