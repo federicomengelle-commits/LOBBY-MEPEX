@@ -335,7 +335,7 @@ const TallerModule = {
                 <div class="tlr-card-actions">
                     ${this._estadoBtn(p, allChecked, done, total)}
                     ${p.drive_folder_url ? `<button class="tlr-card-btn ghost" data-action="open-drive" data-url="${this._escAttr(p.drive_folder_url)}">📁 Planos</button>` : ''}
-                    <button class="tlr-card-btn ghost" data-action="open-proyecto" data-id="${p.id}">→ Ficha</button>
+                    <button class="tlr-card-btn ghost" data-action="open-stand-detail" data-id="${p.id}">→ Detalle</button>
                 </div>
             </article>
         `;
@@ -462,8 +462,8 @@ const TallerModule = {
                 await this._uploadFirmado(input.dataset.cargaId, file);
             });
         });
-        document.querySelectorAll('[data-action="open-proyecto"]').forEach(btn =>
-            btn.addEventListener('click', () => Router.navigate(`proyectos/${btn.dataset.id}`))
+        document.querySelectorAll('[data-action="open-stand-detail"]').forEach(btn =>
+            btn.addEventListener('click', () => this._openStandDetail(btn.dataset.id))
         );
         document.querySelectorAll('[data-action="view-novedad"]').forEach(btn =>
             btn.addEventListener('click', () => this._openNovedadModal(btn.dataset.id, btn.dataset.proyecto))
@@ -879,6 +879,68 @@ const TallerModule = {
             size: 'sm',
             footer: `<button class="btn-primary" data-modal-cancel>Entendido</button>`,
         });
+    },
+
+    // Detalle del stand (read-only, Taller-interno): toda la info delegada por
+    // la oficina sin entrar a Proyectos. Planos/renders (Drive), checklist, notas.
+    _openStandDetail(proyectoId) {
+        const p = this._proyectos.find(x => x.id === proyectoId);
+        if (!p) return;
+        const cliente = p.cliente?.nombre_empresa || p.cliente?.razon_social || '—';
+        const ev = p.evento || {};
+        const checks = this._checklistsBulk[proyectoId] || [];
+        const done = checks.reduce((a, c) => a + (c.checked ? 1 : 0), 0);
+        const novedades = this._novedadesPorProyecto[proyectoId] || [];
+        const driveId = this._extractDriveFolderId(p.drive_folder_url);
+
+        const row = (k, v) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #1a1a1a;"><span style="color:#888;font-size:12px;">${k}</span><span style="color:#E8E8E8;font-size:13px;font-weight:600;text-align:right;">${this._esc(v)}</span></div>`;
+        const h = (t) => `<h4 style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.08em;color:#00A9C1;text-transform:uppercase;margin:18px 0 8px;">${t}</h4>`;
+
+        const driveHTML = p.drive_folder_url
+            ? (driveId
+                ? `<iframe src="https://drive.google.com/embeddedfolderview?id=${driveId}#grid" style="width:100%;height:300px;border:1px solid #2a2a2a;border-radius:8px;background:#0a0a0a;"></iframe>
+                   <a href="${this._escAttr(p.drive_folder_url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;color:#00A9C1;font-size:13px;">📁 Abrir en Drive ↗</a>`
+                : `<a href="${this._escAttr(p.drive_folder_url)}" target="_blank" rel="noopener" style="display:inline-block;color:#00A9C1;font-size:13px;">📁 Abrir planos / renders en Drive ↗</a>`)
+            : `<p style="color:#555;font-style:italic;font-size:13px;">Sin carpeta de Drive cargada.</p>`;
+
+        const chip = (c) => `<span style="display:inline-flex;align-items:center;gap:6px;background:${c.checked ? 'rgba(0,204,136,0.13)' : '#141414'};border:1px solid ${c.checked ? 'rgba(0,204,136,0.5)' : '#2a2a2a'};color:${c.checked ? '#E8E8E8' : '#888'};border-radius:20px;padding:6px 12px;font-size:13px;margin:0 6px 6px 0;">${c.checked ? '✓' : '○'} ${this._esc(c.label || '')}</span>`;
+        const checksHTML = checks.length ? `<div>${checks.map(chip).join('')}</div>` : '<p style="color:#555;font-size:13px;">Sin pasos.</p>';
+
+        const nota = (n) => `<div style="background:#0d0d0d;border-left:2px solid #F28D15;border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:6px;"><div style="font-family:var(--font-mono);font-size:10px;color:#F28D15;text-transform:uppercase;margin-bottom:3px;">${this._novTipoLabel(n.tipo)}${n.prioridad !== 'normal' ? ` · ${n.prioridad.toUpperCase()}` : ''}</div><div style="color:#ddd;font-size:13px;">${this._esc(n.mensaje)}</div><div style="color:#666;font-size:11px;margin-top:3px;">${this._esc(n.autor?.name || '—')}</div></div>`;
+        const novHTML = novedades.length ? novedades.map(nota).join('') : '<p style="color:#555;font-style:italic;font-size:13px;">Sin notas del PM.</p>';
+
+        const body = `
+            <div style="max-width:640px;">
+                <div>
+                    ${row('Cliente', cliente)}
+                    ${row('Evento', ev.nombre || '—')}
+                    ${ev.predio ? row('Venue', ev.predio) : ''}
+                    ${ev.fecha_armado_inicio ? row('Armado', ev.fecha_armado_inicio) : ''}
+                    ${row('Pasos', `${done}/${checks.length}`)}
+                </div>
+                ${h('Planos y renders')}
+                ${driveHTML}
+                ${h('Checklist')}
+                ${checksHTML}
+                ${h('Notas del PM')}
+                ${novHTML}
+            </div>
+        `;
+        Modal.open({
+            title: p.nombre || 'Stand',
+            body,
+            size: 'lg',
+            footer: `<button class="btn-primary" data-modal-cancel>Cerrar</button>`,
+        });
+    },
+
+    _extractDriveFolderId(url) {
+        if (!url) return null;
+        let m = url.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        m = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (m) return m[1];
+        return null;
     },
 
     // ═════════════════════════════════════════════════════════════

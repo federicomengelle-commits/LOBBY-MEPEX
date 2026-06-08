@@ -23,7 +23,7 @@ const Data = {
         admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'contabilidad', 'costos'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
         pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'flota'],
-        taller:     ['proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'flota'],
+        taller:     ['eventos', 'taller', 'logistica', 'inventario', 'flota'],
     },
 
     // ─── PERMISOS DE SOLO LECTURA (FALLBACK OFFLINE) ───
@@ -34,7 +34,7 @@ const Data = {
         admin:      [],
         venta:      ['catalogo'],
         pm:         ['crm', 'catalogo', 'inventario', 'flota'],
-        taller:     ['proyectos', 'eventos', 'inventario', 'flota'],
+        taller:     ['eventos', 'inventario', 'flota'],
         // Note: 'taller' in readOnly refers to the role, not the module
     },
 
