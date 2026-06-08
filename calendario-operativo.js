@@ -1010,21 +1010,24 @@ const CalendarioOperativo = {
             // El legacy (rrhh_asignaciones / logistica_movimientos) se eliminó
             // del side panel; la única fuente de verdad para personas es la
             // ficha del evento (eventos.js).
-            const [cargasNew, asignacionesNew, historial, documentos] = await Promise.all([
+            const [cargasNew, asignacionesNew, historial, documentos, jornadas] = await Promise.all([
                 API.getCargas({ eventoId: event.id }).catch(() => []),
                 API.getAsignacionesByEvento(event.id).catch(() => []),
                 API.getEventHistorial(event.id).catch(() => []),
                 API.getEventDocumentos(event.id).catch(() => []),
+                API.getJornadas(event.id).catch(() => []),
             ]);
             event._cargasNew = (cargasNew || []).filter(c => c.estado !== 'cancelada');
             event._asignacionesNew = (asignacionesNew || []).filter(a => a.estado !== 'cancelada');
             event._documentos = documentos || [];
             event._historial = historial || [];
+            event._jornadas = jornadas || [];
         } catch {
             event._cargasNew = [];
             event._asignacionesNew = [];
             event._documentos = [];
             event._historial = [];
+            event._jornadas = [];
         }
 
         // Re-render if panel still open for this event
@@ -1101,6 +1104,7 @@ const CalendarioOperativo = {
                 .co-sp-conflict-item span { color:#aaa; font-size:11px; }
             </style>
             ${conflictsHTML}
+            ${this._renderJornadasSection(event)}
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Proyectos vinculados <span style="color:#666;font-family:'Space Mono',monospace;font-size:11px;">(${event.projectCount || 0})</span></h3>
                 ${projectRows
@@ -1112,6 +1116,101 @@ const CalendarioOperativo = {
             </div>
             ${notasHTML}
         `;
+    },
+
+    // 2º pase calendario — "Jornadas y personal" (read-only): refleja la tabla
+    // de horarios por día de la ficha del evento + la gente asignada a cada día.
+    // La edición vive en Eventos; acá solo se ve.
+    _personaNombre(p) { return p ? `${p.nombre || ''}${p.apellido ? ' ' + p.apellido : ''}`.trim() || '—' : '—'; },
+
+    _jornadaDur(ini, fin) {
+        if (!ini || !fin) return '';
+        const [h1, m1] = ini.split(':').map(Number);
+        const [h2, m2] = fin.split(':').map(Number);
+        let mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins <= 0) mins += 24 * 60;
+        const h = Math.floor(mins / 60), m = mins % 60;
+        return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+    },
+
+    _fmtDiaFecha(fecha) {
+        if (!fecha) return '—';
+        const p = fecha.split('-').map(Number);
+        const d = new Date(p[0], p[1] - 1, p[2]);
+        const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        return `${dias[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}-${meses[d.getMonth()]}`;
+    },
+
+    _renderJornadasSection(event) {
+        const jornadas = event._jornadas || [];
+        const asignaciones = event._asignacionesNew || [];
+
+        const byJ = {}; const generales = [];
+        asignaciones.forEach(a => {
+            if (a.jornada_id) (byJ[a.jornada_id] = byJ[a.jornada_id] || []).push(a);
+            else generales.push(a);
+        });
+
+        const styles = `<style>
+            .co-sp-jfase { margin-bottom: 10px; }
+            .co-sp-jfase-label { font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; margin-bottom:5px; }
+            .co-sp-jc { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px; padding:8px 10px; margin-bottom:6px; }
+            .co-sp-jc-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; margin-bottom:6px; }
+            .co-sp-jc-fecha { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
+            .co-sp-jc-horas { font-family:'Space Mono',monospace; font-size:11px; color:#aaa; }
+            .co-sp-jc-count { margin-left:auto; font-family:'Space Mono',monospace; font-size:11px; color:#555; }
+            .co-sp-jc-count.has { color:#00A9C1; }
+            .co-sp-jc-row { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px; }
+            .co-sp-jc-name { color:#E8E8E8; }
+            .co-sp-jc-rol { font-family:'Space Mono',monospace; font-size:10px; color:#9B7DFF; text-transform:uppercase; }
+            .co-sp-jc-empty { font-size:11px; color:#555; font-style:italic; }
+        </style>`;
+
+        const peopleHTML = (list) => {
+            if (!list.length) return '<div class="co-sp-jc-empty">Sin gente</div>';
+            return [...list].sort((a, b) => (a.rol || 'zzz').localeCompare(b.rol || 'zzz'))
+                .map(a => `<div class="co-sp-jc-row"><span class="co-sp-jc-name">👤 ${this._personaNombre(a.persona)}</span>${a.rol ? `<span class="co-sp-jc-rol">${a.rol}</span>` : ''}</div>`).join('');
+        };
+
+        const card = (j) => {
+            const people = byJ[j.id] || [];
+            const horas = `${(j.hora_inicio || '').slice(0, 5) || '—'}${j.hora_fin ? '–' + j.hora_fin.slice(0, 5) : ''}`;
+            const dur = this._jornadaDur(j.hora_inicio, j.hora_fin);
+            const n = people.length;
+            return `
+                <div class="co-sp-jc">
+                    <div class="co-sp-jc-head">
+                        <span class="co-sp-jc-fecha">${this._fmtDiaFecha(j.fecha)}</span>
+                        <span class="co-sp-jc-horas">${horas}${dur ? ` · ${dur}` : ''}</span>
+                        <span class="co-sp-jc-count ${n ? 'has' : ''}">${n} ${n === 1 ? 'persona' : 'personas'}</span>
+                    </div>
+                    <div class="co-sp-jc-people">${peopleHTML(people)}</div>
+                </div>`;
+        };
+
+        const fases = [
+            { k: 'armado', label: 'Armado', color: '#00CC88' },
+            { k: 'evento', label: 'Evento', color: '#00A9C1' },
+            { k: 'desarme', label: 'Desarme', color: '#F28D15' },
+        ];
+        let blocks = fases.map(f => {
+            const rows = jornadas.filter(j => j.fase === f.k);
+            if (!rows.length) return '';
+            return `<div class="co-sp-jfase"><div class="co-sp-jfase-label" style="color:${f.color}">${f.label}</div>${rows.map(card).join('')}</div>`;
+        }).join('');
+
+        if (generales.length) {
+            blocks += `<div class="co-sp-jfase"><div class="co-sp-jfase-label" style="color:#888">Generales (sin jornada)</div><div class="co-sp-jc"><div class="co-sp-jc-people">${peopleHTML(generales)}</div></div></div>`;
+        }
+
+        const count = jornadas.length;
+        return `
+            <div class="co-sp-section">
+                <h3 class="co-sp-section-title">Jornadas y personal <span style="color:#666;font-family:'Space Mono',monospace;font-size:11px;">(${count} día${count === 1 ? '' : 's'})</span></h3>
+                ${styles}
+                ${blocks || '<span class="co-sp-empty">Sin jornadas cargadas. Se arman desde la ficha del evento.</span>'}
+            </div>`;
     },
 
     // Tanda 3.D — sección "Cargas" del schema nuevo, agrupadas por fase.
@@ -1166,13 +1265,28 @@ const CalendarioOperativo = {
             `;
         };
 
+        // Vehículos distintos que participan (resumen arriba de las cargas)
+        const vehMap = {};
+        cargas.forEach(c => {
+            if (!c.vehiculo) return;
+            const k = c.vehiculo.id || c.vehiculo.patente || c.vehiculo.descripcion || '?';
+            if (!vehMap[k]) vehMap[k] = { v: c.vehiculo, n: 0 };
+            vehMap[k].n++;
+        });
+        const vehChips = Object.values(vehMap).map(x =>
+            `<span class="co-sp-veh-chip">🚚 ${x.v.descripcion || 'Vehículo'}${x.v.patente ? ` · ${x.v.patente}` : ''}${x.n > 1 ? ` ×${x.n}` : ''}</span>`
+        ).join('');
+
         return `
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">
                     Cargas
                     <span style="color:#00A9C1;font-size:11px;font-family:'Space Mono',monospace;">(${cargas.length})</span>
                 </h3>
+                ${vehChips ? `<div class="co-sp-veh-chips">${vehChips}</div>` : ''}
                 <style>
+                    .co-sp-veh-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+                    .co-sp-veh-chip { font-family:'Space Mono',monospace; font-size:11px; color:#E8E8E8; background:#0d0d0d; border:1px solid #2a2a2a; border-radius:12px; padding:3px 9px; }
                     .co-sp-fase-block { margin-bottom: 10px; }
                     .co-sp-fase-label {
                         font-family: 'Space Mono', monospace; font-size: 10px;
@@ -1213,8 +1327,9 @@ const CalendarioOperativo = {
     },
 
     // Tanda 3+ — sección "Personas asignadas" del schema nuevo (asignaciones_evento)
-    // agrupadas por fase. Cada asignación muestra estado (propuesta/aprobada) y
-    // permite aprobar inline si el user es admin.
+    // agrupadas por fase. NOTA (2º pase calendario): ya NO se usa en el panel —
+    // la gente ahora se muestra por DÍA en _renderJornadasSection (tab Info).
+    // Se conserva por si se quiere una vista por fase a futuro.
     _renderAsignacionesNewSection(event) {
         const asignaciones = event._asignacionesNew || [];
 
@@ -1320,7 +1435,6 @@ const CalendarioOperativo = {
                 .co-sp-doc-item { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px; margin-bottom:4px; font-size:12px; color:#E8E8E8; }
                 .co-sp-doc-icon { font-size:14px; }
             </style>
-            ${this._renderAsignacionesNewSection(event)}
             ${this._renderCargasNewSection(event)}
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">Documentos</h3>
