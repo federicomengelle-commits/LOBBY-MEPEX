@@ -81,7 +81,7 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 
 > **Visión Fede (charla 03, 2026-06-08).** Rediseñar la Orden de Compra como flujo **SIMPLE**: "hay que comprar algo, listo, hacé una OC". **Necesita darle forma fuerte + más definiciones antes de codear** (Fede lo dejó explícito). Reconocimiento del estado actual ✅ hecho (abajo).
 >
-> **🔮 Mockup visual (charla 03):** `mockup-oc-v2.html` (raíz, NO-destructivo, clickeable, look de Compras) — abrir en `http://195.200.1.250/mockup-oc-v2.html` tras pull. Muestra el flujo integrado: tipo insumo/link · quién la pide (taller/PM/super) · imputación proyecto/gasto · presupuestos → ganadora · preview del egreso que dispara a Finanzas. Es la base para debatir las **definiciones pendientes** de abajo.
+> **🔮 Mockup visual (charla 03, v2 = DOBLE PASO):** `mockup-oc-v2.html` (raíz, NO-destructivo, clickeable, look de Compras) — abrir en `http://195.200.1.250/mockup-oc-v2.html` tras pull. Muestra el **doble paso**: Pedido (taller, ultra simple, sin precios) → Orden de Compra (Compras gestiona: presupuestos → ganadora → egreso). Base para debatir las **definiciones pendientes** de abajo.
 
 **Estado actual reconocido (charla 03):**
 - **OCs** (`compras.js`, tab Órdenes de Compra): `compras_ordenes` = `numero_oc`, `proveedor_id` (**HOY obligatorio**), `evento_id`/`proyecto_id` (**opcionales**), `fecha`, `estado` (pendiente→aprobada→recibida→pagada), `notas`. Items en `compras_orden_items`, pagos en `compras_pagos`. **1 solo proveedor por OC** (sin multi-presupuesto). **Sin** campo link · **sin** categoría de gasto · **NO** dispara egreso automático.
@@ -90,7 +90,13 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 - **Permisos:** `taller` **NO** tiene `compras` (en `data.js rolePermissions`).
 - **Link cotización↔proyecto:** existe vía `proyectos.cotizacion_id`.
 
-**Visión de la OC nueva (darle forma con Fede):**
+**🔑 Modelo DOBLE PASO (refinado charla 03 — la clave para que NO sea tedioso como las cargas):**
+- **Paso 1 · PEDIDO (lo hace el taller, ULTRA simple):** botón "hay que comprar esto" desde Taller / la ficha del proyecto. Qué (insumo del catálogo **o** texto libre + link opcional) · cantidad · proyecto opcional · urgencia · nota. **El taller NO ve precios, proveedores ni presupuestos.** Pedido interno de 10 segundos que le llega a Compras.
+- **Paso 2 · ORDEN DE COMPRA (lo gestiona Compras):** Compras agarra el pedido y le pone el laburo pesado: **varios proveedores con su presupuesto → elige la ganadora → dispara el egreso** a Finanzas. Toda la complejidad vive acá, pero solo la toca quien la necesita.
+- **Entrada directa de oficina:** PM/superadmin pueden crear la OC directo (sin pedido previo).
+- **Por qué NO es como las cargas (Fede preguntó):** las cargas murieron porque le metíamos todo el aparato pesado a gente que no lo necesitaba. Acá el peso está **repartido**: taller = pedido trivial; Compras = gestión real. Cada rol toca solo su parte → liviano para todos. Esa es la simplificación que lo hace sobrevivir.
+
+**Detalle de la OC nueva (darle forma con Fede):**
 1. **OC = algo simple.** Dos sabores:
    - **(a) Insumos:** elegir ítems del catálogo (`insumos_base`/`catalogo_items`).
    - **(b) Libre con link:** descripción + **link** (ej. MercadoLibre) para una máquina, repuesto, lo que sea.
@@ -104,11 +110,12 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 - **Macro (cobrado vs costo):** ya funciona en el report; lo que falta es que el **gasto de OCs** llegue al "costo" (vía el disparo OC→egreso del punto 5).
 - **Presupuesto vs real (enhancement):** sumar el **presupuesto** del proyecto (cotización total vía `proyectos.cotizacion_id` → Costos) como columna para comparar contra el gasto real. El **blocker del cotizador** (`cotizacion_items` vacía) afecta el **detalle por línea**, NO el **total agregado** → la renta macro se cierra sin el cotizador.
 
-**Definiciones pendientes (charlar antes de codear):**
-- Taxonomía de **categorías de gasto** para OCs sin proyecto (oficina/vehículo/material/…).
-- Modelo de **multi-presupuesto** (OC → presupuestos de proveedor → ganadora; campos: proveedor, monto, link, notas, archivo?).
-- **Disparo a egreso:** ¿automático al marcar ganadora/recibida/pagada, o botón "generar egreso"? ¿Qué cuenta/categoría/canal de Finanzas? ¿1 egreso por OC?
-- **UI taller** ULTRA simple para crear OCs (sabor insumo/link) + aprobación PM/admin.
+**Definiciones pendientes (Fede, charla 03 — debatir antes de codear):**
+- **¿Dónde vive?** ¿"Pedidos" como pestaña dentro de Taller + "Órdenes" en Compras? ¿O todo en Compras y el taller solo dispara el pedido (botón en la ficha del proyecto/stand)?
+- **Archivado / histórico:** cómo queda la OC cerrada (comprada + link al egreso + presupuestos guardados). Estados del pedido (pedido → en compra → comprado) y de la OC.
+- **Taxonomía de categorías de gasto** para pedidos/OCs sin proyecto (oficina/vehículo/material/herramientas/servicios/…).
+- **Disparo del egreso:** ¿al elegir ganadora, o al marcar "recibida/pagada"? ¿botón explícito? ¿qué cuenta/categoría/canal de Finanzas? ¿1 egreso por OC?
+- **Permiso:** el taller necesita acceso a "Pedidos" (hoy no tiene `compras`). ¿"Pedidos" = permiso aparte, más liviano que `compras` completo?
 - ¿La renta se queda en Finanzas (admin-only) o un atajo/resumen en Compras?
 
 **Test:** crear OC (insumo y link) desde taller/PM/superadmin · cargar 2 presupuestos y elegir ganadora · que dispare egreso en Finanzas · ver gasto imputado + margen por proyecto.

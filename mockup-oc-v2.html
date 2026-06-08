@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MEPEX · Mockup OC v2 (propuesta)</title>
+<title>MEPEX · Mockup OC v2 — doble paso (Pedido → Compra)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -17,310 +17,250 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.5;padding:24px;
   background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:22px 22px;}
-.wrap{max-width:1180px;margin:0 auto}
+.wrap{max-width:1260px;margin:0 auto}
 .breadcrumb{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--muted);margin-bottom:6px}
-.breadcrumb .cat{color:var(--violet)}
-.breadcrumb .sep{color:var(--dim)}
-h1{font-size:1.5rem;font-weight:700;display:flex;align-items:center;gap:10px}
+.breadcrumb .cat{color:var(--violet)}.breadcrumb .sep{color:var(--dim)}
+h1{font-size:1.5rem;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .mock-badge{font-family:var(--mono);font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
   background:rgba(242,141,21,.15);color:var(--accent);border:1px solid rgba(242,141,21,.35);padding:3px 8px;border-radius:6px}
-.subtitle{color:var(--muted);font-size:.9rem;margin-top:4px;margin-bottom:22px;max-width:760px}
-.layout{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+.subtitle{color:var(--muted);font-size:.9rem;margin-top:4px;margin-bottom:20px;max-width:880px}
+.subtitle b{color:var(--text)}
+/* flow strip */
+.flows{background:var(--bg-card-2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:22px}
+.flowrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);padding:5px 0}
+.flowrow .who{font-weight:700;color:var(--text);min-width:165px;display:inline-flex;align-items:center;gap:7px}
+.step{background:#0a0a0a;border:1px solid var(--border);border-radius:20px;padding:5px 12px;display:inline-flex;align-items:center;gap:6px;font-size:.76rem;white-space:nowrap}
+.step.s-ped{border-color:rgba(0,204,136,.4);color:var(--success)}
+.step.s-oc{border-color:rgba(0,169,193,.4);color:var(--primary)}
+.step.s-fin{border-color:rgba(74,144,217,.4);color:var(--blue)}
+.step.s-rep{border-color:rgba(242,141,21,.4);color:var(--accent)}
+.arrow{color:var(--dim);font-size:.9rem}
+.layout{display:grid;grid-template-columns:1fr 1.15fr;gap:18px;align-items:start}
 @media(max-width:920px){.layout{grid-template-columns:1fr}}
-.card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:22px}
-.card h2{font-size:1.05rem;font-weight:700;margin-bottom:4px}
-.card .hint{color:var(--muted);font-size:.82rem;margin-bottom:18px}
-.label{display:block;font-family:var(--mono);font-size:.66rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:7px}
-.field{margin-bottom:18px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;position:relative}
+.card.ped{border-top:3px solid var(--success)}
+.card.oc{border-top:3px solid var(--primary)}
+.step-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.step-head h2{font-size:1.05rem;font-weight:700}
+.role-chip{font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.5px;padding:4px 9px;border-radius:6px}
+.role-chip.tlr{background:rgba(0,204,136,.13);color:var(--success);border:1px solid rgba(0,204,136,.3)}
+.role-chip.cmp{background:rgba(0,169,193,.13);color:var(--primary);border:1px solid rgba(0,169,193,.3)}
+.card .hint{color:var(--muted);font-size:.82rem;margin-bottom:16px}
+.label{display:block;font-family:var(--mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:7px}
+.field{margin-bottom:15px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 input,select,textarea{width:100%;background:#0a0a0a;border:1px solid var(--border);border-radius:7px;color:var(--text);
-  font-family:var(--font);font-size:.92rem;padding:10px 12px;transition:border-color .2s}
+  font-family:var(--font);font-size:.9rem;padding:9px 11px;transition:border-color .2s}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--primary)}
 input::placeholder,textarea::placeholder{color:var(--dim)}
-.seg{display:inline-flex;background:#0a0a0a;border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px}
-.seg button{background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:.85rem;font-weight:600;
-  padding:8px 16px;border-radius:6px;cursor:pointer;transition:all .2s}
+.seg{display:inline-flex;background:#0a0a0a;border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px;width:100%}
+.seg button{flex:1;background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:.84rem;font-weight:600;
+  padding:8px 10px;border-radius:6px;cursor:pointer;transition:all .2s}
 .seg button.on{background:rgba(0,169,193,.15);color:var(--primary)}
-.divider{height:1px;background:var(--border);margin:20px 0}
-.section-title{font-family:var(--mono);font-size:.66rem;text-transform:uppercase;letter-spacing:.6px;color:var(--primary);
-  margin-bottom:12px;display:flex;align-items:center;gap:8px}
-.section-title .n{width:18px;height:18px;border-radius:50%;background:rgba(0,169,193,.15);color:var(--primary);
-  display:inline-flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700}
+.seg.gr button.on{background:rgba(0,204,136,.15);color:var(--success)}
+.divider{height:1px;background:var(--border);margin:16px 0}
+.section-title{font-family:var(--mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.6px;color:var(--primary);margin-bottom:11px}
+.section-title.gr{color:var(--success)}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:6px}
+.btn{border:none;font-family:var(--mono);font-weight:700;font-size:.88rem;padding:11px 20px;border-radius:8px;cursor:pointer;transition:all .2s}
+.btn-ped{background:var(--success);color:#00120a}.btn-ped:hover{box-shadow:0 0 16px rgba(0,204,136,.35)}
+.btn-oc{background:var(--primary);color:#001012}.btn-oc:hover{box-shadow:0 0 16px rgba(0,169,193,.35)}
+.btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+.smallnote{font-size:.76rem;color:var(--dim);margin-top:12px;padding:9px 11px;background:#0a0a0a;border-radius:7px;border-left:2px solid var(--success)}
+.smallnote.cmp{border-left-color:var(--primary)}
+.smallnote b{color:var(--muted)}
+/* pedido recibido banner */
+.ped-in{background:rgba(0,204,136,.06);border:1px solid rgba(0,204,136,.3);border-radius:8px;padding:12px;margin-bottom:16px}
+.ped-in .pl{font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:.5px;color:var(--success);margin-bottom:5px}
+.ped-in .pt{font-size:.9rem;font-weight:600}
+.ped-in .ps{font-size:.78rem;color:var(--muted);margin-top:2px}
+.badge-urg{font-family:var(--mono);font-size:.55rem;background:rgba(255,68,68,.15);color:var(--error);border:1px solid rgba(255,68,68,.35);padding:2px 6px;border-radius:5px;text-transform:uppercase}
 /* presupuestos */
-.presu{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;display:grid;
-  grid-template-columns:24px 1fr 130px 36px;gap:10px;align-items:center;background:var(--bg-card-2);transition:all .2s}
+.presu{border:1px solid var(--border);border-radius:8px;padding:11px;margin-bottom:9px;display:grid;
+  grid-template-columns:22px 1fr 120px 30px;gap:9px;align-items:center;background:var(--bg-card-2);transition:all .2s}
 .presu.win{border-color:var(--success);box-shadow:0 0 0 1px rgba(0,204,136,.3);background:rgba(0,204,136,.05)}
-.presu .pick{width:20px;height:20px;border-radius:50%;border:2px solid var(--dim);cursor:pointer;position:relative;transition:all .2s}
-.presu.win .pick{border-color:var(--success)}
-.presu.win .pick::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--success)}
-.presu .pname{font-weight:600;font-size:.9rem}
-.presu .pmeta{font-size:.74rem;color:var(--muted)}
-.presu .pmeta a{color:var(--primary);text-decoration:none}
-.presu .pmonto{font-family:var(--mono);font-weight:700;text-align:right;font-size:.95rem}
-.presu .pdel{background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;line-height:1}
-.presu .pdel:hover{color:var(--error)}
-.win-tag{font-family:var(--mono);font-size:.55rem;color:var(--success);text-transform:uppercase;letter-spacing:.5px}
-.add-btn{background:transparent;border:1px dashed var(--border);color:var(--primary);font-family:var(--font);
-  font-size:.85rem;font-weight:600;padding:9px;width:100%;border-radius:7px;cursor:pointer;transition:all .2s}
+.presu .pick{width:19px;height:19px;border-radius:50%;border:2px solid var(--dim);cursor:pointer;position:relative;transition:all .2s}
+.presu.win .pick{border-color:var(--success)}.presu.win .pick::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--success)}
+.presu .pname{font-weight:600;font-size:.88rem}
+.presu .pmeta{font-size:.72rem;color:var(--muted)}.presu .pmeta a{color:var(--primary);text-decoration:none}
+.presu .pmonto{font-family:var(--mono);font-weight:700;text-align:right;font-size:.92rem}
+.presu .pdel{background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;line-height:1}.presu .pdel:hover{color:var(--error)}
+.win-tag{font-family:var(--mono);font-size:.54rem;color:var(--success);text-transform:uppercase}
+.add-btn{background:transparent;border:1px dashed var(--border);color:var(--primary);font-family:var(--font);font-size:.84rem;font-weight:600;padding:8px;width:100%;border-radius:7px;cursor:pointer;transition:all .2s}
 .add-btn:hover{border-color:var(--primary);background:rgba(0,169,193,.05)}
-.btn-primary{background:var(--primary);color:#001012;border:none;font-family:var(--mono);font-weight:700;font-size:.9rem;
-  padding:12px 22px;border-radius:8px;cursor:pointer;transition:all .2s}
-.btn-primary:hover{box-shadow:0 0 16px rgba(0,169,193,.35)}
-.btn-primary:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
-.foot{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:6px}
-/* egreso preview */
-.egreso{border:1px solid var(--blue);border-radius:9px;padding:16px;background:rgba(74,144,217,.06);margin-top:18px}
-.egreso h3{font-size:.92rem;color:var(--blue);display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.egreso .kv{display:flex;justify-content:space-between;font-size:.82rem;padding:4px 0;border-bottom:1px dashed var(--border-2)}
-.egreso .kv span:first-child{color:var(--muted)}
-.egreso .kv .mono{font-family:var(--mono)}
-.flowline{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--muted);margin:14px 0 0;flex-wrap:wrap}
-.chip{background:#0a0a0a;border:1px solid var(--border);border-radius:20px;padding:4px 11px;font-size:.74rem;display:inline-flex;align-items:center;gap:6px}
-.chip.c-tlr{border-color:rgba(0,204,136,.4);color:var(--success)}
-.chip.c-pm{border-color:rgba(155,125,255,.4);color:var(--violet)}
-.chip.c-fin{border-color:rgba(74,144,217,.4);color:var(--blue)}
-.arrow{color:var(--dim)}
-/* aside notes */
-.notes h3{font-size:.78rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:10px}
-.note{font-size:.82rem;color:var(--muted);margin-bottom:14px;padding-left:12px;border-left:2px solid var(--border)}
-.note b{color:var(--text)}
-.note.q{border-left-color:var(--accent)}
-.note.q b{color:var(--accent)}
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(120%);background:var(--success);
-  color:#00120a;font-weight:700;font-family:var(--mono);font-size:.85rem;padding:12px 22px;border-radius:8px;
-  transition:transform .35s cubic-bezier(.2,.9,.3,1.2);z-index:50}
+/* egreso */
+.egreso{border:1px solid var(--blue);border-radius:9px;padding:14px;background:rgba(74,144,217,.06);margin-top:16px}
+.egreso h3{font-size:.88rem;color:var(--blue);margin-bottom:9px}
+.egreso .kv{display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0;border-bottom:1px dashed var(--border-2)}
+.egreso .kv span:first-child{color:var(--muted)}.egreso .kv .mono{font-family:var(--mono)}
+/* notes */
+.notes-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}
+@media(max-width:920px){.notes-grid{grid-template-columns:1fr}}
+.notes h3{font-size:.76rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:.6px;color:var(--accent);margin-bottom:11px}
+.notes.ok h3{color:var(--success)}
+.note{font-size:.82rem;color:var(--muted);margin-bottom:12px;padding-left:12px;border-left:2px solid var(--border)}
+.note b{color:var(--text)}.note.q{border-left-color:var(--accent)}.note.q b{color:var(--accent)}
+.note.good{border-left-color:var(--success)}.note.good b{color:var(--success)}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(140%);color:#00120a;font-weight:700;font-family:var(--mono);font-size:.85rem;padding:12px 22px;border-radius:8px;transition:transform .35s cubic-bezier(.2,.9,.3,1.2);z-index:50}
 .toast.show{transform:translateX(-50%) translateY(0)}
+.toast.ped{background:var(--success)}.toast.oc{background:var(--primary)}
 .hide{display:none!important}
-.muted-mono{font-family:var(--mono);font-size:.7rem;color:var(--dim)}
-.cat-tag{display:inline-flex;align-items:center;gap:6px;font-size:.78rem}
+.muted-mono{font-family:var(--mono);font-size:.68rem;color:var(--dim)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="breadcrumb"><span>Lobby</span><span class="sep">›</span><span class="cat">ACTIVOS</span><span class="sep">›</span><span>Compras</span></div>
-  <h1>Nueva Orden de Compra <span class="mock-badge">Mockup · propuesta v2</span></h1>
-  <p class="subtitle">Así quedaría el flujo nuevo según tu visión (charla 03). Es clickeable y NO toca la app ni la base — sirve para ver cómo se integra y afinar definiciones. Probá: cambiá el tipo, agregá presupuestos, elegí la ganadora y mirá el egreso que dispara a Finanzas.</p>
+  <h1>Compras · Pedidos &amp; Órdenes <span class="mock-badge">Mockup · propuesta v2 — doble paso</span></h1>
+  <p class="subtitle"><b>El "doble paso" que evita el problema de las cargas.</b> El taller hace un <b>pedido</b> de 10 segundos ("hay que comprar esto") sin precios ni proveedores; <b>Compras</b> agarra el pedido y lo gestiona (busca presupuestos, elige ganadora, dispara el egreso). Cada rol toca solo su parte → liviano para todos. Oficina (PM/super) puede saltear el pedido y crear la OC directa.</p>
+
+  <!-- FLOW STRIP -->
+  <div class="flows">
+    <div class="flowrow">
+      <span class="who">🔧 Diego (taller)</span>
+      <span class="step s-ped">📨 Pedido (simple)</span><span class="arrow">→</span>
+      <span class="step s-oc">📋 Compras arma la OC</span><span class="arrow">→</span>
+      <span class="step s-oc">🏆 elige ganadora</span><span class="arrow">→</span>
+      <span class="step s-fin">💸 Egreso (Finanzas)</span><span class="arrow">→</span>
+      <span class="step s-rep">📊 costo → margen</span>
+    </div>
+    <div class="flowrow">
+      <span class="who">📋 Meli / Leo / Fede</span>
+      <span class="step s-oc">📋 OC directa (sin pedido previo)</span><span class="arrow">→</span>
+      <span class="step s-oc">🏆 ganadora</span><span class="arrow">→</span>
+      <span class="step s-fin">💸 Egreso</span>
+    </div>
+  </div>
 
   <div class="layout">
-    <!-- ===== FORM ===== -->
-    <div class="card">
-      <h2>¿Qué hay que comprar?</h2>
-      <p class="hint">La onda: necesitás algo → hacés la OC. Simple.</p>
+    <!-- ===== PASO 1 — PEDIDO ===== -->
+    <div class="card ped">
+      <div class="step-head"><h2>1 · El Pedido</h2><span class="role-chip tlr">lo hace el Taller · 10 seg</span></div>
+      <p class="hint">"Hay que comprar esto." Nada más. Sin precios, sin proveedores.</p>
 
-      <!-- 1. tipo -->
-      <div class="section-title"><span class="n">1</span> Tipo de compra</div>
       <div class="field">
-        <div class="seg" id="segTipo">
-          <button class="on" data-tipo="insumo">📦 Insumos del catálogo</button>
-          <button data-tipo="link">🔗 Libre (con link)</button>
+        <label class="label">¿Qué hay que comprar?</label>
+        <div class="seg gr" id="segTipo">
+          <button class="on" data-tipo="insumo">📦 Insumo del catálogo</button>
+          <button data-tipo="libre">📝 Otra cosa (texto)</button>
         </div>
       </div>
-
       <div id="blkInsumo">
-        <div class="field">
-          <label class="label">Insumo / ítem</label>
-          <select id="selInsumo">
-            <option>Placa Fibroplus 3mm</option>
-            <option>Perfil aluminio OCTEXA 40mm</option>
-            <option>Vidrio templado 6mm</option>
-            <option>Cerrojo PSB-250</option>
-            <option>Pintura epoxi blanca 4L</option>
-          </select>
-        </div>
         <div class="row">
-          <div class="field"><label class="label">Cantidad</label><input type="number" value="10"></div>
-          <div class="field"><label class="label">Unidad</label><input value="unidades"></div>
-        </div>
-      </div>
-
-      <div id="blkLink" class="hide">
-        <div class="field">
-          <label class="label">¿Qué es?</label>
-          <input id="inpDesc" placeholder="Ej: Caladora Bosch GST 650 / repuesto motor / etc." value="Caladora Bosch GST 650">
-        </div>
-        <div class="field">
-          <label class="label">Link de compra (MercadoLibre, web del proveedor, etc.)</label>
-          <input id="inpLink" placeholder="https://articulo.mercadolibre.com.ar/..." value="https://articulo.mercadolibre.com.ar/MLA-123-caladora-bosch">
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <!-- 2. origen + imputacion -->
-      <div class="section-title"><span class="n">2</span> Quién la pide · A qué se imputa</div>
-      <div class="row">
-        <div class="field">
-          <label class="label">La pide</label>
-          <select id="selOrigen">
-            <option value="taller">🔧 Taller (Diego)</option>
-            <option value="pm">📋 PM (Meli)</option>
-            <option value="super">⚙️ Superadmin (Fede)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="label">Imputación</label>
-          <div class="seg" id="segImput">
-            <button class="on" data-imput="proyecto">A un proyecto</button>
-            <button data-imput="gasto">Gasto (sin proyecto)</button>
+          <div class="field"><label class="label">Ítem</label>
+            <select id="selInsumo"><option>Placa Fibroplus 3mm</option><option>Perfil aluminio OCTEXA 40mm</option><option>Vidrio templado 6mm</option><option>Cerrojo PSB-250</option><option>Pintura epoxi blanca 4L</option></select>
           </div>
+          <div class="field"><label class="label">Cantidad</label><input id="inpCant" type="number" value="10"></div>
         </div>
       </div>
-      <div class="field" id="blkProyecto">
-        <label class="label">Proyecto</label>
-        <select id="selProyecto">
-          <option>Stand Arcor — Expo Alimentek</option>
-          <option>Stand Samsung — CES 2026</option>
-          <option>Stand Unilever — La Rural</option>
-        </select>
-      </div>
-      <div class="field hide" id="blkGasto">
-        <label class="label">Categoría de gasto <span class="muted-mono">(taxonomía a definir con Fede)</span></label>
-        <select id="selGasto">
-          <option>🏢 Oficina</option>
-          <option>🚚 Vehículo / flota</option>
-          <option>🧱 Material de taller</option>
-          <option>🔧 Herramientas</option>
-          <option>⚡ Servicios</option>
-          <option>🛒 Otro</option>
-        </select>
+      <div id="blkLibre" class="hide">
+        <div class="field"><label class="label">¿Qué necesitás?</label><input id="inpDesc" placeholder="Ej: caladora nueva, repuesto del motor…" value="Caladora Bosch GST 650"></div>
+        <div class="field"><label class="label">Link de referencia (opcional)</label><input id="inpLink" placeholder="Pegá un link si tenés (MercadoLibre, etc.)" value=""></div>
       </div>
 
-      <div class="divider"></div>
+      <div class="row">
+        <div class="field"><label class="label">¿Para qué proyecto? (opcional)</label>
+          <select id="selProyPed"><option value="">— Sin proyecto (gasto general) —</option><option selected>Stand Arcor — Expo Alimentek</option><option>Stand Samsung — CES 2026</option></select>
+        </div>
+        <div class="field"><label class="label">Urgencia</label>
+          <div class="seg" id="segUrg"><button data-urg="normal" class="on">Normal</button><button data-urg="urgente">Urgente</button></div>
+        </div>
+      </div>
+      <div class="field"><label class="label">Nota (opcional)</label><input id="inpNota" placeholder="Algo que aclarar…"></div>
 
-      <!-- 3. presupuestos -->
-      <div class="section-title"><span class="n">3</span> Presupuestos de proveedor · elegí la ganadora</div>
-      <p class="hint" style="margin-top:-6px">Cargás los proveedores que cotizaron; tildás cuál gana. La ganadora es la que dispara el gasto.</p>
+      <div class="foot"><span class="muted-mono">Se crea desde Taller / la ficha del proyecto</span><button class="btn btn-ped" id="btnPedir">📨 Pedir</button></div>
+      <div class="smallnote"><b>Diego NO ve</b> precios, proveedores ni presupuestos. Solo dice qué hace falta. El pedido le llega a Compras.</div>
+    </div>
+
+    <!-- ===== PASO 2 — ORDEN DE COMPRA ===== -->
+    <div class="card oc">
+      <div class="step-head"><h2>2 · La Orden de Compra</h2><span class="role-chip cmp">lo gestiona Compras</span></div>
+      <p class="hint">Compras agarra el pedido, busca presupuestos y elige la ganadora.</p>
+
+      <div class="ped-in">
+        <div class="pl">📨 Pedido recibido · hace 5 min</div>
+        <div class="pt">10× Placa Fibroplus 3mm <span class="badge-urg">urgente</span></div>
+        <div class="ps">Pidió: Diego (taller) · Proyecto: Stand Arcor — Expo Alimentek</div>
+      </div>
+
+      <div class="section-title">Presupuestos de proveedor · elegí la ganadora</div>
       <div id="presuList"></div>
       <button class="add-btn" id="addPresu">+ Agregar presupuesto</button>
 
-      <!-- egreso preview -->
       <div class="egreso hide" id="egresoPrev">
         <h3>↳ Esto se crea solo en Finanzas › Egresos</h3>
         <div class="kv"><span>Proveedor</span><span id="egProv" class="mono">—</span></div>
         <div class="kv"><span>Concepto</span><span id="egConcepto">—</span></div>
-        <div class="kv"><span>Imputado a</span><span id="egImput">—</span></div>
+        <div class="kv"><span>Imputado a</span><span id="egImput">📁 Stand Arcor — Expo Alimentek</span></div>
         <div class="kv"><span>Monto</span><span id="egMonto" class="mono" style="color:var(--accent)">—</span></div>
-        <div class="flowline">
-          <span class="chip" id="chipOrigen">🔧 Taller</span><span class="arrow">→</span>
-          <span class="chip">📝 OC</span><span class="arrow">→</span>
-          <span class="chip c-pm">✓ Aprueba PM/Admin</span><span class="arrow">→</span>
-          <span class="chip c-fin">💸 Egreso (Finanzas)</span><span class="arrow">→</span>
-          <span class="chip c-fin">📊 Costo del proyecto → margen</span>
-        </div>
       </div>
 
-      <div class="foot">
-        <span class="muted-mono" id="footHint">Elegí una ganadora para habilitar</span>
-        <button class="btn-primary" id="btnGen" disabled>Generar OC + Egreso</button>
-      </div>
+      <div class="foot"><span class="muted-mono" id="ocFoot">Elegí una ganadora</span><button class="btn btn-oc" id="btnGen" disabled>Generar OC + Egreso</button></div>
+      <div class="smallnote cmp"><b>Acá vive el laburo pesado</b> (proveedores, presupuestos, ganadora) — pero solo lo hace Compras, que SÍ lo necesita. Oficina puede arrancar acá directo, sin pedido previo.</div>
     </div>
+  </div>
 
-    <!-- ===== NOTES ===== -->
+  <!-- NOTES -->
+  <div class="notes-grid">
+    <div class="card notes ok">
+      <h3>Cómo se integra · por qué NO es como las cargas</h3>
+      <div class="note good"><b>Doble paso = peso repartido.</b> Taller: pedido de 10 seg. Compras: la gestión real. Nadie carga lo que no le toca (eso mató a las cargas).</div>
+      <div class="note"><b>Dónde se crea:</b> el <b>pedido</b> nace en Taller (o en la ficha del proyecto, botón "Pedir compra"). La <b>OC</b> se gestiona en el módulo Compras.</div>
+      <div class="note"><b>Quién la ve:</b> el taller ve sus pedidos (estado: pedido / en compra / comprado). Compras ve todos los pedidos + arma las OCs. El egreso cae en Finanzas (admin).</div>
+      <div class="note"><b>Dispara el egreso solo</b> al elegir ganadora (o al recibir) → si hay proyecto, entra como <b>costo</b> y alimenta la rentabilidad por proyecto que ya existe.</div>
+      <div class="note"><b>Oficina = directo.</b> Meli/Leo/Fede crean la OC sin pedido previo.</div>
+    </div>
     <div class="card notes">
-      <h3>Cómo se integra</h3>
-      <div class="note"><b>OC = simple.</b> Dos sabores: insumo del catálogo, o libre con un link (MercadoLibre/web). Nada más.</div>
-      <div class="note"><b>La pide taller / PM / superadmin.</b> El taller tendría una versión ultra simple. (Hoy taller no tiene permiso <span class="muted-mono">compras</span> → habría que dárselo.)</div>
-      <div class="note"><b>Sin proyecto = OK.</b> Si no es de un proyecto, va a una categoría de gasto (oficina, vehículo, material…).</div>
-      <div class="note"><b>Presupuestos → ganadora.</b> Varios proveedores con su monto; elegís cuál gana.</div>
-      <div class="note"><b>Dispara el egreso solo.</b> Al generar, queda el egreso cargado en Finanzas y (si hay proyecto) entra como <b>costo</b> → alimenta la rentabilidad por proyecto que ya existe.</div>
-      <h3 style="margin-top:22px">Para definir (debatir)</h3>
-      <div class="note q"><b>Categorías de gasto:</b> ¿cuáles fijas? (oficina, vehículo, material, herramientas, servicios, otro…)</div>
-      <div class="note q"><b>Disparo del egreso:</b> ¿automático al elegir ganadora, o al marcar "recibida/pagada"? ¿botón explícito?</div>
-      <div class="note q"><b>Aprobación:</b> ¿taller crea y PM/admin aprueba antes del egreso? ¿o directo?</div>
-      <div class="note q"><b>Multi-presupuesto:</b> ¿guardamos todos los presupuestos (histórico) o solo la ganadora?</div>
+      <h3>Para definir (debatir)</h3>
+      <div class="note q"><b>¿Dónde vive?</b> ¿"Pedidos" como pestaña dentro de Taller + "Órdenes" en Compras? ¿O todo en Compras y el taller solo dispara el pedido?</div>
+      <div class="note q"><b>Archivado / histórico:</b> ¿cómo queda la OC cerrada? (comprada + link al egreso + presupuestos guardados).</div>
+      <div class="note q"><b>Taxonomía de gasto</b> para pedidos/OCs sin proyecto (oficina, vehículo, material, herramientas, servicios…).</div>
+      <div class="note q"><b>Disparo del egreso:</b> ¿al elegir ganadora, o al marcar "recibida/pagada"? ¿botón explícito?</div>
+      <div class="note q"><b>Permiso:</b> el taller necesita acceso a "Pedidos" (hoy no tiene <span class="muted-mono">compras</span>). ¿Pedidos = permiso aparte, más liviano?</div>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast">✓ OC generada + egreso enviado a Finanzas</div>
+<div class="toast" id="toast">✓ Listo</div>
 
 <script>
 (function(){
-  const fmt = n => '$' + (n||0).toLocaleString('es-AR');
-  let presupuestos = [
-    { id:1, prov:'Maderera del Sur', monto:48000, link:'mercadolibre.com.ar/...', win:true },
-    { id:2, prov:'Corralón Avellaneda', monto:52500, link:'', win:false },
-  ];
-  let nextId = 3;
-  let tipo='insumo', imput='proyecto';
+  const fmt=n=>'$'+(n||0).toLocaleString('es-AR');
+  let presupuestos=[{id:1,prov:'Maderera del Sur',monto:48000,link:'ml',win:true},{id:2,prov:'Corralón Avellaneda',monto:52500,link:'',win:false}];
+  let nextId=3, tipo='insumo';
 
-  // --- tipo toggle ---
-  document.getElementById('segTipo').addEventListener('click', e=>{
-    const b=e.target.closest('button'); if(!b) return;
-    tipo=b.dataset.tipo;
-    [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
-    document.getElementById('blkInsumo').classList.toggle('hide', tipo!=='insumo');
-    document.getElementById('blkLink').classList.toggle('hide', tipo!=='link');
-    renderEgreso();
-  });
-  // --- imputacion toggle ---
-  document.getElementById('segImput').addEventListener('click', e=>{
-    const b=e.target.closest('button'); if(!b) return;
-    imput=b.dataset.imput;
-    [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
-    document.getElementById('blkProyecto').classList.toggle('hide', imput!=='proyecto');
-    document.getElementById('blkGasto').classList.toggle('hide', imput!=='gasto');
-    renderEgreso();
-  });
-  document.getElementById('selOrigen').addEventListener('change', renderEgreso);
-  document.getElementById('selProyecto').addEventListener('change', renderEgreso);
-  document.getElementById('selGasto').addEventListener('change', renderEgreso);
+  document.getElementById('segTipo').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;tipo=b.dataset.tipo;[...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));document.getElementById('blkInsumo').classList.toggle('hide',tipo!=='insumo');document.getElementById('blkLibre').classList.toggle('hide',tipo!=='libre');});
+  document.getElementById('segUrg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;[...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));});
+  document.getElementById('btnPedir').addEventListener('click',()=>{showToast('📨 Pedido enviado a Compras','ped');});
 
-  // --- presupuestos ---
   function renderPresu(){
-    const list=document.getElementById('presuList');
-    list.innerHTML = presupuestos.map(p=>`
-      <div class="presu ${p.win?'win':''}" data-id="${p.id}">
+    document.getElementById('presuList').innerHTML=presupuestos.map(p=>`
+      <div class="presu ${p.win?'win':''}">
         <div class="pick" data-pick="${p.id}"></div>
-        <div>
-          <div class="pname">${p.prov||'<span style="color:var(--dim)">Proveedor…</span>'} ${p.win?'<span class="win-tag">· ganadora</span>':''}</div>
-          <div class="pmeta">${p.link?`<a href="#">ver link ↗</a>`:'sin link'}</div>
-        </div>
+        <div><div class="pname">${p.prov} ${p.win?'<span class="win-tag">· ganadora</span>':''}</div><div class="pmeta">${p.link?'<a href="#">ver link ↗</a>':'sin link'}</div></div>
         <div class="pmonto">${fmt(p.monto)}</div>
-        <button class="pdel" data-del="${p.id}" title="Quitar">×</button>
+        <button class="pdel" data-del="${p.id}">×</button>
       </div>`).join('');
   }
-  document.getElementById('presuList').addEventListener('click', e=>{
-    const pick=e.target.closest('[data-pick]'); const del=e.target.closest('[data-del]');
-    if(pick){ const id=+pick.dataset.pick; presupuestos.forEach(p=>p.win=(p.id===id)); renderPresu(); renderEgreso(); }
-    if(del){ const id=+del.dataset.del; presupuestos=presupuestos.filter(p=>p.id!==id); renderPresu(); renderEgreso(); }
+  document.getElementById('presuList').addEventListener('click',e=>{
+    const pick=e.target.closest('[data-pick]'),del=e.target.closest('[data-del]');
+    if(pick){const id=+pick.dataset.pick;presupuestos.forEach(p=>p.win=(p.id===id));renderPresu();renderEgreso();}
+    if(del){presupuestos=presupuestos.filter(p=>p.id!==+del.dataset.del);renderPresu();renderEgreso();}
   });
-  document.getElementById('addPresu').addEventListener('click', ()=>{
-    const prov = prompt('Proveedor:'); if(prov===null) return;
-    const monto = parseInt(prompt('Monto del presupuesto ($):')||'0',10)||0;
-    presupuestos.push({ id:nextId++, prov:prov||'Proveedor nuevo', monto, link:'', win:false });
-    renderPresu();
-  });
+  document.getElementById('addPresu').addEventListener('click',()=>{const prov=prompt('Proveedor:');if(prov===null)return;const monto=parseInt(prompt('Monto ($):')||'0',10)||0;presupuestos.push({id:nextId++,prov:prov||'Proveedor',monto,link:'',win:false});renderPresu();});
 
-  // --- egreso preview ---
   function renderEgreso(){
-    const win = presupuestos.find(p=>p.win);
-    const prev=document.getElementById('egresoPrev'); const btn=document.getElementById('btnGen');
-    const fh=document.getElementById('footHint');
-    if(!win){ prev.classList.add('hide'); btn.disabled=true; fh.textContent='Elegí una ganadora para habilitar'; return; }
-    prev.classList.remove('hide'); btn.disabled=false; fh.textContent='';
-    const concepto = tipo==='insumo'
-      ? document.getElementById('selInsumo').value
-      : document.getElementById('inpDesc').value;
-    const origenSel=document.getElementById('selOrigen');
-    const imputTxt = imput==='proyecto'
-      ? '📁 ' + document.getElementById('selProyecto').value
-      : document.getElementById('selGasto').value + ' (gasto, sin proyecto)';
-    document.getElementById('egProv').textContent = win.prov;
-    document.getElementById('egConcepto').textContent = concepto;
-    document.getElementById('egImput').textContent = imputTxt;
-    document.getElementById('egMonto').textContent = fmt(win.monto);
-    const oTxt = origenSel.options[origenSel.selectedIndex].text;
-    const chip=document.getElementById('chipOrigen');
-    chip.textContent=oTxt; chip.className='chip '+(origenSel.value==='taller'?'c-tlr':origenSel.value==='pm'?'c-pm':'');
+    const win=presupuestos.find(p=>p.win);const prev=document.getElementById('egresoPrev');const btn=document.getElementById('btnGen');const f=document.getElementById('ocFoot');
+    if(!win){prev.classList.add('hide');btn.disabled=true;f.textContent='Elegí una ganadora';return;}
+    prev.classList.remove('hide');btn.disabled=false;f.textContent='';
+    document.getElementById('egProv').textContent=win.prov;
+    document.getElementById('egConcepto').textContent='10× Placa Fibroplus 3mm';
+    document.getElementById('egMonto').textContent=fmt(win.monto);
   }
+  document.getElementById('btnGen').addEventListener('click',()=>{showToast('✓ OC generada + egreso enviado a Finanzas','oc');});
 
-  document.getElementById('btnGen').addEventListener('click', ()=>{
-    const t=document.getElementById('toast'); t.classList.add('show');
-    setTimeout(()=>t.classList.remove('show'),2600);
-  });
-
-  renderPresu(); renderEgreso();
+  function showToast(msg,cls){const t=document.getElementById('toast');t.textContent=msg;t.className='toast '+cls+' show';setTimeout(()=>t.classList.remove('show'),2600);}
+  renderPresu();renderEgreso();
 })();
 </script>
 </body>
