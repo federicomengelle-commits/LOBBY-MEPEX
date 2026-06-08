@@ -1,6 +1,6 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 62%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 59%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈38%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈41%). No repetir acá lo que está en PROGRESO.
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
 > **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
 > **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
@@ -102,11 +102,12 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 - Contabilidad ya semi-armada → ajustar copiando el funcionamiento fino de La PyME.
 - **Test:** por definir según el análisis.
 
-### Fase 9 — Transversal: GLOBAL (centro único de notificaciones + stats) *(≈7%)*
-- **🔔 UN SOLO centro de notificaciones** — fusionar los 3 de hoy (Lobby alertas + `Notifications` + `Badges`). Vinculado a tareas/proyectos/locaciones. Tipos + **personalizado por rol**.
-- **Capa GLOBAL en el menú:** Panel SuperAdmin (roles + stats) + Centro de notificaciones.
+### Fase 9 — Transversal: GLOBAL (centro único de notificaciones + stats) *(≈4%)*
+- **🔔 Centro único de notificaciones ✅ HECHO (charla 03 — ver PROGRESO §Fase 9):** motor único `Alertas` (9.1) + campana 2 capas Novedades/Pendientes (9.2) + página completa + silenciar tipos por usuario (9.3). Verificado en prod. *(Decisiones: dos capas · campana + página · rol + silenciar tipos.)*
+- **Capa GLOBAL en el menú:** Panel SuperAdmin (roles + stats) + Centro de notificaciones. *(El centro hoy vive en la campana + `#notificaciones`; falta crear el ítem/categoría GLOBAL en el sidebar — toca `data.js` + bump `_configVersion`.)*
 - **Stats por usuario:** tiempo de sesión, logs de horarios, rendimiento (base: `last_login_at`, `audit_log`).
 - **Lobby/Home por rol** afinado + placeholders de Taller.
+- **🆕 Ideas del centro (charla 03):** silenciado cross-device (`profiles.notif_prefs`, DDL) en vez de localStorage por navegador; permitir silenciar también tipos de *pendientes* y/o que el mute apague los dots del sidebar; separar el badge en 2 números (no-leídas vs pendientes) si Fede lo prefiere. Limpiar `settings._getNotifPrefs/_setNotifPrefs` muertos.
 
 ### Fase 10 — Remate UI/UX (Claude Design) *(≈5%)*
 - Sistema visual (tokens dark theme + manual de marca) aplicado a cada módulo + **pasada final de coherencia**.

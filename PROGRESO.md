@@ -1,6 +1,6 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 38%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 41%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈62%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈59%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
 > **Baseline:** `origin/main` @ `c2439fc`.
@@ -8,15 +8,16 @@
 
 ---
 
-## Estado general — AVANCE ≈ 38%
+## Estado general — AVANCE ≈ 41%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
-- **Desbloqueado para avanzar AHORA (aprobado por Fede):** **notificaciones unificadas (Fase 9)** — fusionar Lobby-alertas + campana `Notifications` + `Badges` en un solo centro. También: auditoría de cambios CRM (Fase 7). Después Fases 5–10.
+- **Fase 9 — Centro de notificaciones ✅ COMPLETO Y VERIFICADO (charla 03, 2026-06-08):** fusionados los 3 sistemas (Lobby-alertas + campana `Notifications` + `Badges`) en un centro de 2 capas. 9.1 motor único `Alertas` (`4ed1278`) + 9.2 campana Novedades/Pendientes (`95aa6b6`) + 9.3 página completa + silenciar tipos (`bc466e8`). Ver §Fase 9 abajo.
+- **Desbloqueado para avanzar AHORA:** **resto de Fase 9** (categoría GLOBAL en el menú · stats por usuario · Lobby/Home por rol) **o** auditoría de cambios CRM (Fase 7). Después Fases 5–10.
 - **Baseline:** `origin/main` al día (`73f98a6`). Branch dev: `rediseno` (= main).
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-08.
+- **Última actualización:** 2026-06-08 (charla 03 — Fase 9 centro de notificaciones).
 
 ---
 
@@ -215,6 +216,20 @@ Subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar 
 **Taller v1 COMPLETO.** Solo falta que Fede corra los 3 SQL (ver Estado general) + **valide los pasos REALES con el equipo** → eso alimenta el catálogo/presets v2 (ver PLAN-MAESTRO §Taller v2).
 
 **Edges/deudas conocidas:** (1) la siembra del checklist es lazy en `_loadHoy` además del gatillo (defensivo). (2) un stand `despachado` sigue en el dashboard hasta que el PM lo finaliza o pasa a `cerrado` (no hay botón "cerrar/archivar" en la card todavía). (3) `_proyectosChecklist`/`_selectedChecklistProyecto` quedaron como state sin uso (inocuo). (4) la pestaña Checklist vieja se borró; su CSS `.tlr-chk-*` quedó muerto en el bloque tanda2 (inocuo).
+
+## FASE 9 — Centro único de notificaciones (núcleo · ✅ VERIFICADO EN PROD 2026-06-08, charla 03)
+
+Fusión de los 3 sistemas que vivían sueltos (Lobby-alertas + campana `Notifications` + `Badges`) en un centro coherente de **dos capas**. Decisiones Fede: **dos capas** (no feed único) · **campana + página** · **rol + silenciar tipos**.
+
+**9.1 — Motor único `Alertas` ✅** (commit `4ed1278`): nuevo `alertas.js` = fuente única de "pendientes" (estado vivo derivado). 9 generadores con definición canónica role-gated; reproduce las queries schema-correctas que estaban **duplicadas con criterios distintos** entre `badges.js` y `lobby.js`. Dispatch `mepex:alertas` tras recomputar. `badges.js` → **proyector fino** de los dots del sidebar (delega en Alertas; entry points app/auth/router intactos). Las cards "ALERTAS" del Lobby proyectan los mismos items. **Cambio intencional:** el Lobby ahora usa la def. de los dots (antes calculaba distinto → algún número puede verse distinto, es la consolidación). Verificado en prod: dot `taller:1` + card "1 stand sin terminar" salen del motor.
+
+**9.2 — Campana 2 capas ✅** (commit `95aa6b6`): el dropdown gana pestañas **Novedades** (feed `notifications`, leído/no-leído como hasta hoy) + **Pendientes** (del motor `Alertas`). El **badge suma no-leídas + pendientes** (antes solo no-leídas). Repinta en vivo escuchando `mepex:alertas`. Tab switch sin cerrar; "marcar todas" solo en Novedades; pendientes navegan al módulo. Sheet mobile con tabs. Verificado: Novedades 7 / Pendientes 1, badge=1.
+
+**9.3 — Página centro completo + preferencias ✅** (commit `bc466e8`): `#notificaciones` (era un **stub muerto** de prefs) → centro real con 3 secciones: **Preferencias** (silenciar avisos por categoría: Logística y remitos / Asignaciones de gente / Taller y producción), **Actividad reciente** (feed hasta 100, marcar todas leídas, click navega), **Pendientes** (estado vivo). Silenciado **por usuario** en localStorage (`mepex_notif_mute_<uid>`, consistente con `getStartModule`); `Notifications.isMuted()` filtra la campana (Novedades + conteo no-leídas + badge). Los **pendientes y los dots NO se silencian** (señal ambiental). Verificado: silenciar Logística baja el feed 7→1 y vuelve a 7 al reactivar; persiste por usuario.
+
+**Falta de Fase 9** (otro paquete, ver PLAN-MAESTRO §Fase 9): categoría **GLOBAL** en el menú (Panel + Centro) · **stats por usuario** (sesión/horarios/rendimiento) · **Lobby/Home por rol** afinado.
+
+**Deudas menores:** (1) `settings._getNotifPrefs`/`_setNotifPrefs` (placeholders viejos) quedaron muertos → limpiar en una pasada. (2) El silenciado es por navegador (localStorage), no cross-device — futuro `profiles.notif_prefs` con DDL. (3) El badge sigue contando no-leídas + pendientes; si Fede prefiere separarlos visualmente, es un ajuste chico.
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
