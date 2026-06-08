@@ -1010,18 +1010,20 @@ const CalendarioOperativo = {
             // El legacy (rrhh_asignaciones / logistica_movimientos) se eliminó
             // del side panel; la única fuente de verdad para personas es la
             // ficha del evento (eventos.js).
-            const [cargasNew, asignacionesNew] = await Promise.all([
+            const [cargasNew, asignacionesNew, historial, documentos] = await Promise.all([
                 API.getCargas({ eventoId: event.id }).catch(() => []),
                 API.getAsignacionesByEvento(event.id).catch(() => []),
+                API.getEventHistorial(event.id).catch(() => []),
+                API.getEventDocumentos(event.id).catch(() => []),
             ]);
             event._cargasNew = (cargasNew || []).filter(c => c.estado !== 'cancelada');
             event._asignacionesNew = (asignacionesNew || []).filter(a => a.estado !== 'cancelada');
-            event._documentos = event.documents?.items || [];
-            event._historial = [];
+            event._documentos = documentos || [];
+            event._historial = historial || [];
         } catch {
             event._cargasNew = [];
             event._asignacionesNew = [];
-            event._documentos = event.documents?.items || [];
+            event._documentos = [];
             event._historial = [];
         }
 
@@ -1346,26 +1348,27 @@ const CalendarioOperativo = {
                 </div>`;
         }
 
-        const icons = {
-            campo_editado: '✏', estado_cambio: '🔄', equipo_cambio: '👥',
-            transporte_cambio: '🚛', documento: '📄', nota: '📝'
+        const iconFor = (accion) => {
+            const a = (accion || '').toLowerCase();
+            if (a.includes('jornada') || a.includes('fecha')) return '📅';
+            if (a.includes('gente') || a.includes('persona')) return '👥';
+            if (a.includes('flete') || a.includes('transporte')) return '🚛';
+            if (a.includes('documento')) return '📄';
+            if (a.includes('nota')) return '📝';
+            return '•';
         };
 
         const entries = historial.map(h => {
-            const icon = icons[h.tipo] || '•';
+            const icon = iconFor(h.accion);
             const timeAgo = this._timeAgo(h.createdAt);
-            let metaHTML = '';
-            if (h.metadata) {
-                if (h.metadata.anterior !== undefined && h.metadata.nuevo !== undefined) {
-                    metaHTML = `<div class="co-sp-hist-meta">"${h.metadata.anterior || '—'}" → "${h.metadata.nuevo || '—'}"</div>`;
-                }
-            }
+            const d = h.detalle || {};
+            const metaHTML = d.nombre ? `<div class="co-sp-hist-meta">${d.nombre}</div>` : '';
 
             return `
                 <div class="co-sp-hist-entry">
                     <div class="co-sp-hist-icon">${icon}</div>
                     <div class="co-sp-hist-content">
-                        <div class="co-sp-hist-desc">${h.descripcion}</div>
+                        <div class="co-sp-hist-desc">${h.accion || '—'}</div>
                         ${metaHTML}
                         <div class="co-sp-hist-footer">
                             ${h.usuario ? `<span class="co-sp-hist-user">${h.usuario}</span>` : ''}
