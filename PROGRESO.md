@@ -1,6 +1,6 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 43%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 45%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈57%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈55%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
 > **Baseline:** `origin/main` @ `c2439fc`.
@@ -8,16 +8,16 @@
 
 ---
 
-## Estado general — AVANCE ≈ 43%
+## Estado general — AVANCE ≈ 45%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
-- **Fase 9 — Centro de notificaciones ✅ COMPLETO Y VERIFICADO (charla 03, 2026-06-08):** fusionados los 3 sistemas (Lobby-alertas + campana `Notifications` + `Badges`) en un centro de 2 capas. 9.1 motor único `Alertas` (`4ed1278`) + 9.2 campana Novedades/Pendientes (`95aa6b6`) + 9.3 página completa + silenciar tipos (`bc466e8`). Ver §Fase 9 abajo.
-- **Desbloqueado para avanzar AHORA:** **resto de Fase 9** (categoría GLOBAL en el menú · stats por usuario · Lobby/Home por rol) **o** auditoría de cambios CRM (Fase 7). Después Fases 5–10.
+- **Fase 9 — TRANSVERSAL GLOBAL ✅ COMPLETA Y VERIFICADA (charla 03, 2026-06-08):** centro de notificaciones 2 capas (9.1 motor `Alertas` `4ed1278` · 9.2 campana `95aa6b6` · 9.3 página + silenciar `bc466e8`) + categoría GLOBAL en el menú (9.4 `fb3e755`) + stats por usuario / tab Actividad (9.5 `0e100ee`) + lobby home por rol híbrido (9.6 `11f83da`). Ver §Fase 9 abajo.
+- **Desbloqueado para avanzar AHORA (manteniendo el orden):** **Fase 5 — Compras + rentabilidad por proyecto** (siguiente en orden, desbloqueada). Después Fase 6 (Diseño) · Fase 7 (CRM auditoría) · Fase 8 (Finanzas/Contab.) · Fase 10 (Remate UI). **Fase 4** sigue trabada por el cotizador (`cotizacion_items` vacía). Mini-fase RRHH (unificar `personas`) intercalable.
 - **Baseline:** `origin/main` al día (`73f98a6`). Branch dev: `rediseno` (= main).
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-08 (charla 03 — Fase 9: centro de notificaciones + categoría GLOBAL + stats por usuario). Falta solo Lobby/Home por rol (decisión de producto).
+- **Última actualización:** 2026-06-08 (charla 03 — **Fase 9 COMPLETA**: centro de notificaciones + categoría GLOBAL + stats por usuario + lobby home por rol híbrido). Próximo en orden: Fase 5 (Compras + rentabilidad).
 
 ---
 
@@ -231,7 +231,10 @@ Fusión de los 3 sistemas que vivían sueltos (Lobby-alertas + campana `Notifica
 
 **9.5 — Stats por usuario ✅** (commit `0e100ee`): nuevo tab **Actividad** en el Panel de Control (superadmin), analítica temporal desde `audit_log` + `profiles` (complementa el Dashboard, que es foco "hoy"). Métricas: acciones 30d, más activo, promedio/día. Gráfico CSS de actividad del equipo (14 días). Tabla por usuario: acciones 7d/30d, **días activos** (jornadas distintas con actividad), módulo top, última actividad, último login. **Nota:** `audit_log` NO registra login/logout (solo create/edit/update/delete) → se muestra "días activos" en vez de "sesiones"; tiempo de sesión exacto = futura iteración. Verificado en prod (67 acciones/30d, Fede 11 días activos, 16 usuarios).
 
-**Falta de Fase 9** — solo **Lobby/Home por rol** ⏳ **decisión de producto pendiente con Fede:** hoy el lobby está restringido a superadmin/admin (`router.js:188`); venta/pm/taller van directo a su módulo. El código role-specific del lobby para esos roles (KPIs, placeholder "PRÓXIMOS TRABAJOS" de taller) **existe pero es inalcanzable**. Definir: ¿cada rol aterriza en un home propio (activar ese código + placeholders), o se mantiene el salto directo (mejor para taller "ULTRA simple")? Cambia dónde caen TODOS al loguear. Ver PLAN-MAESTRO §Fase 9.
+**9.6 — Lobby/Home por rol (Híbrido) ✅** (commit `11f83da`): decisión Fede = **híbrido**. venta/pm ahora aterrizan en el **Lobby** al loguear (home por rol con KPIs + contenido propio — `_fetchVentaKPIs`/`_fetchPMKPIs`, `_loadVentaContent` "mis próximos eventos" / `_loadPMContent` "esta semana" — que ya estaban construidos pero inalcanzables); **taller sigue directo a su tablero** (eventos) por ser ULTRA simple (tablet en galpón). `router.js`: `_defaultRoutes` venta/pm→`lobby`; restricción del lobby pasó de "solo super/admin" a allow-list `[superadmin,admin,venta,pm]`. Verificado en prod: getDefaultRoute correcto por rol, lobby superadmin sin regresión, code paths venta/pm OK (3 KPIs c/u, sin errores). **⏳ Falta verificación visual de Fede con logins venta/pm reales.**
+
+### ✅ FASE 9 COMPLETA (charla 03, 2026-06-08)
+Centro único de notificaciones (9.1-9.3) + categoría GLOBAL en el menú (9.4) + stats por usuario (9.5) + lobby home por rol híbrido (9.6). **Deuda futura** (en PLAN-MAESTRO): tiempo de sesión exacto (audit_log no loguea login/logout); silenciado cross-device; limpiar `settings._getNotifPrefs/_setNotifPrefs` muertos.
 
 **Deudas menores:** (1) `settings._getNotifPrefs`/`_setNotifPrefs` (placeholders viejos) quedaron muertos → limpiar en una pasada. (2) El silenciado es por navegador (localStorage), no cross-device — futuro `profiles.notif_prefs` con DDL. (3) El badge sigue contando no-leídas + pendientes; si Fede prefiere separarlos visualmente, es un ajuste chico.
 
