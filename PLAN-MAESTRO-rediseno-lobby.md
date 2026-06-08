@@ -1,4 +1,4 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 71%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 69%
 
 > **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈15%). No repetir acá lo que está en PROGRESO.
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
@@ -58,9 +58,9 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
   - **Constructor de fechas tipo TABLA con jornadas:** ✅ HECHO (4.1, commit `2ef6566`) — tabla `evento_jornadas` + trigger que deriva `fecha_*/hora_*` para compat + UI constructor en la ficha. Trigger verificado.
   - **Asignación de gente POR DÍA** ✅ HECHO (4.2) — `asignaciones_evento.jornada_id`; cada jornada con su gente + rol editable, reemplaza Equipo. *(Falta: agrupar visualmente por rol desplegable si hace falta.)*
   - **Vehículos** visibles ✅ HECHO — resumen de vehículos distintos (chips) arriba de las cargas en la ficha del evento.
-  - **Reactivar el historial** del evento (`evento_historial` + `logEventChange`, hoy deshabilitados por schema desalineado).
-  - **Docs de evento** → reactivar `evento_documentos` (hoy localStorage + API comentada por schema). Mover a Supabase.
-  - **Después: 2º pase del CALENDARIO** para reflejar todo esto (jornadas, asignaciones por día, vehículos, historial). El calendario es SOLO vista; la edición vive en Eventos.
+  - **Historial del evento** ✅ HECHO (commits `cd6bd49`+`814485f`) — `evento_historial` + `logEventChange` reescritos al schema real verificado; sección en la ficha + reflejado en el panel del calendario. Loguea fecha (jornadas) / gente / flete / docs, con usuario.
+  - **Docs de evento** ✅ HECHO — `evento_documentos` a Supabase (nombre + link Drive/URL + tipo); dejó localStorage.
+  - **Después: 2º pase del CALENDARIO** para reflejar jornadas + asignaciones por día + vehículos (el historial ya quedó reflejado). El calendario es SOLO vista; la edición vive en Eventos.
 - **Taller** = tablero de producción por proyecto con tareas **pre-pobladas por plantilla** (proceso completo del stand: corte/soldadura/pintura/armado/gráfica). El encargado mueve estados, no crea tarjetas. *(v2: tareas derivadas del BOM.)* **Unifica el checklist** (`taller_proyecto_checklist` que usa el módulo vs `taller_checklist` que cuenta el badge — ver AUDITORIA-2B).
 - **🆕 Subalquileres con agregación por proveedor:** cada stand lista items subalquilados + proveedor. **Vista doble:** por EVENTO (totales por proveedor) y por STAND. Dos salidas: lista de TOTALES (taller/pedido) + lista INDIVIDUAL filtrable por proveedor. Conecta con Compras-proveedores y Logística-reparto.
 - **Logística — REPENSAR** (Fede 2026-06-07): con los vehículos movidos a **Flota** (ACTIVOS), Logística cambia de rol → se nuclea en cargas/transporte conectado a Eventos y **consume** la Flota. **Transporte de Eventos pasa de `logistica_movimientos` a `cargas`** (ver AUDITORIA-2B). Redefinir su alcance al encarar Fase 4.

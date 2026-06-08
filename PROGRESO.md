@@ -1,4 +1,4 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 29%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 31%
 
 > **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈85%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -8,10 +8,11 @@
 
 ---
 
-## Estado general — AVANCE ≈ 29%
-- **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones, maestros sanos) ✅ · **Fase 4 — reformulación de EVENTOS COMPLETA**: jornadas + gente por jornada + vehículos visibles + UX legible + alta multi-select. Todo verificado en prod (Chrome).
-- **Próximo paso (en orden de Fase 4):** **historial + docs de evento** — tablas `evento_historial`/`evento_documentos` existen pero **vacías** + API comentada por "schema desalineado" → verificar el SQL/schema real y re-habilitar `logEventChange` + docs a Supabase. Después: **2º pase del calendario** (reflejar jornadas + gente por día) y **Taller dashboard + flujo Oficina→Taller**. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` al día (`e37bcab`). Branch dev: `rediseno` (= main). **Server: pull para traer v17** (eventos).
+## Estado general — AVANCE ≈ 31%
+- **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones, maestros sanos) ✅ · **Fase 4 — reformulación de EVENTOS COMPLETA**: jornadas + gente por jornada + vehículos visibles + UX legible + alta multi-select · **historial + docs de evento ✅** (a Supabase, schema real verificado).
+- **Próximo paso (en orden de Fase 4):** **2º pase del calendario** (reflejar jornadas + gente por día + vehículos — el historial ya quedó reflejado) y **Taller dashboard + flujo Oficina→Taller**. Ver `PLAN-MAESTRO`.
+- **Baseline:** `origin/main` al día. Branch dev: `rediseno` (= main). **Server: pull para traer api v30 / eventos v18 / calendario v16 / style v15.**
+- **⚠ Verificación pendiente de Fede (en server logueado):** abrir un evento → secciones **Documentos** (con link) e **Historial** cargan; agregar un doc y mover jornadas/gente → aparecen en Historial (ficha y calendario). Si los docs/historial NO persisten = falta RLS → correr `sql/rls_eventos_proyectos.sql` (idempotente, ya cubre ambas tablas).
 - **Última actualización:** 2026-06-07.
 
 ---
@@ -171,8 +172,17 @@ Feedback Fede: "no veía bien" la asignación de gente por día. Mejorado: **sac
 ### 4.5 — Alta de gente multi-select ✅ HECHO (commit `5762dfa`)
 Feedback Fede: el alta de a uno era un desastre (sobre todo en eventos de muchos días). Nuevo modal **"Asignar gente a jornadas"** (botón "+ gente"): tildás **varias personas** (rol por c/u o **rol por defecto** que las setea), elegís **a qué días** van (multi-check, pre-marca el del botón), y crea todas las asignaciones de una con **dedup** automático. El **chofer no se carga acá** (viene del vehículo/carga). Previewed visualmente (captura).
 
+### 4.6 — Historial + docs de evento ✅ HECHO (commits `cd6bd49` + `814485f`)
+Schema real de prod **verificado vía PostgREST** (no asumido): `evento_documentos` = `nombre/url/tipo/_deleted`; `evento_historial` = `user_id/accion/detalle(jsonb)/_deleted`. La API estaba **comentada** contra el schema viejo (`nombre_archivo/storage_path/…`, `tipo/descripcion/metadata/…`) → reescrita al schema real. **Sin DDL.**
+- **Docs** (`eventos.js`): dejan localStorage (`ev_docs_`) → tabla `evento_documentos`. Alta con **nombre + link (Drive/URL) + tipo**, baja (soft delete), listado async en la ficha. Nombre clickeable si tiene link.
+- **Historial** (`eventos.js`): sección nueva en la ficha + `logEventChange` **manual desde JS** (autoinyecta el usuario en `detalle`). Se loguea: jornadas actualizadas (fecha), asignó/quitó gente, doc agregado/eliminado. `createCarga` (api.js) loguea "Flete asignado".
+- **Calendario** (`calendario-operativo.js`): el tab Historial del panel ahora trae `evento_historial` real (antes `[]`) + docs vía API. Render adaptado al schema nuevo.
+- **Fix de paso:** `_refreshPanel` (eventos) ahora recarga las secciones async (proyectos/transporte/jornadas/docs/historial); antes quedaban en "Cargando…" tras editar notas/fechas.
+- **RLS:** policies de ambas tablas en `sql/rls_eventos_proyectos.sql` (auth CRUD + anon select, idempotente). Si en prod no estuvieran aplicadas, los insert fallan silenciosos → correr ese SQL.
+- Bumps: api v30, eventos v18, calendario v16, style v15. **Pendiente verificación de Fede en server.**
+
 ### Falta de Fase 4
-Reactivar historial + docs de evento · Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas + gente por día).
+Taller dashboard + flujo Oficina→Taller · subalquileres por proveedor · 3.1b (repuntar legacy badges/eventos) + repensar Logística · 2º pase del calendario (reflejar jornadas + gente por día + vehículos — el historial ya quedó reflejado).
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
