@@ -28,9 +28,9 @@ const Router = {
     _defaultRoutes: {
         superadmin: 'lobby',
         admin:      'lobby',
-        venta:      'crm',
-        pm:         'proyectos',
-        taller:     'eventos',   // antes 'taller' — si se le saca el módulo taller, no quedaba en ningún lado
+        venta:      'lobby',     // Híbrido (Fase 9.6): venta/pm aterrizan en su home por rol
+        pm:         'lobby',
+        taller:     'eventos',   // taller va DIRECTO a su tablero (ULTRA simple, tablet en galpón)
     },
 
     // Acepta string (rol) o user object (con customPermissions). Si el módulo
@@ -184,10 +184,12 @@ const Router = {
             return;
         }
 
-        // Lobby restricted to superadmin/admin — redirect others to their default
+        // Lobby = home por rol para oficina (super/admin/venta/pm). taller va directo a su
+        // tablero (Híbrido, Fase 9.6). Cualquier otro rol cae a su default.
         if (hash === 'lobby') {
             const user = Auth.getUser();
-            if (user && user.role !== 'superadmin' && user.role !== 'admin') {
+            const lobbyRoles = ['superadmin', 'admin', 'venta', 'pm'];
+            if (user && !lobbyRoles.includes(user.role)) {
                 this.navigate(this.getDefaultRoute(user));
                 return;
             }
