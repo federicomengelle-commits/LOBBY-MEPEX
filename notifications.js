@@ -179,7 +179,15 @@ const Notifications = {
             <div class="notif-dropdown-body" id="notifDropdownBody">
                 ${novActive ? this._renderItems() : this._renderPendientes()}
             </div>
+            <div class="notif-dropdown-footer">
+                <button class="notif-see-all" id="notifSeeAll">Ver centro de notificaciones →</button>
+            </div>
         `;
+    },
+
+    _goToCenter() {
+        this.closeDropdown();
+        window.location.hash = 'notificaciones';
     },
 
     // Re-render del body según la pestaña activa + estado de tabs/header.
@@ -274,6 +282,7 @@ const Notifications = {
     _attachDropdownEvents() {
         this._attachTabEvents();
         document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
+        document.getElementById('notifSeeAll')?.addEventListener('click', (e) => { e.stopPropagation(); this._goToCenter(); });
         this._attachItemEvents();
     },
 
@@ -375,6 +384,7 @@ const Notifications = {
         // Re-attach events (los IDs internos como #notifMarkAll son únicos)
         this._attachTabEvents();
         document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
+        document.getElementById('notifSeeAll')?.addEventListener('click', (e) => { e.stopPropagation(); this._goToCenter(); });
         sheet.querySelectorAll('.notif-item').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -532,6 +542,18 @@ const Notifications = {
             .notif-dropdown-body {
                 max-height: 440px; overflow-y: auto;
             }
+            .notif-dropdown-footer {
+                border-top: 1px solid #2a2a2a; background: #0c0c0c;
+            }
+            .notif-see-all {
+                width: 100%; padding: 10px 14px;
+                background: transparent; border: none;
+                color: #00A9C1; cursor: pointer;
+                font-family: var(--font-main, 'Outfit', sans-serif);
+                font-size: 0.78rem; font-weight: 600;
+                transition: background 200ms ease;
+            }
+            .notif-see-all:hover { background: rgba(0, 169, 193, 0.08); }
             .notif-empty {
                 display: flex; flex-direction: column; align-items: center;
                 justify-content: center; gap: 8px;
