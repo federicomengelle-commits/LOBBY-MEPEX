@@ -8,10 +8,10 @@
 
 ---
 
-## Estado general — AVANCE ≈ 21%
-- **Hecho:** Fase 1 completa. **Fase 2 ✅ COMPLETA**. **Fase 3 EN CURSO:** Flota (3.1a) ✅ — módulo nuevo en ACTIVOS, verificado en prod.
-- **Próximo paso:** seguir Fase 3 (Locaciones + estandarizar catálogo/recetas + showcase comercial a definir). 3.1b (repuntar legacy) + repensar Logística → Fase 4. Ver `PLAN-MAESTRO`.
-- **Baseline:** `origin/main` al día (2026-06-07, `95eceb1`). Branch dev: `rediseno` (= main).
+## Estado general — AVANCE ≈ 29%
+- **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones, maestros sanos) ✅ · **Fase 4 — reformulación de EVENTOS COMPLETA**: jornadas + gente por jornada + vehículos visibles + UX legible + alta multi-select. Todo verificado en prod (Chrome).
+- **Próximo paso (en orden de Fase 4):** **historial + docs de evento** — tablas `evento_historial`/`evento_documentos` existen pero **vacías** + API comentada por "schema desalineado" → verificar el SQL/schema real y re-habilitar `logEventChange` + docs a Supabase. Después: **2º pase del calendario** (reflejar jornadas + gente por día) y **Taller dashboard + flujo Oficina→Taller**. Ver `PLAN-MAESTRO`.
+- **Baseline:** `origin/main` al día (`e37bcab`). Branch dev: `rediseno` (= main). **Server: pull para traer v17** (eventos).
 - **Última actualización:** 2026-06-07.
 
 ---
