@@ -4721,7 +4721,7 @@ const API = {
                     estado_taller_updated_by: user?.uid || user?.id || null,
                 })
                 .eq('id', proyectoId)
-                .select('id, nombre, created_by')
+                .select('id, nombre')
                 .maybeSingle();
             if (error) throw error;
 
