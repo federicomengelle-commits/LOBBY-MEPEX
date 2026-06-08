@@ -80,6 +80,8 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 ### Fase 5 — Compras (OCs) + rentabilidad por proyecto *(≈12% · corazón del valor · ⚠ DEBATIR ANTES DE CODEAR)*
 
 > **Visión Fede (charla 03, 2026-06-08).** Rediseñar la Orden de Compra como flujo **SIMPLE**: "hay que comprar algo, listo, hacé una OC". **Necesita darle forma fuerte + más definiciones antes de codear** (Fede lo dejó explícito). Reconocimiento del estado actual ✅ hecho (abajo).
+>
+> **🔮 Mockup visual (charla 03):** `mockup-oc-v2.html` (raíz, NO-destructivo, clickeable, look de Compras) — abrir en `http://195.200.1.250/mockup-oc-v2.html` tras pull. Muestra el flujo integrado: tipo insumo/link · quién la pide (taller/PM/super) · imputación proyecto/gasto · presupuestos → ganadora · preview del egreso que dispara a Finanzas. Es la base para debatir las **definiciones pendientes** de abajo.
 
 **Estado actual reconocido (charla 03):**
 - **OCs** (`compras.js`, tab Órdenes de Compra): `compras_ordenes` = `numero_oc`, `proveedor_id` (**HOY obligatorio**), `evento_id`/`proyecto_id` (**opcionales**), `fecha`, `estado` (pendiente→aprobada→recibida→pagada), `notas`. Items en `compras_orden_items`, pagos en `compras_pagos`. **1 solo proveedor por OC** (sin multi-presupuesto). **Sin** campo link · **sin** categoría de gasto · **NO** dispara egreso automático.
