@@ -1,6 +1,6 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 54%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 52%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈46%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈48%). No repetir acá lo que está en PROGRESO.
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
 > **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
 > **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
@@ -77,9 +77,9 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 - **🆕 Flujo Oficina→Taller + visibilidad por rol (Fede 2026-06-07 · RE IMPORTANTE):** el **último estado del proyecto en la oficina = "en taller"** → ahí se delega y se pasa TODA la info (detalles, planos, todo). **Taller = dashboard de todos los proyectos vendidos** pasados a producción; ahí toma forma. Roles: **Taller VE Eventos + su dashboard de Taller**, **NO ve Proyectos** (eso es oficina). El **PM/vendedor queda como interlocutor y "deudor" directo entre cliente y taller** (nexo). Esto reformula Taller y ajusta la matriz de roles (taller pierde `proyectos`).
 - **Test:** evento con jornadas + asignación por día reflejados en calendario; producción con tablero; subalquiler agregado por proveedor.
 
-### Fase 5 — Compras (OCs) + rentabilidad por proyecto *(≈8% restante · EN CURSO)*
+### Fase 5 — Compras (OCs) + rentabilidad por proyecto *(≈4% restante · doble paso ✅)*
 
-> **Estado (charla 03):** SQL corrido por Fede + **5.A Pedidos ✅** (ver PROGRESO §Fase 5 — tab Pedidos en Compras + "Pedir compra" en Taller). **Falta:** **5.B** (botón "Convertir a OC" en Pedidos + sección presupuestos de proveedor con ganadora en el detalle de OC) + **5.C** (al elegir ganadora → genera egreso imputado al proyecto → cierra el pedido → alimenta Rent. Proyecto). Integración 5.B/5.C: detalle de OC en `compras.js _renderOrdenes` (~966-1038) + `_renderOrdenItemsTable`; `compras_oc_presupuestos` y `egresos.orden_compra_id` ya listos. El modelo + definiciones, abajo.
+> **Estado (charla 03):** ✅ **DOBLE PASO COMPLETO Y VERIFICADO** — 5.A Pedidos + 5.B OC (presupuestos/ganadora) + 5.C disparo a egreso (ver PROGRESO §Fase 5). **Falta (opcional / a revisar con Fede):** (a) columna de **presupuesto** (cotización del proyecto vía `proyectos.cotizacion_id`) en Rent. Proyecto para comparar vs gasto real; (b) revisar las **decisiones tomadas** en la implementación (taxonomía de gasto fija oficina/vehículo/material/…, dónde vive exactamente, archivado de OCs); (c) hard-link OC↔egreso = ALTER `egresos.orden_compra_id` de uuid a bigint (hoy es uuid huérfano; se trackea por estado+concepto). El modelo + definiciones originales, abajo (algunas ya resueltas en la implementación).
 
 > **Visión Fede (charla 03, 2026-06-08).** Rediseñar la Orden de Compra como flujo **SIMPLE**: "hay que comprar algo, listo, hacé una OC". **Necesita darle forma fuerte + más definiciones antes de codear** (Fede lo dejó explícito). Reconocimiento del estado actual ✅ hecho (abajo).
 >

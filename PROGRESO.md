@@ -1,6 +1,6 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 46%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 48%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈54%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈52%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
 > **Baseline:** `origin/main` @ `c2439fc`.
@@ -8,7 +8,7 @@
 
 ---
 
-## Estado general — AVANCE ≈ 46%
+## Estado general — AVANCE ≈ 48%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
@@ -17,7 +17,7 @@
 - **Baseline:** `origin/main` al día (`73f98a6`). Branch dev: `rediseno` (= main).
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-08 (charla 03 — **Fase 9 COMPLETA**: centro de notificaciones + categoría GLOBAL + stats por usuario + lobby home por rol híbrido). Próximo en orden: Fase 5 (Compras + rentabilidad).
+- **Última actualización:** 2026-06-08 (charla 03 — **Fase 9 COMPLETA** + **Fase 5 doble paso COMPLETO**: Pedido taller → OC Compras (presupuestos/ganadora) → Egreso al proyecto). Próximo: repaso de **RRHH + CRM** (lo charlamos).
 
 ---
 
@@ -238,7 +238,7 @@ Centro único de notificaciones (9.1-9.3) + categoría GLOBAL en el menú (9.4) 
 
 **Deudas menores:** (1) `settings._getNotifPrefs`/`_setNotifPrefs` (placeholders viejos) quedaron muertos → limpiar en una pasada. (2) El silenciado es por navegador (localStorage), no cross-device — futuro `profiles.notif_prefs` con DDL. (3) El badge sigue contando no-leídas + pendientes; si Fede prefiere separarlos visualmente, es un ajuste chico.
 
-## FASE 5 — Compras: doble paso (EN CURSO · charla 03)
+## FASE 5 — Compras: doble paso (✅ doble paso COMPLETO · charla 03)
 
 Modelo doble paso (Pedido taller → OC Compras). **SQL corrido por Fede** (`sql/fase5_compras_doble_paso.sql`): `compras_pedidos` + `compras_oc_presupuestos` + ALTER `compras_ordenes` (pedido_id/tipo/descripcion/link/cantidad/categoria_gasto). Tipos verificados (compras_* = **bigint**, proyectos uuid, `egresos.orden_compra_id` ya existe).
 
@@ -248,9 +248,11 @@ Modelo doble paso (Pedido taller → OC Compras). **SQL corrido por Fede** (`sql
 - **Taller** (`?v=11`): botón **"🛒 Pedir compra"** en cada card de stand → modal ULTRA simple (qué/cantidad/link/urgencia/nota, proyecto pre-set, sin precios).
 - Verificado: crear+listar+estados+notif. **Fix:** `entidad_id` omitido en la notif (pedido.id es bigint y `notifications.entidad_id` es uuid → rompía el insert). **⏳ Falta verificación visual de Fede del botón en Taller** (necesita un stand `en_taller`).
 
-**5.B — OC: presupuestos + ganadora + convertir pedido→OC ⏳ PENDIENTE.** Puntos de integración (ya reconocidos): el **detalle de OC** vive en `compras.js _renderOrdenes` (~966-1038, rama `_selectedOrdenId`) + `_renderOrdenItemsTable`. Plan: (1) botón **"Convertir a OC"** en el tab Pedidos → crea `compras_ordenes` con `pedido_id`+descripción+proyecto+tipo+categoría, marca pedido `en_compra` + linkea `orden_compra_id`, abre el detalle. (2) Sección **"Presupuestos de proveedor"** en el detalle de OC: listar/agregar `compras_oc_presupuestos` (proveedor+monto+link), **elegir ganadora** (radio) → setea `OC.proveedor_id` + `monto_total`. Falta API de presupuestos.
+**5.B — OC: presupuestos + ganadora + convertir pedido→OC ✅** (commit `f44b799`, verificado en prod): botón **"Crear OC"** en Pedidos (`createOrdenFromPedido` → crea `compras_ordenes` con `pedido_id`+descripción+proyecto+categoría, marca pedido `en_compra` + linkea, abre el detalle) + "Ver OC". Sección **"Presupuestos de proveedor"** en el detalle de OC: agregar (proveedor de lista o nombre libre + monto + link), **elegir ganadora** (radio) → vuelca proveedor + `monto_total` a la OC. API: `createOrdenFromPedido/getPresupuestos/addPresupuesto/deletePresupuesto/setGanadora`. (`compras_ordenes.proveedor_id` es nullable, OK.)
 
-**5.C — Disparo a Egresos ⏳ PENDIENTE.** Al elegir ganadora (o botón "Generar egreso"): crear `egresos` (`orden_compra_id`+proyecto_id+categoria+monto+concepto+estado), marcar pedido `comprado`. `egresos.orden_compra_id` ya existe → el gasto entra como **costo** en Rent. Proyecto (`finanzas.js _renderRentProyecto`, que ya suma egresos pagados por proyecto).
+**5.C — Disparo a Egresos ✅** (commit `f44b799`, verificado en prod): botón **"Generar egreso en Finanzas"** cuando hay ganadora → crea `egresos` (imputado al proyecto, proveedor como texto), marca **OC `recibida`** + **pedido `comprado`** + dup-check. Al pagarse en Finanzas entra como **costo** en Rent. Proyecto. **⚠ Mismatches del schema viejo resueltos** (en `api.generarEgresoDeOC`): `egresos.orden_compra_id`/`proveedor_id` son **uuid** (no matchean compras_* bigint) → omitidos, proveedor va como `destinatario` texto, link OC↔egreso por **estado (`recibida`) + N° de OC en el concepto**; `egresos.categoria` tiene CHECK (`proveedor/credito_fiscal/servicio`) → `'proveedor'` + la taxonomía de gasto va en `subcategoria`; `egresos.medio` NOT NULL → `'transferencia'` default.
+
+**✅ Fase 5 doble paso COMPLETO** (5.A+5.B+5.C, charla 03) — Pedido (taller, 10 seg) → OC (Compras: presupuestos→ganadora) → Egreso (imputado al proyecto, cierra el pedido). **Falta (opcional / a revisar con Fede):** (a) columna de **presupuesto** (cotización del proyecto vía `proyectos.cotizacion_id`) en Rent. Proyecto para comparar vs gasto real; (b) revisar las **decisiones tomadas** (taxonomía de gasto fija, dónde vive exactamente, archivado de OCs); (c) si se quiere hard-link OC↔egreso, ALTER `egresos.orden_compra_id` a bigint (hoy es uuid huérfano). **⏳ Falta verificación visual de Fede** del flujo completo en el server.
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
