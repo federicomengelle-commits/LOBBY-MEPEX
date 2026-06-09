@@ -3626,8 +3626,22 @@ const API = {
     },
 
     async deletePresupuesto(id) {
-        try { await supabaseClient.from('compras_oc_presupuestos').update({ _deleted: true }).eq('id', id); return true; }
-        catch (e) { console.warn('[API] deletePresupuesto:', e.message); return null; }
+        try {
+            const { data: pr } = await supabaseClient.from('compras_oc_presupuestos').select('orden_id, es_ganadora').eq('id', id).maybeSingle();
+            await supabaseClient.from('compras_oc_presupuestos').update({ _deleted: true }).eq('id', id);
+            if (pr) await this._recomputeOCGanadora(pr.orden_id);   // si era la ganadora, limpia el cache de la OC
+            return true;
+        } catch (e) { console.warn('[API] deletePresupuesto:', e.message); return null; }
+    },
+
+    // Sincroniza el cache de la OC (proveedor_id/monto_total) con la ganadora VIGENTE; si no hay, limpia.
+    async _recomputeOCGanadora(ordenId) {
+        try {
+            const { data: gan } = await supabaseClient.from('compras_oc_presupuestos')
+                .select('proveedor_id, monto').eq('orden_id', ordenId).eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
+            if (gan) await supabaseClient.from('compras_ordenes').update({ proveedor_id: gan.proveedor_id, monto_total: gan.monto }).eq('id', ordenId);
+            else await supabaseClient.from('compras_ordenes').update({ proveedor_id: null, monto_total: 0 }).eq('id', ordenId);
+        } catch (e) { console.warn('[API] _recomputeOCGanadora:', e.message); }
     },
 
     // Marca una ganadora (limpia las demás) y vuelca proveedor + monto a la OC.
@@ -3635,10 +3649,20 @@ const API = {
         try {
             await supabaseClient.from('compras_oc_presupuestos').update({ es_ganadora: false }).eq('orden_id', ordenId);
             await supabaseClient.from('compras_oc_presupuestos').update({ es_ganadora: true }).eq('id', presupuestoId);
+            await this._recomputeOCGanadora(ordenId);
             const { data: g } = await supabaseClient.from('compras_oc_presupuestos').select('*').eq('id', presupuestoId).maybeSingle();
-            if (g) await supabaseClient.from('compras_ordenes').update({ proveedor_id: g.proveedor_id, monto_total: g.monto }).eq('id', ordenId);
             return g || null;
         } catch (e) { console.warn('[API] setGanadora:', e.message); return null; }
+    },
+
+    // Egreso (no borrado) de una OC — link por el N° de OC al inicio del concepto.
+    async _egresoForOC(numeroOc) {
+        if (!numeroOc) return null;
+        try {
+            const prefix = `OC ${numeroOc}`;
+            const { data } = await supabaseClient.from('egresos').select('id, concepto').eq('_deleted', false).ilike('concepto', prefix + '%');
+            return (data || []).find(e => e.concepto === prefix || (e.concepto || '').startsWith(prefix + ' ')) || null;
+        } catch (e) { return null; }
     },
 
     // 5.C — genera el egreso de la OC (gasto real → Finanzas; al pagarse entra como costo del proyecto).
@@ -3651,38 +3675,37 @@ const API = {
             const { data: oc, error } = await supabaseClient.from('compras_ordenes').select('*').eq('id', ordenId).maybeSingle();
             if (error) throw error;
             if (!oc) return { error: 'OC no encontrada' };
-            if (!oc.proveedor_id && !(oc.monto_total > 0)) return { error: 'Elegí una ganadora primero' };
-            if (oc.estado === 'recibida' || oc.estado === 'pagada') return { error: 'Esta OC ya generó su egreso' };
-            // Nombre del proveedor ganador (como texto, por el mismatch de tipos)
-            let destinatario = null;
+            // Ganadora VIGENTE (es_ganadora + no borrada) = fuente de verdad (no el cache de la OC).
             const { data: gan } = await supabaseClient.from('compras_oc_presupuestos')
-                .select('proveedor_id, proveedor_nombre').eq('orden_id', ordenId).eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
-            if (gan) {
-                destinatario = gan.proveedor_nombre || null;
-                if (!destinatario && gan.proveedor_id) {
-                    const { data: prov } = await supabaseClient.from('compras_proveedores').select('nombre, razon_social').eq('id', gan.proveedor_id).maybeSingle();
-                    destinatario = prov?.nombre || prov?.razon_social || null;
-                }
+                .select('proveedor_id, proveedor_nombre, monto').eq('orden_id', ordenId)
+                .eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
+            if (!gan) return { error: 'Elegí una ganadora primero' };
+            const numeroOc = oc.numero_oc || ('#' + oc.id);
+            // ¿Ya tiene un egreso (no borrado)?
+            if (await this._egresoForOC(numeroOc)) return { error: 'Esta OC ya generó su egreso' };
+            let destinatario = gan.proveedor_nombre || null;
+            if (!destinatario && gan.proveedor_id) {
+                const { data: prov } = await supabaseClient.from('compras_proveedores').select('nombre, razon_social').eq('id', gan.proveedor_id).maybeSingle();
+                destinatario = prov?.nombre || prov?.razon_social || null;
             }
             const user = Auth.getUser?.();
             const payload = {
                 fecha: new Date().toISOString().split('T')[0],
                 categoria: 'proveedor',   // CHECK de egresos: proveedor/credito_fiscal/servicio
-                subcategoria: oc.categoria_gasto || null,   // la taxonomía de gasto de la OC (oficina/material/…)
+                subcategoria: oc.categoria_gasto || null,   // taxonomía de gasto de la OC (oficina/material/…)
                 destinatario,
                 proyecto_id: oc.proyecto_id || null,
                 evento_id: oc.evento_id || null,
-                concepto: `OC ${oc.numero_oc || oc.id}${oc.descripcion ? ' — ' + oc.descripcion : ''}`,
-                monto: oc.monto_total || 0,
+                concepto: `OC ${numeroOc}${oc.descripcion ? ' — ' + oc.descripcion : ''}`,
+                monto: gan.monto || 0,   // monto de la ganadora vigente (no el cache)
                 estado: 'pendiente',
-                medio: 'transferencia',   // egresos.medio es NOT NULL; default, se ajusta al pagar en Finanzas
+                medio: 'transferencia',   // egresos.medio es NOT NULL; se ajusta al pagar en Finanzas
                 canal: 'oficial',
                 created_by: user?.uid || user?.id || null,
                 _deleted: false,
             };
             const { data: eg, error: egErr } = await supabaseClient.from('egresos').insert(payload).select('id').single();
             if (egErr) throw egErr;
-            await supabaseClient.from('compras_ordenes').update({ estado: 'recibida' }).eq('id', ordenId);
             if (oc.pedido_id) await this.setPedidoEstado(oc.pedido_id, 'comprado');
             return { egreso_id: eg.id };
         } catch (e) { console.warn('[API] generarEgresoDeOC:', e.message); return { error: e.message }; }

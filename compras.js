@@ -438,6 +438,7 @@ const ComprasModule = {
             .cmp-presu-egreso.btn{display:inline-block;background:#4A90D9;color:#fff;border:none;font-family:var(--font-mono,monospace);font-weight:700;font-size:.85rem;padding:10px 18px;border-radius:8px;cursor:pointer;transition:all .2s}
             .cmp-presu-egreso.btn:hover{box-shadow:0 0 14px rgba(74,144,217,.4)}
             .cmp-presu-egreso.done{color:#00CC88;font-size:.82rem;font-family:var(--font-mono,monospace);padding:8px 0}
+            .cmp-presu-egreso.pend{color:#666;font-size:.8rem;padding:8px 0}
         `;
         document.head.appendChild(s);
     },
@@ -1061,9 +1062,12 @@ const ComprasModule = {
         cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
         await this._loadOrdenItems(oc.id);
         this._ensurePedidoStyles();
+        // Refrescar la OC desde DB: monto/proveedor pueden haber cambiado al elegir/borrar ganadora.
+        try { const { data: fresh } = await supabaseClient.from('compras_ordenes').select('*').eq('id', oc.id).maybeSingle(); if (fresh) Object.assign(oc, fresh); } catch (_) { /* noop */ }
         const presupuestos = await API.getPresupuestos(oc.id);
-        // El egreso se trackea por estado de la OC (recibida/pagada) — ver nota en API.generarEgresoDeOC.
-        const hasEgreso = ['recibida', 'pagada'].includes(oc.estado);
+        const ganadora = presupuestos.find(p => p.es_ganadora);   // ganadora VIGENTE (presupuestos ya filtra _deleted)
+        const egreso = await API._egresoForOC(oc.numero_oc || ('#' + oc.id));
+        const hasEgreso = !!egreso;
 
         const estColor = this._getEstadoOCColor(oc.estado);
         const nextEstado = { pendiente: 'aprobada', aprobada: 'recibida', recibida: 'pagada' };
@@ -1144,7 +1148,7 @@ const ComprasModule = {
                         </div>`).join('')}
                     ${hasEgreso
                         ? '<div class="cmp-presu-egreso done">✓ Egreso generado · Finanzas › Egresos</div>'
-                        : (oc.proveedor_id ? `<button class="cmp-presu-egreso btn" id="cmpGenEgreso">💸 Generar egreso en Finanzas</button>` : '')}
+                        : (ganadora ? `<button class="cmp-presu-egreso btn" id="cmpGenEgreso">💸 Generar egreso en Finanzas</button>` : '<div class="cmp-presu-egreso pend">Elegí una ganadora para generar el egreso</div>')}
                 </div>
 
                 <!-- Items -->
