@@ -173,13 +173,14 @@ const ComprasModule = {
             const urg = p.urgencia === 'urgente' ? '<span class="cmp-ped-urg">URGENTE</span>' : '';
             const quien = this._esc(this._profilesMap[p.created_by] || '—');
             const resuelto = (p.estado === 'comprado' || p.estado === 'cancelado');
-            let actions = '';
+            const ocBtn = p.orden_compra_id
+                ? `<button class="cmp-ped-act" data-pact="ver-oc" data-oc="${p.orden_compra_id}">Ver OC →</button>`
+                : (!resuelto ? `<button class="cmp-ped-act primary" data-pact="crear-oc" data-id="${p.id}">📋 Crear OC</button>` : '');
+            let actions = ocBtn;
             if (p.estado === 'pendiente') {
-                actions = `<button class="cmp-ped-act" data-pact="en_compra" data-id="${p.id}">→ En compra</button>
-                           <button class="cmp-ped-act warn" data-pact="cancelar" data-id="${p.id}">Cancelar</button>`;
+                actions += `<button class="cmp-ped-act warn" data-pact="cancelar" data-id="${p.id}">Cancelar</button>`;
             } else if (p.estado === 'en_compra') {
-                actions = `<button class="cmp-ped-act ok" data-pact="comprado" data-id="${p.id}">✓ Comprado</button>
-                           <button class="cmp-ped-act" data-pact="pendiente" data-id="${p.id}">↩</button>`;
+                actions += `<button class="cmp-ped-act ok" data-pact="comprado" data-id="${p.id}">✓ Comprado</button>`;
             }
             actions += `<button class="cmp-ped-act del" data-pact="del" data-id="${p.id}" title="Eliminar">🗑</button>`;
             const linkHtml = p.link ? ` <a href="${this._escAttr(p.link)}" target="_blank" rel="noopener" class="cmp-ped-link">link ↗</a>` : '';
@@ -225,6 +226,14 @@ const ComprasModule = {
         document.querySelectorAll('[data-pact]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const id = btn.dataset.id, act = btn.dataset.pact;
+                if (act === 'crear-oc') {
+                    const pedido = this._pedidos.find(p => String(p.id) === String(id));
+                    const oc = await API.createOrdenFromPedido(pedido);
+                    if (oc) { Toast.success('OC creada — cargá los presupuestos'); await this._gotoOrdenesTab(oc.id); }
+                    else Toast.error('No se pudo crear la OC');
+                    return;
+                }
+                if (act === 'ver-oc') { await this._gotoOrdenesTab(btn.dataset.oc); return; }
                 if (act === 'del') {
                     const ok = await Confirm.delete('este pedido');
                     if (!ok) return;
@@ -237,6 +246,51 @@ const ComprasModule = {
                 await this._loadPedidos();
             });
         });
+    },
+
+    async _gotoOrdenesTab(ocId) {
+        this._activeTab = 'ordenes';
+        this._selectedOrdenId = ocId || null;
+        document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === 'ordenes'));
+        const cc = document.getElementById('comprasContent');
+        if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+        await this._loadOrdenes();
+    },
+
+    _showPresupuestoModal(ordenId) {
+        const provOpts = (this._proveedores || []).map(p => `<option value="${p.id}">${this._esc(p.nombre || p.razon_social)}</option>`).join('');
+        Modal.open({
+            title: 'Agregar presupuesto',
+            size: 'small',
+            body: `
+                <div style="display:flex;flex-direction:column;gap:13px;">
+                    <div><label class="form-label">Proveedor (de la lista)</label><select id="presProv" class="form-input form-select"><option value="">— Elegir —</option>${provOpts}</select></div>
+                    <div><label class="form-label">…o nombre libre</label><input id="presNombre" class="form-input" placeholder="Si no está en la lista de proveedores"></div>
+                    <div><label class="form-label">Monto ($)</label><input id="presMonto" type="number" class="form-input" min="0" step="any" placeholder="0"></div>
+                    <div><label class="form-label">Link (opcional)</label><input id="presLink" class="form-input" placeholder="Presupuesto / cotización / artículo"></div>
+                    <div><label class="form-label">Notas (opcional)</label><input id="presNotas" class="form-input"></div>
+                </div>`,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn-primary" id="presSave">Agregar</button>`,
+        });
+        setTimeout(() => {
+            document.getElementById('presSave')?.addEventListener('click', async () => {
+                const provId = document.getElementById('presProv')?.value;
+                const nombre = document.getElementById('presNombre')?.value?.trim();
+                const monto = document.getElementById('presMonto')?.value;
+                if (!provId && !nombre) { Toast.warning('Elegí un proveedor o poné un nombre'); return; }
+                if (!monto) { Toast.warning('Poné el monto'); return; }
+                const row = await API.addPresupuesto({
+                    orden_id: ordenId,
+                    proveedor_id: provId || null,
+                    proveedor_nombre: provId ? null : nombre,
+                    monto,
+                    link: document.getElementById('presLink')?.value?.trim() || null,
+                    notas: document.getElementById('presNotas')?.value?.trim() || null,
+                });
+                if (row) { Toast.success('Presupuesto agregado'); Modal.close(); this._renderFichaOrden(); }
+                else Toast.error('No se pudo agregar');
+            });
+        }, 50);
     },
 
     _openPedidoModal(prefill = {}) {
@@ -347,6 +401,22 @@ const ComprasModule = {
             .cmp-ped-seg{display:inline-flex;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:8px;padding:3px;gap:3px;width:100%}
             .cmp-ped-seg button{flex:1;background:transparent;border:none;color:#888;font-family:var(--font-main,sans-serif);font-size:.84rem;font-weight:600;padding:8px;border-radius:6px;cursor:pointer;transition:all .2s}
             .cmp-ped-seg button.on{background:rgba(0,169,193,.15);color:#00A9C1}
+            .cmp-presu{display:grid;grid-template-columns:24px 1fr auto 30px;gap:10px;align-items:center;border:1px solid #2a2a2a;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#0e0e0e;transition:all .2s}
+            .cmp-presu.win{border-color:#00CC88;box-shadow:0 0 0 1px rgba(0,204,136,.3);background:rgba(0,204,136,.05)}
+            .cmp-presu-pick{width:19px;height:19px;border-radius:50%;border:2px solid #555;cursor:pointer;position:relative;background:transparent}
+            .cmp-presu.win .cmp-presu-pick{border-color:#00CC88}
+            .cmp-presu.win .cmp-presu-pick::after{content:'';position:absolute;inset:3px;border-radius:50%;background:#00CC88}
+            .cmp-presu-prov{font-weight:600;color:#E8E8E8;font-size:.9rem}
+            .cmp-presu-wintag{font-family:var(--font-mono,monospace);font-size:.54rem;color:#00CC88;text-transform:uppercase}
+            .cmp-presu-link{color:#00A9C1;text-decoration:none;font-size:.76rem}
+            .cmp-presu-notas{font-size:.74rem;color:#888;margin-top:2px}
+            .cmp-presu-monto{font-family:var(--font-mono,monospace);font-weight:700;font-size:.95rem;color:#E8E8E8;text-align:right}
+            .cmp-presu-del{background:none;border:none;color:#555;cursor:pointer;font-size:1.2rem;line-height:1}
+            .cmp-presu-del:hover{color:#ff4444}
+            .cmp-presu-egreso{margin-top:10px}
+            .cmp-presu-egreso.btn{display:inline-block;background:#4A90D9;color:#fff;border:none;font-family:var(--font-mono,monospace);font-weight:700;font-size:.85rem;padding:10px 18px;border-radius:8px;cursor:pointer;transition:all .2s}
+            .cmp-presu-egreso.btn:hover{box-shadow:0 0 14px rgba(74,144,217,.4)}
+            .cmp-presu-egreso.done{color:#00CC88;font-size:.82rem;font-family:var(--font-mono,monospace);padding:8px 0}
         `;
         document.head.appendChild(s);
     },
@@ -969,6 +1039,10 @@ const ComprasModule = {
         // Load items
         cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
         await this._loadOrdenItems(oc.id);
+        this._ensurePedidoStyles();
+        const presupuestos = await API.getPresupuestos(oc.id);
+        // El egreso se trackea por estado de la OC (recibida/pagada) — ver nota en API.generarEgresoDeOC.
+        const hasEgreso = ['recibida', 'pagada'].includes(oc.estado);
 
         const estColor = this._getEstadoOCColor(oc.estado);
         const nextEstado = { pendiente: 'aprobada', aprobada: 'recibida', recibida: 'pagada' };
@@ -1021,6 +1095,30 @@ const ComprasModule = {
 
                 ${oc.notas ? `<div class="cmp-ficha-notas"><span class="cmp-field-label">Notas</span><p>${oc.notas}</p></div>` : ''}
 
+                <!-- Presupuestos de proveedor (5.B) -->
+                <div class="cmp-section">
+                    <h3 class="cmp-section-title">
+                        Presupuestos de proveedor
+                        <button class="cmp-btn-add-sm" id="cmpAddPresu">+ Agregar</button>
+                    </h3>
+                    ${presupuestos.length === 0
+                        ? '<p class="cmp-empty-small">Sin presupuestos todavía. Agregá los que coticen y tildá la ganadora.</p>'
+                        : presupuestos.map(pr => `
+                        <div class="cmp-presu ${pr.es_ganadora ? 'win' : ''}">
+                            <button class="cmp-presu-pick" data-presu-win="${pr.id}" title="Elegir ganadora"></button>
+                            <div class="cmp-presu-main">
+                                <span class="cmp-presu-prov">${this._esc(pr.proveedor_nombre || this._getProveedorName(pr.proveedor_id))}${pr.es_ganadora ? ' <span class="cmp-presu-wintag">ganadora</span>' : ''}</span>
+                                ${pr.link ? ` <a href="${this._escAttr(pr.link)}" target="_blank" rel="noopener" class="cmp-presu-link">link ↗</a>` : ''}
+                                ${pr.notas ? `<div class="cmp-presu-notas">${this._esc(pr.notas)}</div>` : ''}
+                            </div>
+                            <span class="cmp-presu-monto">${this._formatMoney(pr.monto)}</span>
+                            <button class="cmp-presu-del" data-presu-del="${pr.id}" title="Quitar">×</button>
+                        </div>`).join('')}
+                    ${hasEgreso
+                        ? '<div class="cmp-presu-egreso done">✓ Egreso generado · Finanzas › Egresos</div>'
+                        : (oc.proveedor_id ? `<button class="cmp-presu-egreso btn" id="cmpGenEgreso">💸 Generar egreso en Finanzas</button>` : '')}
+                </div>
+
                 <!-- Items -->
                 <div class="cmp-section">
                     <h3 class="cmp-section-title">
@@ -1069,6 +1167,21 @@ const ComprasModule = {
 
         // Delete item buttons
         this._attachItemDeleteEvents(oc);
+
+        // Presupuestos (5.B) + Generar egreso (5.C)
+        document.getElementById('cmpAddPresu')?.addEventListener('click', () => this._showPresupuestoModal(oc.id));
+        document.querySelectorAll('[data-presu-win]').forEach(b => b.addEventListener('click', async () => {
+            await API.setGanadora(oc.id, b.dataset.presuWin);
+            Toast.success('Ganadora elegida'); this._renderFichaOrden();
+        }));
+        document.querySelectorAll('[data-presu-del]').forEach(b => b.addEventListener('click', async () => {
+            await API.deletePresupuesto(b.dataset.presuDel); this._renderFichaOrden();
+        }));
+        document.getElementById('cmpGenEgreso')?.addEventListener('click', async () => {
+            const r = await API.generarEgresoDeOC(oc.id);
+            if (r && r.egreso_id) { Toast.success('Egreso generado en Finanzas 💸'); this._renderFichaOrden(); }
+            else Toast.error(r?.error || 'No se pudo generar el egreso');
+        });
     },
 
     _renderOrdenItemsTable(ordenId) {
