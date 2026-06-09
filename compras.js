@@ -129,7 +129,7 @@ const ComprasModule = {
                 API.getPedidos(),
                 API.getProjects(),
                 API.getProfiles(),
-                supabaseClient.from('insumos_base').select('id, nombre').eq('_deleted', false).order('nombre'),
+                supabaseClient.from('insumos_base').select('id, nombre, unidad').eq('_deleted', false).order('nombre'),
             ]);
             this._pedidos = pedidos || [];
             this._projects = projects || [];
@@ -163,7 +163,9 @@ const ComprasModule = {
             const destino = p.proyecto_id
                 ? `📁 ${this._esc(projMap[p.proyecto_id] || 'Proyecto')}`
                 : (p.categoria_gasto ? `🏷️ ${this._esc(p.categoria_gasto)}` : '<span style="color:#555">—</span>');
-            const cant = p.cantidad ? `<span class="cmp-ped-qty">×${p.cantidad}${p.unidad ? ' ' + this._esc(p.unidad) : ''}</span>` : '';
+            const multi = Array.isArray(p.items) && p.items.length > 1;
+            const cant = (!multi && p.cantidad) ? `<span class="cmp-ped-qty">×${p.cantidad}${p.unidad ? ' ' + this._esc(p.unidad) : ''}</span>` : '';
+            const itemsHtml = multi ? `<div class="cmp-ped-items">${p.items.map(it => `<span class="cmp-ped-itemchip">${this._esc(it.descripcion)}${it.cantidad ? ` ×${it.cantidad}` : ''}${it.unidad ? ' ' + this._esc(it.unidad) : ''}</span>`).join('')}</div>` : '';
             const urg = p.urgencia === 'urgente' ? '<span class="cmp-ped-urg">URGENTE</span>' : '';
             const quien = this._esc(this._profilesMap[p.created_by] || '—');
             const resuelto = (p.estado === 'comprado' || p.estado === 'cancelado');
@@ -181,6 +183,7 @@ const ComprasModule = {
             return `
                 <tr class="${resuelto ? 'cmp-ped-row-dim' : ''}">
                     <td><span class="cmp-ped-desc">${tipoIcon} ${this._esc(p.descripcion || '—')}${linkHtml}</span> ${cant} ${urg}
+                        ${itemsHtml}
                         ${p.nota ? `<div class="cmp-ped-nota">${this._esc(p.nota)}</div>` : ''}</td>
                     <td>${destino}</td>
                     <td>${quien}</td>
@@ -297,26 +300,18 @@ const ComprasModule = {
             body: `
                 <div style="display:flex;flex-direction:column;gap:14px;">
                     <div>
-                        <label class="form-label">¿Qué hay que comprar?</label>
-                        <div class="cmp-ped-seg" id="pedTipoSeg">
-                            <button type="button" class="on" data-pt="insumo">📦 Insumo</button>
-                            <button type="button" data-pt="libre">📝 Otra cosa</button>
-                        </div>
-                    </div>
-                    <div id="pedDescWrap">
-                        <input list="pedInsumos" id="pedDesc" class="form-input" placeholder="Nombre del insumo o qué necesitás">
+                        <label class="form-label">¿Qué hay que comprar? <span class="muted-mono" style="color:#666;">— podés agregar varios ítems</span></label>
+                        <div class="cmp-ped-itemshead"><span>Ítem</span><span>Cant.</span><span>Unidad</span><span></span></div>
+                        <div id="pedItemsList"></div>
+                        <button type="button" class="cmp-ped-additem" id="pedAddItem">+ Agregar ítem</button>
                         <datalist id="pedInsumos">${insumoOpts}</datalist>
                     </div>
-                    <div id="pedLinkWrap" style="display:none;">
+                    <div>
                         <label class="form-label">Link de referencia (opcional)</label>
-                        <input id="pedLink" class="form-input" placeholder="MercadoLibre, web del proveedor…">
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                        <div><label class="form-label">Cantidad</label><input id="pedCant" type="number" class="form-input" value="1" min="0" step="any"></div>
-                        <div><label class="form-label">Unidad</label><input id="pedUnidad" class="form-input" placeholder="unidades / m² / kg…"></div>
+                        <input id="pedLink" class="form-input" placeholder="MercadoLibre, web del proveedor… (si aplica)">
                     </div>
                     <div>
-                        <label class="form-label">¿Para qué? </label>
+                        <label class="form-label">¿Para qué?</label>
                         <div class="cmp-ped-seg" id="pedImputSeg">
                             <button type="button" class="on" data-pi="proyecto">Un proyecto</button>
                             <button type="button" data-pi="gasto">Gasto (sin proyecto)</button>
@@ -334,30 +329,53 @@ const ComprasModule = {
             footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn-primary" id="pedSave">📨 Crear pedido</button>`,
         });
         setTimeout(() => {
-            let tipo = 'insumo', imput = 'proyecto', urgencia = 'normal';
+            let imput = 'proyecto', urgencia = 'normal';
+            const insumosMap = {};
+            (this._insumos || []).forEach(i => { insumosMap[(i.nombre || '').toLowerCase()] = i; });
+            const itemsList = document.getElementById('pedItemsList');
+            const addRow = () => {
+                const row = document.createElement('div');
+                row.className = 'cmp-ped-itemrow';
+                row.innerHTML = `
+                    <input list="pedInsumos" class="form-input ped-i-desc" placeholder="Insumo o qué necesitás">
+                    <input type="number" class="form-input ped-i-cant" placeholder="1" min="0" step="any" value="1">
+                    <input class="form-input ped-i-unidad" placeholder="unidad">
+                    <button type="button" class="ped-i-del" title="Quitar">×</button>`;
+                itemsList.appendChild(row);
+                row.querySelector('.ped-i-desc').addEventListener('input', (e) => {
+                    const ins = insumosMap[(e.target.value || '').trim().toLowerCase()];
+                    if (ins && ins.unidad) row.querySelector('.ped-i-unidad').value = ins.unidad;   // heredar unidad
+                });
+                row.querySelector('.ped-i-del').addEventListener('click', () => { if (itemsList.children.length > 1) row.remove(); });
+            };
+            addRow();
+            document.getElementById('pedAddItem')?.addEventListener('click', addRow);
             const seg = (segId, set) => document.getElementById(segId)?.addEventListener('click', e => {
                 const b = e.target.closest('button'); if (!b) return;
                 [...e.currentTarget.children].forEach(x => x.classList.toggle('on', x === b)); set(b);
             });
-            seg('pedTipoSeg', b => { tipo = b.dataset.pt; document.getElementById('pedLinkWrap').style.display = tipo === 'libre' ? 'block' : 'none'; });
             seg('pedImputSeg', b => { imput = b.dataset.pi; document.getElementById('pedProyWrap').style.display = imput === 'proyecto' ? 'block' : 'none'; document.getElementById('pedGastoWrap').style.display = imput === 'gasto' ? 'block' : 'none'; });
             seg('pedUrgSeg', b => { urgencia = b.dataset.pu; });
             document.getElementById('pedSave')?.addEventListener('click', async () => {
-                const descripcion = document.getElementById('pedDesc')?.value?.trim();
-                if (!descripcion) { Toast.warning('Decí qué hay que comprar'); return; }
-                const matchIns = (this._insumos || []).find(i => (i.nombre || '').toLowerCase() === descripcion.toLowerCase());
-                const payload = {
-                    tipo, descripcion,
-                    insumo_id: (tipo === 'insumo' && matchIns) ? matchIns.id : null,
-                    cantidad: document.getElementById('pedCant')?.value,
-                    unidad: document.getElementById('pedUnidad')?.value?.trim() || null,
-                    link: tipo === 'libre' ? (document.getElementById('pedLink')?.value?.trim() || null) : null,
+                const items = [...itemsList.querySelectorAll('.cmp-ped-itemrow')].map(r => {
+                    const desc = r.querySelector('.ped-i-desc').value.trim();
+                    return {
+                        descripcion: desc,
+                        insumo_id: (insumosMap[desc.toLowerCase()] || {}).id || null,
+                        cantidad: r.querySelector('.ped-i-cant').value,
+                        unidad: r.querySelector('.ped-i-unidad').value.trim() || null,
+                    };
+                }).filter(it => it.descripcion);
+                if (!items.length) { Toast.warning('Agregá al menos un ítem'); return; }
+                const link = document.getElementById('pedLink')?.value?.trim() || null;
+                const row = await API.createPedido({
+                    tipo: link ? 'libre' : 'insumo',
+                    items, link,
                     proyecto_id: imput === 'proyecto' ? (document.getElementById('pedProy')?.value || null) : null,
                     categoria_gasto: imput === 'gasto' ? (document.getElementById('pedGasto')?.value || null) : null,
                     urgencia,
                     nota: document.getElementById('pedNota')?.value?.trim() || null,
-                };
-                const row = await API.createPedido(payload);
+                });
                 if (row) { Toast.success('Pedido creado'); Modal.close(); await this._loadPedidos(); }
                 else Toast.error('No se pudo crear el pedido');
             });
@@ -395,6 +413,15 @@ const ComprasModule = {
             .cmp-ped-seg{display:inline-flex;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:8px;padding:3px;gap:3px;width:100%}
             .cmp-ped-seg button{flex:1;background:transparent;border:none;color:#888;font-family:var(--font-main,sans-serif);font-size:.84rem;font-weight:600;padding:8px;border-radius:6px;cursor:pointer;transition:all .2s}
             .cmp-ped-seg button.on{background:rgba(0,169,193,.15);color:#00A9C1}
+            .cmp-ped-itemshead{display:grid;grid-template-columns:1fr 70px 90px 26px;gap:8px;font-family:var(--font-mono,monospace);font-size:.58rem;text-transform:uppercase;letter-spacing:.5px;color:#666;padding:0 2px 5px;}
+            .cmp-ped-itemrow{display:grid;grid-template-columns:1fr 70px 90px 26px;gap:8px;align-items:center;margin-bottom:7px;}
+            .cmp-ped-itemrow .form-input{padding:8px 10px;font-size:.88rem;}
+            .ped-i-del{background:none;border:none;color:#555;cursor:pointer;font-size:1.2rem;line-height:1;}
+            .ped-i-del:hover{color:#ff4444;}
+            .cmp-ped-additem{background:transparent;border:1px dashed #2a2a2a;color:#00A9C1;font-family:var(--font-main,sans-serif);font-size:.82rem;font-weight:600;padding:8px;width:100%;border-radius:7px;cursor:pointer;margin-top:2px;transition:all .2s;}
+            .cmp-ped-additem:hover{border-color:#00A9C1;background:rgba(0,169,193,.05);}
+            .cmp-ped-items{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;}
+            .cmp-ped-itemchip{font-size:.74rem;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:5px;padding:2px 7px;color:#bbb;}
             .cmp-presu{display:grid;grid-template-columns:24px 1fr auto 30px;gap:10px;align-items:center;border:1px solid #2a2a2a;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#0e0e0e;transition:all .2s}
             .cmp-presu.win{border-color:#00CC88;box-shadow:0 0 0 1px rgba(0,204,136,.3);background:rgba(0,204,136,.05)}
             .cmp-presu-pick{width:19px;height:19px;border-radius:50%;border:2px solid #555;cursor:pointer;position:relative;background:transparent}

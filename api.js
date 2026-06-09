@@ -3480,12 +3480,27 @@ const API = {
 
     async createPedido(data) {
         const user = Auth.getUser?.();
+        // items: array [{descripcion, insumo_id, cantidad, unidad}]. Compat: si viene plano, lo envolvemos.
+        let items = Array.isArray(data.items) ? data.items.filter(it => it && String(it.descripcion || '').trim()) : null;
+        if (!items || !items.length) {
+            if (!data.descripcion) { console.warn('[API] createPedido: falta descripcion/items'); return null; }
+            items = [{ descripcion: data.descripcion, insumo_id: data.insumo_id || null, cantidad: data.cantidad, unidad: data.unidad || null }];
+        }
+        items = items.map(it => ({
+            descripcion: String(it.descripcion || '').trim(),
+            insumo_id: it.insumo_id || null,
+            cantidad: (it.cantidad === '' || it.cantidad == null) ? 1 : Number(it.cantidad),
+            unidad: it.unidad || null,
+        }));
+        const first = items[0];
+        const resumen = items.length === 1 ? first.descripcion : `${first.descripcion} + ${items.length - 1} más`;
         const payload = {
             tipo: data.tipo || 'insumo',
-            descripcion: data.descripcion || null,
-            insumo_id: data.insumo_id || null,
-            cantidad: (data.cantidad === '' || data.cantidad == null) ? 1 : Number(data.cantidad),
-            unidad: data.unidad || null,
+            descripcion: resumen,                 // resumen para listados/notif
+            insumo_id: first.insumo_id,
+            cantidad: first.cantidad,
+            unidad: first.unidad,
+            items,                                // JSONB con TODOS los ítems
             link: data.link || null,
             proyecto_id: data.proyecto_id || null,
             categoria_gasto: data.categoria_gasto || null,
@@ -3494,22 +3509,30 @@ const API = {
             estado: 'pendiente',
             created_by: user?.uid || user?.id || null,
         };
-        if (!payload.descripcion) { console.warn('[API] createPedido: descripcion obligatoria'); return null; }
+        let row = null;
         try {
-            const { data: row, error } = await supabaseClient.from('compras_pedidos').insert(payload).select().single();
-            if (error) throw error;
-            // Avisar a Compras (admin/superadmin) que hay un pedido nuevo
-            await this.createNotification({
-                tipo: 'pedido_compra',
-                titulo: payload.urgencia === 'urgente' ? '🛒 Pedido de compra URGENTE' : '🛒 Nuevo pedido de compra',
-                mensaje: `${payload.descripcion}${payload.cantidad ? ` (x${payload.cantidad})` : ''}${user?.name ? ` — pidió ${user.name}` : ''}`,
-                targetRole: 'admin',
-                entidadTipo: 'pedido',   // entidad_id se omite: pedido.id es bigint y notifications.entidad_id es uuid
-                link: '#compras?tab=pedidos',
-                prioridad: payload.urgencia === 'urgente' ? 'alta' : 'normal',
-            });
-            return row;
+            const res = await supabaseClient.from('compras_pedidos').insert(payload).select().single();
+            if (res.error) {
+                // Fallback: si la columna `items` aún no existe (SQL fase5_pedido_items.sql sin correr),
+                // reinsertamos sin items → el pedido se crea single-ítem (no rompe).
+                if (/items/i.test(res.error.message)) {
+                    const flat = { ...payload }; delete flat.items;
+                    const res2 = await supabaseClient.from('compras_pedidos').insert(flat).select().single();
+                    if (res2.error) throw res2.error;
+                    row = res2.data;
+                } else throw res.error;
+            } else row = res.data;
         } catch (e) { console.warn('[API] createPedido:', e.message); return null; }
+        await this.createNotification({
+            tipo: 'pedido_compra',
+            titulo: payload.urgencia === 'urgente' ? '🛒 Pedido de compra URGENTE' : '🛒 Nuevo pedido de compra',
+            mensaje: `${resumen}${items.length > 1 ? ` (${items.length} ítems)` : (first.cantidad ? ` (x${first.cantidad})` : '')}${user?.name ? ` — pidió ${user.name}` : ''}`,
+            targetRole: 'admin',
+            entidadTipo: 'pedido',   // entidad_id se omite: pedido.id es bigint y notifications.entidad_id es uuid
+            link: '#compras?tab=pedidos',
+            prioridad: payload.urgencia === 'urgente' ? 'alta' : 'normal',
+        });
+        return row;
     },
 
     async updatePedido(id, data) {
@@ -3557,6 +3580,21 @@ const API = {
             const { data: row, error } = await supabaseClient.from('compras_ordenes').insert(payload).select('id, numero_oc').single();
             if (error) throw error;
             await this.setPedidoEstado(pedido.id, 'en_compra', row.id);
+            // Copiar los ítems del pedido a la OC (compras_orden_items → sección "Items de la Orden")
+            const items = (Array.isArray(pedido.items) && pedido.items.length)
+                ? pedido.items
+                : [{ descripcion: pedido.descripcion, cantidad: pedido.cantidad, unidad: pedido.unidad }];
+            const ocItems = items
+                .filter(it => it && String(it.descripcion || '').trim())
+                .map(it => ({
+                    orden_id: row.id,
+                    nombre: it.unidad ? `${it.descripcion} (${it.unidad})` : it.descripcion,
+                    cantidad: (it.cantidad === '' || it.cantidad == null) ? null : Number(it.cantidad),
+                    precio_unitario: null,
+                    subtotal: null,
+                    notas: null,
+                }));
+            if (ocItems.length) { try { await supabaseClient.from('compras_orden_items').insert(ocItems); } catch (e2) { console.warn('[API] copy items->OC:', e2.message); } }
             return row;
         } catch (e) { console.warn('[API] createOrdenFromPedido:', e.message); return null; }
     },

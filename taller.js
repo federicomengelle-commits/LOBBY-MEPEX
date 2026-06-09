@@ -280,17 +280,21 @@ const TallerModule = {
     },
 
     // Fase 5 — Pedir compra (paso 1): el taller dispara un pedido simple a Compras.
-    _openPedirCompraModal(proyectoId, proyectoNombre) {
+    async _openPedirCompraModal(proyectoId, proyectoNombre) {
+        let insumos = [];
+        try { const { data } = await supabaseClient.from('insumos_base').select('id, nombre, unidad').eq('_deleted', false).order('nombre'); insumos = data || []; } catch (e) { /* sigue sin datalist */ }
+        const insumoOpts = insumos.map(i => `<option value="${this._escAttr(i.nombre || '')}">`).join('');
         Modal.open({
             title: '🛒 Pedir compra',
             size: 'medium',
             body: `
-                <p style="color:#888;font-size:.85rem;margin-bottom:14px;">${proyectoNombre ? `Para <b style="color:#E8E8E8">${this._esc(proyectoNombre)}</b>. ` : ''}Decí qué hace falta — Compras se encarga de conseguirlo.</p>
+                <p style="color:#888;font-size:.85rem;margin-bottom:14px;">${proyectoNombre ? `Para <b style="color:#E8E8E8">${this._esc(proyectoNombre)}</b>. ` : ''}Decí qué hace falta — podés pedir varias cosas. Compras se encarga.</p>
                 <div style="display:flex;flex-direction:column;gap:13px;">
-                    <div><label class="form-label">¿Qué hay que comprar?</label><input id="tpDesc" class="form-input" placeholder="Ej: 10 placas fibroplus / caladora nueva"></div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                        <div><label class="form-label">Cantidad</label><input id="tpCant" type="number" class="form-input" value="1" min="0" step="any"></div>
-                        <div><label class="form-label">Unidad</label><input id="tpUnidad" class="form-input" placeholder="unidades"></div>
+                    <div>
+                        <div style="display:grid;grid-template-columns:1fr 70px 90px 26px;gap:8px;font-family:var(--font-mono,monospace);font-size:.58rem;text-transform:uppercase;letter-spacing:.5px;color:#666;padding:0 2px 5px;"><span>Qué</span><span>Cant.</span><span>Unidad</span><span></span></div>
+                        <div id="tpItems"></div>
+                        <button type="button" id="tpAddItem" style="background:transparent;border:1px dashed #2a2a2a;color:#00A9C1;font-size:.82rem;font-weight:600;padding:8px;width:100%;border-radius:7px;cursor:pointer;margin-top:2px;">+ Agregar ítem</button>
+                        <datalist id="tpInsumos">${insumoOpts}</datalist>
                     </div>
                     <div><label class="form-label">Link (opcional)</label><input id="tpLink" class="form-input" placeholder="Si tenés, pegá un link (MercadoLibre, etc.)"></div>
                     <div><label class="form-label">Urgencia</label>
@@ -305,21 +309,38 @@ const TallerModule = {
         });
         setTimeout(() => {
             let urgencia = 'normal';
+            const insumosMap = {}; insumos.forEach(i => { insumosMap[(i.nombre || '').toLowerCase()] = i; });
+            const list = document.getElementById('tpItems');
+            const addRow = () => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:grid;grid-template-columns:1fr 70px 90px 26px;gap:8px;align-items:center;margin-bottom:7px;';
+                row.innerHTML = `
+                    <input list="tpInsumos" class="form-input tp-i-desc" placeholder="Qué necesitás" style="padding:8px 10px;font-size:.88rem;">
+                    <input type="number" class="form-input tp-i-cant" value="1" min="0" step="any" style="padding:8px 10px;font-size:.88rem;">
+                    <input class="form-input tp-i-unidad" placeholder="unidad" style="padding:8px 10px;font-size:.88rem;">
+                    <button type="button" class="tp-i-del" style="background:none;border:none;color:#555;cursor:pointer;font-size:1.2rem;">×</button>`;
+                list.appendChild(row);
+                row.querySelector('.tp-i-desc').addEventListener('input', (e) => { const ins = insumosMap[(e.target.value || '').trim().toLowerCase()]; if (ins && ins.unidad) row.querySelector('.tp-i-unidad').value = ins.unidad; });
+                row.querySelector('.tp-i-del').addEventListener('click', () => { if (list.children.length > 1) row.remove(); });
+            };
+            addRow();
+            document.getElementById('tpAddItem')?.addEventListener('click', addRow);
             document.getElementById('tpUrg')?.addEventListener('click', e => {
                 const b = e.target.closest('.tp-urg'); if (!b) return;
                 urgencia = b.dataset.u;
                 document.querySelectorAll('#tpUrg .tp-urg').forEach(x => { const on = x === b; x.style.background = on ? 'rgba(0,169,193,.15)' : 'transparent'; x.style.color = on ? '#00A9C1' : '#888'; });
             });
             document.getElementById('tpSave')?.addEventListener('click', async () => {
-                const descripcion = document.getElementById('tpDesc')?.value?.trim();
-                if (!descripcion) { Toast.warning('Decí qué hay que comprar'); return; }
+                const items = [...list.children].map(r => {
+                    const d = r.querySelector('.tp-i-desc'); if (!d) return null;
+                    const desc = d.value.trim();
+                    return { descripcion: desc, insumo_id: (insumosMap[desc.toLowerCase()] || {}).id || null, cantidad: r.querySelector('.tp-i-cant').value, unidad: r.querySelector('.tp-i-unidad').value.trim() || null };
+                }).filter(it => it && it.descripcion);
+                if (!items.length) { Toast.warning('Decí qué hay que comprar'); return; }
                 const link = document.getElementById('tpLink')?.value?.trim() || null;
                 const row = await API.createPedido({
                     tipo: link ? 'libre' : 'insumo',
-                    descripcion,
-                    cantidad: document.getElementById('tpCant')?.value,
-                    unidad: document.getElementById('tpUnidad')?.value?.trim() || null,
-                    link,
+                    items, link,
                     proyecto_id: proyectoId || null,
                     urgencia,
                     nota: document.getElementById('tpNota')?.value?.trim() || null,
