@@ -1,6 +1,6 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 45%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 46%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈55%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈54%).
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
 > **Baseline:** `origin/main` @ `c2439fc`.
@@ -8,7 +8,7 @@
 
 ---
 
-## Estado general — AVANCE ≈ 45%
+## Estado general — AVANCE ≈ 46%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
@@ -237,6 +237,20 @@ Fusión de los 3 sistemas que vivían sueltos (Lobby-alertas + campana `Notifica
 Centro único de notificaciones (9.1-9.3) + categoría GLOBAL en el menú (9.4) + stats por usuario (9.5) + lobby home por rol híbrido (9.6). **Deuda futura** (en PLAN-MAESTRO): tiempo de sesión exacto (audit_log no loguea login/logout); silenciado cross-device; limpiar `settings._getNotifPrefs/_setNotifPrefs` muertos.
 
 **Deudas menores:** (1) `settings._getNotifPrefs`/`_setNotifPrefs` (placeholders viejos) quedaron muertos → limpiar en una pasada. (2) El silenciado es por navegador (localStorage), no cross-device — futuro `profiles.notif_prefs` con DDL. (3) El badge sigue contando no-leídas + pendientes; si Fede prefiere separarlos visualmente, es un ajuste chico.
+
+## FASE 5 — Compras: doble paso (EN CURSO · charla 03)
+
+Modelo doble paso (Pedido taller → OC Compras). **SQL corrido por Fede** (`sql/fase5_compras_doble_paso.sql`): `compras_pedidos` + `compras_oc_presupuestos` + ALTER `compras_ordenes` (pedido_id/tipo/descripcion/link/cantidad/categoria_gasto). Tipos verificados (compras_* = **bigint**, proyectos uuid, `egresos.orden_compra_id` ya existe).
+
+**5.A — Pedidos ✅** (commit `109b151`, verificado en prod): paso 1 completo.
+- **API** (`api.js?v=33`): `getPedidos/getPedidoById/createPedido` (+notif a admin) `/updatePedido/setPedidoEstado/deletePedido` sobre `compras_pedidos`.
+- **Compras** (`?v=5`): tab nuevo **Pedidos** — tabla (descripción/destino/quién/estado/fecha + acciones estado pendiente→en_compra→comprado + cancelar/eliminar) + modal "+ Nuevo pedido" (tipo insumo/libre, datalist de 79 insumos, imputación proyecto/categoría-gasto, urgencia). Deep-link `#compras?tab=pedidos`.
+- **Taller** (`?v=11`): botón **"🛒 Pedir compra"** en cada card de stand → modal ULTRA simple (qué/cantidad/link/urgencia/nota, proyecto pre-set, sin precios).
+- Verificado: crear+listar+estados+notif. **Fix:** `entidad_id` omitido en la notif (pedido.id es bigint y `notifications.entidad_id` es uuid → rompía el insert). **⏳ Falta verificación visual de Fede del botón en Taller** (necesita un stand `en_taller`).
+
+**5.B — OC: presupuestos + ganadora + convertir pedido→OC ⏳ PENDIENTE.** Puntos de integración (ya reconocidos): el **detalle de OC** vive en `compras.js _renderOrdenes` (~966-1038, rama `_selectedOrdenId`) + `_renderOrdenItemsTable`. Plan: (1) botón **"Convertir a OC"** en el tab Pedidos → crea `compras_ordenes` con `pedido_id`+descripción+proyecto+tipo+categoría, marca pedido `en_compra` + linkea `orden_compra_id`, abre el detalle. (2) Sección **"Presupuestos de proveedor"** en el detalle de OC: listar/agregar `compras_oc_presupuestos` (proveedor+monto+link), **elegir ganadora** (radio) → setea `OC.proveedor_id` + `monto_total`. Falta API de presupuestos.
+
+**5.C — Disparo a Egresos ⏳ PENDIENTE.** Al elegir ganadora (o botón "Generar egreso"): crear `egresos` (`orden_compra_id`+proyecto_id+categoria+monto+concepto+estado), marcar pedido `comprado`. `egresos.orden_compra_id` ya existe → el gasto entra como **costo** en Rent. Proyecto (`finanzas.js _renderRentProyecto`, que ya suma egresos pagados por proyecto).
 
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
 - **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
