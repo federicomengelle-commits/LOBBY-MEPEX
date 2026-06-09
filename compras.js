@@ -39,7 +39,8 @@ const ComprasModule = {
 
         // Deep-link ?tab=pedidos (ej. desde la notif de pedido nuevo)
         const m = (location.hash || '').match(/[?&]tab=([^&]+)/);
-        if (m && ['proveedores', 'pedidos', 'ordenes', 'pagos'].includes(m[1])) this._activeTab = m[1];
+        if (m && ['proveedores', 'pedidos', 'ordenes'].includes(m[1])) this._activeTab = m[1];
+        if (this._activeTab === 'pagos') this._activeTab = 'ordenes';   // tab Pagos retirada → pagos se ven en Finanzas
 
         content.innerHTML = this._buildShell();
         this._attachTabEvents();
@@ -48,10 +49,8 @@ const ComprasModule = {
             await this._loadProveedores();
         } else if (this._activeTab === 'pedidos') {
             await this._loadPedidos();
-        } else if (this._activeTab === 'ordenes') {
-            await this._loadOrdenes();
         } else {
-            await this._loadPagos();
+            await this._loadOrdenes();
         }
     },
 
@@ -90,10 +89,6 @@ const ComprasModule = {
                             <span class="section-tab-icon">📝</span>
                             <span class="section-tab-text">Órdenes de Compra</span>
                         </button>
-                        <button class="section-tab ${this._activeTab === 'pagos' ? 'active' : ''}" data-tab="pagos">
-                            <span class="section-tab-icon">📅</span>
-                            <span class="section-tab-text">Pagos</span>
-                        </button>
                     </div>
                 </div>
                 <div class="module-content" id="comprasContent">
@@ -117,8 +112,7 @@ const ComprasModule = {
                 if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
                 if (this._activeTab === 'proveedores') await this._loadProveedores();
                 else if (this._activeTab === 'pedidos') await this._loadPedidos();
-                else if (this._activeTab === 'ordenes') await this._loadOrdenes();
-                else await this._loadPagos();
+                else await this._loadOrdenes();
             });
         });
     },
@@ -1088,9 +1082,16 @@ const ComprasModule = {
                         <span class="cmp-field-value">${this._formatDate(oc.fecha)}</span>
                     </div>
                     <div class="cmp-ficha-field">
-                        <span class="cmp-field-label">Monto Total</span>
+                        <span class="cmp-field-label">Monto Total (ganadora)</span>
                         <span class="cmp-field-value cmp-mono" style="font-size:1.1rem;font-weight:700;">${this._formatMoney(oc.monto_total)}</span>
                     </div>
+                    <div class="cmp-ficha-field">
+                        <span class="cmp-field-label">Imputación</span>
+                        <span class="cmp-field-value">${oc.proyecto_id
+                            ? '📁 ' + this._esc((this._projects.find(p => String(p.id) === String(oc.proyecto_id)) || {}).name || (this._projects.find(p => String(p.id) === String(oc.proyecto_id)) || {}).nombre || 'Proyecto')
+                            : (oc.categoria_gasto ? '🏷️ ' + this._esc(oc.categoria_gasto) : '—')}</span>
+                    </div>
+                    ${oc.descripcion ? `<div class="cmp-ficha-field"><span class="cmp-field-label">Detalle</span><span class="cmp-field-value">${this._esc(oc.descripcion)}${oc.cantidad ? ` ×${oc.cantidad}` : ''}</span></div>` : ''}
                 </div>
 
                 ${oc.notas ? `<div class="cmp-ficha-notas"><span class="cmp-field-label">Notas</span><p>${oc.notas}</p></div>` : ''}
@@ -1144,21 +1145,8 @@ const ComprasModule = {
                 await supabaseClient.from('compras_ordenes').update({ estado: next }).eq('id', oc.id);
                 oc.estado = next;
                 Toast.success(`OC marcada como ${this._getEstadoOCLabel(next)}`);
-
-                // If pagada, auto-create pago record
-                if (next === 'pagada') {
-                    await supabaseClient.from('compras_pagos').insert({
-                        proveedor_id: oc.proveedor_id,
-                        orden_id: oc.id,
-                        concepto: `OC ${oc.numero_oc || oc.id}`,
-                        monto: oc.monto_total,
-                        fecha_vencimiento: oc.fecha,
-                        fecha_pago: new Date().toISOString().split('T')[0],
-                        estado: 'pagado',
-                        _deleted: false,
-                    });
-                }
-
+                // (El pago real se trackea en Finanzas vía el egreso de la OC; la vieja tabla
+                //  compras_pagos + la pestaña Pagos se retiraron.)
                 this._renderFichaOrden();
             } catch (e) {
                 Toast.error('Error al actualizar estado');
