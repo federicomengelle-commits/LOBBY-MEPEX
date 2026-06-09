@@ -22,6 +22,12 @@ const ComprasModule = {
     _filterCalif: '',
     _filterEstadoOC: '',
     _filterEstadoPago: '',
+    // Fase 5 — Pedidos (paso 1)
+    _pedidos: [],
+    _insumos: [],
+    _profilesMap: {},
+    _filterEstadoPedido: '',
+    _categoriasGasto: ['Oficina', 'Vehículo / flota', 'Material de taller', 'Herramientas', 'Servicios', 'Otro'],
 
     // ─── Render principal ───
     async render() {
@@ -31,11 +37,17 @@ const ComprasModule = {
         const content = document.getElementById('mainContent');
         if (!content) return;
 
+        // Deep-link ?tab=pedidos (ej. desde la notif de pedido nuevo)
+        const m = (location.hash || '').match(/[?&]tab=([^&]+)/);
+        if (m && ['proveedores', 'pedidos', 'ordenes', 'pagos'].includes(m[1])) this._activeTab = m[1];
+
         content.innerHTML = this._buildShell();
         this._attachTabEvents();
 
         if (this._activeTab === 'proveedores') {
             await this._loadProveedores();
+        } else if (this._activeTab === 'pedidos') {
+            await this._loadPedidos();
         } else if (this._activeTab === 'ordenes') {
             await this._loadOrdenes();
         } else {
@@ -70,6 +82,10 @@ const ComprasModule = {
                             <span class="section-tab-icon">🏪</span>
                             <span class="section-tab-text">Proveedores</span>
                         </button>
+                        <button class="section-tab ${this._activeTab === 'pedidos' ? 'active' : ''}" data-tab="pedidos">
+                            <span class="section-tab-icon">🛒</span>
+                            <span class="section-tab-text">Pedidos</span>
+                        </button>
                         <button class="section-tab ${this._activeTab === 'ordenes' ? 'active' : ''}" data-tab="ordenes">
                             <span class="section-tab-icon">📝</span>
                             <span class="section-tab-text">Órdenes de Compra</span>
@@ -100,6 +116,7 @@ const ComprasModule = {
                 const cc = document.getElementById('comprasContent');
                 if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
                 if (this._activeTab === 'proveedores') await this._loadProveedores();
+                else if (this._activeTab === 'pedidos') await this._loadPedidos();
                 else if (this._activeTab === 'ordenes') await this._loadOrdenes();
                 else await this._loadPagos();
             });
@@ -108,8 +125,238 @@ const ComprasModule = {
 
 
     // ════════════════════════════════════════════════════
+    //  FASE 5 — PEDIDOS (paso 1 del doble paso)
+    // ════════════════════════════════════════════════════
+
+    async _loadPedidos() {
+        this._ensurePedidoStyles();
+        try {
+            const [pedidos, projects, profiles, insumosRes] = await Promise.all([
+                API.getPedidos(),
+                API.getProjects(),
+                API.getProfiles(),
+                supabaseClient.from('insumos_base').select('id, nombre').eq('_deleted', false).order('nombre'),
+            ]);
+            this._pedidos = pedidos || [];
+            this._projects = projects || [];
+            this._insumos = (insumosRes && insumosRes.data) || [];
+            this._profilesMap = {};
+            (profiles || []).forEach(p => { this._profilesMap[p.id] = p.name || p.username || '—'; });
+        } catch (e) { console.warn('[Compras] loadPedidos:', e.message); }
+        this._renderPedidos();
+    },
+
+    _pedidoEstadoBadge(estado) {
+        const map = {
+            pendiente: { t: 'Pendiente', c: '#F28D15' },
+            en_compra: { t: 'En compra', c: '#00A9C1' },
+            comprado:  { t: 'Comprado',  c: '#00CC88' },
+            cancelado: { t: 'Cancelado', c: '#888888' },
+        };
+        const m = map[estado] || map.pendiente;
+        return `<span class="cmp-ped-badge" style="background:${m.c}1a;color:${m.c};border:1px solid ${m.c}40;">${m.t}</span>`;
+    },
+
+    _renderPedidos() {
+        const cc = document.getElementById('comprasContent');
+        if (!cc) return;
+        const projMap = {}; (this._projects || []).forEach(p => projMap[p.id] = p.name || p.nombre);
+        let pedidos = this._pedidos.slice();
+        if (this._filterEstadoPedido) pedidos = pedidos.filter(p => p.estado === this._filterEstadoPedido);
+
+        const rows = pedidos.map(p => {
+            const tipoIcon = p.tipo === 'libre' ? '📝' : '📦';
+            const destino = p.proyecto_id
+                ? `📁 ${this._esc(projMap[p.proyecto_id] || 'Proyecto')}`
+                : (p.categoria_gasto ? `🏷️ ${this._esc(p.categoria_gasto)}` : '<span style="color:#555">—</span>');
+            const cant = p.cantidad ? `<span class="cmp-ped-qty">×${p.cantidad}${p.unidad ? ' ' + this._esc(p.unidad) : ''}</span>` : '';
+            const urg = p.urgencia === 'urgente' ? '<span class="cmp-ped-urg">URGENTE</span>' : '';
+            const quien = this._esc(this._profilesMap[p.created_by] || '—');
+            const resuelto = (p.estado === 'comprado' || p.estado === 'cancelado');
+            let actions = '';
+            if (p.estado === 'pendiente') {
+                actions = `<button class="cmp-ped-act" data-pact="en_compra" data-id="${p.id}">→ En compra</button>
+                           <button class="cmp-ped-act warn" data-pact="cancelar" data-id="${p.id}">Cancelar</button>`;
+            } else if (p.estado === 'en_compra') {
+                actions = `<button class="cmp-ped-act ok" data-pact="comprado" data-id="${p.id}">✓ Comprado</button>
+                           <button class="cmp-ped-act" data-pact="pendiente" data-id="${p.id}">↩</button>`;
+            }
+            actions += `<button class="cmp-ped-act del" data-pact="del" data-id="${p.id}" title="Eliminar">🗑</button>`;
+            const linkHtml = p.link ? ` <a href="${this._escAttr(p.link)}" target="_blank" rel="noopener" class="cmp-ped-link">link ↗</a>` : '';
+            return `
+                <tr class="${resuelto ? 'cmp-ped-row-dim' : ''}">
+                    <td><span class="cmp-ped-desc">${tipoIcon} ${this._esc(p.descripcion || '—')}${linkHtml}</span> ${cant} ${urg}
+                        ${p.nota ? `<div class="cmp-ped-nota">${this._esc(p.nota)}</div>` : ''}</td>
+                    <td>${destino}</td>
+                    <td>${quien}</td>
+                    <td>${this._pedidoEstadoBadge(p.estado)}</td>
+                    <td class="cmp-ped-fecha">${this._formatDate(p.created_at)}</td>
+                    <td class="cmp-ped-actions">${actions}</td>
+                </tr>`;
+        }).join('');
+
+        cc.innerHTML = `
+            <div class="cmp-pedidos">
+                <div class="cmp-ped-toolbar">
+                    <div class="cmp-ped-info">Pedidos de compra · el taller pide, Compras gestiona</div>
+                    <div class="cmp-ped-tools">
+                        <select id="cmpPedFiltro" class="form-input form-select" style="width:auto;padding:8px 10px;">
+                            <option value="">Todos</option>
+                            <option value="pendiente" ${this._filterEstadoPedido === 'pendiente' ? 'selected' : ''}>Pendientes</option>
+                            <option value="en_compra" ${this._filterEstadoPedido === 'en_compra' ? 'selected' : ''}>En compra</option>
+                            <option value="comprado" ${this._filterEstadoPedido === 'comprado' ? 'selected' : ''}>Comprados</option>
+                            <option value="cancelado" ${this._filterEstadoPedido === 'cancelado' ? 'selected' : ''}>Cancelados</option>
+                        </select>
+                        <button class="btn-primary" id="cmpPedNuevo">+ Nuevo pedido</button>
+                    </div>
+                </div>
+                ${pedidos.length === 0
+                    ? '<div class="cmp-ped-empty">🛒<p>No hay pedidos' + (this._filterEstadoPedido ? ' con ese estado' : ' todavía') + '.</p></div>'
+                    : `<div class="cmp-ped-table-wrap"><table class="cmp-ped-table">
+                        <thead><tr><th>Pedido</th><th>Destino</th><th>Pidió</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
+                        <tbody>${rows}</tbody></table></div>`}
+            </div>`;
+        this._attachPedidosEvents();
+    },
+
+    _attachPedidosEvents() {
+        document.getElementById('cmpPedNuevo')?.addEventListener('click', () => this._openPedidoModal());
+        document.getElementById('cmpPedFiltro')?.addEventListener('change', (e) => { this._filterEstadoPedido = e.target.value; this._renderPedidos(); });
+        document.querySelectorAll('[data-pact]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.dataset.id, act = btn.dataset.pact;
+                if (act === 'del') {
+                    const ok = await Confirm.delete('este pedido');
+                    if (!ok) return;
+                    await API.deletePedido(id); Toast.success('Pedido eliminado');
+                } else if (act === 'cancelar') {
+                    await API.setPedidoEstado(id, 'cancelado'); Toast.info('Pedido cancelado');
+                } else {
+                    await API.setPedidoEstado(id, act);
+                }
+                await this._loadPedidos();
+            });
+        });
+    },
+
+    _openPedidoModal(prefill = {}) {
+        const insumoOpts = (this._insumos || []).map(i => `<option value="${this._escAttr(i.nombre || '')}">`).join('');
+        const projOpts = (this._projects || []).map(p => `<option value="${p.id}" ${prefill.proyecto_id === p.id ? 'selected' : ''}>${this._esc(p.name || p.nombre)}</option>`).join('');
+        const catOpts = this._categoriasGasto.map(c => `<option value="${this._escAttr(c)}">${this._esc(c)}</option>`).join('');
+        Modal.open({
+            title: '🛒 Nuevo pedido de compra',
+            size: 'medium',
+            body: `
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <div>
+                        <label class="form-label">¿Qué hay que comprar?</label>
+                        <div class="cmp-ped-seg" id="pedTipoSeg">
+                            <button type="button" class="on" data-pt="insumo">📦 Insumo</button>
+                            <button type="button" data-pt="libre">📝 Otra cosa</button>
+                        </div>
+                    </div>
+                    <div id="pedDescWrap">
+                        <input list="pedInsumos" id="pedDesc" class="form-input" placeholder="Nombre del insumo o qué necesitás">
+                        <datalist id="pedInsumos">${insumoOpts}</datalist>
+                    </div>
+                    <div id="pedLinkWrap" style="display:none;">
+                        <label class="form-label">Link de referencia (opcional)</label>
+                        <input id="pedLink" class="form-input" placeholder="MercadoLibre, web del proveedor…">
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div><label class="form-label">Cantidad</label><input id="pedCant" type="number" class="form-input" value="1" min="0" step="any"></div>
+                        <div><label class="form-label">Unidad</label><input id="pedUnidad" class="form-input" placeholder="unidades / m² / kg…"></div>
+                    </div>
+                    <div>
+                        <label class="form-label">¿Para qué? </label>
+                        <div class="cmp-ped-seg" id="pedImputSeg">
+                            <button type="button" class="on" data-pi="proyecto">Un proyecto</button>
+                            <button type="button" data-pi="gasto">Gasto (sin proyecto)</button>
+                        </div>
+                    </div>
+                    <div id="pedProyWrap"><select id="pedProy" class="form-input form-select"><option value="">— Elegir proyecto —</option>${projOpts}</select></div>
+                    <div id="pedGastoWrap" style="display:none;"><select id="pedGasto" class="form-input form-select">${catOpts}</select></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;">
+                        <div><label class="form-label">Urgencia</label>
+                            <div class="cmp-ped-seg" id="pedUrgSeg"><button type="button" class="on" data-pu="normal">Normal</button><button type="button" data-pu="urgente">Urgente</button></div>
+                        </div>
+                        <div><label class="form-label">Nota (opcional)</label><input id="pedNota" class="form-input" placeholder="Algo que aclarar"></div>
+                    </div>
+                </div>`,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn-primary" id="pedSave">📨 Crear pedido</button>`,
+        });
+        setTimeout(() => {
+            let tipo = 'insumo', imput = 'proyecto', urgencia = 'normal';
+            const seg = (segId, set) => document.getElementById(segId)?.addEventListener('click', e => {
+                const b = e.target.closest('button'); if (!b) return;
+                [...e.currentTarget.children].forEach(x => x.classList.toggle('on', x === b)); set(b);
+            });
+            seg('pedTipoSeg', b => { tipo = b.dataset.pt; document.getElementById('pedLinkWrap').style.display = tipo === 'libre' ? 'block' : 'none'; });
+            seg('pedImputSeg', b => { imput = b.dataset.pi; document.getElementById('pedProyWrap').style.display = imput === 'proyecto' ? 'block' : 'none'; document.getElementById('pedGastoWrap').style.display = imput === 'gasto' ? 'block' : 'none'; });
+            seg('pedUrgSeg', b => { urgencia = b.dataset.pu; });
+            document.getElementById('pedSave')?.addEventListener('click', async () => {
+                const descripcion = document.getElementById('pedDesc')?.value?.trim();
+                if (!descripcion) { Toast.warning('Decí qué hay que comprar'); return; }
+                const matchIns = (this._insumos || []).find(i => (i.nombre || '').toLowerCase() === descripcion.toLowerCase());
+                const payload = {
+                    tipo, descripcion,
+                    insumo_id: (tipo === 'insumo' && matchIns) ? matchIns.id : null,
+                    cantidad: document.getElementById('pedCant')?.value,
+                    unidad: document.getElementById('pedUnidad')?.value?.trim() || null,
+                    link: tipo === 'libre' ? (document.getElementById('pedLink')?.value?.trim() || null) : null,
+                    proyecto_id: imput === 'proyecto' ? (document.getElementById('pedProy')?.value || null) : null,
+                    categoria_gasto: imput === 'gasto' ? (document.getElementById('pedGasto')?.value || null) : null,
+                    urgencia,
+                    nota: document.getElementById('pedNota')?.value?.trim() || null,
+                };
+                const row = await API.createPedido(payload);
+                if (row) { Toast.success('Pedido creado'); Modal.close(); await this._loadPedidos(); }
+                else Toast.error('No se pudo crear el pedido');
+            });
+        }, 50);
+    },
+
+    _ensurePedidoStyles() {
+        if (document.getElementById('cmp-ped-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'cmp-ped-styles';
+        s.textContent = `
+            .cmp-ped-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+            .cmp-ped-info{color:#888;font-size:.85rem}
+            .cmp-ped-tools{display:flex;gap:10px;align-items:center}
+            .cmp-ped-table-wrap{overflow-x:auto;border:1px solid #2a2a2a;border-radius:10px}
+            .cmp-ped-table{width:100%;border-collapse:collapse;font-size:.86rem}
+            .cmp-ped-table th{text-align:left;font-family:var(--font-mono,monospace);font-size:.62rem;text-transform:uppercase;letter-spacing:.5px;color:#888;padding:11px 14px;border-bottom:1px solid #2a2a2a;background:#0e0e0e}
+            .cmp-ped-table td{padding:11px 14px;border-bottom:1px solid #1a1a1a;vertical-align:top}
+            .cmp-ped-row-dim{opacity:.5}
+            .cmp-ped-desc{font-weight:600;color:#E8E8E8}
+            .cmp-ped-qty{font-family:var(--font-mono,monospace);font-size:.78rem;color:#aaa}
+            .cmp-ped-urg{font-family:var(--font-mono,monospace);font-size:.56rem;background:rgba(255,68,68,.15);color:#ff4444;border:1px solid rgba(255,68,68,.35);padding:2px 6px;border-radius:5px;text-transform:uppercase;margin-left:4px}
+            .cmp-ped-nota{font-size:.76rem;color:#888;margin-top:3px}
+            .cmp-ped-link{color:#00A9C1;text-decoration:none;font-size:.78rem}
+            .cmp-ped-badge{font-family:var(--font-mono,monospace);font-size:.6rem;font-weight:700;padding:3px 8px;border-radius:6px;text-transform:uppercase}
+            .cmp-ped-fecha{color:#888;font-size:.8rem;white-space:nowrap}
+            .cmp-ped-actions{white-space:nowrap}
+            .cmp-ped-act{background:#1a1a1a;border:1px solid #2a2a2a;color:#ccc;font-size:.76rem;padding:5px 9px;border-radius:6px;cursor:pointer;margin-left:4px;transition:all .15s}
+            .cmp-ped-act:hover{border-color:#00A9C1;color:#00A9C1}
+            .cmp-ped-act.ok:hover{border-color:#00CC88;color:#00CC88}
+            .cmp-ped-act.warn:hover{border-color:#F28D15;color:#F28D15}
+            .cmp-ped-act.del:hover{border-color:#ff4444;color:#ff4444}
+            .cmp-ped-empty{text-align:center;padding:60px 20px;color:#555;font-size:2rem}
+            .cmp-ped-empty p{font-size:.9rem;margin-top:8px}
+            .cmp-ped-seg{display:inline-flex;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:8px;padding:3px;gap:3px;width:100%}
+            .cmp-ped-seg button{flex:1;background:transparent;border:none;color:#888;font-family:var(--font-main,sans-serif);font-size:.84rem;font-weight:600;padding:8px;border-radius:6px;cursor:pointer;transition:all .2s}
+            .cmp-ped-seg button.on{background:rgba(0,169,193,.15);color:#00A9C1}
+        `;
+        document.head.appendChild(s);
+    },
+
+    // ════════════════════════════════════════════════════
     //  HELPERS
     // ════════════════════════════════════════════════════
+
+    _esc(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
+    _escAttr(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); },
 
     _formatDate(d) {
         if (!d) return '—';

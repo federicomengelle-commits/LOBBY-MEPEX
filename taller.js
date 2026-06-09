@@ -279,6 +279,57 @@ const TallerModule = {
         return this._renderCargaCard(item.data);
     },
 
+    // Fase 5 — Pedir compra (paso 1): el taller dispara un pedido simple a Compras.
+    _openPedirCompraModal(proyectoId, proyectoNombre) {
+        Modal.open({
+            title: '🛒 Pedir compra',
+            size: 'medium',
+            body: `
+                <p style="color:#888;font-size:.85rem;margin-bottom:14px;">${proyectoNombre ? `Para <b style="color:#E8E8E8">${this._esc(proyectoNombre)}</b>. ` : ''}Decí qué hace falta — Compras se encarga de conseguirlo.</p>
+                <div style="display:flex;flex-direction:column;gap:13px;">
+                    <div><label class="form-label">¿Qué hay que comprar?</label><input id="tpDesc" class="form-input" placeholder="Ej: 10 placas fibroplus / caladora nueva"></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div><label class="form-label">Cantidad</label><input id="tpCant" type="number" class="form-input" value="1" min="0" step="any"></div>
+                        <div><label class="form-label">Unidad</label><input id="tpUnidad" class="form-input" placeholder="unidades"></div>
+                    </div>
+                    <div><label class="form-label">Link (opcional)</label><input id="tpLink" class="form-input" placeholder="Si tenés, pegá un link (MercadoLibre, etc.)"></div>
+                    <div><label class="form-label">Urgencia</label>
+                        <div id="tpUrg" style="display:inline-flex;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:8px;padding:3px;gap:3px;width:100%;">
+                            <button type="button" class="tp-urg" data-u="normal" style="flex:1;background:rgba(0,169,193,.15);color:#00A9C1;border:none;padding:9px;border-radius:6px;cursor:pointer;font-weight:600;">Normal</button>
+                            <button type="button" class="tp-urg" data-u="urgente" style="flex:1;background:transparent;color:#888;border:none;padding:9px;border-radius:6px;cursor:pointer;font-weight:600;">Urgente</button>
+                        </div>
+                    </div>
+                    <div><label class="form-label">Nota (opcional)</label><input id="tpNota" class="form-input" placeholder="Algo que aclarar"></div>
+                </div>`,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn-primary" id="tpSave">📨 Pedir</button>`,
+        });
+        setTimeout(() => {
+            let urgencia = 'normal';
+            document.getElementById('tpUrg')?.addEventListener('click', e => {
+                const b = e.target.closest('.tp-urg'); if (!b) return;
+                urgencia = b.dataset.u;
+                document.querySelectorAll('#tpUrg .tp-urg').forEach(x => { const on = x === b; x.style.background = on ? 'rgba(0,169,193,.15)' : 'transparent'; x.style.color = on ? '#00A9C1' : '#888'; });
+            });
+            document.getElementById('tpSave')?.addEventListener('click', async () => {
+                const descripcion = document.getElementById('tpDesc')?.value?.trim();
+                if (!descripcion) { Toast.warning('Decí qué hay que comprar'); return; }
+                const link = document.getElementById('tpLink')?.value?.trim() || null;
+                const row = await API.createPedido({
+                    tipo: link ? 'libre' : 'insumo',
+                    descripcion,
+                    cantidad: document.getElementById('tpCant')?.value,
+                    unidad: document.getElementById('tpUnidad')?.value?.trim() || null,
+                    link,
+                    proyecto_id: proyectoId || null,
+                    urgencia,
+                    nota: document.getElementById('tpNota')?.value?.trim() || null,
+                });
+                if (row) { Toast.success('Pedido enviado a Compras 🛒'); Modal.close(); }
+                else Toast.error('No se pudo enviar el pedido');
+            });
+        }, 50);
+    },
+
     _renderProyectoCard(p) {
         const cliente = p.cliente?.nombre_empresa || p.cliente?.razon_social || '—';
         const evNombre = p.evento?.nombre || '—';
@@ -336,6 +387,7 @@ const TallerModule = {
                     ${this._estadoBtn(p, allChecked, done, total)}
                     ${p.drive_folder_url ? `<button class="tlr-card-btn ghost" data-action="open-drive" data-url="${this._escAttr(p.drive_folder_url)}">📁 Planos</button>` : ''}
                     <button class="tlr-card-btn ghost" data-action="open-stand-detail" data-id="${p.id}">→ Detalle</button>
+                    <button class="tlr-card-btn ghost" data-action="pedir-compra" data-id="${p.id}" data-pname="${this._escAttr(nombre)}">🛒 Pedir compra</button>
                 </div>
             </article>
         `;
@@ -464,6 +516,9 @@ const TallerModule = {
         });
         document.querySelectorAll('[data-action="open-stand-detail"]').forEach(btn =>
             btn.addEventListener('click', () => this._openStandDetail(btn.dataset.id))
+        );
+        document.querySelectorAll('[data-action="pedir-compra"]').forEach(btn =>
+            btn.addEventListener('click', () => this._openPedirCompraModal(btn.dataset.id, btn.dataset.pname))
         );
         document.querySelectorAll('[data-action="view-novedad"]').forEach(btn =>
             btn.addEventListener('click', () => this._openNovedadModal(btn.dataset.id, btn.dataset.proyecto))

@@ -3452,6 +3452,85 @@ const API = {
     },
 
     // ═════════════════════════════════════════════════════════════
+    //  FASE 5 — Compras: PEDIDOS (paso 1 del doble paso)
+    //  El taller (o cualquiera) crea un pedido simple "hay que comprar
+    //  esto". Compras lo gestiona y lo convierte en OC (paso 2).
+    // ═════════════════════════════════════════════════════════════
+
+    async getPedidos({ estado = null, proyectoId = null, includeResueltos = true } = {}) {
+        try {
+            let q = supabaseClient.from('compras_pedidos').select('*')
+                .eq('_deleted', false).order('created_at', { ascending: false });
+            if (estado) q = q.eq('estado', estado);
+            if (proyectoId) q = q.eq('proyecto_id', proyectoId);
+            if (!includeResueltos) q = q.not('estado', 'in', '(comprado,cancelado)');
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getPedidos:', e.message); return []; }
+    },
+
+    async getPedidoById(id) {
+        try {
+            const { data, error } = await supabaseClient.from('compras_pedidos').select('*').eq('id', id).maybeSingle();
+            if (error) throw error;
+            return data || null;
+        } catch (e) { console.warn('[API] getPedidoById:', e.message); return null; }
+    },
+
+    async createPedido(data) {
+        const user = Auth.getUser?.();
+        const payload = {
+            tipo: data.tipo || 'insumo',
+            descripcion: data.descripcion || null,
+            insumo_id: data.insumo_id || null,
+            cantidad: (data.cantidad === '' || data.cantidad == null) ? 1 : Number(data.cantidad),
+            unidad: data.unidad || null,
+            link: data.link || null,
+            proyecto_id: data.proyecto_id || null,
+            categoria_gasto: data.categoria_gasto || null,
+            urgencia: data.urgencia || 'normal',
+            nota: data.nota || null,
+            estado: 'pendiente',
+            created_by: user?.uid || user?.id || null,
+        };
+        if (!payload.descripcion) { console.warn('[API] createPedido: descripcion obligatoria'); return null; }
+        try {
+            const { data: row, error } = await supabaseClient.from('compras_pedidos').insert(payload).select().single();
+            if (error) throw error;
+            // Avisar a Compras (admin/superadmin) que hay un pedido nuevo
+            await this.createNotification({
+                tipo: 'pedido_compra',
+                titulo: payload.urgencia === 'urgente' ? '🛒 Pedido de compra URGENTE' : '🛒 Nuevo pedido de compra',
+                mensaje: `${payload.descripcion}${payload.cantidad ? ` (x${payload.cantidad})` : ''}${user?.name ? ` — pidió ${user.name}` : ''}`,
+                targetRole: 'admin',
+                entidadTipo: 'pedido',   // entidad_id se omite: pedido.id es bigint y notifications.entidad_id es uuid
+                link: '#compras?tab=pedidos',
+                prioridad: payload.urgencia === 'urgente' ? 'alta' : 'normal',
+            });
+            return row;
+        } catch (e) { console.warn('[API] createPedido:', e.message); return null; }
+    },
+
+    async updatePedido(id, data) {
+        try {
+            const { error } = await supabaseClient.from('compras_pedidos').update(data).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) { console.warn('[API] updatePedido:', e.message); return null; }
+    },
+
+    async setPedidoEstado(id, estado, ordenCompraId = null) {
+        const patch = { estado };
+        if (ordenCompraId != null) patch.orden_compra_id = ordenCompraId;
+        return this.updatePedido(id, patch);
+    },
+
+    async deletePedido(id) {
+        return this.updatePedido(id, { _deleted: true });
+    },
+
+    // ═════════════════════════════════════════════════════════════
     //  TANDA 1 — Encuestas Evento (schema-only para Tanda 3)
     // ═════════════════════════════════════════════════════════════
 
