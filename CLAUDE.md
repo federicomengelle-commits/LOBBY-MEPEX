@@ -552,11 +552,19 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 | `docs/prompts/tanda-2-operativo.md` | Prompt ejecutable Tanda 2 (módulos Taller / Logística + remito) |
 | `docs/prompts/tanda-3-cierre.md` | Prompt ejecutable Tanda 3 (RRHH / convocatorias / encuesta cliente) |
 | `docs/finanzas_blueprint_v2.md` | **Blueprint Finanzas + Contabilidad v2** (2026-05-19): partida doble, lado A/B, plan de pagos avanzado, compras familiares con IVA virtual, ARCA directo (deprecar La PyME), multi-moneda, conciliación bancaria, saldos apertura 2027. Plan plug & play en 8 fases (A-H). Schema real verificado vs prod. |
+| `docs/modulo-rrhh-v2-blueprint.md` | **Blueprint Módulo RRHH v2** (2026-06-11): SPEC OBLIGATORIA de la fase RRHH del plan maestro. 5 tabs estilo CRM (Panel/Nómina/Planificación/Ausencias/Jornales), ficha completa, DDL (`ausencias`, `vacaciones_saldos`, `persona_documentos`), migración + retiro `rrhh_*`, 5 etapas. RRHH.5 depende de "Rendimiento por evento" (Finanzas). |
 | `docs/CLAUDE.md.old` | Version anterior de CLAUDE.md (referencia historica) |
 
 ---
 
 ## 10. ESTADO ACTUAL
+
+- **Sesión 2026-06-11 (charla 04) — Diseño Módulo RRHH v2 + spin-off "Rendimiento por evento" (solo docs, sin código)**:
+  - **Blueprint cerrado** en `docs/modulo-rrhh-v2-blueprint.md` — SPEC OBLIGATORIA de la fase RRHH v2 del plan maestro (≈8%, absorbe la ex mini-fase RRHH de la auditoría 2B). 5 tabs estilo CRM: Panel (KPIs) / Nómina (tabla + panel lateral con sub-tabs Datos/Trabajo/Ausencias/Docs/Notas) / Planificación (grilla persona × días + aprobar convocatorias inline) / Ausencias (reemplaza Vacaciones legacy + migración + retiro de las 4 `rrhh_*`) / Jornales (lente por persona, read-only).
+  - **Decisiones Fede**: sin presentismo diario (ausencias por excepción) · docs solo fechas + semáforo (sin archivos) · sin self-service (todo carga admin; taller no ve RRHH) · sueldos internos fuera (Finanzas) · la CARGA de jornales NO vive en RRHH.
+  - **Verificado contra prod via REST**: `personas.cuil` y `personas.fecha_nacimiento` YA EXISTEN (agregadas a mano; `sql/rrhh_to_personas_migration.sql` desfasado — el "bug de pérdida de datos" que reportó un agente era falso positivo). `direccion`/`cbu_alias`/`contacto_emergencia` NO existen → ALTER en RRHH.1.
+  - **Spin-off**: el tab Jornales derivó en "Rendimiento por evento" (Finanzas): planilla de costos del evento (grilla inline que reemplaza el Excel de Lelean — jornales/fletes/proveedores-que-facturan-por-evento/seguros/comida, pagos en tandas y adelantos, egreso individual o consolidado) + dashboard de ganancia por evento (Σ ingresos proyectos − costos). **Prompt entregado a Fede para charla aparte**; anotado en PLAN-MAESTRO §Fase 8. RRHH.5 bloqueada por esa pieza; RRHH.1–4 sin dependencias.
+  - **Rebalanceo**: PROGRESO 48%→46%, PLAN-MAESTRO 52%→54% (universo creció).
 
 - **Sesión 2026-06-11 — Diseño CRM "Casos" (solo docs, sin código)**:
   - **Blueprint aprobado** en `docs/crm-casos-blueprint.md` — SPEC OBLIGATORIA de la Fase 7 del plan maestro. Caso (oportunidad) como núcleo: timeline unificado WhatsApp/email/llamadas/notas internas + Bandeja de hoy + pipeline re-apuntado a casos. Tablas nuevas `crm_casos`/`crm_mensajes`/`crm_contactos` (DDL pendiente, se ejecuta recién al encarar Fase 7).

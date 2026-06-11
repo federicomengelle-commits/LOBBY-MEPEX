@@ -1,6 +1,7 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 48%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 46%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈52%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈54%).
+> *(Rebalanceo 2026-06-11: el % bajó sin perder trabajo — el universo creció al expandirse la mini-fase RRHH ≈3% en la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
 > **Baseline:** `origin/main` @ `c2439fc`.
@@ -8,16 +9,17 @@
 
 ---
 
-## Estado general — AVANCE ≈ 48%
+## Estado general — AVANCE ≈ 46%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
 - **Fase 9 — TRANSVERSAL GLOBAL ✅ COMPLETA Y VERIFICADA (charla 03, 2026-06-08):** centro de notificaciones 2 capas (9.1 motor `Alertas` `4ed1278` · 9.2 campana `95aa6b6` · 9.3 página + silenciar `bc466e8`) + categoría GLOBAL en el menú (9.4 `fb3e755`) + stats por usuario / tab Actividad (9.5 `0e100ee`) + lobby home por rol híbrido (9.6 `11f83da`). Ver §Fase 9 abajo.
-- **Desbloqueado para avanzar AHORA (manteniendo el orden):** **Fase 5 — Compras + rentabilidad por proyecto** (siguiente en orden, desbloqueada). Después Fase 6 (Diseño) · Fase 7 (CRM auditoría) · Fase 8 (Finanzas/Contab.) · Fase 10 (Remate UI). **Fase 4** sigue trabada por el cotizador (`cotizacion_items` vacía). Mini-fase RRHH (unificar `personas`) intercalable.
+- **Desbloqueado para avanzar AHORA (manteniendo el orden):** **Fase 5 — Compras + rentabilidad por proyecto** (siguiente en orden, desbloqueada). Después Fase 6 (Diseño) · Fase 7 (CRM auditoría) · Fase 8 (Finanzas/Contab.) · Fase 10 (Remate UI). **Fase 4** sigue trabada por el cotizador (`cotizacion_items` vacía). **Fase RRHH v2 (diseño cerrado 2026-06-11, blueprint listo) intercalable — RRHH.1–4 sin dependencias.**
+- **📐 DISEÑO RRHH v2 CERRADO (charla 04, 2026-06-11 — solo diseño, sin código):** módulo RRHH completo estilo CRM en 5 tabs (Panel / Nómina con ficha sub-tabs / Planificación grilla persona×días / Ausencias / Jornales lente-persona) + DDL + migración legacy + 5 etapas → **`docs/modulo-rrhh-v2-blueprint.md`** (SPEC obligatoria) + fase en PLAN-MAESTRO. Verificado contra prod: `personas.cuil`/`fecha_nacimiento` YA existen (SQL del repo desfasado); `direccion`/`cbu_alias`/`contacto_emergencia` NO. Decisiones Fede: sin presentismo (ausencias por excepción) · docs solo fechas+semáforo · sin self-service · jornales: la CARGA vive en Finanzas. **Spin-off:** "Rendimiento por evento" (planilla de costos que reemplaza el Excel de Lelean + dashboard de ganancia por evento) → prompt entregado para charla aparte, anotado en PLAN-MAESTRO §Fase 8; RRHH.5 depende de esa pieza.
 - **Baseline:** `origin/main` al día (`73f98a6`). Branch dev: `rediseno` (= main).
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-08 (charla 03 — **Fase 9 COMPLETA** + **Fase 5 doble paso COMPLETO**: Pedido taller → OC Compras (presupuestos/ganadora) → Egreso al proyecto). Próximo: repaso de **RRHH + CRM** (lo charlamos).
+- **Última actualización:** 2026-06-11 (charla 04 — **diseño RRHH v2 cerrado** con blueprint + fase en PLAN-MAESTRO; prompt "Rendimiento por evento" entregado para charla aparte). Próximo: **ejecutar RRHH.1** (ALTER `personas` + Nómina v2) o la fase que Fede priorice.
 
 ---
 

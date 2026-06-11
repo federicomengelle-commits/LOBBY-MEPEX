@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 52%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 54%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈48%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈46%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-11: el universo creció — la mini-fase RRHH ≈3% se expandió a la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
 > **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
 > **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
@@ -41,8 +42,12 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **2C limpieza** hecha (commit `5687973`): CSS muerto `.mkt-*`, comentarios stale RECURSOS→ACTIVOS, color del audit-log. `undo.js` verificado vivo. (`.cal-*` NO se borra: lo usa el mini-calendario del Lobby.)
 - **2B auditada y DIFERIDA** → `AUDITORIA-2B-duplicados.md`. Los 3 duplicados (`personas`/`rrhh_*`; `vehiculos`/`logistica_*`; checklists) **no se consolidan ahora** — se absorben en Fases 3/4 y en la mini-fase RRHH (abajo), porque consolidar antes de reescribir esos módulos sería retrabajo.
 
-### 🆕 Mini-fase RRHH — unificar sobre `personas` *(nueva, salida de la auditoría 2B · ≈3% · DDL)*
-Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `rrhh_*`** (`rrhh_vacaciones`, `rrhh_vacaciones_solicitudes`, `rrhh_asignaciones`, `rrhh_personal`) y `personas` no tiene esas columnas. Migrar vacaciones/asignaciones a `personas` + FKs nuevas, limpiar la doble lectura de Eventos (`personas` 1025 + `rrhh_personal` 1495) y retirar las `rrhh_*`. Sin fase asignada hoy — intercalar antes/junto a Fase 9.
+### 🆕 Fase RRHH v2 — módulo completo estilo CRM *(diseño cerrado 2026-06-11 · ≈8% · DDL · LISTA PARA EJECUTAR)*
+- **📘 SPEC OBLIGATORIA: `docs/modulo-rrhh-v2-blueprint.md`** (decisiones, DDL, migración, etapas, tests). Absorbe la ex mini-fase RRHH (≈3%, auditoría 2B): la migración de vacaciones + retiro de las 4 tablas `rrhh_*` es la etapa RRHH.2.
+- **5 tabs estilo CRM** (`.hr-*`): **Panel** (KPIs: activos, trabajando hoy, ausentes, convocatorias, docs por vencer, cumpleaños) · **Nómina** (tabla + panel lateral con sub-tabs Datos/Trabajo/Ausencias/Docs/Notas; ficha completa: dirección, emergencia, CBU/banco, situación previsional — `cuil`/`fecha_nacimiento` YA están en prod, verificado) · **Planificación** (grilla persona × días: asignaciones por color, ausencias gris, conflictos rojo + aprobar convocatorias inline) · **Ausencias** (vacaciones/enfermedad/licencia/franco/falta + saldo anual, sin presentismo diario — solo excepciones) · **Jornales** (lente POR PERSONA, read-only).
+- **Decisiones Fede:** sin presentismo · docs solo fechas+semáforo (sin archivos) · sin self-service (todo carga admin; taller no ve RRHH) · sueldos internos FUERA (viven en Finanzas) · la CARGA de jornales vive en Finanzas ("Planilla del evento", ver Fase 8).
+- **Etapas** (cada una deployable, SQL-first): RRHH.1 ficha+Nómina v2 (≈2.5%) → RRHH.2 Ausencias+migración+retiro legacy (≈2%) → RRHH.3 Planificación (≈1.5%) → RRHH.4 Panel+Docs+alerta `documento_por_vencer` (≈1.5%) → RRHH.5 Jornales (≈0.5%, **⛔ bloqueada por la pieza "Rendimiento por evento" de Finanzas**; el resto NO depende de nada — RRHH puede arrancar con 4 tabs).
+- **No cambia:** asignar gente sigue en Eventos por jornada; Logística/Calendario intactos; notifs de convocatoria se reusan.
 
 ### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
 - Vistas maestras: **Inventario/Catálogo (= las recetas), Flota, Locaciones.** Dato único + vistas por rol (Operaciones = uso; Finanzas = plata: VTV/seguro/patente/amortización).
@@ -143,6 +148,7 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 ### Fase 8 — Finanzas + Contabilidad *(≈10%)*
 - Revisar **todos los endpoints** + **integridad cruzada** (modificar uno modifica otro: asientos, libros). **Análisis completo de La PyME.**
 - Contabilidad ya semi-armada → ajustar copiando el funcionamiento fino de La PyME.
+- **🆕 "Rendimiento por evento" — EN DISEÑO (charla aparte, prompt entregado 2026-06-11):** reemplaza el Excel de pagos de Lelean. Dos piezas: (1) **Planilla del evento** (grilla inline de carga rápida: jornales por persona / fletes / proveedores que facturan POR EVENTO — teles, muebles JD, audiovisual, MultiLED — + seguros + comida; estados pendiente/pagado con adelantos y pagos en tandas; pagar ítem → egreso propio, pagar seleccionados → egreso consolidado; asiento automático; OC de Compras read-only sin duplicar) y (2) **dashboard de ganancia por evento** (Σ ingresos proyectos − costos evento − costos proyecto, con materiales de inventario). Al cerrar aquel diseño se suma acá con su % y se rebalancea. **El tab Jornales de RRHH v2 (RRHH.5) depende de esta pieza** (contrato: ítems jornal con persona_id/fase/dias/tarifa/monto_pagado/egreso_id).
 - **Test:** por definir según el análisis.
 
 ### Fase 9 — Transversal: GLOBAL ✅ COMPLETA (charla 03 — ver PROGRESO §Fase 9) *(solo quedan deudas/ideas futuras)*
