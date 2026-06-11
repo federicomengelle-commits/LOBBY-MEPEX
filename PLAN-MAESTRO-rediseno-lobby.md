@@ -129,12 +129,16 @@ Nómina ya escribe `personas`, pero **Vacaciones y Asignación siguen 100% en `r
 - **✅ GRÁFICAS (Fede las quiere):** mockups con la gráfica colocada (para cliente/propia/proveedor) + fichas de producción (referencia, medidas, sangría, resolución). **⚡ Mismo motor que el Configurador 2D (spike ImageMagick hecho).**
 - **Depende de:** Catálogo (Fase 3) + Costos.
 
-### Fase 7 — CRM: poda + Clientes como vista + armonía *(≈10%)*
+### Fase 7 — CRM "Casos": conversaciones multicanal + IA *(≈10%)*
+- **📘 SPEC OBLIGATORIA: `docs/crm-casos-blueprint.md` (aprobado por Fede 2026-06-11).** El CRM nuevo se construye basándose en ese documento — modelo, UI (mockups validados), ingesta, etapas. **Implementación GUIADA:** al ejecutar cada etapa, Claude guía a Fede paso a paso en lo manual (API key Gemini/AI Studio, domain-wide delegation en admin.google, Brevo/DNS, Meta).
 - **Modificación a fondo** armónica, manteniendo integración con cotizaciones. **Clientes = vista interna** del CRM.
 - ✅ Ya hecho (ver PROGRESO): Marketing eliminado; Interacciones registra autor; Analítica solo superadmin.
+- **Núcleo nuevo = CASO (oportunidad):** nuclea conversaciones WhatsApp/email/**llamadas** (lo de teléfono se anota y no se pierde) + notas internas con @menciones + N cotizaciones + próxima acción. Timeline unificado + Bandeja de hoy; el kanban del Pipeline se re-apunta de cotizaciones a casos. Tablas `crm_casos`/`crm_mensajes`/`crm_contactos` + `caso_id` en cotizaciones; migra `interacciones` 1:1 (DDL, SQL-first).
+- **Ingesta + IA:** endpoint `/api/crm/digest` en el proxy del VPS con **driver intercambiable** — arranca **Gemini API free tier** (decidido; cambiar a pago/Claude = 1 env var). E1: WhatsApp pegado crudo → estructurado/resumido/archivado. E2: email automático vía **Gmail API** (domain-wide delegation desde admin@; ya incluida en Workspace) + bandeja "sin asignar" + digest diario → notificaciones. La IA sugiere, el humano confirma.
+- **E3 — Clasificación + mailing en frío:** rubro como catálogo cerrado + tipo + eventos participados + tags → **listas de difusión desde el CRM** (envío: Brevo candidato; subdominio dedicado para no quemar el dominio). Contenido generado por IA. Marketing lo lidera Fede + **community manager humano** para redes/comunicación (desarrollo de marketing aparte, pendiente).
+- **E4 — WhatsApp Business Cloud API** (cuando el volumen lo justifique) · **E5 — Agente comercial casi-humano** (escalera: copiloto → cola con veto → autónomo acotado; el historial de casos es su memoria).
 - **🆕 Auditoría de TODOS los cambios del CRM:** registrar quién hace cada cambio (editar cliente, mover pipeline, editar cotización), no solo interacciones. Engancha con `audit_log` global.
-- **🔮 Chat multicanal:** centralizar todas las charlas con cada cliente (multicanal) dentro del CRM → ficha del cliente = historial completo de conversaciones + interacciones. *(agentes IA de info/atención — horizonte, Fede dará más.)*
-- **Test:** CRM limpio y armónico; auditoría de cambios visible.
+- **Test:** caso con timeline multicanal + nota interna + llamada registrada + digest IA (Gemini) andando; auditoría de cambios visible.
 
 ### Fase 8 — Finanzas + Contabilidad *(≈10%)*
 - Revisar **todos los endpoints** + **integridad cruzada** (modificar uno modifica otro: asientos, libros). **Análisis completo de La PyME.**
