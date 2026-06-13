@@ -73,6 +73,36 @@ app.get('/health', (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+//  POST /deploy — git pull del repo en el server
+// ═══════════════════════════════════════════
+// Cierra el loop push→prod sin entrar por SSH.
+// Auth: superadmin JWT (Bearer) O header X-Deploy-Token == DEPLOY_TOKEN (.env).
+// Solo hace `git pull --ff-only` del repo estático (lobby-api/.. = raíz del repo).
+// Si el pull trae cambios en lobby-api/, reiniciar el servicio a mano (caso raro).
+const { execFile } = require('child_process');
+const path = require('path');
+const REPO_DIR = process.env.REPO_DIR || path.join(__dirname, '..');
+
+async function requireDeployAuth(req, res, next) {
+    const token = req.headers['x-deploy-token'];
+    if (process.env.DEPLOY_TOKEN && token === process.env.DEPLOY_TOKEN) return next();
+    return requireSuperadmin(req, res, next);
+}
+
+app.post('/deploy', requireDeployAuth, (req, res) => {
+    execFile('git', ['pull', '--ff-only'], { cwd: REPO_DIR, timeout: 60000 }, (err, stdout, stderr) => {
+        if (err) {
+            console.error('[Deploy] Error:', stderr || err.message);
+            return res.status(500).json({ success: false, error: stderr || err.message });
+        }
+        execFile('git', ['log', '--oneline', '-1'], { cwd: REPO_DIR }, (err2, head) => {
+            console.log(`✅ Deploy: ${(head || '').trim()}`);
+            res.json({ success: true, output: stdout.trim(), head: (head || '').trim() });
+        });
+    });
+});
+
+// ═══════════════════════════════════════════
 //  POST /admin/users/create
 // ═══════════════════════════════════════════
 app.post('/admin/users/create', requireSuperadmin, async (req, res) => {
