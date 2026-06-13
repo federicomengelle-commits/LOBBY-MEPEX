@@ -26,7 +26,7 @@
   - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
   - ✅ Corridos: motor + tier financiero + tier comercial (RLS manejada por la matriz)
-  - ⏳ **Auditoría de corrección:** 🔴 lock escritura `roles`/`profiles` (que nadie se auto-ascienda) · cerrar `anon` en operativo tabla-por-tabla (**NO** en eventos/clientes/catálogo — los usan encuesta pública y cotizador) · tightear escritura de referencia
+  - ⏳ **Auditoría de corrección — SQL PREPARADO (2026-06-13, pendiente de que Fede corra + testee):** 🔴 `sql/rls_capa2_roles_profiles.sql` (lock + trigger anti-escalada; self-edit de nombre/iniciales preservado) · `sql/rls_capa2_operativo.sql` (cierra `anon` preservando el acceso authenticated; mantiene anon en `encuestas_evento`/`catalogo_items`/`listas_precio` — encuesta pública + cotizador). Tightear escritura de referencia = opcional.
   - Opcional: filtro "Míos" (toggle frontend)
 - **Fase 10 — Remate UI/UX** (Claude Design) — sistema visual + pasada de coherencia
 - **Fase 11 — Centro de Tareas** (back office transversal · POR ROL/PERFIL · deriva de pasos de proyecto + asignaciones) — *diseño abierto, a charlar*
@@ -243,6 +243,8 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 
 > **Estado: diseño abierto.** Pedido por Fede (2026-06-13): "tareas de TODO el back office (compras, administración, etc.), POR ROL y POR PERFIL, según los proyectos ASIGNADOS y los PASOS de esos proyectos. Es compleja, veremos cómo integrarla, pero es importantísima". Lo que sigue es un primer aterrizaje para debatir, NO una spec cerrada.
 
+**🖼️ Mockup clickeable (para decidir sobre algo tangible):** `mockup-centro-tareas.html` (raíz, no-destructivo, 2026-06-13). Selector de rol (superadmin/admin/pm/venta/taller) que **refiltra** la bandeja · grupos Vencidas/Hoy/Esta semana/Sin fecha · cards con origen/prioridad/semáforo/Tomar-Hecha · toggle Mis tareas/Del equipo · patrón *claim por pool* (hace visible la pregunta abierta #3).
+
 **Visión.** El único lugar donde cada persona entra y ve "¿qué tengo que hacer YO hoy?", sin importar de qué módulo venga la tarea. Hoy los pendientes están dispersos (taller=cards, compras=OCs sin aprobar, finanzas=vencimientos, RRHH=docs por vencer). El Centro de Tareas los consolida en una **bandeja personal por perfil**, donde cada tarea sabe a qué proyecto/paso/rol pertenece y quién la tiene que cerrar.
 
 **Dos naturalezas de tarea:**
@@ -290,9 +292,9 @@ El vínculo **proyecto→perfil ya existe** (no hay que inventar): `proyectos.re
 - **RPC `ajustar_stock(item_id, delta)` atómico** antes de que el remito de Fase 4 descuente inventario (hoy el update es read-modify-write no atómico → race; impacto bajo hoy, crece con el remito). De paso decidir destino de `insumos_base.stock_actual`/`stock_minimo` sin uso.
 - **Tab CRUD de `mapeo_cuentas` + panel de cobertura** en Contabilidad (qué categorías de ingreso/egreso NO tienen mapeo → no generan asiento): convierte el seed en feature mantenible por Sofi/Lelean. Engancha con la auditoría de Fase 8. (El seed base YA está; esto es la capa de mantenimiento.)
 - **Protocolo "mockup clickeable primero"** para decisiones de diseño abiertas (showcase catálogo, historial de remitos, planilla del evento): generar un HTML no-destructivo en raíz y que Fede decida sobre algo tangible (como funcionó con `mockup-oc-v2.html`).
-- **`docs/DROP_CHECKLIST.md`** *(del barrido ultracode 2026-06-13)* — los DROP de tablas legacy cuelgan sin registro vivo: `rrhh_asignaciones`/`rrhh_vacaciones`/`rrhh_vacaciones_solicitudes` (sin lectores → DROPeables ya) · `logistica_movimientos`/`logistica_vehiculos`/`rrhh_personal` (en Fase 4). Crear doc con la lista + dependencias verificadas vía `docs/mapa-tablas.md` + fecha "safe to run".
-- **`tools/SETUP.md` + pre-commit hook** — `tools/check.sh` existe pero sin instalación: `.git/hooks/pre-commit` → `./tools/check.sh` (bloquea commit si falla sintaxis/bump) + CI opcional. Quick-win contra el "pusheé pero no se ve".
-- **`docs/MIGRATION_LOG.md`** — ~70 SQL en `/sql/` sin registro de qué se corrió/cuándo/por quién. Log manual + (futuro) tabla `sql_migrations`. Mata la incertidumbre "¿este SQL ya está aplicado?".
+- **`docs/DROP_CHECKLIST.md`** ✅ CREADO (2026-06-13) — los DROP de tablas legacy cuelgan sin registro vivo: `rrhh_asignaciones`/`rrhh_vacaciones`/`rrhh_vacaciones_solicitudes` (sin lectores → DROPeables ya) · `logistica_movimientos`/`logistica_vehiculos`/`rrhh_personal` (en Fase 4). Crear doc con la lista + dependencias verificadas vía `docs/mapa-tablas.md` + fecha "safe to run".
+- **`tools/SETUP.md` + pre-commit hook** ✅ CREADO (2026-06-13) — `tools/check.sh` existe pero sin instalación: `.git/hooks/pre-commit` → `./tools/check.sh` (bloquea commit si falla sintaxis/bump) + CI opcional. Quick-win contra el "pusheé pero no se ve".
+- **`docs/MIGRATION_LOG.md`** ✅ CREADO (2026-06-13) — ~70 SQL en `/sql/` sin registro de qué se corrió/cuándo/por quién. Log manual + (futuro) tabla `sql_migrations`. Mata la incertidumbre "¿este SQL ya está aplicado?".
 
 ## TRACKS PARALELOS *(fuera de la SPA — conectados por el Catálogo; NO los ejecuta Claude Code)*
 

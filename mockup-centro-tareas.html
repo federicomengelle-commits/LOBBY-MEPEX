@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MEPEX · Mockup — Centro de Tareas (por rol/perfil)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050505; --bg-card:#111111; --bg-card-2:#0e0e0e; --bg-input:#1A1A1A; --border:#2a2a2a; --border-2:#1f1f1f;
+  --primary:#00A9C1; --accent:#F28D15; --text:#E8E8E8; --muted:#888888; --dim:#555555;
+  --success:#00CC88; --error:#ff4444; --violet:#9B7DFF; --blue:#4A90D9;
+  --font:'Outfit',system-ui,sans-serif; --mono:'Space Mono',monospace;
+  --glow-sm:0 0 12px rgba(0,169,193,.2);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.5;padding:24px 24px 60px;
+  background-image:radial-gradient(rgba(255,255,255,.015) 1px,transparent 1px);background-size:22px 22px;}
+.wrap{max-width:1180px;margin:0 auto}
+
+/* ---- header ---- */
+.breadcrumb{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--muted);margin-bottom:6px}
+.breadcrumb .cat{color:var(--primary)}.breadcrumb .sep{color:var(--dim)}
+h1{font-size:1.55rem;font-weight:700;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.mock-badge{font-family:var(--mono);font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  background:rgba(242,141,21,.15);color:var(--accent);border:1px solid rgba(242,141,21,.35);padding:3px 8px;border-radius:6px}
+.subtitle{color:var(--muted);font-size:.9rem;margin-top:5px;margin-bottom:20px;max-width:860px}
+.subtitle b{color:var(--text)}
+
+/* ---- role selector ---- */
+.rolebar{background:var(--bg-card-2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.rolebar .rlabel{font-family:var(--mono);font-size:.62rem;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)}
+.roles{display:inline-flex;background:#0a0a0a;border:1px solid var(--border);border-radius:9px;padding:4px;gap:3px;flex-wrap:wrap}
+.roles button{background:transparent;border:none;color:var(--muted);font-family:var(--mono);font-size:.72rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px;padding:8px 14px;border-radius:6px;cursor:pointer;transition:all .2s}
+.roles button:hover{color:var(--text)}
+.roles button.on{background:rgba(0,169,193,.16);color:var(--primary);box-shadow:var(--glow-sm)}
+.whoami{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:.84rem;color:var(--muted)}
+.whoami .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-weight:700;
+  font-size:.72rem;color:#001012;background:var(--primary)}
+.whoami b{color:var(--text)}
+
+/* ---- view toggle (mis / equipo) ---- */
+.viewbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.seg{display:inline-flex;background:#0a0a0a;border:1px solid var(--border);border-radius:9px;padding:4px;gap:3px}
+.seg button{background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:.86rem;font-weight:600;
+  padding:8px 18px;border-radius:6px;cursor:pointer;transition:all .2s}
+.seg button.on{background:rgba(0,169,193,.15);color:var(--primary)}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
+.viewbar .countpill{font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+.viewbar .countpill b{color:var(--text)}
+.btn-new{margin-left:auto;background:transparent;border:1px dashed var(--border);color:var(--primary);font-family:var(--font);
+  font-size:.84rem;font-weight:600;padding:9px 16px;border-radius:8px;cursor:pointer;transition:all .2s}
+.btn-new:hover{border-color:var(--primary);background:rgba(0,169,193,.06);box-shadow:var(--glow-sm)}
+
+/* ---- filters ---- */
+.filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px;
+  background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 16px}
+.filters .flabel{font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.6px;color:var(--dim)}
+.filters select{background:var(--bg-input);border:1px solid var(--border);border-radius:7px;color:var(--text);
+  font-family:var(--font);font-size:.84rem;padding:8px 11px;cursor:pointer;transition:border-color .2s}
+.filters select:focus{outline:none;border-color:var(--primary)}
+.filters .clr{background:none;border:none;color:var(--dim);font-size:.8rem;cursor:pointer;margin-left:auto;font-family:var(--mono)}
+.filters .clr:hover{color:var(--accent)}
+
+/* ---- group ---- */
+.group{margin-bottom:14px}
+.group-head{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:10px 4px;border-bottom:1px solid var(--border-2)}
+.group-head .chev{color:var(--dim);font-size:.8rem;transition:transform .2s;display:inline-block;width:14px}
+.group.collapsed .chev{transform:rotate(-90deg)}
+.group-head h2{font-size:.95rem;font-weight:700;display:flex;align-items:center;gap:9px}
+.group-head .gdot{width:8px;height:8px;border-radius:50%}
+.gdot.over{background:var(--error)}.gdot.today{background:var(--accent)}.gdot.week{background:var(--primary)}.gdot.none{background:var(--dim)}
+.group-head .gcount{font-family:var(--mono);font-size:.68rem;color:var(--muted);background:#0a0a0a;border:1px solid var(--border);
+  padding:2px 9px;border-radius:20px}
+.group-head h2.over-txt{color:var(--error)}
+.group-body{padding-top:10px;display:flex;flex-direction:column;gap:9px}
+.group.collapsed .group-body{display:none}
+.group-empty{font-size:.82rem;color:var(--dim);padding:14px 4px;font-style:italic}
+
+/* ---- task card ---- */
+.task{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;
+  display:grid;grid-template-columns:14px 1fr auto;gap:13px;align-items:center;transition:all .2s;position:relative;border-left:3px solid var(--border)}
+.task:hover{border-color:#3a3a3a;box-shadow:0 0 0 1px rgba(0,169,193,.08)}
+.task.p-alta{border-left-color:var(--accent)}
+.task.p-critica{border-left-color:var(--error)}
+.task.done{opacity:.5}
+.task.done .t-title{text-decoration:line-through;color:var(--muted)}
+.task.taken{box-shadow:0 0 0 1px rgba(0,169,193,.18)}
+.prio{width:11px;height:11px;border-radius:50%;border:2px solid var(--dim);align-self:center}
+.prio.alta{background:var(--accent);border-color:var(--accent);box-shadow:0 0 7px rgba(242,141,21,.5)}
+.prio.critica{background:var(--error);border-color:var(--error);box-shadow:0 0 7px rgba(255,68,68,.55)}
+.prio.normal{background:transparent;border-color:#444}
+.t-main{min-width:0}
+.t-title{font-size:.96rem;font-weight:600;margin-bottom:6px;line-height:1.3}
+.t-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.chip{font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.4px;padding:3px 8px;border-radius:5px;
+  display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.chip.ctx{background:rgba(155,125,255,.12);color:var(--violet);border:1px solid rgba(155,125,255,.3)}
+.chip.ctx.ev{background:rgba(0,169,193,.1);color:var(--primary);border-color:rgba(0,169,193,.28)}
+/* origen badges */
+.org{font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:.4px;padding:3px 8px;border-radius:5px;border:1px solid}
+.org.paso_proyecto{background:rgba(0,204,136,.1);color:var(--success);border-color:rgba(0,204,136,.3)}
+.org.compra{background:rgba(0,169,193,.1);color:var(--primary);border-color:rgba(0,169,193,.3)}
+.org.rrhh{background:rgba(74,144,217,.1);color:var(--blue);border-color:rgba(74,144,217,.3)}
+.org.asignacion{background:rgba(155,125,255,.1);color:var(--violet);border-color:rgba(155,125,255,.3)}
+.org.finanzas{background:rgba(74,144,217,.1);color:var(--blue);border-color:rgba(74,144,217,.3)}
+.org.manual{background:rgba(136,136,136,.1);color:var(--muted);border-color:rgba(136,136,136,.3)}
+/* due semaforo */
+.due{font-family:var(--mono);font-size:.64rem;display:inline-flex;align-items:center;gap:5px;color:var(--muted)}
+.due .sdot{width:7px;height:7px;border-radius:50%}
+.due.over{color:var(--error)}.due.over .sdot{background:var(--error)}
+.due.today{color:var(--accent)}.due.today .sdot{background:var(--accent)}
+.due.soon{color:var(--text)}.due.soon .sdot{background:var(--primary)}
+.due.far{color:var(--muted)}.due.far .sdot{background:var(--success)}
+.due.nofecha{color:var(--dim)}.due.nofecha .sdot{background:var(--dim)}
+/* responsable chip (team view) */
+.resp{font-size:.74rem;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.resp .av{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-weight:700;
+  font-size:.56rem;color:#001012}
+.resp .pool{font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);
+  border:1px dashed var(--border);padding:2px 7px;border-radius:5px}
+/* actions */
+.t-actions{display:flex;align-items:center;gap:7px}
+.tbtn{border:1px solid var(--border);background:#0a0a0a;color:var(--muted);font-family:var(--font);font-size:.76rem;font-weight:600;
+  padding:7px 13px;border-radius:7px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.tbtn:hover{color:var(--text);border-color:#3a3a3a}
+.tbtn.take{color:var(--primary);border-color:rgba(0,169,193,.4)}
+.tbtn.take:hover{background:rgba(0,169,193,.1);box-shadow:var(--glow-sm)}
+.tbtn.done{color:var(--success);border-color:rgba(0,204,136,.4)}
+.tbtn.done:hover{background:rgba(0,204,136,.12)}
+.tbtn.open{color:var(--muted)}
+.tbtn.open:hover{color:var(--accent);border-color:rgba(242,141,21,.35)}
+.state-tag{font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:.5px;padding:4px 9px;border-radius:5px}
+.state-tag.encurso{background:rgba(0,169,193,.13);color:var(--primary);border:1px solid rgba(0,169,193,.3)}
+.state-tag.hecha{background:rgba(0,204,136,.13);color:var(--success);border:1px solid rgba(0,204,136,.3)}
+
+/* empty whole */
+.empty-all{text-align:center;padding:60px 20px;color:var(--dim)}
+.empty-all .big{font-size:2.4rem;margin-bottom:10px}
+.empty-all .t{font-size:1rem;color:var(--muted)}
+
+/* footer */
+.foot-note{margin-top:34px;padding-top:16px;border-top:1px solid var(--border-2);font-size:.78rem;color:var(--dim);
+  font-family:var(--mono);text-align:center}
+.foot-note .accent{color:var(--accent)}
+
+/* toast */
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(160%);color:#00120a;font-weight:700;
+  font-family:var(--mono);font-size:.82rem;padding:12px 22px;border-radius:8px;transition:transform .35s cubic-bezier(.2,.9,.3,1.2);z-index:60}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.ok{background:var(--success)}.toast.tk{background:var(--primary)}.toast.info{background:var(--accent)}
+
+@media(max-width:760px){
+  .task{grid-template-columns:14px 1fr;gap:11px}
+  .t-actions{grid-column:1/-1;justify-content:flex-end;flex-wrap:wrap}
+  .whoami{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="breadcrumb"><span>Lobby</span><span class="sep">›</span><span class="cat">PRINCIPAL</span><span class="sep">›</span><span>Centro de Tareas</span></div>
+  <h1>Centro de Tareas <span class="mock-badge">Mockup · Fase 11 — por rol/perfil</span></h1>
+  <p class="subtitle"><b>"¿Qué tengo que hacer YO hoy?"</b> — una bandeja personal que consolida pendientes de todo el back office (taller, compras, RRHH, finanzas, proyectos), sin importar de qué módulo nace cada tarea. Cambiá de <b>perfil</b> arriba para ver cómo cada rol recibe tareas distintas según sus proyectos y pasos asignados.</p>
+
+  <!-- ROLE SELECTOR -->
+  <div class="rolebar">
+    <span class="rlabel">Ver como perfil:</span>
+    <div class="roles" id="roles">
+      <button data-role="superadmin" class="on">Superadmin</button>
+      <button data-role="admin">Admin</button>
+      <button data-role="pm">PM</button>
+      <button data-role="venta">Venta</button>
+      <button data-role="taller">Taller</button>
+    </div>
+    <div class="whoami" id="whoami"></div>
+  </div>
+
+  <!-- VIEW TOGGLE -->
+  <div class="viewbar">
+    <div class="seg" id="viewseg">
+      <button data-view="mias" class="on">Mis tareas</button>
+      <button data-view="equipo" id="btnEquipo">Del equipo</button>
+    </div>
+    <span class="countpill" id="countpill"></span>
+    <button class="btn-new" onclick="toast('Abriría el modal de nueva tarea manual','info')">+ Nueva tarea</button>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filters">
+    <span class="flabel">Módulo</span>
+    <select id="fMod">
+      <option value="">Todos</option>
+      <option value="taller">Taller</option>
+      <option value="compras">Compras</option>
+      <option value="rrhh">RRHH</option>
+      <option value="finanzas">Finanzas</option>
+      <option value="proyectos">Proyectos</option>
+      <option value="ventas">Ventas</option>
+    </select>
+    <span class="flabel">Estado</span>
+    <select id="fEst">
+      <option value="">Todos</option>
+      <option value="pendiente">Pendiente</option>
+      <option value="en_curso">En curso</option>
+      <option value="hecha">Hecha</option>
+    </select>
+    <span class="flabel">Prioridad</span>
+    <select id="fPrio">
+      <option value="">Todas</option>
+      <option value="critica">Crítica</option>
+      <option value="alta">Alta</option>
+      <option value="normal">Normal</option>
+    </select>
+    <button class="clr" id="clrFilters">limpiar filtros</button>
+  </div>
+
+  <!-- GROUPS -->
+  <div id="board"></div>
+
+  <div class="foot-note">
+    MOCKUP — datos ficticios. Diseño <span class="accent">abierto</span>, a confirmar con Fede.
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== DATA MOCK ===================== */
+// Personas (perfiles) por rol — para asignación responsable / pool
+const USERS = {
+  superadmin:{name:'Fede',     ini:'FE', color:'#00A9C1'},
+  admin:     {name:'Lelean',   ini:'LE', color:'#4A90D9'},
+  admin2:    {name:'Sofi',     ini:'SO', color:'#9B7DFF'},
+  pm:        {name:'Meli',     ini:'ME', color:'#00CC88'},
+  pm2:       {name:'Leo',      ini:'LO', color:'#F28D15'},
+  venta:     {name:'Noe',      ini:'NO', color:'#F28D15'},
+  taller:    {name:'Diego',    ini:'DI', color:'#00CC88'},
+  taller2:   {name:'Carlos',   ini:'CA', color:'#9B7DFF'},
+};
+const ROLE_USER = {superadmin:'superadmin',admin:'admin',pm:'pm',venta:'venta',taller:'taller'};
+
+// hoy = referencia para el semáforo
+// b = bucket: 'over' | 'today' | 'week' | 'none'
+let TASKS = [
+  // ---------- TALLER ----------
+  {id:1, titulo:'Tildar "Gráfica" — Stand Arcor', mod:'taller', origen:'paso_proyecto', ctx:'Stand Arcor', ctxTipo:'proy', prio:'alta', estado:'pendiente', due:'Vencía ayer', b:'over', roles:['taller','pm','superadmin'], resp:'taller', pool:null},
+  {id:2, titulo:'Tildar "Pintura" — Stand Samsung', mod:'taller', origen:'paso_proyecto', ctx:'Stand Samsung', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:'Hoy 18:00', b:'today', roles:['taller','pm','superadmin'], resp:'taller', pool:null},
+  {id:3, titulo:'Tildar "Iluminación" — Stand Coca-Cola', mod:'taller', origen:'paso_proyecto', ctx:'Stand Coca-Cola', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:'Hoy', b:'today', roles:['taller','pm','superadmin'], resp:null, pool:'taller'},
+  {id:4, titulo:'Tildar "Embalado" — Stand La Serenísima', mod:'taller', origen:'paso_proyecto', ctx:'Stand La Serenísima', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:'Jue 12 jun', b:'week', roles:['taller','pm','superadmin'], resp:'taller2', pool:null},
+  {id:5, titulo:'Cargar foto del remito firmado — Carga #18', mod:'taller', origen:'asignacion', ctx:'Expo Alimentek', ctxTipo:'ev', prio:'alta', estado:'en_curso', due:'Hoy', b:'today', roles:['taller','pm','superadmin'], resp:'taller', pool:null},
+
+  // ---------- PROYECTOS (PM) ----------
+  {id:6, titulo:'Avanzar Stand Arcor a "Listo"', mod:'proyectos', origen:'paso_proyecto', ctx:'Stand Arcor', ctxTipo:'proy', prio:'alta', estado:'pendiente', due:'Hoy', b:'today', roles:['pm','superadmin'], resp:'pm', pool:null},
+  {id:7, titulo:'Confirmar convocatoria de Carlos — Expo Alimentek', mod:'proyectos', origen:'asignacion', ctx:'Expo Alimentek', ctxTipo:'ev', prio:'alta', estado:'pendiente', due:'Vencía Lun 9 jun', b:'over', roles:['pm','admin','superadmin'], resp:'pm', pool:null},
+  {id:8, titulo:'Confirmar convocatoria de Juan — Feria del Libro', mod:'proyectos', origen:'asignacion', ctx:'Feria del Libro', ctxTipo:'ev', prio:'normal', estado:'pendiente', due:'Vie 13 jun', b:'week', roles:['pm','admin','superadmin'], resp:'pm2', pool:null},
+  {id:9, titulo:'Revisar plano final — Stand Samsung', mod:'proyectos', origen:'manual', ctx:'Stand Samsung', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:null, b:'none', roles:['pm','superadmin'], resp:'pm', pool:null},
+  {id:10, titulo:'Despachar Stand Coca-Cola al predio', mod:'proyectos', origen:'paso_proyecto', ctx:'Stand Coca-Cola', ctxTipo:'proy', prio:'critica', estado:'pendiente', due:'Hoy 06:00', b:'today', roles:['pm','superadmin'], resp:null, pool:'pm', poolRole:'pm'},
+
+  // ---------- COMPRAS (admin) ----------
+  {id:11, titulo:'Aprobar OC #42 — Cable 2x1 (Eléctrica SRL)', mod:'compras', origen:'compra', ctx:'Stand Samsung', ctxTipo:'proy', prio:'alta', estado:'pendiente', due:'Hoy', b:'today', roles:['admin','superadmin'], resp:'admin', pool:null},
+  {id:12, titulo:'Aprobar OC #43 — Vinilos gráfica (Plotter Center)', mod:'compras', origen:'compra', ctx:'Stand Arcor', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:'Hoy', b:'today', roles:['admin','superadmin'], resp:null, pool:'admin', poolRole:'admin'},
+  {id:13, titulo:'Elegir presupuesto ganador — Pedido melamina', mod:'compras', origen:'compra', ctx:'Stand La Serenísima', ctxTipo:'proy', prio:'normal', estado:'en_curso', due:'Mié 11 jun', b:'week', roles:['admin','superadmin'], resp:'admin', pool:null},
+
+  // ---------- RRHH (admin) ----------
+  {id:14, titulo:'Renovar ART de Diego', mod:'rrhh', origen:'rrhh', ctx:null, ctxTipo:null, prio:'critica', estado:'pendiente', due:'Vencía Vie 6 jun', b:'over', roles:['admin','superadmin'], resp:'admin', pool:null},
+  {id:15, titulo:'Renovar carnet de conducir — Willy', mod:'rrhh', origen:'rrhh', ctx:null, ctxTipo:null, prio:'alta', estado:'pendiente', due:'Sáb 14 jun', b:'week', roles:['admin','superadmin'], resp:'admin', pool:null},
+  {id:16, titulo:'Cargar alta de monotributo — eventual nuevo', mod:'rrhh', origen:'manual', ctx:null, ctxTipo:null, prio:'normal', estado:'pendiente', due:null, b:'none', roles:['admin','superadmin'], resp:'admin2', pool:null},
+
+  // ---------- FINANZAS (admin) ----------
+  {id:17, titulo:'Pagar factura A — AWS (servicios mayo)', mod:'finanzas', origen:'finanzas', ctx:null, ctxTipo:null, prio:'alta', estado:'pendiente', due:'Hoy', b:'today', roles:['admin','superadmin'], resp:'admin2', pool:null},
+  {id:18, titulo:'Registrar comprobante recibido — Flete Iveco', mod:'finanzas', origen:'finanzas', ctx:'Expo Alimentek', ctxTipo:'ev', prio:'normal', estado:'pendiente', due:'Jue 12 jun', b:'week', roles:['admin','superadmin'], resp:null, pool:'admin', poolRole:'admin'},
+  {id:19, titulo:'Cobrar cuota 2/4 — Plan Feria del Libro', mod:'finanzas', origen:'finanzas', ctx:'Feria del Libro', ctxTipo:'ev', prio:'normal', estado:'pendiente', due:'Lun 16 jun', b:'week', roles:['admin','superadmin'], resp:'admin', pool:null},
+
+  // ---------- VENTAS (venta) ----------
+  {id:20, titulo:'Seguimiento cotización #1187 — Bayer', mod:'ventas', origen:'manual', ctx:'Bayer', ctxTipo:'proy', prio:'alta', estado:'pendiente', due:'Vencía ayer', b:'over', roles:['venta','superadmin'], resp:'venta', pool:null},
+  {id:21, titulo:'Enviar cotización — Stand Mondelez (Expo Pack)', mod:'ventas', origen:'manual', ctx:'Mondelez', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:'Hoy', b:'today', roles:['venta','superadmin'], resp:'venta', pool:null},
+  {id:22, titulo:'Llamar a cliente — Pfizer (cierre de fecha)', mod:'ventas', origen:'manual', ctx:'Pfizer', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:'Mié 11 jun', b:'week', roles:['venta','superadmin'], resp:'venta', pool:null},
+  {id:23, titulo:'Cargar seguimiento — cotización #1190', mod:'ventas', origen:'manual', ctx:'Loreal', ctxTipo:'proy', prio:'normal', estado:'pendiente', due:null, b:'none', roles:['venta','superadmin'], resp:'venta', pool:null},
+];
+
+/* ===================== STATE ===================== */
+let curRole = 'superadmin';
+let curView = 'mias';
+const collapsed = {over:false, today:false, week:false, none:false};
+
+const GROUPS = [
+  {key:'over',  label:'Vencidas',     dot:'over',  txt:'over-txt'},
+  {key:'today', label:'Hoy',          dot:'today', txt:''},
+  {key:'week',  label:'Esta semana',  dot:'week',  txt:''},
+  {key:'none',  label:'Sin fecha',    dot:'none',  txt:''},
+];
+
+const ROLE_LABEL = {superadmin:'Fede · Superadmin',admin:'Lelean · Admin',pm:'Meli · PM',venta:'Noe · Venta',taller:'Diego · Taller'};
+const TEAM_ROLES = ['superadmin','admin','pm']; // pueden ver "Del equipo"
+
+/* ===================== HELPERS ===================== */
+function dueClass(b){return {over:'over',today:'today',week:'soon',none:'nofecha'}[b];}
+function dueText(t){return t.due || 'Sin fecha límite';}
+
+// ¿esta tarea le pertenece a YO (curRole) en vista "mías"?
+function isMine(t){
+  if(!t.roles.includes(curRole)) return false;
+  const myUserKey = ROLE_USER[curRole];
+  // asignada directo a mí (mapeo simple por rol→user del demo)
+  if(t.resp && t.resp === curRole) return true;
+  // superadmin ve TODO lo asignado a su persona o que pasa por su mano; en demo: ve todas las suyas
+  if(curRole==='superadmin' && (t.resp==='superadmin' || t.pool)) return true;
+  // pool de mi rol y todavía sin tomar → me aparece como "tomable"
+  if(t.pool && t.pool===curRole) return true;
+  // admin cubre admin2 (Sofi) en el demo de "mías"
+  if(curRole==='admin' && (t.resp==='admin'||t.resp==='admin2'||t.pool==='admin')) return true;
+  if(curRole==='pm' && (t.resp==='pm'||t.resp==='pm2'||t.pool==='pm')) return true;
+  return false;
+}
+
+// vista equipo: todas las del rol que NO son estrictamente mías (de otros responsables / pools)
+function isTeam(t){
+  if(!t.roles.includes(curRole)) return false;
+  return true; // en equipo se ve todo lo del ámbito del rol
+}
+
+function passFilters(t){
+  const m=document.getElementById('fMod').value;
+  const e=document.getElementById('fEst').value;
+  const p=document.getElementById('fPrio').value;
+  if(m && t.mod!==m) return false;
+  if(e && t.estado!==e) return false;
+  if(p && t.prio!==p) return false;
+  return true;
+}
+
+function respUser(t){
+  // devuelve el USER object del responsable, o null si es pool
+  if(t.resp && USERS[t.resp]) return USERS[t.resp];
+  return null;
+}
+
+/* ===================== RENDER ===================== */
+function render(){
+  // whoami
+  const u = USERS[ROLE_USER[curRole]];
+  document.getElementById('whoami').innerHTML =
+    `<span class="av" style="background:${u.color}">${u.ini}</span> Conectado como <b>${u.name}</b> · ${curRole}`;
+
+  // team button enable/disable
+  const canTeam = TEAM_ROLES.includes(curRole);
+  const btnEq = document.getElementById('btnEquipo');
+  btnEq.disabled = !canTeam;
+  btnEq.title = canTeam ? '' : 'Solo admin / superadmin / PM';
+  if(!canTeam && curView==='equipo'){ curView='mias'; syncViewSeg(); }
+
+  // filtro base por vista
+  const base = TASKS.filter(t => curView==='mias' ? isMine(t) : isTeam(t)).filter(passFilters);
+
+  // count pill
+  const pend = base.filter(t=>t.estado!=='hecha').length;
+  document.getElementById('countpill').innerHTML =
+    `<b>${pend}</b> tarea${pend===1?'':'s'} pendiente${pend===1?'':'s'}` +
+    (curView==='equipo' ? ` · ámbito del equipo (${curRole})` : ' · asignadas a vos');
+
+  const board = document.getElementById('board');
+
+  if(base.length===0){
+    board.innerHTML = `<div class="empty-all"><div class="big">✓</div><div class="t">No hay tareas para este perfil con los filtros actuales.</div></div>`;
+    return;
+  }
+
+  let html='';
+  GROUPS.forEach(g=>{
+    const items = base.filter(t=>t.b===g.key);
+    if(items.length===0) return; // no mostrar grupo vacío
+    const isColl = collapsed[g.key];
+    html += `<div class="group ${isColl?'collapsed':''}" data-g="${g.key}">
+      <div class="group-head" onclick="toggleGroup('${g.key}')">
+        <span class="chev">▼</span>
+        <span class="gdot ${g.dot}"></span>
+        <h2 class="${g.txt}">${g.label}</h2>
+        <span class="gcount">${items.length}</span>
+      </div>
+      <div class="group-body">
+        ${items.map(taskCard).join('')}
+      </div>
+    </div>`;
+  });
+  board.innerHTML = html;
+}
+
+function taskCard(t){
+  const doneCls = t.estado==='hecha' ? 'done' : '';
+  const takenCls = t.estado==='en_curso' ? 'taken' : '';
+  const ctxChip = t.ctx
+    ? `<span class="chip ctx ${t.ctxTipo==='ev'?'ev':''}">${t.ctxTipo==='ev'?'◆':'▣'} ${t.ctx}</span>` : '';
+  const orgLabel = {paso_proyecto:'Paso proyecto',compra:'Compra',rrhh:'RRHH',asignacion:'Asignación',finanzas:'Finanzas',manual:'Manual'}[t.origen];
+  const dCls = dueClass(t.b);
+  const dueChip = `<span class="due ${dCls}"><span class="sdot"></span>${dueText(t)}</span>`;
+
+  // responsable (solo en vista equipo)
+  let respHtml='';
+  if(curView==='equipo'){
+    const ru = respUser(t);
+    if(ru){
+      respHtml = `<span class="resp"><span class="av" style="background:${ru.color}">${ru.ini}</span>${ru.name}</span>`;
+    } else if(t.pool){
+      respHtml = `<span class="resp"><span class="pool">⊘ Pool ${t.pool}</span></span>`;
+    }
+  }
+
+  // acciones según estado
+  let actions='';
+  if(t.estado==='hecha'){
+    actions = `<span class="state-tag hecha">✓ Hecha</span>
+               <button class="tbtn open" onclick="openCtx(${t.id})">Abrir</button>`;
+  } else if(t.estado==='en_curso'){
+    actions = `<span class="state-tag encurso">● En curso</span>
+               <button class="tbtn done" onclick="markDone(${t.id})">Hecha</button>
+               <button class="tbtn open" onclick="openCtx(${t.id})">Abrir</button>`;
+  } else {
+    // pendiente: si es pool y no tomada → "Tomar"; si ya tiene resp → "Hecha"
+    const showTake = !!t.pool && curView==='mias';
+    if(showTake){
+      actions = `<button class="tbtn take" onclick="takeTask(${t.id})">Tomar</button>
+                 <button class="tbtn open" onclick="openCtx(${t.id})">Abrir</button>`;
+    } else {
+      actions = `<button class="tbtn done" onclick="markDone(${t.id})">Hecha</button>
+                 <button class="tbtn open" onclick="openCtx(${t.id})">Abrir</button>`;
+    }
+  }
+
+  return `<div class="task p-${t.prio} ${doneCls} ${takenCls}">
+    <span class="prio ${t.prio}"></span>
+    <div class="t-main">
+      <div class="t-title">${t.titulo}</div>
+      <div class="t-meta">
+        <span class="org ${t.origen}">${orgLabel}</span>
+        ${ctxChip}
+        ${dueChip}
+        ${respHtml}
+      </div>
+    </div>
+    <div class="t-actions">${actions}</div>
+  </div>`;
+}
+
+/* ===================== ACTIONS (optimista) ===================== */
+function takeTask(id){
+  const t = TASKS.find(x=>x.id===id);
+  t.estado='en_curso'; t.resp=ROLE_USER[curRole]; t.pool=null;
+  toast(`Tomaste la tarea — ahora es tuya (${USERS[ROLE_USER[curRole]].name})`,'tk');
+  render();
+}
+function markDone(id){
+  const t = TASKS.find(x=>x.id===id);
+  t.estado='hecha';
+  toast('Tarea marcada como hecha','ok');
+  render();
+}
+function openCtx(id){
+  const t = TASKS.find(x=>x.id===id);
+  const link = t.ctx ? `#${t.mod} → ${t.ctx}` : `#${t.mod}`;
+  toast(`Abriría el contexto: ${link}`,'info');
+}
+function toggleGroup(k){ collapsed[k]=!collapsed[k]; render(); }
+
+/* ===================== UI WIRING ===================== */
+document.getElementById('roles').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  curRole = b.dataset.role;
+  [...document.querySelectorAll('#roles button')].forEach(x=>x.classList.toggle('on', x===b));
+  render();
+});
+document.getElementById('viewseg').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b || b.disabled) return;
+  curView = b.dataset.view; syncViewSeg(); render();
+});
+function syncViewSeg(){
+  [...document.querySelectorAll('#viewseg button')].forEach(x=>x.classList.toggle('on', x.dataset.view===curView));
+}
+['fMod','fEst','fPrio'].forEach(id=>document.getElementById(id).addEventListener('change',render));
+document.getElementById('clrFilters').addEventListener('click',()=>{
+  document.getElementById('fMod').value='';
+  document.getElementById('fEst').value='';
+  document.getElementById('fPrio').value='';
+  render();
+});
+
+/* ===================== TOAST ===================== */
+let toastTimer;
+function toast(msg,kind){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className=`toast ${kind} show`;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2300);
+}
+
+/* ===================== INIT ===================== */
+render();
+</script>
+</body>
+</html>
