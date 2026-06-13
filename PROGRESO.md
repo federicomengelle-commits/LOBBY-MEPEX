@@ -1,6 +1,7 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 51%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 49%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈49%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈51%).
+> *(Rebalanceo 2026-06-13b: +Fase Costos UX ≈5% al PLAN-MAESTRO — el universo creció → el % bajó sin perder trabajo: PROGRESO 51→49, PLAN-MAESTRO 49→51.)*
 > *(Rebalanceo 2026-06-13: +RRHH.2/3/4 → Fase RRHH v2 cerrada salvo RRHH.5 (bloqueada por Finanzas). El universo había crecido 2026-06-12 con Fase 9.bis Roles & Permisos ≈3%.)*
 > *(Rebalanceo 2026-06-11: el % bajó sin perder trabajo — el universo creció al expandirse la mini-fase RRHH ≈3% en la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
@@ -10,7 +11,7 @@
 
 ---
 
-## Estado general — AVANCE ≈ 51%
+## Estado general — AVANCE ≈ 49%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.

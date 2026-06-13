@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 49%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 51%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈51%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈49%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-13b: +Fase Costos UX ≈5% — refactor completo del módulo (solo presentación, RPC `calcular_receta` intacta). El universo creció → PROGRESO 51→49, PLAN-MAESTRO 49→51.)*
 > *(Rebalanceo 2026-06-13: −RRHH.2/3/4 → Fase RRHH v2 cerrada salvo RRHH.5 (bloqueada). El universo había crecido 2026-06-12 con la Fase 9.bis "Roles & Permisos" ≈3%.)*
 > *(Rebalanceo 2026-06-11: el universo creció — la mini-fase RRHH ≈3% se expandió a la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
@@ -191,6 +192,18 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **Test:** loguear como venta → solo aparecen sus proyectos/clientes en UI **y** la query directa a Supabase con su token tampoco devuelve los ajenos.
 
 **Orden sugerido:** Capa 1 primero (fix acotado, sin riesgo, resuelve el síntoma visible). Capa 2 después (fundacional, tocar con bisturí, SQL-first, una tabla por vez con RLS + verificación). Las dos son separables.
+
+### 🆕 Fase Costos UX — refactor completo del módulo *(≈5% · solo presentación, RPC intacta)*
+
+> **Origen (Fede 2026-06-13):** "el módulo de costos más amigable" → derivó en el refactor completo de las 4 solapas. Diseño cerrado con renders interactivos validados.
+
+- **📘 SPEC OBLIGATORIA: `docs/costos-rediseno-ux-blueprint.md`.** Tokens **grounded** en `MEPEX_BRAND.md` + `style.css :root` (§0 del blueprint): bg `#050505`, cards `#111111`, inputs `#1A1A1A`, border `#2a2a2a`, radius 4/6/10, badges Space Mono UPPERCASE (`color20`/`color40`), btn-primary mono + glow, SVG inline (no icon fonts). **Reusar clases reales, no inventar tokens.**
+- **Objetivo (Fede):** módulo más amigable y cómodo, edición tipo planilla, fórmula clara. Las 4 solapas (Insumos · Recetas · Listas de Precio · Parámetros) como **un sistema de diseño cohesivo**, no 4 pantallas sueltas.
+- **Decisiones cerradas:** editor de receta a **pantalla completa** (2 col, `.modal--full` nuevo) · **fila fantasma** inline para componentes (sin modales; reusa `addRecetaComponente`+`validarNoCiclo`+`_insumoSinVU`) · **recibo vertical** paso a paso con marcador "pendiente" (**cero cálculo en el front**; la RPC `calcular_receta` es la única fuente; Recalcular dispara la RPC) · **quick-edits de 2 clics** en la tabla (popovers sobre badges). Variante **subalquilado** = simple (anula MO/amortización/indirectos; solo `costo MP × (1+margen)` + proveedor). Convivencia: dejar el panel lateral actual hasta validar, después bajar el que sobre.
+- **Reglas preservadas (bisturí):** RPC fuente · snapshots por item · propio/subalq · VU armado 1:N · margen override · overrides nullables · cambio de tipo con confirmación · cascada al cambiar precio insumo · BOM jerárquico · markup vs margen. Todo vive en `persist()`/`_recalcularUnaReceta()`/RPC, independiente del DOM.
+- **Etapas (cada una validable):** **F1** quick-edits inline en tabla (Insumos: clasif/categoría/tipo amort. · Recetas: rubro) → **F2** editor receta full-screen + fila fantasma + recibo pendiente (propio) → **F3** variante subalquilado + ficha Insumos full-screen → **F4** Listas de Precio + Parámetros al mismo sistema + pulido transversal.
+- **Cambios técnicos:** `.modal--full` (MEPEX_COMPONENTS.css) · popovers + editor + fila fantasma + recibo en `costos.js` · clases nuevas en `style.css` · bump `costos.js?v=`.
+- **Test:** cambiar clasificación/tipo amort. en 2 clics desde la tabla · agregar componente con fila fantasma sin modal · editar cantidad → MP live + precio "pendiente" → Recalcular dispara RPC · subalquilado sin MO · Listas con toggle cotizable inline.
 
 ### Fase 10 — Remate UI/UX (Claude Design) *(≈5%)*
 - Sistema visual (tokens dark theme + manual de marca) aplicado a cada módulo + **pasada final de coherencia**.

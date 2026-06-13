@@ -6,6 +6,27 @@
 
 ---
 
+## 0. Fundamentos de diseño (NO inventar tokens)
+
+**Fuente de verdad:** `docs/MEPEX_BRAND.md` + `style.css :root` + `MEPEX_COMPONENTS.css`. La implementación **reusa las clases y variables reales**, no valores aproximados. (Los renders del chat usan iconos Tabler y radios un poco más grandes — son aproximaciones del mockup; el código final va con SVG inline outline y los tokens de abajo.)
+
+**Colores (`style.css :root`):**
+- Fondo `--bg #050505` · cards `--bg-card #111111` / `--bg-card-2 #1A1A1A` (inputs) / `--bg-card-3 #222222` · hover `--bg-hover #1e1e1e`.
+- Bordes `--border #2a2a2a` · `--border-subtle rgba(0,169,193,.08)` · `--border-active rgba(0,169,193,.25)`.
+- Texto `--text-primary #E8E8E8` · `--text-muted #888888` · `--text-dim #555555`.
+- `--primary #00A9C1` (hover `#00bdd8`) · `--accent #F28D15` (uso moderado) · `--color-success #00CC88` · `--color-error #ff4444`.
+- Categoría: sub-receta / Recursos violeta `#9B7DFF` · Admin&Finanzas azul `#4A90D9`.
+- Radius `--radius 4` / `--radius-md 6` / `--radius-lg 10` · `--glow-sm 0 0 12px rgba(0,169,193,.2)` · `--ease cubic-bezier(.25,.46,.45,.94)`.
+
+**Tipografía:** `--font-main Outfit` (UI/títulos/cuerpo) · `--font-mono Space Mono` (labels/montos/btn-primary). `.title-2` = Outfit 700 turquesa · `.label` = Space Mono UPPERCASE `.2em` muted · `.amount` = Space Mono 700 24px.
+
+**Componentes a REUSAR (no recrear):**
+- `.btn-primary` (bg turquesa, texto `--bg`, Space Mono `.1em`, hover `#00bdd8` + `--glow-sm`), `.btn-secondary`, `.btn-ghost`, `.btn-danger`.
+- `.badge`: Space Mono **UPPERCASE** `.08em`, radius 4, padding `3px 8px`. Los badges color-coded de Costos usan inline `bg color+'20'` / `border color+'40'` / `text color` — ver `_clasificacionColors` / `_categoriaColors` en `costos.js`.
+- Inputs: bg `--bg-card-2`, border `--border`, radius 4.
+- Scrollbar thumb turquesa radius 3. Iconos: SVG inline outline `stroke-width="2"` (la app **no** usa icon fonts).
+- Moneda: `$` es-AR. En Costos se muestran **2 decimales** (precisión, `API.formatCurrency`); en el lobby general sin decimales.
+
 ## 1. Qué pidió Fede
 
 - El módulo Costos "más amigable", sobre todo el **panel de edición**.
@@ -28,6 +49,7 @@
    - Insumos: Clasificación · Categoría · Tipo amort.
    - Recetas: Rubro · Tipo (propio/subalq, con su confirmación) · Cotizable.
 5. **Convivencia:** dejar el panel lateral actual funcionando hasta validar el editor nuevo en prod; después bajar el que sobre. Cero riesgo de quedarse sin edición.
+6. **Alcance = módulo COMPLETO** (decisión Fede 2026-06-12, validada con render `costos_modulo_completo`): no solo Recetas. Las 4 solapas comparten un único sistema de diseño cohesivo → Insumos (tabla + ficha), Recetas (tabla + editor propio/subalq), Listas de Precio (board read-only) y Parámetros (cards key-value). → **Agregar a `PLAN-MAESTRO-rediseno-lobby.md` al implementar** (pedido explícito de Fede: "no ahora, luego").
 
 ## 3. Layout — editor PROPIO (cascada completa)
 
@@ -49,9 +71,11 @@ Igual al propio pero **anula** MO, amortización, indirectos y hora taller. Colu
 - Bloque que tacha explícitamente lo que no aplica (didáctico).
 - Snapshot mínimo (solo margen aplicado).
 
-## 5. Ficha de Insumos
+## 5. Otras solapas (mismo sistema de diseño)
 
-Mismo tratamiento visual (bloques, recibo no aplica). Quick-edits desde la tabla cubren lo más usado; la ficha completa (a pantalla completa o panel) para datos/costo/proveedor/amortización/notas/historial.
+- **Ficha de Insumos:** mismo tratamiento visual (bloques, recibo no aplica). Quick-edits desde la tabla cubren lo más usado (Clasificación / Categoría / Tipo amort. + costo inline); la ficha completa (a pantalla completa o panel) para datos/costo/proveedor/amortización (con desglose de VU efectiva)/notas/historial de precios.
+- **Listas de Precio (read-only):** board con KPIs (cotizables / totales / sin precio con marcador naranja) · filtros (search, rubro, solo cotizables) · "Próxima revisión" editable · "Exportar PDF" (Cliente / Socio / Interno) · tabla Código/Nombre/Precio/Última act./Cotizable con **toggle cotizable inline** que actualiza los KPIs. Marca ⚠ los cotizables sin precio y atenúa los desactualizados (>90 días). Lee directo de `catalogo_items`.
+- **Parámetros (solo superadmin):** cards key-value (Valores económicos / Porcentajes) con inputs inline + "Guardar" + "Recalcular todas las recetas". Conversión %↔factor (30 = 30% → 0,30). Cambiar afecta recetas nuevas/recalculadas; las existentes mantienen snapshot.
 
 ## 6. Mecánicas (reuso de lo existente)
 
@@ -77,9 +101,12 @@ RPC `calcular_receta` única fuente de cálculo · snapshots por item · propio 
 
 ## 9. Orden de implementación
 
-- **F1 — Quick-edits inline en la tabla** (popovers). Validar con Fede.
+Refactor del módulo completo (4 solapas). **Al arrancar, agregarlo a `PLAN-MAESTRO-rediseno-lobby.md`** (pedido de Fede, no antes).
+
+- **F1 — Quick-edits inline en la tabla** (popovers Insumos + Recetas). Validar con Fede.
 - **F2 — Editor de receta a pantalla completa** + fila fantasma + recibo pendiente (propio). Validar.
-- **F3 — Variante subalquilado** + ficha de Insumos + pulido visual transversal. Validar.
+- **F3 — Variante subalquilado** + ficha de Insumos a pantalla completa. Validar.
+- **F4 — Listas de Precio + Parámetros** redibujadas al mismo sistema + pulido visual transversal. Validar.
 
 ## 10. Referencias
 

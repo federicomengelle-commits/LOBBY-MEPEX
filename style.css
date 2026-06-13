@@ -11101,6 +11101,254 @@ a.ev-doc-link:hover { text-decoration: underline; }
     padding-bottom: 24px;
 }
 
+/* ─── Quick-edit inline (popover de 2 clics sobre badges · Fase Costos UX F1) ─── */
+.costos-qe-cell {
+    background: none;
+    border: 1px dashed transparent;
+    border-radius: var(--radius);
+    padding: 2px 5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font: inherit;
+    transition: background 0.15s, border-color 0.15s;
+}
+.costos-qe-cell:hover {
+    border-color: var(--border);
+    background: rgba(255, 255, 255, 0.03);
+}
+.costos-qe-caret {
+    color: var(--text-dim);
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+.costos-qe-cell:hover .costos-qe-caret { opacity: 1; }
+.costos-qe-flash { animation: costosQeFlash 0.6s ease; }
+@keyframes costosQeFlash {
+    0% { background: rgba(0, 169, 193, 0.22); }
+    100% { background: transparent; }
+}
+.costos-qe-pop {
+    position: fixed;
+    z-index: 9999;
+    background: var(--bg-card-2);
+    border: 1px solid #333;
+    border-radius: var(--radius-md);
+    padding: 5px;
+    min-width: 180px;
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+}
+.costos-qe-pop-head {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 5px 9px 6px;
+}
+.costos-qe-opt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: var(--radius);
+    padding: 7px 9px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: 13px;
+}
+.costos-qe-opt:hover { background: rgba(255, 255, 255, 0.06); }
+.costos-qe-opt.is-cur { color: var(--primary); }
+.costos-qe-opt-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.costos-qe-opt-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.costos-qe-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.costos-qe-opt-check {
+    flex-shrink: 0;
+    color: var(--primary);
+    opacity: 0;
+}
+.costos-qe-opt.is-cur .costos-qe-opt-check { opacity: 1; }
+
+/* ─── Editor de receta a pantalla completa (Fase Costos UX · F2) ─── */
+.costos-side-panel.costos-panel-full {
+    position: fixed;
+    inset: 0;
+    width: 100% !important;
+    z-index: 1200;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px;
+    overflow: auto;
+    border-left: 0;
+    height: 100%;
+}
+.costos-panel-full .costos-panel-inner {
+    width: min(1180px, 95vw) !important;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    max-height: calc(100vh - 48px);
+    overflow: hidden;
+    padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+}
+.costos-panel-full .costos-ficha { height: auto; max-height: calc(100vh - 48px); }
+.costos-panel-full .costos-ficha-body { overflow-y: auto; }
+.costos-ed-grid {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr;
+    align-items: start;
+}
+.costos-ed-left { padding: 16px 18px; min-width: 0; }
+.costos-ed-right { padding: 16px 18px; min-width: 0; border-left: 1px solid var(--border); }
+@media (max-width: 880px) {
+    .costos-ed-grid { grid-template-columns: 1fr; }
+    .costos-ed-right { border-left: 0; border-top: 1px solid var(--border); }
+}
+
+/* Fila fantasma (agregar componente inline, sin modal) */
+.costos-ghost-row { margin-top: 10px; }
+.costos-ghost-add {
+    width: 100%;
+    background: rgba(0, 169, 193, 0.06);
+    border: 1px dashed rgba(0, 169, 193, 0.4);
+    border-radius: var(--radius);
+    color: var(--primary);
+    font-family: var(--font-main);
+    font-size: 12.5px;
+    padding: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.costos-ghost-add:hover { background: rgba(0, 169, 193, 0.12); }
+.costos-ghost-box {
+    border: 1px dashed rgba(0, 169, 193, 0.45);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+    padding: 6px;
+}
+.costos-ghost-box input {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: 13px;
+    padding: 6px 8px;
+}
+.costos-ghost-box input:focus { outline: none; }
+.costos-ghost-results { max-height: 220px; overflow-y: auto; margin-top: 4px; }
+.costos-ghost-opt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--text-primary);
+}
+.costos-ghost-opt:hover { background: rgba(255, 255, 255, 0.06); }
+.costos-ghost-opt-meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.costos-ghost-opt-type { font-size: 12px; flex-shrink: 0; }
+.costos-ghost-empty { font-size: 12px; color: var(--text-dim); padding: 7px 9px; }
+
+/* Recibo vertical (la fórmula paso a paso) */
+.costos-recibo {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 13px;
+}
+.costos-recibo-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 7px;
+}
+.costos-recibo-head-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.costos-recibo-pending {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: none;
+}
+.costos-recibo.is-pending .costos-recibo-pending { display: inline; }
+.costos-recibo-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 12px;
+    padding: 4px 0;
+    color: var(--text-muted);
+    gap: 10px;
+}
+.costos-recibo-row .rv { font-family: var(--font-mono); color: var(--text-primary); white-space: nowrap; }
+.costos-recibo-row.dim .rv { color: var(--text-muted); }
+.costos-recibo-row.sub { color: var(--text-primary); font-weight: 500; }
+.costos-recibo-sep { border-top: 1px dashed var(--border); margin: 6px 0; }
+.costos-recibo .step { transition: opacity 0.2s; }
+.costos-recibo.is-pending .step { opacity: 0.4; }
+.costos-recibo.is-pending .step .rv::after { content: ' ··'; color: var(--accent); }
+.costos-recibo-final {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 8px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border);
+    gap: 10px;
+}
+.costos-recibo-final .rl { font-size: 12px; color: var(--text-muted); }
+.costos-recibo-final .rv {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 19px;
+    color: var(--primary);
+    transition: opacity 0.2s;
+    white-space: nowrap;
+}
+.costos-recibo.is-pending .costos-recibo-final .rv { opacity: 0.4; }
+
 /* ─── Ficha ─── */
 .costos-ficha {
     display: flex;
