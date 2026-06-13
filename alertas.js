@@ -265,16 +265,17 @@ const Alertas = {
             }];
         },
 
-        // RRHH: solicitudes de vacaciones pendientes de aprobar
+        // RRHH: ausencias solicitadas pendientes de aprobar (RRHH.2 — antes leía
+        // rrhh_vacaciones_solicitudes con estado='pendiente', valor inexistente → nunca disparaba).
         async rrhh() {
             const { count, error } = await supabaseClient
-                .from('rrhh_vacaciones_solicitudes').select('id', { count: 'exact', head: true })
-                .eq('_deleted', false).eq('estado', 'pendiente');
+                .from('ausencias').select('id', { count: 'exact', head: true })
+                .eq('_deleted', false).eq('estado', 'solicitada');
             if (error || !count) return [];
             return [{
-                moduleId: 'rrhh', tipo: 'vacaciones_pendientes', key: 'rrhh_vacaciones',
+                moduleId: 'rrhh', tipo: 'ausencias_pendientes', key: 'rrhh_ausencias',
                 severidad: 'info', icon: '🏖️',
-                titulo: `${count} ${Alertas._plural(count, 'solicitud', 'solicitudes')} de vacaciones`,
+                titulo: `${count} ${Alertas._plural(count, 'ausencia')} ${Alertas._plural(count, 'solicitada', 'solicitadas')}`,
                 detalle: 'Pendientes de aprobar', link: '#rrhh', count,
             }];
         },

@@ -2,11 +2,11 @@
    MEPEX Lobby — Módulo RRHH
    =============================================
    Categoría: ADMIN & FINANZAS
-   2 tabs: Nómina, Vacaciones.
+   2 tabs: Nómina (v2 estilo CRM, RRHH.1), Ausencias (RRHH.2).
    Las asignaciones de personas a eventos se hacen ahora exclusivamente
-   desde la ficha del evento (asignaciones_evento). El tab "Asignación"
-   legacy contra rrhh_asignaciones se eliminó.
-   Solo superadmin y admin.
+   desde la ficha del evento (asignaciones_evento). Las ausencias/saldos
+   viven en `ausencias` + `vacaciones_saldos` (RRHH.2 reemplazó las tablas
+   legacy rrhh_vacaciones*). Solo superadmin y admin.
    ============================================= */
 
 const RRHHModule = {
@@ -17,6 +17,8 @@ const RRHHModule = {
     _asignaciones: [],
     _vacaciones: [],
     _solicitudes: [],
+    _ausencias: [],
+    _saldos: [],
     _events: [],
     _projects: [],
     _selectedPersonId: null,
@@ -59,7 +61,7 @@ const RRHHModule = {
         if (this._activeTab === 'nomina') {
             await this._loadNomina();
         } else {
-            await this._loadVacaciones();
+            await this._loadAusencias();
         }
     },
 
@@ -162,6 +164,16 @@ const RRHHModule = {
                     .hr-panel-open { width:100%; height:78vh; overflow-y:auto;
                         box-shadow:0 -12px 40px rgba(0,0,0,0.6); }
                 }
+
+                /* ═══ RRHH.2 — Ausencias ═══ */
+                .hr-aus-legend { display:flex; gap:14px; flex-wrap:wrap; margin:4px 0 16px; }
+                .hr-aus-leg { display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--text-muted); }
+                .hr-aus-dot { width:10px; height:10px; border-radius:3px; display:inline-block; }
+                .hr-aus-tag { display:inline-flex; align-items:center; padding:2px 9px; border-radius:4px;
+                    font-family:var(--font-mono); font-size:0.62rem; font-weight:600; border:1px solid; white-space:nowrap; }
+                .hr-aus-act { background:none; border:1px solid var(--border); color:var(--text-muted);
+                    border-radius:5px; padding:3px 8px; font-size:0.78rem; cursor:pointer; margin-left:4px; transition:all 150ms ease; }
+                .hr-aus-act:hover { color:var(--text-primary); border-color:#555; }
             </style>
             <div class="module-view rrhh-module">
                 <div class="module-subheader">
@@ -188,9 +200,9 @@ const RRHHModule = {
                             <span class="section-tab-icon">👥</span>
                             <span class="section-tab-text">Nómina</span>
                         </button>
-                        <button class="section-tab ${this._activeTab === 'vacaciones' ? 'active' : ''}" data-tab="vacaciones">
+                        <button class="section-tab ${this._activeTab === 'ausencias' ? 'active' : ''}" data-tab="ausencias">
                             <span class="section-tab-icon">🏖️</span>
-                            <span class="section-tab-text">Vacaciones</span>
+                            <span class="section-tab-text">Ausencias</span>
                         </button>
                     </div>
                 </div>
@@ -213,7 +225,7 @@ const RRHHModule = {
                 const cc = document.getElementById('rrhhContent');
                 if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
                 if (this._activeTab === 'nomina') await this._loadNomina();
-                else await this._loadVacaciones();
+                else await this._loadAusencias();
             });
         });
     },
@@ -1079,393 +1091,153 @@ const RRHHModule = {
         }
     },
 
-
     // ════════════════════════════════════════════════════
-    //  TAB: ASIGNACIÓN
+    //  TAB: AUSENCIAS  (RRHH.2 — reemplaza Vacaciones legacy)
     // ════════════════════════════════════════════════════
 
-    async _loadAsignacion() {
-        try {
-            // Load all data in parallel
-            const [personalRes, asignacionesRes, events, projects] = await Promise.all([
-                supabaseClient.from('rrhh_personal').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
-                supabaseClient.from('rrhh_asignaciones').select('*').eq('_deleted', false).order('fecha_desde', { ascending: true }),
-                API.getEvents(),
-                API.getProjects(),
-            ]);
+    _ausTipos: [
+        { key: 'vacaciones', label: 'Vacaciones', color: '#00A9C1' },
+        { key: 'enfermedad', label: 'Enfermedad', color: '#ff4444' },
+        { key: 'licencia',   label: 'Licencia',   color: '#9B7DFF' },
+        { key: 'franco',     label: 'Franco',     color: '#888888' },
+        { key: 'falta',      label: 'Falta',      color: '#F28D15' },
+    ],
 
-            this._personal = personalRes.data || [];
-            this._asignaciones = asignacionesRes.data || [];
-            this._events = events || [];
-            this._projects = projects || [];
-        } catch (e) {
-            console.warn('[RRHH] Error loading asignaciones:', e);
-        }
-        this._renderAsignacion();
+    _ausTipoInfo(key) {
+        return this._ausTipos.find(t => t.key === key) || { key, label: key || '—', color: '#888' };
     },
 
-    _renderAsignacion() {
+    async _loadAusencias() {
+        const anio = this._vacAnio || new Date().getFullYear();
+        try {
+            const [persRes, ausRes, saldRes] = await Promise.all([
+                supabaseClient.from('personas').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
+                supabaseClient.from('ausencias').select('*').eq('_deleted', false).order('fecha_desde', { ascending: false }),
+                supabaseClient.from('vacaciones_saldos').select('*').eq('_deleted', false).eq('anio', anio),
+            ]);
+            this._personal = (persRes.data || []).map(p => this._mapPersonaToLegacyShape(p));
+            this._ausencias = ausRes.data || [];
+            this._saldos = saldRes.data || [];
+        } catch (e) {
+            console.warn('[RRHH] Error loading ausencias:', e);
+            this._ausencias = [];
+            this._saldos = [];
+        }
+        this._renderAusencias();
+    },
+
+    // Días hábiles (lun-vie) de un rango inclusivo.
+    _diasHabiles(desde, hasta) {
+        const d1 = new Date(String(desde).slice(0, 10) + 'T00:00:00');
+        const d2 = new Date(String(hasta).slice(0, 10) + 'T00:00:00');
+        if (isNaN(d1) || isNaN(d2) || d2 < d1) return 0;
+        let n = 0, guard = 0;
+        for (let d = new Date(d1); d <= d2 && guard < 730; d.setDate(d.getDate() + 1), guard++) {
+            const dow = d.getDay();
+            if (dow !== 0 && dow !== 6) n++;
+        }
+        return n;
+    },
+
+    // Vacaciones usadas = días hábiles de ausencias tipo vacaciones aprobadas del año.
+    _vacUsadas(personaId, anio) {
+        return this._ausencias
+            .filter(a => String(a.persona_id) === String(personaId) && a.tipo === 'vacaciones' && a.estado === 'aprobada'
+                && new Date(String(a.fecha_desde).slice(0, 10) + 'T00:00:00').getFullYear() === anio)
+            .reduce((sum, a) => sum + this._diasHabiles(a.fecha_desde, a.fecha_hasta), 0);
+    },
+
+    _renderAusencias() {
         const cc = document.getElementById('rrhhContent');
         if (!cc) return;
 
-        // Group by event
-        const eventMap = {};
-        this._asignaciones.forEach(a => {
-            const eid = a.evento_id || 'sin-evento';
-            if (!eventMap[eid]) eventMap[eid] = [];
-            eventMap[eid].push(a);
-        });
-
-        // Active events (próximos o en curso)
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const activeEvents = this._events
-            .filter(e => {
-                const end = new Date(e.teardownEndDate || e.eventEndDate || '2000-01-01');
-                return end >= today;
-            })
-            .sort((a, b) => new Date(a.setupDate || a.eventStartDate) - new Date(b.setupDate || b.eventStartDate));
-
-        // Detect conflicts
-        const conflicts = this._detectConflicts();
-
-        cc.innerHTML = `
-            <div style="margin: 0 0 12px 0; padding: 10px 14px; background: rgba(155,125,255,0.08); border: 1px solid rgba(155,125,255,0.25); border-radius: 6px; color: #aaa; font-family: var(--font-main); font-size: 0.85rem;">
-                ℹ Esta vista refleja asignaciones <strong style="color:#9B7DFF;">legacy</strong>. Las cargas asignadas desde <a href="#logistica" style="color:#00A9C1;">Logística</a> (choferes + ayudantes a cargas) se gestionan en ese módulo aparte.
-            </div>
-            <div class="rh-toolbar">
-                <h3 class="rh-toolbar-title">Asignación de Personal por Evento</h3>
-                <button class="rh-btn-add" id="rhAddAsign">+ Nueva Asignación</button>
-            </div>
-
-            ${conflicts.length > 0 ? `
-                <div class="rh-conflicts">
-                    <h4 class="rh-conflicts-title">⚠️ Conflictos detectados</h4>
-                    ${conflicts.map(c => `
-                        <div class="rh-conflict-item">
-                            <strong>${c.persona}</strong> asignado/a a 2 eventos el mismo día:
-                            <span class="rh-conflict-events">${c.evento1} y ${c.evento2}</span>
-                            <span class="rh-conflict-date">(${this._formatDateShort(c.fecha)})</span>
-                        </div>
-                    `).join('')}
-                </div>
-            ` : ''}
-
-            ${activeEvents.length === 0 && this._asignaciones.length === 0 ? `
-                <div class="rh-empty">
-                    <div class="rh-empty-icon">📌</div>
-                    <h3>Sin asignaciones</h3>
-                    <p>Asigná personal a eventos para organizar los equipos de trabajo</p>
-                </div>
-            ` : `
-                <div class="rh-asign-list">
-                    ${activeEvents.map(evt => {
-                        const evtAsign = eventMap[evt.id] || [];
-                        const evtName = evt.name || '—';
-                        const startDate = evt.setupDate || evt.eventStartDate || '';
-                        const endDate = evt.teardownEndDate || evt.eventEndDate || '';
-                        return `
-                            <div class="rh-asign-event-card">
-                                <div class="rh-asign-event-header">
-                                    <div>
-                                        <h4 class="rh-asign-event-name">${evtName}</h4>
-                                        <span class="rh-asign-event-dates rh-mono">${this._formatDateShort(startDate)} — ${this._formatDateShort(endDate)}</span>
-                                    </div>
-                                    <span class="rh-asign-count">${evtAsign.length} asignado${evtAsign.length !== 1 ? 's' : ''}</span>
-                                </div>
-                                ${evtAsign.length === 0 ? `
-                                    <p class="rh-empty-small">Sin personal asignado</p>
-                                ` : `
-                                    <div class="rh-asign-people">
-                                        ${evtAsign.map(a => `
-                                            <div class="rh-asign-person">
-                                                <span class="rh-asign-person-name">${this._getPersonName(a.personal_id)}</span>
-                                                <span class="rh-asign-person-rol">${a.rol_evento || '—'}</span>
-                                                <span class="rh-asign-person-dates rh-mono">${this._formatDateShort(a.fecha_desde)} — ${this._formatDateShort(a.fecha_hasta)}</span>
-                                                <button class="rh-asign-remove" data-id="${a.id}" title="Quitar asignación">✕</button>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                `}
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `}
-        `;
-
-        // Events
-        document.getElementById('rhAddAsign')?.addEventListener('click', () => this._showAsignacionModal());
-        cc.querySelectorAll('.rh-asign-remove[data-id]').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const ok = await Confirm.delete('esta asignación');
-                if (!ok) return;
-                try {
-                    await supabaseClient.from('rrhh_asignaciones').update({ _deleted: true }).eq('id', btn.dataset.id);
-                    Toast.success('Asignación eliminada');
-                    await this._loadAsignacion();
-                } catch (err) {
-                    Toast.error('Error al eliminar');
-                }
-            });
-        });
-    },
-
-    _detectConflicts() {
-        const conflicts = [];
-        const byPerson = {};
-
-        this._asignaciones.forEach(a => {
-            if (!a.personal_id || !a.fecha_desde || !a.fecha_hasta) return;
-            if (!byPerson[a.personal_id]) byPerson[a.personal_id] = [];
-            byPerson[a.personal_id].push(a);
-        });
-
-        Object.entries(byPerson).forEach(([pid, asigns]) => {
-            for (let i = 0; i < asigns.length; i++) {
-                for (let j = i + 1; j < asigns.length; j++) {
-                    const a = asigns[i], b = asigns[j];
-                    const aStart = new Date(a.fecha_desde), aEnd = new Date(a.fecha_hasta);
-                    const bStart = new Date(b.fecha_desde), bEnd = new Date(b.fecha_hasta);
-                    // Overlap check
-                    if (aStart <= bEnd && bStart <= aEnd) {
-                        conflicts.push({
-                            persona: this._getPersonName(pid),
-                            evento1: this._getEventName(a.evento_id),
-                            evento2: this._getEventName(b.evento_id),
-                            fecha: aStart > bStart ? a.fecha_desde : b.fecha_desde,
-                        });
-                    }
-                }
-            }
-        });
-
-        return conflicts;
-    },
-
-    _showAsignacionModal() {
-        const activeEvents = this._events.filter(e => {
-            const end = new Date(e.teardownEndDate || e.eventEndDate || '2000-01-01');
-            return end >= new Date();
-        });
-        const activePeople = this._personal.filter(p => p.estado === 'activo');
-
-        Modal.open({
-            title: 'Nueva Asignación',
-            size: 'medium',
-            body: `
-                <div style="display:flex;flex-direction:column;gap:16px;">
-                    <div>
-                        <label class="form-label">Evento</label>
-                        <select id="rhAEvento" class="form-input" style="font-size:1rem;padding:12px;">
-                            <option value="">Seleccionar evento...</option>
-                            ${activeEvents.map(e => `<option value="${e.id}">${e.name || e.nombre}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="form-label">Personal</label>
-                        <select id="rhAPersonal" class="form-input" style="font-size:1rem;padding:12px;">
-                            <option value="">Seleccionar persona...</option>
-                            ${activePeople.map(p => `<option value="${p.id}">${p.nombre}${p.tipo === 'cuadrilla' ? ` (Cuadrilla, ${p.cantidad_personas || '?'} pers.)` : ''}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="form-label">Rol en el evento</label>
-                        <input type="text" id="rhARol" class="form-input" list="rhRolesEvento" placeholder="Ej: Armador, Electricista, Chofer" style="font-size:1rem;padding:12px;">
-                        <datalist id="rhRolesEvento">
-                            <option value="Armador">
-                            <option value="Electricista">
-                            <option value="Chofer">
-                            <option value="Encargado de armado">
-                            <option value="Encargado de desarme">
-                            <option value="Carpintero">
-                            <option value="Supervisor">
-                        </datalist>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Fecha desde</label>
-                            <input type="date" id="rhADesde" class="form-input" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Fecha hasta</label>
-                            <input type="date" id="rhAHasta" class="form-input" style="font-size:1rem;padding:12px;">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="form-label">Notas</label>
-                        <textarea id="rhANotas" class="form-input" rows="2" placeholder="Observaciones" style="font-size:1rem;padding:12px;"></textarea>
-                    </div>
-                </div>
-            `,
-            footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn-primary" id="rhASave" style="font-size:1rem;padding:10px 24px;">Asignar</button>
-            `,
-        });
-
-        setTimeout(() => {
-            // Auto-fill dates from event
-            document.getElementById('rhAEvento')?.addEventListener('change', (e) => {
-                const evt = this._events.find(x => String(x.id) === e.target.value);
-                if (evt) {
-                    const desde = evt.setupDate || evt.eventStartDate || '';
-                    const hasta = evt.teardownEndDate || evt.eventEndDate || '';
-                    if (desde) document.getElementById('rhADesde').value = desde;
-                    if (hasta) document.getElementById('rhAHasta').value = hasta;
-                }
-            });
-
-            document.getElementById('rhASave')?.addEventListener('click', async () => {
-                const evento_id = document.getElementById('rhAEvento')?.value;
-                const personal_id = document.getElementById('rhAPersonal')?.value;
-                if (!evento_id) { Toast.warning('Seleccioná un evento'); return; }
-                if (!personal_id) { Toast.warning('Seleccioná una persona'); return; }
-
-                const payload = {
-                    personal_id,
-                    evento_id,
-                    proyecto_id: null,
-                    rol_evento: document.getElementById('rhARol')?.value?.trim() || null,
-                    fecha_desde: document.getElementById('rhADesde')?.value || null,
-                    fecha_hasta: document.getElementById('rhAHasta')?.value || null,
-                    notas: document.getElementById('rhANotas')?.value?.trim() || null,
-                    _deleted: false,
-                };
-
-                try {
-                    await supabaseClient.from('rrhh_asignaciones').insert(payload);
-                    Toast.success('Personal asignado');
-                    Modal.close();
-                    await this._loadAsignacion();
-                } catch (e) {
-                    console.error('[RRHH] Error saving asignación:', e);
-                    Toast.error('Error al asignar');
-                }
-            });
-        }, 100);
-    },
-
-
-    // ════════════════════════════════════════════════════
-    //  TAB: VACACIONES
-    // ════════════════════════════════════════════════════
-
-    async _loadVacaciones() {
-        try {
-            const [personalRes, vacRes, solRes] = await Promise.all([
-                supabaseClient.from('rrhh_personal').select('*').eq('_deleted', false).eq('estado', 'activo').order('nombre', { ascending: true }),
-                supabaseClient.from('rrhh_vacaciones').select('*').eq('_deleted', false),
-                supabaseClient.from('rrhh_vacaciones_solicitudes').select('*').eq('_deleted', false).order('fecha_desde', { ascending: true }),
-            ]);
-
-            this._personal = personalRes.data || [];
-            this._vacaciones = vacRes.data || [];
-            this._solicitudes = solRes.data || [];
-        } catch (e) {
-            console.warn('[RRHH] Error loading vacaciones:', e);
-        }
-        this._renderVacaciones();
-    },
-
-    _renderVacaciones() {
-        const cc = document.getElementById('rrhhContent');
-        if (!cc) return;
-
-        // Build vacation map: personal_id -> vacaciones
-        const vacMap = {};
-        this._vacaciones.forEach(v => { vacMap[v.personal_id] = v; });
-
-        // Calendar for current month
         const mesNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const mes = this._vacMes;
         const anio = this._vacAnio;
-        const firstDay = new Date(anio, mes, 1);
-        const lastDay = new Date(anio, mes + 1, 0);
-        const daysInMonth = lastDay.getDate();
+        const daysInMonth = new Date(anio, mes + 1, 0).getDate();
 
-        // Get approved solicitudes for this month
-        const monthSolicitudes = this._solicitudes.filter(s => {
-            if (s.estado !== 'aprobada') return false;
-            const desde = new Date(s.fecha_desde);
-            const hasta = new Date(s.fecha_hasta);
-            return (desde.getMonth() <= mes && desde.getFullYear() <= anio && hasta.getMonth() >= mes && hasta.getFullYear() >= anio);
-        });
-
-        // Build person-day matrix
+        // Mapa persona -> { día -> color } para el mes visible
+        const mStart = new Date(anio, mes, 1);
+        const mEnd = new Date(anio, mes, daysInMonth);
         const personDays = {};
-        monthSolicitudes.forEach(s => {
-            if (!personDays[s.personal_id]) personDays[s.personal_id] = new Set();
-            const desde = new Date(s.fecha_desde);
-            const hasta = new Date(s.fecha_hasta);
-            for (let d = new Date(desde); d <= hasta; d.setDate(d.getDate() + 1)) {
+        this._ausencias.forEach(a => {
+            const d1 = new Date(String(a.fecha_desde).slice(0, 10) + 'T00:00:00');
+            const d2 = new Date(String(a.fecha_hasta).slice(0, 10) + 'T00:00:00');
+            if (isNaN(d1) || isNaN(d2)) return;
+            if (d2 < mStart || d1 > mEnd) return;
+            const color = this._ausTipoInfo(a.tipo).color;
+            let guard = 0;
+            for (let d = new Date(d1); d <= d2 && guard < 400; d.setDate(d.getDate() + 1), guard++) {
                 if (d.getMonth() === mes && d.getFullYear() === anio) {
-                    personDays[s.personal_id].add(d.getDate());
+                    if (!personDays[a.persona_id]) personDays[a.persona_id] = {};
+                    personDays[a.persona_id][d.getDate()] = color;
                 }
             }
         });
+        const peopleInCal = this._personal.filter(p => personDays[p.id]);
 
-        // People with vacation days this month
-        const peopleInCalendar = this._personal.filter(p => personDays[p.id] && personDays[p.id].size > 0);
+        // Saldos de vacaciones del año
+        const saldoMap = {};
+        this._saldos.forEach(s => { saldoMap[s.persona_id] = s; });
+        const conSaldo = this._personal.filter(p => saldoMap[p.id]);
 
-        // Pending solicitudes
-        const pendingSolicitudes = this._solicitudes.filter(s => s.estado === 'solicitada');
+        const ausList = [...this._ausencias].sort((a, b) => String(b.fecha_desde).localeCompare(String(a.fecha_desde)));
 
         cc.innerHTML = `
             <div class="rh-toolbar">
-                <h3 class="rh-toolbar-title">Vacaciones</h3>
+                <h3 class="rh-toolbar-title">Ausencias</h3>
                 <div class="rh-toolbar-right">
-                    <button class="rh-btn-add" id="rhAddVacConfig" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);">⚙ Configurar días</button>
-                    <button class="rh-btn-add" id="rhAddSolicitud">+ Nueva Solicitud</button>
+                    <button class="rh-btn-add" id="rhAusSaldos" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);">⚙ Saldos de vacaciones</button>
+                    <button class="rh-btn-add" id="rhAusNueva">+ Nueva ausencia</button>
                 </div>
             </div>
 
-            <!-- Resumen por persona -->
-            <div class="rh-vac-grid">
-                ${this._personal.filter(p => p.tipo === 'fijo').map(p => {
-                    const v = vacMap[p.id];
-                    const total = v ? v.dias_totales : 0;
-                    const usados = v ? v.dias_usados : 0;
-                    const saldo = total - usados;
-                    const pct = total > 0 ? Math.round((usados / total) * 100) : 0;
-                    return `
-                        <div class="rh-vac-person-card">
-                            <span class="rh-vac-person-name">${p.nombre}</span>
-                            <div class="rh-vac-bar-wrap">
-                                <div class="rh-vac-bar">
-                                    <div class="rh-vac-bar-fill" style="width:${pct}%"></div>
-                                </div>
-                                <span class="rh-vac-bar-text rh-mono">${usados}/${total}</span>
-                            </div>
-                            <span class="rh-vac-saldo ${saldo <= 0 ? 'rh-vac-agotado' : ''}">${saldo} disponibles</span>
-                        </div>
-                    `;
-                }).join('')}
+            <div class="hr-aus-legend">
+                ${this._ausTipos.map(t => `<span class="hr-aus-leg"><span class="hr-aus-dot" style="background:${t.color}"></span>${t.label}</span>`).join('')}
             </div>
+
+            ${conSaldo.length ? `
+                <div class="rh-vac-grid">
+                    ${conSaldo.map(p => {
+                        const total = saldoMap[p.id].dias_totales || 0;
+                        const usados = this._vacUsadas(p.id, anio);
+                        const saldo = total - usados;
+                        const pct = total > 0 ? Math.min(100, Math.round((usados / total) * 100)) : 0;
+                        return `
+                            <div class="rh-vac-person-card">
+                                <span class="rh-vac-person-name">${this._h(p.nombre)}</span>
+                                <div class="rh-vac-bar-wrap">
+                                    <div class="rh-vac-bar"><div class="rh-vac-bar-fill" style="width:${pct}%"></div></div>
+                                    <span class="rh-vac-bar-text rh-mono">${usados}/${total}</span>
+                                </div>
+                                <span class="rh-vac-saldo ${saldo <= 0 ? 'rh-vac-agotado' : ''}">${saldo} disponibles (${anio})</span>
+                            </div>`;
+                    }).join('')}
+                </div>
+            ` : ''}
 
             <!-- Calendario mensual -->
-            <div class="rh-section" style="margin-top:24px;">
+            <div class="rh-section" style="margin-top:20px;">
                 <div class="rh-vac-cal-header">
-                    <button class="rh-cal-nav" id="rhVacPrev">‹</button>
+                    <button class="rh-cal-nav" id="rhAusPrev">‹</button>
                     <h3 class="rh-section-title" style="margin:0;min-width:180px;text-align:center;">${mesNames[mes]} ${anio}</h3>
-                    <button class="rh-cal-nav" id="rhVacNext">›</button>
+                    <button class="rh-cal-nav" id="rhAusNext">›</button>
                 </div>
-                ${peopleInCalendar.length === 0 ? '<p class="rh-empty-small" style="margin-top:16px;">Sin vacaciones en este mes</p>' : `
+                ${peopleInCal.length === 0 ? '<p class="rh-empty-small" style="margin-top:16px;">Sin ausencias en este mes</p>' : `
                     <div class="rh-vac-cal-grid">
                         <div class="rh-vac-cal-row rh-vac-cal-header-row">
                             <div class="rh-vac-cal-name"></div>
                             ${Array.from({ length: daysInMonth }, (_, i) => `<div class="rh-vac-cal-day-header">${i + 1}</div>`).join('')}
                         </div>
-                        ${peopleInCalendar.map(p => `
+                        ${peopleInCal.map(p => `
                             <div class="rh-vac-cal-row">
-                                <div class="rh-vac-cal-name">${p.nombre}</div>
+                                <div class="rh-vac-cal-name">${this._h(p.nombre)}</div>
                                 ${Array.from({ length: daysInMonth }, (_, i) => {
                                     const day = i + 1;
-                                    const isVac = personDays[p.id] && personDays[p.id].has(day);
-                                    const dayOfWeek = new Date(anio, mes, day).getDay();
-                                    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                                    return `<div class="rh-vac-cal-cell ${isVac ? 'rh-vac-cal-active' : ''} ${isWeekend ? 'rh-vac-cal-weekend' : ''}"></div>`;
+                                    const color = personDays[p.id] && personDays[p.id][day];
+                                    const dow = new Date(anio, mes, day).getDay();
+                                    const wk = (dow === 0 || dow === 6) ? 'rh-vac-cal-weekend' : '';
+                                    return `<div class="rh-vac-cal-cell ${wk}" ${color ? `style="background:${color}"` : ''}></div>`;
                                 }).join('')}
                             </div>
                         `).join('')}
@@ -1473,46 +1245,31 @@ const RRHHModule = {
                 `}
             </div>
 
-            <!-- Solicitudes pendientes -->
-            ${pendingSolicitudes.length > 0 ? `
+            <!-- Listado de ausencias -->
             <div class="rh-section" style="margin-top:24px;">
-                <h3 class="rh-section-title">Solicitudes Pendientes</h3>
-                <div class="rh-solicitudes-list">
-                    ${pendingSolicitudes.map(s => `
-                        <div class="rh-solicitud-card">
-                            <div class="rh-solicitud-info">
-                                <strong>${this._getPersonName(s.personal_id)}</strong>
-                                <span class="rh-mono">${this._formatDate(s.fecha_desde)} — ${this._formatDate(s.fecha_hasta)}</span>
-                                ${s.notas ? `<span class="rh-solicitud-notas">${s.notas}</span>` : ''}
-                            </div>
-                            <div class="rh-solicitud-actions">
-                                <button class="rh-btn-approve" data-id="${s.id}" data-action="aprobada">Aprobar</button>
-                                <button class="rh-btn-reject" data-id="${s.id}" data-action="rechazada">Rechazar</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            ` : ''}
-
-            <!-- Historial solicitudes -->
-            <div class="rh-section" style="margin-top:24px;">
-                <h3 class="rh-section-title">Historial de Solicitudes</h3>
-                ${this._solicitudes.length === 0 ? '<p class="rh-empty-small">Sin solicitudes</p>' : `
+                <h3 class="rh-section-title">Listado de ausencias</h3>
+                ${ausList.length === 0 ? '<p class="rh-empty-small">Sin ausencias cargadas</p>' : `
                     <table class="rh-table rh-table-compact">
-                        <thead><tr><th>Persona</th><th>Desde</th><th>Hasta</th><th>Estado</th><th>Notas</th></tr></thead>
+                        <thead><tr><th>Persona</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Estado</th><th>Notas</th><th></th></tr></thead>
                         <tbody>
-                            ${this._solicitudes.map(s => {
-                                const estColor = this._getEstadoSolicitudColor(s.estado);
+                            ${ausList.map(a => {
+                                const t = this._ausTipoInfo(a.tipo);
+                                const dias = this._diasHabiles(a.fecha_desde, a.fecha_hasta);
+                                const estColor = this._getEstadoSolicitudColor(a.estado);
                                 return `
                                     <tr>
-                                        <td>${this._getPersonName(s.personal_id)}</td>
-                                        <td class="rh-mono">${this._formatDateShort(s.fecha_desde)}</td>
-                                        <td class="rh-mono">${this._formatDateShort(s.fecha_hasta)}</td>
-                                        <td><span class="rh-estado-tag" style="color:${estColor};border-color:${estColor}40;background:${estColor}15;">${this._getEstadoSolicitudLabel(s.estado)}</span></td>
-                                        <td>${s.notas || '—'}</td>
-                                    </tr>
-                                `;
+                                        <td>${this._h(this._getPersonName(a.persona_id))}</td>
+                                        <td><span class="hr-aus-tag" style="color:${t.color};border-color:${t.color}40;background:${t.color}15;">${t.label}</span></td>
+                                        <td class="rh-mono">${this._formatDateShort(a.fecha_desde)}</td>
+                                        <td class="rh-mono">${this._formatDateShort(a.fecha_hasta)}</td>
+                                        <td class="rh-mono">${dias}</td>
+                                        <td><span class="rh-estado-tag" style="color:${estColor};border-color:${estColor}40;background:${estColor}15;">${this._getEstadoSolicitudLabel(a.estado)}</span></td>
+                                        <td>${this._h(a.notas) || '—'}</td>
+                                        <td style="white-space:nowrap;">
+                                            <button class="hr-aus-act" data-edit="${a.id}" title="Editar">✎</button>
+                                            <button class="hr-aus-act" data-del="${a.id}" title="Eliminar">🗑</button>
+                                        </td>
+                                    </tr>`;
                             }).join('')}
                         </tbody>
                     </table>
@@ -1520,180 +1277,195 @@ const RRHHModule = {
             </div>
         `;
 
-        // Events
-        document.getElementById('rhAddSolicitud')?.addEventListener('click', () => this._showSolicitudModal());
-        document.getElementById('rhAddVacConfig')?.addEventListener('click', () => this._showVacConfigModal());
-        document.getElementById('rhVacPrev')?.addEventListener('click', () => {
-            this._vacMes--;
-            if (this._vacMes < 0) { this._vacMes = 11; this._vacAnio--; }
-            this._renderVacaciones();
+        document.getElementById('rhAusNueva')?.addEventListener('click', () => this._showAusenciaModal());
+        document.getElementById('rhAusSaldos')?.addEventListener('click', () => this._showSaldosModal());
+        document.getElementById('rhAusPrev')?.addEventListener('click', () => {
+            this._vacMes--; if (this._vacMes < 0) { this._vacMes = 11; this._vacAnio--; }
+            this._loadAusencias();
         });
-        document.getElementById('rhVacNext')?.addEventListener('click', () => {
-            this._vacMes++;
-            if (this._vacMes > 11) { this._vacMes = 0; this._vacAnio++; }
-            this._renderVacaciones();
+        document.getElementById('rhAusNext')?.addEventListener('click', () => {
+            this._vacMes++; if (this._vacMes > 11) { this._vacMes = 0; this._vacAnio++; }
+            this._loadAusencias();
         });
-
-        // Approve/reject buttons
-        cc.querySelectorAll('.rh-btn-approve, .rh-btn-reject').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = btn.dataset.id;
-                const action = btn.dataset.action;
-                try {
-                    await supabaseClient.from('rrhh_vacaciones_solicitudes').update({ estado: action }).eq('id', id);
-
-                    // If approved, update dias_usados
-                    if (action === 'aprobada') {
-                        const sol = this._solicitudes.find(s => String(s.id) === String(id));
-                        if (sol) {
-                            const desde = new Date(sol.fecha_desde);
-                            const hasta = new Date(sol.fecha_hasta);
-                            let days = 0;
-                            for (let d = new Date(desde); d <= hasta; d.setDate(d.getDate() + 1)) {
-                                const dow = d.getDay();
-                                if (dow !== 0 && dow !== 6) days++; // skip weekends
-                            }
-                            const vacRow = this._vacaciones.find(v => String(v.personal_id) === String(sol.personal_id));
-                            if (vacRow) {
-                                await supabaseClient.from('rrhh_vacaciones').update({ dias_usados: (vacRow.dias_usados || 0) + days }).eq('id', vacRow.id);
-                            }
-                        }
-                    }
-
-                    Toast.success(action === 'aprobada' ? 'Solicitud aprobada' : 'Solicitud rechazada');
-                    await this._loadVacaciones();
-                } catch (e) {
-                    Toast.error('Error al procesar solicitud');
-                }
-            });
-        });
+        cc.querySelectorAll('.hr-aus-act[data-edit]').forEach(b => b.addEventListener('click', () => this._showAusenciaModal(b.dataset.edit)));
+        cc.querySelectorAll('.hr-aus-act[data-del]').forEach(b => b.addEventListener('click', () => this._deleteAusencia(b.dataset.del)));
     },
 
-    _showSolicitudModal() {
-        const activePeople = this._personal.filter(p => p.estado === 'activo' && p.tipo === 'fijo');
+    _showAusenciaModal(editId) {
+        const item = editId ? this._ausencias.find(a => String(a.id) === String(editId)) : null;
+        const activePeople = this._personal.filter(p => p.estado === 'activo');
 
         Modal.open({
-            title: 'Nueva Solicitud de Vacaciones',
+            title: item ? 'Editar ausencia' : 'Nueva ausencia',
             size: 'medium',
             body: `
                 <div style="display:flex;flex-direction:column;gap:16px;">
                     <div>
-                        <label class="form-label">Personal</label>
-                        <select id="rhSolPersonal" class="form-input" style="font-size:1rem;padding:12px;">
+                        <label class="form-label">Persona</label>
+                        <select id="rhAusPersona" class="form-input" style="padding:12px;" ${item ? 'disabled' : ''}>
                             <option value="">Seleccionar persona...</option>
-                            ${activePeople.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('')}
+                            ${activePeople.map(p => `<option value="${p.id}" ${item && String(item.persona_id) === String(p.id) ? 'selected' : ''}>${this._h(p.nombre)}</option>`).join('')}
                         </select>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div>
-                            <label class="form-label">Fecha desde</label>
-                            <input type="date" id="rhSolDesde" class="form-input" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Tipo</label>
+                            <select id="rhAusTipo" class="form-input" style="padding:12px;">
+                                ${this._ausTipos.map(t => `<option value="${t.key}" ${(item && item.tipo === t.key) || (!item && t.key === 'vacaciones') ? 'selected' : ''}>${t.label}</option>`).join('')}
+                            </select>
                         </div>
                         <div>
-                            <label class="form-label">Fecha hasta</label>
-                            <input type="date" id="rhSolHasta" class="form-input" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Estado</label>
+                            <select id="rhAusEstado" class="form-input" style="padding:12px;">
+                                <option value="aprobada" ${!item || item.estado === 'aprobada' ? 'selected' : ''}>Aprobada</option>
+                                <option value="solicitada" ${item && item.estado === 'solicitada' ? 'selected' : ''}>Solicitada</option>
+                                <option value="rechazada" ${item && item.estado === 'rechazada' ? 'selected' : ''}>Rechazada</option>
+                            </select>
                         </div>
                     </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div>
+                            <label class="form-label">Desde</label>
+                            <input type="date" id="rhAusDesde" class="form-input" style="padding:12px;" value="${item?.fecha_desde ? String(item.fecha_desde).slice(0, 10) : ''}">
+                        </div>
+                        <div>
+                            <label class="form-label">Hasta</label>
+                            <input type="date" id="rhAusHasta" class="form-input" style="padding:12px;" value="${item?.fecha_hasta ? String(item.fecha_hasta).slice(0, 10) : ''}">
+                        </div>
+                    </div>
+                    <div id="rhAusWarn"></div>
                     <div>
                         <label class="form-label">Notas</label>
-                        <textarea id="rhSolNotas" class="form-input" rows="2" placeholder="Motivo o aclaración" style="font-size:1rem;padding:12px;"></textarea>
+                        <textarea id="rhAusNotas" class="form-input" rows="2" style="padding:12px;">${this._h(item?.notas)}</textarea>
                     </div>
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn-primary" id="rhSolSave" style="font-size:1rem;padding:10px 24px;">Crear Solicitud</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn-primary" id="rhAusSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });
 
         setTimeout(() => {
-            document.getElementById('rhSolSave')?.addEventListener('click', async () => {
-                const personal_id = document.getElementById('rhSolPersonal')?.value;
-                const fecha_desde = document.getElementById('rhSolDesde')?.value;
-                const fecha_hasta = document.getElementById('rhSolHasta')?.value;
-                if (!personal_id) { Toast.warning('Seleccioná una persona'); return; }
+            const checkOverlap = async () => {
+                const warn = document.getElementById('rhAusWarn');
+                const pid = document.getElementById('rhAusPersona')?.value || item?.persona_id;
+                const d1 = document.getElementById('rhAusDesde')?.value;
+                const d2 = document.getElementById('rhAusHasta')?.value;
+                if (!warn) return;
+                if (!pid || !d1 || !d2 || d1 > d2) { warn.innerHTML = ''; return; }
+                // asignaciones_evento.fecha_* son TIMESTAMPTZ con hora → mando fin-de-día
+                // en "hasta" para que un evento del mismo día entre en el rango de solape.
+                const conflictos = await API.detectarConflictosPersona(pid, d1, d2 + 'T23:59:59', null);
+                if (conflictos && conflictos.length) {
+                    warn.innerHTML = `<div style="padding:10px 12px;background:rgba(242,141,21,0.1);border:1px solid rgba(242,141,21,0.35);border-radius:6px;color:#F28D15;font-size:0.82rem;">⚠ Se solapa con ${conflictos.length} asignación(es) de evento: ${conflictos.map(c => this._h(c.evento?.nombre || 'evento')).join(', ')}. Se permite igual.</div>`;
+                } else {
+                    warn.innerHTML = '';
+                }
+            };
+            document.getElementById('rhAusDesde')?.addEventListener('change', checkOverlap);
+            document.getElementById('rhAusHasta')?.addEventListener('change', checkOverlap);
+            document.getElementById('rhAusPersona')?.addEventListener('change', checkOverlap);
+
+            document.getElementById('rhAusSave')?.addEventListener('click', async () => {
+                const persona_id = document.getElementById('rhAusPersona')?.value || item?.persona_id;
+                const tipo = document.getElementById('rhAusTipo')?.value;
+                const fecha_desde = document.getElementById('rhAusDesde')?.value;
+                const fecha_hasta = document.getElementById('rhAusHasta')?.value;
+                if (!persona_id) { Toast.warning('Seleccioná una persona'); return; }
                 if (!fecha_desde || !fecha_hasta) { Toast.warning('Ingresá las fechas'); return; }
                 if (fecha_desde > fecha_hasta) { Toast.warning('La fecha desde debe ser anterior a la fecha hasta'); return; }
 
+                const user = Auth.getUser?.();
+                const payload = {
+                    persona_id,
+                    tipo,
+                    fecha_desde,
+                    fecha_hasta,
+                    estado: document.getElementById('rhAusEstado')?.value || 'aprobada',
+                    notas: document.getElementById('rhAusNotas')?.value?.trim() || null,
+                };
                 try {
-                    await supabaseClient.from('rrhh_vacaciones_solicitudes').insert({
-                        personal_id,
-                        fecha_desde,
-                        fecha_hasta,
-                        estado: 'solicitada',
-                        notas: document.getElementById('rhSolNotas')?.value?.trim() || null,
-                        _deleted: false,
-                    });
-                    Toast.success('Solicitud creada');
+                    if (editId) {
+                        const { error } = await supabaseClient.from('ausencias').update(payload).eq('id', editId);
+                        if (error) throw error;
+                        Toast.success('Ausencia actualizada');
+                    } else {
+                        payload.created_by = user?.uid || user?.id || null;
+                        const { error } = await supabaseClient.from('ausencias').insert(payload);
+                        if (error) throw error;
+                        Toast.success('Ausencia registrada');
+                    }
                     Modal.close();
-                    await this._loadVacaciones();
+                    await this._loadAusencias();
                 } catch (e) {
-                    console.error('[RRHH] Error creating solicitud:', e);
-                    Toast.error('Error al crear solicitud');
+                    console.error('[RRHH] Error saving ausencia:', e);
+                    Toast.error(`Error al guardar${e?.message ? ': ' + e.message : ''}`);
                 }
             });
         }, 100);
     },
 
-    _showVacConfigModal() {
-        const fijos = this._personal.filter(p => p.tipo === 'fijo');
-        const vacMap = {};
-        this._vacaciones.forEach(v => { vacMap[v.personal_id] = v; });
+    async _deleteAusencia(id) {
+        const ok = await Confirm.delete('esta ausencia');
+        if (!ok) return;
+        try {
+            await supabaseClient.from('ausencias').update({ _deleted: true }).eq('id', id);
+            Toast.success('Ausencia eliminada');
+            await this._loadAusencias();
+        } catch (e) {
+            Toast.error('Error al eliminar');
+        }
+    },
+
+    _showSaldosModal() {
+        const anio = this._vacAnio;
+        const saldoMap = {};
+        this._saldos.forEach(s => { saldoMap[s.persona_id] = s; });
+        const elegibles = this._personal.filter(p => p.estado === 'activo');
 
         Modal.open({
-            title: 'Configurar Días de Vacaciones',
+            title: `Saldos de vacaciones ${anio}`,
             size: 'medium',
             body: `
-                <div style="display:flex;flex-direction:column;gap:12px;max-height:400px;overflow-y:auto;">
-                    ${fijos.map(p => {
-                        const v = vacMap[p.id];
-                        return `
-                            <div style="display:grid;grid-template-columns:1fr 80px 80px;gap:12px;align-items:center;">
-                                <span style="color:var(--text-primary);font-size:0.9rem;">${p.nombre}</span>
-                                <div>
-                                    <label class="form-label" style="font-size:0.7rem;">Total</label>
-                                    <input type="number" class="form-input rh-vac-total-input" data-pid="${p.id}" value="${v?.dias_totales || 0}" min="0" style="font-size:0.9rem;padding:8px;text-align:center;">
-                                </div>
-                                <div>
-                                    <label class="form-label" style="font-size:0.7rem;">Usados</label>
-                                    <input type="number" class="form-input rh-vac-usados-input" data-pid="${p.id}" value="${v?.dias_usados || 0}" min="0" style="font-size:0.9rem;padding:8px;text-align:center;">
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
+                <div style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto;">
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 8px;">Días totales de vacaciones por persona para ${anio}. Los usados se calculan solos desde las ausencias tipo vacaciones aprobadas. Dejá vacío para no tocar.</p>
+                    ${elegibles.map(p => `
+                        <div style="display:grid;grid-template-columns:1fr 110px;gap:12px;align-items:center;">
+                            <span style="color:var(--text-primary);font-size:0.9rem;">${this._h(p.nombre)}</span>
+                            <input type="number" class="form-input rh-saldo-input" data-pid="${p.id}" value="${saldoMap[p.id]?.dias_totales ?? ''}" placeholder="0" min="0" style="padding:8px;text-align:center;">
+                        </div>
+                    `).join('')}
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
-                <button class="btn-primary" id="rhVacConfigSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn-primary" id="rhSaldosSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });
 
         setTimeout(() => {
-            document.getElementById('rhVacConfigSave')?.addEventListener('click', async () => {
+            document.getElementById('rhSaldosSave')?.addEventListener('click', async () => {
                 try {
-                    const totalInputs = document.querySelectorAll('.rh-vac-total-input');
-                    const usadosInputs = document.querySelectorAll('.rh-vac-usados-input');
-
-                    for (let i = 0; i < totalInputs.length; i++) {
-                        const pid = totalInputs[i].dataset.pid;
-                        const dias_totales = parseInt(totalInputs[i].value) || 0;
-                        const dias_usados = parseInt(usadosInputs[i].value) || 0;
-
-                        const existing = this._vacaciones.find(v => String(v.personal_id) === String(pid));
+                    const inputs = [...document.querySelectorAll('.rh-saldo-input')];
+                    for (const inp of inputs) {
+                        const pid = inp.dataset.pid;
+                        const val = inp.value.trim();
+                        if (val === '') continue; // sin valor → no toco
+                        const dias_totales = parseInt(val) || 0;
+                        const existing = this._saldos.find(s => String(s.persona_id) === String(pid));
                         if (existing) {
-                            await supabaseClient.from('rrhh_vacaciones').update({ dias_totales, dias_usados }).eq('id', existing.id);
+                            await supabaseClient.from('vacaciones_saldos').update({ dias_totales }).eq('id', existing.id);
                         } else {
-                            await supabaseClient.from('rrhh_vacaciones').insert({ personal_id: pid, dias_totales, dias_usados, _deleted: false });
+                            await supabaseClient.from('vacaciones_saldos').insert({ persona_id: pid, anio, dias_totales });
                         }
                     }
-
-                    Toast.success('Días de vacaciones actualizados');
+                    Toast.success('Saldos actualizados');
                     Modal.close();
-                    await this._loadVacaciones();
+                    await this._loadAusencias();
                 } catch (e) {
-                    console.error('[RRHH] Error saving vacaciones config:', e);
-                    Toast.error('Error al guardar');
+                    console.error('[RRHH] Error saving saldos:', e);
+                    Toast.error('Error al guardar saldos');
                 }
             });
         }, 100);
