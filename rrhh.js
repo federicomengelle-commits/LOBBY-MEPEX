@@ -14,13 +14,8 @@ const RRHHModule = {
     // ─── State ───
     _activeTab: 'nomina',
     _personal: [],
-    _asignaciones: [],
-    _vacaciones: [],
-    _solicitudes: [],
     _ausencias: [],
     _saldos: [],
-    _events: [],
-    _projects: [],
     _selectedPersonId: null,
     _filterTipo: '',
     _filterRol: '',
@@ -235,14 +230,22 @@ const RRHHModule = {
     //  HELPERS
     // ════════════════════════════════════════════════════
 
+    // Las columnas DATE llegan como 'YYYY-MM-DD' → `new Date('2026-06-15')` parsea como
+    // medianoche UTC y en es-AR (UTC-3) retrocede un día. Forzamos hora local para fechas
+    // date-only; los timestamps completos (con T y offset) se parsean tal cual.
+    _toLocalDate(d) {
+        const s = String(d);
+        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00') : new Date(s);
+    },
+
     _formatDate(d) {
         if (!d) return '—';
-        return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+        return this._toLocalDate(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
     },
 
     _formatDateShort(d) {
         if (!d) return '—';
-        return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+        return this._toLocalDate(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
     },
 
     _calcAntiguedad(fechaIngreso) {
@@ -310,12 +313,6 @@ const RRHHModule = {
         if (!id) return '—';
         const p = this._personal.find(x => String(x.id) === String(id));
         return p ? (p.nombre || '—') : '—';
-    },
-
-    _getEventName(id) {
-        if (!id) return '—';
-        const e = this._events.find(x => String(x.id) === String(id));
-        return e ? (e.name || e.nombre || '—') : '—';
     },
 
 
