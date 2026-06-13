@@ -1232,8 +1232,10 @@ const RRHHModule = {
             return cells[pid][day];
         };
         const fill = (d1raw, d2raw, fn) => {
-            const d1 = String(d1raw).slice(0, 10);
-            const d2 = String(d2raw || d1raw).slice(0, 10);
+            // asignaciones = TIMESTAMPTZ (con offset), ausencias = DATE. _toLocalDate
+            // normaliza ambos al DÍA LOCAL (es-AR) → evita el off-by-one de noche (21–24h ART).
+            const d1 = this._isoDay(this._toLocalDate(d1raw));
+            const d2 = this._isoDay(this._toLocalDate(d2raw || d1raw));
             let d = new Date((d1 < startISO ? startISO : d1) + 'T00:00:00');
             const tope = new Date((d2 > endISO ? endISO : d2) + 'T00:00:00');
             let guard = 0;
@@ -1259,8 +1261,9 @@ const RRHHModule = {
             <div class="hr-plan-banner">
                 <div class="hr-plan-banner-title">⚠ ${pend.length} ${pend.length === 1 ? 'convocatoria pendiente' : 'convocatorias pendientes'} de aprobar</div>
                 ${pend.map(a => {
-                    const d1 = this._formatDateShort(String(a.fecha_inicio).slice(0, 10));
-                    const d2 = this._formatDateShort(String(a.fecha_fin || a.fecha_inicio).slice(0, 10));
+                    // raw TIMESTAMPTZ → _formatDateShort lo normaliza a día local (_toLocalDate)
+                    const d1 = this._formatDateShort(a.fecha_inicio);
+                    const d2 = this._formatDateShort(a.fecha_fin || a.fecha_inicio);
                     const rango = d1 === d2 ? d1 : `${d1}–${d2}`;
                     return `
                         <div class="hr-conv">
@@ -1326,7 +1329,7 @@ const RRHHModule = {
                                                 block = `<div class="hr-plan-block conflict" title="⚠ Conflicto: ${this._h(parts.join(' + '))}"></div>`;
                                             } else if (c.events.length >= 1) {
                                                 const e = c.events.find(x => !x.prop) || c.events[0];
-                                                block = `<div class="hr-plan-block ${e.prop ? 'prop' : ''}" data-evento="${e.eventoId || ''}" style="background:${e.color}" title="${this._h(e.nombre)}${e.prop ? ' (propuesta)' : ''}"></div>`;
+                                                block = `<div class="hr-plan-block ${e.prop ? 'prop' : ''}" data-evento="${e.eventoId || ''}" style="background:${this._h(e.color)}" title="${this._h(e.nombre)}${e.prop ? ' (propuesta)' : ''}"></div>`;
                                             } else if (hasAus) {
                                                 block = `<div class="hr-plan-block aus" title="Ausencia: ${this._h(c.aus)}"></div>`;
                                             }
