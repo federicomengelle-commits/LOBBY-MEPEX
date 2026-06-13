@@ -22,6 +22,12 @@ const RRHHModule = {
     _filterEstado: '',
     _vacMes: new Date().getMonth(),
     _vacAnio: new Date().getFullYear(),
+    // RRHH.3 — Planificación (grilla persona × quincena)
+    _planStart: null,        // Date: inicio de la ventana de 14 días
+    _planFilterRol: '',
+    _planAsigs: [],
+    _planAusencias: [],
+    _planPendientes: [],
     // RRHH.1 — Nómina v2 (panel lateral estilo CRM)
     _panelTab: 'datos',
     _searchQ: '',
@@ -55,6 +61,8 @@ const RRHHModule = {
 
         if (this._activeTab === 'nomina') {
             await this._loadNomina();
+        } else if (this._activeTab === 'planificacion') {
+            await this._loadPlanificacion();
         } else {
             await this._loadAusencias();
         }
@@ -169,6 +177,49 @@ const RRHHModule = {
                 .hr-aus-act { background:none; border:1px solid var(--border); color:var(--text-muted);
                     border-radius:5px; padding:3px 8px; font-size:0.78rem; cursor:pointer; margin-left:4px; transition:all 150ms ease; }
                 .hr-aus-act:hover { color:var(--text-primary); border-color:#555; }
+
+                /* ═══ RRHH.3 — Planificación (grilla persona × quincena) ═══ */
+                .hr-plan-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+                .hr-plan-nav { display:flex; align-items:center; gap:6px; }
+                .hr-plan-range { font-family:var(--font-mono); font-size:0.82rem; color:var(--text-primary);
+                    min-width:190px; text-align:center; }
+                .hr-plan-today { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted);
+                    border-radius:5px; padding:5px 12px; font-size:0.78rem; cursor:pointer; font-family:var(--font-main); }
+                .hr-plan-today:hover { color:var(--primary); border-color:var(--primary); }
+                .hr-plan-banner { background:rgba(242,141,21,0.08); border:1px solid rgba(242,141,21,0.3);
+                    border-radius:8px; padding:12px 14px; margin-bottom:16px; }
+                .hr-plan-banner-title { font-size:0.85rem; color:#F28D15; font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+                .hr-conv { display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid rgba(242,141,21,0.15); flex-wrap:wrap; }
+                .hr-conv:first-of-type { border-top:none; }
+                .hr-conv-txt { flex:1; min-width:200px; font-size:0.82rem; color:var(--text-primary); }
+                .hr-conv-meta { color:var(--text-muted); font-size:0.76rem; }
+                .hr-conv-btn { border:none; border-radius:5px; padding:5px 12px; font-size:0.76rem; cursor:pointer;
+                    font-family:var(--font-main); font-weight:600; }
+                .hr-conv-ok { background:#00CC88; color:#04140d; }
+                .hr-conv-ok:hover { background:#00e89b; }
+                .hr-conv-no { background:none; border:1px solid var(--border); color:var(--text-muted); }
+                .hr-conv-no:hover { color:#ff4444; border-color:#ff444460; }
+                .hr-plan-legend { display:flex; gap:14px; flex-wrap:wrap; margin:2px 0 12px; }
+                .hr-plan-grid-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:10px; }
+                .hr-plan-grid { border-collapse:collapse; width:100%; font-family:var(--font-main); }
+                .hr-plan-grid th, .hr-plan-grid td { border:1px solid #1c1c1c; }
+                .hr-plan-grid thead th { background:rgba(17,17,17,0.95); padding:6px 4px; position:sticky; top:0; z-index:2;
+                    font-family:var(--font-mono); font-size:0.6rem; color:var(--text-muted); text-align:center; white-space:nowrap; }
+                .hr-plan-grid .hr-plan-name-h { text-align:left; padding-left:12px; min-width:150px; left:0; z-index:3; }
+                .hr-plan-namecell { padding:5px 12px; font-size:0.82rem; color:var(--text-primary); white-space:nowrap;
+                    position:sticky; left:0; background:var(--bg-card); z-index:1; border-right:1px solid #2a2a2a; }
+                .hr-plan-namecell .hr-plan-rol { font-size:0.66rem; color:var(--text-dim); }
+                .hr-plan-cell { width:30px; height:30px; padding:0; text-align:center; cursor:default; position:relative; }
+                .hr-plan-cell.wk { background:#0c0c0c; }
+                .hr-plan-cell.today { box-shadow:inset 0 0 0 2px rgba(0,169,193,0.5); }
+                .hr-plan-block { width:100%; height:100%; min-height:28px; border-radius:2px; cursor:pointer; }
+                .hr-plan-block.prop { background-image:repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.25) 3px, rgba(0,0,0,0.25) 6px); }
+                .hr-plan-block.aus { background:#555 !important; }
+                .hr-plan-block.conflict { background:#ff4444 !important; box-shadow:inset 0 0 0 1px #fff3; }
+                .hr-plan-dayh-dow { font-size:0.62rem; }
+                .hr-plan-dayh-num { font-size:0.72rem; color:var(--text-primary); font-weight:600; }
+                .hr-plan-dayh.wk .hr-plan-dayh-num { color:var(--text-muted); }
+                .hr-plan-empty { color:var(--text-dim); font-size:0.84rem; padding:24px; text-align:center; }
             </style>
             <div class="module-view rrhh-module">
                 <div class="module-subheader">
@@ -195,6 +246,10 @@ const RRHHModule = {
                             <span class="section-tab-icon">👥</span>
                             <span class="section-tab-text">Nómina</span>
                         </button>
+                        <button class="section-tab ${this._activeTab === 'planificacion' ? 'active' : ''}" data-tab="planificacion">
+                            <span class="section-tab-icon">🗓️</span>
+                            <span class="section-tab-text">Planificación</span>
+                        </button>
                         <button class="section-tab ${this._activeTab === 'ausencias' ? 'active' : ''}" data-tab="ausencias">
                             <span class="section-tab-icon">🏖️</span>
                             <span class="section-tab-text">Ausencias</span>
@@ -220,6 +275,7 @@ const RRHHModule = {
                 const cc = document.getElementById('rrhhContent');
                 if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
                 if (this._activeTab === 'nomina') await this._loadNomina();
+                else if (this._activeTab === 'planificacion') await this._loadPlanificacion();
                 else await this._loadAusencias();
             });
         });
@@ -1087,6 +1143,228 @@ const RRHHModule = {
             Toast.error('Error al eliminar');
         }
     },
+
+    // ════════════════════════════════════════════════════
+    //  TAB: PLANIFICACIÓN  (RRHH.3 — grilla persona × quincena)
+    // ════════════════════════════════════════════════════
+
+    _PLAN_DAYS: 14,
+
+    _planStartDefault() {
+        // lunes de la semana actual
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        const dow = d.getDay(); // 0=dom
+        d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+        return d;
+    },
+
+    _addDays(date, n) {
+        const d = new Date(date);
+        d.setDate(d.getDate() + n);
+        return d;
+    },
+
+    _isoDay(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    },
+
+    _esOperativa(p) {
+        const r = (p._raw && p._raw.roles_operativos) || [];
+        return Array.isArray(r) && r.length > 0;
+    },
+
+    async _loadPlanificacion() {
+        if (!this._planStart) this._planStart = this._planStartDefault();
+        const start = this._planStart;
+        const startISO = this._isoDay(start);
+        const endISO = this._isoDay(this._addDays(start, this._PLAN_DAYS - 1));
+        try {
+            const evSel = 'id, persona_id, evento_id, fecha_inicio, fecha_fin, fase, rol, estado, evento:eventos!evento_id(id, nombre, color)';
+            const [persRes, asigRes, ausRes, pendRes] = await Promise.all([
+                supabaseClient.from('personas').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
+                supabaseClient.from('asignaciones_evento').select(evSel)
+                    .eq('_deleted', false).neq('estado', 'cancelada')
+                    .lte('fecha_inicio', endISO + 'T23:59:59').gte('fecha_fin', startISO),
+                supabaseClient.from('ausencias').select('persona_id, tipo, fecha_desde, fecha_hasta, estado')
+                    .eq('_deleted', false).neq('estado', 'rechazada')
+                    .lte('fecha_desde', endISO).gte('fecha_hasta', startISO),
+                supabaseClient.from('asignaciones_evento').select(evSel)
+                    .eq('_deleted', false).eq('estado', 'propuesta')
+                    .order('fecha_inicio', { ascending: true }),
+            ]);
+            this._personal = (persRes.data || []).map(p => this._mapPersonaToLegacyShape(p));
+            this._planAsigs = asigRes.data || [];
+            this._planAusencias = ausRes.data || [];
+            this._planPendientes = pendRes.data || [];
+        } catch (e) {
+            console.warn('[RRHH] Error loading planificación:', e);
+            this._planAsigs = [];
+            this._planAusencias = [];
+            this._planPendientes = [];
+        }
+        this._renderPlanificacion();
+    },
+
+    _renderPlanificacion() {
+        const cc = document.getElementById('rrhhContent');
+        if (!cc) return;
+
+        const start = this._planStart;
+        const days = Array.from({ length: this._PLAN_DAYS }, (_, i) => this._addDays(start, i));
+        const startISO = this._isoDay(start);
+        const endISO = this._isoDay(this._addDays(start, this._PLAN_DAYS - 1));
+        const todayISO = this._isoDay(new Date());
+        const dowNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+
+        // Personas: solo operativas activas, filtradas por rol
+        let personas = this._personal.filter(p => p.estado === 'activo' && this._esOperativa(p));
+        if (this._planFilterRol) personas = personas.filter(p => ((p._raw && p._raw.roles_operativos) || []).includes(this._planFilterRol));
+
+        // Mapa persona -> dayISO -> { events:[{color,nombre,prop,eventoId}], aus:tipo }
+        const cells = {};
+        const ensure = (pid, day) => {
+            if (!cells[pid]) cells[pid] = {};
+            if (!cells[pid][day]) cells[pid][day] = { events: [], aus: null };
+            return cells[pid][day];
+        };
+        const fill = (d1raw, d2raw, fn) => {
+            const d1 = String(d1raw).slice(0, 10);
+            const d2 = String(d2raw || d1raw).slice(0, 10);
+            let d = new Date((d1 < startISO ? startISO : d1) + 'T00:00:00');
+            const tope = new Date((d2 > endISO ? endISO : d2) + 'T00:00:00');
+            let guard = 0;
+            while (d <= tope && guard < 60) { fn(this._isoDay(d)); d.setDate(d.getDate() + 1); guard++; }
+        };
+        this._planAsigs.forEach(a => fill(a.fecha_inicio, a.fecha_fin, (iso) => {
+            ensure(a.persona_id, iso).events.push({
+                color: (a.evento && a.evento.color) || '#00A9C1',
+                nombre: (a.evento && a.evento.nombre) || 'Evento',
+                prop: a.estado === 'propuesta',
+                eventoId: (a.evento && a.evento.id) || a.evento_id,
+            });
+        }));
+        this._planAusencias.forEach(a => fill(a.fecha_desde, a.fecha_hasta, (iso) => {
+            ensure(a.persona_id, iso).aus = a.tipo;
+        }));
+
+        const fmtRange = `${this._formatDateShort(startISO)} – ${this._formatDateShort(endISO)}`;
+
+        // Banner convocatorias pendientes
+        const pend = this._planPendientes;
+        const bannerHtml = pend.length ? `
+            <div class="hr-plan-banner">
+                <div class="hr-plan-banner-title">⚠ ${pend.length} ${pend.length === 1 ? 'convocatoria pendiente' : 'convocatorias pendientes'} de aprobar</div>
+                ${pend.map(a => {
+                    const d1 = this._formatDateShort(String(a.fecha_inicio).slice(0, 10));
+                    const d2 = this._formatDateShort(String(a.fecha_fin || a.fecha_inicio).slice(0, 10));
+                    const rango = d1 === d2 ? d1 : `${d1}–${d2}`;
+                    return `
+                        <div class="hr-conv">
+                            <span class="hr-conv-txt">${this._h(this._getPersonName(a.persona_id))} → <strong>${this._h((a.evento && a.evento.nombre) || 'Evento')}</strong> <span class="hr-conv-meta">${this._h(this._capitalize(a.fase || ''))}${a.rol ? ' · ' + this._h(a.rol) : ''} · ${rango}</span></span>
+                            <button class="hr-conv-btn hr-conv-ok" data-approve="${a.id}">✓ Aprobar</button>
+                            <button class="hr-conv-btn hr-conv-no" data-reject="${a.id}" title="Rechazar">✕</button>
+                        </div>`;
+                }).join('')}
+            </div>` : '';
+
+        cc.innerHTML = `
+            ${bannerHtml}
+            <div class="hr-plan-toolbar">
+                <div class="hr-plan-nav">
+                    <button class="rh-cal-nav" id="hrPlanPrev">‹</button>
+                    <span class="hr-plan-range">${fmtRange}</span>
+                    <button class="rh-cal-nav" id="hrPlanNext">›</button>
+                    <button class="hr-plan-today" id="hrPlanHoy">Hoy</button>
+                </div>
+                <select class="rh-filter-select" id="hrPlanRol">
+                    <option value="">Todos los roles operativos</option>
+                    ${this._rolesCanon.map(r => `<option value="${r.key}" ${this._planFilterRol === r.key ? 'selected' : ''}>${r.label}</option>`).join('')}
+                </select>
+            </div>
+            <div class="hr-plan-legend">
+                <span class="hr-aus-leg"><span class="hr-aus-dot" style="background:#00A9C1"></span>Asignado a evento</span>
+                <span class="hr-aus-leg"><span class="hr-aus-dot" style="background:#555"></span>Ausencia</span>
+                <span class="hr-aus-leg"><span class="hr-aus-dot" style="background:#ff4444"></span>Conflicto</span>
+                <span class="hr-aus-leg"><span class="hr-aus-dot" style="background-image:repeating-linear-gradient(45deg,#00A9C1,#00A9C1 2px,#0a0a0a 2px,#0a0a0a 4px)"></span>Propuesta</span>
+            </div>
+            ${personas.length === 0 ? `<div class="hr-plan-empty">${this._planFilterRol ? 'Sin personal operativo con ese rol en la nómina.' : 'Sin personal operativo. Marcá roles operativos en la ficha de cada persona (tab Nómina).'}</div>` : `
+                <div class="hr-plan-grid-wrap">
+                    <table class="hr-plan-grid">
+                        <thead>
+                            <tr>
+                                <th class="hr-plan-name-h">Persona</th>
+                                ${days.map(d => {
+                                    const dow = d.getDay();
+                                    const wk = (dow === 0 || dow === 6) ? 'wk' : '';
+                                    return `<th class="hr-plan-dayh ${wk}"><div class="hr-plan-dayh-dow">${dowNames[dow]}</div><div class="hr-plan-dayh-num">${d.getDate()}</div></th>`;
+                                }).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${personas.map(p => {
+                                const rolOp = ((p._raw && p._raw.roles_operativos) || [])[0];
+                                return `
+                                    <tr>
+                                        <td class="hr-plan-namecell">${this._h(p.nombre)}${rolOp ? `<br><span class="hr-plan-rol">${this._h(this._rolLabel(rolOp))}</span>` : ''}</td>
+                                        ${days.map(d => {
+                                            const iso = this._isoDay(d);
+                                            const dow = d.getDay();
+                                            const wk = (dow === 0 || dow === 6) ? 'wk' : '';
+                                            const today = iso === todayISO ? 'today' : '';
+                                            const c = cells[p.id] && cells[p.id][iso];
+                                            if (!c) return `<td class="hr-plan-cell ${wk} ${today}"></td>`;
+                                            const distinct = new Set(c.events.map(e => e.eventoId));
+                                            const hasAus = !!c.aus;
+                                            const conflict = distinct.size > 1 || (c.events.length >= 1 && hasAus);
+                                            let block = '';
+                                            if (conflict) {
+                                                const parts = [...new Set(c.events.map(e => e.nombre)), hasAus ? `ausencia (${c.aus})` : null].filter(Boolean);
+                                                block = `<div class="hr-plan-block conflict" title="⚠ Conflicto: ${this._h(parts.join(' + '))}"></div>`;
+                                            } else if (c.events.length >= 1) {
+                                                const e = c.events.find(x => !x.prop) || c.events[0];
+                                                block = `<div class="hr-plan-block ${e.prop ? 'prop' : ''}" data-evento="${e.eventoId || ''}" style="background:${e.color}" title="${this._h(e.nombre)}${e.prop ? ' (propuesta)' : ''}"></div>`;
+                                            } else if (hasAus) {
+                                                block = `<div class="hr-plan-block aus" title="Ausencia: ${this._h(c.aus)}"></div>`;
+                                            }
+                                            return `<td class="hr-plan-cell ${wk} ${today}">${block}</td>`;
+                                        }).join('')}
+                                    </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `}
+        `;
+
+        document.getElementById('hrPlanPrev')?.addEventListener('click', () => { this._planStart = this._addDays(this._planStart, -this._PLAN_DAYS); this._loadPlanificacion(); });
+        document.getElementById('hrPlanNext')?.addEventListener('click', () => { this._planStart = this._addDays(this._planStart, this._PLAN_DAYS); this._loadPlanificacion(); });
+        document.getElementById('hrPlanHoy')?.addEventListener('click', () => { this._planStart = this._planStartDefault(); this._loadPlanificacion(); });
+        document.getElementById('hrPlanRol')?.addEventListener('change', (e) => { this._planFilterRol = e.target.value; this._renderPlanificacion(); });
+        cc.querySelectorAll('.hr-plan-block[data-evento]').forEach(el => el.addEventListener('click', () => {
+            const id = el.dataset.evento; if (id) window.location.hash = `#eventos?id=${id}`;
+        }));
+        cc.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => this._aprobarConvocatoria(b.dataset.approve)));
+        cc.querySelectorAll('[data-reject]').forEach(b => b.addEventListener('click', () => this._rechazarConvocatoria(b.dataset.reject)));
+    },
+
+    async _aprobarConvocatoria(id) {
+        const ok = await API.approveAsignacionEvento(id);
+        if (ok) { Toast.success('Convocatoria aprobada'); this._loadPlanificacion(); }
+        else Toast.error('No se pudo aprobar');
+    },
+
+    async _rechazarConvocatoria(id) {
+        const ok = await Confirm.action('Rechazar convocatoria', '¿Rechazar esta convocatoria? La asignación propuesta se eliminará.');
+        if (!ok) return;
+        const r = await API.deleteAsignacionEvento(id);
+        if (r) { Toast.success('Convocatoria rechazada'); this._loadPlanificacion(); }
+        else Toast.error('No se pudo rechazar');
+    },
+
 
     // ════════════════════════════════════════════════════
     //  TAB: AUSENCIAS  (RRHH.2 — reemplaza Vacaciones legacy)
