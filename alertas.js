@@ -265,19 +265,42 @@ const Alertas = {
             }];
         },
 
-        // RRHH: ausencias solicitadas pendientes de aprobar (RRHH.2 — antes leía
-        // rrhh_vacaciones_solicitudes con estado='pendiente', valor inexistente → nunca disparaba).
+        // RRHH: ausencias solicitadas pendientes (RRHH.2) + documentos por vencer ≤30d (RRHH.4).
         async rrhh() {
+            const items = [];
+            // Ausencias solicitadas pendientes de aprobar
             const { count, error } = await supabaseClient
                 .from('ausencias').select('id', { count: 'exact', head: true })
                 .eq('_deleted', false).eq('estado', 'solicitada');
-            if (error || !count) return [];
-            return [{
-                moduleId: 'rrhh', tipo: 'ausencias_pendientes', key: 'rrhh_ausencias',
-                severidad: 'info', icon: '🏖️',
-                titulo: `${count} ${Alertas._plural(count, 'ausencia')} ${Alertas._plural(count, 'solicitada', 'solicitadas')}`,
-                detalle: 'Pendientes de aprobar', link: '#rrhh', count,
-            }];
+            if (!error && count) {
+                items.push({
+                    moduleId: 'rrhh', tipo: 'ausencias_pendientes', key: 'rrhh_ausencias',
+                    severidad: 'info', icon: '🏖️',
+                    titulo: `${count} ${Alertas._plural(count, 'ausencia')} ${Alertas._plural(count, 'solicitada', 'solicitadas')}`,
+                    detalle: 'Pendientes de aprobar', link: '#rrhh', count,
+                });
+            }
+            // Documentos del personal por vencer ≤30d o vencidos (RRHH.4 — persona_documentos
+            // puede no existir todavía; el .select tolera el error y no rompe la campana).
+            const hoy = Alertas._dateOffset(0);
+            const en30 = Alertas._dateOffset(30);
+            const { data: docs, error: errDoc } = await supabaseClient
+                .from('persona_documentos')
+                .select('id, fecha_vencimiento')
+                .eq('_deleted', false).not('fecha_vencimiento', 'is', null)
+                .lte('fecha_vencimiento', en30);
+            if (!errDoc && docs && docs.length) {
+                const venc = docs.filter(d => d.fecha_vencimiento < hoy).length;
+                const porVencer = docs.length - venc;
+                items.push({
+                    moduleId: 'rrhh', tipo: 'documento_por_vencer', key: 'rrhh_docs_vencer',
+                    severidad: venc ? 'warning' : 'info', icon: '📄',
+                    titulo: `${docs.length} ${Alertas._plural(docs.length, 'documento')} por vencer`,
+                    detalle: venc ? `${venc} vencido(s) · ${porVencer} en ≤30d` : 'En los próximos 30 días',
+                    link: '#rrhh', count: docs.length,
+                });
+            }
+            return items;
         },
 
         // Inventario: insumos con stock por debajo del mínimo

@@ -12,7 +12,7 @@
 const RRHHModule = {
 
     // ─── State ───
-    _activeTab: 'nomina',
+    _activeTab: 'panel',
     _personal: [],
     _ausencias: [],
     _saldos: [],
@@ -35,6 +35,18 @@ const RRHHModule = {
     _panelAsigs: null,      // cache asignaciones de la persona del panel
     _panelAsigsFor: null,
     _restoreSearchFocus: false,
+    // RRHH.4 — Panel (dashboard) + Docs
+    _dash: null,            // datos del dashboard
+    _panelDocs: null,       // cache documentos de la persona del panel
+    _panelDocsFor: null,
+
+    _docTipos: [
+        { key: 'dni', label: 'DNI' },
+        { key: 'licencia_conducir', label: 'Licencia de conducir' },
+        { key: 'art_seguro', label: 'ART / seguro' },
+        { key: 'examen_medico', label: 'Examen médico' },
+        { key: 'otro', label: 'Otro' },
+    ],
 
     _rolesCanon: [
         { key: 'armador', label: 'Armador' },
@@ -59,7 +71,9 @@ const RRHHModule = {
         content.innerHTML = this._buildShell();
         this._attachTabEvents();
 
-        if (this._activeTab === 'nomina') {
+        if (this._activeTab === 'panel') {
+            await this._loadPanelDash();
+        } else if (this._activeTab === 'nomina') {
             await this._loadNomina();
         } else if (this._activeTab === 'planificacion') {
             await this._loadPlanificacion();
@@ -220,6 +234,34 @@ const RRHHModule = {
                 .hr-plan-dayh-num { font-size:0.72rem; color:var(--text-primary); font-weight:600; }
                 .hr-plan-dayh.wk .hr-plan-dayh-num { color:var(--text-muted); }
                 .hr-plan-empty { color:var(--text-dim); font-size:0.84rem; padding:24px; text-align:center; }
+
+                /* ═══ RRHH.4 — Panel (dashboard) + Docs ═══ */
+                .hr-dash-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:20px; }
+                .hr-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+                .hr-kpi-val { font-family:var(--font-mono); font-size:1.7rem; font-weight:700; color:var(--primary); line-height:1; }
+                .hr-kpi-lbl { font-size:0.74rem; color:var(--text-muted); margin-top:6px; }
+                .hr-kpi-sub { font-size:0.66rem; color:var(--text-dim); margin-top:3px; }
+                .hr-kpi.click { cursor:pointer; transition:border-color 200ms ease; }
+                .hr-kpi.click:hover { border-color:var(--primary); }
+                .hr-dash-cols { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+                @media (max-width:820px){ .hr-dash-cols { grid-template-columns:1fr; } }
+                .hr-dash-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+                .hr-dash-card h4 { font-family:var(--font-mono); font-size:0.66rem; text-transform:uppercase; letter-spacing:0.08em;
+                    color:var(--text-muted); margin:0 0 10px; }
+                .hr-dash-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid #181818; font-size:0.84rem; }
+                .hr-dash-row:first-of-type { border-top:none; }
+                .hr-dash-row .nm { flex:1; color:var(--text-primary); }
+                .hr-dash-row .mt { color:var(--text-muted); font-size:0.76rem; }
+                .hr-dash-empty { color:var(--text-dim); font-size:0.8rem; padding:8px 0; }
+                .hr-doc-sem { width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+                .hr-doc-pill { font-family:var(--font-mono); font-size:0.6rem; padding:2px 7px; border-radius:4px; border:1px solid; white-space:nowrap; }
+                .hr-bday { color:#F28D15; }
+                /* Docs sub-tab del panel persona */
+                .hr-doc-item { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid #181818; }
+                .hr-doc-item:first-of-type { border-top:none; }
+                .hr-doc-main { flex:1; min-width:0; }
+                .hr-doc-tipo { font-size:0.86rem; color:var(--text-primary); }
+                .hr-doc-meta { font-size:0.72rem; color:var(--text-muted); margin-top:2px; }
             </style>
             <div class="module-view rrhh-module">
                 <div class="module-subheader">
@@ -242,6 +284,10 @@ const RRHHModule = {
                         </div>
                     </div>
                     <div class="module-section-tabs">
+                        <button class="section-tab ${this._activeTab === 'panel' ? 'active' : ''}" data-tab="panel">
+                            <span class="section-tab-icon">📊</span>
+                            <span class="section-tab-text">Panel</span>
+                        </button>
                         <button class="section-tab ${this._activeTab === 'nomina' ? 'active' : ''}" data-tab="nomina">
                             <span class="section-tab-icon">👥</span>
                             <span class="section-tab-text">Nómina</span>
@@ -274,7 +320,8 @@ const RRHHModule = {
                 btn.classList.add('active');
                 const cc = document.getElementById('rrhhContent');
                 if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
-                if (this._activeTab === 'nomina') await this._loadNomina();
+                if (this._activeTab === 'panel') await this._loadPanelDash();
+                else if (this._activeTab === 'nomina') await this._loadNomina();
                 else if (this._activeTab === 'planificacion') await this._loadPlanificacion();
                 else await this._loadAusencias();
             });
@@ -688,6 +735,9 @@ const RRHHModule = {
     _renderPanel(p) {
         const panel = document.getElementById('hrPanel');
         if (!panel) return;
+        // Docs solo para internas/fijas (decisión Fede). Si el tab quedó en docs
+        // para una persona no-fija, volver a Datos.
+        if (this._panelTab === 'docs' && p.tipo !== 'fijo') this._panelTab = 'datos';
         const tipoColor = this._getTipoColor(p.tipo);
         const estadoColor = this._getEstadoColor(p.estado);
         const rolesOp = (p._raw?.roles_operativos) || [];
@@ -720,6 +770,7 @@ const RRHHModule = {
                 <div class="hr-subtabs">
                     <button class="hr-subtab ${this._panelTab === 'datos' ? 'active' : ''}" data-ptab="datos">Datos</button>
                     <button class="hr-subtab ${this._panelTab === 'trabajo' ? 'active' : ''}" data-ptab="trabajo">Trabajo</button>
+                    ${p.tipo === 'fijo' ? `<button class="hr-subtab ${this._panelTab === 'docs' ? 'active' : ''}" data-ptab="docs">Docs</button>` : ''}
                     <button class="hr-subtab ${this._panelTab === 'notas' ? 'active' : ''}" data-ptab="notas">Notas</button>
                 </div>
                 <div id="hrPanelBody"></div>
@@ -791,6 +842,15 @@ const RRHHModule = {
             this._loadPanelAsigs(p).then(asigs => {
                 if (this._panelTab !== 'trabajo' || String(this._selectedPersonId) !== String(p.id)) return;
                 this._renderPanelTrabajo(p, asigs);
+            });
+            return;
+        }
+
+        if (this._panelTab === 'docs') {
+            body.innerHTML = `<div style="display:flex;justify-content:center;padding:24px;"><div class="spinner"></div></div>`;
+            this._loadPersonaDocs(p).then(docs => {
+                if (this._panelTab !== 'docs' || String(this._selectedPersonId) !== String(p.id)) return;
+                this._renderPanelDocs(p, docs);
             });
             return;
         }
@@ -1143,6 +1203,275 @@ const RRHHModule = {
             Toast.error('Error al eliminar');
         }
     },
+
+    // ════════════════════════════════════════════════════
+    //  TAB: PANEL  (RRHH.4 — dashboard de KPIs)
+    // ════════════════════════════════════════════════════
+
+    async _loadPanelDash() {
+        const todayISO = this._isoDay(new Date());
+        const in30 = this._isoDay(this._addDays(new Date(), 30));
+        try {
+            const [persRes, asigHoyRes, ausHoyRes, pendRes, docsRes] = await Promise.all([
+                supabaseClient.from('personas').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
+                supabaseClient.from('asignaciones_evento')
+                    .select('persona_id, fecha_inicio, fecha_fin, estado, evento:eventos!evento_id(id, nombre)')
+                    .eq('_deleted', false).in('estado', ['aprobada', 'confirmada'])
+                    .lte('fecha_inicio', todayISO + 'T23:59:59').gte('fecha_fin', todayISO),
+                supabaseClient.from('ausencias').select('persona_id, tipo, fecha_desde, fecha_hasta')
+                    .eq('_deleted', false).eq('estado', 'aprobada')
+                    .lte('fecha_desde', todayISO).gte('fecha_hasta', todayISO),
+                supabaseClient.from('asignaciones_evento').select('id', { count: 'exact', head: true })
+                    .eq('_deleted', false).eq('estado', 'propuesta'),
+                supabaseClient.from('persona_documentos').select('persona_id, tipo, fecha_vencimiento')
+                    .eq('_deleted', false).not('fecha_vencimiento', 'is', null).lte('fecha_vencimiento', in30),
+            ]);
+            this._personal = (persRes.data || []).map(p => this._mapPersonaToLegacyShape(p));
+            this._dash = {
+                asigHoy: asigHoyRes.data || [],
+                ausHoy: ausHoyRes.data || [],
+                pendientes: pendRes.count || 0,
+                docs: docsRes.data || [],
+            };
+        } catch (e) {
+            console.warn('[RRHH] Error loading panel:', e);
+            this._dash = { asigHoy: [], ausHoy: [], pendientes: 0, docs: [] };
+        }
+        this._renderPanelDash();
+    },
+
+    _docTipoLabel(key) {
+        const t = this._docTipos.find(x => x.key === key);
+        return t ? t.label : (key || 'Documento');
+    },
+
+    _docSemaforo(fechaVenc) {
+        if (!fechaVenc) return { color: '#555', label: 'sin vencimiento', estado: 'na' };
+        const hoy = this._toLocalDate(this._isoDay(new Date()));
+        const venc = this._toLocalDate(fechaVenc);
+        const diff = Math.round((venc - hoy) / 86400000);
+        if (diff < 0) return { color: '#ff4444', label: `vencido (hace ${Math.abs(diff)}d)`, estado: 'vencido' };
+        if (diff <= 30) return { color: '#F28D15', label: `vence en ${diff}d`, estado: 'por_vencer' };
+        return { color: '#00CC88', label: 'vigente', estado: 'ok' };
+    },
+
+    _goTab(tab) {
+        this._activeTab = tab;
+        document.querySelectorAll('.section-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        const cc = document.getElementById('rrhhContent');
+        if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
+        if (tab === 'panel') return this._loadPanelDash();
+        if (tab === 'nomina') return this._loadNomina();
+        if (tab === 'planificacion') return this._loadPlanificacion();
+        if (tab === 'ausencias') return this._loadAusencias();
+    },
+
+    _renderPanelDash() {
+        const cc = document.getElementById('rrhhContent');
+        if (!cc) return;
+        const d = this._dash || { asigHoy: [], ausHoy: [], pendientes: 0, docs: [] };
+        const activos = this._personal.filter(p => p.estado === 'activo');
+        const fijos = activos.filter(p => p.tipo === 'fijo').length;
+        const eventuales = activos.filter(p => p.tipo === 'eventual').length;
+        const cuadrillas = activos.filter(p => p.tipo === 'cuadrilla').length;
+        const trabajandoHoy = new Set(d.asigHoy.map(a => a.persona_id)).size;
+        const ausentesHoy = new Set(d.ausHoy.map(a => a.persona_id)).size;
+        const docsVencidos = d.docs.filter(x => this._docSemaforo(x.fecha_vencimiento).estado === 'vencido').length;
+        const docsPorVencer = d.docs.filter(x => this._docSemaforo(x.fecha_vencimiento).estado === 'por_vencer').length;
+
+        const mesActual = new Date().getMonth();
+        const cumples = activos
+            .map(p => ({ p, fn: (p._raw && p._raw.fecha_nacimiento) || null }))
+            .filter(x => x.fn && this._toLocalDate(x.fn).getMonth() === mesActual)
+            .map(x => ({ nombre: x.p.nombre, dia: this._toLocalDate(x.fn).getDate() }))
+            .sort((a, b) => a.dia - b.dia);
+
+        const kpi = (val, lbl, sub, color, tab) => `
+            <div class="hr-kpi ${tab ? 'click' : ''}" ${tab ? `data-goto="${tab}"` : ''}>
+                <div class="hr-kpi-val" ${color ? `style="color:${color}"` : ''}>${val}</div>
+                <div class="hr-kpi-lbl">${lbl}</div>
+                ${sub ? `<div class="hr-kpi-sub">${sub}</div>` : ''}
+            </div>`;
+
+        cc.innerHTML = `
+            <div class="hr-dash-kpis">
+                ${kpi(activos.length, 'Activos', `${fijos} fijos · ${eventuales} event. · ${cuadrillas} cuadr.`, null, 'nomina')}
+                ${kpi(trabajandoHoy, 'Trabajando hoy', d.asigHoy.length ? `${d.asigHoy.length} asignación(es)` : 'nadie en evento', '#00CC88', 'planificacion')}
+                ${kpi(ausentesHoy, 'Ausentes hoy', ausentesHoy ? [...new Set(d.ausHoy.map(a => a.tipo))].join(', ') : 'sin ausencias', ausentesHoy ? '#F28D15' : null, 'ausencias')}
+                ${kpi(d.pendientes, 'Convocatorias', d.pendientes ? 'pendientes de aprobar' : 'al día', d.pendientes ? '#F28D15' : null, 'planificacion')}
+                ${kpi(docsVencidos + docsPorVencer, 'Docs por vencer', (docsVencidos || docsPorVencer) ? `${docsVencidos} vencido(s) · ${docsPorVencer} ≤30d` : 'al día', (docsVencidos ? '#ff4444' : (docsPorVencer ? '#F28D15' : null)))}
+                ${kpi(cumples.length, 'Cumpleaños del mes', cumples.length ? '🎂 este mes' : 'ninguno', cumples.length ? '#9B7DFF' : null)}
+            </div>
+
+            <div class="hr-dash-cols">
+                <div class="hr-dash-card">
+                    <h4>Trabajando hoy</h4>
+                    ${d.asigHoy.length === 0 ? '<div class="hr-dash-empty">Nadie asignado a eventos hoy.</div>' : d.asigHoy.map(a => `
+                        <div class="hr-dash-row">
+                            <span class="nm">${this._h(this._getPersonName(a.persona_id))}</span>
+                            <span class="mt">${this._h((a.evento && a.evento.nombre) || 'Evento')}</span>
+                        </div>`).join('')}
+                </div>
+                <div class="hr-dash-card">
+                    <h4>Documentación por vencer</h4>
+                    ${d.docs.length === 0 ? '<div class="hr-dash-empty">Sin documentos próximos a vencer.</div>' :
+                        [...d.docs].sort((a, b) => String(a.fecha_vencimiento).localeCompare(String(b.fecha_vencimiento))).map(x => {
+                            const s = this._docSemaforo(x.fecha_vencimiento);
+                            return `<div class="hr-dash-row" data-persona="${x.persona_id}" style="cursor:pointer">
+                                <span class="hr-doc-sem" style="background:${s.color}"></span>
+                                <span class="nm">${this._h(this._getPersonName(x.persona_id))}</span>
+                                <span class="mt">${this._h(this._docTipoLabel(x.tipo))} · <span style="color:${s.color}">${s.label}</span></span>
+                            </div>`;
+                        }).join('')}
+                </div>
+            </div>
+
+            ${cumples.length ? `
+                <div class="hr-dash-card" style="margin-top:18px;">
+                    <h4>🎂 Cumpleaños del mes</h4>
+                    ${cumples.map(c => `<div class="hr-dash-row"><span class="nm hr-bday">${this._h(c.nombre)}</span><span class="mt">día ${c.dia}</span></div>`).join('')}
+                </div>` : ''}
+        `;
+
+        cc.querySelectorAll('.hr-kpi[data-goto]').forEach(el => el.addEventListener('click', () => this._goTab(el.dataset.goto)));
+        cc.querySelectorAll('.hr-dash-row[data-persona]').forEach(el => el.addEventListener('click', () => {
+            const pid = el.dataset.persona;
+            this._selectedPersonId = pid;
+            this._panelTab = 'docs';
+            this._goTab('nomina').then(() => this._openPanel(pid, true));
+        }));
+    },
+
+    // ─── Docs sub-tab de la ficha (RRHH.4) ───
+
+    async _loadPersonaDocs(p) {
+        if (String(this._panelDocsFor) !== String(p.id)) {
+            try {
+                const { data } = await supabaseClient.from('persona_documentos')
+                    .select('*').eq('persona_id', p.id).eq('_deleted', false)
+                    .order('fecha_vencimiento', { ascending: true });
+                this._panelDocs = data || [];
+            } catch (e) {
+                this._panelDocs = [];
+            }
+            this._panelDocsFor = p.id;
+        }
+        return this._panelDocs || [];
+    },
+
+    _renderPanelDocs(p, docs) {
+        const body = document.getElementById('hrPanelBody');
+        if (!body) return;
+        body.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <span class="hr-f-label">Documentación (vencimientos)</span>
+                <button class="hr-p-btn" id="hrDocAdd">+ Documento</button>
+            </div>
+            ${(!docs || docs.length === 0) ? '<div class="hr-empty-tab">Sin documentos cargados</div>' : docs.map(doc => {
+                const s = this._docSemaforo(doc.fecha_vencimiento);
+                return `
+                    <div class="hr-doc-item">
+                        <span class="hr-doc-sem" style="background:${s.color}"></span>
+                        <div class="hr-doc-main">
+                            <div class="hr-doc-tipo">${this._h(this._docTipoLabel(doc.tipo))}${doc.numero ? ` <span style="color:var(--text-dim);font-size:0.78rem;">#${this._h(doc.numero)}</span>` : ''}</div>
+                            <div class="hr-doc-meta">${doc.fecha_vencimiento ? `Vence ${this._formatDate(doc.fecha_vencimiento)} · ` : ''}<span style="color:${s.color}">${s.label}</span></div>
+                        </div>
+                        <button class="hr-aus-act" data-doc-edit="${doc.id}" title="Editar">✎</button>
+                        <button class="hr-aus-act" data-doc-del="${doc.id}" title="Eliminar">🗑</button>
+                    </div>`;
+            }).join('')}
+        `;
+        document.getElementById('hrDocAdd')?.addEventListener('click', () => this._showDocModal(p));
+        body.querySelectorAll('[data-doc-edit]').forEach(b => b.addEventListener('click', () => this._showDocModal(p, b.dataset.docEdit)));
+        body.querySelectorAll('[data-doc-del]').forEach(b => b.addEventListener('click', () => this._deleteDoc(p, b.dataset.docDel)));
+    },
+
+    _showDocModal(p, editId) {
+        const doc = editId ? (this._panelDocs || []).find(x => String(x.id) === String(editId)) : null;
+        Modal.open({
+            title: doc ? 'Editar documento' : 'Nuevo documento',
+            size: 'medium',
+            body: `
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div>
+                            <label class="form-label">Tipo</label>
+                            <select id="rhDocTipo" class="form-input" style="padding:12px;">
+                                ${this._docTipos.map(t => `<option value="${t.key}" ${doc && doc.tipo === t.key ? 'selected' : ''}>${t.label}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Número (opcional)</label>
+                            <input type="text" id="rhDocNum" class="form-input" value="${this._h(doc?.numero)}" placeholder="N° de documento" style="padding:12px;">
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div>
+                            <label class="form-label">Emisión (opcional)</label>
+                            <input type="date" id="rhDocEmi" class="form-input" value="${doc?.fecha_emision ? String(doc.fecha_emision).slice(0, 10) : ''}" style="padding:12px;">
+                        </div>
+                        <div>
+                            <label class="form-label">Vencimiento</label>
+                            <input type="date" id="rhDocVenc" class="form-input" value="${doc?.fecha_vencimiento ? String(doc.fecha_vencimiento).slice(0, 10) : ''}" style="padding:12px;">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="form-label">Notas</label>
+                        <input type="text" id="rhDocNotas" class="form-input" value="${this._h(doc?.notas)}" placeholder="Observaciones" style="padding:12px;">
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn-primary" id="rhDocSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
+            `,
+        });
+        setTimeout(() => {
+            document.getElementById('rhDocSave')?.addEventListener('click', async () => {
+                const payload = {
+                    persona_id: p.id,
+                    tipo: document.getElementById('rhDocTipo')?.value || 'otro',
+                    numero: document.getElementById('rhDocNum')?.value?.trim() || null,
+                    fecha_emision: document.getElementById('rhDocEmi')?.value || null,
+                    fecha_vencimiento: document.getElementById('rhDocVenc')?.value || null,
+                    notas: document.getElementById('rhDocNotas')?.value?.trim() || null,
+                };
+                try {
+                    if (editId) {
+                        const { error } = await supabaseClient.from('persona_documentos').update(payload).eq('id', editId);
+                        if (error) throw error;
+                        Toast.success('Documento actualizado');
+                    } else {
+                        const { error } = await supabaseClient.from('persona_documentos').insert(payload);
+                        if (error) throw error;
+                        Toast.success('Documento agregado');
+                    }
+                    Modal.close();
+                    this._panelDocsFor = null;
+                    const docs = await this._loadPersonaDocs(p);
+                    this._renderPanelDocs(p, docs);
+                } catch (e) {
+                    console.error('[RRHH] Error saving documento:', e);
+                    Toast.error(`Error al guardar${e?.message ? ': ' + e.message : ''}`);
+                }
+            });
+        }, 100);
+    },
+
+    async _deleteDoc(p, id) {
+        const ok = await Confirm.delete('este documento');
+        if (!ok) return;
+        try {
+            await supabaseClient.from('persona_documentos').update({ _deleted: true }).eq('id', id);
+            Toast.success('Documento eliminado');
+            this._panelDocsFor = null;
+            const docs = await this._loadPersonaDocs(p);
+            this._renderPanelDocs(p, docs);
+        } catch (e) {
+            Toast.error('Error al eliminar');
+        }
+    },
+
 
     // ════════════════════════════════════════════════════
     //  TAB: PLANIFICACIÓN  (RRHH.3 — grilla persona × quincena)
