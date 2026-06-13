@@ -727,6 +727,8 @@ const RRHHModule = {
         this._selectedPersonId = null;
         this._panelAsigs = null;
         this._panelAsigsFor = null;
+        this._panelDocs = null;
+        this._panelDocsFor = null;
         const panel = document.getElementById('hrPanel');
         if (panel) { panel.classList.remove('hr-panel-open'); panel.innerHTML = ''; }
         document.querySelectorAll('.hr-row-active').forEach(r => r.classList.remove('hr-row-active'));
@@ -1211,13 +1213,17 @@ const RRHHModule = {
     async _loadPanelDash() {
         const todayISO = this._isoDay(new Date());
         const in30 = this._isoDay(this._addDays(new Date(), 30));
+        // asignaciones = TIMESTAMPTZ → consulto ventana ±1 día y filtro por día LOCAL en el render
+        // (evita el corrimiento de día por TZ que tiene el resto del módulo, ver _buildTrabAnio).
+        const ayerISO = this._isoDay(this._addDays(new Date(), -1));
+        const mananaISO = this._isoDay(this._addDays(new Date(), 1));
         try {
             const [persRes, asigHoyRes, ausHoyRes, pendRes, docsRes] = await Promise.all([
                 supabaseClient.from('personas').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
                 supabaseClient.from('asignaciones_evento')
                     .select('persona_id, fecha_inicio, fecha_fin, estado, evento:eventos!evento_id(id, nombre)')
                     .eq('_deleted', false).in('estado', ['aprobada', 'confirmada'])
-                    .lte('fecha_inicio', todayISO + 'T23:59:59').gte('fecha_fin', todayISO),
+                    .lte('fecha_inicio', mananaISO + 'T23:59:59').gte('fecha_fin', ayerISO),
                 supabaseClient.from('ausencias').select('persona_id, tipo, fecha_desde, fecha_hasta')
                     .eq('_deleted', false).eq('estado', 'aprobada')
                     .lte('fecha_desde', todayISO).gte('fecha_hasta', todayISO),
@@ -1270,11 +1276,18 @@ const RRHHModule = {
         const cc = document.getElementById('rrhhContent');
         if (!cc) return;
         const d = this._dash || { asigHoy: [], ausHoy: [], pendientes: 0, docs: [] };
+        const todayISO = this._isoDay(new Date());
+        // asigHoy viene en ventana ±1 día → filtro al día LOCAL real (TIMESTAMPTZ ↔ TZ)
+        const asigHoy = (d.asigHoy || []).filter(a => {
+            const ini = this._isoDay(this._toLocalDate(a.fecha_inicio));
+            const fin = this._isoDay(this._toLocalDate(a.fecha_fin || a.fecha_inicio));
+            return ini <= todayISO && fin >= todayISO;
+        });
         const activos = this._personal.filter(p => p.estado === 'activo');
         const fijos = activos.filter(p => p.tipo === 'fijo').length;
         const eventuales = activos.filter(p => p.tipo === 'eventual').length;
         const cuadrillas = activos.filter(p => p.tipo === 'cuadrilla').length;
-        const trabajandoHoy = new Set(d.asigHoy.map(a => a.persona_id)).size;
+        const trabajandoHoy = new Set(asigHoy.map(a => a.persona_id)).size;
         const ausentesHoy = new Set(d.ausHoy.map(a => a.persona_id)).size;
         const docsVencidos = d.docs.filter(x => this._docSemaforo(x.fecha_vencimiento).estado === 'vencido').length;
         const docsPorVencer = d.docs.filter(x => this._docSemaforo(x.fecha_vencimiento).estado === 'por_vencer').length;
@@ -1296,7 +1309,7 @@ const RRHHModule = {
         cc.innerHTML = `
             <div class="hr-dash-kpis">
                 ${kpi(activos.length, 'Activos', `${fijos} fijos · ${eventuales} event. · ${cuadrillas} cuadr.`, null, 'nomina')}
-                ${kpi(trabajandoHoy, 'Trabajando hoy', d.asigHoy.length ? `${d.asigHoy.length} asignación(es)` : 'nadie en evento', '#00CC88', 'planificacion')}
+                ${kpi(trabajandoHoy, 'Trabajando hoy', asigHoy.length ? `${asigHoy.length} asignación(es)` : 'nadie en evento', '#00CC88', 'planificacion')}
                 ${kpi(ausentesHoy, 'Ausentes hoy', ausentesHoy ? [...new Set(d.ausHoy.map(a => a.tipo))].join(', ') : 'sin ausencias', ausentesHoy ? '#F28D15' : null, 'ausencias')}
                 ${kpi(d.pendientes, 'Convocatorias', d.pendientes ? 'pendientes de aprobar' : 'al día', d.pendientes ? '#F28D15' : null, 'planificacion')}
                 ${kpi(docsVencidos + docsPorVencer, 'Docs por vencer', (docsVencidos || docsPorVencer) ? `${docsVencidos} vencido(s) · ${docsPorVencer} ≤30d` : 'al día', (docsVencidos ? '#ff4444' : (docsPorVencer ? '#F28D15' : null)))}
@@ -1306,7 +1319,7 @@ const RRHHModule = {
             <div class="hr-dash-cols">
                 <div class="hr-dash-card">
                     <h4>Trabajando hoy</h4>
-                    ${d.asigHoy.length === 0 ? '<div class="hr-dash-empty">Nadie asignado a eventos hoy.</div>' : d.asigHoy.map(a => `
+                    ${asigHoy.length === 0 ? '<div class="hr-dash-empty">Nadie asignado a eventos hoy.</div>' : asigHoy.map(a => `
                         <div class="hr-dash-row">
                             <span class="nm">${this._h(this._getPersonName(a.persona_id))}</span>
                             <span class="mt">${this._h((a.evento && a.evento.nombre) || 'Evento')}</span>
@@ -1335,10 +1348,11 @@ const RRHHModule = {
 
         cc.querySelectorAll('.hr-kpi[data-goto]').forEach(el => el.addEventListener('click', () => this._goTab(el.dataset.goto)));
         cc.querySelectorAll('.hr-dash-row[data-persona]').forEach(el => el.addEventListener('click', () => {
-            const pid = el.dataset.persona;
-            this._selectedPersonId = pid;
+            // _renderNomina (dentro de _goTab→_loadNomina) reabre el panel solo si _selectedPersonId
+            // está seteado, manteniendo _panelTab='docs' → no hace falta llamar _openPanel acá.
+            this._selectedPersonId = el.dataset.persona;
             this._panelTab = 'docs';
-            this._goTab('nomina').then(() => this._openPanel(pid, true));
+            this._goTab('nomina');
         }));
     },
 
