@@ -1,7 +1,7 @@
 /* =============================================
    MEPEX Lobby — Módulo Compras
    =============================================
-   Categoría: ACTIVOS. Reemplaza Proveedores.
+   Categoría: ADMIN & FINANZAS. Reemplaza Proveedores.
    3 tabs: Proveedores, Órdenes de Compra, Pagos
    Solo superadmin y admin.
    ============================================= */
@@ -65,7 +65,7 @@ const ComprasModule = {
                                 Lobby
                             </a>
                             <span class="breadcrumb-sep">›</span>
-                            <span class="breadcrumb-cat" style="color: #9B7DFF">ACTIVOS</span>
+                            <span class="breadcrumb-cat" style="color: #4A90D9">ADMIN & FINANZAS</span>
                             <span class="breadcrumb-sep">›</span>
                             <span class="breadcrumb-current">Compras</span>
                         </div>

@@ -1212,31 +1212,9 @@ const AdminPanel = {
     // ═══════════════════════════════════════════
 
     // Module grid definition (order matters)
-    _permModules: [
-        { cat: 'COMERCIAL', color: '#F28D15', modules: [
-            { id: 'crm', name: 'CRM', icon: '🔶' },
-            { id: 'cotizador', name: 'Cotizador', icon: '📄' },
-            { id: 'catalogo', name: 'Catálogo', icon: '🔩' },
-        ]},
-        { cat: 'OPERACIONES', color: '#00CC88', modules: [
-            { id: 'proyectos', name: 'Proyectos', icon: '🏗️' },
-            { id: 'eventos', name: 'Eventos', icon: '🎪' },
-            { id: 'taller', name: 'Taller', icon: '🔨' },
-            { id: 'logistica', name: 'Logística', icon: '🚛' },
-        ]},
-        { cat: 'ACTIVOS', color: '#9B7DFF', modules: [
-            { id: 'inventario', name: 'Inventario', icon: '📦' },
-            { id: 'locaciones', name: 'Locaciones', icon: '🏭' },
-            { id: 'compras', name: 'Compras', icon: '🛒' },
-        ]},
-        { cat: 'ADMIN & FINANZAS', color: '#4A90D9', modules: [
-            { id: 'rrhh', name: 'RRHH', icon: '👥' },
-            { id: 'finanzas', name: 'Finanzas', icon: '💰' },
-            { id: 'contabilidad', name: 'Contabilidad', icon: '📚' },
-            { id: 'costos', name: 'Costos', icon: '🧮' },
-            { id: 'parametros-globales', name: 'Parámetros', icon: '⚙️' },
-        ]},
-    ],
+    // _permModules ELIMINADO (2026-06-13): era una lista hardcodeada que driftó
+    // de Data.modules (le faltaba `flota`, mostraba el difunto `parametros-globales`).
+    // La matriz ahora deriva de Data.getPermissionableModules() → fuente única.
 
     async _loadRolesTab() {
         try {
@@ -1278,6 +1256,7 @@ const AdminPanel = {
 
     _renderRolesTab() {
         const roles = this._rolesData;
+        const permCats = Data.getPermissionableModules(); // fuente única (data.js)
 
         return `
             <div class="admpanel-section" style="position:relative;">
@@ -1307,7 +1286,7 @@ const AdminPanel = {
                             </tr>
                         </thead>
                         <tbody>
-                            ${this._permModules.map(cat => `
+                            ${permCats.map(cat => `
                                 <tr class="admperm-cat-row">
                                     <td colspan="${roles.length + 1}" style="--cat-color:${cat.color};">
                                         <span class="admperm-cat-label" style="color:${cat.color}">${cat.cat}</span>
@@ -1351,7 +1330,7 @@ const AdminPanel = {
 
     _countRoleAccess(roleId) {
         let count = 0;
-        this._permModules.forEach(cat => {
+        Data.getPermissionableModules().forEach(cat => {
             cat.modules.forEach(mod => {
                 const lvl = this._getPermLevel(roleId, mod.id);
                 if (lvl === 'write' || lvl === 'read') count++;
@@ -1412,6 +1391,10 @@ const AdminPanel = {
                 try {
                     const editedRoleIds = Object.keys(this._permEdits);
                     await this._saveRolesPermissions();
+                    // Refrescar la cache en memoria (Data.rolePermissions/readOnly/
+                    // labels/colors) desde la tabla `roles` → el resto de la app
+                    // (settings, sidebar, lobby) lee lo nuevo sin esperar al re-login.
+                    if (Data.loadRolesFromDB) { try { await Data.loadRolesFromDB(); } catch (_) {} }
                     this._rolesDirty = false;
                     this._permEdits = {};
                     const bar = document.getElementById('admPermSaveBar');

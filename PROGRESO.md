@@ -1,6 +1,6 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 49%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 50%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈51%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈50%).
 > *(Rebalanceo 2026-06-13b: +Fase Costos UX ≈5% al PLAN-MAESTRO — el universo creció → el % bajó sin perder trabajo: PROGRESO 51→49, PLAN-MAESTRO 49→51.)*
 > *(Rebalanceo 2026-06-13: +RRHH.2/3/4 → Fase RRHH v2 cerrada salvo RRHH.5 (bloqueada por Finanzas). El universo había crecido 2026-06-12 con Fase 9.bis Roles & Permisos ≈3%.)*
 > *(Rebalanceo 2026-06-11: el % bajó sin perder trabajo — el universo creció al expandirse la mini-fase RRHH ≈3% en la fase RRHH v2 ≈8% con diseño cerrado.)*
@@ -11,7 +11,7 @@
 
 ---
 
-## Estado general — AVANCE ≈ 49%
+## Estado general — AVANCE ≈ 50%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
@@ -31,7 +31,10 @@
   - **RRHH.4 ✅ PUSHEADO** (commits `757d7f3`+`b10f2a4`): tab Panel (dashboard KPIs, ahora landing) + sub-tab Docs con semáforo (`persona_documentos`, DDL corrido por Fede) + alerta `documento_por_vencer`. Verificado end-to-end en prod (Panel, CRUD docs, semáforo, alerta). **Con esto la Fase RRHH v2 queda cerrada salvo RRHH.5** (Jornales, ⛔ bloqueada por "Rendimiento por evento" de Finanzas). Ver §Fase RRHH v2.
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-13 (sesión "mecha" cont. — **Fase RRHH v2 cerrada: RRHH.1/2/3/4 pusheadas**; solo queda RRHH.5 bloqueada por Finanzas). Próximo macro a elegir por Fede: **Fase 7 CRM "Casos"** (WhatsApp/Gmail/IA) · **Fase 8 Finanzas** (auditoría + "Rendimiento por evento" que desbloquea RRHH.5) · **Fase 4 Logística-remito** (espera cotizador) · **Fase 5 enhancements** · **Fase 9.bis Roles & Permisos**. Pendiente de Fede: pull en VPS + verificación visual de las 4 tabs de RRHH + instalación guiada del loop de deploy + correr los DROP comentados de `sql/rrhh2_ausencias.sql` (con backup).
+- **🆕 SESIÓN 2026-06-13b — Fase 9.bis Roles & Permisos · Capa 1 ✅ + Capa 2 motor/financiero (SQL listo, sin correr):**
+  - **Capa 1 — RBAC fuente única ✅ HECHA:** la matriz del Panel deriva de `Data.getPermissionableModules()` (data.js) en vez de la lista hardcodeada `admin-panel._permModules` (BORRADA) que driftaba (le faltaba `flota`, mostraba el difunto `parametros-globales`). Refresco de cache al guardar (sin re-login). Verificado en node. **Extras misma tanda:** categoría **GLOBAL fuera del sidebar** (redundante con dropdown+campana) · **`compras` movido ACTIVOS→ADMIN & FINANZAS** (breadcrumb realineado). Bumps `data.js?v=12`/`admin-panel.js?v=10`/`compras.js?v=10`.
+  - **Capa 2 — RLS MANEJADA POR LA MATRIZ (diseño cerrado con Fede):** la RLS lee `roles.permissions` vía helpers → el acceso se configura inline desde el Panel, sin tocar SQL. NO esconde filas entre oficina (es nivel módulo/tabla); "responsable" = atribución, no pared. **SQL listo para correr (Fede ejecuta, SQL-first):** `sql/rls_capa2_motor.sql` (helpers `fn_user_role`/`fn_role_can`, superadmin short-circuit, SECURITY DEFINER) + `sql/rls_capa2_financiero.sql` (20 tablas, defensivo/transaccional, rollback incluido). Pre-flight OK: el Lobby (venta/pm) NO lee tablas financieras → lockdown no rompe no-admin. **Pendiente:** Fede corre los 2 SQL + testea por rol → recién ahí escribo tiers comercial/operativo/compartidas. Filtro "Míos" = opcional (no construido). Detalle en PLAN-MAESTRO §Fase 9.bis.
+- **Última actualización:** 2026-06-13b (Fase 9.bis Capa 1 pusheada + Capa 2 SQL motor/financiero staged). Próximo macro a elegir por Fede: **Fase 7 CRM "Casos"** (WhatsApp/Gmail/IA) · **Fase 8 Finanzas** (auditoría + "Rendimiento por evento" que desbloquea RRHH.5) · **Fase 4 Logística-remito** (espera cotizador) · **Fase 5 enhancements** · **Fase 9.bis Roles & Permisos**. Pendiente de Fede: pull en VPS + verificación visual de las 4 tabs de RRHH + instalación guiada del loop de deploy + correr los DROP comentados de `sql/rrhh2_ausencias.sql` (con backup).
 
 ---
 

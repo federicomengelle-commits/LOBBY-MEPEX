@@ -81,22 +81,18 @@ const Data = {
             name: 'ACTIVOS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
             color: '#9B7DFF',
-            moduleIds: ['inventario', 'locaciones', 'compras', 'flota'],
+            moduleIds: ['inventario', 'locaciones', 'flota'],
         },
         {
             id: 'admin',
             name: 'ADMIN & FINANZAS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',
             color: '#4A90D9',
-            moduleIds: ['rrhh', 'finanzas', 'contabilidad', 'costos'],
+            moduleIds: ['rrhh', 'compras', 'finanzas', 'contabilidad', 'costos'],
         },
-        {
-            id: 'global',
-            name: 'GLOBAL',
-            icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
-            color: '#7A8599',
-            moduleIds: ['admin-panel', 'notificaciones'],
-        },
+        // Categoría GLOBAL retirada del sidebar (2026-06-13): redundante con el
+        // dropdown del nombre (Panel de Control) + la campana (Notificaciones).
+        // Las rutas #admin-panel y #notificaciones siguen vivas y accesibles desde ahí.
     ],
 
     // ─── ACCIONES RÁPIDAS POR ROL ───
@@ -557,6 +553,27 @@ const Data = {
     getModulesForRole(role) {
         const allowed = this.rolePermissions[role] || [];
         return this.getModuleList().filter(m => allowed.includes(m.id));
+    },
+
+    // ─── MÓDULOS PERMISABLES — FUENTE ÚNICA de la matriz de roles del Panel ───
+    // Derivado de `categories` + `modules`: lo que realmente existe y es gateable.
+    // Excluye categorías alwaysVisible (PRINCIPAL/lobby) e ids que no son módulos
+    // top-level reales (calendario / notificaciones / admin-panel viven como
+    // secciones, no como módulo). Así la matriz nunca vuelve a driftear: agregás
+    // un módulo a una categoría y aparece solo; sacás uno y desaparece.
+    getPermissionableModules() {
+        const out = [];
+        this.categories.forEach(cat => {
+            if (cat.alwaysVisible) return; // PRINCIPAL/lobby no se gatea
+            const ids = cat.moduleIds || (cat.modules || []).map(m => m.id);
+            const mods = ids
+                .filter(id => id !== 'lobby')
+                .map(id => this.modules[id])
+                .filter(Boolean)
+                .map(m => ({ id: m.id, name: m.name, icon: m.icon }));
+            if (mods.length) out.push({ cat: cat.name, color: cat.color, modules: mods });
+        });
+        return out;
     },
 
     isReadOnly(role, moduleId) {

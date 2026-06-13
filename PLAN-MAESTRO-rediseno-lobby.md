@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 51%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 50%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈49%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈50%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-13c: Fase 9.bis Capa 1 (RBAC fuente única + GLOBAL fuera + compras→admin) CERRADA → a PROGRESO. Queda Capa 2 RLS-por-matriz: motor+financiero listos sin correr. PLAN 51→50, PROGRESO 49→50.)*
 > *(Rebalanceo 2026-06-13b: +Fase Costos UX ≈5% — refactor completo del módulo (solo presentación, RPC `calcular_receta` intacta). El universo creció → PROGRESO 51→49, PLAN-MAESTRO 49→51.)*
 > *(Rebalanceo 2026-06-13: −RRHH.2/3/4 → Fase RRHH v2 cerrada salvo RRHH.5 (bloqueada). El universo había crecido 2026-06-12 con la Fase 9.bis "Roles & Permisos" ≈3%.)*
 > *(Rebalanceo 2026-06-11: el universo creció — la mini-fase RRHH ≈3% se expandió a la fase RRHH v2 ≈8% con diseño cerrado.)*
@@ -28,8 +29,8 @@
 PRINCIPAL          Lobby (home por rol)
 COMERCIAL          CRM (Clientes = vista interna · sin Marketing) · Cotizador · Catálogo (showcase visual — a definir, Fase 3)
 OPERACIONES        Calendario (SOLO vista) · Eventos · Proyectos · Taller · Logística
-ACTIVOS            Inventario · Locaciones · Compras · [Flota — crear Fase 3]
-ADMIN Y FINANZAS   RRHH · Finanzas · Contabilidad · Costos
+ACTIVOS            Inventario · Locaciones · Flota
+ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 ```
 - ✅ Hecho (Fase 1): RECURSOS→ACTIVOS, reubicación, SidebarEditor eliminado. Ver PROGRESO.
@@ -128,6 +129,7 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 
 **Definiciones pendientes (Fede, charla 03 — debatir antes de codear):**
 - **¿Dónde vive?** ¿"Pedidos" como pestaña dentro de Taller + "Órdenes" en Compras? ¿O todo en Compras y el taller solo dispara el pedido (botón en la ficha del proyecto/stand)?
+  - **✅ DECISIÓN FEDE (2026-06-13):** **Compras movido a ADMIN & FINANZAS** (ya hecho en `data.js` — sale de ACTIVOS). El **disparo del pedido vive en OPERACIONES**: un botón/acción simple ("Pedido" / "hay que comprar esto") desde Taller/ficha de proyecto → genera un pedido liviano → la **OC se genera y gestiona dentro de Compras** (Admin). Reafirma el doble-paso: peso del pedido en Operaciones (trivial), peso de la OC en Admin. **Pendiente:** diseñar ese botón en Operaciones + el permiso "pedido" liviano para taller (hoy taller no tiene `compras`).
 - **Archivado / histórico:** cómo queda la OC cerrada (comprada + link al egreso + presupuestos guardados). Estados del pedido (pedido → en compra → comprado) y de la OC.
 - **Taxonomía de categorías de gasto** para pedidos/OCs sin proyecto (oficina/vehículo/material/herramientas/servicios/…).
 - **Disparo del egreso:** ¿al elegir ganadora, o al marcar "recibida/pagada"? ¿botón explícito? ¿qué cuenta/categoría/canal de Finanzas? ¿1 egreso por OC?
@@ -165,6 +167,7 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 ### Fase 9 — Transversal: GLOBAL ✅ COMPLETA (charla 03 — ver PROGRESO §Fase 9) *(solo quedan deudas/ideas futuras)*
 - **🔔 Centro único de notificaciones ✅ HECHO (charla 03 — ver PROGRESO §Fase 9):** motor único `Alertas` (9.1) + campana 2 capas Novedades/Pendientes (9.2) + página completa + silenciar tipos por usuario (9.3). Verificado en prod. *(Decisiones: dos capas · campana + página · rol + silenciar tipos.)*
 - **Capa GLOBAL en el menú ✅ HECHO (9.4, `fb3e755`):** categoría GLOBAL en el sidebar con Panel de Control (superadmin) + Centro de notificaciones (todos).
+  - **🔁 REVERTIR — sacar GLOBAL del sidebar (Fede, 2026-06-13):** la categoría GLOBAL (Admin/Panel de Control + Notificaciones) es **redundante** → Panel ya está nucleado en el dropdown del nombre y Notificaciones en la campana del header. Quitar la categoría `global` de `Data.categories` (data.js) para que no aparezca en el sidebar. **Verificar antes:** que el Panel siga llegándose desde el dropdown (superadmin) y notificaciones desde la campana (todos) — confirmado por Fede que sí. No toca la matriz de permisos (admin-panel/notificaciones no son módulos gateables). Cambio de 1 línea; se puede hacer junto al fix de roles (Capa 1).
 - **Stats por usuario ✅ HECHO (9.5, `0e100ee`):** tab Actividad en el Panel (acciones 7d/30d, días activos, módulo top, gráfico 14d, última actividad). *Pendiente futuro:* tiempo de sesión exacto — `audit_log` no loguea login/logout, habría que registrarlos (o usar `last_seen_at`).
 - **Lobby/Home por rol ✅ HECHO — Híbrido (9.6, `11f83da`):** venta/pm aterrizan en el Lobby (home por rol con sus KPIs + contenido); taller sigue directo a su tablero (ULTRA simple). *Idea futura suelta:* bloque de estado de Taller en el home de admin (no pedido).
 - **🆕 Ideas del centro (charla 03):** silenciado cross-device (`profiles.notif_prefs`, DDL) en vez de localStorage por navegador; permitir silenciar también tipos de *pendientes* y/o que el mute apague los dots del sidebar; separar el badge en 2 números (no-leídas vs pendientes) si Fede lo prefiere. Limpiar `settings._getNotifPrefs/_setNotifPrefs` muertos.
@@ -177,7 +180,7 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 
 **Las 5 fuentes que driftean:** (1) `Data.modules`/`categories` = qué módulos existen · (2) `Data.rolePermissions`/`readOnlyPermissions` = arrays "fallback" · (3) tabla `roles.permissions` JSONB = fuente *declarada* · (4) `admin-panel._permModules` = filas de la matriz, **la más vieja** · (5) `profiles.custom_permissions` = override por usuario. Encima **2 formatos**: JSONB `{mod: write/read/none}` vs arrays planos sin distinción read/write.
 
-**🔧 Capa 1 — RBAC de módulos (fuente única). Lo que pidió Fede ("todo espejo de una fuente"):**
+**🔧 Capa 1 — RBAC de módulos (fuente única). ✅ HECHA (2026-06-13, sin commitear aún):** matriz deriva de `Data.getPermissionableModules()` (data.js) · `_permModules` borrado · refresco de cache al guardar (sin re-login) · verificado en node (flota in, parametros-globales out). **Extras de la misma tanda:** categoría GLOBAL fuera del sidebar (redundante con dropdown+campana) · `compras` movido ACTIVOS→ADMIN & FINANZAS (breadcrumb realineado). Bumps `data.js?v=12`/`admin-panel.js?v=10`/`compras.js?v=10`. *(Pendiente menor diferido: unificar formato `custom_permissions` a `{mod:nivel}` + sacar lecturas directas a `Data.rolePermissions` en settings.js — no era el bug, es polish.)*
 - **Catálogo de módulos = derivado de `Data.modules`** (la lista real del sidebar). La matriz del Panel itera ESA, no `_permModules` → mata el drift de filas. Borrar `_permModules`.
 - **Permisos por rol = SOLO la tabla `roles` (Supabase).** `Data.rolePermissions` queda únicamente como fallback offline, idealmente auto-derivado de `roles`.
 - **Refresco inmediato:** al guardar en el Panel → re-`loadRolesFromDB()` + re-render de las pantallas afectadas. Sin esperar al próximo login.
@@ -185,13 +188,20 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **Un solo resolver en runtime:** todo pasa por `Auth.hasPermission(mod)`. Eliminar las lecturas directas a `Data.rolePermissions` (hoy `settings.js:481/576/590/620` las usa → desincronizado del Panel).
 - **Test:** editar un permiso en el Panel → se refleja sin re-login en sidebar + settings + lobby; agregar un módulo nuevo aparece solo en la matriz; ningún módulo fantasma.
 
-**🔐 Capa 2 — Scoping por fila + RLS (lo de "venta ve solo lo propio"). HOY NO EXISTE:**
-- Es OTRA cosa que el RBAC de módulos. Hoy el sistema decide *"ves el módulo o no"* (+ read/write), **no** *"qué filas ves dentro"*. Los datos ya tienen los ganchos (`vendedor_id`, `responsable_id`/`proyecto_responsables`, `created_by`) pero **las queries de listado no filtran por usuario** → un "venta" trae TODOS los proyectos/clientes, no los propios.
-- **Modelo de scope por rol (a definir fino con Fede):** superadmin/admin = todo · **venta** = donde es `vendedor_id` (sus clientes/cotizaciones/proyectos) · **pm** = donde es responsable (`proyecto_responsables`/`responsable_id`) · **taller** = lo pasado a producción / asignado. Calendario operativo / Panel / Finanzas = ocultos por rol (eso ya es Capa 1).
-- **⚠ CRÍTICO — el filtro va en RLS de Supabase, no solo frontend.** Casi todo es client-side con la anon key → aunque la UI esconda, un usuario puede pedir todo igual con la key. **Es un agujero de seguridad real, no solo UX.** Requiere policies por tabla (`clientes`/`proyectos`/`cotizaciones`/`eventos`/…) que mapeen `auth.uid()` → rol → scope. Carga SQL no trivial + testeo por rol cuidadoso (que no rompa lo que admin/superadmin sí ven).
-- **Test:** loguear como venta → solo aparecen sus proyectos/clientes en UI **y** la query directa a Supabase con su token tampoco devuelve los ajenos.
+**🔐 Capa 2 — REFRAMEADA (Fede, 2026-06-13). NO es esconder filas entre la oficina:**
+> Decisión clave: **admin/superadmin/venta/pm ven TODO entre ellos.** El "responsable" es **atribución** (quién lidera, para cobertura ante ausencias y correcciones macro), **no una pared**. "Lo propio" = un **filtro/vista**, no una restricción. Taller ve proyectos **a su manera** (tablero Taller, no el módulo Proyectos — ya por RBAC). Futuro: vincular lo **presupuestario** al flujo de taller/proyecto para integrarlo.
 
-**Orden sugerido:** Capa 1 primero (fix acotado, sin riesgo, resuelve el síntoma visible). Capa 2 después (fundacional, tocar con bisturí, SQL-first, una tabla por vez con RLS + verificación). Las dos son separables.
+- **2A — Atribución + filtro "míos" (frontend, seguro, reversible):** responsable/vendedor claro en cada entidad + auto-set al crear (sino el filtro no tiene de qué agarrarse: `cotizaciones.vendedor_id` y `proyectos.responsable_id` pueden quedar null) + toggle **"Míos / Todos"** (default Todos) en CRM (cotizaciones) y Proyectos. Da foco SIN esconder.
+- **2B — RLS MANEJADA POR LA MATRIZ (decisión Fede 2026-06-13, clave):** la RLS **lee `roles.permissions`** (la misma matriz del Panel que arregló Capa 1) vía helpers SQL → **el acceso se configura inline desde Roles y Permisos, sin tocar SQL nunca más.** Cambiás un permiso en el Panel y la RLS lo respeta al instante. Hoy el RBAC es **solo frontend** → un taller (o cualquiera con la anon key) puede leer finanzas/comercial por query directa, y `anon` lee TODO (`USING(true)`, ver `sql/rls_*.sql`/`fase1c_rls.sql`). Esto cierra ese agujero **sin esconder filas entre oficina** (es a nivel módulo/tabla, no por fila).
+  - **Helpers (`sql/rls_capa2_motor.sql`):** `fn_user_role()` + `fn_role_can(p_module, p_need)` — SECURITY DEFINER (sin recursión), STABLE, leen `roles.permissions` por `auth.uid()` (`profiles.id = auth.uid()` verificado). **superadmin = siempre true** (short-circuit, no te bloqueás). Mapeo: SELECT⇒`read`, INSERT/UPDATE/DELETE⇒`write`, `none`⇒sin acceso.
+  - **Tier financiero (`sql/rls_capa2_financiero.sql`):** ingresos/egresos/comprobantes*/asientos/asiento_lineas/cuentas_financieras/plan_cuentas/saldos*/transferencias/plan_cobro*/cobro_aplicaciones/mapeo_cuentas/vencimientos*/conciliaciones/extracto → read = `fn_role_can('finanzas'|'contabilidad','read')`, write = idem write. (Solo admin/superadmin tienen esos módulos → de facto admin-only, pero tuneable.)
+  - **Tiers siguientes:** Comercial (clientes/cotizaciones+hijas/proyectos+hijas → `crm`/`proyectos`) · Operativo (eventos/taller/logística/inventario/flota → su módulo) · **Compartidas** (catálogo/insumos/precios/proveedores → **lectura amplia** = cualquier módulo que la use, **escritura** = dueño costos/admin). **Sacar `anon SELECT`** salvo encuestas (flujo público).
+  - **⚠ Riesgo (DB viva):** SQL-first, **tier por tier con rollback** (re-aplicar `USING(true)` revierte; snippet en cada archivo). Fede corre + testea logueado por rol. **El backend service-role (lobby-api) bypassa RLS** → ops admin server-side intactas.
+- **2A — filtro "Míos" (frontend) — ⏸ OPCIONAL (Fede 2026-06-13: "¿qué es eso? jaja" → no prioritario):** toggle Míos/Todos (default Todos) en CRM y Proyectos + auto-set `vendedor_id`/`responsable_id` al crear. NO esconde — es solo un atajo de foco. NO construir salvo que Fede lo pida.
+- **Decisiones tomadas (2026-06-13):** RLS lee la matriz (configurable inline) · clientes = venta ve TODOS · "propio" (para el filtro) = `cotizaciones.vendedor_id` y `proyectos.responsable_id`/`proyecto_responsables` · pm ve TODOS los proyectos · compartidas = lectura amplia/escritura dueño · premisa: taller sin finanzas/comercial, pm comercial+ops, venta comercial, admin ~todo, superadmin todo.
+- **Test:** taller logueado NO lee cotizaciones/finanzas ni por query directa · anon no lee comercial/financiero · admin/superadmin siguen viendo todo · cambiar un permiso en el Panel cambia el acceso real sin redeploy.
+
+**Orden:** Capa 1 ✅. Capa 2A (filtro/atribución, seguro) → Capa 2B RLS (SQL-first, tier financiero primero, con rollback).
 
 ### 🆕 Fase Costos UX — refactor completo del módulo *(≈5% · solo presentación, RPC intacta)*
 
