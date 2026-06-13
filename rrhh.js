@@ -348,8 +348,10 @@ const RRHHModule = {
         const yEnd = new Date(year, 11, 31);
         (asigs || []).forEach(a => {
             if (!a.persona_id || !a.fecha_inicio) return;
-            const ini = new Date(a.fecha_inicio + 'T00:00:00');
-            const fin = a.fecha_fin ? new Date(a.fecha_fin + 'T00:00:00') : ini;
+            // fecha_inicio/fin son TIMESTAMPTZ en prod (verificado 2026-06-12):
+            // normalizo a YYYY-MM-DD antes de armar el día local.
+            const ini = new Date(String(a.fecha_inicio).slice(0, 10) + 'T00:00:00');
+            const fin = a.fecha_fin ? new Date(String(a.fecha_fin).slice(0, 10) + 'T00:00:00') : ini;
             if (isNaN(ini)) return;
             if (!map[a.persona_id]) map[a.persona_id] = { dias: new Set(), eventos: new Set() };
             if (a.evento_id) map[a.persona_id].eventos.add(a.evento_id);
@@ -763,8 +765,10 @@ const RRHHModule = {
         const t = this._trabAnio[p.id];
         const vivos = (asigs || []).filter(a => a.estado !== 'cancelada');
         const hoy = new Date().toISOString().slice(0, 10);
-        const futuras = vivos.filter(a => (a.fecha_fin || a.fecha_inicio || '') >= hoy);
-        const pasadas = vivos.filter(a => (a.fecha_fin || a.fecha_inicio || '') < hoy);
+        // fechas TIMESTAMPTZ → normalizo a YYYY-MM-DD para comparar
+        const fdia = (a) => String(a.fecha_fin || a.fecha_inicio || '').slice(0, 10);
+        const futuras = vivos.filter(a => fdia(a) >= hoy);
+        const pasadas = vivos.filter(a => fdia(a) < hoy);
 
         const estadoChip = (estado) => {
             const map = { propuesta: '#F28D15', aprobada: '#00CC88', confirmada: '#00A9C1' };
@@ -772,8 +776,10 @@ const RRHHModule = {
             return `<span class="hr-estado-chip" style="color:${c};background:${c}15;border:1px solid ${c}35;">${estado}</span>`;
         };
         const asigItem = (a) => {
-            const fechas = a.fecha_inicio
-                ? `${this._formatDateShort(a.fecha_inicio)}${a.fecha_fin && a.fecha_fin !== a.fecha_inicio ? ` — ${this._formatDateShort(a.fecha_fin)}` : ''}`
+            const d1 = String(a.fecha_inicio || '').slice(0, 10);
+            const d2 = String(a.fecha_fin || '').slice(0, 10);
+            const fechas = d1
+                ? `${this._formatDateShort(d1)}${d2 && d2 !== d1 ? ` — ${this._formatDateShort(d2)}` : ''}`
                 : 'sin fecha';
             return `
                 <div class="hr-asig" data-evento-id="${a.evento?.id || a.evento_id || ''}" style="border-left-color:${({ propuesta: '#F28D15', aprobada: '#00CC88', confirmada: '#00A9C1' })[a.estado] || '#555'}">
