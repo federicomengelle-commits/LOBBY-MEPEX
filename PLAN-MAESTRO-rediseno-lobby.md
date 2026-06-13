@@ -8,7 +8,28 @@
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
 > **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
 > **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
-> **Baseline actual:** `origin/main` @ `b10f2a4` *(actualizado 2026-06-13 — Fase RRHH v2 cerrada salvo RRHH.5 + infra)*.
+> **Baseline actual:** `origin/main` @ `2cd1163` *(actualizado 2026-06-13 — Fase 9.bis Capa 1 + Capa 2 RLS motor/financiero/comercial)*.
+
+---
+
+## 🗺️ MAPA MACRO — lo que falta *(índice rápido; el detalle, en cada fase abajo)*
+
+- **Fase 4 — Operaciones** ⛔ *trabada por el cotizador*
+  - Remito simple (proyecto/evento) + Subalquileres por proveedor → esperan `cotizacion_items` (stopgap: importador asistido aprobado)
+  - Retirar legacy de Logística (cargas/movimientos viejos)
+- **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
+  - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
+- **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
+- **Fase 7 — CRM "Casos"** — WhatsApp/Gmail/llamadas en timeline · IA (Gemini digest) · clasificación + mailing
+- **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)*
+  - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad
+- **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
+  - ✅ Corridos: motor + tier financiero + tier comercial (RLS manejada por la matriz)
+  - ⏳ **Auditoría de corrección:** 🔴 lock escritura `roles`/`profiles` (que nadie se auto-ascienda) · cerrar `anon` en operativo tabla-por-tabla (**NO** en eventos/clientes/catálogo — los usan encuesta pública y cotizador) · tightear escritura de referencia
+  - Opcional: filtro "Míos" (toggle frontend)
+- **Fase 10 — Remate UI/UX** (Claude Design) — sistema visual + pasada de coherencia
+- **RRHH.5 — Jornales** ⛔ bloqueada por "Rendimiento por evento" (Fase 8)
+- **Tracks paralelos** (no Claude Code): CAD/Diseño 3D · Configurador 2D
 
 ---
 
@@ -195,7 +216,7 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **2B — RLS MANEJADA POR LA MATRIZ (decisión Fede 2026-06-13, clave):** la RLS **lee `roles.permissions`** (la misma matriz del Panel que arregló Capa 1) vía helpers SQL → **el acceso se configura inline desde Roles y Permisos, sin tocar SQL nunca más.** Cambiás un permiso en el Panel y la RLS lo respeta al instante. Hoy el RBAC es **solo frontend** → un taller (o cualquiera con la anon key) puede leer finanzas/comercial por query directa, y `anon` lee TODO (`USING(true)`, ver `sql/rls_*.sql`/`fase1c_rls.sql`). Esto cierra ese agujero **sin esconder filas entre oficina** (es a nivel módulo/tabla, no por fila).
   - **Helpers (`sql/rls_capa2_motor.sql`):** `fn_user_role()` + `fn_role_can(p_module, p_need)` — SECURITY DEFINER (sin recursión), STABLE, leen `roles.permissions` por `auth.uid()` (`profiles.id = auth.uid()` verificado). **superadmin = siempre true** (short-circuit, no te bloqueás). Mapeo: SELECT⇒`read`, INSERT/UPDATE/DELETE⇒`write`, `none`⇒sin acceso.
   - **Tier financiero (`sql/rls_capa2_financiero.sql`):** ingresos/egresos/comprobantes*/asientos/asiento_lineas/cuentas_financieras/plan_cuentas/saldos*/transferencias/plan_cobro*/cobro_aplicaciones/mapeo_cuentas/vencimientos*/conciliaciones/extracto → read = `fn_role_can('finanzas'|'contabilidad','read')`, write = idem write. (Solo admin/superadmin tienen esos módulos → de facto admin-only, pero tuneable.)
-  - **Tier comercial (`sql/rls_capa2_comercial.sql`) ✅ ESCRITO (pre-flight verificado):** cotizaciones+hijas/interacciones/email_templates → gate `crm` (read=crm OR proyectos, write=crm), **sin anon** (taller bloqueado de precios/cotizaciones). `clientes` → **lectura amplia** (authenticated + anon) porque **taller.js lee clientes** (nombre del stand) **y `encuesta.html` (anon) embebe `clientes`**; escritura solo crm. `proyectos` NO acá (operativo: taller lo lee/escribe estado_taller).
+  - **Tier comercial (`sql/rls_capa2_comercial.sql`) ✅ CORRIDO (2026-06-13, pre-flight verificado):** cotizaciones+hijas/interacciones/email_templates → gate `crm` (read=crm OR proyectos, write=crm), **sin anon** (taller bloqueado de precios/cotizaciones). `clientes` → **lectura amplia** (authenticated + anon) porque **taller.js lee clientes** (nombre del stand) **y `encuesta.html` (anon) embebe `clientes`**; escritura solo crm. `proyectos` NO acá (operativo: taller lo lee/escribe estado_taller).
   - **⚠ HALLAZGO (2026-06-13):** `encuesta.html` pública (anon, por token) **embebe `eventos`(nombre/predio/fecha) + `clientes`(razón social)** → **NO cerrar anon en `eventos`/`clientes`** o se rompe la encuesta del cliente. Verificado en encuesta.html:267-268.
   - **Tier operativo → DIFERIDO a la auditoría de corrección:** es "todos ven" (authenticated, coincide con el reframe) → no se gatea por ahora. Su único cambio de seguridad = cerrar `anon`, pero está **enredado con consumidores públicos** (encuesta→eventos/clientes; posibles test-pages→catálogo) → se hace tabla-por-tabla verificando cada consumidor. **Compartidas/referencia** (catálogo/insumos/precios) → **mantener anon** (cotizador externo lee `catalogo_items`), escritura a tightear opcional en la auditoría.
   - **⚠ Riesgo (DB viva):** SQL-first, **tier por tier con rollback** (re-aplicar `USING(true)` revierte; snippet en cada archivo). Fede corre + testea logueado por rol. **El backend service-role (lobby-api) bypassa RLS** → ops admin server-side intactas.
