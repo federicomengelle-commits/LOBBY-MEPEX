@@ -1,7 +1,7 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 49%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 50%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈51%).
-> *(Rebalanceo 2026-06-13: +RRHH.2 hecho. El universo había crecido 2026-06-12 con Fase 9.bis Roles & Permisos ≈3%.)*
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈50%).
+> *(Rebalanceo 2026-06-13: +RRHH.2 +RRHH.3 hechos → mitad del rediseño. El universo había crecido 2026-06-12 con Fase 9.bis Roles & Permisos ≈3%.)*
 > *(Rebalanceo 2026-06-11: el % bajó sin perder trabajo — el universo creció al expandirse la mini-fase RRHH ≈3% en la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
@@ -10,14 +10,14 @@
 
 ---
 
-## Estado general — AVANCE ≈ 49%
+## Estado general — AVANCE ≈ 50%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
 - **Fase 9 — TRANSVERSAL GLOBAL ✅ COMPLETA Y VERIFICADA (charla 03, 2026-06-08):** centro de notificaciones 2 capas (9.1 motor `Alertas` `4ed1278` · 9.2 campana `95aa6b6` · 9.3 página + silenciar `bc466e8`) + categoría GLOBAL en el menú (9.4 `fb3e755`) + stats por usuario / tab Actividad (9.5 `0e100ee`) + lobby home por rol híbrido (9.6 `11f83da`). Ver §Fase 9 abajo.
 - **Desbloqueado para avanzar AHORA (manteniendo el orden):** **Fase 5 — Compras + rentabilidad por proyecto** (siguiente en orden, desbloqueada). Después Fase 6 (Diseño) · Fase 7 (CRM auditoría) · Fase 8 (Finanzas/Contab.) · Fase 10 (Remate UI). **Fase 4** sigue trabada por el cotizador (`cotizacion_items` vacía). **Fase RRHH v2 (diseño cerrado 2026-06-11, blueprint listo) intercalable — RRHH.1–4 sin dependencias.**
 - **📐 DISEÑO RRHH v2 CERRADO (charla 04, 2026-06-11 — solo diseño, sin código):** módulo RRHH completo estilo CRM en 5 tabs (Panel / Nómina con ficha sub-tabs / Planificación grilla persona×días / Ausencias / Jornales lente-persona) + DDL + migración legacy + 5 etapas → **`docs/modulo-rrhh-v2-blueprint.md`** (SPEC obligatoria) + fase en PLAN-MAESTRO. Verificado contra prod: `personas.cuil`/`fecha_nacimiento` YA existen (SQL del repo desfasado); `direccion`/`cbu_alias`/`contacto_emergencia` NO. Decisiones Fede: sin presentismo (ausencias por excepción) · docs solo fechas+semáforo · sin self-service · jornales: la CARGA vive en Finanzas. **Spin-off:** "Rendimiento por evento" (planilla de costos que reemplaza el Excel de Lelean + dashboard de ganancia por evento) → prompt entregado para charla aparte, anotado en PLAN-MAESTRO §Fase 8; RRHH.5 depende de esa pieza.
-- **Baseline:** `origin/main` al día (`385d131`). Branch dev: `rediseno` (= main).
+- **Baseline:** `origin/main` al día (`7023857`). Branch dev: `rediseno` (= main).
 - **🔄 SYNC 2026-06-12:** verificado que Fases G/H de Finanzas YA están codeadas en main + SQL G.5/H corridos en prod (detalle en PLAN-MAESTRO §Fase 8 — NO re-implementar). Decisiones Fede de hoy: **importador asistido de `cotizacion_items` APROBADO** (stopgap del cuello de botella Fase 4) + **loop deploy VPS aprobado** (endpoint /deploy + no-cache + backup pg_dump).
 - **🆕 SESIÓN 2026-06-12 — Infra de autonomía + RRHH.1 (ver §Infra y §Fase RRHH v2 abajo):**
   - **Infra/red de seguridad** (commits `6edea4e` + `3553e9d`, pusheados): `tools/check.sh` (smoke-check pre-push: sintaxis + console.log DEBUG + bumps `?v=`), `tools/mapa-tablas.js` → `docs/mapa-tablas.md` (85 tablas ↔ código, para retiros de legacy seguros), `sql/snapshot_schema.sql` (dump information_schema + verificación G.1/mapeos), endpoint `/deploy` en `lobby-api` + `tools/vps/backup-supabase.sh` + `docs/vps-deploy-loop.md` (guía A/B/C). **Falta:** instalación guiada en el VPS (descubrimiento hecho: nginx + pm2 `lobby-api` en `/home/mepex/lobby-api` fuera del repo → `REPO_DIR`; `pg_dump` falta instalar; **listmonk ya instalado** → candidato E3 mailing).
@@ -26,9 +26,10 @@
 - **🆕 SESIÓN 2026-06-13 — RRHH.2 + schema snapshot (ver §Fase RRHH v2):**
   - **`docs/schema-prod.md` ✅** (commit `95b74cd`): snapshot completo de ~80 tablas de prod (vía `sql/snapshot_schema.sql` que corrió Fede). Fuente de verdad del schema. **Hallazgo:** `cotizacion_items` ya tiene schema RICO (no necesita ALTER para B4); link cotización↔proyecto vía `cotizaciones.project_id`; propio/subalq deriva de `catalogo_items.tipo_receta`.
   - **RRHH.2 ✅ PUSHEADO** (commits `22a5829`+`385d131`): tab Ausencias + saldos vacaciones + retiro lecturas legacy `rrhh_*`. SQL `sql/rrhh2_ausencias.sql` corrido por Fede. Verificado end-to-end en prod. Ver §Fase RRHH v2.
+  - **RRHH.3 ✅ PUSHEADO** (commits `d7cb1f9`+`7023857`): tab Planificación — grilla persona operativa × quincena + banner aprobar convocatorias. Sin DDL (lee asignaciones_evento + ausencias + eventos). Verificado end-to-end en prod (grilla, navegación, aprobar, conflicto). Ver §Fase RRHH v2.
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-13 (sesión "mecha" cont. — **RRHH.1 + RRHH.2 pusheadas** + schema snapshot). Próximo: **RRHH.3** (Planificación grilla persona×días) o la fase que Fede priorice. Pendiente de Fede: pull en VPS + verificación visual RRHH.1/2 + instalación guiada del loop de deploy + correr los DROP comentados de `sql/rrhh2_ausencias.sql` (con backup) para retirar las 3 tablas `rrhh_*` muertas.
+- **Última actualización:** 2026-06-13 (sesión "mecha" cont. — **RRHH.1 + RRHH.2 + RRHH.3 pusheadas** = mitad del rediseño + schema snapshot). Próximo: **RRHH.4** (Panel KPIs + Docs con semáforo + `persona_documentos` + alerta `documento_por_vencer`) o la fase que Fede priorice. Pendiente de Fede: pull en VPS + verificación visual RRHH.1/2/3 + instalación guiada del loop de deploy + correr los DROP comentados de `sql/rrhh2_ausencias.sql` (con backup).
 
 ---
 
@@ -287,9 +288,9 @@ Red de seguridad + velocidad para que las sesiones autónomas no rompan prod (id
 - **`sql/snapshot_schema.sql`** — UN SQL que devuelve information_schema completo + verificación G.1/mapeos/apertura. Fede lo corre, pega el JSON, se versiona en `docs/schema-prod.md`. (⏳ pendiente que Fede pegue el resultado.)
 - **Loop deploy VPS** (código listo, ⏳ instalación guiada pendiente): endpoint `POST /deploy` en `lobby-api/index.js` (auth superadmin JWT o header `X-Deploy-Token`; hace `git pull --ff-only`, necesita `REPO_DIR=/home/mepex/lobby` en `.env` porque lobby-api vive fuera del repo) · `tools/vps/backup-supabase.sh` (pg_dump + rotación 30d + cron) · guía completa en `docs/vps-deploy-loop.md` (§0 descubrimiento ya hecho · §A /deploy · §B no-cache nginx para index.html · §C backup). Falta: instalar `pg_dump`, agregar el `location` no-cache en nginx, setear el cron. **Descubrimiento VPS** → `memory/reference_vps_layout.md` (nginx + pm2 cotizador/lobby/mepex-api · **listmonk instalado** = candidato E3 mailing).
 
-## FASE RRHH v2 — RRHH.1 + RRHH.2 ✅ (sesión 2026-06-12/13, PUSHEADO a main)
+## FASE RRHH v2 — RRHH.1 + RRHH.2 + RRHH.3 ✅ (sesión 2026-06-12/13, PUSHEADO a main)
 
-> Blueprint: `docs/modulo-rrhh-v2-blueprint.md`. SQL-first respetado. Tab Nómina v2 + tab Ausencias listos; quedan RRHH.3 (Planificación) · RRHH.4 (Panel+Docs) · RRHH.5 (Jornales, bloqueada por Finanzas).
+> Blueprint: `docs/modulo-rrhh-v2-blueprint.md`. SQL-first respetado. Tabs Nómina v2 + Planificación + Ausencias listos; quedan RRHH.4 (Panel+Docs) · RRHH.5 (Jornales, bloqueada por Finanzas).
 
 ### RRHH.1 — Nómina v2
 
@@ -312,7 +313,16 @@ Red de seguridad + velocidad para que las sesiones autónomas no rompan prod (id
 - **Verificado end-to-end en prod** (tablas ya existían): crear ausencia "Franco" 2026-06-15 → tabla muestra **15/6** (sin desfase) + días hábiles=1 + DB OK; data de prueba limpiada. Cero errores de consola.
 - **⏳ Pendiente de Fede:** pull en VPS + verificación visual + correr los DROP comentados (con backup).
 
+### RRHH.3 — Planificación (grilla persona × quincena) (`rrhh.js?v=11`, commits `d7cb1f9`+`7023857`)
+- **Sin DDL** — lee `asignaciones_evento` + `ausencias` + `eventos` (color). 3ª tab, entre Nómina y Ausencias.
+- **Grilla persona operativa × 14 días** (quincena navegable ‹ Hoy ›, arranca el lunes de la semana), filtrable por rol operativo. Solo personas con `roles_operativos` no vacío (decisión Fede; evita ruido de oficina/ventas).
+- **Celda:** color del evento / gris ausencia / **rojo conflicto** (2+ eventos distintos, o evento+ausencia el mismo día) / rayado = propuesta sin aprobar / vacío = libre. Tooltip con detalle, hoy resaltado, finde sombreado, click en bloque → deep-link al evento.
+- **Banner de convocatorias pendientes** (`estado='propuesta'`) con **Aprobar** (`API.approveAsignacionEvento`) + Rechazar (`deleteAsignacionEvento`, soft-delete con confirm) inline. Centraliza lo que estaba repartido en Logística/Calendario. **Solo ver + aprobar** — asignar sigue en Eventos (decisión Fede).
+- **Review adversarial** (3 lentes, opus-4-8) → 1 medio + 3 menor; arreglados los 3 accionables (`7023857`): (1) **off-by-one nocturno** — `fill()` + banner usaban `slice(0,10)` del TIMESTAMPTZ en UTC → una asignación 21–24h ART se pintaba un día tarde; ahora usan `_toLocalDate` (día local). Verificado: `2026-05-29T01:00Z` → 28/5 (era 29/5). (2) `evento.color` escapado con `_h` en el `style=`. (3) fecha del banner normalizada. Los 2 edge-cases restantes (banner muestra convocatorias de gente fuera de la grilla; propuesta que duplica una aprobada del mismo evento no se ve rayada) quedaron **documentados, no arreglados** (baja frecuencia, el banner igual las surfacea).
+- **Verificado end-to-end en prod** (data real): grilla con bloques "Feria del Libro", navegación, aprobar convocatoria por botón (banner→vacío, DB→aprobada), conflicto rojo evento+ausencia. Data de prueba limpiada. Cero errores de consola.
+- **⏳ Pendiente de Fede:** pull en VPS + verificación visual.
+
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
-- **RRHH.3–4** (sin dependencias externas, intercalables): Planificación grilla persona×días · Panel+Docs+alerta `documento_por_vencer`. RRHH.5 (Jornales) bloqueada por "Rendimiento por evento" (Finanzas).
+- **RRHH.4** (sin dependencias externas): tab Panel KPIs + sub-tab Docs con semáforo + tabla `persona_documentos` (DDL) + generador `documento_por_vencer` en Alertas. RRHH.5 (Jornales) bloqueada por "Rendimiento por evento" (Finanzas).
 - **B4 — Importador `cotizacion_items`** (APROBADO 2026-06-12): stopgap que desbloquea remito + subalquileres de Fase 4. **🔄 CORRECCIÓN tras snapshot completo (`docs/schema-prod.md`, 2026-06-13):** `cotizacion_items` NO es minimalista — tiene schema RICO ya listo (`nombre/codigo/unidad/rubro/categoria/catalogo_item_id/precio_unitario_base/precio_unitario_ajustado/cantidad/subtotal_linea/espacio_id/...`); está vacía de FILAS, no de columnas. El link cotización↔proyecto YA EXISTE (`cotizaciones.project_id` en inglés). Propio/subalq se DERIVA del JOIN `cotizacion_items.catalogo_item_id → catalogo_items.tipo_receta`. **→ NO hace falta ALTER.** Solo falta: decisión de Fede sobre el formato de entrada del importador (pegar texto/CSV del cotizador/Maple) + un ejemplo real de output del cotizador para armar el parser.
 - Fases 3–10: capa de Activos, Taller+Logística+Subalquileres, Compras+rentabilidad, Diseño, CRM, Finanzas+Contabilidad, Notificaciones+stats, Remate UI.
