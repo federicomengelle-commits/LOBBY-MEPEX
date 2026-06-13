@@ -398,6 +398,17 @@ const RRHHModule = {
         return ((a + b).toUpperCase()) || '?';
     },
 
+    // Escape para texto libre (sirve para HTML text y para value="..." de inputs).
+    _h(v) {
+        if (v === null || v === undefined) return '';
+        return String(v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
     // Convierte una persona del schema nuevo al shape que esperan los renders existentes.
     // Esto es compat layer: nuevas columnas viven en _raw para acceso completo.
     _mapPersonaToLegacyShape(p) {
@@ -524,13 +535,13 @@ const RRHHModule = {
                                         const tipoColor = this._getTipoColor(p.tipo);
                                         const estadoColor = this._getEstadoColor(p.estado);
                                         const displayName = p.tipo === 'cuadrilla' && p.cantidad_personas
-                                            ? `${p.nombre} <span class="rh-cuadrilla-count">${p.cantidad_personas} pers.</span>`
-                                            : p.nombre;
+                                            ? `${this._h(p.nombre)} <span class="rh-cuadrilla-count">${p.cantidad_personas} pers.</span>`
+                                            : this._h(p.nombre);
                                         const rolesOp = (p._raw?.roles_operativos) || [];
                                         const rolesHtml = rolesOp.length
-                                            ? rolesOp.slice(0, 3).map(r => `<span class="hr-rol-chip">${this._rolLabel(r)}</span>`).join(' ')
+                                            ? rolesOp.slice(0, 3).map(r => `<span class="hr-rol-chip">${this._h(this._rolLabel(r))}</span>`).join(' ')
                                               + (rolesOp.length > 3 ? ` <span class="hr-rol-chip" style="opacity:0.6">+${rolesOp.length - 3}</span>` : '')
-                                            : `<span style="color:var(--text-dim);font-size:0.78rem;">${p.rol || '—'}</span>`;
+                                            : `<span style="color:var(--text-dim);font-size:0.78rem;">${this._h(p.rol) || '—'}</span>`;
                                         const wa = this._waLink(p.telefono);
                                         const dias = this._diasAnio(p.id);
                                         return `
@@ -538,7 +549,7 @@ const RRHHModule = {
                                                 <td class="rh-cell-name" data-label="Nombre">${displayName}</td>
                                                 <td data-label="Roles">${rolesHtml}</td>
                                                 <td data-label="Tipo"><span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span></td>
-                                                <td data-label="Teléfono">${wa ? `<a class="hr-wa-link" href="${wa}" target="_blank" rel="noopener" data-stop>📱 ${p.telefono}</a>` : `<span class="rh-mono">${p.telefono || '—'}</span>`}</td>
+                                                <td data-label="Teléfono">${wa ? `<a class="hr-wa-link" href="${wa}" target="_blank" rel="noopener" data-stop>📱 ${this._h(p.telefono)}</a>` : `<span class="rh-mono">${this._h(p.telefono) || '—'}</span>`}</td>
                                                 <td class="rh-mono" data-label="Edad">${this._calcEdad(p.fecha_nacimiento)}</td>
                                                 <td class="rh-mono" data-label="Antigüedad">${this._calcAntiguedad(p.fecha_ingreso)}</td>
                                                 <td data-label="Días año">${dias ? `<span class="hr-dias-anio">${dias}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
@@ -630,7 +641,7 @@ const RRHHModule = {
                 <div class="hr-p-identity">
                     <div class="hr-p-avatar">${this._initials(p)}</div>
                     <div>
-                        <h3 class="hr-p-name">${p.nombre}${p.tipo === 'cuadrilla' && p.cantidad_personas ? ` <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem;">· ${p.cantidad_personas} pers.</span>` : ''}</h3>
+                        <h3 class="hr-p-name">${this._h(p.nombre)}${p.tipo === 'cuadrilla' && p.cantidad_personas ? ` <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem;">· ${p.cantidad_personas} pers.</span>` : ''}</h3>
                         <div class="hr-p-badges">
                             <span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span>
                             <span class="rh-estado-dot" style="background:${estadoColor}"></span>
@@ -638,8 +649,8 @@ const RRHHModule = {
                         </div>
                     </div>
                 </div>
-                ${rolesOp.length ? `<div class="hr-p-roles">${rolesOp.map(r => `<span class="hr-rol-chip">${this._rolLabel(r)}</span>`).join('')}</div>` : ''}
-                ${p.rol ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${p.rol}</div>` : ''}
+                ${rolesOp.length ? `<div class="hr-p-roles">${rolesOp.map(r => `<span class="hr-rol-chip">${this._h(this._rolLabel(r))}</span>`).join('')}</div>` : ''}
+                ${p.rol ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${this._h(p.rol)}</div>` : ''}
 
                 <div class="hr-subtabs">
                     <button class="hr-subtab ${this._panelTab === 'datos' ? 'active' : ''}" data-ptab="datos">Datos</button>
@@ -673,7 +684,7 @@ const RRHHModule = {
             const field = (label, value, mono = false, full = false) => `
                 <div class="hr-field ${full ? 'hr-field-full' : ''}">
                     <span class="hr-f-label">${label}</span>
-                    <span class="hr-f-value ${mono ? 'mono' : ''}">${value || '—'}</span>
+                    <span class="hr-f-value ${mono ? 'mono' : ''}">${value !== null && value !== undefined && value !== '' ? this._h(value) : '—'}</span>
                 </div>`;
             body.innerHTML = `
                 <div class="hr-sec-title">Contacto</div>
@@ -784,10 +795,10 @@ const RRHHModule = {
             return `
                 <div class="hr-asig" data-evento-id="${a.evento?.id || a.evento_id || ''}" style="border-left-color:${({ propuesta: '#F28D15', aprobada: '#00CC88', confirmada: '#00A9C1' })[a.estado] || '#555'}">
                     <div class="hr-asig-top">
-                        <span class="hr-asig-evento">${a.evento?.nombre || 'Evento'}</span>
+                        <span class="hr-asig-evento">${this._h(a.evento?.nombre || 'Evento')}</span>
                         ${estadoChip(a.estado)}
                     </div>
-                    <div class="hr-asig-meta">${this._capitalize(a.fase || '')}${a.rol ? ` · ${a.rol}` : ''} · <span class="rh-mono">${fechas}</span></div>
+                    <div class="hr-asig-meta">${this._h(this._capitalize(a.fase || ''))}${a.rol ? ` · ${this._h(a.rol)}` : ''} · <span class="rh-mono">${fechas}</span></div>
                 </div>`;
         };
 
@@ -843,15 +854,15 @@ const RRHHModule = {
                     <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;">
                         <div>
                             <label class="form-label">Nombre *</label>
-                            <input type="text" id="rhPNombre" class="form-input" value="${item?.nombre || ''}" placeholder="Nombre completo o referente cuadrilla" style="padding:10px;">
+                            <input type="text" id="rhPNombre" class="form-input" value="${this._h(item?.nombre)}" placeholder="Nombre completo o referente cuadrilla" style="padding:10px;">
                         </div>
                         <div>
                             <label class="form-label">DNI</label>
-                            <input type="text" id="rhPDni" class="form-input" value="${raw.dni || ''}" placeholder="12345678" style="padding:10px;font-family:'Space Mono',monospace;">
+                            <input type="text" id="rhPDni" class="form-input" value="${this._h(raw.dni)}" placeholder="12345678" style="padding:10px;font-family:'Space Mono',monospace;">
                         </div>
                         <div>
                             <label class="form-label">CUIL</label>
-                            <input type="text" id="rhPCuil" class="form-input" value="${item?.cuil || ''}" placeholder="20-12345678-9" maxlength="13" style="padding:10px;font-family:'Space Mono',monospace;">
+                            <input type="text" id="rhPCuil" class="form-input" value="${this._h(item?.cuil)}" placeholder="20-12345678-9" maxlength="13" style="padding:10px;font-family:'Space Mono',monospace;">
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
@@ -881,31 +892,31 @@ const RRHHModule = {
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                         <div>
                             <label class="form-label">Teléfono</label>
-                            <input type="text" id="rhPTel" class="form-input" value="${item?.telefono || ''}" placeholder="11 1234-5678" style="padding:10px;">
+                            <input type="text" id="rhPTel" class="form-input" value="${this._h(item?.telefono)}" placeholder="11 1234-5678" style="padding:10px;">
                         </div>
                         <div>
                             <label class="form-label">Email</label>
-                            <input type="email" id="rhPEmail" class="form-input" value="${item?.email || ''}" placeholder="email@ejemplo.com" style="padding:10px;">
+                            <input type="email" id="rhPEmail" class="form-input" value="${this._h(item?.email)}" placeholder="email@ejemplo.com" style="padding:10px;">
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                         <div>
                             <label class="form-label">Dirección</label>
-                            <input type="text" id="rhPDireccion" class="form-input" value="${raw.direccion || ''}" placeholder="Calle 123, Localidad" style="padding:10px;">
+                            <input type="text" id="rhPDireccion" class="form-input" value="${this._h(raw.direccion)}" placeholder="Calle 123, Localidad" style="padding:10px;">
                         </div>
                         <div>
                             <label class="form-label">Referente / contacto (cuadrilla)</label>
-                            <input type="text" id="rhPContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Persona de contacto" style="padding:10px;">
+                            <input type="text" id="rhPContacto" class="form-input" value="${this._h(item?.contacto)}" placeholder="Persona de contacto" style="padding:10px;">
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                         <div>
                             <label class="form-label">Contacto de emergencia</label>
-                            <input type="text" id="rhPEmerNombre" class="form-input" value="${raw.contacto_emergencia_nombre || ''}" placeholder="Nombre" style="padding:10px;">
+                            <input type="text" id="rhPEmerNombre" class="form-input" value="${this._h(raw.contacto_emergencia_nombre)}" placeholder="Nombre" style="padding:10px;">
                         </div>
                         <div>
                             <label class="form-label">Teléfono de emergencia</label>
-                            <input type="text" id="rhPEmerTel" class="form-input" value="${raw.contacto_emergencia_telefono || ''}" placeholder="Teléfono" style="padding:10px;">
+                            <input type="text" id="rhPEmerTel" class="form-input" value="${this._h(raw.contacto_emergencia_telefono)}" placeholder="Teléfono" style="padding:10px;">
                         </div>
                     </div>
 
@@ -934,7 +945,7 @@ const RRHHModule = {
                     </div>
                     <div>
                         <label class="form-label">Rol descriptivo</label>
-                        <input type="text" id="rhPRol" class="form-input" value="${item?.rol || ''}" placeholder="Ej: Armador senior, Chofer Iveco" style="padding:10px;">
+                        <input type="text" id="rhPRol" class="form-input" value="${this._h(item?.rol)}" placeholder="Ej: Armador senior, Chofer Iveco" style="padding:10px;">
                         <div style="font-size:0.7rem;color:#888;margin-top:4px;">Texto libre para descripción interna. Para que la persona aparezca en Logística, marcá abajo sus roles operativos.</div>
                     </div>
                     <div>
@@ -958,22 +969,20 @@ const RRHHModule = {
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                         <div>
                             <label class="form-label">Banco</label>
-                            <input type="text" id="rhPBanco" class="form-input" value="${raw.banco || ''}" placeholder="Galicia, Mercado Pago…" style="padding:10px;">
+                            <input type="text" id="rhPBanco" class="form-input" value="${this._h(raw.banco)}" placeholder="Galicia, Mercado Pago…" style="padding:10px;">
                         </div>
                         <div>
                             <label class="form-label">CBU / Alias</label>
-                            <input type="text" id="rhPCbu" class="form-input" value="${raw.cbu_alias || ''}" placeholder="alias.de.pago" style="padding:10px;font-family:'Space Mono',monospace;">
+                            <input type="text" id="rhPCbu" class="form-input" value="${this._h(raw.cbu_alias)}" placeholder="alias.de.pago" style="padding:10px;font-family:'Space Mono',monospace;">
                         </div>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                        <div>
-                            <label class="form-label">Documentación</label>
-                            <input type="text" id="rhPDoc" class="form-input" value="${item?.documentacion || ''}" placeholder="DNI, ART, habilitaciones..." style="padding:10px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Notas</label>
-                            <input type="text" id="rhPNotas" class="form-input" value="${(item?.notas || '').replace(/"/g, '&quot;')}" placeholder="Observaciones" style="padding:10px;">
-                        </div>
+                    <div>
+                        <label class="form-label">Documentación</label>
+                        <input type="text" id="rhPDoc" class="form-input" value="${this._h(item?.documentacion)}" placeholder="DNI, ART, habilitaciones..." style="padding:10px;">
+                    </div>
+                    <div>
+                        <label class="form-label">Notas</label>
+                        <textarea id="rhPNotas" class="form-input" rows="2" placeholder="Observaciones" style="padding:10px;resize:vertical;">${this._h(item?.notas)}</textarea>
                     </div>
                 </div>
             `,
