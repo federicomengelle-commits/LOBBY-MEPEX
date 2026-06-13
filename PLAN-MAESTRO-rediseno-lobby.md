@@ -1,12 +1,12 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 50%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 49%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈50%). No repetir acá lo que está en PROGRESO.
-> *(Rebalanceo 2026-06-13: −RRHH.2 −RRHH.3 hechos → mitad del rediseño. El universo había crecido 2026-06-12 con la Fase 9.bis "Roles & Permisos: fuente única + scoping por fila/RLS" ≈3%.)*
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈51%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-13: −RRHH.2/3/4 → Fase RRHH v2 cerrada salvo RRHH.5 (bloqueada). El universo había crecido 2026-06-12 con la Fase 9.bis "Roles & Permisos" ≈3%.)*
 > *(Rebalanceo 2026-06-11: el universo creció — la mini-fase RRHH ≈3% se expandió a la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
 > **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
 > **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
-> **Baseline actual:** `origin/main` @ `7023857` *(actualizado 2026-06-13 — RRHH.1/2/3 + infra)*.
+> **Baseline actual:** `origin/main` @ `b10f2a4` *(actualizado 2026-06-13 — Fase RRHH v2 cerrada salvo RRHH.5 + infra)*.
 
 ---
 
@@ -43,12 +43,15 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **2C limpieza** hecha (commit `5687973`): CSS muerto `.mkt-*`, comentarios stale RECURSOS→ACTIVOS, color del audit-log. `undo.js` verificado vivo. (`.cal-*` NO se borra: lo usa el mini-calendario del Lobby.)
 - **2B auditada y DIFERIDA** → `AUDITORIA-2B-duplicados.md`. Los 3 duplicados (`personas`/`rrhh_*`; `vehiculos`/`logistica_*`; checklists) **no se consolidan ahora** — se absorben en Fases 3/4 y en la mini-fase RRHH (abajo), porque consolidar antes de reescribir esos módulos sería retrabajo.
 
-### 🆕 Fase RRHH v2 — módulo completo estilo CRM *(diseño cerrado 2026-06-11 · ≈2% restante · EN CURSO)*
-- **✅ RRHH.1 + RRHH.2 + RRHH.3 HECHAS Y PUSHEADAS (2026-06-12/13 — ver PROGRESO §Fase RRHH v2):** RRHH.1 = ALTER `personas` + Nómina v2 estilo CRM. RRHH.2 = tab Ausencias + saldos + retiro lecturas legacy `rrhh_asignaciones`/`rrhh_vacaciones*` (3 DROPeables; `rrhh_personal` hasta Fase 4). RRHH.3 = tab Planificación (grilla persona operativa × quincena + aprobar convocatorias inline, sin DDL). Las tres verificadas end-to-end en prod + review adversarial. ⏳ Falta pull de Fede + verificación visual + correr los DROP comentados de `sql/rrhh2_ausencias.sql` con backup. **Restante de la fase: RRHH.4 (+ RRHH.5 bloqueada).**
+### 🆕 Fase RRHH v2 — módulo completo estilo CRM *(✅ CERRADA salvo RRHH.5 · ≈0.5% restante bloqueado)*
+- **✅ RRHH.1/2/3/4 HECHAS Y PUSHEADAS (2026-06-12/13 — ver PROGRESO §Fase RRHH v2):** 4 tabs operativas (Panel landing · Nómina v2 · Planificación · Ausencias) + ficha con sub-tabs Datos/Trabajo/Docs/Notas + alertas (ausencias solicitadas, docs por vencer). Todas verificadas end-to-end en prod + review adversarial. El módulo RRHH quedó **completo y usable**.
+- **⛔ Único restante — RRHH.5 Jornales** (lente read-only por persona, ≈0.5%): **bloqueada** por la pieza "Rendimiento por evento" de Finanzas (Fase 8) que define el contrato de los ítems jornal. Se enchufa cuando esa pieza exista.
+- **⏳ Pendientes de Fede (no bloquean):** pull en VPS + verificación visual de las 4 tabs + correr los **DROP comentados** de `sql/rrhh2_ausencias.sql` (con backup) para retirar `rrhh_asignaciones`/`rrhh_vacaciones`/`rrhh_vacaciones_solicitudes` (`rrhh_personal` sigue hasta Fase 4).
+- **🔮 Idea futura (Fede 2026-06-13):** **evaluaciones de desempeño** por persona (no es un doc con vencimiento; sería una sección/feature aparte en la ficha). A diseñar más adelante.
 - **📘 SPEC OBLIGATORIA: `docs/modulo-rrhh-v2-blueprint.md`** (decisiones, DDL, migración, etapas, tests). El retiro de `rrhh_personal` se cierra en **Fase 4** (lo leen `eventos.js`/`api.js getEventoTransporte` vía el flujo `logistica_movimientos`). Usar `docs/mapa-tablas.md` (regenerable) + `tools/vps/backup-supabase.sh` antes de cualquier DROP.
 - **5 tabs estilo CRM** (`.hr-*`): **Panel** (KPIs: activos, trabajando hoy, ausentes, convocatorias, docs por vencer, cumpleaños) · **Nómina** (tabla + panel lateral con sub-tabs Datos/Trabajo/Ausencias/Docs/Notas; ficha completa: dirección, emergencia, CBU/banco, situación previsional — `cuil`/`fecha_nacimiento` YA están en prod, verificado) · **Planificación** (grilla persona × días: asignaciones por color, ausencias gris, conflictos rojo + aprobar convocatorias inline) · **Ausencias** (vacaciones/enfermedad/licencia/franco/falta + saldo anual, sin presentismo diario — solo excepciones) · **Jornales** (lente POR PERSONA, read-only).
 - **Decisiones Fede:** sin presentismo · docs solo fechas+semáforo (sin archivos) · sin self-service (todo carga admin; taller no ve RRHH) · sueldos internos FUERA (viven en Finanzas) · la CARGA de jornales vive en Finanzas ("Planilla del evento", ver Fase 8).
-- **Etapas** (cada una deployable, SQL-first): ~~RRHH.1 ficha+Nómina v2~~ ✅ **HECHA** → ~~RRHH.2 Ausencias+migración+retiro legacy~~ ✅ **HECHA** → ~~RRHH.3 Planificación~~ ✅ **HECHA** → RRHH.4 Panel+Docs+alerta `documento_por_vencer` (≈1.5%) → RRHH.5 Jornales (≈0.5%, **⛔ bloqueada por la pieza "Rendimiento por evento" de Finanzas**; el resto NO depende de nada).
+- **Etapas** (cada una deployable, SQL-first): ~~RRHH.1 ficha+Nómina v2~~ ✅ → ~~RRHH.2 Ausencias+migración+retiro legacy~~ ✅ → ~~RRHH.3 Planificación~~ ✅ → ~~RRHH.4 Panel+Docs+alerta `documento_por_vencer`~~ ✅ **HECHAS** → RRHH.5 Jornales (≈0.5%, **⛔ bloqueada por la pieza "Rendimiento por evento" de Finanzas**).
 - **No cambia:** asignar gente sigue en Eventos por jornada; Logística/Calendario intactos; notifs de convocatoria se reusan.
 
 ### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
