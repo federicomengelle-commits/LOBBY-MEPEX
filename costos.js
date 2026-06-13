@@ -1443,8 +1443,8 @@ const CostosModule = {
         if (!panel || !inner) return;
 
         panel.classList.add('open');
-        panel.classList.remove('costos-panel-full');   // insumo = drawer lateral (no full)
-        panel.onclick = null;
+        panel.classList.add('costos-panel-full');       // F3 — misma facha que Recetas (pantalla completa)
+        panel.onclick = (e) => { if (e.target === panel) this._closePanel(); };
 
         // Highlight row
         document.querySelectorAll('.costos-table-row').forEach(r => r.classList.remove('active'));
@@ -1511,7 +1511,9 @@ const CostosModule = {
                     </button>
                 </div>
 
-                <div class="costos-ficha-body" style="padding:0 20px;">
+                <div class="costos-ficha-body" style="padding:0;">
+                    <div class="costos-ed-grid">
+                    <div class="costos-ed-left">
 
                     <!-- DATOS BÁSICOS -->
                     <div class="costos-receta-config-block">
@@ -1585,6 +1587,9 @@ const CostosModule = {
                         ` : ''}
                     </div>
 
+                    </div>
+                    <div class="costos-ed-right">
+
                     ${this._renderAmortizacionSection(item)}
 
                     <!-- NOTAS -->
@@ -1597,6 +1602,8 @@ const CostosModule = {
                     </div>
 
                     ${historialHtml}
+                    </div>
+                    </div>
                 </div>
 
                 <div class="costos-ficha-actions">
