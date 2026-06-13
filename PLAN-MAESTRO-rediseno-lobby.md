@@ -1,11 +1,12 @@
 # PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 51%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈46%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈49%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-13: −RRHH.2 hecho. El universo había crecido 2026-06-12 con la Fase 9.bis "Roles & Permisos: fuente única + scoping por fila/RLS" ≈3%.)*
 > *(Rebalanceo 2026-06-11: el universo creció — la mini-fase RRHH ≈3% se expandió a la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
 > **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
 > **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
-> **Baseline actual:** `origin/main` @ `7edb00a` *(actualizado 2026-06-12 — RRHH.1 + infra)*.
+> **Baseline actual:** `origin/main` @ `385d131` *(actualizado 2026-06-13 — RRHH.1 + RRHH.2 + infra)*.
 
 ---
 
@@ -42,12 +43,12 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **2C limpieza** hecha (commit `5687973`): CSS muerto `.mkt-*`, comentarios stale RECURSOS→ACTIVOS, color del audit-log. `undo.js` verificado vivo. (`.cal-*` NO se borra: lo usa el mini-calendario del Lobby.)
 - **2B auditada y DIFERIDA** → `AUDITORIA-2B-duplicados.md`. Los 3 duplicados (`personas`/`rrhh_*`; `vehiculos`/`logistica_*`; checklists) **no se consolidan ahora** — se absorben en Fases 3/4 y en la mini-fase RRHH (abajo), porque consolidar antes de reescribir esos módulos sería retrabajo.
 
-### 🆕 Fase RRHH v2 — módulo completo estilo CRM *(diseño cerrado 2026-06-11 · ≈5.5% restante · DDL · EN CURSO)*
-- **✅ RRHH.1 HECHA Y PUSHEADA (2026-06-12 — ver PROGRESO §Fase RRHH v2):** ALTER `personas` (7 cols) + Nómina v2 estilo CRM (tabla + panel lateral Datos/Trabajo/Notas + form ampliado + días/año + WhatsApp). Verificada en preview + review adversarial. ⏳ Falta pull de Fede + verificación visual. **Restante de la fase: RRHH.2/3/4 (+ RRHH.5 bloqueada).**
-- **📘 SPEC OBLIGATORIA: `docs/modulo-rrhh-v2-blueprint.md`** (decisiones, DDL, migración, etapas, tests). Absorbe la ex mini-fase RRHH (≈3%, auditoría 2B): la migración de vacaciones + retiro de las 4 tablas `rrhh_*` es la etapa RRHH.2. **Para RRHH.2 usar `docs/mapa-tablas.md`** (autogenerado) para cazar TODAS las lecturas de `rrhh_personal`/`rrhh_asignaciones`/`rrhh_vacaciones`/`rrhh_vacaciones_solicitudes` antes del DROP — y `tools/vps/backup-supabase.sh` corriendo antes de dropear.
+### 🆕 Fase RRHH v2 — módulo completo estilo CRM *(diseño cerrado 2026-06-11 · ≈3.5% restante · DDL · EN CURSO)*
+- **✅ RRHH.1 + RRHH.2 HECHAS Y PUSHEADAS (2026-06-12/13 — ver PROGRESO §Fase RRHH v2):** RRHH.1 = ALTER `personas` + Nómina v2 estilo CRM. RRHH.2 = tab Ausencias + saldos vacaciones + retiro de lecturas legacy `rrhh_asignaciones`/`rrhh_vacaciones*` (las 3 quedaron DROPeables; `rrhh_personal` sigue hasta Fase 4). Ambas verificadas end-to-end en prod + review adversarial. ⏳ Falta pull de Fede + verificación visual + correr los DROP comentados de `sql/rrhh2_ausencias.sql` con backup. **Restante de la fase: RRHH.3/4 (+ RRHH.5 bloqueada).**
+- **📘 SPEC OBLIGATORIA: `docs/modulo-rrhh-v2-blueprint.md`** (decisiones, DDL, migración, etapas, tests). El retiro de `rrhh_personal` se cierra en **Fase 4** (lo leen `eventos.js`/`api.js getEventoTransporte` vía el flujo `logistica_movimientos`). Usar `docs/mapa-tablas.md` (regenerable) + `tools/vps/backup-supabase.sh` antes de cualquier DROP.
 - **5 tabs estilo CRM** (`.hr-*`): **Panel** (KPIs: activos, trabajando hoy, ausentes, convocatorias, docs por vencer, cumpleaños) · **Nómina** (tabla + panel lateral con sub-tabs Datos/Trabajo/Ausencias/Docs/Notas; ficha completa: dirección, emergencia, CBU/banco, situación previsional — `cuil`/`fecha_nacimiento` YA están en prod, verificado) · **Planificación** (grilla persona × días: asignaciones por color, ausencias gris, conflictos rojo + aprobar convocatorias inline) · **Ausencias** (vacaciones/enfermedad/licencia/franco/falta + saldo anual, sin presentismo diario — solo excepciones) · **Jornales** (lente POR PERSONA, read-only).
 - **Decisiones Fede:** sin presentismo · docs solo fechas+semáforo (sin archivos) · sin self-service (todo carga admin; taller no ve RRHH) · sueldos internos FUERA (viven en Finanzas) · la CARGA de jornales vive en Finanzas ("Planilla del evento", ver Fase 8).
-- **Etapas** (cada una deployable, SQL-first): ~~RRHH.1 ficha+Nómina v2~~ ✅ **HECHA** → RRHH.2 Ausencias+migración+retiro legacy (≈2%) → RRHH.3 Planificación (≈1.5%) → RRHH.4 Panel+Docs+alerta `documento_por_vencer` (≈1.5%) → RRHH.5 Jornales (≈0.5%, **⛔ bloqueada por la pieza "Rendimiento por evento" de Finanzas**; el resto NO depende de nada).
+- **Etapas** (cada una deployable, SQL-first): ~~RRHH.1 ficha+Nómina v2~~ ✅ **HECHA** → ~~RRHH.2 Ausencias+migración+retiro legacy~~ ✅ **HECHA** → RRHH.3 Planificación (≈1.5%) → RRHH.4 Panel+Docs+alerta `documento_por_vencer` (≈1.5%) → RRHH.5 Jornales (≈0.5%, **⛔ bloqueada por la pieza "Rendimiento por evento" de Finanzas**; el resto NO depende de nada).
 - **No cambia:** asignar gente sigue en Eventos por jornada; Logística/Calendario intactos; notifs de convocatoria se reusan.
 
 ### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
@@ -163,6 +164,30 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **Stats por usuario ✅ HECHO (9.5, `0e100ee`):** tab Actividad en el Panel (acciones 7d/30d, días activos, módulo top, gráfico 14d, última actividad). *Pendiente futuro:* tiempo de sesión exacto — `audit_log` no loguea login/logout, habría que registrarlos (o usar `last_seen_at`).
 - **Lobby/Home por rol ✅ HECHO — Híbrido (9.6, `11f83da`):** venta/pm aterrizan en el Lobby (home por rol con sus KPIs + contenido); taller sigue directo a su tablero (ULTRA simple). *Idea futura suelta:* bloque de estado de Taller en el home de admin (no pedido).
 - **🆕 Ideas del centro (charla 03):** silenciado cross-device (`profiles.notif_prefs`, DDL) en vez de localStorage por navegador; permitir silenciar también tipos de *pendientes* y/o que el mute apague los dots del sidebar; separar el badge en 2 números (no-leídas vs pendientes) si Fede lo prefiere. Limpiar `settings._getNotifPrefs/_setNotifPrefs` muertos.
+
+### 🆕 Fase 9.bis — Roles & Permisos: fuente única + scoping por fila (RLS) *(≈3% · transversal · deuda del Panel SuperAdmin)*
+
+> **Síntoma reportado (Fede, 2026-06-12):** la matriz de Roles y Permisos del Panel de Control "nunca está actualizada — no copia lo nuevo". Diagnóstico verificado contra el código: **no hay fuente única.** Conviven 5 definiciones paralelas que driftean.
+
+**🔎 Causa raíz (verificada):** la matriz arma sus **filas** desde una lista hardcodeada `admin-panel.js:1215` (`_permModules`) que quedó vieja — le falta `flota`/`calendario`, todavía muestra `parametros-globales` (eliminado, hoy en Costos). Los **valores** write/read/none sí salen de la tabla `roles` de Supabase (esa parte OK). Pero al guardar un rol: (1) las filas son una lista a mano que no refleja los módulos reales, y (2) el resto de la app (`settings.js`, sidebar, lobby) lee de `Data.rolePermissions` (copia en memoria que **solo** se refresca en login vía `loadRolesFromDB`, fire-and-forget en `auth.js:133`). ⇒ un cambio en el Panel no se ve en ningún lado hasta re-loguear.
+
+**Las 5 fuentes que driftean:** (1) `Data.modules`/`categories` = qué módulos existen · (2) `Data.rolePermissions`/`readOnlyPermissions` = arrays "fallback" · (3) tabla `roles.permissions` JSONB = fuente *declarada* · (4) `admin-panel._permModules` = filas de la matriz, **la más vieja** · (5) `profiles.custom_permissions` = override por usuario. Encima **2 formatos**: JSONB `{mod: write/read/none}` vs arrays planos sin distinción read/write.
+
+**🔧 Capa 1 — RBAC de módulos (fuente única). Lo que pidió Fede ("todo espejo de una fuente"):**
+- **Catálogo de módulos = derivado de `Data.modules`** (la lista real del sidebar). La matriz del Panel itera ESA, no `_permModules` → mata el drift de filas. Borrar `_permModules`.
+- **Permisos por rol = SOLO la tabla `roles` (Supabase).** `Data.rolePermissions` queda únicamente como fallback offline, idealmente auto-derivado de `roles`.
+- **Refresco inmediato:** al guardar en el Panel → re-`loadRolesFromDB()` + re-render de las pantallas afectadas. Sin esperar al próximo login.
+- **Un solo formato** `{mod: nivel}` (none/read/write). Migrar `custom_permissions` a ese formato (override por usuario *sobre* el rol; hoy es array plano sin niveles).
+- **Un solo resolver en runtime:** todo pasa por `Auth.hasPermission(mod)`. Eliminar las lecturas directas a `Data.rolePermissions` (hoy `settings.js:481/576/590/620` las usa → desincronizado del Panel).
+- **Test:** editar un permiso en el Panel → se refleja sin re-login en sidebar + settings + lobby; agregar un módulo nuevo aparece solo en la matriz; ningún módulo fantasma.
+
+**🔐 Capa 2 — Scoping por fila + RLS (lo de "venta ve solo lo propio"). HOY NO EXISTE:**
+- Es OTRA cosa que el RBAC de módulos. Hoy el sistema decide *"ves el módulo o no"* (+ read/write), **no** *"qué filas ves dentro"*. Los datos ya tienen los ganchos (`vendedor_id`, `responsable_id`/`proyecto_responsables`, `created_by`) pero **las queries de listado no filtran por usuario** → un "venta" trae TODOS los proyectos/clientes, no los propios.
+- **Modelo de scope por rol (a definir fino con Fede):** superadmin/admin = todo · **venta** = donde es `vendedor_id` (sus clientes/cotizaciones/proyectos) · **pm** = donde es responsable (`proyecto_responsables`/`responsable_id`) · **taller** = lo pasado a producción / asignado. Calendario operativo / Panel / Finanzas = ocultos por rol (eso ya es Capa 1).
+- **⚠ CRÍTICO — el filtro va en RLS de Supabase, no solo frontend.** Casi todo es client-side con la anon key → aunque la UI esconda, un usuario puede pedir todo igual con la key. **Es un agujero de seguridad real, no solo UX.** Requiere policies por tabla (`clientes`/`proyectos`/`cotizaciones`/`eventos`/…) que mapeen `auth.uid()` → rol → scope. Carga SQL no trivial + testeo por rol cuidadoso (que no rompa lo que admin/superadmin sí ven).
+- **Test:** loguear como venta → solo aparecen sus proyectos/clientes en UI **y** la query directa a Supabase con su token tampoco devuelve los ajenos.
+
+**Orden sugerido:** Capa 1 primero (fix acotado, sin riesgo, resuelve el síntoma visible). Capa 2 después (fundacional, tocar con bisturí, SQL-first, una tabla por vez con RLS + verificación). Las dos son separables.
 
 ### Fase 10 — Remate UI/UX (Claude Design) *(≈5%)*
 - Sistema visual (tokens dark theme + manual de marca) aplicado a cada módulo + **pasada final de coherencia**.

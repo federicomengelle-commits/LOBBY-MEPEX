@@ -10,7 +10,7 @@
 |---|---|
 | `asiento_lineas` | `contabilidad.js` (2740, 3123, 3675, 3690, 3723, 3754, 4550, 4751) |
 | `asientos` | `contabilidad.js` (2686, 2714, 3140, 3619, 3660, 3697, 3743, 3798, … (+2)) |
-| `asignaciones_evento` | `api.js` (3786, 3813, 3865, 3912, 3936, 3956, 3987, 4028, … (+2)) |
+| `asignaciones_evento` | `api.js` (3786, 3813, 3865, 3912, 3936, 3956, 3987, 4028, … (+2)) · `rrhh.js` (326) |
 | `audit_log` | `admin-panel.js` (270, 271, 272, 299, 356, 1660, 1661, 1756) · `audit-log.js` (32, 111, 129, 137, 145, 152) · `lobby.js` (525) |
 | `carga_personas` | `api.js` (4545, 4551) |
 | `carga_proyectos` | `api.js` (4464, 4528, 4532) |
@@ -61,7 +61,7 @@
 | `notifications` | `api.js` (3293, 3361, 3398, 3404, 3445) |
 | `opciones_select` | `api.js` (335) |
 | `parametros_globales` | `api.js` (2752, 2782) |
-| `personas` | `api.js` (4249, 4276, 4311, 4337, 4349) · `eventos.js` (1395) · `rrhh.js` (210, 707, 710, 728) |
+| `personas` | `api.js` (4249, 4276, 4311, 4337, 4349) · `eventos.js` (1395) · `rrhh.js` (321, 744, 1050, 1054, 1073) |
 | `plan_cobro` | `api.js` (5095, 5107, 5125, 5149, 5156) · `finanzas.js` (4745) |
 | `plan_cobro_items` | `api.js` (5142, 5163, 5170, 5177, 5406) · `finanzas.js` (3516, 3524, 5173, 5877, 6050, 6095, 6558, 8212) |
 | `plan_cuentas` | `api.js` (5330) · `contabilidad.js` (1987, 2274, 2292, 2388, 2487, 2597, 3070, 3606, … (+1)) |
@@ -78,10 +78,10 @@
 | `receta_componentes` | `api.js` (1576, 1615, 2556, 2848, 2872, 2913, 3168) · `costos.js` (305, 442, 3013) |
 | `remitos` | `api.js` (4684, 4714, 4733) |
 | `roles` | `admin-panel.js` (1484, 1579, 1635) · `api.js` (2728) · `auth.js` (172) · `data.js` (609) |
-| `rrhh_asignaciones` | `api.js` (714, 761, 782, 797, 813) · `rrhh.js` (747, 860, 993) |
-| `rrhh_personal` | `eventos.js` (1878) · `rrhh.js` (746, 1013) |
-| `rrhh_vacaciones` | `rrhh.js` (401, 1014, 1213, 1340, 1342) |
-| `rrhh_vacaciones_solicitudes` | `alertas.js` (271) · `rrhh.js` (1015, 1198, 1274) |
+| `rrhh_asignaciones` | `api.js` (714, 761, 782, 797, 813) · `rrhh.js` (1092, 1205, 1338) |
+| `rrhh_personal` | `eventos.js` (1878) · `rrhh.js` (1091, 1358) |
+| `rrhh_vacaciones` | `rrhh.js` (1359, 1558, 1685, 1687) |
+| `rrhh_vacaciones_solicitudes` | `alertas.js` (271) · `rrhh.js` (1360, 1543, 1619) |
 | `saldos_apertura` | `contabilidad.js` (5744, 5751) |
 | `taller_proyecto_checklist` | `alertas.js` (221) · `api.js` (4763, 4781, 4806, 4819, 4836, 4855, 4868) |
 | `transferencias_internas` | `finanzas.js` (4697) |
