@@ -44,14 +44,14 @@ fi
 # --- 3. Bumps ?v= coherentes con el diff ---
 echo "── 3/3 Bumps ?v= vs diff origin/main ──"
 BUMP_ISSUES=0
-CHANGED_JS=$(git diff --name-only origin/main...HEAD -- '*.js' 2>/dev/null | grep -v '^tools/' || true)
-INDEX_CHANGED=$(git diff --name-only origin/main...HEAD -- index.html 2>/dev/null || true)
+# git diff origin/main (sin ...HEAD) = commits + staged + working tree
+CHANGED_JS=$(git diff --name-only origin/main -- '*.js' 2>/dev/null | grep -v '^tools/' || true)
 for f in $CHANGED_JS; do
     base=$(basename "$f")
     # Solo importa si index.html lo carga con ?v=
     if grep -q "src=\"$base?v=" index.html 2>/dev/null; then
         # El ?v= de ese archivo tiene que haber cambiado en el diff de index.html
-        if ! git diff origin/main...HEAD -- index.html | grep -q "^\+.*$base?v="; then
+        if ! git diff origin/main -- index.html | grep -q "^\+.*$base?v="; then
             echo "  ✗ $base modificado pero su ?v= en index.html NO se bumpeó"
             BUMP_ISSUES=$((BUMP_ISSUES+1))
             FAIL=1

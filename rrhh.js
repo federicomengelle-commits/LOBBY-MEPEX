@@ -25,6 +25,25 @@ const RRHHModule = {
     _filterEstado: '',
     _vacMes: new Date().getMonth(),
     _vacAnio: new Date().getFullYear(),
+    // RRHH.1 — Nómina v2 (panel lateral estilo CRM)
+    _panelTab: 'datos',
+    _searchQ: '',
+    _trabAnio: {},          // persona_id → { dias:Set, eventos:Set } del año en curso
+    _panelAsigs: null,      // cache asignaciones de la persona del panel
+    _panelAsigsFor: null,
+    _restoreSearchFocus: false,
+
+    _rolesCanon: [
+        { key: 'armador', label: 'Armador' },
+        { key: 'chofer', label: 'Chofer' },
+        { key: 'ayudante', label: 'Ayudante' },
+        { key: 'electricista', label: 'Electricista' },
+        { key: 'montajista', label: 'Montajista' },
+        { key: 'encargado_armado', label: 'Encargado armado' },
+        { key: 'tecnico', label: 'Técnico' },
+        { key: 'azafata', label: 'Azafata' },
+        { key: 'colaborador', label: 'Colaborador externo' },
+    ],
 
     // ─── Render principal ───
     async render() {
@@ -53,6 +72,96 @@ const RRHHModule = {
                     padding:1px 6px; margin-left:6px; vertical-align:middle; }
                 .rh-event-row { transition: background 150ms ease; }
                 .rh-event-row:hover { background:#1a1a1a; }
+
+                /* ═══ RRHH.1 — Nómina v2 (layout split + panel lateral estilo CRM) ═══ */
+                .hr-layout { display:flex; align-items:flex-start; gap:0; }
+                .hr-main { flex:1; min-width:0; }
+                .hr-panel { width:0; overflow:hidden; flex-shrink:0;
+                    transition: width 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+                    border-left:1px solid transparent; position:sticky; top:80px;
+                    max-height:calc(100vh - 100px); }
+                .hr-panel-open { width:380px; border-left-color:var(--border); overflow-y:auto; }
+                .hr-panel-inner { padding:16px 18px 24px; }
+                .hr-p-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+                .hr-p-close { background:none; border:none; color:var(--text-muted); cursor:pointer;
+                    font-size:1.1rem; padding:4px 8px; border-radius:4px; }
+                .hr-p-close:hover { color:var(--text-primary); background:#1a1a1a; }
+                .hr-p-actions { display:flex; gap:6px; }
+                .hr-p-btn { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted);
+                    border-radius:5px; padding:5px 10px; font-size:0.74rem; cursor:pointer;
+                    font-family:var(--font-main); transition:all 200ms ease; }
+                .hr-p-btn:hover { color:var(--text-primary); border-color:#555; }
+                .hr-p-btn-wa { color:#00CC88; border-color:#00CC8840; }
+                .hr-p-btn-wa:hover { background:#00CC8815; border-color:#00CC88; color:#00CC88; }
+                .hr-p-btn-danger:hover { color:#ff4444; border-color:#ff444460; }
+                .hr-p-identity { display:flex; gap:12px; align-items:center; margin-bottom:10px; }
+                .hr-p-avatar { width:46px; height:46px; border-radius:50%; flex-shrink:0;
+                    display:flex; align-items:center; justify-content:center;
+                    background:rgba(0,169,193,0.12); color:var(--primary);
+                    font-family:var(--font-mono); font-weight:700; font-size:1rem; }
+                .hr-p-name { font-size:1.02rem; font-weight:700; color:var(--text-primary); margin:0 0 4px; }
+                .hr-p-badges { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+                .hr-p-roles { display:flex; gap:4px; flex-wrap:wrap; margin:8px 0 2px; }
+                .hr-rol-chip { font-family:var(--font-mono); font-size:0.6rem; padding:2px 7px;
+                    border-radius:4px; background:rgba(0,169,193,0.08); color:#7fd6e3;
+                    border:1px solid rgba(0,169,193,0.25); white-space:nowrap; }
+                .hr-subtabs { display:flex; gap:2px; border-bottom:1px solid var(--border); margin:12px 0 14px; }
+                .hr-subtab { background:none; border:none; border-bottom:2px solid transparent;
+                    color:var(--text-muted); font-family:var(--font-main); font-size:0.8rem;
+                    padding:7px 12px; cursor:pointer; transition:all 200ms ease; }
+                .hr-subtab:hover { color:var(--text-primary); }
+                .hr-subtab.active { color:var(--primary); border-bottom-color:var(--primary); font-weight:600; }
+                .hr-fields { display:grid; grid-template-columns:1fr 1fr; gap:12px 14px; }
+                .hr-field { display:flex; flex-direction:column; gap:2px; min-width:0; }
+                .hr-field-full { grid-column:1 / -1; }
+                .hr-f-label { font-family:var(--font-mono); font-size:0.58rem; text-transform:uppercase;
+                    letter-spacing:0.08em; color:var(--text-dim); }
+                .hr-f-value { font-size:0.85rem; color:var(--text-primary); word-break:break-word; }
+                .hr-f-value.mono { font-family:var(--font-mono); font-size:0.8rem; }
+                .hr-sec-title { font-family:var(--font-mono); font-size:0.62rem; text-transform:uppercase;
+                    letter-spacing:0.1em; color:var(--text-muted); margin:16px 0 8px;
+                    padding-bottom:4px; border-bottom:1px dashed #222; }
+                .hr-counters { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+                .hr-counter { background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
+                    padding:10px 12px; text-align:center; }
+                .hr-counter-val { display:block; font-family:var(--font-mono); font-size:1.3rem;
+                    font-weight:700; color:var(--primary); }
+                .hr-counter-lbl { font-size:0.66rem; color:var(--text-muted); text-transform:uppercase;
+                    letter-spacing:0.05em; }
+                .hr-asig { background:#111; border:1px solid #1d1d1d; border-left:3px solid #555;
+                    border-radius:6px; padding:8px 10px; margin-bottom:7px; cursor:pointer;
+                    transition:background 150ms ease; }
+                .hr-asig:hover { background:#161616; }
+                .hr-asig-top { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+                .hr-asig-evento { font-size:0.84rem; font-weight:600; color:var(--text-primary); }
+                .hr-asig-meta { font-size:0.72rem; color:var(--text-muted); margin-top:2px; }
+                .hr-estado-chip { font-family:var(--font-mono); font-size:0.58rem; padding:2px 7px;
+                    border-radius:4px; white-space:nowrap; text-transform:uppercase; letter-spacing:0.04em; }
+                .hr-notas-ta { width:100%; min-height:140px; background:#0a0a0a; border:1px solid var(--border);
+                    border-radius:6px; color:var(--text-primary); font-family:var(--font-main);
+                    font-size:0.88rem; padding:12px; resize:vertical; outline:none; }
+                .hr-notas-ta:focus { border-color:var(--primary); }
+                .hr-search-wrap { display:flex; align-items:center; gap:8px; background:var(--bg-card);
+                    border:1px solid var(--border); border-radius:6px; padding:6px 12px;
+                    flex:1; max-width:300px; transition:border-color 250ms ease; }
+                .hr-search-wrap:focus-within { border-color:var(--primary); }
+                .hr-search { background:none; border:none; outline:none; color:var(--text-primary);
+                    font-family:var(--font-main); font-size:0.85rem; width:100%; }
+                .hr-search::placeholder { color:var(--text-dim); }
+                .hr-row-active { background:rgba(0,169,193,0.07) !important; }
+                .hr-row-active td:first-child { box-shadow:inset 3px 0 0 var(--primary); }
+                .hr-wa-link { color:#00CC88; text-decoration:none; font-family:var(--font-mono); font-size:0.8rem; }
+                .hr-wa-link:hover { text-decoration:underline; }
+                .hr-dias-anio { font-family:var(--font-mono); color:var(--primary); font-weight:600; }
+                .hr-empty-tab { color:var(--text-dim); font-size:0.82rem; padding:18px 0; text-align:center; }
+                @media (max-width: 900px) {
+                    .hr-panel { position:fixed; inset:auto 0 0 0; top:auto; max-height:none;
+                        z-index:600; background:#0c0c0c; border-top:1px solid var(--border);
+                        border-left:none; border-radius:14px 14px 0 0;
+                        transition:height 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94); height:0; width:100%; }
+                    .hr-panel-open { width:100%; height:78vh; overflow-y:auto;
+                        box-shadow:0 -12px 40px rgba(0,0,0,0.6); }
+                }
             </style>
             <div class="module-view rrhh-module">
                 <div class="module-subheader">
@@ -203,23 +312,88 @@ const RRHHModule = {
     // ════════════════════════════════════════════════════
 
     async _loadNomina() {
-        // Lee de `personas` (post-migración Tanda 3.A). Tabla `rrhh_personal`
-        // queda como cementerio mientras rrhh_asignaciones la referencie.
+        // Lee de `personas` (post-migración Tanda 3.A) + bulk de asignaciones del año
+        // (días trabajados/eventos por persona, en 1 sola query).
+        const year = new Date().getFullYear();
         try {
-            const { data, error } = await supabaseClient
-                .from('personas')
-                .select('*')
-                .eq('_deleted', false)
-                .order('nombre', { ascending: true });
-            if (error) throw error;
-            // Mapeo de compat: presento la persona con shape similar a rrhh_personal
-            // para no reescribir todo el render de un saque.
-            this._personal = (data || []).map(p => this._mapPersonaToLegacyShape(p));
+            const [pRes, aRes] = await Promise.all([
+                supabaseClient
+                    .from('personas')
+                    .select('*')
+                    .eq('_deleted', false)
+                    .order('nombre', { ascending: true }),
+                supabaseClient
+                    .from('asignaciones_evento')
+                    .select('persona_id, evento_id, fecha_inicio, fecha_fin, estado')
+                    .eq('_deleted', false)
+                    .in('estado', ['aprobada', 'confirmada'])
+                    .lte('fecha_inicio', `${year}-12-31`)
+                    .gte('fecha_fin', `${year}-01-01`),
+            ]);
+            if (pRes.error) throw pRes.error;
+            this._personal = (pRes.data || []).map(p => this._mapPersonaToLegacyShape(p));
+            this._trabAnio = this._buildTrabAnio(aRes.data || [], year);
         } catch (e) {
             console.warn('[RRHH] Error loading personas:', e);
             this._personal = [];
+            this._trabAnio = {};
         }
         this._renderNomina();
+    },
+
+    // Mapa persona_id → { dias:Set<ISO>, eventos:Set<id> } del año (asigs aprobadas/confirmadas).
+    _buildTrabAnio(asigs, year) {
+        const map = {};
+        const yStart = new Date(year, 0, 1);
+        const yEnd = new Date(year, 11, 31);
+        (asigs || []).forEach(a => {
+            if (!a.persona_id || !a.fecha_inicio) return;
+            const ini = new Date(a.fecha_inicio + 'T00:00:00');
+            const fin = a.fecha_fin ? new Date(a.fecha_fin + 'T00:00:00') : ini;
+            if (isNaN(ini)) return;
+            if (!map[a.persona_id]) map[a.persona_id] = { dias: new Set(), eventos: new Set() };
+            if (a.evento_id) map[a.persona_id].eventos.add(a.evento_id);
+            let d = ini < yStart ? new Date(yStart) : new Date(ini);
+            const tope = fin < yEnd ? fin : yEnd;
+            let guard = 0;
+            while (d <= tope && guard < 400) {
+                map[a.persona_id].dias.add(d.toISOString().slice(0, 10));
+                d.setDate(d.getDate() + 1);
+                guard++;
+            }
+        });
+        return map;
+    },
+
+    _diasAnio(personaId) {
+        const t = this._trabAnio[personaId];
+        return t ? t.dias.size : 0;
+    },
+
+    _waLink(tel) {
+        if (!tel) return null;
+        let d = String(tel).replace(/\D/g, '');
+        if (!d) return null;
+        if (d.startsWith('0')) d = d.slice(1);
+        if (!d.startsWith('54')) d = '549' + d;
+        return `https://wa.me/${d}`;
+    },
+
+    _fmtMoney(n) {
+        if (n === null || n === undefined || isNaN(n)) return '—';
+        return '$' + Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+    },
+
+    _rolLabel(key) {
+        const r = this._rolesCanon.find(x => x.key === key);
+        return r ? r.label : this._capitalize(key);
+    },
+
+    _initials(p) {
+        const raw = p._raw || p;
+        const a = (raw.nombre || '').trim().charAt(0);
+        const b = (raw.apellido || (raw.nombre || '').trim().split(/\s+/)[1] || '').charAt(0);
+        return ((a + b).toUpperCase()) || '?';
     },
 
     // Convierte una persona del schema nuevo al shape que esperan los renders existentes.
@@ -254,19 +428,17 @@ const RRHHModule = {
         const cc = document.getElementById('rrhhContent');
         if (!cc) return;
 
-        if (this._selectedPersonId) {
-            this._renderFichaPersonal();
-            return;
-        }
-
-        // Valores únicos para filtros
-        const roles = [...new Set(this._personal.map(p => p.rol).filter(Boolean))].sort();
-        const tipos = [...new Set(this._personal.map(p => p.tipo).filter(Boolean))];
-
-        // Aplicar filtros
+        // Búsqueda + filtros
         let filtered = [...this._personal];
+        const q = (this._searchQ || '').toLowerCase().trim();
+        if (q) {
+            filtered = filtered.filter(p =>
+                [p.nombre, p.rol, p.cuil, p.dni, p.telefono, p.email,
+                 ...((p._raw?.roles_operativos) || []).map(r => this._rolLabel(r))]
+                    .filter(Boolean).join(' ').toLowerCase().includes(q));
+        }
         if (this._filterTipo) filtered = filtered.filter(p => p.tipo === this._filterTipo);
-        if (this._filterRol) filtered = filtered.filter(p => p.rol === this._filterRol);
+        if (this._filterRol) filtered = filtered.filter(p => ((p._raw?.roles_operativos) || []).includes(this._filterRol));
         if (this._filterEstado) filtered = filtered.filter(p => p.estado === this._filterEstado);
 
         // Stats
@@ -301,6 +473,10 @@ const RRHHModule = {
                 <button class="rh-btn-add" id="rhAddPerson">+ Agregar Personal</button>
             </div>
             <div class="rh-filters">
+                <div class="hr-search-wrap">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input class="hr-search" id="hrSearch" type="text" placeholder="Buscar por nombre, rol, CUIL, teléfono…" value="${this._searchQ.replace(/"/g, '&quot;')}">
+                </div>
                 <select class="rh-filter-select" id="rhFilterTipo">
                     <option value="">Todos los tipos</option>
                     <option value="fijo" ${this._filterTipo === 'fijo' ? 'selected' : ''}>Fijo</option>
@@ -309,7 +485,7 @@ const RRHHModule = {
                 </select>
                 <select class="rh-filter-select" id="rhFilterRol">
                     <option value="">Todos los roles</option>
-                    ${roles.map(r => `<option value="${r}" ${this._filterRol === r ? 'selected' : ''}>${r}</option>`).join('')}
+                    ${this._rolesCanon.map(r => `<option value="${r.key}" ${this._filterRol === r.key ? 'selected' : ''}>${r.label}</option>`).join('')}
                 </select>
                 <select class="rh-filter-select" id="rhFilterEstado">
                     <option value="">Todos los estados</option>
@@ -318,281 +494,451 @@ const RRHHModule = {
                 </select>
             </div>
 
-            ${filtered.length === 0 ? `
-                <div class="rh-empty">
-                    <div class="rh-empty-icon">👥</div>
-                    <h3>Sin personal cargado</h3>
-                    <p>Agregá personal para gestionar la nómina</p>
-                </div>
-            ` : `
-                <div class="rh-table-wrap">
-                    <table class="rh-table table-stack-mobile">
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Rol</th>
-                                <th>Tipo</th>
-                                <th>CUIL</th>
-                                <th>Teléfono</th>
-                                <th>Edad</th>
-                                <th>Antigüedad</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${filtered.map(p => {
-                                const tipoColor = this._getTipoColor(p.tipo);
-                                const estadoColor = this._getEstadoColor(p.estado);
-                                const displayName = p.tipo === 'cuadrilla' && p.cantidad_personas
-                                    ? `${p.nombre} <span class="rh-cuadrilla-count">${p.cantidad_personas} pers.</span>`
-                                    : p.nombre;
-                                return `
-                                    <tr class="rh-row" data-id="${p.id}">
-                                        <td class="rh-cell-name" data-label="Nombre">${displayName}</td>
-                                        <td data-label="Rol">${p.rol || '—'}</td>
-                                        <td data-label="Tipo"><span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span></td>
-                                        <td class="rh-mono" data-label="CUIL">${p.cuil || '—'}</td>
-                                        <td class="rh-mono" data-label="Teléfono">${p.telefono || '—'}</td>
-                                        <td class="rh-mono" data-label="Edad">${this._calcEdad(p.fecha_nacimiento)}</td>
-                                        <td class="rh-mono" data-label="Antigüedad">${this._calcAntiguedad(p.fecha_ingreso)}</td>
-                                        <td data-label="Estado"><span class="rh-estado-dot" style="background:${estadoColor}"></span> ${p.estado === 'activo' ? 'Activo' : 'Inactivo'}</td>
-                                    </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `}
-        `;
-
-        // Events
-        document.getElementById('rhAddPerson')?.addEventListener('click', () => this._showPersonModal());
-        document.getElementById('rhFilterTipo')?.addEventListener('change', (e) => { this._filterTipo = e.target.value; this._renderNomina(); });
-        document.getElementById('rhFilterRol')?.addEventListener('change', (e) => { this._filterRol = e.target.value; this._renderNomina(); });
-        document.getElementById('rhFilterEstado')?.addEventListener('change', (e) => { this._filterEstado = e.target.value; this._renderNomina(); });
-        cc.querySelectorAll('.rh-row[data-id]').forEach(row => {
-            row.addEventListener('click', () => {
-                this._selectedPersonId = row.dataset.id;
-                this._renderFichaPersonal();
-            });
-        });
-    },
-
-
-    // ─── Ficha Personal ───
-
-    async _renderFichaPersonal() {
-        const cc = document.getElementById('rrhhContent');
-        if (!cc) return;
-
-        const p = this._personal.find(x => String(x.id) === String(this._selectedPersonId));
-        if (!p) { this._selectedPersonId = null; this._renderNomina(); return; }
-
-        // Load eventos asignados (vista inversa, vía Fase 2 API con join a eventos)
-        let eventosAsignados = [];
-        try {
-            eventosAsignados = await API.getEventosDePersona(p.id);
-        } catch (e) { /* continue */ }
-
-        // Load vacaciones info
-        let vacInfo = null;
-        try {
-            const { data } = await supabaseClient
-                .from('rrhh_vacaciones')
-                .select('*')
-                .eq('personal_id', p.id)
-                .eq('_deleted', false)
-                .limit(1);
-            vacInfo = data && data.length > 0 ? data[0] : null;
-        } catch (e) { /* continue */ }
-
-        const tipoColor = this._getTipoColor(p.tipo);
-        const estadoColor = this._getEstadoColor(p.estado);
-        const displayName = p.tipo === 'cuadrilla' && p.cantidad_personas
-            ? `${p.nombre} — ${p.cantidad_personas} personas`
-            : p.nombre;
-
-        cc.innerHTML = `
-            <div class="rh-ficha">
-                <div class="rh-ficha-topbar">
-                    <button class="rh-btn-back" id="rhBack">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                        Volver
-                    </button>
-                    <div class="rh-ficha-actions">
-                        <button class="rh-btn-action" id="rhEditPerson">Editar</button>
-                        <button class="rh-btn-action rh-btn-danger" id="rhDeletePerson">Eliminar</button>
-                    </div>
-                </div>
-
-                <div class="rh-ficha-header">
-                    <h2 class="rh-ficha-title">${displayName}</h2>
-                    <span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span>
-                    <span class="rh-estado-dot" style="background:${estadoColor}"></span>
-                    <span style="color:${estadoColor};font-size:0.85rem;">${p.estado === 'activo' ? 'Activo' : 'Inactivo'}</span>
-                </div>
-
-                <div class="rh-ficha-grid">
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">Rol</span>
-                        <span class="rh-field-value">${p.rol || '—'}</span>
-                    </div>
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">Contacto</span>
-                        <span class="rh-field-value">${p.contacto || '—'}</span>
-                    </div>
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">Teléfono</span>
-                        <span class="rh-field-value rh-mono">${p.telefono || '—'}</span>
-                    </div>
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">Email</span>
-                        <span class="rh-field-value">${p.email || '—'}</span>
-                    </div>
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">CUIL</span>
-                        <span class="rh-field-value rh-mono">${p.cuil || '—'}</span>
-                    </div>
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">Fecha de Nacimiento</span>
-                        <span class="rh-field-value rh-mono">${this._formatDate(p.fecha_nacimiento)}${p.fecha_nacimiento ? ` (${this._calcEdad(p.fecha_nacimiento)} años)` : ''}</span>
-                    </div>
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">Fecha Ingreso</span>
-                        <span class="rh-field-value rh-mono">${this._formatDate(p.fecha_ingreso)}</span>
-                    </div>
-                    <div class="rh-ficha-field">
-                        <span class="rh-field-label">Antigüedad</span>
-                        <span class="rh-field-value rh-mono">${this._calcAntiguedad(p.fecha_ingreso)}</span>
-                    </div>
-                </div>
-
-                ${p.documentacion ? `
-                <div class="rh-section">
-                    <h3 class="rh-section-title">Documentación</h3>
-                    <p class="rh-doc-text">${p.documentacion}</p>
-                </div>
-                ` : ''}
-
-                ${p.notas ? `<div class="rh-ficha-notas"><span class="rh-field-label">Notas</span><p>${p.notas}</p></div>` : ''}
-
-                <!-- Vacaciones -->
-                <div class="rh-section">
-                    <h3 class="rh-section-title">Vacaciones</h3>
-                    ${vacInfo ? `
-                        <div class="rh-vac-summary">
-                            <div class="rh-vac-stat">
-                                <span class="rh-vac-num">${vacInfo.dias_totales || 0}</span>
-                                <span class="rh-vac-lbl">Días totales</span>
-                            </div>
-                            <div class="rh-vac-stat">
-                                <span class="rh-vac-num" style="color:#F28D15">${vacInfo.dias_usados || 0}</span>
-                                <span class="rh-vac-lbl">Usados</span>
-                            </div>
-                            <div class="rh-vac-stat">
-                                <span class="rh-vac-num" style="color:#00CC88">${(vacInfo.dias_totales || 0) - (vacInfo.dias_usados || 0)}</span>
-                                <span class="rh-vac-lbl">Disponibles</span>
-                            </div>
+            <div class="hr-layout">
+                <div class="hr-main">
+                    ${filtered.length === 0 ? `
+                        <div class="rh-empty">
+                            <div class="rh-empty-icon">👥</div>
+                            <h3>${q || this._filterTipo || this._filterRol || this._filterEstado ? 'Sin resultados con esos filtros' : 'Sin personal cargado'}</h3>
+                            <p>${q ? 'Probá con otra búsqueda' : 'Agregá personal para gestionar la nómina'}</p>
                         </div>
-                    ` : '<p class="rh-empty-small">Sin datos de vacaciones configurados</p>'}
-                </div>
-
-                <!-- Eventos asignados (vista inversa Fase 5) -->
-                <div class="rh-section">
-                    <h3 class="rh-section-title">
-                        Eventos asignados
-                        <span class="rh-section-count">${eventosAsignados.length > 0 ? eventosAsignados.length : ''}</span>
-                    </h3>
-                    ${eventosAsignados.length === 0 ? '<p class="rh-empty-small">Sin eventos asignados</p>' : `
-                        <table class="rh-table rh-table-compact">
-                            <thead><tr><th>Evento</th><th>Predio</th><th>Rol</th><th>Inicio</th><th>Fin</th></tr></thead>
-                            <tbody>
-                                ${eventosAsignados.map(e => `
-                                    <tr class="rh-event-row" data-evento-id="${e.eventoId}" style="cursor:pointer" title="Abrir evento">
-                                        <td>${e.eventoNombre || '—'}</td>
-                                        <td>${e.eventoPredio || '—'}</td>
-                                        <td>${e.rolEvento || '—'}</td>
-                                        <td class="rh-mono">${this._formatDateShort(e.eventoInicio)}</td>
-                                        <td class="rh-mono">${this._formatDateShort(e.eventoFin)}</td>
+                    ` : `
+                        <div class="rh-table-wrap">
+                            <table class="rh-table table-stack-mobile">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Roles</th>
+                                        <th>Tipo</th>
+                                        <th>Teléfono</th>
+                                        <th>Edad</th>
+                                        <th>Antig.</th>
+                                        <th>Días año</th>
+                                        <th>Estado</th>
                                     </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    ${filtered.map(p => {
+                                        const tipoColor = this._getTipoColor(p.tipo);
+                                        const estadoColor = this._getEstadoColor(p.estado);
+                                        const displayName = p.tipo === 'cuadrilla' && p.cantidad_personas
+                                            ? `${p.nombre} <span class="rh-cuadrilla-count">${p.cantidad_personas} pers.</span>`
+                                            : p.nombre;
+                                        const rolesOp = (p._raw?.roles_operativos) || [];
+                                        const rolesHtml = rolesOp.length
+                                            ? rolesOp.slice(0, 3).map(r => `<span class="hr-rol-chip">${this._rolLabel(r)}</span>`).join(' ')
+                                              + (rolesOp.length > 3 ? ` <span class="hr-rol-chip" style="opacity:0.6">+${rolesOp.length - 3}</span>` : '')
+                                            : `<span style="color:var(--text-dim);font-size:0.78rem;">${p.rol || '—'}</span>`;
+                                        const wa = this._waLink(p.telefono);
+                                        const dias = this._diasAnio(p.id);
+                                        return `
+                                            <tr class="rh-row hr-row ${String(p.id) === String(this._selectedPersonId) ? 'hr-row-active' : ''}" data-id="${p.id}">
+                                                <td class="rh-cell-name" data-label="Nombre">${displayName}</td>
+                                                <td data-label="Roles">${rolesHtml}</td>
+                                                <td data-label="Tipo"><span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span></td>
+                                                <td data-label="Teléfono">${wa ? `<a class="hr-wa-link" href="${wa}" target="_blank" rel="noopener" data-stop>📱 ${p.telefono}</a>` : `<span class="rh-mono">${p.telefono || '—'}</span>`}</td>
+                                                <td class="rh-mono" data-label="Edad">${this._calcEdad(p.fecha_nacimiento)}</td>
+                                                <td class="rh-mono" data-label="Antigüedad">${this._calcAntiguedad(p.fecha_ingreso)}</td>
+                                                <td data-label="Días año">${dias ? `<span class="hr-dias-anio">${dias}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+                                                <td data-label="Estado"><span class="rh-estado-dot" style="background:${estadoColor}"></span> ${p.estado === 'activo' ? 'Activo' : 'Inactivo'}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
                     `}
                 </div>
+                <div class="hr-panel" id="hrPanel"></div>
             </div>
         `;
 
         // Events
-        document.getElementById('rhBack')?.addEventListener('click', () => { this._selectedPersonId = null; this._renderNomina(); });
-        document.getElementById('rhEditPerson')?.addEventListener('click', () => this._showPersonModal(p.id));
-        document.getElementById('rhDeletePerson')?.addEventListener('click', () => this._deletePerson(p.id));
+        document.getElementById('rhAddPerson')?.addEventListener('click', () => this._showPersonModal());
+        const searchEl = document.getElementById('hrSearch');
+        searchEl?.addEventListener('input', (e) => {
+            this._searchQ = e.target.value;
+            this._restoreSearchFocus = true;
+            this._renderNomina();
+        });
+        if (this._restoreSearchFocus && searchEl) {
+            this._restoreSearchFocus = false;
+            searchEl.focus();
+            searchEl.setSelectionRange(searchEl.value.length, searchEl.value.length);
+        }
+        document.getElementById('rhFilterTipo')?.addEventListener('change', (e) => { this._filterTipo = e.target.value; this._renderNomina(); });
+        document.getElementById('rhFilterRol')?.addEventListener('change', (e) => { this._filterRol = e.target.value; this._renderNomina(); });
+        document.getElementById('rhFilterEstado')?.addEventListener('change', (e) => { this._filterEstado = e.target.value; this._renderNomina(); });
+        cc.querySelectorAll('.hr-row[data-id]').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('[data-stop]')) return; // links WhatsApp no abren panel
+                this._openPanel(row.dataset.id);
+            });
+        });
 
-        // Click en fila de evento → deep link al módulo Eventos
-        cc.querySelectorAll('.rh-event-row[data-evento-id]').forEach(row => {
-            row.addEventListener('click', () => {
-                const eventoId = row.dataset.eventoId;
-                if (eventoId) window.location.hash = `#eventos?id=${eventoId}`;
+        // Si había panel abierto (re-render por filtro/búsqueda), restaurarlo
+        if (this._selectedPersonId) this._openPanel(this._selectedPersonId, true);
+    },
+
+
+    // ════════════════════════════════════════════════════
+    //  PANEL LATERAL (RRHH.1 — estilo CRM)
+    // ════════════════════════════════════════════════════
+
+    _openPanel(id, keepTab = false) {
+        const p = this._personal.find(x => String(x.id) === String(id));
+        if (!p) return this._closePanel();
+        this._selectedPersonId = id;
+        if (!keepTab) this._panelTab = 'datos';
+        document.querySelectorAll('.hr-row').forEach(r =>
+            r.classList.toggle('hr-row-active', String(r.dataset.id) === String(id)));
+        const panel = document.getElementById('hrPanel');
+        if (!panel) return;
+        panel.classList.add('hr-panel-open');
+        this._renderPanel(p);
+    },
+
+    _closePanel() {
+        this._selectedPersonId = null;
+        this._panelAsigs = null;
+        this._panelAsigsFor = null;
+        const panel = document.getElementById('hrPanel');
+        if (panel) { panel.classList.remove('hr-panel-open'); panel.innerHTML = ''; }
+        document.querySelectorAll('.hr-row-active').forEach(r => r.classList.remove('hr-row-active'));
+    },
+
+    _renderPanel(p) {
+        const panel = document.getElementById('hrPanel');
+        if (!panel) return;
+        const tipoColor = this._getTipoColor(p.tipo);
+        const estadoColor = this._getEstadoColor(p.estado);
+        const rolesOp = (p._raw?.roles_operativos) || [];
+        const wa = this._waLink(p.telefono);
+
+        panel.innerHTML = `
+            <div class="hr-panel-inner">
+                <div class="hr-p-top">
+                    <button class="hr-p-close" id="hrPClose" title="Cerrar">✕</button>
+                    <div class="hr-p-actions">
+                        ${wa ? `<a class="hr-p-btn hr-p-btn-wa" href="${wa}" target="_blank" rel="noopener">📱 WhatsApp</a>` : ''}
+                        <button class="hr-p-btn" id="hrPEdit">✎ Editar</button>
+                        <button class="hr-p-btn hr-p-btn-danger" id="hrPDelete">🗑</button>
+                    </div>
+                </div>
+                <div class="hr-p-identity">
+                    <div class="hr-p-avatar">${this._initials(p)}</div>
+                    <div>
+                        <h3 class="hr-p-name">${p.nombre}${p.tipo === 'cuadrilla' && p.cantidad_personas ? ` <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem;">· ${p.cantidad_personas} pers.</span>` : ''}</h3>
+                        <div class="hr-p-badges">
+                            <span class="rh-tipo-tag" style="color:${tipoColor};border-color:${tipoColor}40;background:${tipoColor}15;">${this._getTipoLabel(p.tipo)}</span>
+                            <span class="rh-estado-dot" style="background:${estadoColor}"></span>
+                            <span style="color:${estadoColor};font-size:0.76rem;">${p.estado === 'activo' ? 'Activo' : 'Inactivo'}</span>
+                        </div>
+                    </div>
+                </div>
+                ${rolesOp.length ? `<div class="hr-p-roles">${rolesOp.map(r => `<span class="hr-rol-chip">${this._rolLabel(r)}</span>`).join('')}</div>` : ''}
+                ${p.rol ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${p.rol}</div>` : ''}
+
+                <div class="hr-subtabs">
+                    <button class="hr-subtab ${this._panelTab === 'datos' ? 'active' : ''}" data-ptab="datos">Datos</button>
+                    <button class="hr-subtab ${this._panelTab === 'trabajo' ? 'active' : ''}" data-ptab="trabajo">Trabajo</button>
+                    <button class="hr-subtab ${this._panelTab === 'notas' ? 'active' : ''}" data-ptab="notas">Notas</button>
+                </div>
+                <div id="hrPanelBody"></div>
+            </div>
+        `;
+
+        document.getElementById('hrPClose')?.addEventListener('click', () => this._closePanel());
+        document.getElementById('hrPEdit')?.addEventListener('click', () => this._showPersonModal(p.id));
+        document.getElementById('hrPDelete')?.addEventListener('click', () => this._deletePerson(p.id));
+        panel.querySelectorAll('.hr-subtab[data-ptab]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._panelTab = btn.dataset.ptab;
+                panel.querySelectorAll('.hr-subtab').forEach(b => b.classList.toggle('active', b === btn));
+                this._renderPanelBody(p);
+            });
+        });
+
+        this._renderPanelBody(p);
+    },
+
+    _renderPanelBody(p) {
+        const body = document.getElementById('hrPanelBody');
+        if (!body) return;
+
+        if (this._panelTab === 'datos') {
+            const raw = p._raw || p;
+            const field = (label, value, mono = false, full = false) => `
+                <div class="hr-field ${full ? 'hr-field-full' : ''}">
+                    <span class="hr-f-label">${label}</span>
+                    <span class="hr-f-value ${mono ? 'mono' : ''}">${value || '—'}</span>
+                </div>`;
+            body.innerHTML = `
+                <div class="hr-sec-title">Contacto</div>
+                <div class="hr-fields">
+                    ${field('Teléfono', p.telefono, true)}
+                    ${field('Email', p.email)}
+                    ${field('Dirección', raw.direccion, false, true)}
+                    ${p.contacto ? field('Referente / contacto', p.contacto, false, true) : ''}
+                </div>
+                <div class="hr-sec-title">Identidad</div>
+                <div class="hr-fields">
+                    ${field('DNI', raw.dni, true)}
+                    ${field('CUIL', p.cuil, true)}
+                    ${field('Nacimiento', p.fecha_nacimiento ? `${this._formatDate(p.fecha_nacimiento)} (${this._calcEdad(p.fecha_nacimiento)})` : null, true)}
+                    ${field('Situación previsional', this._prevLabel(raw.situacion_previsional))}
+                </div>
+                <div class="hr-sec-title">Emergencia</div>
+                <div class="hr-fields">
+                    ${field('Contacto', raw.contacto_emergencia_nombre)}
+                    ${field('Teléfono', raw.contacto_emergencia_telefono, true)}
+                </div>
+                <div class="hr-sec-title">Bancario</div>
+                <div class="hr-fields">
+                    ${field('Banco', raw.banco)}
+                    ${field('CBU / Alias', raw.cbu_alias, true)}
+                </div>
+                <div class="hr-sec-title">Trabajo</div>
+                <div class="hr-fields">
+                    ${field('Ingreso', p.fecha_ingreso ? `${this._formatDate(p.fecha_ingreso)} (${this._calcAntiguedad(p.fecha_ingreso)})` : null, true)}
+                    ${field('Costo por día', raw.costo_dia_referencial ? this._fmtMoney(raw.costo_dia_referencial) : null, true)}
+                    ${p.documentacion ? field('Documentación', p.documentacion, false, true) : ''}
+                </div>
+            `;
+            return;
+        }
+
+        if (this._panelTab === 'trabajo') {
+            body.innerHTML = `<div style="display:flex;justify-content:center;padding:24px;"><div class="spinner"></div></div>`;
+            this._loadPanelAsigs(p).then(asigs => {
+                if (this._panelTab !== 'trabajo' || String(this._selectedPersonId) !== String(p.id)) return;
+                this._renderPanelTrabajo(p, asigs);
+            });
+            return;
+        }
+
+        // Notas
+        const raw = p._raw || p;
+        body.innerHTML = `
+            <textarea class="hr-notas-ta" id="hrNotasTa" placeholder="Observaciones sobre la persona…">${raw.notas || ''}</textarea>
+            <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+                <button class="btn-primary" id="hrNotasSave" style="font-size:0.85rem;padding:8px 18px;">Guardar notas</button>
+            </div>
+        `;
+        document.getElementById('hrNotasSave')?.addEventListener('click', async () => {
+            const val = document.getElementById('hrNotasTa')?.value?.trim() || null;
+            try {
+                const { error } = await supabaseClient.from('personas').update({ notas: val }).eq('id', p.id);
+                if (error) throw error;
+                if (p._raw) p._raw.notas = val;
+                p.notas = val;
+                Toast.success('Notas guardadas');
+            } catch (e) {
+                console.warn('[RRHH] Error guardando notas:', e);
+                Toast.error('Error al guardar las notas');
+            }
+        });
+    },
+
+    _prevLabel(v) {
+        switch (v) {
+            case 'monotributo': return 'Monotributo';
+            case 'relacion_dependencia': return 'Relación de dependencia';
+            case 'otro': return 'Otro';
+            default: return v || null;
+        }
+    },
+
+    async _loadPanelAsigs(p) {
+        if (String(this._panelAsigsFor) !== String(p.id)) {
+            this._panelAsigs = await API.getAsignacionesByPersona(p.id);
+            this._panelAsigsFor = p.id;
+        }
+        return this._panelAsigs || [];
+    },
+
+    _renderPanelTrabajo(p, asigs) {
+        const body = document.getElementById('hrPanelBody');
+        if (!body) return;
+        const t = this._trabAnio[p.id];
+        const vivos = (asigs || []).filter(a => a.estado !== 'cancelada');
+        const hoy = new Date().toISOString().slice(0, 10);
+        const futuras = vivos.filter(a => (a.fecha_fin || a.fecha_inicio || '') >= hoy);
+        const pasadas = vivos.filter(a => (a.fecha_fin || a.fecha_inicio || '') < hoy);
+
+        const estadoChip = (estado) => {
+            const map = { propuesta: '#F28D15', aprobada: '#00CC88', confirmada: '#00A9C1' };
+            const c = map[estado] || '#888';
+            return `<span class="hr-estado-chip" style="color:${c};background:${c}15;border:1px solid ${c}35;">${estado}</span>`;
+        };
+        const asigItem = (a) => {
+            const fechas = a.fecha_inicio
+                ? `${this._formatDateShort(a.fecha_inicio)}${a.fecha_fin && a.fecha_fin !== a.fecha_inicio ? ` — ${this._formatDateShort(a.fecha_fin)}` : ''}`
+                : 'sin fecha';
+            return `
+                <div class="hr-asig" data-evento-id="${a.evento?.id || a.evento_id || ''}" style="border-left-color:${({ propuesta: '#F28D15', aprobada: '#00CC88', confirmada: '#00A9C1' })[a.estado] || '#555'}">
+                    <div class="hr-asig-top">
+                        <span class="hr-asig-evento">${a.evento?.nombre || 'Evento'}</span>
+                        ${estadoChip(a.estado)}
+                    </div>
+                    <div class="hr-asig-meta">${this._capitalize(a.fase || '')}${a.rol ? ` · ${a.rol}` : ''} · <span class="rh-mono">${fechas}</span></div>
+                </div>`;
+        };
+
+        const MAX_PASADAS = 15;
+        body.innerHTML = `
+            <div class="hr-counters">
+                <div class="hr-counter">
+                    <span class="hr-counter-val">${t ? t.eventos.size : 0}</span>
+                    <span class="hr-counter-lbl">Eventos ${new Date().getFullYear()}</span>
+                </div>
+                <div class="hr-counter">
+                    <span class="hr-counter-val">${t ? t.dias.size : 0}</span>
+                    <span class="hr-counter-lbl">Días ${new Date().getFullYear()}</span>
+                </div>
+            </div>
+            ${futuras.length ? `
+                <div class="hr-sec-title">Próximas (${futuras.length})</div>
+                ${futuras.map(asigItem).join('')}
+            ` : ''}
+            <div class="hr-sec-title">Anteriores (${pasadas.length})</div>
+            ${pasadas.length
+                ? pasadas.slice(0, MAX_PASADAS).map(asigItem).join('')
+                  + (pasadas.length > MAX_PASADAS ? `<div class="hr-empty-tab">+${pasadas.length - MAX_PASADAS} anteriores</div>` : '')
+                : '<div class="hr-empty-tab">Sin asignaciones anteriores</div>'}
+            ${!futuras.length && !pasadas.length ? '<div class="hr-empty-tab">La gente se asigna desde la ficha del evento (Jornadas)</div>' : ''}
+        `;
+
+        body.querySelectorAll('.hr-asig[data-evento-id]').forEach(el => {
+            el.addEventListener('click', () => {
+                const id = el.dataset.eventoId;
+                if (id) window.location.hash = `#eventos?id=${id}`;
             });
         });
     },
 
+
     // ─── Modal Personal ───
+    // (La ficha full-page legacy se reemplazó por el panel lateral — RRHH.1.
+    //  La lectura legacy API.getEventosDePersona ya no se usa acá; se retira en RRHH.2.)
 
     _showPersonModal(editId) {
         const item = editId ? this._personal.find(p => String(p.id) === String(editId)) : null;
+        const raw = item?._raw || item || {};
         const title = item ? 'Editar Personal' : 'Nuevo Personal';
+        const secTitle = (t) => `<div style="font-family:'Space Mono',monospace;font-size:0.62rem;text-transform:uppercase;letter-spacing:0.1em;color:#888;border-bottom:1px dashed #222;padding-bottom:4px;margin-top:4px;">${t}</div>`;
 
         Modal.open({
             title,
-            size: 'medium',
+            size: 'large',
             body: `
-                <div style="display:flex;flex-direction:column;gap:16px;">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div style="display:flex;flex-direction:column;gap:14px;">
+                    ${secTitle('Identidad')}
+                    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;">
                         <div>
-                            <label class="form-label">Nombre</label>
-                            <input type="text" id="rhPNombre" class="form-input" value="${item?.nombre || ''}" placeholder="Nombre completo o referente cuadrilla" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Nombre *</label>
+                            <input type="text" id="rhPNombre" class="form-input" value="${item?.nombre || ''}" placeholder="Nombre completo o referente cuadrilla" style="padding:10px;">
                         </div>
                         <div>
-                            <label class="form-label">Rol descriptivo</label>
-                            <input type="text" id="rhPRol" class="form-input" value="${item?.rol || ''}" placeholder="Ej: Armador senior, Chofer Iveco" style="font-size:1rem;padding:12px;">
-                            <div style="font-size:0.7rem;color:#888;margin-top:4px;">Texto libre para descripción interna. Para que la persona aparezca en Logística, marcá abajo sus roles operativos.</div>
+                            <label class="form-label">DNI</label>
+                            <input type="text" id="rhPDni" class="form-input" value="${raw.dni || ''}" placeholder="12345678" style="padding:10px;font-family:'Space Mono',monospace;">
+                        </div>
+                        <div>
+                            <label class="form-label">CUIL</label>
+                            <input type="text" id="rhPCuil" class="form-input" value="${item?.cuil || ''}" placeholder="20-12345678-9" maxlength="13" style="padding:10px;font-family:'Space Mono',monospace;">
                         </div>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+                        <div>
+                            <label class="form-label">Fecha de Nacimiento</label>
+                            <input type="date" id="rhPNacimiento" class="form-input" value="${item?.fecha_nacimiento || ''}" style="padding:10px;">
+                        </div>
+                        <div>
+                            <label class="form-label">Situación previsional</label>
+                            <select id="rhPPrev" class="form-input" style="padding:10px;">
+                                <option value="">—</option>
+                                <option value="monotributo" ${raw.situacion_previsional === 'monotributo' ? 'selected' : ''}>Monotributo</option>
+                                <option value="relacion_dependencia" ${raw.situacion_previsional === 'relacion_dependencia' ? 'selected' : ''}>Relación de dependencia</option>
+                                <option value="otro" ${raw.situacion_previsional === 'otro' ? 'selected' : ''}>Otro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label">Estado</label>
+                            <select id="rhPEstado" class="form-input" style="padding:10px;">
+                                <option value="activo" ${item?.estado === 'activo' || !item ? 'selected' : ''}>Activo</option>
+                                <option value="inactivo" ${item?.estado === 'inactivo' ? 'selected' : ''}>Inactivo</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    ${secTitle('Contacto')}
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div>
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" id="rhPTel" class="form-input" value="${item?.telefono || ''}" placeholder="11 1234-5678" style="padding:10px;">
+                        </div>
+                        <div>
+                            <label class="form-label">Email</label>
+                            <input type="email" id="rhPEmail" class="form-input" value="${item?.email || ''}" placeholder="email@ejemplo.com" style="padding:10px;">
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div>
+                            <label class="form-label">Dirección</label>
+                            <input type="text" id="rhPDireccion" class="form-input" value="${raw.direccion || ''}" placeholder="Calle 123, Localidad" style="padding:10px;">
+                        </div>
+                        <div>
+                            <label class="form-label">Referente / contacto (cuadrilla)</label>
+                            <input type="text" id="rhPContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Persona de contacto" style="padding:10px;">
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div>
+                            <label class="form-label">Contacto de emergencia</label>
+                            <input type="text" id="rhPEmerNombre" class="form-input" value="${raw.contacto_emergencia_nombre || ''}" placeholder="Nombre" style="padding:10px;">
+                        </div>
+                        <div>
+                            <label class="form-label">Teléfono de emergencia</label>
+                            <input type="text" id="rhPEmerTel" class="form-input" value="${raw.contacto_emergencia_telefono || ''}" placeholder="Teléfono" style="padding:10px;">
+                        </div>
+                    </div>
+
+                    ${secTitle('Trabajo')}
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;">
                         <div>
                             <label class="form-label">Tipo</label>
-                            <select id="rhPTipo" class="form-input" style="font-size:1rem;padding:12px;">
+                            <select id="rhPTipo" class="form-input" style="padding:10px;">
                                 <option value="fijo" ${item?.tipo === 'fijo' || !item ? 'selected' : ''}>Fijo</option>
                                 <option value="eventual" ${item?.tipo === 'eventual' ? 'selected' : ''}>Eventual</option>
                                 <option value="cuadrilla" ${item?.tipo === 'cuadrilla' ? 'selected' : ''}>Cuadrilla</option>
                             </select>
                         </div>
                         <div id="rhCantidadWrap" style="display:${item?.tipo === 'cuadrilla' ? 'block' : 'none'};">
-                            <label class="form-label">Cantidad de personas</label>
-                            <input type="number" id="rhPCantidad" class="form-input" value="${item?.cantidad_personas || ''}" placeholder="Ej: 8" min="1" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Cant. personas</label>
+                            <input type="number" id="rhPCantidad" class="form-input" value="${item?.cantidad_personas || ''}" placeholder="8" min="1" style="padding:10px;">
+                        </div>
+                        <div>
+                            <label class="form-label">Fecha Ingreso</label>
+                            <input type="date" id="rhPIngreso" class="form-input" value="${item?.fecha_ingreso || ''}" style="padding:10px;">
+                        </div>
+                        <div>
+                            <label class="form-label">Costo por día ($)</label>
+                            <input type="number" id="rhPCostoDia" class="form-input" value="${raw.costo_dia_referencial ?? ''}" placeholder="0" min="0" step="500" style="padding:10px;font-family:'Space Mono',monospace;">
                         </div>
                     </div>
-
+                    <div>
+                        <label class="form-label">Rol descriptivo</label>
+                        <input type="text" id="rhPRol" class="form-input" value="${item?.rol || ''}" placeholder="Ej: Armador senior, Chofer Iveco" style="padding:10px;">
+                        <div style="font-size:0.7rem;color:#888;margin-top:4px;">Texto libre para descripción interna. Para que la persona aparezca en Logística, marcá abajo sus roles operativos.</div>
+                    </div>
                     <div>
                         <label class="form-label">Roles operativos
                             <span style="font-size:0.72rem; color:#888; font-weight: 400; margin-left: 6px;">(marca los que la persona puede cumplir — define en qué selects aparece en Logística)</span>
                         </label>
                         <div id="rhPRolesOperativos" style="display: flex; flex-wrap: wrap; gap: 6px; background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px;">
                             ${(() => {
-                                const rolesCanon = [
-                                    { key: 'armador', label: 'Armador' },
-                                    { key: 'chofer', label: 'Chofer' },
-                                    { key: 'ayudante', label: 'Ayudante' },
-                                    { key: 'electricista', label: 'Electricista' },
-                                    { key: 'montajista', label: 'Montajista' },
-                                    { key: 'encargado_armado', label: 'Encargado armado' },
-                                    { key: 'tecnico', label: 'Técnico' },
-                                    { key: 'azafata', label: 'Azafata' },
-                                    { key: 'colaborador', label: 'Colaborador externo' },
-                                ];
                                 const actuales = (item?._raw?.roles_operativos) || (item?.roles_operativos) || [];
-                                return rolesCanon.map(r => `
+                                return this._rolesCanon.map(r => `
                                     <label style="display:flex; align-items:center; gap:6px; background:#111; border:1px solid #1a1a1a; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:0.84rem;">
                                         <input type="checkbox" data-rol-op value="${r.key}" ${actuales.includes(r.key) ? 'checked' : ''} style="margin:0; accent-color:#00A9C1;">
                                         <span>${r.label}</span>
@@ -602,57 +948,31 @@ const RRHHModule = {
                         </div>
                     </div>
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    ${secTitle('Administrativo')}
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                         <div>
-                            <label class="form-label">Contacto</label>
-                            <input type="text" id="rhPContacto" class="form-input" value="${item?.contacto || ''}" placeholder="Persona de contacto (cuadrilla)" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">Banco</label>
+                            <input type="text" id="rhPBanco" class="form-input" value="${raw.banco || ''}" placeholder="Galicia, Mercado Pago…" style="padding:10px;">
                         </div>
                         <div>
-                            <label class="form-label">Teléfono</label>
-                            <input type="text" id="rhPTel" class="form-input" value="${item?.telefono || ''}" placeholder="Teléfono" style="font-size:1rem;padding:12px;">
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Email</label>
-                            <input type="email" id="rhPEmail" class="form-input" value="${item?.email || ''}" placeholder="email@ejemplo.com" style="font-size:1rem;padding:12px;">
-                        </div>
-                        <div>
-                            <label class="form-label">Fecha Ingreso</label>
-                            <input type="date" id="rhPIngreso" class="form-input" value="${item?.fecha_ingreso || ''}" style="font-size:1rem;padding:12px;">
+                            <label class="form-label">CBU / Alias</label>
+                            <input type="text" id="rhPCbu" class="form-input" value="${raw.cbu_alias || ''}" placeholder="alias.de.pago" style="padding:10px;font-family:'Space Mono',monospace;">
                         </div>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">CUIL</label>
-                            <input type="text" id="rhPCuil" class="form-input" value="${item?.cuil || ''}" placeholder="20-12345678-9" maxlength="13" style="font-size:1rem;padding:12px;font-family:'Space Mono',monospace;">
-                        </div>
-                        <div>
-                            <label class="form-label">Fecha de Nacimiento</label>
-                            <input type="date" id="rhPNacimiento" class="form-input" value="${item?.fecha_nacimiento || ''}" style="font-size:1rem;padding:12px;">
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div>
-                            <label class="form-label">Estado</label>
-                            <select id="rhPEstado" class="form-input" style="font-size:1rem;padding:12px;">
-                                <option value="activo" ${item?.estado === 'activo' || !item ? 'selected' : ''}>Activo</option>
-                                <option value="inactivo" ${item?.estado === 'inactivo' ? 'selected' : ''}>Inactivo</option>
-                            </select>
-                        </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                         <div>
                             <label class="form-label">Documentación</label>
-                            <input type="text" id="rhPDoc" class="form-input" value="${item?.documentacion || ''}" placeholder="DNI, ART, habilitaciones..." style="font-size:1rem;padding:12px;">
+                            <input type="text" id="rhPDoc" class="form-input" value="${item?.documentacion || ''}" placeholder="DNI, ART, habilitaciones..." style="padding:10px;">
                         </div>
-                    </div>
-                    <div>
-                        <label class="form-label">Notas</label>
-                        <textarea id="rhPNotas" class="form-input" rows="2" placeholder="Observaciones" style="font-size:1rem;padding:12px;">${item?.notas || ''}</textarea>
+                        <div>
+                            <label class="form-label">Notas</label>
+                            <input type="text" id="rhPNotas" class="form-input" value="${(item?.notas || '').replace(/"/g, '&quot;')}" placeholder="Observaciones" style="padding:10px;">
+                        </div>
                     </div>
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn-primary" id="rhPSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });
@@ -678,10 +998,9 @@ const RRHHModule = {
                 const tipoDb = tipoUi === 'fijo' ? 'interna' : tipoUi;
 
                 const rolLibre = document.getElementById('rhPRol')?.value?.trim() || null;
-                // roles_operativos: leídos de los checkboxes del multi-select.
                 const rolesOperativos = [...document.querySelectorAll('[data-rol-op]:checked')].map(i => i.value);
-
                 const estadoUi = document.getElementById('rhPEstado')?.value || 'activo';
+                const costoDia = parseFloat(document.getElementById('rhPCostoDia')?.value);
 
                 const payload = {
                     nombre: nombreSolo,
@@ -699,22 +1018,33 @@ const RRHHModule = {
                     activo: estadoUi === 'activo',
                     documentacion: document.getElementById('rhPDoc')?.value?.trim() || null,
                     notas: document.getElementById('rhPNotas')?.value?.trim() || null,
+                    // RRHH.1 — ficha ampliada (requiere sql/rrhh1_ficha_personas.sql corrido)
+                    dni: document.getElementById('rhPDni')?.value?.trim() || null,
+                    direccion: document.getElementById('rhPDireccion')?.value?.trim() || null,
+                    contacto_emergencia_nombre: document.getElementById('rhPEmerNombre')?.value?.trim() || null,
+                    contacto_emergencia_telefono: document.getElementById('rhPEmerTel')?.value?.trim() || null,
+                    banco: document.getElementById('rhPBanco')?.value?.trim() || null,
+                    cbu_alias: document.getElementById('rhPCbu')?.value?.trim() || null,
+                    situacion_previsional: document.getElementById('rhPPrev')?.value || null,
+                    costo_dia_referencial: isNaN(costoDia) ? null : costoDia,
                     _deleted: false,
                 };
 
                 try {
                     if (editId) {
-                        await supabaseClient.from('personas').update(payload).eq('id', editId);
+                        const { error } = await supabaseClient.from('personas').update(payload).eq('id', editId);
+                        if (error) throw error;
                         Toast.success('Personal actualizado');
                     } else {
-                        await supabaseClient.from('personas').insert(payload);
+                        const { error } = await supabaseClient.from('personas').insert(payload);
+                        if (error) throw error;
                         Toast.success('Personal agregado');
                     }
                     Modal.close();
                     await this._loadNomina();
                 } catch (e) {
                     console.error('[RRHH] Error saving personas:', e);
-                    Toast.error('Error al guardar');
+                    Toast.error(`Error al guardar${e?.message ? ': ' + e.message : ''}`);
                 }
             });
             document.getElementById('rhPNombre')?.focus();
