@@ -1,11 +1,11 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 54%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 51%
 
 > **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈46%). No repetir acá lo que está en PROGRESO.
 > *(Rebalanceo 2026-06-11: el universo creció — la mini-fase RRHH ≈3% se expandió a la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO a PROGRESO, rebalancear los % (PROGRESO sube, PLAN-MAESTRO baja), y **sumar acá las ideas nuevas** que vayan saliendo para fases más adelante.
 > **Companions:** `PROGRESO.md` (hecho + %), `RECONOCIMIENTO-LOBBY.md` (estado del código), `BRIEF-ARRANQUE-CODE.md` (protocolo).
 > **Workflow:** branch `rediseno` para desarrollar; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` para que Fede pullee en el server y pruebe. SQL-first en fases con DDL (Fede corre el SQL en Supabase, después se pushea el JS).
-> **Baseline actual:** `origin/main` @ `4632a4a` *(actualizado 2026-06-12)*.
+> **Baseline actual:** `origin/main` @ `7edb00a` *(actualizado 2026-06-12 — RRHH.1 + infra)*.
 
 ---
 
@@ -42,11 +42,12 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - **2C limpieza** hecha (commit `5687973`): CSS muerto `.mkt-*`, comentarios stale RECURSOS→ACTIVOS, color del audit-log. `undo.js` verificado vivo. (`.cal-*` NO se borra: lo usa el mini-calendario del Lobby.)
 - **2B auditada y DIFERIDA** → `AUDITORIA-2B-duplicados.md`. Los 3 duplicados (`personas`/`rrhh_*`; `vehiculos`/`logistica_*`; checklists) **no se consolidan ahora** — se absorben en Fases 3/4 y en la mini-fase RRHH (abajo), porque consolidar antes de reescribir esos módulos sería retrabajo.
 
-### 🆕 Fase RRHH v2 — módulo completo estilo CRM *(diseño cerrado 2026-06-11 · ≈8% · DDL · LISTA PARA EJECUTAR)*
-- **📘 SPEC OBLIGATORIA: `docs/modulo-rrhh-v2-blueprint.md`** (decisiones, DDL, migración, etapas, tests). Absorbe la ex mini-fase RRHH (≈3%, auditoría 2B): la migración de vacaciones + retiro de las 4 tablas `rrhh_*` es la etapa RRHH.2.
+### 🆕 Fase RRHH v2 — módulo completo estilo CRM *(diseño cerrado 2026-06-11 · ≈5.5% restante · DDL · EN CURSO)*
+- **✅ RRHH.1 HECHA Y PUSHEADA (2026-06-12 — ver PROGRESO §Fase RRHH v2):** ALTER `personas` (7 cols) + Nómina v2 estilo CRM (tabla + panel lateral Datos/Trabajo/Notas + form ampliado + días/año + WhatsApp). Verificada en preview + review adversarial. ⏳ Falta pull de Fede + verificación visual. **Restante de la fase: RRHH.2/3/4 (+ RRHH.5 bloqueada).**
+- **📘 SPEC OBLIGATORIA: `docs/modulo-rrhh-v2-blueprint.md`** (decisiones, DDL, migración, etapas, tests). Absorbe la ex mini-fase RRHH (≈3%, auditoría 2B): la migración de vacaciones + retiro de las 4 tablas `rrhh_*` es la etapa RRHH.2. **Para RRHH.2 usar `docs/mapa-tablas.md`** (autogenerado) para cazar TODAS las lecturas de `rrhh_personal`/`rrhh_asignaciones`/`rrhh_vacaciones`/`rrhh_vacaciones_solicitudes` antes del DROP — y `tools/vps/backup-supabase.sh` corriendo antes de dropear.
 - **5 tabs estilo CRM** (`.hr-*`): **Panel** (KPIs: activos, trabajando hoy, ausentes, convocatorias, docs por vencer, cumpleaños) · **Nómina** (tabla + panel lateral con sub-tabs Datos/Trabajo/Ausencias/Docs/Notas; ficha completa: dirección, emergencia, CBU/banco, situación previsional — `cuil`/`fecha_nacimiento` YA están en prod, verificado) · **Planificación** (grilla persona × días: asignaciones por color, ausencias gris, conflictos rojo + aprobar convocatorias inline) · **Ausencias** (vacaciones/enfermedad/licencia/franco/falta + saldo anual, sin presentismo diario — solo excepciones) · **Jornales** (lente POR PERSONA, read-only).
 - **Decisiones Fede:** sin presentismo · docs solo fechas+semáforo (sin archivos) · sin self-service (todo carga admin; taller no ve RRHH) · sueldos internos FUERA (viven en Finanzas) · la CARGA de jornales vive en Finanzas ("Planilla del evento", ver Fase 8).
-- **Etapas** (cada una deployable, SQL-first): RRHH.1 ficha+Nómina v2 (≈2.5%) → RRHH.2 Ausencias+migración+retiro legacy (≈2%) → RRHH.3 Planificación (≈1.5%) → RRHH.4 Panel+Docs+alerta `documento_por_vencer` (≈1.5%) → RRHH.5 Jornales (≈0.5%, **⛔ bloqueada por la pieza "Rendimiento por evento" de Finanzas**; el resto NO depende de nada — RRHH puede arrancar con 4 tabs).
+- **Etapas** (cada una deployable, SQL-first): ~~RRHH.1 ficha+Nómina v2~~ ✅ **HECHA** → RRHH.2 Ausencias+migración+retiro legacy (≈2%) → RRHH.3 Planificación (≈1.5%) → RRHH.4 Panel+Docs+alerta `documento_por_vencer` (≈1.5%) → RRHH.5 Jornales (≈0.5%, **⛔ bloqueada por la pieza "Rendimiento por evento" de Finanzas**; el resto NO depende de nada).
 - **No cambia:** asignar gente sigue en Eventos por jornada; Logística/Calendario intactos; notifs de convocatoria se reusan.
 
 ### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
@@ -149,7 +150,7 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 ### Fase 8 — Finanzas + Contabilidad *(≈10%)*
 - **⚠ SYNC 2026-06-12 (verificado git + REST contra prod):** las Fases **G y H del blueprint finanzas YA están codeadas en main** (commits `9402b17`→`149e30c`, 2026-05-27/28): G.1 SQL cuentas dif. cambio 4.9.01/5.9.01 · G.2 tab "Mapeos auto." en Contabilidad · G.3 dif. cambio automática · G.4 subtab Mov. extranjeros · G.5 planes multi-moneda · G.6 Balance General + EERR PDF · H saldos apertura (tab + SQL). **SQL G.5 y H corridos en prod** (verificado: `plan_cobro.moneda` y tabla `saldos_apertura` existen). **Pendiente confirmar** (RLS bloquea verificación anon): seed G.1 (¿existen las cuentas 4.9.01/5.9.01?) y si `mapeo_cuentas` tiene filas — **NO re-implementar nada de G/H**. La conciliación ya tiene wizard 4 pasos (finanzas.js ~9011, desde abril).
 - Revisar **todos los endpoints** + **integridad cruzada** (modificar uno modifica otro: asientos, libros). **Análisis completo de La PyME.**
-- **Seed de `mapeo_cuentas` = primer sub-bloque** (bug silencioso activo: hoy ningún ingreso/egreso confirmado genera asiento → todo reporte contable corre en vacío). El tab Mapeos (G.2) ya existe como UI; falta cargar mapeos genéricos + específicos y evaluar backfill de asientos históricos (no diseñado).
+- **✅ Seed de `mapeo_cuentas` YA HECHO Y FUNCIONANDO (verificado en prod 2026-06-12, sesión autenticada):** 12 mapeos activos (4 ingreso por servicio SRV-* + 8 egreso por categoría), cuentas G.1 4.9.01/5.9.01 existen, y los asientos automáticos SE GENERAN (6 de los últimos 8 asientos son `automatico` linkeados a ingresos/egresos). El "bug de asientos en vacío" del CLAUDE.md §10 quedó RESUELTO en algún momento post-mayo — NO re-seedear. `saldos_apertura` existe con 0 filas (esperable, apertura 2027 pendiente de carga). Pendiente real de Fase 8: backfill de asientos para movimientos confirmados ANTES del seed (si los hay sin asiento) + auditoría de integridad.
 - Contabilidad ya semi-armada → ajustar copiando el funcionamiento fino de La PyME.
 - **🆕 "Rendimiento por evento" — EN DISEÑO (charla aparte, prompt entregado 2026-06-11):** reemplaza el Excel de pagos de Lelean. Dos piezas: (1) **Planilla del evento** (grilla inline de carga rápida: jornales por persona / fletes / proveedores que facturan POR EVENTO — teles, muebles JD, audiovisual, MultiLED — + seguros + comida; estados pendiente/pagado con adelantos y pagos en tandas; pagar ítem → egreso propio, pagar seleccionados → egreso consolidado; asiento automático; OC de Compras read-only sin duplicar) y (2) **dashboard de ganancia por evento** (Σ ingresos proyectos − costos evento − costos proyecto, con materiales de inventario). Al cerrar aquel diseño se suma acá con su % y se rebalancea. **El tab Jornales de RRHH v2 (RRHH.5) depende de esta pieza** (contrato: ítems jornal con persona_id/fase/dias/tarifa/monto_pagado/egreso_id).
 - **Test:** por definir según el análisis.
@@ -166,6 +167,13 @@ GLOBAL [Fase 9]    Panel SuperAdmin (roles + stats) · Centro de notificaciones
 - En PARALELO: Fede pasa info a Meli/Leo para el track CAD.
 
 ---
+
+## 🆕 Ideas de mejora pendientes *(del análisis ultracode 2026-06-12 — lo ya hecho está en PROGRESO §Infra)*
+- **Cache-busting automático por git-hash** en vez de bumps `?v=N` manuales: un script (pre-commit/paso del deploy) que reescribe los `?v=` con el short-hash del commit. Elimina la clase de bug "pusheé pero no se ve". (Hecho parcial: el `check.sh` ya valida que el bump esté; falta automatizarlo.)
+- **No-cache para index.html en nginx** (parte del loop deploy, `docs/vps-deploy-loop.md` §B): mata el "hard refresh tras cada pull". ⏳ pendiente de instalar.
+- **RPC `ajustar_stock(item_id, delta)` atómico** antes de que el remito de Fase 4 descuente inventario (hoy el update es read-modify-write no atómico → race; impacto bajo hoy, crece con el remito). De paso decidir destino de `insumos_base.stock_actual`/`stock_minimo` sin uso.
+- **Tab CRUD de `mapeo_cuentas` + panel de cobertura** en Contabilidad (qué categorías de ingreso/egreso NO tienen mapeo → no generan asiento): convierte el seed en feature mantenible por Sofi/Lelean. Engancha con la auditoría de Fase 8. (El seed base YA está; esto es la capa de mantenimiento.)
+- **Protocolo "mockup clickeable primero"** para decisiones de diseño abiertas (showcase catálogo, historial de remitos, planilla del evento): generar un HTML no-destructivo en raíz y que Fede decida sobre algo tangible (como funcionó con `mockup-oc-v2.html`).
 
 ## TRACKS PARALELOS *(fuera de la SPA — conectados por el Catálogo; NO los ejecuta Claude Code)*
 

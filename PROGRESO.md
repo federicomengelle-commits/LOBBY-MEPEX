@@ -1,6 +1,6 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 46%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 49%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈54%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈51%).
 > *(Rebalanceo 2026-06-11: el % bajó sin perder trabajo — el universo creció al expandirse la mini-fase RRHH ≈3% en la fase RRHH v2 ≈8% con diseño cerrado.)*
 > **Regla de los 2 archivos (Fede, 2026-06-07):** al cierre de cada sesión → mover lo completado de PLAN-MAESTRO acá y **rebalancear los %** (PROGRESO sube, PLAN-MAESTRO baja). Las ideas para fases futuras se suman al PLAN-MAESTRO, no acá.
 > **Workflow:** desarrollar en branch `rediseno`; commit por sub-bloque; merge `--ff-only` a `main` + `git push origin main` → Fede pullea en el server y prueba. SQL-first en fases con DDL.
@@ -9,18 +9,22 @@
 
 ---
 
-## Estado general — AVANCE ≈ 46%
+## Estado general — AVANCE ≈ 49%
 - **Hecho:** Fase 1 ✅ · Fase 2 ✅ · **Fase 3** (Flota + Locaciones) ✅ · **Fase 4 — EVENTOS** completa · **historial + docs a Supabase ✅** · **2º pase del calendario ✅** · **Taller — dashboard dinámico + flujo Oficina→Taller COMPLETO (SB1–SB4) ✅** (checklist editable, gatillo "Pasar a Taller", detalle del stand read-only, taller sin Proyectos).
 - **Próximo (Fase 4) — ⛔ CUELLO DE BOTELLA ÚNICO: el cotizador del VPS tiene que escribir `cotizacion_items` en Supabase** (con flag propio/subalq + cantidad por línea + link a proyecto). Eso desbloquea de una: **subalquileres por proveedor** (PDF/mail) **y el remito simple de Logística** (Fede eligió "items del cotizador", no carga manual). Sin esa integración, ambos quedan trabados. Detalle en `PLAN-MAESTRO` §Fase 4.
   - **Logística — avance:** badge de vehículos → **Flota** ✅ (commit `89470ab`, verificado en prod). Decisiones del remito tomadas (por proyecto+evento, foto de firma, sacar pestaña Vehículos). Falta (post-cotizador): construir el remito + retirar cargas.
 - **Fase 9 — TRANSVERSAL GLOBAL ✅ COMPLETA Y VERIFICADA (charla 03, 2026-06-08):** centro de notificaciones 2 capas (9.1 motor `Alertas` `4ed1278` · 9.2 campana `95aa6b6` · 9.3 página + silenciar `bc466e8`) + categoría GLOBAL en el menú (9.4 `fb3e755`) + stats por usuario / tab Actividad (9.5 `0e100ee`) + lobby home por rol híbrido (9.6 `11f83da`). Ver §Fase 9 abajo.
 - **Desbloqueado para avanzar AHORA (manteniendo el orden):** **Fase 5 — Compras + rentabilidad por proyecto** (siguiente en orden, desbloqueada). Después Fase 6 (Diseño) · Fase 7 (CRM auditoría) · Fase 8 (Finanzas/Contab.) · Fase 10 (Remate UI). **Fase 4** sigue trabada por el cotizador (`cotizacion_items` vacía). **Fase RRHH v2 (diseño cerrado 2026-06-11, blueprint listo) intercalable — RRHH.1–4 sin dependencias.**
 - **📐 DISEÑO RRHH v2 CERRADO (charla 04, 2026-06-11 — solo diseño, sin código):** módulo RRHH completo estilo CRM en 5 tabs (Panel / Nómina con ficha sub-tabs / Planificación grilla persona×días / Ausencias / Jornales lente-persona) + DDL + migración legacy + 5 etapas → **`docs/modulo-rrhh-v2-blueprint.md`** (SPEC obligatoria) + fase en PLAN-MAESTRO. Verificado contra prod: `personas.cuil`/`fecha_nacimiento` YA existen (SQL del repo desfasado); `direccion`/`cbu_alias`/`contacto_emergencia` NO. Decisiones Fede: sin presentismo (ausencias por excepción) · docs solo fechas+semáforo · sin self-service · jornales: la CARGA vive en Finanzas. **Spin-off:** "Rendimiento por evento" (planilla de costos que reemplaza el Excel de Lelean + dashboard de ganancia por evento) → prompt entregado para charla aparte, anotado en PLAN-MAESTRO §Fase 8; RRHH.5 depende de esa pieza.
-- **Baseline:** `origin/main` al día (`4632a4a`). Branch dev: `rediseno` (= main).
+- **Baseline:** `origin/main` al día (`7edb00a`). Branch dev: `rediseno` (= main).
 - **🔄 SYNC 2026-06-12:** verificado que Fases G/H de Finanzas YA están codeadas en main + SQL G.5/H corridos en prod (detalle en PLAN-MAESTRO §Fase 8 — NO re-implementar). Decisiones Fede de hoy: **importador asistido de `cotizacion_items` APROBADO** (stopgap del cuello de botella Fase 4) + **loop deploy VPS aprobado** (endpoint /deploy + no-cache + backup pg_dump).
+- **🆕 SESIÓN 2026-06-12 — Infra de autonomía + RRHH.1 (ver §Infra y §Fase RRHH v2 abajo):**
+  - **Infra/red de seguridad** (commits `6edea4e` + `3553e9d`, pusheados): `tools/check.sh` (smoke-check pre-push: sintaxis + console.log DEBUG + bumps `?v=`), `tools/mapa-tablas.js` → `docs/mapa-tablas.md` (85 tablas ↔ código, para retiros de legacy seguros), `sql/snapshot_schema.sql` (dump information_schema + verificación G.1/mapeos), endpoint `/deploy` en `lobby-api` + `tools/vps/backup-supabase.sh` + `docs/vps-deploy-loop.md` (guía A/B/C). **Falta:** instalación guiada en el VPS (descubrimiento hecho: nginx + pm2 `lobby-api` en `/home/mepex/lobby-api` fuera del repo → `REPO_DIR`; `pg_dump` falta instalar; **listmonk ya instalado** → candidato E3 mailing).
+  - **B3 — seed `mapeo_cuentas` resultó YA HECHO** (verificado en prod 2026-06-12, sesión autenticada): 12 mapeos activos, cuentas G.1 4.9.01/5.9.01 existen, asientos automáticos generándose (6/8 últimos). El "bug de asientos en vacío" del CLAUDE.md §10 está RESUELTO. NO re-seedear.
+  - **RRHH.1 ✅ PUSHEADO** (commits `83f33b5`+`139a31b`+`7edb00a`): ver §Fase RRHH v2 abajo.
 - **✅ VERIFICADO EN PROD (Chrome, 2026-06-08):** los 3 SQL corridos + pull hecho (api v32 / taller v10 / data v10 / pjd v5) + roles taller corregido en la tabla (`{eventos:read, taller:write, logistica:write, inventario:read, flota:read}`). Flujo Taller testeado end-to-end: **"Pasar a Taller"** (estado=`en_taller` + 6 pasos sembrados + notif al rol taller) · **checklist editable** con tildado optimista + **auto-estado que PERSISTE** (bug `created_by` resuelto, verificado en DB) · **detalle del stand** (info + Drive + checklist + notas) · **docs/historial RLS** OK (insert/delete probados). Data de prueba limpiada. **Bug encontrado y arreglado en el acto:** los botones "Cerrar"/"Entendido" de los modales del taller usaban `data-modal-cancel` (no cerraban) → `data-modal-close` (commit `73f98a6`).
 - **⏳ Solo queda (decisión de Fede):** validar los **pasos REALES del taller con el equipo** (Diego/Juan/Carlos/Willy) → alimenta el catálogo/presets v2.
-- **Última actualización:** 2026-06-11 (charla 04 — **diseño RRHH v2 cerrado** con blueprint + fase en PLAN-MAESTRO; prompt "Rendimiento por evento" entregado para charla aparte). Próximo: **ejecutar RRHH.1** (ALTER `personas` + Nómina v2) o la fase que Fede priorice.
+- **Última actualización:** 2026-06-12 (sesión "mecha" — infra de autonomía + **RRHH.1 Nómina v2 pusheada**). Próximo: **RRHH.2** (Ausencias + migración + retiro legacy `rrhh_*`) o la fase que Fede priorice. Pendiente de Fede: pull en VPS + verificación visual de RRHH.1 + instalación guiada del loop de deploy.
 
 ---
 
@@ -271,6 +275,29 @@ Modelo doble paso (Pedido taller → OC Compras). **SQL corrido por Fede** (`sql
 
 **✅ Fase 5 doble paso COMPLETO** (5.A+5.B+5.C, charla 03) — Pedido (taller, 10 seg) → OC (Compras: presupuestos→ganadora) → Egreso (imputado al proyecto, cierra el pedido). **Falta (opcional / a revisar con Fede):** (a) columna de **presupuesto** (cotización del proyecto vía `proyectos.cotizacion_id`) en Rent. Proyecto para comparar vs gasto real; (b) revisar las **decisiones tomadas** (taxonomía de gasto fija, dónde vive exactamente, archivado de OCs); (c) si se quiere hard-link OC↔egreso, ALTER `egresos.orden_compra_id` a bigint (hoy es uuid huérfano). **⏳ Falta verificación visual de Fede** del flujo completo en el server.
 
+## INFRA DE AUTONOMÍA (sesión 2026-06-12 · commits `6edea4e` + `3553e9d`, pusheados)
+
+Red de seguridad + velocidad para que las sesiones autónomas no rompan prod (ideas del análisis ultracode 2026-06-12):
+- **`tools/check.sh`** — smoke-check pre-push: (1) `node --check` de todos los `.js` de raíz, (2) caza `console.log` con marca DEBUG, (3) verifica que todo `.js` cambiado vs `origin/main` tenga su `?v=` bumpeado en index.html. Correr SIEMPRE antes de pushear.
+- **`tools/mapa-tablas.js` → `docs/mapa-tablas.md`** — autogenera el mapa tabla↔código (`.from()`/`.rpc()` → archivos+líneas). 85 tablas/views + 3 RPCs. Responde "¿quién lee la tabla X?" antes de retirar legacy. Regenerar con `node tools/mapa-tablas.js`.
+- **`sql/snapshot_schema.sql`** — UN SQL que devuelve information_schema completo + verificación G.1/mapeos/apertura. Fede lo corre, pega el JSON, se versiona en `docs/schema-prod.md`. (⏳ pendiente que Fede pegue el resultado.)
+- **Loop deploy VPS** (código listo, ⏳ instalación guiada pendiente): endpoint `POST /deploy` en `lobby-api/index.js` (auth superadmin JWT o header `X-Deploy-Token`; hace `git pull --ff-only`, necesita `REPO_DIR=/home/mepex/lobby` en `.env` porque lobby-api vive fuera del repo) · `tools/vps/backup-supabase.sh` (pg_dump + rotación 30d + cron) · guía completa en `docs/vps-deploy-loop.md` (§0 descubrimiento ya hecho · §A /deploy · §B no-cache nginx para index.html · §C backup). Falta: instalar `pg_dump`, agregar el `location` no-cache en nginx, setear el cron. **Descubrimiento VPS** → `memory/reference_vps_layout.md` (nginx + pm2 cotizador/lobby/mepex-api · **listmonk instalado** = candidato E3 mailing).
+
+## FASE RRHH v2 — RRHH.1 ✅ Nómina v2 (sesión 2026-06-12, PUSHEADO a main)
+
+> Blueprint: `docs/modulo-rrhh-v2-blueprint.md` §RRHH.1. SQL-first respetado.
+
+- **SQL `sql/rrhh1_ficha_personas.sql`** (corrido por Fede, verificado en prod): ALTER `personas` + 7 columnas (`dni`, `direccion`, `contacto_emergencia_nombre/telefono`, `cbu_alias`, `banco`, `situacion_previsional`). `cuil`/`fecha_nacimiento` ya existían.
+- **Nómina v2** (`rrhh.js?v=9`, commits `83f33b5`+`139a31b`+`7edb00a`): reescritura del tab Nómina al patrón CRM (tabla + panel lateral 380px, sin ficha full-page):
+  - **Tabla:** búsqueda (nombre/rol/CUIL/tel), filtro por rol operativo canónico, **roles como chips**, teléfono como **link WhatsApp** (`wa.me`), columna **"Días año"** (días trabajados del año, derivados de `asignaciones_evento` aprobadas/confirmadas en 1 bulk query).
+  - **Panel lateral** con sub-tabs: **Datos** (contacto/identidad/emergencia/bancario/trabajo — las 7 columnas nuevas + costo_dia), **Trabajo** (asignaciones próximas/anteriores desde `API.getAsignacionesByPersona` + counters eventos/días del año), **Notas** (textarea con guardado directo).
+  - **Form ampliado** (modal large) con secciones Identidad/Contacto/Trabajo/Administrativo + roles operativos multi-check.
+- **Bug encontrado y arreglado en preview** (`139a31b`): `asignaciones_evento.fecha_inicio/fin` son **TIMESTAMPTZ** (no DATE) → "días año" daba 0; normalizado a `YYYY-MM-DD`. Verificado: 11 personas con días reales.
+- **Review adversarial** (3 lentes, opus-4-8) → 2 hallazgos `menor`, ambos arreglados (`7edb00a`): escape HTML en campos de texto libre (helper `_h()`) + Notas del modal volvió a `textarea`.
+- **Verificado en preview** (data real, cero errores consola): 24 personas, panel abre/cierra, sub-tabs, búsqueda con foco preservado, inyección `<b>`/`<i>` NO se renderiza, value con comilla intacto, modal cierra OK.
+- **⏳ Pendiente de Fede:** pull en VPS + verificación visual real. **Próximo:** RRHH.2 (Ausencias + migración legacy + retiro `rrhh_*`, usa `docs/mapa-tablas.md` para cazar las lecturas).
+
 ## Próximas fases (ver PLAN-MAESTRO para detalle)
-- **Fase 2 — Saneamiento de datos (PRIORIDAD):** localStorage→Supabase (eventos, calendario-operativo, CRM marketing); consolidar duplicados con bisturí; limpieza (`calendar.js` muerto).
+- **RRHH.2–4** (sin dependencias externas, intercalables): Ausencias+migración+retiro legacy · Planificación grilla · Panel+Docs. RRHH.5 (Jornales) bloqueada por "Rendimiento por evento" (Finanzas).
+- **B4 — Importador `cotizacion_items`** (APROBADO 2026-06-12): stopgap que desbloquea remito + subalquileres de Fase 4. **Schema verificado:** `cotizacion_items` hoy solo tiene `id/cotizacion_id/catalogo_item_id/cantidad/created_at`; FALTAN `es_subalquilado` + el link `cotizaciones.proyecto_id`. Requiere ALTER (SQL-first) + decisión de Fede sobre el formato de entrada (pegar texto/CSV del cotizador/Maple).
 - Fases 3–10: capa de Activos, Taller+Logística+Subalquileres, Compras+rentabilidad, Diseño, CRM, Finanzas+Contabilidad, Notificaciones+stats, Remate UI.
