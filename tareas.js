@@ -21,6 +21,7 @@ const Tareas = {
     _view: 'mias',        // 'mias' | 'equipo'
     _estado: 'abiertas',  // 'abiertas' | 'hechas' | 'todas'
     _fModulo: '',
+    _q: '',
     _tableReady: true,
 
     _MODULOS: [
@@ -31,16 +32,33 @@ const Tareas = {
     ],
 
     _visibility() {
-        return (typeof Alertas !== 'undefined' && Alertas._visibility) || {
+        const base = (typeof Alertas !== 'undefined' && Alertas._visibility) ? Alertas._visibility : {
             crm: ['superadmin','admin','venta'], eventos: ['superadmin','admin','pm'],
             taller: ['superadmin','admin','taller'], compras: ['superadmin','admin'], rrhh: ['superadmin','admin'],
+            inventario: ['superadmin','admin'], locaciones: ['superadmin','admin'],
         };
+        return { ...base, finanzas: ['superadmin','admin'] };
+    },
+
+    _prefsKey(user) { return 'mepex_tareas_prefs_' + (user.uid || user.id); },
+    _loadPrefs(user) {
+        try {
+            const p = JSON.parse(localStorage.getItem(this._prefsKey(user)) || '{}');
+            if (p.view) this._view = p.view;
+            if (p.estado) this._estado = p.estado;
+            if (typeof p.fModulo === 'string') this._fModulo = p.fModulo;
+        } catch (e) { /* ignore */ }
+    },
+    _savePrefs(user) {
+        try { localStorage.setItem(this._prefsKey(user), JSON.stringify({ view: this._view, estado: this._estado, fModulo: this._fModulo })); } catch (e) { /* ignore */ }
     },
 
     async render() {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
         this._canManage = ['superadmin', 'admin', 'pm'].includes(user.role);
+        this._loadPrefs(user);
+        if (this._view === 'equipo' && !this._canManage) this._view = 'mias';
         const content = document.getElementById('mainContent');
         if (!content) return;
         content.innerHTML = this._shell(user);
@@ -255,6 +273,18 @@ const Tareas = {
                 fecha_limite: d.fecha_vencimiento, estado: 'pendiente', target_role: 'admin', link: '#locaciones',
             }));
         },
+        async finanzas() {
+            const { data } = await supabaseClient
+                .from('egresos').select('id, concepto, estado, fecha')
+                .eq('_deleted', false).in('estado', ['pendiente', 'programado']);
+            return (data || []).slice(0, 100).map(e => ({
+                id: `fin_egr:${e.id}`, dedupe_key: `fin_egr:${e.id}`, es_derivada: true,
+                titulo: `Pagar: ${e.concepto || 'egreso #' + e.id}`,
+                descripcion: 'Egreso pendiente / programado', origen: 'finanzas', modulo: 'finanzas',
+                proyecto_id: null, prioridad: 'alta', fecha_limite: e.fecha || null,
+                estado: 'pendiente', target_role: 'admin', link: '#finanzas',
+            }));
+        },
     },
 
     // ─── Merge derivadas + manuales (claim por dedupe_key) ───
@@ -318,8 +348,8 @@ const Tareas = {
             <div id="tareasStats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
               <div class="tareas-toggle" style="display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-                <button class="tareas-tab" data-view="mias" style="padding:6px 14px;background:var(--primary);color:#000;border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">MIS TAREAS</button>
-                ${canEquipo ? `<button class="tareas-tab" data-view="equipo" style="padding:6px 14px;background:transparent;color:var(--text-muted);border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">DEL EQUIPO</button>` : ''}
+                <button class="tareas-tab" data-view="mias" style="padding:6px 14px;background:${this._view === 'mias' ? 'var(--primary)' : 'transparent'};color:${this._view === 'mias' ? '#000' : 'var(--text-muted)'};border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">MIS TAREAS</button>
+                ${canEquipo ? `<button class="tareas-tab" data-view="equipo" style="padding:6px 14px;background:${this._view === 'equipo' ? 'var(--primary)' : 'transparent'};color:${this._view === 'equipo' ? '#000' : 'var(--text-muted)'};border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">DEL EQUIPO</button>` : ''}
               </div>
               <select id="tareasFEstado" class="input" style="max-width:150px;">
                 ${opt('abiertas', 'Abiertas', this._estado)}${opt('hechas', 'Hechas', this._estado)}${opt('todas', 'Todas', this._estado)}
@@ -328,6 +358,7 @@ const Tareas = {
                 <option value="">Todos los módulos</option>
                 ${this._MODULOS.map(([v, l]) => opt(v, l, this._fModulo)).join('')}
               </select>
+              <input id="tareasQ" class="input" placeholder="Buscar…" style="max-width:150px;" value="${this._esc(this._q)}">
               <span style="flex:1"></span>
               <span id="tareasCount" style="font-family:var(--font-mono);font-size:.72rem;color:var(--text-muted);"></span>
             </div>
@@ -348,6 +379,7 @@ const Tareas = {
         if (!cont) return;
         let all = this._visibleFor(user, this._merged());
         if (this._fModulo) all = all.filter(t => t.modulo === this._fModulo);
+        if (this._q) { const q = this._q.toLowerCase(); all = all.filter(t => (t.titulo || '').toLowerCase().includes(q)); }
 
         // stats (sobre el conjunto visible, sin filtro de estado)
         const sEl = document.getElementById('tareasStats');
@@ -434,15 +466,17 @@ const Tareas = {
 
     _attach(user) {
         const setView = (v) => {
-            this._view = v;
+            this._view = v; this._savePrefs(user);
             document.querySelectorAll('.tareas-tab').forEach(x => { x.style.background = x.dataset.view === v ? 'var(--primary)' : 'transparent'; x.style.color = x.dataset.view === v ? '#000' : 'var(--text-muted)'; });
             this._renderList(user);
         };
         document.querySelectorAll('.tareas-tab').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
         const fe = document.getElementById('tareasFEstado');
-        if (fe) fe.addEventListener('change', () => { this._estado = fe.value; this._renderList(user); });
+        if (fe) fe.addEventListener('change', () => { this._estado = fe.value; this._savePrefs(user); this._renderList(user); });
         const fm = document.getElementById('tareasFModulo');
-        if (fm) fm.addEventListener('change', () => { this._fModulo = fm.value; this._renderList(user); });
+        if (fm) fm.addEventListener('change', () => { this._fModulo = fm.value; this._savePrefs(user); this._renderList(user); });
+        const q = document.getElementById('tareasQ');
+        if (q) q.addEventListener('input', () => { this._q = q.value; this._renderList(user); });
         const nb = document.getElementById('tareasNueva');
         if (nb) nb.addEventListener('click', () => this._nuevaModal(user));
     },

@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 49%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 43%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈51%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈57%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-13f: Fase 11 Centro de Tareas v4 funcionalmente COMPLETA (7 fuentes por-item, ciclo completo, claim/notif/sync taller, manual CRUD, búsqueda, persistencia) → a PROGRESO; quedan futuros menores. PLAN 49→43, PROGRESO 51→57.)*
 > *(Rebalanceo 2026-06-13e: Fede corrió los 5 SQL de RLS → **Fase 9.bis CERRADA** (Capa 1 + Capa 2 todos los tiers) → a PROGRESO. PLAN 51→49, PROGRESO 49→51.)*
 > *(Rebalanceo 2026-06-13d: reconciliación PROGRESO↔PLAN (workflow ultracode): descontadas Capa 1 + RLS comercial + Costos UX F1/F2/F3 → PROGRESO + fixes stale (GLOBAL retirada del sidebar, `cotizaciones.project_id` SÍ existe). +Fase 11 Centro de Tareas ≈10% (diseño abierto) → universo creció. PLAN 50→51, PROGRESO 50→49. Fede puede subir a 52/48 si cuenta Fase 11 completa.)*
 > *(Rebalanceo 2026-06-13c: Fase 9.bis Capa 1 (RBAC fuente única + GLOBAL fuera + compras→admin) CERRADA → a PROGRESO. Queda Capa 2 RLS-por-matriz: motor+financiero listos sin correr. PLAN 51→50, PROGRESO 49→50.)*
@@ -30,7 +31,7 @@
   - ⏳ Solo resta: testeo por rol (Fede: login/módulos/encuesta/cotizador OK) · tightear escritura de referencia (opcional).
   - Opcional: filtro "Míos" (toggle frontend)
 - **Fase 10 — Remate UI/UX** (Claude Design) — sistema visual + pasada de coherencia
-- **Fase 11 — Centro de Tareas** (back office transversal · POR ROL/PERFIL · deriva de pasos de proyecto + asignaciones) — *diseño abierto, a charlar*
+- **Fase 11 — Centro de Tareas** ✅ v4 FUNCIONALMENTE COMPLETA (EN PRUEBA) — 7 fuentes por-item + ciclo completo + claim/notif/sync taller. Solo futuros menores → ver PROGRESO.
 - **RRHH.5 — Jornales** ⛔ bloqueada por "Rendimiento por evento" (Fase 8)
 - **Tracks paralelos** (no Claude Code): CAD/Diseño 3D · Configurador 2D
 
@@ -240,7 +241,9 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 - Sistema visual (tokens dark theme + manual de marca) aplicado a cada módulo + **pasada final de coherencia**.
 - En PARALELO: Fede pasa info a Meli/Leo para el track CAD.
 
-### 🆕 Fase 11 — Centro de Tareas (back office transversal) *(≈10% · NUEVA · diseño ABIERTO, a charlar)*
+### Fase 11 — Centro de Tareas (back office transversal) — ✅ v4 FUNCIONALMENTE COMPLETA (EN PRUEBA) *(detalle en PROGRESO · solo futuros menores)*
+
+> **Futuros menores (lo único que queda):** posponer/snooze · recordatorios programados · más afinado de fechas por fuente · (opcional) un trigger SQL si se quiere que las derivadas existan sin abrir la app. La spec/diseño completo quedó abajo como referencia histórica.
 
 > **Estado: diseño abierto.** Pedido por Fede (2026-06-13): "tareas de TODO el back office (compras, administración, etc.), POR ROL y POR PERFIL, según los proyectos ASIGNADOS y los PASOS de esos proyectos. Es compleja, veremos cómo integrarla, pero es importantísima". Lo que sigue es un primer aterrizaje para debatir, NO una spec cerrada.
 
