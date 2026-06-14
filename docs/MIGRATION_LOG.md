@@ -26,7 +26,7 @@
 
 | Archivo | Estado | Fecha | Notas |
 |---|---|---|---|
-| `sql/crm_casos.sql` | ⏳ pendiente | — | E1: crm_casos/crm_mensajes/crm_contactos + cotizaciones.caso_id + migración interacciones + RLS comercial. **Correr antes del tab Casos.** |
+| `sql/crm_casos.sql` | ✅ corrido | 2026-06-13 | E1: crm_casos/crm_mensajes/crm_contactos + cotizaciones.caso_id + migración interacciones + RLS comercial. Tab Casos = próximo (front). |
 
 ## Migraciones recientes confirmadas en prod (referencia)
 

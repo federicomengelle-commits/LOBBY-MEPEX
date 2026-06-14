@@ -23,7 +23,7 @@
 - **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
   - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
 - **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
-- **Fase 7 — CRM "Casos"** — WhatsApp/Gmail/llamadas en timeline · IA (Gemini digest) · clasificación + mailing. **🎯 INTERÉS ALTO DE FEDE.** ✅ **RUNBOOK paso-a-paso creado: `docs/crm-casos-runbook.md`** (todo lo manual: Gemini key, Gmail API + delegation, DNS/mailing listmonk-o-Brevo, Meta/WhatsApp — con tabla "quién hace qué" + checklist E1). Diseño en `docs/crm-casos-blueprint.md`. **Listo para arrancar E1 guiado** (SQL 3 tablas + tab Casos + endpoint digest).
+- **Fase 7 — CRM "Casos"** — 🎯 INTERÉS ALTO. **🟢 E1 EN CURSO:** ✅ `sql/crm_casos.sql` CORRIDO + ✅ endpoint IA `tools/vps/crm-digest.js` escrito. **PRÓXIMO = construir el tab Casos (front)** → pull/probar → key Gemini → deploy endpoint → WhatsApp IA. **Retomar por `docs/crm-casos-runbook.md` §ESTADO ACTUAL** (pasos en orden). Diseño: `docs/crm-casos-blueprint.md`. Después E2 (email)/E3/E4/E5.
 - **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)* · **INTERÉS ALTO DE FEDE**
   - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad. **🔒 Solo admin/superadmin, MÁS orientado a superadmin (Fede): info interna de cuánta plata se le saca a cada cosa.**
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*

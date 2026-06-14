@@ -6,6 +6,22 @@
 
 ---
 
+## ⚡ ESTADO ACTUAL — handover 2026-06-13
+
+- ✅ **E1.1 — `sql/crm_casos.sql` CORRIDO por Fede** (tablas `crm_casos`/`crm_mensajes`/`crm_contactos` + `cotizaciones.caso_id` + migración `interacciones`→`crm_mensajes` + RLS comercial).
+- ✅ **E1.3 — endpoint IA escrito:** `tools/vps/crm-digest.js` (driver gemini|claude). **Sin deployar todavía.**
+- ⏭️ **PRÓXIMOS PASOS EN ORDEN (retomar acá):**
+  1. 🤖 **Claude construye + pushea el tab "Casos"** (front: Bandeja de hoy + ficha con timeline unificado + composer 4 canales). Integrarlo en `crm.js` reemplazando/absorbiendo "Interacciones". *(SQL ya está → se puede pushear el JS.)*
+  2. 🧑‍💻 Fede: pull + probar el tab (crear caso, nota, llamada, WhatsApp pegado en modo manual).
+  3. 🧑‍💻 Fede: crear **API key de Gemini** en aistudio.google.com (§2.2).
+  4. 🤖+🧑‍💻 **Deploy de `/api/crm/digest`** en el proxy del VPS (montar `tools/vps/crm-digest.js`, env `MODEL_PROVIDER`/`GEMINI_API_KEY`, `pm2 restart`) — juntos por SSH (§2.3).
+  5. ✅ Probar WhatsApp pegado → la IA lo estructura/resume/archiva. **E1 cerrado.**
+  6. Después: **E2 (email automático)** — §3.
+- ⚠️ **Deploy gap del VPS:** venía atrasado en pulls (Tareas v2/v3/v4, lobby v7 con el iso más grande). Conviene un **pull general** para sincronizar todo.
+- **Decisiones abiertas a cerrar:** naming del tab ("Casos"/"Oportunidades") · casilla de mail para E2 · catálogo de rubros (E3) · listmonk vs Brevo (E3) · número WhatsApp (E4).
+
+---
+
 ## 0. Pre-requisitos (juntar ANTES de arrancar)
 
 Accesos que vas a necesitar a mano (no hay que comprar nada todavía):
@@ -191,10 +207,11 @@ Sin setup externo nuevo (usa el driver IA ya configurado; para calidad de escrit
 ## 9. Checklist de arranque (cuando le demos a E1)
 
 - [ ] 🧑‍💻 Tenés acceso admin de Workspace + Google Cloud + DNS + SSH al VPS (§0).
-- [ ] 🤖 Claude escribe `sql/crm_casos.sql` → 🧑‍💻 lo corrés.
-- [ ] 🧑‍💻 Creás la key de Gemini en AI Studio (§2.2).
-- [ ] 🤖+🧑‍💻 Endpoint digest + env + restart proxy (§2.3) → ✅ curl OK.
-- [ ] 🤖 Tab Casos pusheado → 🧑‍💻 pull + probás (pegar WhatsApp, nota, llamada).
+- [x] ✅ `sql/crm_casos.sql` CORRIDO (2026-06-13).
+- [x] ✅ Endpoint digest ESCRITO (`tools/vps/crm-digest.js`) — falta deployar.
+- [ ] 🤖 **Tab Casos** (PRÓXIMO) → pushear → 🧑‍💻 pull + probar (pegar WhatsApp, nota, llamada).
+- [ ] 🧑‍💻 Crear key de Gemini en AI Studio (§2.2).
+- [ ] 🤖+🧑‍💻 Deploy del endpoint: env + `pm2 restart` (§2.3) → ✅ curl OK.
 - [ ] Decidir: naming del tab · casilla de mail para E2.
 
 > Cuando quieras arrancar E1, avisá y vamos paso por paso con este doc como guía.
