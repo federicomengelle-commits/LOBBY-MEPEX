@@ -6,19 +6,26 @@
 
 ---
 
-## ⚡ ESTADO ACTUAL — handover 2026-06-13
+## ⚡ ESTADO ACTUAL — handover 2026-06-13 (build del tab Casos)
 
 - ✅ **E1.1 — `sql/crm_casos.sql` CORRIDO por Fede** (tablas `crm_casos`/`crm_mensajes`/`crm_contactos` + `cotizaciones.caso_id` + migración `interacciones`→`crm_mensajes` + RLS comercial).
 - ✅ **E1.3 — endpoint IA escrito:** `tools/vps/crm-digest.js` (driver gemini|claude). **Sin deployar todavía.**
+- ✅ **E1.4 — TAB "CASOS" CONSTRUIDO y pusheado** (`crm.js?v=14` + `api.js?v=38`). Incluye:
+  - **Bandeja de hoy**: KPIs (sin responder / acciones vencidas / sin asignar / casos activos) + lista priorizada (vencidas→sin responder→aging) con snippet del último mensaje, chip de aging color-coded, próxima acción y owner. Sección violeta "Sin asignar" con botón Asignar.
+  - **Pipeline**: kanban de casos por estado (6 columnas lead→…→ganado/perdido), click abre ficha. *(Sin drag&drop en E1 — el estado se cambia desde la ficha.)*
+  - **Ficha de caso**: header (título, cliente, feria, temperatura, monto, owner, selector de estado) + próxima acción con "✓ Hecha"/"+ Agendar" + **timeline unificado** (burbujas WhatsApp in/out, email colapsable con `<details>`, notas naranjas con @menciones, llamadas/reuniones con duración, eventos de sistema, resumen IA violeta) + **composer de 4 canales** (Nota/WhatsApp/Email/Llamada con toggle entrante/saliente, asunto en email, duración en llamada) + panel lateral (contacto wa.me/mailto, cotizaciones del caso, detalle).
+  - **WhatsApp pegado**: botón "✨ Procesar con IA" → llama a `API.crmDigest()`; si el endpoint NO está deployado, **cae al parser local** (modo manual) que separa burbujas por `[fecha] Nombre:` / `Nombre:`. Preview con toggle Cliente/MEPEX por burbuja + (si IA) sugerencias de temperatura/próxima acción con checkbox → "Guardar al caso" (bulk).
+  - **🆕 Pegar capturas/imágenes al historial** (pedido de Fede): paste (Ctrl+V) o botón 📎 en el composer → downscale client-side a JPEG ≤1400px → guardado en `crm_mensajes.adjuntos` (jsonb, data URL). Funciona DÍA 1 sin bucket de Storage. *(Optimización futura: migrar a bucket `crm-adjuntos` cuando el volumen lo pida.)*
+  - **@menciones** en notas → `API.createNotification` al usuario mencionado.
+  - **Decisión de naming**: tab = **"Casos"**. "Interacciones" **se DEJÓ intacto** (read-only legacy) — Fede dudaba de reemplazarlo y le gusta el nombre; sin riesgo, nada se pierde. Rename/merge a decidir viéndolos juntos.
 - ⏭️ **PRÓXIMOS PASOS EN ORDEN (retomar acá):**
-  1. 🤖 **Claude construye + pushea el tab "Casos"** (front: Bandeja de hoy + ficha con timeline unificado + composer 4 canales). Integrarlo en `crm.js` reemplazando/absorbiendo "Interacciones". *(SQL ya está → se puede pushear el JS.)*
-  2. 🧑‍💻 Fede: pull + probar el tab (crear caso, nota, llamada, WhatsApp pegado en modo manual).
-  3. 🧑‍💻 Fede: crear **API key de Gemini** en aistudio.google.com (§2.2).
-  4. 🤖+🧑‍💻 **Deploy de `/api/crm/digest`** en el proxy del VPS (montar `tools/vps/crm-digest.js`, env `MODEL_PROVIDER`/`GEMINI_API_KEY`, `pm2 restart`) — juntos por SSH (§2.3).
-  5. ✅ Probar WhatsApp pegado → la IA lo estructura/resume/archiva. **E1 cerrado.**
-  6. Después: **E2 (email automático)** — §3.
-- ⚠️ **Deploy gap del VPS:** venía atrasado en pulls (Tareas v2/v3/v4, lobby v7 con el iso más grande). Conviene un **pull general** para sincronizar todo.
-- **Decisiones abiertas a cerrar:** naming del tab ("Casos"/"Oportunidades") · casilla de mail para E2 · catálogo de rubros (E3) · listmonk vs Brevo (E3) · número WhatsApp (E4).
+  1. 🧑‍💻 Fede: **pull general del VPS** (venía atrasado) + probar el tab (crear caso, nota, llamada, **pegar captura**, WhatsApp pegado en modo manual). Verificar consola sin rojos.
+  2. 🧑‍💻 Fede: crear **API key de Gemini** en aistudio.google.com (§2.2).
+  3. 🤖+🧑‍💻 **Deploy de `/api/crm/digest`** en el proxy del VPS (montar `tools/vps/crm-digest.js`, env `MODEL_PROVIDER`/`GEMINI_API_KEY`, `pm2 restart`) — juntos por SSH (§2.3).
+  4. ✅ Probar WhatsApp pegado → ahora con IA estructura/resume/clasifica. **E1 cerrado.**
+  5. Después: **E2 (email automático)** — §3.
+- ⚠️ **Deploy gap del VPS:** venía atrasado en pulls (Tareas v2/v3/v4, lobby v7). Hacer **pull general**.
+- **Decisiones abiertas a cerrar:** ~~naming del tab~~ (cerrado: "Casos", Interacciones queda) · casilla de mail para E2 · catálogo de rubros (E3) · listmonk vs Brevo (E3) · número WhatsApp (E4).
 
 ---
 
@@ -209,7 +216,7 @@ Sin setup externo nuevo (usa el driver IA ya configurado; para calidad de escrit
 - [ ] 🧑‍💻 Tenés acceso admin de Workspace + Google Cloud + DNS + SSH al VPS (§0).
 - [x] ✅ `sql/crm_casos.sql` CORRIDO (2026-06-13).
 - [x] ✅ Endpoint digest ESCRITO (`tools/vps/crm-digest.js`) — falta deployar.
-- [ ] 🤖 **Tab Casos** (PRÓXIMO) → pushear → 🧑‍💻 pull + probar (pegar WhatsApp, nota, llamada).
+- [x] ✅ **Tab Casos CONSTRUIDO + pusheado** (`crm.js?v=14`/`api.js?v=38`, 2026-06-13). Falta: 🧑‍💻 pull + probar (crear caso, nota, llamada, pegar captura, WhatsApp pegado modo manual).
 - [ ] 🧑‍💻 Crear key de Gemini en AI Studio (§2.2).
 - [ ] 🤖+🧑‍💻 Deploy del endpoint: env + `pm2 restart` (§2.3) → ✅ curl OK.
 - [ ] Decidir: naming del tab · casilla de mail para E2.

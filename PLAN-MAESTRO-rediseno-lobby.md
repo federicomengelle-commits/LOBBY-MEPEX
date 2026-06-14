@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 43%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 40%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈57%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈60%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-13g: Fase 7 CRM E1.4 — tab "Casos" construido (bandeja/pipeline/ficha+timeline/composer 4 canales/WhatsApp pegado+fallback local/pegar imágenes/@menciones) → a PROGRESO. Fase 7 baja ≈10%→≈7%. PLAN 43→40, PROGRESO 57→60.)*
 > *(Rebalanceo 2026-06-13f: Fase 11 Centro de Tareas v4 funcionalmente COMPLETA (7 fuentes por-item, ciclo completo, claim/notif/sync taller, manual CRUD, búsqueda, persistencia) → a PROGRESO; quedan futuros menores. PLAN 49→43, PROGRESO 51→57.)*
 > *(Rebalanceo 2026-06-13e: Fede corrió los 5 SQL de RLS → **Fase 9.bis CERRADA** (Capa 1 + Capa 2 todos los tiers) → a PROGRESO. PLAN 51→49, PROGRESO 49→51.)*
 > *(Rebalanceo 2026-06-13d: reconciliación PROGRESO↔PLAN (workflow ultracode): descontadas Capa 1 + RLS comercial + Costos UX F1/F2/F3 → PROGRESO + fixes stale (GLOBAL retirada del sidebar, `cotizaciones.project_id` SÍ existe). +Fase 11 Centro de Tareas ≈10% (diseño abierto) → universo creció. PLAN 50→51, PROGRESO 50→49. Fede puede subir a 52/48 si cuenta Fase 11 completa.)*
@@ -23,7 +24,7 @@
 - **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
   - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
 - **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
-- **Fase 7 — CRM "Casos"** — 🎯 INTERÉS ALTO. **🟢 E1 EN CURSO:** ✅ `sql/crm_casos.sql` CORRIDO + ✅ endpoint IA `tools/vps/crm-digest.js` escrito. **PRÓXIMO = construir el tab Casos (front)** → pull/probar → key Gemini → deploy endpoint → WhatsApp IA. **Retomar por `docs/crm-casos-runbook.md` §ESTADO ACTUAL** (pasos en orden). Diseño: `docs/crm-casos-blueprint.md`. Después E2 (email)/E3/E4/E5.
+- **Fase 7 — CRM "Casos"** — 🎯 INTERÉS ALTO. **🟢 E1 EN CURSO:** ✅ SQL corrido + ✅ endpoint IA escrito + ✅ **TAB "CASOS" CONSTRUIDO** (`crm.js?v=14`/`api.js?v=38`: bandeja/pipeline/ficha+timeline/composer 4 canales/WhatsApp pegado con fallback local/pegar imágenes/@menciones). **PRÓXIMO = (1) pull VPS + probar → (2) key Gemini → (3) deploy `/api/crm/digest` → WhatsApp con IA = E1 cerrado.** **Retomar por `docs/crm-casos-runbook.md` §ESTADO ACTUAL**. Después E2 (email)/E3/E4/E5.
 - **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)* · **INTERÉS ALTO DE FEDE**
   - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad. **🔒 Solo admin/superadmin, MÁS orientado a superadmin (Fede): info interna de cuánta plata se le saca a cada cosa.**
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
@@ -170,7 +171,8 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 - **✅ GRÁFICAS (Fede las quiere):** mockups con la gráfica colocada (para cliente/propia/proveedor) + fichas de producción (referencia, medidas, sangría, resolución). **⚡ Mismo motor que el Configurador 2D (spike ImageMagick hecho).**
 - **Depende de:** Catálogo (Fase 3) + Costos.
 
-### Fase 7 — CRM "Casos": conversaciones multicanal + IA *(≈10%)*
+### Fase 7 — CRM "Casos": conversaciones multicanal + IA *(≈7% restante)*
+- **🟢 E1 EN CURSO — ✅ TAB "CASOS" YA CONSTRUIDO** (2026-06-13, `crm.js?v=14`/`api.js?v=38`; ver PROGRESO): SQL corrido + bandeja de hoy + pipeline kanban de casos + ficha (timeline unificado + composer 4 canales) + WhatsApp pegado con `API.crmDigest` y **fallback parser local (modo manual)** + **pegar capturas al historial** + @menciones→notif. Tab = "Casos"; **Interacciones intacto** (read-only legacy, decisión de Fede). **FALTA E1:** (a) 🧑‍💻 pull VPS + probar · (b) 🧑‍💻 key Gemini · (c) deploy `/api/crm/digest` en el proxy → IA real. Luego E2-E5.
 - **📘 SPEC (diseño): `docs/crm-casos-blueprint.md`** (aprobado 2026-06-11 — modelo, UI, ingesta, etapas). **📗 RUNBOOK (ejecución paso a paso): `docs/crm-casos-runbook.md`** (creado 2026-06-13 — todo lo manual/externo: Gemini key, Gmail API + domain-wide delegation, DNS/mailing con listmonk-ya-instalado o Brevo, Meta/WhatsApp Cloud API; tabla "quién hace qué" 🧑‍💻/🤖 + checklist de arranque E1). **Implementación GUIADA** paso a paso.
 - **Modificación a fondo** armónica, manteniendo integración con cotizaciones. **Clientes = vista interna** del CRM.
 - ✅ Ya hecho (ver PROGRESO): Marketing eliminado; Interacciones registra autor; Analítica solo superadmin.

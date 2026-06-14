@@ -999,6 +999,315 @@ const API = {
         }
     },
 
+    // ═════════════════════════════════════════════════════════════
+    //  CRM "CASOS" — Fase 7 E1 (núcleo: casos + timeline + contactos)
+    //  Tablas: crm_casos · crm_mensajes · crm_contactos. DDL: sql/crm_casos.sql.
+    //  El caso = oportunidad comercial; crm_mensajes = timeline unificado
+    //  (whatsapp/email/llamada/reunion/nota/sistema). Todo defensivo: si el
+    //  SQL no estuviera corrido, devuelve [] sin romper la UI.
+    // ═════════════════════════════════════════════════════════════
+
+    // Endpoint del digest de IA en el proxy del VPS (driver gemini|claude).
+    // Puede no estar deployado todavía → crmDigest() devuelve null y el front
+    // cae al parser local (modo manual).
+    CRM_DIGEST_URL: 'http://195.200.1.250:3000/api/crm/digest',
+
+    _mapCaso(c) {
+        return {
+            id: c.id,
+            clienteId: c.cliente_id || null,
+            titulo: c.titulo || '',
+            eventoId: c.evento_id || null,
+            eventoTexto: c.evento_texto || '',
+            estado: c.estado || 'lead',
+            temperatura: c.temperatura || 'warm',
+            montoEstimado: c.monto_estimado != null ? (parseFloat(c.monto_estimado) || 0) : 0,
+            ownerId: c.owner_id || null,
+            origen: c.origen || '',
+            proximaAccion: c.proxima_accion || '',
+            proximaAccionFecha: c.proxima_accion_fecha || null,
+            motivoPerdida: c.motivo_perdida || '',
+            proyectoId: c.proyecto_id || null,
+            createdAt: c.created_at,
+            updatedAt: c.updated_at,
+            createdBy: c.created_by || null,
+        };
+    },
+
+    _mapMensaje(m) {
+        return {
+            id: m.id,
+            casoId: m.caso_id || null,
+            clienteId: m.cliente_id || null,
+            canal: m.canal || 'nota',
+            direccion: m.direccion || 'interna',
+            autor: m.autor || '',
+            autorId: m.autor_id || null,
+            contenido: m.contenido || '',
+            resumenIa: m.resumen_ia || '',
+            fecha: m.fecha,
+            metadata: m.metadata || {},
+            adjuntos: Array.isArray(m.adjuntos) ? m.adjuntos : [],
+            esAutomatico: m.es_automatico || false,
+            createdAt: m.created_at,
+            createdBy: m.created_by || null,
+        };
+    },
+
+    async getCasos({ estado = null, ownerId = null, clienteId = null } = {}) {
+        try {
+            let q = supabaseClient.from('crm_casos').select('*').eq('_deleted', false);
+            if (estado) q = q.eq('estado', estado);
+            if (ownerId) q = q.eq('owner_id', ownerId);
+            if (clienteId) q = q.eq('cliente_id', clienteId);
+            const { data, error } = await q.order('updated_at', { ascending: false });
+            if (error) throw error;
+            return (data || []).map(c => this._mapCaso(c));
+        } catch (e) { console.warn('[API] getCasos:', e.message); return []; }
+    },
+
+    async getCasoById(id) {
+        if (!id) return null;
+        try {
+            const { data, error } = await supabaseClient.from('crm_casos').select('*').eq('id', id).maybeSingle();
+            if (error) throw error;
+            return data ? this._mapCaso(data) : null;
+        } catch (e) { console.warn('[API] getCasoById:', e.message); return null; }
+    },
+
+    async createCaso(data) {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            const payload = {
+                cliente_id: data.clienteId || null,
+                titulo: (data.titulo || '').trim() || 'Caso sin título',
+                evento_id: data.eventoId || null,
+                evento_texto: data.eventoTexto || null,
+                estado: data.estado || 'lead',
+                temperatura: data.temperatura || 'warm',
+                monto_estimado: (data.montoEstimado === '' || data.montoEstimado == null) ? null : (parseFloat(data.montoEstimado) || 0),
+                owner_id: data.ownerId || uid,
+                origen: data.origen || null,
+                proxima_accion: data.proximaAccion || null,
+                proxima_accion_fecha: data.proximaAccionFecha || null,
+                created_by: uid,
+            };
+            const { data: row, error } = await supabaseClient.from('crm_casos').insert(payload).select().single();
+            if (error) throw error;
+            return this._mapCaso(row);
+        } catch (e) { console.warn('[API] createCaso:', e.message); return null; }
+    },
+
+    async updateCaso(id, patch) {
+        try {
+            const map = {
+                clienteId: 'cliente_id', titulo: 'titulo', eventoId: 'evento_id', eventoTexto: 'evento_texto',
+                estado: 'estado', temperatura: 'temperatura', montoEstimado: 'monto_estimado', ownerId: 'owner_id',
+                origen: 'origen', proximaAccion: 'proxima_accion', proximaAccionFecha: 'proxima_accion_fecha',
+                motivoPerdida: 'motivo_perdida', proyectoId: 'proyecto_id',
+            };
+            const p = {};
+            Object.keys(map).forEach(k => {
+                if (k in patch) {
+                    let v = patch[k];
+                    if (k === 'montoEstimado') v = (v === '' || v == null) ? null : (parseFloat(v) || 0);
+                    p[map[k]] = v;
+                }
+            });
+            const { data, error } = await supabaseClient.from('crm_casos').update(p).eq('id', id).select().single();
+            if (error) throw error;
+            return this._mapCaso(data);
+        } catch (e) { console.warn('[API] updateCaso:', e.message); return null; }
+    },
+
+    async deleteCaso(id) {
+        try {
+            const { error } = await supabaseClient.from('crm_casos').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) { console.warn('[API] deleteCaso:', e.message); return null; }
+    },
+
+    async getCasoMensajes(casoId) {
+        if (!casoId) return [];
+        try {
+            const { data, error } = await supabaseClient.from('crm_mensajes')
+                .select('*').eq('caso_id', casoId).eq('_deleted', false)
+                .order('fecha', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(m => this._mapMensaje(m));
+        } catch (e) { console.warn('[API] getCasoMensajes:', e.message); return []; }
+    },
+
+    // Bandeja "sin asignar" (violeta): mensajes sin caso y sin cliente (leads
+    // clasificados por IA sin match). Los migrados de interacciones tienen
+    // cliente_id seteado → NO caen acá.
+    async getMensajesSinAsignar() {
+        try {
+            const { data, error } = await supabaseClient.from('crm_mensajes')
+                .select('*').is('caso_id', null).is('cliente_id', null).eq('_deleted', false)
+                .order('created_at', { ascending: false }).limit(100);
+            if (error) throw error;
+            return (data || []).map(m => this._mapMensaje(m));
+        } catch (e) { console.warn('[API] getMensajesSinAsignar:', e.message); return []; }
+    },
+
+    // Último mensaje + conteo por caso (para snippet y aging de la bandeja).
+    // 1 sola query para todos los casos visibles.
+    async getUltimosMensajesPorCaso(casoIds) {
+        if (!casoIds || !casoIds.length) return {};
+        try {
+            const { data, error } = await supabaseClient.from('crm_mensajes')
+                .select('caso_id, canal, direccion, contenido, resumen_ia, fecha, autor')
+                .in('caso_id', casoIds).eq('_deleted', false)
+                .order('fecha', { ascending: false });
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(m => {
+                if (!map[m.caso_id]) map[m.caso_id] = { ...m, _count: 0 };
+                map[m.caso_id]._count++;
+            });
+            return map;
+        } catch (e) { console.warn('[API] getUltimosMensajesPorCaso:', e.message); return {}; }
+    },
+
+    async createMensaje(data) {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            const payload = {
+                caso_id: data.casoId || null,
+                cliente_id: data.clienteId || null,
+                canal: data.canal || 'nota',
+                direccion: data.direccion || 'interna',
+                autor: data.autor || user?.name || 'Equipo',
+                autor_id: data.autorId || uid,
+                contenido: data.contenido || '',
+                resumen_ia: data.resumenIa || null,
+                fecha: data.fecha || new Date().toISOString(),
+                metadata: data.metadata || {},
+                adjuntos: data.adjuntos || [],
+                es_automatico: data.esAutomatico || false,
+                created_by: uid,
+            };
+            const { data: row, error } = await supabaseClient.from('crm_mensajes').insert(payload).select().single();
+            if (error) throw error;
+            // Tocar el caso para que suba en la bandeja (updated_at).
+            if (payload.caso_id) {
+                supabaseClient.from('crm_casos').update({ updated_at: new Date().toISOString() }).eq('id', payload.caso_id).then(() => {}, () => {});
+            }
+            return this._mapMensaje(row);
+        } catch (e) { console.warn('[API] createMensaje:', e.message); return null; }
+    },
+
+    async createMensajesBulk(arr) {
+        if (!arr || !arr.length) return [];
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            const payload = arr.map(data => ({
+                caso_id: data.casoId || null,
+                cliente_id: data.clienteId || null,
+                canal: data.canal || 'nota',
+                direccion: data.direccion || 'interna',
+                autor: data.autor || user?.name || 'Equipo',
+                autor_id: data.autorId || uid,
+                contenido: data.contenido || '',
+                resumen_ia: data.resumenIa || null,
+                fecha: data.fecha || new Date().toISOString(),
+                metadata: data.metadata || {},
+                adjuntos: data.adjuntos || [],
+                es_automatico: data.esAutomatico || false,
+                created_by: uid,
+            }));
+            const { data: rows, error } = await supabaseClient.from('crm_mensajes').insert(payload).select();
+            if (error) throw error;
+            const casoId = payload.find(p => p.caso_id)?.caso_id;
+            if (casoId) {
+                supabaseClient.from('crm_casos').update({ updated_at: new Date().toISOString() }).eq('id', casoId).then(() => {}, () => {});
+            }
+            return (rows || []).map(m => this._mapMensaje(m));
+        } catch (e) { console.warn('[API] createMensajesBulk:', e.message); return []; }
+    },
+
+    async deleteMensaje(id) {
+        try {
+            const { error } = await supabaseClient.from('crm_mensajes').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) { console.warn('[API] deleteMensaje:', e.message); return null; }
+    },
+
+    // Asigna un mensaje "sin asignar" a un caso (y opcionalmente hereda el cliente).
+    async asignarMensajeACaso(msgId, casoId, clienteId = null) {
+        if (!msgId || !casoId) return null;
+        try {
+            const p = { caso_id: casoId };
+            if (clienteId) p.cliente_id = clienteId;
+            const { error } = await supabaseClient.from('crm_mensajes').update(p).eq('id', msgId);
+            if (error) throw error;
+            supabaseClient.from('crm_casos').update({ updated_at: new Date().toISOString() }).eq('id', casoId).then(() => {}, () => {});
+            return true;
+        } catch (e) { console.warn('[API] asignarMensajeACaso:', e.message); return null; }
+    },
+
+    async getCrmContactos(clienteId) {
+        if (!clienteId) return [];
+        try {
+            const { data, error } = await supabaseClient.from('crm_contactos')
+                .select('*').eq('cliente_id', clienteId).eq('_deleted', false)
+                .order('es_principal', { ascending: false });
+            if (error) throw error;
+            return (data || []).map(c => ({
+                id: c.id, clienteId: c.cliente_id, nombre: c.nombre || '', cargo: c.cargo || '',
+                emails: Array.isArray(c.emails) ? c.emails : [], telefonos: Array.isArray(c.telefonos) ? c.telefonos : [],
+                esPrincipal: c.es_principal || false, notas: c.notas || '',
+            }));
+        } catch (e) { console.warn('[API] getCrmContactos:', e.message); return []; }
+    },
+
+    async createCrmContacto(data) {
+        try {
+            const payload = {
+                cliente_id: data.clienteId, nombre: data.nombre || '', cargo: data.cargo || null,
+                emails: data.emails || [], telefonos: data.telefonos || [],
+                es_principal: data.esPrincipal || false, notas: data.notas || null,
+            };
+            const { data: row, error } = await supabaseClient.from('crm_contactos').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) { console.warn('[API] createCrmContacto:', e.message); return null; }
+    },
+
+    // Llama al digest de IA del proxy. Devuelve el JSON estructurado (blueprint
+    // §6) o null si el endpoint no está disponible/falla → el front usa el
+    // parser local (modo manual sin IA).
+    async crmDigest(texto, contexto = null) {
+        if (!texto || !texto.trim()) return null;
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 15000);
+            const res = await fetch(this.CRM_DIGEST_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ texto, contexto }),
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!res.ok) {
+                const t = await res.text().catch(() => '');
+                throw new Error(`HTTP ${res.status}: ${t.slice(0, 200)}`);
+            }
+            const json = await res.json();
+            if (!json || json.ok === false) throw new Error(json?.error || 'digest sin ok');
+            return json;
+        } catch (e) {
+            console.warn('[API] crmDigest no disponible:', e.message);
+            return null;
+        }
+    },
+
     // ─── Projects by Client ──────────────────
     // Cambio de signature post-rename: ahora recibe uuid (cliente_id), no nombre.
     // Callers pendientes de migrar listados en TODO-POST-RENAME.md.
@@ -1747,6 +2056,7 @@ const API = {
                     iva: parseFloat(c.iva) || 0,
                     // CRM Pipeline
                     temperatura: c.temperatura || '',
+                    casoId: c.caso_id || null,
                     // Campos La PyME
                     pymeVentaId: c.pyme_venta_id || null,
                     pymeFacturaNumero: c.pyme_factura_numero || '',
@@ -1795,6 +2105,7 @@ const API = {
             // Aceptar null explícito para desvincular (no usar || null)
             if ('event_id' in data) payload.event_id = data.event_id;
             if ('project_id' in data) payload.project_id = data.project_id;
+            if ('casoId' in data) payload.caso_id = data.casoId || null;   // CRM Casos (Fase 7)
             const result = await UndoHelpers.createRecord('cotizaciones', payload, `Nueva cotizacion: ${numero}`);
             this.clearCache();
             return result || true;
@@ -1899,6 +2210,7 @@ const API = {
             if ('cliente_id' in data) payload.cliente_id = data.cliente_id;
             if ('event_id' in data) payload.event_id = data.event_id;
             if ('project_id' in data) payload.project_id = data.project_id;
+            if ('casoId' in data) payload.caso_id = data.casoId || null;   // CRM Casos (Fase 7)
             // Estado (para flujo Aprobar)
             if ('estado' in data) payload.estado = data.estado;
             await UndoHelpers.updateRecord('cotizaciones', id, payload, 'Edito cotizacion');

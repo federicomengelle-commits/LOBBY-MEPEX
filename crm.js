@@ -53,8 +53,21 @@ const CRM = {
     _interFilterTipo: null,
     _interSearch: '',
 
+    // ─── Casos tab state (Fase 7 E1) ───
+    _casos: [],                 // crm_casos
+    _casoMsgMap: {},            // casoId → { último mensaje + _count }
+    _sinAsignar: [],            // mensajes sin caso ni cliente (bandeja violeta)
+    _casosView: 'bandeja',      // 'bandeja' | 'pipeline'
+    _casosSearch: '',
+    _casosEstadoFilter: null,
+    _casoActivoId: null,        // si hay ficha abierta (takeover de crm-main)
+    _casoMensajes: [],          // timeline del caso activo
+    _composerCanal: 'nota',     // nota | whatsapp | email | llamada
+    _composerDireccion: 'saliente',
+    _pendingAdjuntos: [],       // imágenes pegadas pendientes de enviar
+
     // ─── Counts per tab ───
-    _counts: { clientes: 0, pipeline: 0, cotizaciones: 0, interacciones: 0 },
+    _counts: { clientes: 0, casos: 0, pipeline: 0, cotizaciones: 0, interacciones: 0 },
 
     // ─── Client type config ───
     _clientTypes: [
@@ -118,9 +131,30 @@ const CRM = {
         { value: 'estado',   label: 'Estado',   icon: '\uD83D\uDD04', color: '#F28D15' },
     ],
 
+    // ─── Casos: estados del pipeline (6) ───
+    _casoEstados: [
+        { value: 'lead',        label: 'Lead',        color: '#888888' },
+        { value: 'contactado',  label: 'Contactado',  color: '#4A90D9' },
+        { value: 'cotizado',    label: 'Cotizado',    color: '#9B7DFF' },
+        { value: 'negociacion', label: 'Negociación', color: '#F28D15' },
+        { value: 'ganado',      label: 'Ganado',      color: '#00CC88' },
+        { value: 'perdido',     label: 'Perdido',     color: '#E94B4B' },
+    ],
+
+    // ─── Casos: config de canales del timeline ───
+    _canalConfig: {
+        whatsapp: { label: 'WhatsApp', icon: '💬', color: '#25D366' },
+        email:    { label: 'Email',    icon: '✉️', color: '#4A90D9' },
+        llamada:  { label: 'Llamada',  icon: '📞', color: '#00CC88' },
+        reunion:  { label: 'Reunión',  icon: '🤝', color: '#9B7DFF' },
+        nota:     { label: 'Nota',     icon: '📋', color: '#F28D15' },
+        sistema:  { label: 'Sistema',  icon: '⚙️', color: '#888888' },
+    },
+
     // ─── Tab definitions ───
     _tabs: [
         { id: 'clientes',       label: 'Clientes',       icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+        { id: 'casos',          label: 'Casos',          icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 8v14a2 2 0 0 0 2 2h12"/></svg>' },
         { id: 'pipeline',       label: 'Pipeline',       icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>' },
         { id: 'cotizaciones',   label: 'Cotizaciones',   icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' },
         { id: 'interacciones',  label: 'Interacciones',  icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
@@ -236,12 +270,14 @@ const CRM = {
 
     async _loadData() {
         try {
-            const [clients, projects, cotizaciones, users, allTimeline] = await Promise.all([
+            const [clients, projects, cotizaciones, users, allTimeline, casos, sinAsignar] = await Promise.all([
                 API.getClients(),
                 API.getProjects(),
                 API.getCotizaciones ? API.getCotizaciones() : Promise.resolve([]),
                 API.getUsers ? API.getUsers() : Promise.resolve([]),
                 API.getAllTimeline ? API.getAllTimeline(200) : Promise.resolve([]),
+                API.getCasos ? API.getCasos() : Promise.resolve([]),
+                API.getMensajesSinAsignar ? API.getMensajesSinAsignar() : Promise.resolve([]),
             ]);
 
             this._clients = clients || [];
@@ -249,6 +285,13 @@ const CRM = {
             this._cotizaciones = cotizaciones || [];
             this._users = (users || []).filter(u => u.active !== false);
             this._allTimeline = allTimeline || [];
+            this._casos = casos || [];
+            this._sinAsignar = sinAsignar || [];
+
+            // Último mensaje + conteo por caso (1 query) → snippet + aging de la bandeja
+            const casoIds = this._casos.map(c => c.id);
+            this._casoMsgMap = (API.getUltimosMensajesPorCaso && casoIds.length)
+                ? await API.getUltimosMensajesPorCaso(casoIds) : {};
 
             // Build project count per client
             this._clients.forEach(c => {
@@ -264,6 +307,7 @@ const CRM = {
                 !['aprobada', 'rechazada'].includes(c.estado)
             ).length;
             this._counts.interacciones = this._allTimeline.length;
+            this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
             this._updateTabCounts();
 
         } catch (e) {
@@ -273,6 +317,9 @@ const CRM = {
             this._cotizaciones = [];
             this._users = [];
             this._allTimeline = [];
+            this._casos = [];
+            this._sinAsignar = [];
+            this._casoMsgMap = {};
         }
 
         this._populateRubroFilter();
@@ -386,6 +433,8 @@ const CRM = {
             tab = 'clientes';
         }
         this._activeTab = tab;
+        // Al salir/entrar a Casos siempre arrancamos en la bandeja (no en una ficha vieja)
+        this._casoActivoId = null;
         // Update tab buttons
         document.querySelectorAll('.crm-tab').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
@@ -416,6 +465,7 @@ const CRM = {
     _headerActionConfig() {
         switch (this._activeTab) {
             case 'clientes':      return { action: 'new-cliente', label: 'Nuevo cliente' };
+            case 'casos':         return { action: 'new-caso', label: 'Nuevo caso' };
             case 'pipeline':
             case 'cotizaciones':  return { action: 'open-cotizador', label: 'Abrir cotizador', url: 'http://195.200.1.250/cotizador/' };
             case 'interacciones': return { action: 'new-interaccion', label: 'Nueva interacción' };
@@ -442,6 +492,9 @@ const CRM = {
                 case 'new-cliente':
                     this._openCreateModal();
                     break;
+                case 'new-caso':
+                    this._openNuevoCasoModal();
+                    break;
                 case 'open-cotizador':
                     window.open(btn.dataset.url || 'http://195.200.1.250/cotizador/', '_blank', 'noopener');
                     break;
@@ -459,6 +512,9 @@ const CRM = {
         if (this._activeTab === 'clientes') {
             main.innerHTML = this._renderClientesTable();
             this._attachClientListeners();
+        } else if (this._activeTab === 'casos') {
+            main.innerHTML = this._renderCasosTab();
+            this._attachCasosEvents();
         } else if (this._activeTab === 'pipeline') {
             main.innerHTML = this._renderPipeline();
             this._attachPipelineListeners();
@@ -3234,6 +3290,912 @@ const CRM = {
     },
 
 
+    // ═══════════════════════════════════════════
+    //  CASOS (Fase 7 E1) — bandeja + pipeline + ficha con timeline + composer
+    // ═══════════════════════════════════════════
+
+    _renderCasosTab() {
+        if (this._casoActivoId) return this._renderCasoFicha();
+        if (this._casosView === 'pipeline') return this._renderCasosPipeline();
+        return this._renderCasosBandeja();
+    },
+
+    _attachCasosEvents() {
+        if (this._casoActivoId) { this._attachCasoFichaEvents(); return; }
+        this._attachCasosToolbar();
+        if (this._casosView === 'pipeline') this._attachCasosPipelineEvents();
+        else this._attachCasosBandejaEvents();
+    },
+
+    // ─── helpers ───
+    _casoClienteName(caso) {
+        if (!caso.clienteId) return 'Sin cliente';
+        const c = this._clients.find(x => x.id === caso.clienteId);
+        return c ? c.name : 'Cliente';
+    },
+
+    _enrichCasos() {
+        const now = Date.now();
+        const activos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado));
+        const enriched = activos.map(c => {
+            const last = this._casoMsgMap[c.id] || null;
+            const lastFecha = last ? last.fecha : c.updatedAt;
+            const days = this._getDaysSince(lastFecha);
+            const accionVencida = !!(c.proximaAccionFecha && new Date(c.proximaAccionFecha).getTime() < now);
+            const sinResponder = !!(last && ['whatsapp', 'email'].includes(last.canal) && last.direccion === 'entrante');
+            let score = 0;
+            if (accionVencida) score += 100000;
+            if (sinResponder) score += 50000;
+            score += (days || 0);
+            return { ...c, _last: last, _days: days, _accionVencida: accionVencida, _sinResponder: sinResponder, _score: score };
+        });
+        enriched.sort((a, b) => b._score - a._score);
+        return enriched;
+    },
+
+    _searchSvg() {
+        return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+    },
+
+    _casosToolbarHtml() {
+        return `
+            <div class="casos-toolbar">
+                <div class="casos-search-wrap">
+                    ${this._searchSvg()}
+                    <input type="text" class="casos-search" id="casosSearch" placeholder="Buscar caso, cliente, feria..." value="${this._escHtml(this._casosSearch)}" autocomplete="off">
+                </div>
+                <div class="casos-view-toggle">
+                    <button class="casos-vt ${this._casosView === 'bandeja' ? 'active' : ''}" data-view="bandeja">Bandeja</button>
+                    <button class="casos-vt ${this._casosView === 'pipeline' ? 'active' : ''}" data-view="pipeline">Pipeline</button>
+                </div>
+            </div>`;
+    },
+
+    // ─── BANDEJA ───
+    _renderCasosBandeja() {
+        const all = this._enrichCasos();
+        const kpis = {
+            sinResponder: all.filter(c => c._sinResponder).length,
+            vencidas: all.filter(c => c._accionVencida).length,
+            sinAsignar: this._sinAsignar.length,
+            activos: all.length,
+        };
+        const kpiCards = `<div class="casos-kpis">
+            ${this._kpiCard('Sin responder', kpis.sinResponder, '#25D366')}
+            ${this._kpiCard('Acciones vencidas', kpis.vencidas, '#EF5350')}
+            ${this._kpiCard('Sin asignar', kpis.sinAsignar, '#9B7DFF')}
+            ${this._kpiCard('Casos activos', kpis.activos, '#00A9C1')}
+        </div>`;
+        const chipsArr = [{ value: null, label: 'Todos' }, ...this._casoEstados.filter(e => !['ganado', 'perdido'].includes(e.value))];
+        const chips = chipsArr.map(e => {
+            const active = this._casosEstadoFilter === e.value;
+            return `<button class="casos-chip ${active ? 'active' : ''}" data-estado="${e.value || ''}">${e.label}</button>`;
+        }).join('');
+        const sinAsig = this._sinAsignar.length ? `<div class="casos-sinasignar">
+            <div class="casos-sa-title">🟣 Sin asignar (${this._sinAsignar.length})</div>
+            ${this._sinAsignar.slice(0, 10).map(m => `<div class="casos-sa-item">
+                <span class="casos-sa-canal">${(this._canalConfig[m.canal] || this._canalConfig.nota).icon}</span>
+                <span class="casos-sa-text">${this._escHtml((m.resumenIa || m.contenido || '').slice(0, 100))}</span>
+                <button class="casos-sa-assign" data-msg-id="${m.id}">Asignar</button>
+            </div>`).join('')}
+        </div>` : '';
+        return `<div class="casos-wrap">
+            ${kpiCards}
+            ${this._casosToolbarHtml()}
+            <div class="casos-chips">${chips}</div>
+            ${sinAsig}
+            <div id="casosBody" class="casos-list">${this._bandejaRowsHtml()}</div>
+        </div>`;
+    },
+
+    _bandejaRowsHtml() {
+        const all = this._enrichCasos();
+        let list = all;
+        if (this._casosSearch) {
+            const q = normStr(this._casosSearch);
+            list = list.filter(c => normStr(c.titulo).includes(q) || normStr(this._casoClienteName(c)).includes(q) || normStr(c.eventoTexto).includes(q));
+        }
+        if (this._casosEstadoFilter) list = list.filter(c => c.estado === this._casosEstadoFilter);
+        if (!list.length) {
+            return `<div class="casos-empty"><div class="casos-empty-icon">📂</div>
+                <h3>No hay casos ${this._casosSearch || this._casosEstadoFilter ? 'con esos filtros' : 'activos'}</h3>
+                <p>Creá un caso con <strong>"Nuevo caso"</strong> arriba para empezar a seguir una oportunidad.</p></div>`;
+        }
+        return list.map(c => this._renderCasoRow(c)).join('');
+    },
+
+    _kpiCard(label, val, color) {
+        return `<div class="casos-kpi" style="--kpi:${color}"><div class="casos-kpi-val">${val}</div><div class="casos-kpi-label">${label}</div></div>`;
+    },
+
+    _renderCasoRow(c) {
+        const estadoCfg = this._casoEstados.find(e => e.value === c.estado) || this._casoEstados[0];
+        const temp = this._tempConfig[c.temperatura];
+        const cliente = this._casoClienteName(c);
+        const last = c._last;
+        const canalCfg = last ? (this._canalConfig[last.canal] || this._canalConfig.nota) : null;
+        const snippet = last ? this._escHtml((last.resumen_ia || last.contenido || '').slice(0, 100)) : 'Sin mensajes todavía';
+        const daysColor = this._getDaysColor(c._days);
+        const aging = c._days === null ? '' : `<span class="caso-row-aging" style="color:${daysColor}">${c._days === 0 ? 'hoy' : c._days + 'd'}</span>`;
+        const owner = this._getVendedorName(c.ownerId);
+        const accion = c.proximaAccion ? `<div class="caso-row-accionwrap"><span class="caso-row-accion ${c._accionVencida ? 'vencida' : ''}">⏭ ${this._escHtml(c.proximaAccion)}</span></div>` : '';
+        const flags = `${c._sinResponder ? '<span class="caso-flag sinresp">sin responder</span>' : ''}${c._accionVencida ? '<span class="caso-flag venc">vencida</span>' : ''}`;
+        return `<div class="caso-row" data-caso-id="${c.id}">
+            <div class="caso-row-temp" title="${temp ? temp.label : ''}">${temp ? temp.icon : '•'}</div>
+            <div class="caso-row-main">
+                <div class="caso-row-top">
+                    <span class="caso-row-titulo">${this._escHtml(c.titulo)}</span>
+                    <span class="caso-row-estado" style="background:${estadoCfg.color}1f;color:${estadoCfg.color}">${estadoCfg.label}</span>
+                    ${flags}
+                </div>
+                <div class="caso-row-sub">
+                    <span class="caso-row-cliente">${this._escHtml(cliente)}</span>
+                    <span class="caso-row-sep">·</span>
+                    <span class="caso-row-snippet">${canalCfg ? canalCfg.icon + ' ' : ''}${snippet}</span>
+                </div>
+                ${accion}
+            </div>
+            <div class="caso-row-right">
+                ${aging}
+                <span class="caso-row-owner">${this._escHtml(owner)}</span>
+            </div>
+        </div>`;
+    },
+
+    // ─── PIPELINE ───
+    _renderCasosPipeline() {
+        return `<div class="casos-wrap">
+            ${this._casosToolbarHtml()}
+            <div id="casosBody" class="caso-pipeline">${this._pipelineColumnsHtml()}</div>
+        </div>`;
+    },
+
+    _pipelineColumnsHtml() {
+        let list = this._casos.slice();
+        if (this._casosSearch) {
+            const q = normStr(this._casosSearch);
+            list = list.filter(c => normStr(c.titulo).includes(q) || normStr(this._casoClienteName(c)).includes(q));
+        }
+        const byEstado = {};
+        this._casoEstados.forEach(e => byEstado[e.value] = []);
+        list.forEach(c => { if (byEstado[c.estado]) byEstado[c.estado].push(c); });
+        return this._casoEstados.map(col => {
+            const items = byEstado[col.value] || [];
+            const cards = items.map(c => {
+                const temp = this._tempConfig[c.temperatura];
+                const last = this._casoMsgMap[c.id];
+                const days = this._getDaysSince(last ? last.fecha : c.updatedAt);
+                const dc = this._getDaysColor(days);
+                const monto = c.montoEstimado ? '$' + c.montoEstimado.toLocaleString('es-AR') : '';
+                return `<div class="caso-pcard" data-caso-id="${c.id}">
+                    <div class="caso-pcard-top"><span class="caso-pcard-titulo">${this._escHtml(c.titulo)}</span>${temp ? `<span title="${temp.label}">${temp.icon}</span>` : ''}</div>
+                    <div class="caso-pcard-cli">${this._escHtml(this._casoClienteName(c))}</div>
+                    <div class="caso-pcard-foot"><span>${monto}</span><span style="color:${dc}">${days === null ? '' : (days === 0 ? 'hoy' : days + 'd')}</span></div>
+                </div>`;
+            }).join('') || '<div class="caso-pcol-empty">—</div>';
+            return `<div class="caso-pcol">
+                <div class="caso-pcol-head" style="border-color:${col.color}55"><span style="color:${col.color}">${col.label}</span><span class="caso-pcol-count">${items.length}</span></div>
+                <div class="caso-pcol-body">${cards}</div>
+            </div>`;
+        }).join('');
+    },
+
+    // ─── toolbar / body refresh ───
+    _attachCasosToolbar() {
+        const search = document.getElementById('casosSearch');
+        if (search) {
+            let deb;
+            search.addEventListener('input', () => {
+                clearTimeout(deb);
+                deb = setTimeout(() => { this._casosSearch = search.value.trim(); this._refreshCasosBody(); }, 200);
+            });
+        }
+        document.querySelectorAll('.casos-vt').forEach(b => b.addEventListener('click', () => {
+            const v = b.dataset.view;
+            if (v && v !== this._casosView) { this._casosView = v; this._renderTabContent(); }
+        }));
+    },
+
+    _refreshCasosBody() {
+        const body = document.getElementById('casosBody');
+        if (!body) return;
+        if (this._casosView === 'pipeline') body.innerHTML = this._pipelineColumnsHtml();
+        else body.innerHTML = this._bandejaRowsHtml();
+        this._attachCasoCardClicks();
+    },
+
+    _attachCasoCardClicks() {
+        document.querySelectorAll('#casosBody [data-caso-id]').forEach(el =>
+            el.addEventListener('click', async () => { await this._openCaso(el.dataset.casoId); }));
+    },
+
+    _attachCasosBandejaEvents() {
+        this._attachCasoCardClicks();
+        document.querySelectorAll('.casos-chip').forEach(ch => ch.addEventListener('click', () => {
+            this._casosEstadoFilter = ch.dataset.estado || null;
+            document.querySelectorAll('.casos-chip').forEach(x => x.classList.toggle('active', x === ch));
+            this._refreshCasosBody();
+        }));
+        document.querySelectorAll('.casos-sa-assign').forEach(b =>
+            b.addEventListener('click', () => this._asignarMensajeModal(b.dataset.msgId)));
+    },
+
+    _attachCasosPipelineEvents() {
+        this._attachCasoCardClicks();
+    },
+
+    // ─── FICHA ───
+    async _openCaso(id) {
+        this._casoActivoId = id;
+        this._composerCanal = 'nota';
+        this._composerDireccion = 'saliente';
+        this._pendingAdjuntos = [];
+        this._casoMensajes = await API.getCasoMensajes(id);
+        this._closePanel();
+        this._renderTabContent();
+    },
+
+    _closeCaso() {
+        this._casoActivoId = null;
+        this._casoMensajes = [];
+        this._pendingAdjuntos = [];
+        this._renderTabContent();
+    },
+
+    async _reloadCasoYFicha(id) {
+        this._casos = await API.getCasos();
+        const ids = this._casos.map(c => c.id);
+        this._casoMsgMap = ids.length ? await API.getUltimosMensajesPorCaso(ids) : {};
+        this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
+        this._updateTabCounts();
+        if (id) this._casoMensajes = await API.getCasoMensajes(id);
+        this._renderTabContent();
+    },
+
+    _renderCasoFicha() {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        if (!caso) { this._casoActivoId = null; return this._renderCasosBandeja(); }
+        const estadoCfg = this._casoEstados.find(e => e.value === caso.estado) || this._casoEstados[0];
+        const temp = this._tempConfig[caso.temperatura];
+        const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        const owner = this._getVendedorName(caso.ownerId);
+        const monto = caso.montoEstimado ? '$' + caso.montoEstimado.toLocaleString('es-AR') : '—';
+        const cotsCaso = this._cotizaciones.filter(c => c.casoId === caso.id);
+        const accionVencida = !!(caso.proximaAccionFecha && new Date(caso.proximaAccionFecha).getTime() < Date.now());
+        const accionFechaTxt = caso.proximaAccionFecha ? new Date(caso.proximaAccionFecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+        const estadoOpts = this._casoEstados.map(e => `<option value="${e.value}" ${e.value === caso.estado ? 'selected' : ''}>${e.label}</option>`).join('');
+        return `<div class="caso-ficha">
+            <div class="caso-ficha-main">
+                <div class="caso-ficha-header">
+                    <button class="caso-back" id="casoBack">← Bandeja</button>
+                    <div class="caso-head-row">
+                        <h2 class="caso-titulo">${this._escHtml(caso.titulo)}</h2>
+                        <div class="caso-head-actions">
+                            <button class="caso-icon-btn" id="casoEdit" title="Editar caso">✏️</button>
+                            <button class="caso-icon-btn caso-del" id="casoDelete" title="Eliminar caso">🗑</button>
+                        </div>
+                    </div>
+                    <div class="caso-head-meta">
+                        ${cliente ? `<a class="caso-meta-chip caso-cliente-link" data-client-id="${cliente.id}">🏢 ${this._escHtml(cliente.name)}</a>` : '<span class="caso-meta-chip">Sin cliente</span>'}
+                        ${caso.eventoTexto ? `<span class="caso-meta-chip">📅 ${this._escHtml(caso.eventoTexto)}</span>` : ''}
+                        ${temp ? `<span class="caso-meta-chip" style="color:${temp.color}">${temp.icon} ${temp.label}</span>` : ''}
+                        <span class="caso-meta-chip">💰 ${monto}</span>
+                        <span class="caso-meta-chip">👤 ${this._escHtml(owner)}</span>
+                        <select class="caso-estado-select" id="casoEstado" style="color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoOpts}</select>
+                    </div>
+                    <div class="caso-accion ${accionVencida ? 'vencida' : ''}">
+                        ${caso.proximaAccion
+                            ? `<span class="caso-accion-txt">⏭ ${this._escHtml(caso.proximaAccion)}${accionFechaTxt ? ` · <strong>${accionFechaTxt}</strong>` : ''}</span>
+                               <button class="caso-accion-done" id="casoAccionDone">✓ Hecha</button>`
+                            : `<span class="caso-accion-txt caso-accion-empty">Sin próxima acción agendada</span>
+                               <button class="caso-accion-set" id="casoAccionSet">+ Agendar</button>`}
+                    </div>
+                </div>
+                <div class="caso-timeline" id="casoTimeline">${this._renderTimeline(this._casoMensajes)}</div>
+                <div id="casoComposer">${this._renderComposer()}</div>
+            </div>
+            <aside class="caso-ficha-aside">${this._renderCasoAside(caso, cliente, cotsCaso)}</aside>
+        </div>`;
+    },
+
+    _renderCasoAside(caso, cliente, cotsCaso) {
+        const waLink = (tel) => { const d = (tel || '').replace(/[^\d]/g, ''); if (!d) return ''; const intl = d.length <= 10 ? ('54' + d) : d; return `https://wa.me/${intl}`; };
+        let contacto;
+        if (cliente) {
+            const wa = waLink(cliente.phone);
+            contacto = `<div class="aside-block">
+                <div class="aside-title">Contacto</div>
+                <div class="aside-row"><span class="aside-k">Empresa</span><span class="aside-v">${this._escHtml(cliente.name)}</span></div>
+                ${cliente.contactName ? `<div class="aside-row"><span class="aside-k">Persona</span><span class="aside-v">${this._escHtml(cliente.contactName)}</span></div>` : ''}
+                ${cliente.phone ? `<div class="aside-row"><span class="aside-k">Tel</span><span class="aside-v">${wa ? `<a href="${wa}" target="_blank" rel="noopener">${this._escHtml(cliente.phone)} 💬</a>` : this._escHtml(cliente.phone)}</span></div>` : ''}
+                ${cliente.email ? `<div class="aside-row"><span class="aside-k">Mail</span><span class="aside-v"><a href="mailto:${this._escHtml(cliente.email)}">${this._escHtml(cliente.email)}</a></span></div>` : ''}
+                ${cliente.rubro ? `<div class="aside-row"><span class="aside-k">Rubro</span><span class="aside-v">${this._escHtml(cliente.rubro)}</span></div>` : ''}
+            </div>`;
+        } else {
+            contacto = `<div class="aside-block"><div class="aside-title">Contacto</div><p class="aside-empty">Caso sin cliente vinculado. Editá el caso para asociarlo.</p></div>`;
+        }
+        const cotsHtml = cotsCaso.length ? cotsCaso.map(c => {
+            const ec = this._cotEstados.find(e => e.value === c.estado);
+            return `<div class="aside-cot"><span class="aside-cot-num">${this._escHtml(c.numero || 'COT')}</span><span class="aside-cot-est" style="color:${ec ? ec.color : '#888'}">${ec ? ec.label : c.estado}</span><span class="aside-cot-monto">${c.montoTotal ? '$' + c.montoTotal.toLocaleString('es-AR') : ''}</span></div>`;
+        }).join('') : '<p class="aside-empty">Sin cotizaciones vinculadas a este caso.</p>';
+        return `${contacto}
+            <div class="aside-block">
+                <div class="aside-title">Cotizaciones (${cotsCaso.length})</div>
+                ${cotsHtml}
+            </div>
+            <div class="aside-block">
+                <div class="aside-title">Detalle</div>
+                ${caso.origen ? `<div class="aside-row"><span class="aside-k">Origen</span><span class="aside-v">${this._escHtml(caso.origen)}</span></div>` : ''}
+                <div class="aside-row"><span class="aside-k">Creado</span><span class="aside-v">${caso.createdAt ? new Date(caso.createdAt).toLocaleDateString('es-AR') : '—'}</span></div>
+                ${caso.motivoPerdida ? `<div class="aside-row"><span class="aside-k">Motivo pérdida</span><span class="aside-v">${this._escHtml(caso.motivoPerdida)}</span></div>` : ''}
+            </div>`;
+    },
+
+    _renderTimeline(msgs) {
+        if (!msgs || !msgs.length) {
+            return `<div class="tl-empty"><div class="tl-empty-icon">💬</div><p>Todavía no hay nada en este caso.<br>Empezá registrando una nota, una llamada o pegando un chat de WhatsApp abajo.</p></div>`;
+        }
+        let html = '';
+        let lastDate = '';
+        msgs.forEach(m => {
+            const dk = m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+            if (dk && dk !== lastDate) { html += `<div class="tl-date">${dk}</div>`; lastDate = dk; }
+            html += this._renderTimelineItem(m);
+        });
+        return html;
+    },
+
+    _renderAdjuntos(adjuntos) {
+        if (!adjuntos || !adjuntos.length) return '';
+        const imgs = adjuntos.filter(a => a && a.dataUrl);
+        if (!imgs.length) return '';
+        return `<div class="tl-adjuntos">${imgs.map(a => `<a href="${a.dataUrl}" target="_blank" rel="noopener" class="tl-adj"><img src="${a.dataUrl}" alt="${this._escHtml(a.nombre || 'imagen')}" loading="lazy"></a>`).join('')}</div>`;
+    },
+
+    _renderMenciones(escapedHtml) {
+        return escapedHtml.replace(/@([\wÀ-ÿ.]+)/g, '<span class="tl-mention">@$1</span>');
+    },
+
+    _renderTimelineItem(m) {
+        const cfg = this._canalConfig[m.canal] || this._canalConfig.nota;
+        const time = m.fecha ? new Date(m.fecha).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+        const side = m.direccion === 'saliente' ? 'out' : (m.direccion === 'entrante' ? 'in' : 'mid');
+        const adj = this._renderAdjuntos(m.adjuntos);
+        const resumen = m.resumenIa ? `<div class="tl-ia">🤖 ${this._escHtml(m.resumenIa)}</div>` : '';
+        const contenido = this._escHtml(m.contenido || '').replace(/\n/g, '<br>');
+        const autor = this._escHtml(m.autor || '');
+
+        if (m.canal === 'email') {
+            const subject = m.metadata && m.metadata.subject ? this._escHtml(m.metadata.subject) : '';
+            return `<div class="tl-row tl-${side}"><div class="tl-card tl-email">
+                <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${cfg.icon} Email ${side === 'in' ? '· recibido' : (side === 'out' ? '· enviado' : '')}</span><span class="tl-meta">${autor} · ${time}</span></div>
+                ${subject ? `<div class="tl-subject">${subject}</div>` : ''}
+                ${resumen}
+                ${contenido ? `<details class="tl-details"><summary>Ver mail completo</summary><div class="tl-body">${contenido}</div></details>` : ''}
+                ${adj}
+            </div></div>`;
+        }
+        if (m.canal === 'nota') {
+            return `<div class="tl-row tl-mid"><div class="tl-card tl-nota">
+                <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${cfg.icon} Nota interna</span><span class="tl-meta">${autor} · ${time}</span></div>
+                <div class="tl-body">${this._renderMenciones(contenido)}</div>
+                ${adj}
+            </div></div>`;
+        }
+        if (m.canal === 'llamada' || m.canal === 'reunion') {
+            const dur = m.metadata && m.metadata.duracion ? ` · ⏱ ${m.metadata.duracion} min` : '';
+            return `<div class="tl-row tl-mid"><div class="tl-card tl-call">
+                <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${cfg.icon} ${cfg.label}${dur}</span><span class="tl-meta">${autor} · ${time}</span></div>
+                ${resumen}
+                ${contenido ? `<div class="tl-body">${contenido}</div>` : ''}
+                ${adj}
+            </div></div>`;
+        }
+        if (m.canal === 'sistema') {
+            return `<div class="tl-row tl-sys"><div class="tl-sys-line">${cfg.icon} ${contenido} <span class="tl-meta">· ${time}</span></div></div>`;
+        }
+        // whatsapp (burbuja)
+        return `<div class="tl-row tl-${side}"><div class="tl-bubble tl-wa-${side}">
+            ${resumen}
+            ${contenido ? `<div class="tl-body">${contenido}</div>` : ''}
+            ${adj}
+            <div class="tl-foot">${autor} · ${time}</div>
+        </div></div>`;
+    },
+
+    // ─── COMPOSER ───
+    _renderComposer() {
+        const canales = [
+            { id: 'nota', ...this._canalConfig.nota },
+            { id: 'whatsapp', ...this._canalConfig.whatsapp },
+            { id: 'email', ...this._canalConfig.email },
+            { id: 'llamada', ...this._canalConfig.llamada },
+        ];
+        const c = this._composerCanal;
+        const tabs = canales.map(x => `<button class="cmp-tab ${c === x.id ? 'active' : ''}" data-canal="${x.id}" style="${c === x.id ? `color:${x.color};border-color:${x.color}` : ''}">${x.icon} ${x.label}</button>`).join('');
+        const showDir = (c === 'whatsapp' || c === 'email');
+        const dirToggle = showDir ? `<div class="cmp-dir">
+            <button class="cmp-dir-btn ${this._composerDireccion === 'entrante' ? 'active' : ''}" data-dir="entrante">⬅ Entrante (cliente)</button>
+            <button class="cmp-dir-btn ${this._composerDireccion === 'saliente' ? 'active' : ''}" data-dir="saliente">Saliente (MEPEX) ➡</button>
+        </div>` : '';
+        let extra = '';
+        if (c === 'email') extra = `<input type="text" class="cmp-input" id="cmpSubject" placeholder="Asunto del mail">`;
+        if (c === 'llamada') extra = `<input type="number" min="0" class="cmp-input cmp-input-sm" id="cmpDur" placeholder="Duración (min)">`;
+        const placeholder = c === 'whatsapp'
+            ? 'Escribí un mensaje suelto, o PEGÁ una conversación entera de WhatsApp y tocá "Procesar con IA"...'
+            : (c === 'llamada' ? 'Qué se habló en la llamada (queda en el historial para siempre)...'
+            : (c === 'nota' ? 'Nota interna. Usá @nombre para avisar a un compañero...'
+            : 'Escribí el contenido del mail...'));
+        const waBtn = c === 'whatsapp' ? `<button class="btn btn-ghost cmp-ia-btn" id="cmpProcesar">✨ Procesar con IA</button>` : '';
+        return `<div class="cmp">
+            <div class="cmp-tabs">${tabs}</div>
+            ${dirToggle}
+            ${extra}
+            <div class="cmp-adjuntos" id="cmpAdjuntos"></div>
+            <textarea class="cmp-textarea" id="cmpText" placeholder="${placeholder}" rows="3"></textarea>
+            <div class="cmp-actions">
+                <button class="cmp-img-btn" id="cmpImgBtn" title="Adjuntar imagen / captura">📎 Imagen</button>
+                <span class="cmp-hint">Tip: pegá una captura (Ctrl+V) y se adjunta al historial</span>
+                <div class="cmp-spacer"></div>
+                ${waBtn}
+                <button class="btn btn-primary" id="cmpSend">Guardar</button>
+            </div>
+            <input type="file" id="cmpFile" accept="image/*" multiple style="display:none">
+        </div>`;
+    },
+
+    _refreshComposer() {
+        const wrap = document.getElementById('casoComposer');
+        if (!wrap) return;
+        wrap.innerHTML = this._renderComposer();
+        this._attachComposerEvents();
+        this._renderPendingAdjuntos();
+    },
+
+    _renderPendingAdjuntos() {
+        const wrap = document.getElementById('cmpAdjuntos');
+        if (!wrap) return;
+        wrap.innerHTML = this._pendingAdjuntos.map((a, i) => `<div class="cmp-adj"><img src="${a.dataUrl}"><button class="cmp-adj-rm" data-idx="${i}">✕</button></div>`).join('');
+        wrap.querySelectorAll('.cmp-adj-rm').forEach(btn => btn.addEventListener('click', () => {
+            this._pendingAdjuntos.splice(parseInt(btn.dataset.idx, 10), 1);
+            this._renderPendingAdjuntos();
+        }));
+    },
+
+    _downscaleImage(file, maxDim = 1400, quality = 0.82) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    let w = img.width, h = img.height;
+                    if (w > maxDim || h > maxDim) { const r = Math.min(maxDim / w, maxDim / h); w = Math.round(w * r); h = Math.round(h * r); }
+                    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+                    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+                    try { resolve(cv.toDataURL('image/jpeg', quality)); } catch (_) { resolve(null); }
+                };
+                img.onerror = () => resolve(null);
+                img.src = e.target.result;
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+        });
+    },
+
+    async _addImageFile(f) {
+        if (!f || !f.type || f.type.indexOf('image') !== 0) return;
+        const du = await this._downscaleImage(f);
+        if (!du) return;
+        if (du.length > 1400000) { Toast.warning('Imagen muy grande, se omitió'); return; }
+        this._pendingAdjuntos.push({ tipo: 'imagen', dataUrl: du, nombre: f.name || 'captura.jpg' });
+    },
+
+    _attachComposerEvents() {
+        document.querySelectorAll('.cmp-tab').forEach(b => b.addEventListener('click', () => {
+            const canal = b.dataset.canal;
+            if (canal === this._composerCanal) return;
+            const prev = document.getElementById('cmpText')?.value || '';
+            this._composerCanal = canal;
+            this._refreshComposer();
+            const ta = document.getElementById('cmpText'); if (ta) ta.value = prev;
+        }));
+        document.querySelectorAll('.cmp-dir-btn').forEach(b => b.addEventListener('click', () => {
+            this._composerDireccion = b.dataset.dir;
+            const prev = document.getElementById('cmpText')?.value || '';
+            this._refreshComposer();
+            const ta = document.getElementById('cmpText'); if (ta) ta.value = prev;
+        }));
+        const ta = document.getElementById('cmpText');
+        if (ta) ta.addEventListener('paste', async (e) => {
+            const items = (e.clipboardData && e.clipboardData.items) || [];
+            let handled = false;
+            for (const it of items) {
+                if (it.type && it.type.indexOf('image') === 0) {
+                    const f = it.getAsFile(); if (!f) continue;
+                    handled = true;
+                    await this._addImageFile(f);
+                }
+            }
+            if (handled) { e.preventDefault(); this._renderPendingAdjuntos(); Toast.info('Captura adjuntada'); }
+        });
+        const imgBtn = document.getElementById('cmpImgBtn');
+        const fileInput = document.getElementById('cmpFile');
+        if (imgBtn && fileInput) {
+            imgBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', async (e) => {
+                const files = Array.from(e.target.files || []);
+                for (const f of files) await this._addImageFile(f);
+                this._renderPendingAdjuntos();
+                e.target.value = '';
+            });
+        }
+        const proc = document.getElementById('cmpProcesar');
+        if (proc) proc.addEventListener('click', async () => { await this._procesarWhatsapp(document.getElementById('cmpText')?.value || ''); });
+        const send = document.getElementById('cmpSend');
+        if (send) send.addEventListener('click', () => this._sendComposer());
+    },
+
+    async _sendComposer() {
+        const ta = document.getElementById('cmpText');
+        const texto = (ta?.value || '').trim();
+        const canal = this._composerCanal;
+        if (!texto && !this._pendingAdjuntos.length) { Toast.warning('Escribí algo o adjuntá una imagen'); return; }
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        if (!caso) return;
+        const direccion = (canal === 'nota') ? 'interna' : this._composerDireccion;
+        const metadata = {};
+        if (canal === 'email') { const s = document.getElementById('cmpSubject')?.value?.trim(); if (s) metadata.subject = s; }
+        if (canal === 'llamada') { const d = document.getElementById('cmpDur')?.value; if (d) metadata.duracion = parseInt(d, 10) || 0; }
+        const sendBtn = document.getElementById('cmpSend');
+        if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Guardando...'; }
+        const msg = await API.createMensaje({
+            casoId: caso.id, clienteId: caso.clienteId, canal, direccion,
+            contenido: texto, metadata, adjuntos: this._pendingAdjuntos.slice(),
+        });
+        if (msg) {
+            if (canal === 'nota') this._notifyMenciones(texto, caso);
+            this._pendingAdjuntos = [];
+            await this._reloadCasoYFicha(caso.id);
+            Toast.success('Guardado');
+        } else {
+            Toast.error('No se pudo guardar');
+            if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Guardar'; }
+        }
+    },
+
+    // ─── WhatsApp pegado (digest IA + fallback local) ───
+    async _procesarWhatsapp(texto) {
+        texto = (texto || '').trim();
+        if (!texto) { Toast.warning('Pegá la conversación primero'); return; }
+        const btn = document.getElementById('cmpProcesar');
+        if (btn) { btn.disabled = true; btn.textContent = '✨ Procesando...'; }
+        const contexto = { clientes: this._clients.slice(0, 40).map(c => ({ id: c.id, nombre: c.name })) };
+        const res = await API.crmDigest(texto, contexto);
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Procesar con IA'; }
+        if (res && Array.isArray(res.mensajes) && res.mensajes.length) {
+            res.mensajes = res.mensajes.map(m => ({
+                autor: m.autor || 'Cliente',
+                direccion: m.direccion === 'saliente' ? 'saliente' : 'entrante',
+                texto: (m.texto || '').toString(),
+                fecha: m.fecha || '',
+            }));
+            this._showWhatsappPreview(res, true);
+        } else {
+            const parsed = this._localParseWhatsapp(texto);
+            if (!parsed.mensajes.length) { Toast.warning('No se detectaron mensajes. Probá el formato "Nombre: texto" por línea.'); return; }
+            this._showWhatsappPreview(parsed, false);
+        }
+    },
+
+    _parseWaFecha(s) {
+        if (!s) return '';
+        const m = s.match(/(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4}),?\s+(\d{1,2}):(\d{2})/);
+        if (!m) return '';
+        let [, d, mo, y, h, mi] = m;
+        y = y.length === 2 ? '20' + y : y;
+        const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}T${String(h).padStart(2, '0')}:${mi}:00`;
+        const dt = new Date(iso);
+        return isNaN(dt.getTime()) ? '' : dt.toISOString();
+    },
+
+    _localParseWhatsapp(texto) {
+        const lines = texto.split(/\r?\n/);
+        const reBracket = /^\s*\[([^\]]+)\]\s*([^:]{1,40}):\s?([\s\S]*)$/;
+        const reDash = /^\s*(\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s?[ap]\.?\s?m\.?)?)\s*-\s*([^:]{1,40}):\s?([\s\S]*)$/i;
+        const reSimple = /^\s*([A-Za-zÀ-ÿ0-9 ._'+-]{1,40}):\s(.+)$/;
+        const bubbles = [];
+        let cur = null;
+        const push = (ts, who, txt) => { cur = { autorRaw: (who || '').trim(), fechaTexto: (ts || '').trim(), texto: (txt || '') }; bubbles.push(cur); };
+        lines.forEach(line => {
+            let m = reBracket.exec(line) || reDash.exec(line);
+            if (m) { push(m[1], m[2], m[3]); return; }
+            m = reSimple.exec(line);
+            if (m && !/https?:\/\//i.test(m[1])) { push(null, m[1], m[2]); return; }
+            if (cur) cur.texto += (cur.texto ? '\n' : '') + line;
+        });
+        const myName = normStr((Auth.getUser?.()?.name) || '');
+        const teamNames = (this._users || []).map(u => normStr(u.name || '')).filter(Boolean);
+        const mensajes = bubbles
+            .filter(b => (b.texto || '').trim() || (b.autorRaw || '').trim())
+            .map(b => {
+                const an = normStr(b.autorRaw);
+                const esEquipo = !!an && (an === myName || teamNames.includes(an));
+                return {
+                    autor: b.autorRaw || 'Cliente',
+                    direccion: esEquipo ? 'saliente' : 'entrante',
+                    fecha: this._parseWaFecha(b.fechaTexto),
+                    fechaTexto: b.fechaTexto || '',
+                    texto: (b.texto || '').trim(),
+                };
+            });
+        return { mensajes, resumen: '', intencion: '', temperatura_sugerida: '', proxima_accion_sugerida: null };
+    },
+
+    _normFecha(s, fallbackISO) {
+        if (!s) return fallbackISO;
+        const d = new Date(s);
+        return isNaN(d.getTime()) ? fallbackISO : d.toISOString();
+    },
+
+    _showWhatsappPreview(parsed, fromIA) {
+        const msgs = parsed.mensajes || [];
+        const bubbleHtml = () => msgs.map((b, i) => `
+            <div class="wap-bubble wap-${b.direccion}">
+                <div class="wap-dir">
+                    <button class="wap-dir-btn ${b.direccion === 'entrante' ? 'active' : ''}" data-idx="${i}" data-dir="entrante">Cliente</button>
+                    <button class="wap-dir-btn ${b.direccion === 'saliente' ? 'active' : ''}" data-idx="${i}" data-dir="saliente">MEPEX</button>
+                </div>
+                <div class="wap-autor">${this._escHtml(b.autor || '')} ${b.fechaTexto ? `<span class="wap-fecha">${this._escHtml(b.fechaTexto)}</span>` : ''}</div>
+                <div class="wap-text">${this._escHtml(b.texto || '').replace(/\n/g, '<br>')}</div>
+            </div>`).join('');
+        const sug = fromIA ? `<div class="wap-sug">
+            ${parsed.resumen ? `<div class="wap-sug-row"><strong>Resumen IA:</strong> ${this._escHtml(parsed.resumen)}</div>` : ''}
+            ${parsed.intencion ? `<div class="wap-sug-row"><strong>Intención:</strong> ${this._escHtml(parsed.intencion)}</div>` : ''}
+            ${parsed.temperatura_sugerida ? `<label class="wap-sug-check"><input type="checkbox" id="wapTemp" checked> Aplicar temperatura sugerida: <strong>${this._escHtml(parsed.temperatura_sugerida)}</strong></label>` : ''}
+            ${parsed.proxima_accion_sugerida && parsed.proxima_accion_sugerida.texto ? `<label class="wap-sug-check"><input type="checkbox" id="wapAccion" checked> Agendar próxima acción: <strong>${this._escHtml(parsed.proxima_accion_sugerida.texto)}</strong>${parsed.proxima_accion_sugerida.fecha ? ` (${this._escHtml(parsed.proxima_accion_sugerida.fecha)})` : ''}</label>` : ''}
+        </div>` : `<div class="wap-manual">Modo manual (sin IA). Revisá quién dijo qué con los botones y guardá. <em>Cuando se active el motor de IA, esto se resume y clasifica solo.</em></div>`;
+        const instance = Modal.open({
+            title: fromIA ? '✨ Conversación procesada' : 'Conversación detectada',
+            body: `<div class="wap-preview">${sug}<div class="wap-bubbles" id="wapBubbles">${bubbleHtml()}</div></div>`,
+            size: 'lg',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="wapSave">Guardar ${msgs.length} al caso</button>`,
+        });
+        const bubblesEl = instance.overlay.querySelector('#wapBubbles');
+        bubblesEl.addEventListener('click', (e) => {
+            const b = e.target.closest('.wap-dir-btn');
+            if (!b) return;
+            const i = parseInt(b.dataset.idx, 10);
+            if (msgs[i]) { msgs[i].direccion = b.dataset.dir; bubblesEl.innerHTML = bubbleHtml(); }
+        });
+        const save = instance.overlay.querySelector('#wapSave');
+        save.addEventListener('click', async () => {
+            const caso = this._casos.find(c => c.id === this._casoActivoId);
+            if (!caso) return;
+            save.disabled = true; save.textContent = 'Guardando...';
+            const base = Date.now();
+            const arr = msgs.map((b, i) => ({
+                casoId: caso.id, clienteId: caso.clienteId, canal: 'whatsapp', direccion: b.direccion,
+                autor: b.autor || 'Cliente', contenido: b.texto || '', esAutomatico: fromIA,
+                fecha: this._normFecha(b.fecha, new Date(base - (msgs.length - i) * 1000).toISOString()),
+                resumenIa: (fromIA && i === msgs.length - 1 && parsed.resumen) ? parsed.resumen : null,
+            }));
+            await API.createMensajesBulk(arr);
+            if (fromIA) {
+                const patch = {};
+                const tempChk = instance.overlay.querySelector('#wapTemp');
+                const accChk = instance.overlay.querySelector('#wapAccion');
+                if (tempChk && tempChk.checked && parsed.temperatura_sugerida) patch.temperatura = parsed.temperatura_sugerida;
+                if (accChk && accChk.checked && parsed.proxima_accion_sugerida && parsed.proxima_accion_sugerida.texto) {
+                    patch.proximaAccion = parsed.proxima_accion_sugerida.texto;
+                    const f = parsed.proxima_accion_sugerida.fecha;
+                    if (f) { const dt = new Date(f); if (!isNaN(dt.getTime())) patch.proximaAccionFecha = dt.toISOString(); }
+                }
+                if (Object.keys(patch).length) await API.updateCaso(caso.id, patch);
+            }
+            Modal.close(instance.id);
+            const tax = document.getElementById('cmpText'); if (tax) tax.value = '';
+            await this._reloadCasoYFicha(caso.id);
+            Toast.success('Conversación guardada');
+        });
+    },
+
+    // ─── @menciones → notificación ───
+    _notifyMenciones(texto, caso) {
+        if (!texto || !API.createNotification) return;
+        const tokens = (texto.match(/@([\wÀ-ÿ.]+)/g) || []).map(t => normStr(t.slice(1)));
+        if (!tokens.length) return;
+        const me = Auth.getUser?.();
+        const myUid = me?.uid || me?.id;
+        const targeted = new Set();
+        this._users.forEach(u => {
+            const name = normStr(u.name || '');
+            const first = name.split(' ')[0];
+            const inits = normStr(u.initials || '');
+            const compact = name.replace(/\s+/g, '');
+            if (tokens.some(tk => tk && (tk === first || tk === inits || tk === compact || (first && first.startsWith(tk) && tk.length >= 3)))) {
+                const uid = u.uid || u.id;
+                if (uid && uid !== myUid) targeted.add(uid);
+            }
+        });
+        targeted.forEach(uid => {
+            API.createNotification({
+                tipo: 'mencion', titulo: 'Te mencionaron en un caso',
+                mensaje: `${me?.name || 'Alguien'} en "${caso.titulo}"`,
+                targetUserId: uid, link: '#crm', entidadTipo: 'crm_caso', entidadId: caso.id, prioridad: 'normal',
+            });
+        });
+    },
+
+    // ─── acciones de la ficha ───
+    _attachCasoFichaEvents() {
+        // Siempre buscamos el caso fresco en el momento del click (evita objeto stale).
+        const getCaso = () => this._casos.find(c => c.id === this._casoActivoId);
+        const back = document.getElementById('casoBack');
+        if (back) back.addEventListener('click', () => this._closeCaso());
+        const est = document.getElementById('casoEstado');
+        if (est) est.addEventListener('change', async () => {
+            const caso = getCaso();
+            if (!caso) return;
+            const nuevo = est.value;
+            await API.updateCaso(caso.id, { estado: nuevo });
+            await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Estado → ${this._casoEstados.find(e => e.value === nuevo)?.label || nuevo}` });
+            await this._reloadCasoYFicha(caso.id);
+        });
+        const edit = document.getElementById('casoEdit');
+        if (edit) edit.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
+        const del = document.getElementById('casoDelete');
+        if (del) del.addEventListener('click', () => { const c = getCaso(); if (c) this._eliminarCaso(c); });
+        const done = document.getElementById('casoAccionDone');
+        if (done) done.addEventListener('click', () => this._marcarAccionHecha());
+        const setA = document.getElementById('casoAccionSet');
+        if (setA) setA.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
+        const cli = document.querySelector('.caso-cliente-link');
+        if (cli) cli.addEventListener('click', () => {
+            const id = cli.dataset.clientId;
+            const c = this._clients.find(x => x.id === id);
+            if (c) { this._switchTab('clientes'); this._openPanel(c); }
+        });
+        this._attachComposerEvents();
+        this._renderPendingAdjuntos();
+        const tl = document.getElementById('casoTimeline');
+        if (tl) tl.scrollTop = tl.scrollHeight;
+    },
+
+    async _marcarAccionHecha() {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        if (!caso) return;
+        await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Acción completada: ${caso.proximaAccion || ''}` });
+        await API.updateCaso(caso.id, { proximaAccion: '', proximaAccionFecha: null });
+        await this._reloadCasoYFicha(caso.id);
+        Toast.success('Acción marcada como hecha');
+    },
+
+    _eliminarCaso(caso) {
+        if (!caso) return;
+        Modal.confirm({ title: 'Eliminar caso', message: `¿Eliminar <strong>"${this._escHtml(caso.titulo)}"</strong>? El caso se archiva (soft delete); sus mensajes quedan en la base.`, confirmText: 'Eliminar', danger: true }).then(async ok => {
+            if (!ok) return;
+            const r = await API.deleteCaso(caso.id);
+            if (r) {
+                Toast.success('Caso eliminado');
+                this._casoActivoId = null;
+                this._casos = await API.getCasos();
+                const ids = this._casos.map(c => c.id);
+                this._casoMsgMap = ids.length ? await API.getUltimosMensajesPorCaso(ids) : {};
+                this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
+                this._updateTabCounts();
+                this._renderTabContent();
+            } else Toast.error('No se pudo eliminar');
+        });
+    },
+
+    // ─── modal nuevo / editar caso ───
+    _buildCasoForm(caso) {
+        caso = caso || {};
+        const clientOpts = ['<option value="">— Sin cliente —</option>',
+            ...this._clients.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')).map(c => `<option value="${c.id}" ${caso.clienteId === c.id ? 'selected' : ''}>${this._escHtml(c.name)}</option>`)].join('');
+        const estadoOpts = this._casoEstados.map(e => `<option value="${e.value}" ${(caso.estado || 'lead') === e.value ? 'selected' : ''}>${e.label}</option>`).join('');
+        const tempOpts = ['hot', 'warm', 'cold'].map(t => `<option value="${t}" ${(caso.temperatura || 'warm') === t ? 'selected' : ''}>${this._tempConfig[t].icon} ${this._tempConfig[t].label}</option>`).join('');
+        const me = Auth.getUser?.();
+        const myUid = me?.uid || me?.id;
+        const ownerOpts = this._users.map(u => `<option value="${u.uid}" ${(caso.ownerId || myUid) === u.uid ? 'selected' : ''}>${this._escHtml(u.name || u.username)}</option>`).join('');
+        const accionFecha = caso.proximaAccionFecha ? new Date(caso.proximaAccionFecha).toISOString().slice(0, 10) : '';
+        return `<div class="caso-form">
+            <label class="caso-f-label">Título *</label>
+            <input type="text" class="crm-input" id="cfTitulo" value="${this._escHtml(caso.titulo || '')}" placeholder="Ej. Expomedical 2026 — stand 6×4">
+            <label class="caso-f-label">Cliente</label>
+            <select class="crm-input" id="cfCliente">${clientOpts}</select>
+            <label class="caso-f-label">Feria / evento</label>
+            <input type="text" class="crm-input" id="cfEvento" value="${this._escHtml(caso.eventoTexto || '')}" placeholder="Ej. Expomedical 2026">
+            <div class="caso-f-row">
+                <div><label class="caso-f-label">Estado</label><select class="crm-input" id="cfEstado">${estadoOpts}</select></div>
+                <div><label class="caso-f-label">Temperatura</label><select class="crm-input" id="cfTemp">${tempOpts}</select></div>
+            </div>
+            <div class="caso-f-row">
+                <div><label class="caso-f-label">Monto estimado</label><input type="number" min="0" class="crm-input" id="cfMonto" value="${caso.montoEstimado || ''}" placeholder="0"></div>
+                <div><label class="caso-f-label">Responsable</label><select class="crm-input" id="cfOwner">${ownerOpts}</select></div>
+            </div>
+            <label class="caso-f-label">Origen</label>
+            <input type="text" class="crm-input" id="cfOrigen" value="${this._escHtml(caso.origen || '')}" placeholder="referido / web / feria / frío...">
+            <div class="caso-f-row">
+                <div><label class="caso-f-label">Próxima acción</label><input type="text" class="crm-input" id="cfAccion" value="${this._escHtml(caso.proximaAccion || '')}" placeholder="Ej. Mandar cotización v2"></div>
+                <div><label class="caso-f-label">Fecha</label><input type="date" class="crm-input" id="cfAccionFecha" value="${accionFecha}"></div>
+            </div>
+        </div>`;
+    },
+
+    _getCasoFormValues(o) {
+        const v = id => o.querySelector('#' + id);
+        const accion = v('cfAccion')?.value?.trim() || '';
+        const accionFecha = v('cfAccionFecha')?.value || '';
+        return {
+            titulo: v('cfTitulo')?.value?.trim() || '',
+            clienteId: v('cfCliente')?.value || null,
+            eventoTexto: v('cfEvento')?.value?.trim() || '',
+            estado: v('cfEstado')?.value || 'lead',
+            temperatura: v('cfTemp')?.value || 'warm',
+            montoEstimado: v('cfMonto')?.value || '',
+            ownerId: v('cfOwner')?.value || null,
+            origen: v('cfOrigen')?.value?.trim() || '',
+            proximaAccion: accion,
+            proximaAccionFecha: accionFecha ? new Date(accionFecha + 'T12:00:00').toISOString() : null,
+        };
+    },
+
+    _openNuevoCasoModal(caso) {
+        const isEdit = !!(caso && caso.id);
+        const instance = Modal.open({
+            title: isEdit ? 'Editar caso' : 'Nuevo caso',
+            body: this._buildCasoForm(caso),
+            size: 'md',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="cfSave">${isEdit ? 'Guardar cambios' : 'Crear caso'}</button>`,
+        });
+        const saveBtn = instance.overlay.querySelector('#cfSave');
+        saveBtn.addEventListener('click', async () => {
+            const data = this._getCasoFormValues(instance.overlay);
+            if (!data.titulo) { Toast.warning('El título es obligatorio'); return; }
+            saveBtn.disabled = true; saveBtn.textContent = 'Guardando...';
+            const res = isEdit ? await API.updateCaso(caso.id, data) : await API.createCaso(data);
+            if (res) {
+                Toast.success(isEdit ? 'Caso actualizado' : 'Caso creado');
+                Modal.close(instance.id);
+                this._casos = await API.getCasos();
+                const ids = this._casos.map(c => c.id);
+                this._casoMsgMap = ids.length ? await API.getUltimosMensajesPorCaso(ids) : {};
+                this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
+                this._updateTabCounts();
+                if (this._activeTab !== 'casos') this._switchTab('casos');
+                this._openCaso(res.id);
+            } else {
+                Toast.error('No se pudo guardar');
+                saveBtn.disabled = false; saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear caso';
+            }
+        });
+    },
+
+    _asignarMensajeModal(msgId) {
+        if (!this._casos.length) { Toast.info('Creá un caso primero para poder asignar.'); return; }
+        const opts = this._casos.filter(c => c.estado !== 'perdido').map(c => `<option value="${c.id}">${this._escHtml(c.titulo)} — ${this._escHtml(this._casoClienteName(c))}</option>`).join('');
+        const instance = Modal.open({
+            title: 'Asignar mensaje a un caso',
+            body: `<div class="caso-form"><label class="caso-f-label">Caso destino</label><select class="crm-input" id="asgCaso">${opts}</select></div>`,
+            size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="asgSave">Asignar</button>`,
+        });
+        instance.overlay.querySelector('#asgSave').addEventListener('click', async () => {
+            const casoId = instance.overlay.querySelector('#asgCaso')?.value;
+            if (!casoId) return;
+            const caso = this._casos.find(c => c.id === casoId);
+            const ok = await API.asignarMensajeACaso(msgId, casoId, caso?.clienteId || null);
+            if (ok) {
+                Toast.success('Mensaje asignado');
+                Modal.close(instance.id);
+                this._sinAsignar = await API.getMensajesSinAsignar();
+                this._renderTabContent();
+            } else Toast.error('No se pudo asignar');
+        });
+    },
+
+
     // (Marketing eliminado del CRM — 2026-06-07. Si vuelve, va como módulo propio en COMERCIAL.)
 
 
@@ -5214,6 +6176,217 @@ const CRM = {
     .ana-panel-40, .ana-panel-50, .ana-panel-60 { flex: 1 1 100% !important; }
 }
         `;
+        document.head.appendChild(style);
+        this._injectCasosStyles();
+    },
+
+    _injectCasosStyles() {
+        if (document.getElementById('crm-casos-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'crm-casos-styles';
+        style.textContent = `
+/* ═══ CASOS — bandeja / pipeline / ficha ═══ */
+.casos-wrap { display: flex; flex-direction: column; gap: 16px; height: 100%; }
+
+/* KPIs */
+.casos-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.casos-kpi { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--kpi, var(--primary)); border-radius: 8px; padding: 12px 16px; }
+.casos-kpi-val { font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700; color: var(--kpi, var(--primary)); line-height: 1; }
+.casos-kpi-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Toolbar */
+.casos-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.casos-search-wrap { position: relative; flex: 1; min-width: 200px; display: flex; align-items: center; }
+.casos-search-wrap svg { position: absolute; left: 12px; color: var(--text-dim); pointer-events: none; }
+.casos-search { width: 100%; padding: 9px 12px 9px 34px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: var(--font-main); font-size: 0.85rem; }
+.casos-search:focus { outline: none; border-color: var(--primary); box-shadow: var(--glow-sm); }
+.casos-view-toggle { display: flex; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.casos-vt { padding: 8px 16px; background: none; border: none; color: var(--text-muted); font-family: var(--font-main); font-size: 0.82rem; cursor: pointer; transition: all 200ms ease; }
+.casos-vt.active { background: rgba(242,141,21,0.15); color: #F28D15; }
+
+/* Chips */
+.casos-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.casos-chip { padding: 5px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; color: var(--text-muted); font-size: 0.78rem; cursor: pointer; transition: all 200ms ease; }
+.casos-chip:hover { color: var(--text-primary); }
+.casos-chip.active { border-color: var(--primary); color: var(--primary); background: rgba(0,169,193,0.1); }
+
+/* Sin asignar */
+.casos-sinasignar { background: rgba(155,125,255,0.07); border: 1px solid rgba(155,125,255,0.25); border-radius: 8px; padding: 12px 14px; }
+.casos-sa-title { font-size: 0.8rem; font-weight: 600; color: #9B7DFF; margin-bottom: 8px; }
+.casos-sa-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid rgba(155,125,255,0.12); }
+.casos-sa-canal { font-size: 1rem; }
+.casos-sa-text { flex: 1; font-size: 0.82rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.casos-sa-assign { padding: 4px 12px; background: rgba(155,125,255,0.2); border: 1px solid rgba(155,125,255,0.4); border-radius: 5px; color: #9B7DFF; font-size: 0.75rem; cursor: pointer; }
+
+/* Lista de casos */
+.casos-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.caso-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 200ms ease; }
+.caso-row:hover { border-color: rgba(0,169,193,0.4); transform: translateX(2px); box-shadow: var(--glow-sm); }
+.caso-row-temp { font-size: 1.2rem; flex-shrink: 0; width: 24px; text-align: center; }
+.caso-row-main { flex: 1; min-width: 0; }
+.caso-row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.caso-row-titulo { font-weight: 600; color: var(--text-primary); font-size: 0.92rem; }
+.caso-row-estado { font-size: 0.68rem; font-weight: 700; padding: 2px 9px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
+.caso-flag { font-size: 0.66rem; padding: 2px 7px; border-radius: 8px; font-weight: 600; }
+.caso-flag.sinresp { background: rgba(37,211,102,0.15); color: #25D366; }
+.caso-flag.venc { background: rgba(239,83,80,0.15); color: #EF5350; }
+.caso-row-sub { display: flex; align-items: center; gap: 7px; margin-top: 4px; font-size: 0.8rem; color: var(--text-muted); }
+.caso-row-cliente { color: var(--text-primary); font-weight: 500; flex-shrink: 0; }
+.caso-row-sep { color: var(--text-dim); }
+.caso-row-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caso-row-accionwrap { margin-top: 5px; }
+.caso-row-accion { font-size: 0.76rem; color: #F28D15; }
+.caso-row-accion.vencida { color: #EF5350; font-weight: 600; }
+.caso-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.caso-row-aging { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; }
+.caso-row-owner { font-size: 0.72rem; color: var(--text-dim); }
+
+/* Empty */
+.casos-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+.casos-empty-icon { font-size: 2.6rem; margin-bottom: 12px; opacity: 0.6; }
+.casos-empty h3 { color: var(--text-primary); margin: 0 0 6px; font-size: 1rem; }
+.casos-empty p { font-size: 0.85rem; margin: 0; }
+
+/* Pipeline */
+.caso-pipeline { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; flex: 1; }
+.caso-pcol { flex: 1; min-width: 180px; display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border-radius: 8px; }
+.caso-pcol-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 2px solid var(--border); font-size: 0.8rem; font-weight: 600; }
+.caso-pcol-count { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim); background: rgba(255,255,255,0.06); padding: 1px 7px; border-radius: 8px; }
+.caso-pcol-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow-y: auto; }
+.caso-pcol-empty { color: var(--text-dim); text-align: center; padding: 12px; font-size: 0.8rem; }
+.caso-pcard { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 10px; cursor: pointer; transition: all 200ms ease; }
+.caso-pcard:hover { border-color: rgba(0,169,193,0.4); box-shadow: var(--glow-sm); }
+.caso-pcard-top { display: flex; justify-content: space-between; gap: 6px; }
+.caso-pcard-titulo { font-size: 0.84rem; font-weight: 600; color: var(--text-primary); }
+.caso-pcard-cli { font-size: 0.76rem; color: var(--text-muted); margin: 4px 0; }
+.caso-pcard-foot { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--text-dim); font-family: var(--font-mono); }
+
+/* Ficha */
+.caso-ficha { display: flex; gap: 18px; height: 100%; overflow: hidden; }
+.caso-ficha-main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.caso-ficha-aside { width: 300px; flex-shrink: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.caso-ficha-header { flex-shrink: 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.caso-back { background: none; border: none; color: var(--primary); font-size: 0.82rem; cursor: pointer; padding: 0 0 8px; }
+.caso-back:hover { text-decoration: underline; }
+.caso-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.caso-titulo { font-size: 1.25rem; color: var(--text-primary); margin: 0; }
+.caso-head-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.caso-icon-btn { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; width: 32px; height: 32px; cursor: pointer; font-size: 0.9rem; transition: all 200ms ease; }
+.caso-icon-btn:hover { border-color: var(--primary); }
+.caso-icon-btn.caso-del:hover { border-color: var(--color-error); }
+.caso-head-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.caso-meta-chip { font-size: 0.78rem; color: var(--text-muted); background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
+a.caso-cliente-link { cursor: pointer; }
+a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary); }
+.caso-estado-select { font-size: 0.78rem; font-weight: 600; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-family: var(--font-main); }
+.caso-accion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 8px 12px; background: rgba(242,141,21,0.08); border: 1px solid rgba(242,141,21,0.2); border-radius: 6px; }
+.caso-accion.vencida { background: rgba(239,83,80,0.08); border-color: rgba(239,83,80,0.3); }
+.caso-accion-txt { font-size: 0.85rem; color: var(--text-primary); }
+.caso-accion-empty { color: var(--text-dim); }
+.caso-accion-done, .caso-accion-set { background: rgba(0,204,136,0.15); border: 1px solid rgba(0,204,136,0.35); color: #00CC88; border-radius: 5px; padding: 4px 12px; font-size: 0.76rem; cursor: pointer; flex-shrink: 0; }
+.caso-accion-set { background: rgba(0,169,193,0.12); border-color: rgba(0,169,193,0.3); color: var(--primary); }
+
+/* Timeline */
+.caso-timeline { flex: 1; overflow-y: auto; padding: 16px 4px; display: flex; flex-direction: column; gap: 10px; }
+.tl-empty { text-align: center; color: var(--text-muted); margin: auto; padding: 40px; }
+.tl-empty-icon { font-size: 2.4rem; opacity: 0.5; margin-bottom: 10px; }
+.tl-date { text-align: center; font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin: 8px 0; }
+.tl-row { display: flex; }
+.tl-row.tl-in { justify-content: flex-start; }
+.tl-row.tl-out { justify-content: flex-end; }
+.tl-row.tl-mid, .tl-row.tl-sys { justify-content: center; }
+.tl-bubble { max-width: 78%; padding: 9px 13px; border-radius: 12px; font-size: 0.86rem; }
+.tl-wa-in { background: var(--bg-card); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+.tl-wa-out { background: rgba(37,211,102,0.14); border: 1px solid rgba(37,211,102,0.3); border-bottom-right-radius: 3px; }
+.tl-card { max-width: 88%; width: 100%; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; }
+.tl-email { border-left: 3px solid #4A90D9; }
+.tl-nota { background: rgba(242,141,21,0.07); border-color: rgba(242,141,21,0.25); border-left: 3px solid #F28D15; }
+.tl-call { border-left: 3px solid #00CC88; }
+.tl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; flex-wrap: wrap; }
+.tl-canal { font-size: 0.78rem; font-weight: 600; }
+.tl-meta { font-size: 0.7rem; color: var(--text-dim); }
+.tl-subject { font-weight: 600; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 4px; }
+.tl-ia { font-size: 0.76rem; color: #9B7DFF; background: rgba(155,125,255,0.08); border-radius: 5px; padding: 4px 8px; margin-bottom: 6px; }
+.tl-body { font-size: 0.85rem; color: var(--text-primary); line-height: 1.45; word-break: break-word; }
+.tl-foot { font-size: 0.68rem; color: var(--text-dim); margin-top: 5px; text-align: right; }
+.tl-details summary { cursor: pointer; font-size: 0.78rem; color: var(--primary); margin-bottom: 6px; }
+.tl-mention { color: var(--primary); font-weight: 600; }
+.tl-sys-line { font-size: 0.74rem; color: var(--text-dim); background: rgba(255,255,255,0.03); padding: 4px 12px; border-radius: 10px; }
+.tl-adjuntos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.tl-adj img { max-width: 160px; max-height: 160px; border-radius: 6px; border: 1px solid var(--border); display: block; }
+
+/* Composer */
+.cmp { flex-shrink: 0; border-top: 1px solid var(--border); padding-top: 12px; }
+.cmp-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.cmp-tab { padding: 6px 14px; background: var(--bg-card); border: 1px solid var(--border); border-bottom: 2px solid transparent; border-radius: 6px; color: var(--text-muted); font-size: 0.8rem; cursor: pointer; transition: all 200ms ease; }
+.cmp-tab.active { font-weight: 600; }
+.cmp-dir { display: flex; gap: 6px; margin-bottom: 8px; }
+.cmp-dir-btn { padding: 4px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px; color: var(--text-muted); font-size: 0.74rem; cursor: pointer; }
+.cmp-dir-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(0,169,193,0.1); }
+.cmp-input { width: 100%; padding: 8px 12px; margin-bottom: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: var(--font-main); font-size: 0.85rem; }
+.cmp-input-sm { max-width: 180px; }
+.cmp-input:focus { outline: none; border-color: var(--primary); }
+.cmp-adjuntos { display: flex; gap: 6px; flex-wrap: wrap; }
+.cmp-adjuntos:not(:empty) { margin-bottom: 8px; }
+.cmp-adj { position: relative; }
+.cmp-adj img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+.cmp-adj-rm { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-error); color: #fff; border: none; font-size: 0.65rem; cursor: pointer; line-height: 1; }
+.cmp-textarea { width: 100%; padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: var(--font-main); font-size: 0.88rem; resize: vertical; min-height: 60px; }
+.cmp-textarea:focus { outline: none; border-color: var(--primary); box-shadow: var(--glow-sm); }
+.cmp-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.cmp-spacer { flex: 1; }
+.cmp-img-btn { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; color: var(--text-muted); font-size: 0.78rem; cursor: pointer; }
+.cmp-img-btn:hover { border-color: var(--primary); color: var(--primary); }
+.cmp-hint { font-size: 0.7rem; color: var(--text-dim); }
+.cmp-ia-btn { font-size: 0.8rem; }
+
+/* Form (modal nuevo/editar caso) */
+.caso-form { display: flex; flex-direction: column; }
+.caso-f-label { font-size: 0.74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin: 8px 0 4px; }
+.caso-f-row { display: flex; gap: 12px; }
+.caso-f-row > div { flex: 1; }
+.crm-input { width: 100%; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-family: var(--font-main); font-size: 0.88rem; }
+.crm-input:focus { outline: none; border-color: var(--primary); box-shadow: var(--glow-sm); }
+
+/* Aside */
+.aside-block { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.aside-title { font-size: 0.72rem; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; margin-bottom: 10px; }
+.aside-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 0.82rem; }
+.aside-k { color: var(--text-dim); flex-shrink: 0; }
+.aside-v { color: var(--text-primary); text-align: right; word-break: break-word; }
+.aside-v a { color: var(--primary); text-decoration: none; }
+.aside-v a:hover { text-decoration: underline; }
+.aside-empty { font-size: 0.8rem; color: var(--text-dim); margin: 0; }
+.aside-cot { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); font-size: 0.8rem; }
+.aside-cot:first-of-type { border-top: none; }
+.aside-cot-num { color: var(--text-primary); font-family: var(--font-mono); }
+.aside-cot-est { font-weight: 600; }
+.aside-cot-monto { color: var(--text-muted); font-family: var(--font-mono); }
+
+/* WhatsApp preview modal */
+.wap-preview { max-height: 60vh; overflow-y: auto; }
+.wap-sug { background: rgba(155,125,255,0.08); border: 1px solid rgba(155,125,255,0.25); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.wap-sug-row { font-size: 0.84rem; color: var(--text-primary); margin-bottom: 6px; }
+.wap-sug-check { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-primary); margin-top: 6px; cursor: pointer; }
+.wap-manual { font-size: 0.82rem; color: var(--text-muted); background: rgba(255,255,255,0.03); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.wap-bubbles { display: flex; flex-direction: column; gap: 8px; }
+.wap-bubble { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); }
+.wap-bubble.wap-entrante { background: var(--bg-card); margin-right: 18%; border-bottom-left-radius: 3px; }
+.wap-bubble.wap-saliente { background: rgba(37,211,102,0.12); margin-left: 18%; border-bottom-right-radius: 3px; }
+.wap-dir { display: flex; gap: 4px; margin-bottom: 5px; }
+.wap-dir-btn { padding: 2px 10px; background: transparent; border: 1px solid var(--border); border-radius: 10px; color: var(--text-dim); font-size: 0.68rem; cursor: pointer; }
+.wap-dir-btn.active { border-color: var(--primary); color: var(--primary); }
+.wap-autor { font-size: 0.74rem; font-weight: 600; color: var(--text-muted); }
+.wap-fecha { font-weight: 400; color: var(--text-dim); }
+.wap-text { font-size: 0.85rem; color: var(--text-primary); margin-top: 3px; }
+
+/* Responsive ficha */
+@media (max-width: 900px) {
+    .casos-kpis { grid-template-columns: repeat(2, 1fr); }
+    .caso-ficha { flex-direction: column; overflow-y: auto; }
+    .caso-ficha-aside { width: 100%; }
+}
+`;
         document.head.appendChild(style);
     },
 
