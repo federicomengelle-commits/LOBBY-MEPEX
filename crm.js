@@ -10,7 +10,7 @@
 const CRM = {
 
     // ─── State ───
-    _activeTab: 'clientes',
+    _activeTab: 'bandeja',
     _clients: [],
     _filteredClients: [],
     _projects: [],
@@ -60,14 +60,16 @@ const CRM = {
     _casosView: 'bandeja',      // 'bandeja' | 'pipeline'
     _casosSearch: '',
     _casosEstadoFilter: null,
-    _casoActivoId: null,        // si hay ficha abierta (takeover de crm-main)
+    _casoActivoId: null,        // si hay ficha de caso abierta (takeover de crm-main)
+    _clienteActivoId: null,     // si hay ficha de cliente abierta (full-screen, refactor v2)
+    _casoDrag: null,            // caso siendo arrastrado en el pipeline kanban
     _casoMensajes: [],          // timeline del caso activo
     _composerCanal: 'nota',     // nota | whatsapp | email | llamada
     _composerDireccion: 'saliente',
     _pendingAdjuntos: [],       // imágenes pegadas pendientes de enviar
 
     // ─── Counts per tab ───
-    _counts: { clientes: 0, casos: 0, pipeline: 0, cotizaciones: 0, interacciones: 0 },
+    _counts: { bandeja: 0, pipeline: 0, clientes: 0, cotizaciones: 0 },
 
     // ─── Client type config ───
     _clientTypes: [
@@ -151,13 +153,12 @@ const CRM = {
         sistema:  { label: 'Sistema',  icon: '⚙️', color: '#888888' },
     },
 
-    // ─── Tab definitions ───
+    // ─── Tab definitions (refactor v2: 5 planas — Bandeja·Pipeline·Clientes·Cotizaciones·Analítica) ───
     _tabs: [
-        { id: 'clientes',       label: 'Clientes',       icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
-        { id: 'casos',          label: 'Casos',          icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 8v14a2 2 0 0 0 2 2h12"/></svg>' },
+        { id: 'bandeja',        label: 'Bandeja',        icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>' },
         { id: 'pipeline',       label: 'Pipeline',       icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>' },
+        { id: 'clientes',       label: 'Clientes',       icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
         { id: 'cotizaciones',   label: 'Cotizaciones',   icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' },
-        { id: 'interacciones',  label: 'Interacciones',  icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' },
         { id: 'analitica',      label: 'Analítica',      icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/><line x1="3" x2="21" y1="20" y2="20"/></svg>' },
     ],
 
@@ -303,11 +304,8 @@ const CRM = {
             // Update counts
             this._counts.clientes = this._clients.length;
             this._counts.cotizaciones = this._cotizaciones.length;
-            this._counts.pipeline = this._cotizaciones.filter(c =>
-                !['aprobada', 'rechazada'].includes(c.estado)
-            ).length;
-            this._counts.interacciones = this._allTimeline.length;
-            this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
+            this._counts.bandeja = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
+            this._counts.pipeline = this._casos.length;
             this._updateTabCounts();
 
         } catch (e) {
@@ -433,8 +431,9 @@ const CRM = {
             tab = 'clientes';
         }
         this._activeTab = tab;
-        // Al salir/entrar a Casos siempre arrancamos en la bandeja (no en una ficha vieja)
+        // Al cambiar de tab cerramos cualquier ficha full-screen abierta (caso o cliente)
         this._casoActivoId = null;
+        this._clienteActivoId = null;
         // Update tab buttons
         document.querySelectorAll('.crm-tab').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
@@ -464,11 +463,10 @@ const CRM = {
 
     _headerActionConfig() {
         switch (this._activeTab) {
+            case 'bandeja':       return { action: 'new-caso', label: 'Nuevo caso' };
+            case 'pipeline':      return { action: 'new-caso', label: 'Nuevo caso' };
             case 'clientes':      return { action: 'new-cliente', label: 'Nuevo cliente' };
-            case 'casos':         return { action: 'new-caso', label: 'Nuevo caso' };
-            case 'pipeline':
             case 'cotizaciones':  return { action: 'open-cotizador', label: 'Abrir cotizador', url: 'http://195.200.1.250/cotizador/' };
-            case 'interacciones': return { action: 'new-interaccion', label: 'Nueva interacción' };
             case 'analitica':     return null; // sin botón
             default:              return null;
         }
@@ -509,27 +507,26 @@ const CRM = {
         const main = document.getElementById('crmMainContent');
         if (!main) return;
 
-        if (this._activeTab === 'clientes') {
-            main.innerHTML = this._renderClientesTable();
-            this._attachClientListeners();
-        } else if (this._activeTab === 'casos') {
-            main.innerHTML = this._renderCasosTab();
-            this._attachCasosEvents();
+        if (this._activeTab === 'bandeja') {
+            if (this._casoActivoId) { main.innerHTML = this._renderCasoFicha(); this._attachCasoFichaEvents(); }
+            else { main.innerHTML = this._renderCasosBandeja(); this._attachCasosToolbar(); this._attachCasosBandejaEvents(); }
         } else if (this._activeTab === 'pipeline') {
-            main.innerHTML = this._renderPipeline();
-            this._attachPipelineListeners();
+            if (this._casoActivoId) { main.innerHTML = this._renderCasoFicha(); this._attachCasoFichaEvents(); }
+            else { main.innerHTML = this._renderCasosPipeline(); this._attachCasosToolbar(); this._attachCasosPipelineEvents(); }
+        } else if (this._activeTab === 'clientes') {
+            if (this._clienteActivoId) { main.innerHTML = this._renderClienteFicha(); this._attachClienteFichaEvents(); }
+            else { main.innerHTML = this._renderClientesTable(); this._attachClientListeners(); }
         } else if (this._activeTab === 'cotizaciones') {
             this._applyCotFilters();
             main.innerHTML = this._renderCotizacionesTab();
             this._attachCotListeners();
-        } else if (this._activeTab === 'interacciones') {
-            main.innerHTML = this._renderInteraccionesTab();
-            this._attachInterListeners();
         } else if (this._activeTab === 'analitica') {
             main.innerHTML = this._renderAnaliticaTab();
             this._initAnaliticaCharts();
         } else {
-            main.innerHTML = this._renderPlaceholderTab(this._activeTab);
+            // fallback → bandeja
+            this._activeTab = 'bandeja';
+            main.innerHTML = this._renderCasosBandeja(); this._attachCasosToolbar(); this._attachCasosBandejaEvents();
         }
     },
 
@@ -720,12 +717,12 @@ const CRM = {
             });
         });
 
-        // Row click → open panel
+        // Row click → ficha full-screen del cliente
         document.querySelectorAll('.crm-row[data-id]').forEach(row => {
             row.addEventListener('click', () => {
                 const id = row.dataset.id;
                 const client = this._clients.find(c => String(c.id) === String(id));
-                if (client) this._openPanel(client);
+                if (client) this._openCliente(client.id);
             });
         });
 
@@ -739,7 +736,7 @@ const CRM = {
                 const user = Auth.getUser();
                 const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
                 const items = [
-                    { icon: '\uD83D\uDC41\uFE0F', label: 'Ver ficha', action: () => this._openPanel(client) },
+                    { icon: '\uD83D\uDC41\uFE0F', label: 'Ver ficha', action: () => this._openCliente(client.id) },
                 ];
                 if (!isReadOnly) {
                     items.push({ icon: '\u270F\uFE0F', label: 'Editar', action: () => this._openEditModal(client) });
@@ -1041,11 +1038,8 @@ const CRM = {
                 Toast.success('Cliente actualizado');
                 Modal.close(instance.id);
                 await this._loadData();
-                // Re-open panel if it was open
-                if (this._activePanel === client.id) {
-                    const updated = this._clients.find(c => c.id === client.id);
-                    if (updated) this._openPanel(updated);
-                }
+                // Si estábamos en la ficha full-screen de ese cliente, re-renderizarla con datos frescos
+                if (this._clienteActivoId === client.id) this._renderTabContent();
             } else {
                 Toast.error('Error al actualizar cliente');
                 saveBtn.disabled = false;
@@ -2928,8 +2922,9 @@ const CRM = {
             body.querySelectorAll('[data-action="goto-cliente"]').forEach(a => {
                 a.addEventListener('click', (e) => {
                     e.preventDefault();
-                    this._activeTab = 'clientes';
-                    this._switchTab('clientes');
+                    const id = a.dataset.id;
+                    if (id && this._clients.some(c => c.id === id)) this._gotoCliente(id);
+                    else this._switchTab('clientes');
                 });
             });
             body.querySelectorAll('[data-action="goto-evento"]').forEach(a => {
@@ -3344,10 +3339,6 @@ const CRM = {
                     ${this._searchSvg()}
                     <input type="text" class="casos-search" id="casosSearch" placeholder="Buscar caso, cliente, feria..." value="${this._escHtml(this._casosSearch)}" autocomplete="off">
                 </div>
-                <div class="casos-view-toggle">
-                    <button class="casos-vt ${this._casosView === 'bandeja' ? 'active' : ''}" data-view="bandeja">Bandeja</button>
-                    <button class="casos-vt ${this._casosView === 'pipeline' ? 'active' : ''}" data-view="pipeline">Pipeline</button>
-                </div>
             </div>`;
     },
 
@@ -3467,7 +3458,7 @@ const CRM = {
                 const days = this._getDaysSince(last ? last.fecha : c.updatedAt);
                 const dc = this._getDaysColor(days);
                 const monto = c.montoEstimado ? '$' + c.montoEstimado.toLocaleString('es-AR') : '';
-                return `<div class="caso-pcard" data-caso-id="${c.id}">
+                return `<div class="caso-pcard" data-caso-id="${c.id}" draggable="true">
                     <div class="caso-pcard-top"><span class="caso-pcard-titulo">${this._escHtml(c.titulo)}</span>${temp ? `<span title="${temp.label}">${temp.icon}</span>` : ''}</div>
                     <div class="caso-pcard-cli">${this._escHtml(this._casoClienteName(c))}</div>
                     <div class="caso-pcard-foot"><span>${monto}</span><span style="color:${dc}">${days === null ? '' : (days === 0 ? 'hoy' : days + 'd')}</span></div>
@@ -3475,7 +3466,7 @@ const CRM = {
             }).join('') || '<div class="caso-pcol-empty">—</div>';
             return `<div class="caso-pcol">
                 <div class="caso-pcol-head" style="border-color:${col.color}55"><span style="color:${col.color}">${col.label}</span><span class="caso-pcol-count">${items.length}</span></div>
-                <div class="caso-pcol-body">${cards}</div>
+                <div class="caso-pcol-body" data-estado="${col.value}">${cards}</div>
             </div>`;
         }).join('');
     },
@@ -3490,18 +3481,13 @@ const CRM = {
                 deb = setTimeout(() => { this._casosSearch = search.value.trim(); this._refreshCasosBody(); }, 200);
             });
         }
-        document.querySelectorAll('.casos-vt').forEach(b => b.addEventListener('click', () => {
-            const v = b.dataset.view;
-            if (v && v !== this._casosView) { this._casosView = v; this._renderTabContent(); }
-        }));
     },
 
     _refreshCasosBody() {
         const body = document.getElementById('casosBody');
         if (!body) return;
-        if (this._casosView === 'pipeline') body.innerHTML = this._pipelineColumnsHtml();
-        else body.innerHTML = this._bandejaRowsHtml();
-        this._attachCasoCardClicks();
+        if (this._activeTab === 'pipeline') { body.innerHTML = this._pipelineColumnsHtml(); this._attachCasosPipelineEvents(); }
+        else { body.innerHTML = this._bandejaRowsHtml(); this._attachCasoCardClicks(); }
     },
 
     _attachCasoCardClicks() {
@@ -3522,6 +3508,40 @@ const CRM = {
 
     _attachCasosPipelineEvents() {
         this._attachCasoCardClicks();
+        // Drag & drop: arrastrar un caso a otra columna cambia su estado
+        document.querySelectorAll('.caso-pcard[draggable]').forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                this._casoDrag = card.dataset.casoId;
+                card.classList.add('dragging');
+                if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', card.dataset.casoId); } catch (_) {} }
+            });
+            card.addEventListener('dragend', () => {
+                card.classList.remove('dragging');
+                this._casoDrag = null;
+                document.querySelectorAll('.caso-pcol-body.drop-over').forEach(z => z.classList.remove('drop-over'));
+            });
+        });
+        document.querySelectorAll('.caso-pcol-body[data-estado]').forEach(zone => {
+            zone.addEventListener('dragover', (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'; zone.classList.add('drop-over'); });
+            zone.addEventListener('dragleave', () => zone.classList.remove('drop-over'));
+            zone.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                zone.classList.remove('drop-over');
+                const casoId = this._casoDrag || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+                const nuevo = zone.dataset.estado;
+                this._casoDrag = null;
+                if (!casoId || !nuevo) return;
+                const caso = this._casos.find(c => c.id === casoId);
+                if (!caso || caso.estado === nuevo) return;
+                await API.updateCaso(casoId, { estado: nuevo });
+                await API.createMensaje({ casoId, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Estado → ${this._casoEstados.find(x => x.value === nuevo)?.label || nuevo}` });
+                this._casos = await API.getCasos();
+                this._counts.bandeja = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
+                this._counts.pipeline = this._casos.length;
+                this._updateTabCounts();
+                this._refreshCasosBody();
+            });
+        });
     },
 
     // ─── FICHA ───
@@ -3571,6 +3591,8 @@ const CRM = {
                     <div class="caso-head-row">
                         <h2 class="caso-titulo">${this._escHtml(caso.titulo)}</h2>
                         <div class="caso-head-actions">
+                            ${caso.estado === 'ganado' && !caso.proyectoId ? '<button class="caso-conv-btn" id="casoConvertir">🏗️ Convertir a proyecto</button>' : ''}
+                            ${caso.proyectoId ? '<span class="caso-meta-chip">🏗️ Proyecto vinculado</span>' : ''}
                             <button class="caso-icon-btn" id="casoEdit" title="Editar caso">✏️</button>
                             <button class="caso-icon-btn caso-del" id="casoDelete" title="Eliminar caso">🗑</button>
                         </div>
@@ -4049,6 +4071,8 @@ const CRM = {
         if (done) done.addEventListener('click', () => this._marcarAccionHecha());
         const setA = document.getElementById('casoAccionSet');
         if (setA) setA.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
+        const conv = document.getElementById('casoConvertir');
+        if (conv) conv.addEventListener('click', () => { const c = getCaso(); if (c) this._convertirCasoAProyecto(c); });
         const cli = document.querySelector('.caso-cliente-link');
         if (cli) cli.addEventListener('click', () => {
             const id = cli.dataset.clientId;
@@ -4163,7 +4187,7 @@ const CRM = {
                 this._casoMsgMap = ids.length ? await API.getUltimosMensajesPorCaso(ids) : {};
                 this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
                 this._updateTabCounts();
-                if (this._activeTab !== 'casos') this._switchTab('casos');
+                if (this._activeTab !== 'bandeja' && this._activeTab !== 'pipeline') this._switchTab('bandeja');
                 this._openCaso(res.id);
             } else {
                 Toast.error('No se pudo guardar');
@@ -4193,6 +4217,148 @@ const CRM = {
                 this._renderTabContent();
             } else Toast.error('No se pudo asignar');
         });
+    },
+
+
+    // ═══════════════════════════════════════════
+    //  CLIENTE — ficha full-screen (refactor v2, reemplaza el panel lateral)
+    // ═══════════════════════════════════════════
+
+    async _openCliente(id) {
+        this._clienteActivoId = id;
+        this._clienteContactos = await API.getCrmContactos(id);
+        const tb = document.getElementById('crmToolbar'); if (tb) tb.style.display = 'none';
+        this._closePanel();
+        if (this._activeTab !== 'clientes') this._activeTab = 'clientes';
+        this._renderTabContent();
+    },
+
+    _closeCliente() {
+        this._clienteActivoId = null;
+        const tb = document.getElementById('crmToolbar'); if (tb) tb.style.display = '';
+        this._renderTabContent();
+    },
+
+    _gotoCliente(id) {
+        if (!id || !this._clients.some(c => c.id === id)) return;
+        if (this._activeTab !== 'clientes') this._switchTab('clientes');
+        this._openCliente(id);
+    },
+
+    _gotoCaso(casoId) {
+        if (!casoId) return;
+        if (this._activeTab !== 'bandeja' && this._activeTab !== 'pipeline') this._switchTab('pipeline');
+        this._openCaso(casoId);
+    },
+
+    _renderClienteFicha() {
+        const c = this._clients.find(x => x.id === this._clienteActivoId);
+        if (!c) { this._clienteActivoId = null; return this._renderClientesTable(); }
+        const typeCfg = this._clientTypes.find(t => t.value === c.tipo);
+        const estadoCfg = this._clientStates.find(s => s.value === (c.estado || 'activo'));
+        const casos = this._casos.filter(k => k.clienteId === c.id);
+        const casosActivos = casos.filter(k => !['ganado', 'perdido'].includes(k.estado));
+        const cots = this._cotizaciones.filter(q => q.clienteId === c.id || (q.clienteNombre && c.name && q.clienteNombre.toLowerCase() === c.name.toLowerCase()));
+        const projs = this._projects.filter(p => p.clientName && c.name && p.clientName.toLowerCase() === c.name.toLowerCase());
+        const contactos = this._clienteContactos || [];
+        const wa = (() => { const d = (c.phone || '').replace(/[^\d]/g, ''); if (!d) return ''; return 'https://wa.me/' + (d.length <= 10 ? '54' + d : d); })();
+        const casosHtml = casos.length ? casos.map(k => {
+            const ec = this._casoEstados.find(e => e.value === k.estado) || this._casoEstados[0];
+            const t = this._tempConfig[k.temperatura];
+            return `<div class="caso-row" data-caso-id="${k.id}">
+                <div class="caso-row-temp">${t ? t.icon : '•'}</div>
+                <div class="caso-row-main"><div class="caso-row-top"><span class="caso-row-titulo">${this._escHtml(k.titulo)}</span><span class="caso-row-estado" style="background:${ec.color}1f;color:${ec.color}">${ec.label}</span></div></div>
+                <div class="caso-row-right">${k.montoEstimado ? '<span class="caso-row-owner">$' + k.montoEstimado.toLocaleString('es-AR') + '</span>' : ''}</div>
+            </div>`;
+        }).join('') : '<p class="aside-empty" style="padding:16px">Sin casos todavía. Creá uno con "+ Nuevo caso".</p>';
+        const cotsHtml = cots.length ? cots.map(q => { const ec = this._cotEstados.find(e => e.value === q.estado); return `<div class="aside-cot"><span class="aside-cot-num">${this._escHtml(q.numero || 'COT')}</span><span class="aside-cot-est" style="color:${ec ? ec.color : '#888'}">${ec ? ec.label : q.estado}</span><span class="aside-cot-monto">${q.montoTotal ? '$' + q.montoTotal.toLocaleString('es-AR') : ''}</span></div>`; }).join('') : '<p class="aside-empty">Sin cotizaciones.</p>';
+        const contactosHtml = contactos.length ? contactos.map(ct => `<div class="aside-row"><span class="aside-k">${this._escHtml(ct.nombre || '—')}${ct.cargo ? ' · ' + this._escHtml(ct.cargo) : ''}</span><span class="aside-v">${this._escHtml([...(ct.telefonos || []), ...(ct.emails || [])].join(' · '))}</span></div>`).join('') : '<p class="aside-empty">Sin contactos cargados.</p>';
+        const user = Auth.getUser();
+        const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
+        return `<div class="caso-ficha">
+            <div class="caso-ficha-main">
+                <div class="caso-ficha-header">
+                    <button class="caso-back" id="cliBack">← Clientes</button>
+                    <div class="caso-head-row">
+                        <h2 class="caso-titulo">${this._escHtml(c.name)}</h2>
+                        <div class="caso-head-actions">
+                            ${!isReadOnly ? `<button class="caso-conv-btn" id="cliNuevoCaso">+ Nuevo caso</button>` : ''}
+                            ${!isReadOnly ? `<button class="caso-icon-btn" id="cliEdit" title="Editar cliente">✏️</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="caso-head-meta">
+                        ${typeCfg ? `<span class="caso-meta-chip" style="color:${typeCfg.color}">${this._escHtml(c.tipo)}</span>` : ''}
+                        ${estadoCfg ? `<span class="caso-meta-chip" style="color:${estadoCfg.color}">${estadoCfg.label}</span>` : ''}
+                        ${c.rubro ? `<span class="caso-meta-chip">${this._escHtml(c.rubro)}</span>` : ''}
+                        <span class="caso-meta-chip">📂 ${casosActivos.length} casos activos</span>
+                    </div>
+                </div>
+                <div class="caso-timeline" id="cliCasos">
+                    <div class="tl-date">Casos (${casos.length})</div>
+                    <div class="casos-list">${casosHtml}</div>
+                </div>
+            </div>
+            <aside class="caso-ficha-aside">
+                <div class="aside-block">
+                    <div class="aside-title">Contacto</div>
+                    ${c.contactName ? `<div class="aside-row"><span class="aside-k">Persona</span><span class="aside-v">${this._escHtml(c.contactName)}</span></div>` : ''}
+                    ${c.phone ? `<div class="aside-row"><span class="aside-k">Tel</span><span class="aside-v">${wa ? `<a href="${wa}" target="_blank" rel="noopener">${this._escHtml(c.phone)} 💬</a>` : this._escHtml(c.phone)}</span></div>` : ''}
+                    ${c.email ? `<div class="aside-row"><span class="aside-k">Mail</span><span class="aside-v"><a href="mailto:${this._escHtml(c.email)}">${this._escHtml(c.email)}</a></span></div>` : ''}
+                    ${c.cuit ? `<div class="aside-row"><span class="aside-k">CUIT</span><span class="aside-v">${this._escHtml(c.cuit)}</span></div>` : ''}
+                    ${c.razonSocial ? `<div class="aside-row"><span class="aside-k">Razón social</span><span class="aside-v">${this._escHtml(c.razonSocial)}</span></div>` : ''}
+                </div>
+                <div class="aside-block">
+                    <div class="aside-title">Personas de contacto (${contactos.length})</div>
+                    ${contactosHtml}
+                </div>
+                <div class="aside-block">
+                    <div class="aside-title">Cotizaciones (${cots.length})</div>
+                    ${cotsHtml}
+                </div>
+                <div class="aside-block">
+                    <div class="aside-title">Proyectos (${projs.length})</div>
+                    ${projs.length ? projs.map(p => `<div class="aside-cot"><span class="aside-cot-num">${this._escHtml(p.name || p.nombre || 'Proyecto')}</span></div>`).join('') : '<p class="aside-empty">Sin proyectos.</p>'}
+                </div>
+            </aside>
+        </div>`;
+    },
+
+    _attachClienteFichaEvents() {
+        const getCli = () => this._clients.find(x => x.id === this._clienteActivoId);
+        const back = document.getElementById('cliBack');
+        if (back) back.addEventListener('click', () => this._closeCliente());
+        const edit = document.getElementById('cliEdit');
+        if (edit) edit.addEventListener('click', () => { const c = getCli(); if (c) this._openEditModal(c); });
+        const nuevo = document.getElementById('cliNuevoCaso');
+        if (nuevo) nuevo.addEventListener('click', () => { const c = getCli(); if (c) this._openNuevoCasoModal({ clienteId: c.id }); });
+        document.querySelectorAll('#cliCasos [data-caso-id]').forEach(el =>
+            el.addEventListener('click', () => this._gotoCaso(el.dataset.casoId)));
+    },
+
+    // ─── R3: convertir un caso ganado en proyecto (conexión con Operaciones/Finanzas) ───
+    async _convertirCasoAProyecto(caso) {
+        if (!caso) return;
+        if (caso.proyectoId) { Toast.info('Este caso ya tiene un proyecto vinculado.'); return; }
+        const ok = await Modal.confirm({ title: 'Convertir a proyecto', message: `¿Crear un proyecto para <strong>"${this._escHtml(caso.titulo)}"</strong> y vincularlo al caso? El plan de cobro se arma desde Finanzas.`, confirmText: 'Crear proyecto' });
+        if (!ok) return;
+        const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        const proj = await API.createProject({
+            name: caso.titulo,
+            clientId: caso.clienteId || null,
+            eventoId: caso.eventoId || null,
+            estado: 'pendiente',
+            createdFrom: 'crm_caso',
+            notas: `Generado desde el caso CRM "${caso.titulo}"${cliente ? ` (${cliente.name})` : ''}.`,
+        });
+        if (proj) {
+            const projId = (typeof proj === 'object' && proj.id) ? proj.id : null;
+            await API.updateCaso(caso.id, { proyectoId: projId });
+            await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: 'Caso convertido a proyecto.' });
+            await this._reloadCasoYFicha(caso.id);
+            Toast.success('Proyecto creado y vinculado al caso');
+        } else {
+            Toast.error('No se pudo crear el proyecto');
+        }
     },
 
 
@@ -6256,6 +6422,11 @@ const CRM = {
 .caso-pcol-empty { color: var(--text-dim); text-align: center; padding: 12px; font-size: 0.8rem; }
 .caso-pcard { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 10px; cursor: pointer; transition: all 200ms ease; }
 .caso-pcard:hover { border-color: rgba(0,169,193,0.4); box-shadow: var(--glow-sm); }
+.caso-pcard[draggable] { cursor: grab; }
+.caso-pcard.dragging { opacity: 0.45; }
+.caso-pcol-body.drop-over { background: rgba(0,169,193,0.08); outline: 1px dashed rgba(0,169,193,0.5); outline-offset: -3px; border-radius: 6px; }
+.caso-conv-btn { background: rgba(0,204,136,0.15); border: 1px solid rgba(0,204,136,0.4); color: #00CC88; border-radius: 6px; padding: 6px 12px; font-size: 0.78rem; cursor: pointer; font-family: var(--font-main); }
+.caso-conv-btn:hover { background: rgba(0,204,136,0.25); }
 .caso-pcard-top { display: flex; justify-content: space-between; gap: 6px; }
 .caso-pcard-titulo { font-size: 0.84rem; font-weight: 600; color: var(--text-primary); }
 .caso-pcard-cli { font-size: 0.76rem; color: var(--text-muted); margin: 4px 0; }
