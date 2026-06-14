@@ -17,20 +17,20 @@
 
 ## 🗺️ MAPA MACRO — lo que falta *(índice rápido; el detalle, en cada fase abajo)*
 
-- **Fase 4 — Operaciones** ⛔ *trabada por el cotizador*
+- **Fase 4 — Operaciones** ⛔ *trabada por el cotizador (Fede lo está REFACTOREANDO en paralelo, "yéndose para arriba") → analizar integración + posibles features nuevas cuando esté listo*
   - Remito simple (proyecto/evento) + Subalquileres por proveedor → esperan `cotizacion_items` (stopgap: importador asistido aprobado)
   - Retirar legacy de Logística (cargas/movimientos viejos)
 - **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
   - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
 - **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
-- **Fase 7 — CRM "Casos"** — WhatsApp/Gmail/llamadas en timeline · IA (Gemini digest) · clasificación + mailing
-- **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)*
-  - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad
+- **Fase 7 — CRM "Casos"** — WhatsApp/Gmail/llamadas en timeline · IA (Gemini digest) · clasificación + mailing. **🎯 INTERÉS ALTO DE FEDE (2026-06-13): quiere PROFUNDIZARLO + un DOCUMENTO PASO A PASO de TODO lo manual** (presencia digital, Meta Business, oficialización de WhatsApp, API keys, DNS). Implementación guiada. Ver `docs/crm-casos-blueprint.md`.
+- **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)* · **INTERÉS ALTO DE FEDE**
+  - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad. **🔒 Solo admin/superadmin, MÁS orientado a superadmin (Fede): info interna de cuánta plata se le saca a cada cosa.**
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
   - ✅ **TODOS los tiers CORRIDOS (Fede 2026-06-13):** motor + financiero + comercial + **roles/profiles** (lock anti-escalada) + **operativo** (cierra `anon` preservando authenticated). RLS manejada por la matriz. ⇒ **Fase 9.bis CERRADA.**
   - ⏳ Solo resta: testeo por rol (Fede: login/módulos/encuesta/cotizador OK) · tightear escritura de referencia (opcional).
   - Opcional: filtro "Míos" (toggle frontend)
-- **Fase 10 — Remate UI/UX** (Claude Design) — sistema visual + pasada de coherencia
+- **Fase 10 — Remate UI/UX** (Claude Design) — sistema visual + pasada de coherencia. **⏸ AL FINAL DE TODO (Fede): cuando esté todo armado, recién ahí una pasada superadora al 100% sobre toda la app.**
 - **Fase 11 — Centro de Tareas** ✅ v4 FUNCIONALMENTE COMPLETA (EN PRUEBA) — 7 fuentes por-item + ciclo completo + claim/notif/sync taller. Solo futuros menores → ver PROGRESO.
 - **RRHH.5 — Jornales** ⛔ bloqueada por "Rendimiento por evento" (Fase 8)
 - **Tracks paralelos** (no Claude Code): CAD/Diseño 3D · Configurador 2D
