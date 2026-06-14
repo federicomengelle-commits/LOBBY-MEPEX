@@ -75,6 +75,7 @@ const Router = {
             'perfil':           { render: () => Settings.renderProfile(), requiresAuth: true },
             'admin-panel':      { render: () => AdminPanel.render(), requiresAuth: true, superadminOnly: true },
             'notificaciones':   { render: () => Settings.renderNotifications(), requiresAuth: true },
+            'tareas':           { render: () => Tareas.render(), requiresAuth: true },
 
             // ── Comercial ──
             'crm':              { render: () => CRM.render(), requiresAuth: true, module: 'crm' },

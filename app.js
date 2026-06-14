@@ -194,7 +194,7 @@ const App = {
         const sections = this._buildSidebarSections();
 
         const filterItems = (items) => items.filter(item => {
-            if (item.route === 'lobby' || item.route === 'calendario' || item.route === 'notificaciones') return true;
+            if (item.route === 'lobby' || item.route === 'tareas' || item.route === 'calendario' || item.route === 'notificaciones') return true;
             return allowed.includes(item.route);
         });
 
