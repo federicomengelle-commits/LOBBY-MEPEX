@@ -26,6 +26,7 @@ const Tareas = {
     _MODULOS: [
         ['taller', 'Taller'], ['compras', 'Compras'], ['rrhh', 'RRHH'],
         ['crm', 'CRM'], ['eventos', 'Eventos'], ['proyectos', 'Proyectos'],
+        ['inventario', 'Inventario'], ['locaciones', 'Locaciones'],
         ['finanzas', 'Finanzas'], ['general', 'General'],
     ],
 
@@ -39,6 +40,7 @@ const Tareas = {
     async render() {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
+        this._canManage = ['superadmin', 'admin', 'pm'].includes(user.role);
         const content = document.getElementById('mainContent');
         if (!content) return;
         content.innerHTML = this._shell(user);
@@ -104,20 +106,34 @@ const Tareas = {
                 .eq('_deleted', false).in('estado_taller', activos);
             if (!proys || !proys.length) return [];
             const byId = {}; proys.forEach(p => byId[p.id] = p);
+            // fecha límite real = inicio de armado del evento del stand
+            let armadoByEv = {};
+            try {
+                const evIds = [...new Set(proys.map(p => p.evento_id).filter(Boolean))];
+                if (evIds.length) {
+                    const { data: evs } = await supabaseClient
+                        .from('eventos').select('id, fecha_armado_inicio').in('id', evIds);
+                    (evs || []).forEach(e => { armadoByEv[e.id] = e.fecha_armado_inicio || null; });
+                }
+            } catch (e) { /* sin fechas */ }
             const { data: items } = await supabaseClient
                 .from('taller_proyecto_checklist')
                 .select('id, proyecto_id, item_key, label, checked')
                 .eq('_deleted', false).eq('checked', false)
                 .in('proyecto_id', proys.map(p => p.id));
             if (!items) return [];
-            return items.slice(0, 200).map(it => {
+            const hoy = new Date().toISOString().split('T')[0];
+            const en3 = new Date(Date.now() + 3 * 864e5).toISOString().split('T')[0];
+            return items.slice(0, 300).map(it => {
                 const p = byId[it.proyecto_id] || {};
+                const fl = armadoByEv[p.evento_id] || null;
+                const prio = fl && fl <= hoy ? 'critica' : (fl && fl <= en3 ? 'alta' : 'normal');
                 return {
                     id: `taller_check:${it.id}`, dedupe_key: `taller_check:${it.id}`, es_derivada: true,
                     titulo: `${it.label || it.item_key || 'Paso'} — ${p.nombre || 'stand'}`,
                     descripcion: 'Paso de armado pendiente', origen: 'paso_proyecto', modulo: 'taller',
-                    proyecto_id: it.proyecto_id, proyecto_nombre: p.nombre || '', prioridad: 'alta',
-                    fecha_limite: null, estado: 'pendiente', target_role: 'taller', link: '#taller',
+                    proyecto_id: it.proyecto_id, proyecto_nombre: p.nombre || '', prioridad: prio,
+                    fecha_limite: fl, estado: 'pendiente', target_role: 'taller', link: '#taller',
                 };
             });
         },
@@ -210,6 +226,33 @@ const Tareas = {
                 titulo: `Vincular stands a ${e.nombre || 'evento'}`, descripcion: 'Armado en ≤7 días, sin proyectos vinculados',
                 origen: 'asignacion', modulo: 'eventos', evento_id: e.id, proyecto_id: null, prioridad: 'alta',
                 fecha_limite: e.fecha_armado_inicio, estado: 'pendiente', target_role: 'pm', link: '#eventos',
+            }));
+        },
+        async inventario() {
+            const { data } = await supabaseClient
+                .from('insumos_base').select('id, nombre, stock_actual, stock_minimo')
+                .eq('_deleted', false).not('stock_minimo', 'is', null);
+            if (!data) return [];
+            return data.filter(i => i.stock_actual !== null && i.stock_minimo !== null && i.stock_actual < i.stock_minimo)
+                .slice(0, 100).map(i => ({
+                    id: `inv_stock:${i.id}`, dedupe_key: `inv_stock:${i.id}`, es_derivada: true,
+                    titulo: `Reponer stock: ${i.nombre || 'insumo #' + i.id}`,
+                    descripcion: `Bajo el mínimo (${i.stock_actual}/${i.stock_minimo})`,
+                    origen: 'manual', modulo: 'inventario', proyecto_id: null, prioridad: 'alta',
+                    fecha_limite: null, estado: 'pendiente', target_role: 'admin', link: '#inventario',
+                }));
+        },
+        async locaciones() {
+            const en30 = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
+            const { data } = await supabaseClient
+                .from('locaciones_documentos').select('id, nombre, tipo, fecha_vencimiento')
+                .eq('_deleted', false).not('fecha_vencimiento', 'is', null).lte('fecha_vencimiento', en30);
+            return (data || []).map(d => ({
+                id: `loc_doc:${d.id}`, dedupe_key: `loc_doc:${d.id}`, es_derivada: true,
+                titulo: `Renovar ${d.tipo || d.nombre || 'documento'} (locación)`,
+                descripcion: 'Documento de locación por vencer ≤30d',
+                origen: 'manual', modulo: 'locaciones', proyecto_id: null, prioridad: 'alta',
+                fecha_limite: d.fecha_vencimiento, estado: 'pendiente', target_role: 'admin', link: '#locaciones',
             }));
         },
     },
@@ -382,6 +425,8 @@ const Tareas = {
                 : `${!enCurso ? `<button class="btn btn-ghost btn-sm" data-act="tomar" data-id="${this._esc(t.id)}">Tomar</button>` : ''}
                    <button class="btn btn-primary btn-sm" data-act="hecha" data-id="${this._esc(t.id)}">Hecha</button>`}
             <a class="btn btn-ghost btn-sm" href="${t.link || '#tareas'}">Abrir</a>
+            ${(this._view === 'equipo' && this._canManage && !hecha) ? `<button class="btn btn-ghost btn-sm" data-act="reasignar" data-id="${this._esc(t.id)}" title="Reasignar">↪</button>` : ''}
+            ${(!t.es_derivada && !hecha) ? `<button class="btn btn-ghost btn-sm" data-act="editar" data-id="${this._esc(t.id)}" title="Editar">✎</button>` : ''}
             ${(!t.es_derivada) ? `<button class="btn btn-ghost btn-sm" data-act="eliminar" data-id="${this._esc(t.id)}" title="Eliminar" style="color:var(--color-error);">✕</button>` : ''}
           </div>
         </div>`;
@@ -408,20 +453,27 @@ const Tareas = {
         const t = this._findTask(id);
         if (!t) return;
         const uid = user.uid || user.id;
+        if (act === 'editar') return this._nuevaModal(user, t);
+        if (act === 'reasignar') return this._reasignarModal(user, t);
         if (!this._tableReady) {
             if (typeof Toast !== 'undefined') Toast.warning('Corré sql/fase11_tareas.sql para tomar/cerrar tareas');
             return;
         }
         try {
             if (act === 'tomar') await this._upsertClaim(t, { estado: 'en_curso', responsable_id: uid, created_by: uid });
-            else if (act === 'hecha') await this._upsertClaim(t, { estado: 'hecha', responsable_id: t.responsable_id || uid, completada_por: uid, completada_at: new Date().toISOString(), created_by: uid });
+            else if (act === 'hecha') {
+                await this._upsertClaim(t, { estado: 'hecha', responsable_id: t.responsable_id || uid, completada_por: uid, completada_at: new Date().toISOString(), created_by: uid });
+                // sync inverso: si es un paso de taller, tildar el checklist de origen
+                if (typeof t.dedupe_key === 'string' && t.dedupe_key.startsWith('taller_check:')) {
+                    const chkId = t.dedupe_key.split(':')[1];
+                    try { await supabaseClient.from('taller_proyecto_checklist').update({ checked: true, checked_by: uid, checked_at: new Date().toISOString() }).eq('id', chkId); } catch (e) { /* no rompe la tarea */ }
+                }
+            }
             else if (act === 'reabrir') await this._upsertClaim(t, { estado: 'pendiente', completada_at: null, completada_por: null });
             else if (act === 'eliminar') {
                 if (typeof Confirm !== 'undefined' && !(await Confirm.delete('esta tarea'))) return;
-                if (t._claimId || (!t.es_derivada && t.id)) {
-                    const rowId = t._claimId || t.id;
-                    await supabaseClient.from('tareas').update({ _deleted: true }).eq('id', rowId);
-                }
+                const rowId = t._claimId || (!t.es_derivada ? t.id : null);
+                if (rowId) await supabaseClient.from('tareas').update({ _deleted: true }).eq('id', rowId);
             }
             if (typeof Toast !== 'undefined' && act !== 'eliminar') Toast.success('Listo');
             await this._load(user);
@@ -429,6 +481,17 @@ const Tareas = {
         } catch (e) {
             if (typeof Toast !== 'undefined') Toast.error('No se pudo: ' + e.message);
         }
+    },
+
+    async _notify(t, userId, role) {
+        if (typeof API === 'undefined' || !API.createNotification) return;
+        try {
+            await API.createNotification({
+                tipo: 'tarea_asignada', titulo: 'Tarea asignada', mensaje: t.titulo || 'Nueva tarea',
+                targetUserId: userId || null, targetRole: role || null,
+                link: '#tareas', prioridad: t.prioridad === 'critica' ? 'alta' : 'normal',
+            });
+        } catch (e) { /* no rompe */ }
     },
 
     async _upsertClaim(t, patch) {
@@ -448,48 +511,77 @@ const Tareas = {
         }
     },
 
-    // ─── Nueva tarea manual ───
-    _nuevaModal(user) {
+    // ─── Nueva / Editar tarea manual ───
+    _nuevaModal(user, existing) {
         if (!this._tableReady) { if (typeof Toast !== 'undefined') Toast.warning('Corré sql/fase11_tareas.sql primero'); return; }
+        const ed = (existing && !existing.es_derivada) ? existing : null;
+        const uid = user.uid || user.id;
         const roles = [['', '— a un rol (pool) —'], ['taller', 'Taller'], ['venta', 'Venta'], ['pm', 'PM'], ['admin', 'Admin']];
+        const curAsign = ed ? (ed.responsable_id === uid ? '__me' : (ed.target_role || '')) : '__me';
+        const selM = (v) => (ed ? ed.modulo === v : v === 'general') ? 'selected' : '';
+        const selP = (v) => ((ed ? ed.prioridad : 'normal') === v) ? 'selected' : '';
         const body = `
           <div style="display:flex;flex-direction:column;gap:12px;">
-            <label class="adm-form-label">Título *<input class="input" id="ntTitulo" placeholder="Qué hay que hacer"></label>
-            <label class="adm-form-label">Descripción<textarea class="input" id="ntDesc" rows="2"></textarea></label>
+            <label class="adm-form-label">Título *<input class="input" id="ntTitulo" placeholder="Qué hay que hacer" value="${this._esc(ed ? ed.titulo : '')}"></label>
+            <label class="adm-form-label">Descripción<textarea class="input" id="ntDesc" rows="2">${this._esc(ed ? (ed.descripcion || '') : '')}</textarea></label>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <label class="adm-form-label" style="flex:1;min-width:130px;">Módulo<select class="input" id="ntModulo"><option value="general">General</option>${this._MODULOS.filter(m => m[0] !== 'general').map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
-              <label class="adm-form-label" style="flex:1;min-width:130px;">Prioridad<select class="input" id="ntPrio"><option value="normal">Normal</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Módulo<select class="input" id="ntModulo">${this._MODULOS.map(([v, l]) => `<option value="${v}" ${selM(v)}>${l}</option>`).join('')}</select></label>
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Prioridad<select class="input" id="ntPrio"><option value="normal" ${selP('normal')}>Normal</option><option value="alta" ${selP('alta')}>Alta</option><option value="critica" ${selP('critica')}>Crítica</option></select></label>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <label class="adm-form-label" style="flex:1;min-width:130px;">Fecha límite<input type="date" class="input" id="ntFecha"></label>
-              <label class="adm-form-label" style="flex:1;min-width:130px;">Asignar<select class="input" id="ntAsign"><option value="__me">A mí</option>${roles.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Fecha límite<input type="date" class="input" id="ntFecha" value="${ed && ed.fecha_limite ? ed.fecha_limite : ''}"></label>
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Asignar<select class="input" id="ntAsign"><option value="__me" ${curAsign === '__me' ? 'selected' : ''}>A mí</option>${roles.map(([v, l]) => `<option value="${v}" ${(v && curAsign === v) ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
             </div>
           </div>`;
-        const footer = `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="ntGuardar">Crear tarea</button>`;
-        const m = Modal.open({ title: 'Nueva tarea', body, footer, size: 'md' });
+        const footer = `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="ntGuardar">${ed ? 'Guardar' : 'Crear tarea'}</button>`;
+        const m = Modal.open({ title: ed ? 'Editar tarea' : 'Nueva tarea', body, footer, size: 'md' });
         const g = document.getElementById('ntGuardar');
         if (g) g.addEventListener('click', async () => {
             const titulo = document.getElementById('ntTitulo')?.value.trim();
             if (!titulo) { if (typeof Toast !== 'undefined') Toast.error('Poné un título'); return; }
-            const uid = user.uid || user.id;
             const asign = document.getElementById('ntAsign')?.value;
-            const row = {
+            const patch = {
                 titulo, descripcion: document.getElementById('ntDesc')?.value.trim() || null,
-                origen: 'manual', modulo: document.getElementById('ntModulo')?.value || 'general',
+                modulo: document.getElementById('ntModulo')?.value || 'general',
                 prioridad: document.getElementById('ntPrio')?.value || 'normal',
                 fecha_limite: document.getElementById('ntFecha')?.value || null,
-                es_derivada: false, created_by: uid,
                 responsable_id: asign === '__me' ? uid : null,
                 target_role: (asign && asign !== '__me') ? asign : null,
-                estado: 'pendiente',
             };
             try {
-                const { error } = await supabaseClient.from('tareas').insert(row);
-                if (error) throw error;
+                if (ed) {
+                    const { error } = await supabaseClient.from('tareas').update(patch).eq('id', ed.id);
+                    if (error) throw error;
+                } else {
+                    const { error } = await supabaseClient.from('tareas').insert({ ...patch, origen: 'manual', es_derivada: false, estado: 'pendiente', created_by: uid });
+                    if (error) throw error;
+                }
+                if (patch.target_role) this._notify(patch, null, patch.target_role);
                 Modal.close(m.id);
-                if (typeof Toast !== 'undefined') Toast.success('Tarea creada');
+                if (typeof Toast !== 'undefined') Toast.success(ed ? 'Tarea actualizada' : 'Tarea creada');
                 await this._load(user); this._renderList(user);
-            } catch (e) { if (typeof Toast !== 'undefined') Toast.error('No se pudo crear: ' + e.message); }
+            } catch (e) { if (typeof Toast !== 'undefined') Toast.error('No se pudo guardar: ' + e.message); }
+        });
+    },
+
+    // ─── Reasignar a una persona (Del equipo) ───
+    _reasignarModal(user, t) {
+        if (!this._tableReady) { if (typeof Toast !== 'undefined') Toast.warning('Corré sql/fase11_tareas.sql primero'); return; }
+        const opts = Object.entries(this._profiles).map(([id, name]) => `<option value="${id}">${this._esc(name)}</option>`).join('');
+        const body = `<label class="adm-form-label">Reasignar a<select class="input" id="reSel"><option value="">— elegir persona —</option>${opts}</select></label>`;
+        const footer = `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="reGuardar">Reasignar</button>`;
+        const m = Modal.open({ title: 'Reasignar tarea', body, footer, size: 'sm' });
+        const g = document.getElementById('reGuardar');
+        if (g) g.addEventListener('click', async () => {
+            const pid = document.getElementById('reSel')?.value;
+            if (!pid) { if (typeof Toast !== 'undefined') Toast.error('Elegí una persona'); return; }
+            try {
+                await this._upsertClaim(t, { estado: (!t.estado || t.estado === 'pendiente') ? 'en_curso' : t.estado, responsable_id: pid, created_by: user.uid || user.id });
+                this._notify(t, pid, null);
+                Modal.close(m.id);
+                if (typeof Toast !== 'undefined') Toast.success('Reasignada');
+                await this._load(user); this._renderList(user);
+            } catch (e) { if (typeof Toast !== 'undefined') Toast.error('No se pudo: ' + e.message); }
         });
     },
 };

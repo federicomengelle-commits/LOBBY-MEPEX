@@ -250,6 +250,8 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 
 **✅ v2 (2026-06-13, EN PRUEBA):** vista **HECHAS** (las completadas dejaron de desaparecer — bug que reportó Fede) + filtro de estado (Abiertas/Hechas/Todas) + **barra de stats** (Pendientes/En curso/Hechas) + **"+ Nueva tarea"** manual (modal: título/desc/módulo/prioridad/fecha/asignar a mí o a un rol) + **Reabrir** + eliminar manuales + responsable visible en "Del equipo". Icono = **check verde** (SVG en título + ✅ en sidebar). **+ iso MEPEX en el saludo del Lobby.** Bumps tareas v2/data v14/lobby v6.
 
+**✅ v3 (2026-06-13):** **fecha límite real** en pasos de taller (= armado del evento, con prioridad por proximidad) · fuentes nuevas **inventario** (stock bajo) y **locaciones** (docs por vencer) · **sync inverso** (marcar Hecha un paso de taller **tilda el checklist origen**) · **reasignar a persona** en Del equipo (admin/pm) · **editar** tareas manuales · **notificación** al asignar a rol/persona (campana). Bump tareas v3. Quedan futuros: fuente finanzas/vencimientos · posponer/snooze · búsqueda · persistir filtro por usuario.
+
 **Visión.** El único lugar donde cada persona entra y ve "¿qué tengo que hacer YO hoy?", sin importar de qué módulo venga la tarea. Hoy los pendientes están dispersos (taller=cards, compras=OCs sin aprobar, finanzas=vencimientos, RRHH=docs por vencer). El Centro de Tareas los consolida en una **bandeja personal por perfil**, donde cada tarea sabe a qué proyecto/paso/rol pertenece y quién la tiene que cerrar.
 
 **Dos naturalezas de tarea:**
