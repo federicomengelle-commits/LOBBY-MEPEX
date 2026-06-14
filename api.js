@@ -1287,7 +1287,7 @@ const API = {
         if (!texto || !texto.trim()) return null;
         try {
             const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 15000);
+            const timer = setTimeout(() => ctrl.abort(), 35000);  // la IA puede tardar 10-25s (arranque en frío + JSON estructurado)
             const res = await fetch(this.CRM_DIGEST_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
