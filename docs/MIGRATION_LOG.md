@@ -22,6 +22,12 @@
 |---|---|---|---|
 | `sql/fase11_tareas.sql` | ⏳ pendiente | — | tabla `tareas`. **Correr antes de conectar el módulo JS.** |
 
+## Fase 7 — CRM "Casos"
+
+| Archivo | Estado | Fecha | Notas |
+|---|---|---|---|
+| `sql/crm_casos.sql` | ⏳ pendiente | — | E1: crm_casos/crm_mensajes/crm_contactos + cotizaciones.caso_id + migración interacciones + RLS comercial. **Correr antes del tab Casos.** |
+
 ## Migraciones recientes confirmadas en prod (referencia)
 
 | Archivo | Estado | Notas |
