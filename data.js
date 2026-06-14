@@ -59,7 +59,7 @@ const Data = {
             color: '#00A9C1',
             modules: [
                 { id: 'lobby', shortName: 'Lobby', icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' },
-                { id: 'tareas', shortName: 'Tareas', icon: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 8 6 6.5 4.5"/><path d="M11 9 8 12l-1.5-1.5"/><path d="M11 15l-3 3-1.5-1.5"/><line x1="15" y1="5" x2="21" y2="5"/><line x1="15" y1="11" x2="21" y2="11"/><line x1="15" y1="17" x2="21" y2="17"/></svg>' },
+                { id: 'tareas', shortName: 'Tareas', icon: '✅' },
             ],
             alwaysVisible: true,
         },
