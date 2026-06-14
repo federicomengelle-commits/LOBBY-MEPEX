@@ -28,7 +28,7 @@ const Lobby = {
                         <h1 class="title-1">Bienvenido, <span class="text-primary">${user.name}</span></h1>
                         <p class="subtitle">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</p>
                     </div>
-                    <img src="assets/mepex_iso.png" alt="MEPEX" style="height:60px;width:auto;opacity:.9;flex-shrink:0;filter:drop-shadow(0 0 14px rgba(0,169,193,0.25));" />
+                    <img src="assets/mepex_iso.png" alt="MEPEX" style="height:84px;width:auto;opacity:1;flex-shrink:0;filter:drop-shadow(0 0 18px rgba(0,169,193,0.35));" />
                 </div>
 
                 <div class="lobby-dashboard" id="lobbyDashboard">
