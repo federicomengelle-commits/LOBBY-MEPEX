@@ -230,10 +230,10 @@ El modelo ya deja servido lo que el agente necesitará: timeline = su memoria, `
 `sql/crm_casos_backfill.sql` (idempotente): 1 caso por grupo (cliente + evento) desde las cotizaciones sin caso, estado derivado (aprobada→ganado, rechazada→perdido, en_negociacion→negociacion, enviada→cotizado, resto→lead), set `cotizaciones.caso_id`. Se corre ANTES del push del refactor JS.
 
 ### 14.8 Fases del refactor
-- **R1 — Unificación pipeline + tabs** (SQL-first): backfill · tabs→5 planas · Pipeline=kanban de casos con DnD · jubilar Interacciones · Cotizaciones linkea a caso.
-- **R2 — Full-screen en todo**: Clientes ficha full-screen (retirar panel lateral).
-- **R3 — Conexión Finanzas/Operaciones**: caso Ganado → proyecto + plan de cobro; cotización→facturación.
-- **R4 — Clientes con acciones + listas de difusión** (prep E3).
+- **R1 — Unificación pipeline + tabs** ✅ HECHO (`crm.js?v=15`, 2026-06-14): backfill SQL · tabs→5 planas (default Bandeja) · Pipeline=kanban de casos con **drag&drop** · jubiladas Casos+Interacciones · link "Ver cliente" del panel de cotización → ficha. *(Pendiente menor: link reverso cotización→caso.)*
+- **R2 — Full-screen en todo** ✅ HECHO: **Clientes ficha full-screen** (casos clickeables + cotizaciones + proyectos + contactos + datos wa.me/mailto). Se retiró el panel lateral del cliente. La ficha de caso ya era full-screen.
+- **R3 — Conexión Finanzas/Operaciones** ✅ HECHO (v1): caso *Ganado* → botón **"Convertir a proyecto"** (`API.createProject`, `created_from=crm_caso`, set `caso.proyectoId`). *(Pendiente: arrancar plan de cobro automático desde la cotización; hoy se arma desde Finanzas.)*
+- **R4 — Clientes con acciones + listas de difusión** ⏳ PENDIENTE (prep E3): filtros guardables → lista → campaña (Brevo/listmonk).
 - *(Futuro)* Agente asistente — hooks sembrados, etapa aparte.
 
 > Las etapas IA originales **E2 (email Gmail) / E3 (mailing) / E4 (WhatsApp Cloud) / E5 (agente)** siguen vigentes y se encaran después del refactor v2 (que es de estructura/UX, no de ingesta).

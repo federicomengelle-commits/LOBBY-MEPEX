@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 40%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 38%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈60%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈62%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-14: Fase 7 CRM refactor v2 R1+R2+R3 construidas → a PROGRESO. PLAN 40→38, PROGRESO 60→62.)*
 > *(Rebalanceo 2026-06-13g: Fase 7 CRM E1.4 — tab "Casos" construido (bandeja/pipeline/ficha+timeline/composer 4 canales/WhatsApp pegado+fallback local/pegar imágenes/@menciones) → a PROGRESO. Fase 7 baja ≈10%→≈7%. PLAN 43→40, PROGRESO 57→60.)*
 > *(Rebalanceo 2026-06-13f: Fase 11 Centro de Tareas v4 funcionalmente COMPLETA (7 fuentes por-item, ciclo completo, claim/notif/sync taller, manual CRUD, búsqueda, persistencia) → a PROGRESO; quedan futuros menores. PLAN 49→43, PROGRESO 51→57.)*
 > *(Rebalanceo 2026-06-13e: Fede corrió los 5 SQL de RLS → **Fase 9.bis CERRADA** (Capa 1 + Capa 2 todos los tiers) → a PROGRESO. PLAN 51→49, PROGRESO 49→51.)*
@@ -24,7 +25,7 @@
 - **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
   - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
 - **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
-- **Fase 7 — CRM "Casos"** — 🎯 INTERÉS ALTO. ✅ E1 núcleo construido (`crm.js?v=14`). **🔥 REFACTOR v2 EN CURSO** (decidido 2026-06-14): un solo Pipeline de casos + full-screen + tabs 5 planas + Interacciones jubilada. **PRÓXIMO INMEDIATO = 🧑‍💻 correr `sql/crm_casos_backfill.sql` → 🤖 R1 (unificación pipeline+tabs).** Fases R1→R4 + IA real (key Gemini + deploy digest) después. Spec: `docs/crm-casos-blueprint.md` §14. Manual/externo: `docs/crm-casos-runbook.md`.
+- **Fase 7 — CRM "Casos"** — 🎯 INTERÉS ALTO. ✅ E1 núcleo + **✅ REFACTOR v2 R1+R2+R3** (`crm.js?v=15`, 2026-06-14): pipeline único de casos con DnD + tabs 5 planas + clientes full-screen + convertir caso→proyecto. **FALTA: R4 listas de difusión · IA real (🧑‍💻 key Gemini + deploy `/api/crm/digest`) · E2-E5 (email/mailing/WhatsApp/agente).** Spec: `docs/crm-casos-blueprint.md` §14. Manual/externo: `docs/crm-casos-runbook.md`.
 - **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)* · **INTERÉS ALTO DE FEDE**
   - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad. **🔒 Solo admin/superadmin, MÁS orientado a superadmin (Fede): info interna de cuánta plata se le saca a cada cosa.**
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
@@ -173,12 +174,12 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 
 ### Fase 7 — CRM "Casos": conversaciones multicanal + IA *(≈7% restante)*
 - **✅ E1 NÚCLEO CONSTRUIDO** (2026-06-13, `crm.js?v=14`/`api.js?v=38`): SQL corrido + bandeja + ficha full-screen (timeline unificado + composer 4 canales) + WhatsApp pegado con `API.crmDigest` y **fallback parser local** + **pegar capturas al historial** + @menciones→notif. Falta IA real: 🧑‍💻 key Gemini + deploy `/api/crm/digest`.
-- **🔥 REFACTOR v2 EN CURSO — arquitectura unificada (decidido 2026-06-14, spec en `docs/crm-casos-blueprint.md` §14).** Motivo: quedaron 2 pipelines (cotizaciones + casos) y el panel lateral angosto es el patrón equivocado. **El CASO = columna vertebral; cotización = doc dentro del caso; full-screen en todo (chau panel lateral).** Decisiones cerradas con Fede:
+- **🔥 REFACTOR v2 — R1+R2+R3 ✅ HECHAS (2026-06-14, `crm.js?v=15`; spec en `docs/crm-casos-blueprint.md` §14).** Motivo: quedaron 2 pipelines (cotizaciones + casos) y el panel lateral angosto era el patrón equivocado. **El CASO = columna vertebral; cotización = doc dentro del caso; full-screen en todo.** Decisiones cerradas con Fede:
   - **Tabs → 5 planas:** `Bandeja · Pipeline · Clientes · Cotizaciones · Analítica`. "Casos" deja de ser tab (se vive en Bandeja+Pipeline+ficha). **Interacciones se JUBILA** (timeline vive en cada caso).
   - **Pipeline = UN kanban de CASOS** con drag&drop (reemplaza el de cotizaciones; reusa la infra DnD existente).
   - **Backfill** `sql/crm_casos_backfill.sql` (idempotente, SQL-first): 1 caso por cliente+evento desde cotizaciones; set `caso_id`.
-  - **Fases:** **R1** unificación pipeline+tabs (backfill→tabs 5→pipeline casos DnD→jubilar Interacciones→Cotizaciones linkea a caso) · **R2** full-screen Clientes (retirar panel lateral) · **R3** conexión Finanzas/Operaciones (caso Ganado→proyecto+plan de cobro; cotización→facturación) · **R4** Clientes con acciones + listas de difusión (prep E3). *(Agente asistente = hooks sembrados, etapa aparte futura.)*
-  - **Próximo paso inmediato:** 🧑‍💻 correr `sql/crm_casos_backfill.sql` → 🤖 construir R1.
+  - **Fases:** **R1** ✅ (tabs 5 planas + pipeline casos con DnD + jubiladas Casos/Interacciones + backfill corrido) · **R2** ✅ (clientes full-screen, chau panel lateral) · **R3** ✅ v1 (caso Ganado→"Convertir a proyecto") · **R4** ⏳ Clientes con acciones + listas de difusión (prep E3). *(Agente asistente = hooks sembrados, etapa aparte futura.)*
+  - **FALTA en Fase 7:** R4 (listas de difusión) · link reverso cotización→caso · plan de cobro automático al convertir · **IA real** (🧑‍💻 key Gemini + deploy `/api/crm/digest`) · **E2-E5** (email Gmail / mailing / WhatsApp Cloud / agente).
 - **📘 SPEC: `docs/crm-casos-blueprint.md`** (§1-13 v1 + **§14 refactor v2**). **📗 RUNBOOK manual/externo: `docs/crm-casos-runbook.md`** (Gemini key, Gmail API+delegation, DNS/mailing, Meta/WhatsApp). **Implementación GUIADA** paso a paso.
 - ✅ Ya hecho (ver PROGRESO): Marketing eliminado; Analítica solo superadmin; migración `interacciones`→`crm_mensajes` 1:1.
 - **Ingesta + IA:** endpoint `/api/crm/digest` en el proxy del VPS con **driver intercambiable** — arranca **Gemini API free tier** (decidido; cambiar a pago/Claude = 1 env var). E1: WhatsApp pegado crudo → estructurado/resumido/archivado. E2: email automático vía **Gmail API** (domain-wide delegation desde admin@; ya incluida en Workspace) + bandeja "sin asignar" + digest diario → notificaciones. La IA sugiere, el humano confirma.
