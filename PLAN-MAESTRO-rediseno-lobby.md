@@ -23,7 +23,7 @@
 - **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
   - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
 - **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
-- **Fase 7 — CRM "Casos"** — WhatsApp/Gmail/llamadas en timeline · IA (Gemini digest) · clasificación + mailing. **🎯 INTERÉS ALTO DE FEDE (2026-06-13): quiere PROFUNDIZARLO + un DOCUMENTO PASO A PASO de TODO lo manual** (presencia digital, Meta Business, oficialización de WhatsApp, API keys, DNS). Implementación guiada. Ver `docs/crm-casos-blueprint.md`.
+- **Fase 7 — CRM "Casos"** — WhatsApp/Gmail/llamadas en timeline · IA (Gemini digest) · clasificación + mailing. **🎯 INTERÉS ALTO DE FEDE.** ✅ **RUNBOOK paso-a-paso creado: `docs/crm-casos-runbook.md`** (todo lo manual: Gemini key, Gmail API + delegation, DNS/mailing listmonk-o-Brevo, Meta/WhatsApp — con tabla "quién hace qué" + checklist E1). Diseño en `docs/crm-casos-blueprint.md`. **Listo para arrancar E1 guiado** (SQL 3 tablas + tab Casos + endpoint digest).
 - **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)* · **INTERÉS ALTO DE FEDE**
   - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad. **🔒 Solo admin/superadmin, MÁS orientado a superadmin (Fede): info interna de cuánta plata se le saca a cada cosa.**
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
@@ -171,7 +171,7 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 - **Depende de:** Catálogo (Fase 3) + Costos.
 
 ### Fase 7 — CRM "Casos": conversaciones multicanal + IA *(≈10%)*
-- **📘 SPEC OBLIGATORIA: `docs/crm-casos-blueprint.md` (aprobado por Fede 2026-06-11).** El CRM nuevo se construye basándose en ese documento — modelo, UI (mockups validados), ingesta, etapas. **Implementación GUIADA:** al ejecutar cada etapa, Claude guía a Fede paso a paso en lo manual (API key Gemini/AI Studio, domain-wide delegation en admin.google, Brevo/DNS, Meta).
+- **📘 SPEC (diseño): `docs/crm-casos-blueprint.md`** (aprobado 2026-06-11 — modelo, UI, ingesta, etapas). **📗 RUNBOOK (ejecución paso a paso): `docs/crm-casos-runbook.md`** (creado 2026-06-13 — todo lo manual/externo: Gemini key, Gmail API + domain-wide delegation, DNS/mailing con listmonk-ya-instalado o Brevo, Meta/WhatsApp Cloud API; tabla "quién hace qué" 🧑‍💻/🤖 + checklist de arranque E1). **Implementación GUIADA** paso a paso.
 - **Modificación a fondo** armónica, manteniendo integración con cotizaciones. **Clientes = vista interna** del CRM.
 - ✅ Ya hecho (ver PROGRESO): Marketing eliminado; Interacciones registra autor; Analítica solo superadmin.
 - **Núcleo nuevo = CASO (oportunidad):** nuclea conversaciones WhatsApp/email/**llamadas** (lo de teléfono se anota y no se pierde) + notas internas con @menciones + N cotizaciones + próxima acción. Timeline unificado + Bandeja de hoy; el kanban del Pipeline se re-apunta de cotizaciones a casos. Tablas `crm_casos`/`crm_mensajes`/`crm_contactos` + `caso_id` en cotizaciones; migra `interacciones` 1:1 (DDL, SQL-first).
