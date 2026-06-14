@@ -195,3 +195,45 @@ Al ejecutar cada etapa, Claude guía paso a paso lo que es manual/externo:
 ---
 
 *Mockups de referencia (renderizados en la sesión de chat 2026-06-11): "Ficha de caso" (timeline multicanal + composer) y "Bandeja de hoy" (KPIs + lista priorizada). Reproducirlos con el dark theme MEPEX estándar: turquesa #00A9C1, naranja #F28D15 (notas internas), verde WhatsApp #25D366, azul email #4A90D9, violeta IA #9B7DFF.*
+
+---
+
+## 14. REFACTOR v2 — arquitectura unificada (decidido 2026-06-14)
+
+> **Por qué:** tras construir E1 (tab "Casos") quedaron **dos pipelines** (el viejo de cotizaciones + el de casos) y el **panel lateral angosto** se confirmó como patrón equivocado. Fede pidió full-screen tipo cotizador y un CRM integrado de punta a punta. Decisiones cerradas con Fede en esta charla.
+
+### 14.1 Principio rector
+**El CASO es la columna vertebral.** Cliente = directorio (quién es). Caso = la oportunidad / relación viva. **Cotización = un documento DENTRO del caso.** Todo (timeline, cotizaciones, próxima acción, proyecto al ganar) cuelga del caso.
+
+### 14.2 Pestañas (decidido: 5 planas)
+`Bandeja · Pipeline · Clientes · Cotizaciones · Analítica`
+- **"Casos" deja de ser pestaña** — se vive a través de Bandeja (lista del día) + Pipeline (kanban) + la **ficha full-screen** al clickear.
+- **Pipeline = UN solo kanban de CASOS** con drag&drop de estado (reemplaza el de cotizaciones; se reusa la infra de DnD existente). Se acaba la redundancia.
+- **Interacciones se JUBILA** (su data ya vive en el timeline de cada caso/cliente).
+- **Cotizaciones** = índice plano/tabla operativa; cada fila linkea a su caso.
+
+### 14.3 Modelo de navegación: full-screen, chau panel lateral
+Click en **caso** o **cliente** → cuadro completo que ocupa todo `#mainContent` (como el cotizador). La ficha de caso YA es full-screen (E1); el refactor lleva el mismo patrón a **Clientes** y retira el `_openPanel` lateral en todo el CRM.
+
+### 14.4 Conexión hacia abajo (todo enlazado)
+- Caso **Ganado** → botón "convertir": crea el **proyecto** (+ evento opcional) y arranca el **plan de cobro** en Finanzas desde la cotización aprobada.
+- Cotización aprobada dentro del caso → engancha el flujo de facturación existente.
+- Caso **Perdido** → motivo + queda en histórico para Analítica.
+
+### 14.5 Clientes con acciones + listas de difusión (prep E3)
+Filtros sobre clientes (rubro catálogo cerrado + tipo + "participó en feria X" derivado de casos/eventos + tags) → **guardar como lista** → campaña (Brevo/listmonk, E3) o export. Botón "nueva campaña / agregar a lista" por cliente.
+
+### 14.6 Hooks para el agente futuro (NO se construye ahora — "mambo aparte")
+El modelo ya deja servido lo que el agente necesitará: timeline = su memoria, `proxima_accion`, y el composer con un futuro modo "borrador IA que un humano confirma" (mismo contrato del digest §6). Se deja la puerta abierta; se construye en una etapa propia más adelante.
+
+### 14.7 Migración (backfill) — SQL-first
+`sql/crm_casos_backfill.sql` (idempotente): 1 caso por grupo (cliente + evento) desde las cotizaciones sin caso, estado derivado (aprobada→ganado, rechazada→perdido, en_negociacion→negociacion, enviada→cotizado, resto→lead), set `cotizaciones.caso_id`. Se corre ANTES del push del refactor JS.
+
+### 14.8 Fases del refactor
+- **R1 — Unificación pipeline + tabs** (SQL-first): backfill · tabs→5 planas · Pipeline=kanban de casos con DnD · jubilar Interacciones · Cotizaciones linkea a caso.
+- **R2 — Full-screen en todo**: Clientes ficha full-screen (retirar panel lateral).
+- **R3 — Conexión Finanzas/Operaciones**: caso Ganado → proyecto + plan de cobro; cotización→facturación.
+- **R4 — Clientes con acciones + listas de difusión** (prep E3).
+- *(Futuro)* Agente asistente — hooks sembrados, etapa aparte.
+
+> Las etapas IA originales **E2 (email Gmail) / E3 (mailing) / E4 (WhatsApp Cloud) / E5 (agente)** siguen vigentes y se encaran después del refactor v2 (que es de estructura/UX, no de ingesta).
