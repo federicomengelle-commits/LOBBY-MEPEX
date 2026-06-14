@@ -13,8 +13,14 @@
 | `sql/rls_capa2_motor.sql` | ✅ corrido | 2026-06-13 | helpers `fn_user_role`/`fn_role_can` |
 | `sql/rls_capa2_financiero.sql` | ✅ corrido | 2026-06-13 | 20 tablas financieras gateadas por matriz |
 | `sql/rls_capa2_comercial.sql` | ✅ corrido | 2026-06-13 | cotizaciones gate crm; clientes lectura amplia |
-| `sql/rls_capa2_roles_profiles.sql` | ⏳ pendiente | — | **lock #1**: que nadie se auto-ascienda. Trigger anti-escalada. |
-| `sql/rls_capa2_operativo.sql` | ⏳ pendiente | — | cierra anon en operativo (preserva authenticated). Testear encuesta+cotizador. |
+| `sql/rls_capa2_roles_profiles.sql` | ✅ corrido | 2026-06-13 | lock #1: nadie se auto-ascala. Trigger anti-escalada. |
+| `sql/rls_capa2_operativo.sql` | ✅ corrido | 2026-06-13 | cierra anon en operativo (preserva authenticated restrictivas). |
+
+## Fase 11 — Centro de Tareas
+
+| Archivo | Estado | Fecha | Notas |
+|---|---|---|---|
+| `sql/fase11_tareas.sql` | ⏳ pendiente | — | tabla `tareas`. **Correr antes de conectar el módulo JS.** |
 
 ## Migraciones recientes confirmadas en prod (referencia)
 

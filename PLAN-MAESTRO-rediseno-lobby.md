@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 51%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 49%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈49%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈51%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-13e: Fede corrió los 5 SQL de RLS → **Fase 9.bis CERRADA** (Capa 1 + Capa 2 todos los tiers) → a PROGRESO. PLAN 51→49, PROGRESO 49→51.)*
 > *(Rebalanceo 2026-06-13d: reconciliación PROGRESO↔PLAN (workflow ultracode): descontadas Capa 1 + RLS comercial + Costos UX F1/F2/F3 → PROGRESO + fixes stale (GLOBAL retirada del sidebar, `cotizaciones.project_id` SÍ existe). +Fase 11 Centro de Tareas ≈10% (diseño abierto) → universo creció. PLAN 50→51, PROGRESO 50→49. Fede puede subir a 52/48 si cuenta Fase 11 completa.)*
 > *(Rebalanceo 2026-06-13c: Fase 9.bis Capa 1 (RBAC fuente única + GLOBAL fuera + compras→admin) CERRADA → a PROGRESO. Queda Capa 2 RLS-por-matriz: motor+financiero listos sin correr. PLAN 51→50, PROGRESO 49→50.)*
 > *(Rebalanceo 2026-06-13b: +Fase Costos UX ≈5% — refactor completo del módulo (solo presentación, RPC `calcular_receta` intacta). El universo creció → PROGRESO 51→49, PLAN-MAESTRO 49→51.)*
@@ -25,8 +26,8 @@
 - **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas)*
   - "Rendimiento por evento" (planilla + dashboard ganancia) → **desbloquea RRHH.5** · auditoría de integridad
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
-  - ✅ Corridos: motor + tier financiero + tier comercial (RLS manejada por la matriz)
-  - ⏳ **Auditoría de corrección — SQL PREPARADO (2026-06-13, pendiente de que Fede corra + testee):** 🔴 `sql/rls_capa2_roles_profiles.sql` (lock + trigger anti-escalada; self-edit de nombre/iniciales preservado) · `sql/rls_capa2_operativo.sql` (cierra `anon` preservando el acceso authenticated; mantiene anon en `encuestas_evento`/`catalogo_items`/`listas_precio` — encuesta pública + cotizador). Tightear escritura de referencia = opcional.
+  - ✅ **TODOS los tiers CORRIDOS (Fede 2026-06-13):** motor + financiero + comercial + **roles/profiles** (lock anti-escalada) + **operativo** (cierra `anon` preservando authenticated). RLS manejada por la matriz. ⇒ **Fase 9.bis CERRADA.**
+  - ⏳ Solo resta: testeo por rol (Fede: login/módulos/encuesta/cotizador OK) · tightear escritura de referencia (opcional).
   - Opcional: filtro "Míos" (toggle frontend)
 - **Fase 10 — Remate UI/UX** (Claude Design) — sistema visual + pasada de coherencia
 - **Fase 11 — Centro de Tareas** (back office transversal · POR ROL/PERFIL · deriva de pasos de proyecto + asignaciones) — *diseño abierto, a charlar*
@@ -207,7 +208,7 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 - **Un solo resolver en runtime:** todo pasa por `Auth.hasPermission(mod)`. Eliminar las lecturas directas a `Data.rolePermissions` (hoy `settings.js:481/576/590/620` las usa → desincronizado del Panel).
 - **Test:** editar un permiso en el Panel → se refleja sin re-login en sidebar + settings + lobby; agregar un módulo nuevo aparece solo en la matriz; ningún módulo fantasma.
 
-**🔐 Capa 2 — RLS MANEJADA POR LA MATRIZ. NO es esconder filas entre la oficina. ESTADO: motor + tier financiero + tier comercial ✅ CORRIDOS (`3a25d86` + `2cd1163`). Resta: (a) auditoría de corrección (lock escritura `roles`/`profiles`, cerrar `anon` en operativo tabla-por-tabla, tightear escritura de referencia) · (b) 2A filtro "Míos" ⏸ OPCIONAL.**
+**🔐 Capa 2 — RLS MANEJADA POR LA MATRIZ. NO es esconder filas entre la oficina. ✅ TODOS los tiers CORRIDOS (2026-06-13): motor + financiero + comercial + roles/profiles + operativo. Resta: testeo por rol + tightear escritura de referencia (opcional) · 2A filtro "Míos" ⏸ OPCIONAL.**
 > Decisión clave: **admin/superadmin/venta/pm ven TODO entre ellos.** El "responsable" es **atribución** (quién lidera, para cobertura ante ausencias y correcciones macro), **no una pared**. "Lo propio" = un **filtro/vista**, no una restricción. Taller ve proyectos **a su manera** (tablero Taller, no el módulo Proyectos — ya por RBAC). Futuro: vincular lo **presupuestario** al flujo de taller/proyecto para integrarlo.
 
 - **2A — Atribución + filtro "míos" (frontend, seguro, reversible) — ⏸ OPCIONAL (Fede 2026-06-13: "¿qué es eso? jaja" → no prioritario, NO construir salvo pedido):** responsable/vendedor claro en cada entidad + auto-set al crear (sino el filtro no tiene de qué agarrarse: `cotizaciones.vendedor_id` y `proyectos.responsable_id` pueden quedar null) + toggle **"Míos / Todos"** (default Todos) en CRM (cotizaciones) y Proyectos. Da foco SIN esconder.
