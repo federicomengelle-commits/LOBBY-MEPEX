@@ -1008,9 +1008,11 @@ const API = {
     // ═════════════════════════════════════════════════════════════
 
     // Endpoint del digest de IA en el proxy del VPS (driver gemini|claude).
-    // Puede no estar deployado todavía → crmDigest() devuelve null y el front
-    // cae al parser local (modo manual).
-    CRM_DIGEST_URL: 'http://195.200.1.250:3000/api/crm/digest',
+    // Ruta RELATIVA = mismo origen (:80) → nginx proxea /api/ a 127.0.0.1:3000.
+    // (El :3000 directo está firewalleado: pegarle desde el browser da Failed to
+    // fetch.) Si no está deployado o nginx no rutea /api/, crmDigest() devuelve
+    // null y el front cae al parser local (modo manual).
+    CRM_DIGEST_URL: '/api/crm/digest',
 
     _mapCaso(c) {
         return {

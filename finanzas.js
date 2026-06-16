@@ -99,7 +99,7 @@ const FinanzasModule = {
     _factRecibidosSortDir: 'desc',
     _factRecibidosCatFilter: '',
     _factRecibidosDebounce: null,
-    _VPS_URL: 'http://195.200.1.250:3000',
+    _VPS_URL: '',  // same-origin (:80); nginx rutea /api/ → 127.0.0.1:3000 (el :3000 directo está firewalleado)
 
     // Calendario state
     _calSubtab: 'calendario', // 'calendario' | 'plantillas'
