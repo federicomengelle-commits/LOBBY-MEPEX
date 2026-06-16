@@ -66,7 +66,7 @@ const MiModulo = {
 - **URL:** `https://selnevalaeykdrgycvdz.supabase.co`
 - Client-side SDK via CDN (`@supabase/supabase-js@2`)
 - Auth con email virtual (`user@mepex.local`)
-- **Casi todo es client-side contra Supabase.** Excepción: hay un proxy HTTP Node corriendo en VPS `195.200.1.250:3000` para integraciones que requieren server-side (certificados X.509, secrets). Hoy expone `/api/lapyme/facturar`. En Fase D se sumará `/api/arca/facturar`.
+- **Casi todo es client-side contra Supabase.** Excepción: hay un proxy HTTP Node corriendo en VPS `195.200.1.250:3000` (pm2 `mepex-api`, `/home/mepex/api/server.js`, Express 5 + dotenv + cors) para integraciones server-side (certificados X.509, secrets, API keys). Expone `/api/lapyme/facturar` y (2026-06-14) `/api/crm/digest` (motor IA del CRM, driver gemini|claude, `tools/vps/crm-digest.js`). En Fase D se sumará `/api/arca/facturar`. **⚠️ Pendiente 2026-06-14:** el `:3000` NO es alcanzable desde el browser (`Failed to fetch`, lapyme incluido) → falta rutear `/api/` por nginx (`proxy_pass 127.0.0.1:3000`). Ver `docs/crm-casos-runbook.md` §ESTADO ACTUAL + memoria `project_crm_digest_blocker`.
 - localStorage solo para preferencias de UI (sidebar state, etc.), NO para datos de negocio
 
 ### Componentes reutilizables (components.js)

@@ -6,26 +6,53 @@
 
 ---
 
-## ⚡ ESTADO ACTUAL — handover 2026-06-13 (build del tab Casos)
+## ⚡ ESTADO ACTUAL — handover 2026-06-14 (refactor v2 + IA deployada · 1 blocker abierto)
 
-- ✅ **E1.1 — `sql/crm_casos.sql` CORRIDO por Fede** (tablas `crm_casos`/`crm_mensajes`/`crm_contactos` + `cotizaciones.caso_id` + migración `interacciones`→`crm_mensajes` + RLS comercial).
-- ✅ **E1.3 — endpoint IA escrito:** `tools/vps/crm-digest.js` (driver gemini|claude). **Sin deployar todavía.**
-- ✅ **E1.4 — TAB "CASOS" CONSTRUIDO y pusheado** (`crm.js?v=14` + `api.js?v=38`). Incluye:
-  - **Bandeja de hoy**: KPIs (sin responder / acciones vencidas / sin asignar / casos activos) + lista priorizada (vencidas→sin responder→aging) con snippet del último mensaje, chip de aging color-coded, próxima acción y owner. Sección violeta "Sin asignar" con botón Asignar.
-  - **Pipeline**: kanban de casos por estado (6 columnas lead→…→ganado/perdido), click abre ficha. *(Sin drag&drop en E1 — el estado se cambia desde la ficha.)*
-  - **Ficha de caso**: header (título, cliente, feria, temperatura, monto, owner, selector de estado) + próxima acción con "✓ Hecha"/"+ Agendar" + **timeline unificado** (burbujas WhatsApp in/out, email colapsable con `<details>`, notas naranjas con @menciones, llamadas/reuniones con duración, eventos de sistema, resumen IA violeta) + **composer de 4 canales** (Nota/WhatsApp/Email/Llamada con toggle entrante/saliente, asunto en email, duración en llamada) + panel lateral (contacto wa.me/mailto, cotizaciones del caso, detalle).
-  - **WhatsApp pegado**: botón "✨ Procesar con IA" → llama a `API.crmDigest()`; si el endpoint NO está deployado, **cae al parser local** (modo manual) que separa burbujas por `[fecha] Nombre:` / `Nombre:`. Preview con toggle Cliente/MEPEX por burbuja + (si IA) sugerencias de temperatura/próxima acción con checkbox → "Guardar al caso" (bulk).
-  - **🆕 Pegar capturas/imágenes al historial** (pedido de Fede): paste (Ctrl+V) o botón 📎 en el composer → downscale client-side a JPEG ≤1400px → guardado en `crm_mensajes.adjuntos` (jsonb, data URL). Funciona DÍA 1 sin bucket de Storage. *(Optimización futura: migrar a bucket `crm-adjuntos` cuando el volumen lo pida.)*
-  - **@menciones** en notas → `API.createNotification` al usuario mencionado.
-  - **Decisión de naming**: tab = **"Casos"**. "Interacciones" **se DEJÓ intacto** (read-only legacy) — Fede dudaba de reemplazarlo y le gusta el nombre; sin riesgo, nada se pierde. Rename/merge a decidir viéndolos juntos.
-- ⏭️ **PRÓXIMOS PASOS EN ORDEN (retomar acá):**
-  1. 🧑‍💻 Fede: **pull general del VPS** (venía atrasado) + probar el tab (crear caso, nota, llamada, **pegar captura**, WhatsApp pegado en modo manual). Verificar consola sin rojos.
-  2. 🧑‍💻 Fede: crear **API key de Gemini** en aistudio.google.com (§2.2).
-  3. 🤖+🧑‍💻 **Deploy de `/api/crm/digest`** en el proxy del VPS (montar `tools/vps/crm-digest.js`, env `MODEL_PROVIDER`/`GEMINI_API_KEY`, `pm2 restart`) — juntos por SSH (§2.3).
-  4. ✅ Probar WhatsApp pegado → ahora con IA estructura/resume/clasifica. **E1 cerrado.**
-  5. Después: **E2 (email automático)** — §3.
-- ⚠️ **Deploy gap del VPS:** venía atrasado en pulls (Tareas v2/v3/v4, lobby v7). Hacer **pull general**.
-- **Decisiones abiertas a cerrar:** ~~naming del tab~~ (cerrado: "Casos", Interacciones queda) · casilla de mail para E2 · catálogo de rubros (E3) · listmonk vs Brevo (E3) · número WhatsApp (E4).
+### Lo HECHO y verificado en prod
+- ✅ **E1 núcleo + REFACTOR v2 R1+R2+R3** (`crm.js?v=15` / `api.js?v=39`, pusheado a main, **verificado en prod via Chrome**):
+  - Tabs **5 planas**: `Bandeja · Pipeline · Clientes · Cotizaciones · Analítica` (default Bandeja). "Casos" e "Interacciones" jubiladas.
+  - **Pipeline = UN kanban de casos con drag&drop** (arrastrar card cambia estado + evento de sistema).
+  - **Clientes ficha full-screen** (casos clickeables + cotizaciones + proyectos + contactos + wa.me/mailto). Chau panel lateral.
+  - **Ficha de caso full-screen**: timeline unificado + composer 4 canales (Nota/WhatsApp/Email/Llamada) + pegar capturas (Ctrl+V→downscale→`crm_mensajes.adjuntos` data URL) + @menciones→notif.
+  - Caso **Ganado → "Convertir a proyecto"** (`API.createProject` + set `caso.proyectoId`).
+  - **Backfill corrido**: 4 casos creados desde cotizaciones (6/8 cotiz vinculadas) vía `sql/crm_casos_backfill.sql`.
+- ✅ **IA del digest DEPLOYADA y andando SERVER-SIDE** (`/api/crm/digest` en el proxy `mepex-api`, `/home/mepex/api/`):
+  - `crm-digest.js` copiado a `/home/mepex/api/`, ruta montada en `server.js` (línea ~22: `app.post('/api/crm/digest', require('./crm-digest').handler);`).
+  - `.env` del proxy con: `MODEL_PROVIDER=gemini` · `GEMINI_MODEL=gemini-2.5-flash-lite` · `GEMINI_API_KEY=AQ.Ab8…` (la creó Fede).
+  - **Modelo:** `gemini-2.0-flash` daba **429 (sin cuota free)** → cambiado a **`gemini-2.5-flash-lite`** (free tier OK).
+  - **`curl localhost:3000/api/crm/digest` devuelve JSON PERFECTO** (resumen, mensajes separados in/out, intención, temperatura, próxima acción, monto). La IA anda.
+  - **Key de Gemini:** proyecto **MEPEX CRM** (`mepex-crm`) creado en Google Cloud Console (AI Studio tenía la creación inline deshabilitada) → importado a AI Studio → key creada por Fede. Cuenta = Gmail personal (`federicomengelle@gmail.com`).
+
+### 🔴 BLOCKER ABIERTO (lo único que falta para cerrar E1)
+**El browser NO llega a `http://195.200.1.250:3000` → `Failed to fetch`.** El digest anda por `localhost` (curl) pero NO desde el frontend.
+- **Importante:** `/api/lapyme/facturar` **ALSO falla igual** desde el browser → NO es nada del código nuevo, es la red/proxy del :3000.
+- Síntoma exacto (consola): `[API] crmDigest no disponible: Failed to fetch`. (Antes daba `signal is aborted` = timeout de 15s; ya subí a 35s en `api.js?v=39`, ahora el error es claramente de red, no timeout.)
+- Mientras tanto el CRM **funciona igual**: el WhatsApp pegado **cae al parser local (modo manual)** automáticamente. No está roto, solo sin IA en el browser.
+- **DIAGNÓSTICO pendiente de correr (en el VPS):**
+  ```
+  pm2 list | grep -E 'name|mepex-api'
+  ss -tlnp 2>/dev/null | grep ':3000' || sudo ss -tlnp | grep 3000   # ¿bind 0.0.0.0 o 127.0.0.1?
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:3000/api/crm/digest -H 'Content-Type: application/json' -d '{"texto":"x"}'
+  grep -rn "3000\|lapyme\|proxy_pass" /etc/nginx/sites-enabled/ 2>/dev/null
+  ```
+- **FIX RECOMENDADO (robusto, arregla también lapyme):** rutear `/api/` por **nginx** (same-origin) en vez de pegarle al `:3000` directo:
+  1. En el `server` block de nginx (`/etc/nginx/sites-enabled/mepex`):
+     ```
+     location /api/ { proxy_pass http://127.0.0.1:3000; proxy_set_header Host $host; proxy_read_timeout 60s; }
+     ```
+  2. `sudo nginx -t && sudo systemctl reload nginx`.
+  3. En `api.js`, cambiar `CRM_DIGEST_URL: 'http://195.200.1.250:3000/api/crm/digest'` → **`'/api/crm/digest'`** (relativo, mismo origen :80). *(Ojo: que `location /api/` no pise rutas existentes; el SPA no usa `/api/` propio — verificar.)* Bump `api.js`, push, pull.
+  4. Re-test en el browser → el WhatsApp pegado pasa a procesarse con IA = **E1 CERRADO**.
+  - Alternativa rápida (menos limpia): abrir el puerto 3000 en el firewall + asegurar bind `0.0.0.0` + `app.use(cors())` global en `server.js`. Pero exponés el :3000; preferir nginx.
+
+### ⏭️ Después del blocker (orden sugerido)
+1. **R4 — listas de difusión** (segmentar clientes → campañas; **listmonk YA está en el VPS**, candidato gratis) — ya es territorio E3.
+2. **E2 — email automático** (Gmail API + domain-wide delegation) — §3. El mayor salto de valor.
+3. Pulidos Fase 7: link reverso cotización→caso · plan de cobro auto al convertir · afinar prompt del digest (a veces inventa la FECHA cuando el chat no la trae — decirle que use '' si no hay fecha).
+4. E3 (mailing completo) / E4 (WhatsApp Cloud) / E5 (agente).
+
+### Decisiones abiertas a cerrar
+~~naming del tab~~ (Casos→disuelto en Bandeja/Pipeline, Interacciones jubilada) · casilla de mail para E2 · catálogo de rubros (E3) · listmonk vs Brevo (E3) · número WhatsApp (E4).
 
 ---
 
