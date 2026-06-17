@@ -33,13 +33,13 @@ Te paso texto crudo de una conversación (WhatsApp pegado, un mail, o notas). De
   "caso_sugerido_id": null,
   "confianza": 0.0,
   "resumen": "1-2 líneas en español de qué pasó",
-  "mensajes": [{"autor":"","direccion":"entrante|saliente","fecha":"YYYY-MM-DD HH:mm o ''","texto":""}],
+  "mensajes": [{"autor":"","direccion":"entrante|saliente","fecha":"YYYY-MM-DD HH:mm SOLO si el texto trae la fecha explícita; si solo hay hora o nada, dejá ''","texto":""}],
   "intencion": "pide_cotizacion|objecion_precio|acepta|consulta|otro",
   "temperatura_sugerida": "hot|warm|cold",
   "proxima_accion_sugerida": {"texto":"","fecha":""},
   "monto_mencionado": null
 }
-Reglas: si es WhatsApp pegado, separá cada burbuja en "mensajes" detectando líneas tipo "[fecha] Nombre: texto" o "Nombre: texto"; "direccion" = entrante si lo dice el cliente, saliente si lo dice MEPEX/vos. Si no podés inferir un campo, dejá '' o null. NO inventes montos ni fechas.${ctx}
+Reglas: si es WhatsApp pegado, separá cada burbuja en "mensajes" detectando líneas tipo "[fecha] Nombre: texto" o "Nombre: texto"; "direccion" = entrante si lo dice el cliente, saliente si lo dice MEPEX/vos. Si no podés inferir un campo, dejá '' o null. NO inventes montos. FECHA: poné una fecha SOLO si aparece explícita en el texto; si un mensaje trae solo la hora (ej "[10:01]") o no trae fecha, dejá "fecha":"" — JAMÁS adivines el día ni el año.${ctx}
 --- TEXTO ---
 ${texto}`;
 }
