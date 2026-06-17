@@ -60,6 +60,8 @@ const CRM = {
     _casosView: 'bandeja',      // 'bandeja' | 'pipeline'
     _casosSearch: '',
     _casosEstadoFilter: null,
+    _casosFlagFilter: null,     // null | 'sinresp' | 'noleido' (filtro rápido de la bandeja)
+    _lecturas: {},              // {casoId: last_read_at} del usuario actual (leído/no-leído)
     _casoActivoId: null,        // si hay ficha de caso abierta (takeover de crm-main)
     _clienteActivoId: null,     // si hay ficha de cliente abierta (full-screen, refactor v2)
     _casoDrag: null,            // caso siendo arrastrado en el pipeline kanban
@@ -172,6 +174,13 @@ const CRM = {
         if (!user) return Router.navigate('login');
 
         this._injectStyles();
+        if (!this._lightboxBound) {
+            this._lightboxBound = true;
+            document.addEventListener('click', (e) => {
+                const a = e.target.closest && e.target.closest('.tl-adj');
+                if (a && a.dataset.src) { e.preventDefault(); this._openLightbox(a.dataset.src); }
+            });
+        }
 
         const content = document.getElementById('mainContent');
         if (!content) return;
@@ -293,6 +302,7 @@ const CRM = {
             const casoIds = this._casos.map(c => c.id);
             this._casoMsgMap = (API.getUltimosMensajesPorCaso && casoIds.length)
                 ? await API.getUltimosMensajesPorCaso(casoIds) : {};
+            this._lecturas = (API.getCasoLecturas ? await API.getCasoLecturas() : {}) || {};
 
             // Build project count per client
             this._clients.forEach(c => {
@@ -319,6 +329,7 @@ const CRM = {
             this._casos = [];
             this._sinAsignar = [];
             this._casoMsgMap = {};
+            this._lecturas = {};
         }
 
         this._populateRubroFilter();
@@ -3307,6 +3318,27 @@ const CRM = {
         return c ? c.name : 'Cliente';
     },
 
+    // Temperatura AUTO por recencia (días desde el último mensaje): Hot ≤5 · Warm 6-12 · Cold >12.
+    _autoTemp(caso) {
+        const last = this._casoMsgMap[caso.id];
+        const days = this._getDaysSince(last ? last.fecha : caso.updatedAt);
+        if (days === null) return 'warm';
+        if (days <= 5) return 'hot';
+        if (days <= 12) return 'warm';
+        return 'cold';
+    },
+    // Temperatura EFECTIVA: la manual si la fijaron, sino la auto.
+    _effTemp(caso) {
+        return caso.temperaturaManual ? (caso.temperatura || 'warm') : this._autoTemp(caso);
+    },
+    // ¿El caso tiene mensajes que el usuario actual todavía no vio? (leído/no-leído)
+    _isCasoNoLeido(casoId, lastFecha) {
+        if (!lastFecha) return false;
+        const lectura = this._lecturas[casoId];
+        if (!lectura) return true;
+        return new Date(lastFecha).getTime() > new Date(lectura).getTime();
+    },
+
     _enrichCasos() {
         const now = Date.now();
         const activos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado));
@@ -3316,11 +3348,13 @@ const CRM = {
             const days = this._getDaysSince(lastFecha);
             const accionVencida = !!(c.proximaAccionFecha && new Date(c.proximaAccionFecha).getTime() < now);
             const sinResponder = !!(last && ['whatsapp', 'email'].includes(last.canal) && last.direccion === 'entrante');
+            const noLeido = this._isCasoNoLeido(c.id, last ? last.fecha : null);
             let score = 0;
             if (accionVencida) score += 100000;
             if (sinResponder) score += 50000;
+            if (noLeido) score += 25000;
             score += (days || 0);
-            return { ...c, _last: last, _days: days, _accionVencida: accionVencida, _sinResponder: sinResponder, _score: score };
+            return { ...c, _last: last, _days: days, _accionVencida: accionVencida, _sinResponder: sinResponder, _noLeido: noLeido, _score: score };
         });
         enriched.sort((a, b) => b._score - a._score);
         return enriched;
@@ -3345,15 +3379,15 @@ const CRM = {
         const all = this._enrichCasos();
         const kpis = {
             sinResponder: all.filter(c => c._sinResponder).length,
+            noLeido: all.filter(c => c._noLeido).length,
             vencidas: all.filter(c => c._accionVencida).length,
-            sinAsignar: this._sinAsignar.length,
             activos: all.length,
         };
         const kpiCards = `<div class="casos-kpis">
-            ${this._kpiCard('Sin responder', kpis.sinResponder, '#25D366')}
+            ${this._kpiCard('Sin responder', kpis.sinResponder, '#25D366', 'sinresp')}
+            ${this._kpiCard('No leídos', kpis.noLeido, '#00A9C1', 'noleido')}
             ${this._kpiCard('Acciones vencidas', kpis.vencidas, '#EF5350')}
-            ${this._kpiCard('Sin asignar', kpis.sinAsignar, '#9B7DFF')}
-            ${this._kpiCard('Casos activos', kpis.activos, '#00A9C1')}
+            ${this._kpiCard('Casos activos', kpis.activos, '#888888')}
         </div>`;
         const chipsArr = [{ value: null, label: 'Todos' }, ...this._casoEstados.filter(e => !['ganado', 'perdido'].includes(e.value))];
         const chips = chipsArr.map(e => {
@@ -3385,6 +3419,8 @@ const CRM = {
             list = list.filter(c => normStr(c.titulo).includes(q) || normStr(this._casoClienteName(c)).includes(q) || normStr(c.eventoTexto).includes(q));
         }
         if (this._casosEstadoFilter) list = list.filter(c => c.estado === this._casosEstadoFilter);
+        if (this._casosFlagFilter === 'sinresp') list = list.filter(c => c._sinResponder);
+        else if (this._casosFlagFilter === 'noleido') list = list.filter(c => c._noLeido);
         if (!list.length) {
             return `<div class="casos-empty"><div class="casos-empty-icon">📂</div>
                 <h3>No hay casos ${this._casosSearch || this._casosEstadoFilter ? 'con esos filtros' : 'activos'}</h3>
@@ -3393,13 +3429,14 @@ const CRM = {
         return list.map(c => this._renderCasoRow(c)).join('');
     },
 
-    _kpiCard(label, val, color) {
-        return `<div class="casos-kpi" style="--kpi:${color}"><div class="casos-kpi-val">${val}</div><div class="casos-kpi-label">${label}</div></div>`;
+    _kpiCard(label, val, color, flag) {
+        const active = flag && this._casosFlagFilter === flag;
+        return `<div class="casos-kpi${flag ? ' casos-kpi--btn' : ''}${active ? ' active' : ''}" style="--kpi:${color}"${flag ? ` data-flag="${flag}"` : ''}><div class="casos-kpi-val">${val}</div><div class="casos-kpi-label">${label}</div></div>`;
     },
 
     _renderCasoRow(c) {
         const estadoCfg = this._casoEstados.find(e => e.value === c.estado) || this._casoEstados[0];
-        const temp = this._tempConfig[c.temperatura];
+        const temp = this._tempConfig[this._effTemp(c)];
         const cliente = this._casoClienteName(c);
         const last = c._last;
         const canalCfg = last ? (this._canalConfig[last.canal] || this._canalConfig.nota) : null;
@@ -3409,10 +3446,12 @@ const CRM = {
         const owner = this._getVendedorName(c.ownerId);
         const accion = c.proximaAccion ? `<div class="caso-row-accionwrap"><span class="caso-row-accion ${c._accionVencida ? 'vencida' : ''}">⏭ ${this._escHtml(c.proximaAccion)}</span></div>` : '';
         const flags = `${c._sinResponder ? '<span class="caso-flag sinresp">sin responder</span>' : ''}${c._accionVencida ? '<span class="caso-flag venc">vencida</span>' : ''}`;
-        return `<div class="caso-row" data-caso-id="${c.id}">
+        const rowCls = `caso-row${c._sinResponder ? ' caso-row--sinresp' : ''}${c._noLeido ? ' caso-row--noleido' : ''}`;
+        return `<div class="${rowCls}" data-caso-id="${c.id}">
             <div class="caso-row-temp" title="${temp ? temp.label : ''}">${temp ? temp.icon : '•'}</div>
             <div class="caso-row-main">
                 <div class="caso-row-top">
+                    ${c._noLeido ? '<span class="caso-unread-dot" title="No leído"></span>' : ''}
                     <span class="caso-row-titulo">${this._escHtml(c.titulo)}</span>
                     <span class="caso-row-estado" style="background:${estadoCfg.color}1f;color:${estadoCfg.color}">${estadoCfg.label}</span>
                     ${flags}
@@ -3451,7 +3490,7 @@ const CRM = {
         return this._casoEstados.map(col => {
             const items = byEstado[col.value] || [];
             const cards = items.map(c => {
-                const temp = this._tempConfig[c.temperatura];
+                const temp = this._tempConfig[this._effTemp(c)];
                 const last = this._casoMsgMap[c.id];
                 const days = this._getDaysSince(last ? last.fecha : c.updatedAt);
                 const dc = this._getDaysColor(days);
@@ -3498,6 +3537,12 @@ const CRM = {
         document.querySelectorAll('.casos-chip').forEach(ch => ch.addEventListener('click', () => {
             this._casosEstadoFilter = ch.dataset.estado || null;
             document.querySelectorAll('.casos-chip').forEach(x => x.classList.toggle('active', x === ch));
+            this._refreshCasosBody();
+        }));
+        document.querySelectorAll('.casos-kpi--btn').forEach(k => k.addEventListener('click', () => {
+            const f = k.dataset.flag;
+            this._casosFlagFilter = (this._casosFlagFilter === f) ? null : f;
+            document.querySelectorAll('.casos-kpi--btn').forEach(x => x.classList.toggle('active', x.dataset.flag === this._casosFlagFilter));
             this._refreshCasosBody();
         }));
         document.querySelectorAll('.casos-sa-assign').forEach(b =>
@@ -3566,7 +3611,10 @@ const CRM = {
         this._casoMsgMap = ids.length ? await API.getUltimosMensajesPorCaso(ids) : {};
         this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
         this._updateTabCounts();
-        if (id) this._casoMensajes = await API.getCasoMensajes(id);
+        if (id) {
+            this._casoMensajes = await API.getCasoMensajes(id);
+            if (API.marcarCasoLeido) { API.marcarCasoLeido(id); this._lecturas[id] = new Date().toISOString(); }
+        }
         this._renderTabContent();
     },
 
@@ -3574,7 +3622,11 @@ const CRM = {
         const caso = this._casos.find(c => c.id === this._casoActivoId);
         if (!caso) { this._casoActivoId = null; return this._renderCasosBandeja(); }
         const estadoCfg = this._casoEstados.find(e => e.value === caso.estado) || this._casoEstados[0];
-        const temp = this._tempConfig[caso.temperatura];
+        const effTemp = this._effTemp(caso);
+        const temp = this._tempConfig[effTemp];
+        const autoT = this._tempConfig[this._autoTemp(caso)];
+        const tempOpts = `<option value="auto" ${!caso.temperaturaManual ? 'selected' : ''}>↻ Auto · ${autoT.icon} ${autoT.label}</option>`
+            + ['hot', 'warm', 'cold'].map(t => `<option value="${t}" ${caso.temperaturaManual && caso.temperatura === t ? 'selected' : ''}>${this._tempConfig[t].icon} ${this._tempConfig[t].label}</option>`).join('');
         const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
         const owner = this._getVendedorName(caso.ownerId);
         const monto = caso.montoEstimado ? '$' + caso.montoEstimado.toLocaleString('es-AR') : '—';
@@ -3598,7 +3650,7 @@ const CRM = {
                     <div class="caso-head-meta">
                         ${cliente ? `<a class="caso-meta-chip caso-cliente-link" data-client-id="${cliente.id}">🏢 ${this._escHtml(cliente.name)}</a>` : '<span class="caso-meta-chip">Sin cliente</span>'}
                         ${caso.eventoTexto ? `<span class="caso-meta-chip">📅 ${this._escHtml(caso.eventoTexto)}</span>` : ''}
-                        ${temp ? `<span class="caso-meta-chip" style="color:${temp.color}">${temp.icon} ${temp.label}</span>` : ''}
+                        <select class="caso-temp-select" id="casoTemp" style="color:${temp ? temp.color : '#888'}" title="Temperatura — Auto = por recencia: Hot ≤5d · Warm 6-12d · Cold >12d. Elegí una para fijarla.">${tempOpts}</select>
                         <span class="caso-meta-chip">💰 ${monto}</span>
                         <span class="caso-meta-chip">👤 ${this._escHtml(owner)}</span>
                         <select class="caso-estado-select" id="casoEstado" style="color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoOpts}</select>
@@ -3669,7 +3721,19 @@ const CRM = {
         if (!adjuntos || !adjuntos.length) return '';
         const imgs = adjuntos.filter(a => a && a.dataUrl);
         if (!imgs.length) return '';
-        return `<div class="tl-adjuntos">${imgs.map(a => `<a href="${a.dataUrl}" target="_blank" rel="noopener" class="tl-adj"><img src="${a.dataUrl}" alt="${this._escHtml(a.nombre || 'imagen')}" loading="lazy"></a>`).join('')}</div>`;
+        return `<div class="tl-adjuntos">${imgs.map(a => `<a href="${a.dataUrl}" class="tl-adj" data-src="${a.dataUrl}" title="Ampliar"><img src="${a.dataUrl}" alt="${this._escHtml(a.nombre || 'imagen')}" loading="lazy"></a>`).join('')}</div>`;
+    },
+
+    // Lightbox para ver capturas en grande (Chrome bloquea navegar a un data: URL → overlay propio).
+    _openLightbox(src) {
+        if (!src) return;
+        const ov = document.createElement('div');
+        ov.className = 'crm-lightbox';
+        ov.innerHTML = `<img src="${src}" alt=""><button class="crm-lightbox-x" aria-label="Cerrar">✕</button>`;
+        const esc = (e) => { if (e.key === 'Escape') { ov.remove(); document.removeEventListener('keydown', esc); } };
+        ov.addEventListener('click', () => { ov.remove(); document.removeEventListener('keydown', esc); });
+        document.addEventListener('keydown', esc);
+        document.body.appendChild(ov);
     },
 
     _renderMenciones(escapedHtml) {
@@ -3735,6 +3799,7 @@ const CRM = {
         const tabs = canales.map(x => `<button class="cmp-tab ${c === x.id ? 'active' : ''}" data-canal="${x.id}" style="${c === x.id ? `color:${x.color};border-color:${x.color}` : ''}">${x.icon} ${x.label}</button>`).join('');
         const showDir = (c === 'whatsapp' || c === 'email');
         const dirToggle = showDir ? `<div class="cmp-dir">
+            <span class="cmp-dir-lbl">¿Quién lo dijo?</span>
             <button class="cmp-dir-btn ${this._composerDireccion === 'entrante' ? 'active' : ''}" data-dir="entrante">⬅ Entrante (cliente)</button>
             <button class="cmp-dir-btn ${this._composerDireccion === 'saliente' ? 'active' : ''}" data-dir="saliente">Saliente (MEPEX) ➡</button>
         </div>` : '';
@@ -4059,6 +4124,15 @@ const CRM = {
             const nuevo = est.value;
             await API.updateCaso(caso.id, { estado: nuevo });
             await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Estado → ${this._casoEstados.find(e => e.value === nuevo)?.label || nuevo}` });
+            await this._reloadCasoYFicha(caso.id);
+        });
+        const tempSel = document.getElementById('casoTemp');
+        if (tempSel) tempSel.addEventListener('change', async () => {
+            const caso = getCaso();
+            if (!caso) return;
+            const v = tempSel.value;
+            const patch = (v === 'auto') ? { temperaturaManual: false } : { temperatura: v, temperaturaManual: true };
+            await API.updateCaso(caso.id, patch);
             await this._reloadCasoYFicha(caso.id);
         });
         const edit = document.getElementById('casoEdit');
@@ -6546,7 +6620,20 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
 .tl-mention { color: var(--primary); font-weight: 600; }
 .tl-sys-line { font-size: 0.74rem; color: var(--text-dim); background: rgba(255,255,255,0.03); padding: 4px 12px; border-radius: 10px; }
 .tl-adjuntos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-.tl-adj img { max-width: 160px; max-height: 160px; border-radius: 6px; border: 1px solid var(--border); display: block; }
+.tl-adj { cursor: zoom-in; display: block; }
+.tl-adj img { max-width: 160px; max-height: 160px; border-radius: 6px; border: 1px solid var(--border); display: block; transition: border-color 200ms ease; }
+.tl-adj:hover img { border-color: var(--primary); }
+.crm-lightbox { position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,0.88); display: flex; align-items: center; justify-content: center; cursor: zoom-out; }
+.crm-lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 8px; box-shadow: 0 0 40px rgba(0,0,0,0.6); }
+.crm-lightbox-x { position: fixed; top: 18px; right: 22px; width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.25); font-size: 1rem; cursor: pointer; }
+.cmp-dir-lbl { font-size: 0.72rem; color: var(--text-dim); align-self: center; margin-right: 2px; }
+.caso-temp-select { background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; font-size: 0.74rem; font-family: var(--font-main); cursor: pointer; }
+.caso-unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); display: inline-block; margin-right: 6px; flex-shrink: 0; box-shadow: 0 0 6px rgba(0,169,193,0.6); }
+.caso-row--noleido .caso-row-titulo { font-weight: 700; }
+.caso-row--sinresp { border-left: 3px solid #25D366; }
+.casos-kpi--btn { cursor: pointer; transition: all 200ms ease; }
+.casos-kpi--btn:hover { border-color: var(--kpi); }
+.casos-kpi--btn.active { border-color: var(--kpi); box-shadow: 0 0 0 1px var(--kpi); }
 
 /* Composer */
 .cmp { flex-shrink: 0; border-top: 1px solid var(--border); padding-top: 12px; }

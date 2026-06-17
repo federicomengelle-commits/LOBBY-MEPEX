@@ -1023,6 +1023,7 @@ const API = {
             eventoTexto: c.evento_texto || '',
             estado: c.estado || 'lead',
             temperatura: c.temperatura || 'warm',
+            temperaturaManual: c.temperatura_manual === true,
             montoEstimado: c.monto_estimado != null ? (parseFloat(c.monto_estimado) || 0) : 0,
             ownerId: c.owner_id || null,
             origen: c.origen || '',
@@ -1105,7 +1106,7 @@ const API = {
         try {
             const map = {
                 clienteId: 'cliente_id', titulo: 'titulo', eventoId: 'evento_id', eventoTexto: 'evento_texto',
-                estado: 'estado', temperatura: 'temperatura', montoEstimado: 'monto_estimado', ownerId: 'owner_id',
+                estado: 'estado', temperatura: 'temperatura', temperaturaManual: 'temperatura_manual', montoEstimado: 'monto_estimado', ownerId: 'owner_id',
                 origen: 'origen', proximaAccion: 'proxima_accion', proximaAccionFecha: 'proxima_accion_fecha',
                 motivoPerdida: 'motivo_perdida', proyectoId: 'proyecto_id',
             };
@@ -1172,6 +1173,32 @@ const API = {
             });
             return map;
         } catch (e) { console.warn('[API] getUltimosMensajesPorCaso:', e.message); return {}; }
+    },
+
+    async getCasoLecturas() {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            if (!uid) return {};
+            const { data, error } = await supabaseClient.from('crm_caso_lecturas')
+                .select('caso_id, last_read_at').eq('user_id', uid);
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(r => { map[r.caso_id] = r.last_read_at; });
+            return map;
+        } catch (e) { console.warn('[API] getCasoLecturas:', e.message); return {}; }
+    },
+
+    async marcarCasoLeido(casoId) {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            if (!uid || !casoId) return false;
+            const { error } = await supabaseClient.from('crm_caso_lecturas')
+                .upsert({ caso_id: casoId, user_id: uid, last_read_at: new Date().toISOString() }, { onConflict: 'caso_id,user_id' });
+            if (error) throw error;
+            return true;
+        } catch (e) { console.warn('[API] marcarCasoLeido:', e.message); return false; }
     },
 
     async createMensaje(data) {
