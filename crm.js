@@ -304,6 +304,7 @@ const CRM = {
             // Update counts
             this._counts.clientes = this._clients.length;
             this._counts.cotizaciones = this._cotizaciones.length;
+            this._counts.analitica = this._cotizaciones.length;
             this._counts.bandeja = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
             this._counts.pipeline = this._casos.length;
             this._updateTabCounts();
@@ -2253,7 +2254,6 @@ const CRM = {
             { id: 'fecha',    header: 'Fecha' },
             { id: 'estado',   header: 'Estado' },
             { id: 'monto',    header: 'Monto' },
-            { id: 'vendedor', header: 'Vendedor' },
             { id: 'vigencia', header: 'Vigencia' },
         ];
 
@@ -2280,7 +2280,6 @@ const CRM = {
         const fechaRef = cot.fechaEmision || cot.createdAt;
         const fecha = fechaRef ? new Date(fechaRef).toLocaleDateString('es-AR') : '\u2014';
         const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '\u2014';
-        const vendedor = this._getVendedorName(cot.vendedorId);
         const isActive = this._cotPanelId === cot.id;
 
         // Vigencia
@@ -2307,7 +2306,6 @@ const CRM = {
                 <td class="crm-td-rubro">${fecha}</td>
                 <td><span class="crm-badge-tipo" style="background:${est.color}18; color:${est.color}; border:1px solid ${est.color}30">${est.label}</span></td>
                 <td class="pip-tbl-monto">${monto}</td>
-                <td class="crm-td-rubro">${vendedor}</td>
                 <td>${vigenciaHtml}</td>
             </tr>
         `;
@@ -4116,18 +4114,42 @@ const CRM = {
     _buildCasoForm(caso) {
         caso = caso || {};
         const clientOpts = ['<option value="">— Sin cliente —</option>',
+            '<option value="__new__">➕ Crear nuevo cliente…</option>',
             ...this._clients.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es')).map(c => `<option value="${c.id}" ${caso.clienteId === c.id ? 'selected' : ''}>${this._escHtml(c.name)}</option>`)].join('');
         const estadoOpts = this._casoEstados.map(e => `<option value="${e.value}" ${(caso.estado || 'lead') === e.value ? 'selected' : ''}>${e.label}</option>`).join('');
         const tempOpts = ['hot', 'warm', 'cold'].map(t => `<option value="${t}" ${(caso.temperatura || 'warm') === t ? 'selected' : ''}>${this._tempConfig[t].icon} ${this._tempConfig[t].label}</option>`).join('');
         const me = Auth.getUser?.();
         const myUid = me?.uid || me?.id;
-        const ownerOpts = this._users.map(u => `<option value="${u.uid}" ${(caso.ownerId || myUid) === u.uid ? 'selected' : ''}>${this._escHtml(u.name || u.username)}</option>`).join('');
+        // Responsable: solo roles comerciales (admin/pm/venta/superadmin). Si el owner actual no entra, se incluye igual.
+        const ownerRoles = ['superadmin', 'admin', 'pm', 'venta'];
+        let ownerUsers = this._users.filter(u => ownerRoles.includes(u.role));
+        if (caso.ownerId && !ownerUsers.some(u => u.uid === caso.ownerId)) {
+            const cur = this._users.find(u => u.uid === caso.ownerId);
+            if (cur) ownerUsers = [cur, ...ownerUsers];
+        }
+        if (!ownerUsers.length) ownerUsers = this._users;
+        const ownerOpts = ownerUsers.map(u => `<option value="${u.uid}" ${(caso.ownerId || myUid) === u.uid ? 'selected' : ''}>${this._escHtml(u.name || u.username)}</option>`).join('');
+        // Origen: catálogo cerrado (+ el valor existente si no está en la lista, para no perderlo al editar).
+        const origenList = ['Referido', 'Web/Cotizador', 'Feria/Evento', 'WhatsApp', 'Email', 'Llamada en frío', 'Otro'];
+        const curOrigen = caso.origen || '';
+        let origenOpts = '<option value="">— Sin especificar —</option>'
+            + origenList.map(o => `<option value="${o}" ${curOrigen === o ? 'selected' : ''}>${o}</option>`).join('');
+        if (curOrigen && !origenList.includes(curOrigen)) {
+            origenOpts += `<option value="${this._escHtml(curOrigen)}" selected>${this._escHtml(curOrigen)}</option>`;
+        }
         const accionFecha = caso.proximaAccionFecha ? new Date(caso.proximaAccionFecha).toISOString().slice(0, 10) : '';
         return `<div class="caso-form">
             <label class="caso-f-label">Título *</label>
             <input type="text" class="crm-input" id="cfTitulo" value="${this._escHtml(caso.titulo || '')}" placeholder="Ej. Expomedical 2026 — stand 6×4">
             <label class="caso-f-label">Cliente</label>
             <select class="crm-input" id="cfCliente">${clientOpts}</select>
+            <div class="caso-f-newcli" id="cfNewClienteBox" style="display:none; flex-direction:column; gap:8px; margin-top:8px; padding:10px; border:1px dashed var(--border); border-radius:6px;">
+                <input type="text" class="crm-input" id="cfNewCliNombre" placeholder="Nombre de la empresa *">
+                <div class="caso-f-row">
+                    <input type="text" class="crm-input" id="cfNewCliTel" placeholder="Teléfono">
+                    <input type="text" class="crm-input" id="cfNewCliEmail" placeholder="Email">
+                </div>
+            </div>
             <label class="caso-f-label">Feria / evento</label>
             <input type="text" class="crm-input" id="cfEvento" value="${this._escHtml(caso.eventoTexto || '')}" placeholder="Ej. Expomedical 2026">
             <div class="caso-f-row">
@@ -4139,10 +4161,10 @@ const CRM = {
                 <div><label class="caso-f-label">Responsable</label><select class="crm-input" id="cfOwner">${ownerOpts}</select></div>
             </div>
             <label class="caso-f-label">Origen</label>
-            <input type="text" class="crm-input" id="cfOrigen" value="${this._escHtml(caso.origen || '')}" placeholder="referido / web / feria / frío...">
+            <select class="crm-input" id="cfOrigen">${origenOpts}</select>
             <div class="caso-f-row">
                 <div><label class="caso-f-label">Próxima acción</label><input type="text" class="crm-input" id="cfAccion" value="${this._escHtml(caso.proximaAccion || '')}" placeholder="Ej. Mandar cotización v2"></div>
-                <div><label class="caso-f-label">Fecha</label><input type="date" class="crm-input" id="cfAccionFecha" value="${accionFecha}"></div>
+                <div><label class="caso-f-label">Fecha acción</label><input type="date" class="crm-input" id="cfAccionFecha" value="${accionFecha}"></div>
             </div>
         </div>`;
     },
@@ -4151,9 +4173,21 @@ const CRM = {
         const v = id => o.querySelector('#' + id);
         const accion = v('cfAccion')?.value?.trim() || '';
         const accionFecha = v('cfAccionFecha')?.value || '';
+        const cliVal = v('cfCliente')?.value || '';
+        let clienteId = (cliVal && cliVal !== '__new__') ? cliVal : null;
+        let _nuevoCliente = null;
+        if (cliVal === '__new__') {
+            const nombre = v('cfNewCliNombre')?.value?.trim() || '';
+            if (nombre) _nuevoCliente = {
+                name: nombre,
+                phone: v('cfNewCliTel')?.value?.trim() || '',
+                email: v('cfNewCliEmail')?.value?.trim() || '',
+            };
+        }
         return {
             titulo: v('cfTitulo')?.value?.trim() || '',
-            clienteId: v('cfCliente')?.value || null,
+            clienteId,
+            _nuevoCliente,
             eventoTexto: v('cfEvento')?.value?.trim() || '',
             estado: v('cfEstado')?.value || 'lead',
             temperatura: v('cfTemp')?.value || 'warm',
@@ -4173,10 +4207,38 @@ const CRM = {
             size: 'md',
             footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="cfSave">${isEdit ? 'Guardar cambios' : 'Crear caso'}</button>`,
         });
+        // Toggle del bloque "crear nuevo cliente" inline
+        const cliSel = instance.overlay.querySelector('#cfCliente');
+        const newCliBox = instance.overlay.querySelector('#cfNewClienteBox');
+        if (cliSel && newCliBox) {
+            cliSel.addEventListener('change', () => {
+                const isNew = cliSel.value === '__new__';
+                newCliBox.style.display = isNew ? 'flex' : 'none';
+                if (isNew) instance.overlay.querySelector('#cfNewCliNombre')?.focus();
+            });
+        }
         const saveBtn = instance.overlay.querySelector('#cfSave');
         saveBtn.addEventListener('click', async () => {
             const data = this._getCasoFormValues(instance.overlay);
             if (!data.titulo) { Toast.warning('El título es obligatorio'); return; }
+            // Si se eligió "crear nuevo cliente", lo creamos primero y usamos su id
+            if (data._nuevoCliente) {
+                saveBtn.disabled = true; saveBtn.textContent = 'Creando cliente...';
+                const created = await API.createClient(data._nuevoCliente);
+                if (!created) {
+                    Toast.error('No se pudo crear el cliente');
+                    saveBtn.disabled = false; saveBtn.textContent = isEdit ? 'Guardar cambios' : 'Crear caso';
+                    return;
+                }
+                this._clients = await API.getClients() || this._clients;
+                let newId = (created && created.id) ? created.id : null;
+                if (!newId) {
+                    const match = this._clients.find(c => (c.name || '').toLowerCase() === data._nuevoCliente.name.toLowerCase());
+                    newId = match ? match.id : null;
+                }
+                data.clienteId = newId;
+            }
+            delete data._nuevoCliente;
             saveBtn.disabled = true; saveBtn.textContent = 'Guardando...';
             const res = isEdit ? await API.updateCaso(caso.id, data) : await API.createCaso(data);
             if (res) {
@@ -6418,7 +6480,7 @@ const CRM = {
 .caso-pcol { flex: 1; min-width: 180px; display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border-radius: 8px; }
 .caso-pcol-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 2px solid var(--border); font-size: 0.8rem; font-weight: 600; }
 .caso-pcol-count { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim); background: rgba(255,255,255,0.06); padding: 1px 7px; border-radius: 8px; }
-.caso-pcol-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow-y: auto; }
+.caso-pcol-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow-y: auto; flex: 1; min-height: 120px; }
 .caso-pcol-empty { color: var(--text-dim); text-align: center; padding: 12px; font-size: 0.8rem; }
 .caso-pcard { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 10px; cursor: pointer; transition: all 200ms ease; }
 .caso-pcard:hover { border-color: rgba(0,169,193,0.4); box-shadow: var(--glow-sm); }
