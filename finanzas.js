@@ -6416,6 +6416,20 @@ const FinanzasModule = {
             return;
         }
 
+        // Presupuesto por proyecto = total de la cotización vinculada (proyectos.cotizacion_id → cotizaciones.monto_total).
+        // Automático: sale solo de lo ya cargado, sin input manual.
+        const presupuestoMap = {};
+        try {
+            const { data: proys } = await supabaseClient.from('proyectos').select('id, cotizacion_id').in('id', proyKeys);
+            const cotIds = [...new Set((proys || []).map(p => p.cotizacion_id).filter(Boolean))];
+            const cotMap = {};
+            if (cotIds.length) {
+                const { data: cots } = await supabaseClient.from('cotizaciones').select('id, monto_total').in('id', cotIds);
+                (cots || []).forEach(c => { cotMap[c.id] = Number(c.monto_total) || 0; });
+            }
+            (proys || []).forEach(p => { if (p.cotizacion_id) presupuestoMap[p.id] = cotMap[p.cotizacion_id] || 0; });
+        } catch (_) {}
+
         const rows = [];
         for (const pid of proyKeys) {
             let facturado = 0, cobrado = 0, costo = 0;
@@ -6437,30 +6451,36 @@ const FinanzasModule = {
             } catch (_) {}
 
             const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
-            rows.push({ nombre: this._proyectosMap[pid], facturado, cobrado, costo, rent });
+            const presupuesto = presupuestoMap[pid] || 0;
+            rows.push({ nombre: this._proyectosMap[pid], presupuesto, facturado, cobrado, costo, rent });
         }
 
         rows.sort((a, b) => b.cobrado - a.cobrado);
-        this._lastReportData = rows.map(r => ({ proyecto: r.nombre, facturado: r.facturado, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent + '%' }));
+        this._lastReportData = rows.map(r => ({ proyecto: r.nombre, presupuesto: r.presupuesto, facturado: r.facturado, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent + '%' }));
 
         main.innerHTML = `
             <div class="fin-table-wrapper">
                 <table class="fin-table">
                     <thead><tr>
                         <th class="fin-th">Proyecto</th>
+                        <th class="fin-th" style="text-align:right;" title="Total de la cotización vinculada al proyecto (automático)">Presupuesto</th>
                         <th class="fin-th" style="text-align:right;">Facturado</th>
                         <th class="fin-th" style="text-align:right;">Cobrado</th>
                         <th class="fin-th" style="text-align:right;">Costo</th>
+                        <th class="fin-th" style="text-align:right;" title="Cobrado del presupuesto">Avance</th>
                         <th class="fin-th" style="text-align:right;">Rentab. %</th>
                     </tr></thead>
                     <tbody>
                         ${rows.map(r => {
                             const rentColor = r.rent > 20 ? '#00CC88' : r.rent > 0 ? '#F28D15' : '#E84855';
+                            const avance = r.presupuesto > 0 ? Math.round((r.cobrado / r.presupuesto) * 100) : null;
                             return `<tr class="fin-row" style="cursor:default;">
                                 <td class="fin-td fin-td-name">${r.nombre}</td>
+                                <td class="fin-td fin-td-money" style="color:#4A90D9;">${r.presupuesto > 0 ? this._formatMoney(r.presupuesto) : '<span style="color:var(--text-dim)">—</span>'}</td>
                                 <td class="fin-td fin-td-money">${this._formatMoney(r.facturado)}</td>
                                 <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
                                 <td class="fin-td fin-td-money" style="color:#E84855;">${this._formatMoney(r.costo)}</td>
+                                <td class="fin-td fin-td-money" style="color:var(--text-muted);">${avance != null ? avance + '%' : '<span style="color:var(--text-dim)">—</span>'}</td>
                                 <td class="fin-td fin-td-money" style="color:${rentColor};font-weight:700;">${r.rent}%</td>
                             </tr>`;
                         }).join('')}
