@@ -19,8 +19,8 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'contabilidad', 'costos', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'contabilidad', 'costos'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
         pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'flota'],
         taller:     ['eventos', 'taller', 'logistica', 'inventario', 'flota'],
@@ -89,7 +89,7 @@ const Data = {
             name: 'ADMIN & FINANZAS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',
             color: '#4A90D9',
-            moduleIds: ['rrhh', 'compras', 'finanzas', 'contabilidad', 'costos'],
+            moduleIds: ['rrhh', 'compras', 'finanzas', 'rendimiento', 'contabilidad', 'costos'],
         },
         // Categoría GLOBAL retirada del sidebar (2026-06-13): redundante con el
         // dropdown del nombre (Panel de Control) + la campana (Notificaciones).
@@ -462,6 +462,26 @@ const Data = {
             connections: [
                 { to: 'catalogo', label: 'Ver Catálogo', context: 'Items publicados para clientes' },
                 { to: 'inventario', label: 'Ver Insumos', context: 'Costos de materias primas' },
+            ],
+        },
+
+        rendimiento: {
+            id: 'rendimiento',
+            name: 'Rendimiento por evento',
+            shortName: 'Rendimiento',
+            icon: '📊',
+            description: 'Planilla de costos por evento (jornales, fletes, proveedores, seguros, comida) y dashboard de ganancia. Solo admin.',
+            status: 'active',
+            color: '#4A90D9',
+            order: 12.7,
+            sections: [
+                { id: 'planilla', name: 'Planilla', icon: '🧾', description: 'Costos del evento por categoría; cada pago genera un egreso', fields: [] },
+                { id: 'ganancia', name: 'Ganancia', icon: '💰', description: 'Cobrado + Facturado − Costos − Materiales = Ganancia y margen', fields: [] },
+            ],
+            connections: [
+                { to: 'finanzas', label: 'Ver Finanzas', context: 'Egresos y asientos generados' },
+                { to: 'eventos', label: 'Ver Evento', context: 'Evento de la planilla' },
+                { to: 'costos', label: 'Ver Costos', context: 'Costo de producción de materiales' },
             ],
         },
 

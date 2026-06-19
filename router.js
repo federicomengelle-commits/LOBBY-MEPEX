@@ -99,6 +99,7 @@ const Router = {
             // ── Admin & Finanzas ──
             'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
             'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas' },
+            'rendimiento':      { render: () => RendimientoModule.render(), requiresAuth: true, module: 'rendimiento', adminOnly: true },
             'costos':           { render: () => CostosModule.render(), requiresAuth: true, module: 'costos', adminOnly: true },
             // Deprecado: Parámetros ahora vive como tab dentro del módulo Costos.
             // Redirección para bookmarks viejos.

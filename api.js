@@ -5671,4 +5671,355 @@ const API = {
         if (error) { console.warn('[API] getMovimientosExtranjeros:', error.message); return []; }
         return data || [];
     },
+
+    // ═════════════════════════════════════════════════════════════
+    //  RENDIMIENTO POR EVENTO (módulo #rendimiento)
+    //  Blueprint: docs/modulo-rendimiento-evento-blueprint.md
+    //  Reusa la plomería de Finanzas: cada pago = 1 egreso → asiento auto.
+    // ═════════════════════════════════════════════════════════════
+
+    // Categoría del módulo → egresos.categoria (para que mapeo_cuentas resuelva la cuenta).
+    RENDIMIENTO_CAT_TO_EGRESO: { jornal: 'rrhh', flete: 'logistica', proveedor: 'proveedor', seguro: 'servicio', comida: 'otro' },
+    RENDIMIENTO_CAT_LABEL: { jornal: 'Jornal', flete: 'Flete', proveedor: 'Proveedor', seguro: 'Seguro', comida: 'Comida' },
+
+    _uid() { const u = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null; return u?.uid || u?.id || null; },
+    _today() { return new Date().toISOString().split('T')[0]; },
+
+    // ── Eventos (selector liviano) ──
+    async getEventosLite() {
+        try {
+            const { data, error } = await supabaseClient.from('eventos')
+                .select('id, nombre, fecha_evento_inicio, fecha_armado_inicio, predio')
+                .eq('_deleted', false)
+                .order('fecha_evento_inicio', { ascending: false, nullsFirst: false });
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getEventosLite:', e.message); return []; }
+    },
+
+    // ── Catálogo de ítems de costo (engranaje) ──
+    async getRendimientoCatalogo() {
+        try {
+            const { data, error } = await supabaseClient.from('evento_costo_catalogo')
+                .select('*, personas(nombre, apellido), proveedor(nombre)')
+                .eq('_deleted', false)
+                .order('categoria', { ascending: true }).order('nombre', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(r => ({
+                ...r,
+                persona_nombre: r.personas ? `${r.personas.nombre || ''} ${r.personas.apellido || ''}`.trim() : null,
+                proveedor_nombre: r.proveedor?.nombre || null,
+            }));
+        } catch (e) { console.warn('[API] getRendimientoCatalogo:', e.message); return []; }
+    },
+    async createCatalogoItem(payload) {
+        const row = { ...payload, created_by: this._uid() };
+        const { data, error } = await supabaseClient.from('evento_costo_catalogo').insert(row).select('id').single();
+        if (error) throw error;
+        return data.id;
+    },
+    async updateCatalogoItem(id, patch) {
+        const { error } = await supabaseClient.from('evento_costo_catalogo').update(patch).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteCatalogoItem(id) {
+        const { error } = await supabaseClient.from('evento_costo_catalogo').update({ _deleted: true }).eq('id', id);
+        if (error) throw error;
+    },
+
+    // ── Líneas de costo (la planilla) ──
+    async getEventoCostos(eventoId) {
+        if (!eventoId) return [];
+        try {
+            const { data, error } = await supabaseClient.from('evento_costos')
+                .select('*, personas(nombre, apellido), proveedor(nombre)')
+                .eq('evento_id', eventoId).eq('_deleted', false)
+                .order('categoria', { ascending: true }).order('created_at', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(r => ({
+                ...r,
+                persona_nombre: r.personas ? `${r.personas.nombre || ''} ${r.personas.apellido || ''}`.trim() : null,
+                proveedor_nombre: r.proveedor?.nombre || null,
+            }));
+        } catch (e) { console.warn('[API] getEventoCostos:', e.message); return []; }
+    },
+    async createEventoCosto(payload) {
+        const row = { ...payload, created_by: this._uid() };
+        const { data, error } = await supabaseClient.from('evento_costos').insert(row).select('id').single();
+        if (error) throw error;
+        return data.id;
+    },
+    async updateEventoCosto(id, patch) {
+        const { error } = await supabaseClient.from('evento_costos').update(patch).eq('id', id);
+        if (error) throw error;
+    },
+    async deleteEventoCosto(id) {
+        const { error } = await supabaseClient.from('evento_costos').update({ _deleted: true }).eq('id', id);
+        if (error) throw error;
+    },
+    async anularEventoCosto(id) {
+        const { error } = await supabaseClient.from('evento_costos').update({ estado: 'anulado' }).eq('id', id);
+        if (error) throw error;
+    },
+    async getPagosByCosto(costoId) {
+        try {
+            const { data, error } = await supabaseClient.from('evento_costo_pagos')
+                .select('*').eq('costo_id', costoId).order('fecha', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getPagosByCosto:', e.message); return []; }
+    },
+
+    // ── Egreso genérico (NUEVO; generarEgresoDeOC hardcodea la categoría) ──
+    async createEgreso(payload) {
+        const row = {
+            fecha: payload.fecha || this._today(),
+            categoria: payload.categoria,
+            subcategoria: payload.subcategoria || null,
+            destinatario: payload.destinatario || null,
+            proveedor_id: payload.proveedor_id || null,
+            empleado_id: payload.empleado_id || null,
+            proyecto_id: payload.proyecto_id || null,
+            evento_id: payload.evento_id || null,
+            concepto: payload.concepto,
+            monto: payload.monto,
+            medio: payload.medio || 'transferencia',
+            canal: payload.canal || 'oficial',
+            cuenta_id: payload.cuenta_id || null,
+            comprobante_recibido_id: payload.comprobante_recibido_id || null,
+            estado: payload.estado || 'pagado',
+            moneda: payload.moneda || 'ARS',
+            cotizacion: payload.cotizacion || 1,
+            notas: payload.notas || null,
+            created_by: this._uid(),
+            _deleted: false,
+        };
+        // total_en_ars lo materializa el trigger fn_snapshot_total_ars_monto; se permite override.
+        if (payload.total_en_ars != null) row.total_en_ars = payload.total_en_ars;
+        const { data, error } = await supabaseClient.from('egresos').insert(row).select('id').single();
+        if (error) throw error;
+        return data.id;
+    },
+
+    // ── Comprobante recibido genérico (proveedor que factura) ──
+    async createComprobanteRecibido(payload) {
+        const row = {
+            fecha: payload.fecha || this._today(),
+            tipo: payload.tipo || 'A',
+            numero: payload.numero || null,
+            proveedor_id: payload.proveedor_id || null,
+            proveedor_nombre: payload.proveedor_nombre || null,
+            cuit: payload.cuit || null,
+            concepto: payload.concepto,
+            neto: payload.neto ?? null,
+            iva: payload.iva ?? null,
+            total: payload.total,
+            categoria: payload.categoria,
+            canal: payload.canal || 'oficial',
+            proyecto_id: payload.proyecto_id || null,
+            egreso_id: payload.egreso_id || null,
+            archivo_url: payload.archivo_url || null,
+            notas: payload.notas || null,
+            moneda: payload.moneda || 'ARS',
+            cotizacion: payload.cotizacion || 1,
+            created_by: this._uid(),
+        };
+        const { data, error } = await supabaseClient.from('comprobantes_recibidos').insert(row).select('id').single();
+        if (error) throw error;
+        return data.id;
+    },
+
+    // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──
+    //  Pagos SIEMPRE discriminados: 1 pago = 1 egreso. Soporta tandas/adelantos (parcial).
+    async pagarCostoEvento({ costo, monto, fecha, medio, canal, cuenta_id, comprobante = null, notas = null }) {
+        const egCat = this.RENDIMIENTO_CAT_TO_EGRESO[costo.categoria] || 'otro';
+        const catLabel = this.RENDIMIENTO_CAT_LABEL[costo.categoria] || 'Costo';
+        fecha = fecha || this._today();
+        canal = canal || 'oficial';
+        medio = medio || 'transferencia';
+        let comprobante_recibido_id = null;
+
+        // 1) Comprobante recibido (proveedor que factura)
+        if (comprobante && Number(comprobante.total) > 0) {
+            comprobante_recibido_id = await this.createComprobanteRecibido({
+                fecha,
+                tipo: comprobante.tipo || 'A',
+                numero: comprobante.numero || null,
+                proveedor_id: costo.proveedor_id || null,
+                proveedor_nombre: comprobante.razon_social || costo.proveedor_nombre || null,
+                cuit: comprobante.cuit || null,
+                concepto: costo.descripcion,
+                neto: comprobante.neto ?? null,
+                iva: comprobante.iva ?? null,
+                total: comprobante.total,
+                categoria: egCat,
+                canal,
+                proyecto_id: costo.proyecto_id || null,
+            });
+        }
+
+        // 2) Egreso → dispara trg_asiento_auto_egreso (DEBE gasto / HABER banco)
+        const egreso_id = await this.createEgreso({
+            fecha,
+            categoria: egCat,
+            subcategoria: costo.categoria,                 // categoría del módulo (taxonomía interna)
+            destinatario: costo.persona_nombre || costo.proveedor_nombre || costo.descripcion || null,
+            proveedor_id: (costo.categoria === 'flete' || costo.categoria === 'proveedor') ? (costo.proveedor_id || null) : null,
+            empleado_id: costo.categoria === 'jornal' ? (costo.persona_id || null) : null,
+            proyecto_id: costo.proyecto_id || null,
+            evento_id: costo.evento_id || null,
+            concepto: `${catLabel}: ${costo.descripcion}`,
+            monto,
+            medio, canal, cuenta_id: cuenta_id || null,
+            comprobante_recibido_id,
+            estado: 'pagado',
+            notas,
+        });
+
+        // 3) Link bidireccional comprobante ↔ egreso
+        if (comprobante_recibido_id) {
+            await supabaseClient.from('comprobantes_recibidos').update({ egreso_id }).eq('id', comprobante_recibido_id);
+        }
+
+        // 4) Registrar el pago → trg_sync_costo_desde_pago recalcula monto_pagado/estado
+        const { data: pago, error } = await supabaseClient.from('evento_costo_pagos').insert({
+            costo_id: costo.id, monto, fecha,
+            egreso_id, comprobante_recibido_id, notas: notas || null,
+            created_by: this._uid(),
+        }).select('id').single();
+        if (error) throw error;
+        return { pago_id: pago.id, egreso_id, comprobante_recibido_id };
+    },
+
+    // ── Anular un pago (revierte la línea; el asiento NO se revierte solo — deuda §9.2) ──
+    async anularPagoEvento(pagoId, { anularEgreso = true } = {}) {
+        const { data: pago } = await supabaseClient.from('evento_costo_pagos').select('*').eq('id', pagoId).maybeSingle();
+        if (!pago) return { error: 'pago no encontrado' };
+        const { error } = await supabaseClient.from('evento_costo_pagos').update({ anulado: true }).eq('id', pagoId);
+        if (error) throw error;
+        if (anularEgreso && pago.egreso_id) {
+            await supabaseClient.from('egresos').update({ estado: 'anulado' }).eq('id', pago.egreso_id);
+        }
+        return { ok: true, egreso_id: pago.egreso_id };
+    },
+
+    // ── Duplicar planilla de otro evento (líneas, sin pagos; quedan en 'pendiente') ──
+    async duplicarPlanilla(fromEventoId, toEventoId) {
+        const src = await this.getEventoCostos(fromEventoId);
+        if (!src.length) return 0;
+        const rows = src.map(c => ({
+            evento_id: toEventoId,
+            proyecto_id: null,
+            catalogo_id: c.catalogo_id || null,
+            categoria: c.categoria,
+            descripcion: c.descripcion,
+            persona_id: c.persona_id || null,
+            proveedor_id: c.proveedor_id || null,
+            fase: c.fase || null,
+            dias: c.dias ?? null,
+            tarifa: c.tarifa ?? null,
+            monto: c.monto || 0,
+            monto_previsto: c.monto_previsto || 0,
+            monto_editado: c.monto_editado || false,
+            notas: c.notas || null,
+            created_by: this._uid(),
+        }));
+        const { error } = await supabaseClient.from('evento_costos').insert(rows);
+        if (error) throw error;
+        return rows.length;
+    },
+
+    // ── Materiales (1:1 por evento, carga manual) ──
+    async getEventoRendimiento(eventoId) {
+        try {
+            const { data, error } = await supabaseClient.from('evento_rendimiento')
+                .select('*').eq('evento_id', eventoId).maybeSingle();
+            if (error) throw error;
+            return data || null;
+        } catch (e) { console.warn('[API] getEventoRendimiento:', e.message); return null; }
+    },
+    async upsertEventoRendimiento(eventoId, { materiales_manual = 0, materiales_notas = null }) {
+        const row = { evento_id: eventoId, materiales_manual, materiales_notas, updated_at: new Date().toISOString(), updated_by: this._uid() };
+        const { error } = await supabaseClient.from('evento_rendimiento').upsert(row, { onConflict: 'evento_id' });
+        if (error) throw error;
+    },
+
+    // ── Dashboard de ganancia por evento ──
+    async getRendimientoDashboard(eventoId) {
+        const out = { cobrado: 0, facturado: 0, costos: 0, materiales: 0, proyectos: 0 };
+        if (!eventoId) return out;
+        try {
+            // Cobrado = ingresos confirmados del evento
+            const { data: ing } = await supabaseClient.from('ingresos')
+                .select('total_en_ars, monto').eq('evento_id', eventoId).eq('estado', 'confirmado').eq('_deleted', false);
+            out.cobrado = (ing || []).reduce((s, r) => s + (Number(r.total_en_ars) || Number(r.monto) || 0), 0);
+
+            // Proyectos del evento → Facturado (comprobantes emitidos al cliente)
+            const { data: proys } = await supabaseClient.from('proyectos')
+                .select('id').eq('evento_id', eventoId).eq('_deleted', false);
+            const proyIds = (proys || []).map(p => p.id);
+            out.proyectos = proyIds.length;
+            if (proyIds.length) {
+                const { data: comps } = await supabaseClient.from('comprobantes')
+                    .select('total, total_en_ars, estado').in('proyecto_id', proyIds).eq('_deleted', false);
+                // "Facturado" = emitidos al cliente (excluye anuladas/error/rechazadas).
+                out.facturado = (comps || [])
+                    .filter(c => !['anulada', 'anulado', 'error', 'rechazada', 'rechazado'].includes((c.estado || '').toLowerCase()))
+                    .reduce((s, r) => s + (Number(r.total_en_ars) || Number(r.total) || 0), 0);
+            }
+
+            // Costos = Σ líneas no anuladas
+            const { data: costos } = await supabaseClient.from('evento_costos')
+                .select('monto, estado').eq('evento_id', eventoId).eq('_deleted', false).neq('estado', 'anulado');
+            out.costos = (costos || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+
+            // Materiales (carga manual)
+            const rend = await this.getEventoRendimiento(eventoId);
+            out.materiales = Number(rend?.materiales_manual) || 0;
+        } catch (e) { console.warn('[API] getRendimientoDashboard:', e.message); }
+        return out;
+    },
+
+    // ── Comparar eventos (ranking de márgenes, vista superadmin) ──
+    async getRendimientoComparativa() {
+        const evs = await this.getEventosLite();
+        const out = [];
+        for (const ev of evs) {
+            const d = await this.getRendimientoDashboard(ev.id);
+            if (!(d.cobrado || d.costos || d.materiales || d.facturado)) continue;
+            const ganancia = d.cobrado - d.costos - d.materiales;
+            out.push({ id: ev.id, nombre: ev.nombre, fecha: ev.fecha_evento_inicio, ...d, ganancia, margen: d.cobrado ? ganancia / d.cobrado : null });
+        }
+        out.sort((a, b) => (b.margen ?? -Infinity) - (a.margen ?? -Infinity));
+        return out;
+    },
+
+    // ── Contrato RRHH.5: jornales por persona (read-only) ──
+    async getJornalesByPersona(personaId, { eventoId = null } = {}) {
+        if (!personaId) return [];
+        try {
+            const { data, error } = await supabaseClient.from('evento_costos')
+                .select('id, evento_id, fase, dias, tarifa, monto, monto_pagado, estado, descripcion, eventos(nombre)')
+                .eq('categoria', 'jornal').eq('persona_id', personaId).eq('_deleted', false);
+            if (error) throw error;
+            let rows = data || [];
+            if (eventoId) rows = rows.filter(r => r.evento_id === eventoId);
+            const ids = rows.map(r => r.id);
+            const pagosMap = {};
+            if (ids.length) {
+                const { data: pagos } = await supabaseClient.from('evento_costo_pagos')
+                    .select('costo_id, egreso_id').in('costo_id', ids).eq('anulado', false);
+                (pagos || []).forEach(p => { (pagosMap[p.costo_id] = pagosMap[p.costo_id] || []).push(p.egreso_id); });
+            }
+            return rows.map(r => ({
+                persona_id: personaId,
+                evento_id: r.evento_id,
+                evento_nombre: r.eventos?.nombre || null,
+                fase: r.fase, dias: r.dias, tarifa: r.tarifa,
+                monto: r.monto, monto_pagado: r.monto_pagado, estado: r.estado,
+                descripcion: r.descripcion,
+                egreso_ids: pagosMap[r.id] || [],
+            }));
+        } catch (e) { console.warn('[API] getJornalesByPersona:', e.message); return []; }
+    },
 };
