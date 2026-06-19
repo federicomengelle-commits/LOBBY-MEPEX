@@ -5680,6 +5680,9 @@ const API = {
 
     // Categoría del módulo → egresos.categoria (para que mapeo_cuentas resuelva la cuenta).
     RENDIMIENTO_CAT_TO_EGRESO: { jornal: 'rrhh', flete: 'logistica', proveedor: 'proveedor', seguro: 'servicio', comida: 'otro' },
+    // Categoría del módulo → comprobantes_recibidos.categoria (taxonomía PROPIA, distinta de egresos:
+    // material/servicio/alquiler/credito_fiscal/logistica/otro — NO acepta proveedor/rrhh).
+    RENDIMIENTO_CAT_TO_RECIBIDO: { jornal: 'otro', flete: 'logistica', proveedor: 'material', seguro: 'servicio', comida: 'otro' },
     RENDIMIENTO_CAT_LABEL: { jornal: 'Jornal', flete: 'Flete', proveedor: 'Proveedor', seguro: 'Seguro', comida: 'Comida' },
 
     _uid() { const u = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null; return u?.uid || u?.id || null; },
@@ -5852,7 +5855,7 @@ const API = {
                 neto: comprobante.neto ?? null,
                 iva: comprobante.iva ?? null,
                 total: comprobante.total,
-                categoria: egCat,
+                categoria: comprobante.categoria || this.RENDIMIENTO_CAT_TO_RECIBIDO[costo.categoria] || 'otro',
                 canal,
                 proyecto_id: costo.proyecto_id || null,
             });

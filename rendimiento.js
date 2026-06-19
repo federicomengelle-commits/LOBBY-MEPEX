@@ -497,6 +497,7 @@ const RendimientoModule = {
                     <div id="rendPayFacturaBox" style="display:${facturaDefault ? 'block' : 'none'}">
                         <div class="rend-form-row">
                             <div class="rend-fg"><label>Tipo</label><select id="rendFacTipo"><option>A</option><option>B</option><option>C</option><option>M</option></select></div>
+                            <div class="rend-fg"><label>Categoría (IVA)</label><select id="rendFacCat">${this._recibidoCatOpts(API.RENDIMIENTO_CAT_TO_RECIBIDO[costo.categoria] || 'otro')}</select></div>
                             <div class="rend-fg"><label>Nº comprobante</label><input type="text" id="rendFacNumero"></div>
                         </div>
                         <div class="rend-form-row">
@@ -553,6 +554,7 @@ const RendimientoModule = {
                 if (!total || total <= 0) { Toast.warning('Cargá el total del comprobante'); return; }
                 comprobante = {
                     tipo: document.getElementById('rendFacTipo')?.value || 'A',
+                    categoria: document.getElementById('rendFacCat')?.value || null,
                     numero: document.getElementById('rendFacNumero')?.value.trim() || null,
                     cuit: document.getElementById('rendFacCuit')?.value.trim() || null,
                     razon_social: document.getElementById('rendFacRazon')?.value.trim() || null,
@@ -901,6 +903,11 @@ const RendimientoModule = {
     // ═══════════════════════════════════════════ UTIL
 
     _catLabel(id) { return (this.CATS.find(c => c.id === id) || {}).label || id; },
+    // Taxonomía de comprobantes_recibidos.categoria (CHECK propio; NO acepta proveedor/rrhh).
+    _RECIBIDO_CATS: [['material', 'Material'], ['servicio', 'Servicio'], ['alquiler', 'Alquiler'], ['logistica', 'Logística'], ['credito_fiscal', 'Crédito fiscal'], ['otro', 'Otro']],
+    _recibidoCatOpts(selected) {
+        return this._RECIBIDO_CATS.map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+    },
     _esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     },
