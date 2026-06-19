@@ -492,11 +492,12 @@ const RendimientoModule = {
                         <div class="rend-fg"><label>Canal</label>
                             <select id="rendPayCanal"><option value="oficial">Oficial</option><option value="interno">Interno</option></select></div>
                     </div>
-                    <div class="rend-fg"><label>Cuenta (tesorería)</label><select id="rendPayCuenta">${cuentaOpts}</select></div>
+                    <div class="rend-fg"><label>Cuenta (tesorería)</label><select id="rendPayCuenta">${cuentaOpts}</select>
+                        <span class="rend-hint">Sin cuenta el egreso queda registrado pero NO genera asiento contable (se necesita la cuenta de tesorería para la contrapartida).</span></div>
                     <label class="rend-check"><input type="checkbox" id="rendPayFactura" ${facturaDefault ? 'checked' : ''}> El proveedor entrega factura (IVA → comprobante recibido + Libro IVA)</label>
                     <div id="rendPayFacturaBox" style="display:${facturaDefault ? 'block' : 'none'}">
                         <div class="rend-form-row">
-                            <div class="rend-fg"><label>Tipo</label><select id="rendFacTipo"><option>A</option><option>B</option><option>C</option><option>M</option></select></div>
+                            <div class="rend-fg"><label>Tipo</label><select id="rendFacTipo"><option value="factura_a">Factura A</option><option value="factura_b">Factura B</option><option value="factura_c">Factura C</option><option value="nota_credito">N. Crédito</option><option value="nota_debito">N. Débito</option><option value="recibo">Recibo</option></select></div>
                             <div class="rend-fg"><label>Categoría (IVA)</label><select id="rendFacCat">${this._recibidoCatOpts(API.RENDIMIENTO_CAT_TO_RECIBIDO[costo.categoria] || 'otro')}</select></div>
                             <div class="rend-fg"><label>Nº comprobante</label><input type="text" id="rendFacNumero"></div>
                         </div>
@@ -553,7 +554,7 @@ const RendimientoModule = {
                 const total = parseFloat(document.getElementById('rendFacTotal')?.value);
                 if (!total || total <= 0) { Toast.warning('Cargá el total del comprobante'); return; }
                 comprobante = {
-                    tipo: document.getElementById('rendFacTipo')?.value || 'A',
+                    tipo: document.getElementById('rendFacTipo')?.value || 'factura_a',
                     categoria: document.getElementById('rendFacCat')?.value || null,
                     numero: document.getElementById('rendFacNumero')?.value.trim() || null,
                     cuit: document.getElementById('rendFacCuit')?.value.trim() || null,

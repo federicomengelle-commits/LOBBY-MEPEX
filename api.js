@@ -5808,7 +5808,7 @@ const API = {
     async createComprobanteRecibido(payload) {
         const row = {
             fecha: payload.fecha || this._today(),
-            tipo: payload.tipo || 'A',
+            tipo: payload.tipo || 'factura_a',
             numero: payload.numero || null,
             proveedor_id: payload.proveedor_id || null,
             proveedor_nombre: payload.proveedor_nombre || null,
