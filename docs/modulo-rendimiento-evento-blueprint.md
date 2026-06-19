@@ -404,3 +404,10 @@ Opcional: permitir lectura a rol `contabilidad` además de `finanzas` (paridad c
 ### 9.8 Bugs conocidos heredados (no del módulo)
 - Columnas rotadas en `clientes` (mapeado en `api.js`).
 - `mapeo_cuentas` debe estar seedeado para que los egresos generen asiento (gate REND.1/REND.3).
+
+### 9.9 ✅ CONSTRUIDO + VERIFICADO EN PROD (2026-06-18) — 3 gotchas de CHECK que el blueprint NO documentó
+Test end-to-end via Chrome reveló que **`comprobantes_recibidos` tiene taxonomías PROPIAS** (CHECK), distintas de `egresos.categoria`. Corregido en `api.js?v=44` / `rendimiento.js?v=3` (commits `f83ccd6`+`3a85f88`):
+1. **`comprobantes_recibidos.categoria`** ∈ `{material, servicio, alquiler, credito_fiscal, logistica, otro}` — **NO** acepta `proveedor`/`rrhh`. (En cambio `egresos.categoria` SÍ acepta las 8: proveedor/rrhh/impuesto/servicio/credito_fiscal/alquiler/logistica/otro.) → `API.RENDIMIENTO_CAT_TO_RECIBIDO` (proveedor→material, flete→logistica, seguro→servicio, jornal/comida→otro) + selector "Categoría (IVA)" en el modal de pago.
+2. **`comprobantes_recibidos.tipo`** ∈ `{factura_a, factura_b, factura_c, nota_credito, nota_debito, recibo, otro}` — **NO** `A/B/C`. → opciones del modal + default `factura_a`.
+3. **El asiento solo postea si el egreso tiene `cuenta_id`** — `fn_asiento_auto_egreso` (línea 368) sale sin asiento si no hay cuenta de tesorería (sin contrapartida bancaria). NO es bug; es diseño de Finanzas. Hint agregado al modal. Verificado: egreso proveedor CON cuenta → asiento automático balanceado, **2 líneas (sin desglose de IVA crédito fiscal = deuda §9.1 confirmada)**.
+- GATE A (mapeo) y GATE B (`egresos.categoria` acepta rrhh/proveedor/otro) confirmados en prod. Data de prueba limpiada.
