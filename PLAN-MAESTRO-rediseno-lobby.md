@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 38%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 28%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈62%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈72%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-18b — RECONCILIACIÓN código vs plan (3 agentes Explore). Confirmado YA HECHO (no estaba bien contado): **Costos UX F1-F4**, **Compras Fase 5 doble-paso completo** (incl. Pedido desde Taller), **Tareas Fase 11** (falta validación visual Fede), **CRM E1+R1+R2+R3+IA digest**. **El blocker del `:3000` ya está RESUELTO** (nginx `/api/`, la IA digest anda en el browser). RESTANTE REAL concentrado en: CRM comms E2/E4/R4 (diferido), Fase 6 Diseño (0%), Fase 4 (cotizador), 2 SQL Finanzas (Fede), pulido + Fase 5(a). PLAN 38→28, PROGRESO 62→72.)*
 > *(Rebalanceo 2026-06-14: Fase 7 CRM refactor v2 R1+R2+R3 construidas → a PROGRESO. PLAN 40→38, PROGRESO 60→62.)*
 > *(Rebalanceo 2026-06-13g: Fase 7 CRM E1.4 — tab "Casos" construido (bandeja/pipeline/ficha+timeline/composer 4 canales/WhatsApp pegado+fallback local/pegar imágenes/@menciones) → a PROGRESO. Fase 7 baja ≈10%→≈7%. PLAN 43→40, PROGRESO 57→60.)*
 > *(Rebalanceo 2026-06-13f: Fase 11 Centro de Tareas v4 funcionalmente COMPLETA (7 fuentes por-item, ciclo completo, claim/notif/sync taller, manual CRUD, búsqueda, persistencia) → a PROGRESO; quedan futuros menores. PLAN 49→43, PROGRESO 51→57.)*
@@ -25,7 +26,7 @@
 - **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
   - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
 - **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
-- **Fase 7 — CRM "Casos"** — 🎯 INTERÉS ALTO. ✅ E1 núcleo + **✅ REFACTOR v2 R1+R2+R3 verificado en prod** (`crm.js?v=15`/`api.js?v=39`): pipeline de casos con DnD + tabs 5 planas + clientes full-screen + convertir→proyecto. **🤖 IA del digest DEPLOYADA** (`gemini-2.5-flash-lite`, curl OK). 🔴 **BLOCKER: browser no llega al `:3000` (Failed to fetch, lapyme igual) → fix = nginx proxy `/api/`** (ver runbook §ESTADO ACTUAL + memoria `project_crm_digest_blocker`). **FALTA: ese blocker → R4 difusión · E2-E5.** Spec: `docs/crm-casos-blueprint.md` §14.
+- **Fase 7 — CRM "Casos"** — ✅ E1 núcleo + **R1+R2+R3 verificado en prod** (pipeline de casos con DnD + 5 tabs planas + clientes full-screen + convertir→proyecto) + **🤖 IA del digest DEPLOYADA y ANDANDO en el browser** (nginx `/api/` resolvió el ex-blocker del `:3000`, commit `de87b8c`). **FALTA: R4 difusión · E2 Gmail · E4 WhatsApp · E5 agente** (E2/E4 = prioridad de Fede pero diferidos: necesitan keys/DNS/delegation con él al teclado). Spec: `docs/crm-casos-blueprint.md` §14.
 - **Fase 8 — Finanzas/Contab.** *(G/H ya codeadas · "Rendimiento por evento" ✅ CONSTRUIDO 2026-06-18)* · **INTERÉS ALTO DE FEDE**
   - "Rendimiento por evento" (planilla + dashboard ganancia) ✅ construido → **desbloquea RRHH.5**. Restan: fix global IVA en asiento + auditoría de integridad. **🔒 Solo admin/superadmin, MÁS orientado a superadmin (Fede): info interna de cuánta plata se le saca a cada cosa.**
 - **Fase 9.bis — Roles & Permisos / RLS** *(Capa 1 ✅ · Capa 2 en curso)*
@@ -234,7 +235,7 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 
 **Orden:** Capa 1 ✅ · Capa 2B RLS motor + financiero + comercial ✅ CORRIDOS (`3a25d86` + `2cd1163`). Resta: auditoría de corrección (lock `roles`/`profiles` + cerrar `anon` operativo tabla-por-tabla, respetando que encuesta.html/cotizador leen eventos/clientes/catálogo) + 2A filtro "Míos" ⏸ OPCIONAL.
 
-### 🆕 Fase Costos UX — refactor completo del módulo *(≈5% · solo presentación, RPC intacta)*
+### ✅ Fase Costos UX — refactor completo del módulo — HECHA (reconciliación 2026-06-18 confirmó F1-F4 en `costos.js?v=32`)*(era ≈5%)*
 
 > **Origen (Fede 2026-06-13):** "el módulo de costos más amigable" → derivó en el refactor completo de las 4 solapas. Diseño cerrado con renders interactivos validados.
 
@@ -242,7 +243,7 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 - **Objetivo (Fede):** módulo más amigable y cómodo, edición tipo planilla, fórmula clara. Las 4 solapas (Insumos · Recetas · Listas de Precio · Parámetros) como **un sistema de diseño cohesivo**, no 4 pantallas sueltas.
 - **Decisiones cerradas:** editor de receta a **pantalla completa** (2 col, `.modal--full` nuevo) · **fila fantasma** inline para componentes (sin modales; reusa `addRecetaComponente`+`validarNoCiclo`+`_insumoSinVU`) · **recibo vertical** paso a paso con marcador "pendiente" (**cero cálculo en el front**; la RPC `calcular_receta` es la única fuente; Recalcular dispara la RPC) · **quick-edits de 2 clics** en la tabla (popovers sobre badges). Variante **subalquilado** = simple (anula MO/amortización/indirectos; solo `costo MP × (1+margen)` + proveedor). Convivencia: dejar el panel lateral actual hasta validar, después bajar el que sobre.
 - **Reglas preservadas (bisturí):** RPC fuente · snapshots por item · propio/subalq · VU armado 1:N · margen override · overrides nullables · cambio de tipo con confirmación · cascada al cambiar precio insumo · BOM jerárquico · markup vs margen. Todo vive en `persist()`/`_recalcularUnaReceta()`/RPC, independiente del DOM.
-- **Etapas:** ~~F1 quick-edits inline~~ ✅ (`e9fb2bd`) → ~~F2 editor receta full-screen + fila fantasma + recibo pendiente~~ ✅ (`e9fb2bd`) → ~~F3 variante subalquilado + ficha Insumos full-screen~~ ✅ (`65a27c0`) **HECHAS Y PUSHEADAS (ver PROGRESO §Fase Costos UX).** Resta **F4**: Listas de Precio + Parámetros al mismo sistema de diseño + pulido transversal. **⏳ Falta validación visual de Fede en prod de F1/F2/F3** (`costos.js?v=32`) con una receta real antes de cerrar F4.
+- **Etapas:** ~~F1 quick-edits inline~~ ✅ → ~~F2 editor receta full-screen + fila fantasma + recibo pendiente~~ ✅ → ~~F3 subalquilado + ficha Insumos full-screen~~ ✅ → ~~F4 Listas de Precio + Parámetros al mismo sistema + pulido~~ ✅ **TODAS HECHAS** (reconciliación 2026-06-18 vía agente Explore: `_renderListasView`/toggle cotizable/`_generatePdf` Cliente·Socio·Interno + `_renderParamsTab`/Recalcular-todo presentes en `costos.js?v=32`). **Único "falta" cosmético: Tipo/Cotizable como quick-edit en la tabla Recetas** (hoy Tipo se cambia en el editor con confirmación, Cotizable en Listas — decisión de diseño, no bug). **Solo resta validación visual de Fede** si quiere.
 - **Cambios técnicos:** `.modal--full` (MEPEX_COMPONENTS.css) · popovers + editor + fila fantasma + recibo en `costos.js` · clases nuevas en `style.css` · bump `costos.js?v=`.
 - **Test:** cambiar clasificación/tipo amort. en 2 clics desde la tabla · agregar componente con fila fantasma sin modal · editar cantidad → MP live + precio "pendiente" → Recalcular dispara RPC · subalquilado sin MO · Listas con toggle cotizable inline.
 
