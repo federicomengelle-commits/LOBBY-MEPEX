@@ -77,6 +77,8 @@ const RRHHModule = {
             await this._loadNomina();
         } else if (this._activeTab === 'planificacion') {
             await this._loadPlanificacion();
+        } else if (this._activeTab === 'jornales') {
+            await this._loadJornales();
         } else {
             await this._loadAusencias();
         }
@@ -300,6 +302,10 @@ const RRHHModule = {
                             <span class="section-tab-icon">🏖️</span>
                             <span class="section-tab-text">Ausencias</span>
                         </button>
+                        <button class="section-tab ${this._activeTab === 'jornales' ? 'active' : ''}" data-tab="jornales">
+                            <span class="section-tab-icon">💵</span>
+                            <span class="section-tab-text">Jornales</span>
+                        </button>
                     </div>
                 </div>
                 <div class="module-content" id="rrhhContent">
@@ -323,11 +329,107 @@ const RRHHModule = {
                 if (this._activeTab === 'panel') await this._loadPanelDash();
                 else if (this._activeTab === 'nomina') await this._loadNomina();
                 else if (this._activeTab === 'planificacion') await this._loadPlanificacion();
+                else if (this._activeTab === 'jornales') await this._loadJornales();
                 else await this._loadAusencias();
             });
         });
     },
 
+
+    // ════════════════════════════════════════════════════
+    //  RRHH.5 — JORNALES (lente read-only por persona; contrato de Rendimiento)
+    // ════════════════════════════════════════════════════
+
+    async _loadJornales() {
+        const cc = document.getElementById('rrhhContent');
+        if (!cc) return;
+        this._ensureJornalesStyles();
+        let personas = [];
+        try { personas = await API.getPersonas({}); } catch (e) { console.warn('[RRHH] jornales personas:', e.message); }
+        personas = (personas || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        const esc = this._jornEsc;
+        const opts = personas.map(p => `<option value="${p.id}">${esc((p.nombre || '') + ' ' + (p.apellido || ''))}</option>`).join('');
+        cc.innerHTML = `
+            <div class="rh-jorn-head">
+                <div>
+                    <div class="rh-jorn-title">💵 Jornales por persona</div>
+                    <div class="rh-jorn-sub">Vista de solo lectura. Los jornales se cargan en <a href="#rendimiento">Rendimiento por evento</a> · RRHH agrega por suma (una persona puede tener varias filas por evento/fase).</div>
+                </div>
+                <select id="rhJornPersona" class="rh-jorn-select"><option value="">— elegí una persona —</option>${opts}</select>
+            </div>
+            <div id="rhJornBody"><div class="rh-jorn-empty">Elegí una persona para ver sus jornales por evento.</div></div>
+        `;
+        document.getElementById('rhJornPersona')?.addEventListener('change', (e) => this._renderJornalesForPersona(e.target.value));
+    },
+
+    async _renderJornalesForPersona(personaId) {
+        const body = document.getElementById('rhJornBody');
+        if (!body) return;
+        if (!personaId) { body.innerHTML = '<div class="rh-jorn-empty">Elegí una persona…</div>'; return; }
+        body.innerHTML = '<div style="padding:32px;text-align:center;"><div class="spinner"></div></div>';
+        let rows = [];
+        try { rows = await API.getJornalesByPersona(personaId); } catch (e) { console.warn('[RRHH] getJornalesByPersona:', e.message); }
+        if (!rows.length) { body.innerHTML = '<div class="rh-jorn-empty">Sin jornales cargados para esta persona.</div>'; return; }
+        const esc = this._jornEsc;
+        const fmt = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+        const totDias = rows.reduce((s, r) => s + (Number(r.dias) || 0), 0);
+        const totMonto = rows.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        const totPagado = rows.reduce((s, r) => s + (Number(r.monto_pagado) || 0), 0);
+        const pend = totMonto - totPagado;
+        const trs = rows.map(r => `
+            <tr>
+                <td>${esc(r.evento_nombre || '—')}</td>
+                <td>${esc(r.fase || '—')}</td>
+                <td class="rh-jorn-num">${r.dias ?? '—'}</td>
+                <td class="rh-jorn-num">${r.tarifa != null ? fmt(r.tarifa) : '—'}</td>
+                <td class="rh-jorn-num">${fmt(r.monto)}</td>
+                <td class="rh-jorn-num" style="color:#00CC88">${fmt(r.monto_pagado)}</td>
+                <td><span class="rh-jorn-est rh-jorn-${r.estado}">${r.estado}</span></td>
+            </tr>`).join('');
+        body.innerHTML = `
+            <div class="rh-jorn-kpis">
+                <div class="rh-jorn-kpi"><span>Eventos</span><b>${rows.length}</b></div>
+                <div class="rh-jorn-kpi"><span>Jornadas (Σ días)</span><b>${totDias}</b></div>
+                <div class="rh-jorn-kpi"><span>Total ganado</span><b>${fmt(totMonto)}</b></div>
+                <div class="rh-jorn-kpi"><span>Pagado</span><b style="color:#00CC88">${fmt(totPagado)}</b></div>
+                <div class="rh-jorn-kpi"><span>Pendiente</span><b style="color:#F28D15">${fmt(pend)}</b></div>
+            </div>
+            <table class="rh-jorn-table">
+                <thead><tr><th>Evento</th><th>Fase</th><th class="rh-jorn-num">Días</th><th class="rh-jorn-num">Tarifa</th><th class="rh-jorn-num">Monto</th><th class="rh-jorn-num">Pagado</th><th>Estado</th></tr></thead>
+                <tbody>${trs}</tbody>
+            </table>`;
+    },
+
+    _jornEsc(s) { return String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c])); },
+
+    _ensureJornalesStyles() {
+        if (document.getElementById('rhJornStyles')) return;
+        const el = document.createElement('style');
+        el.id = 'rhJornStyles';
+        el.textContent = `
+            .rh-jorn-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+            .rh-jorn-title{font-size:1.05rem;font-weight:600;color:var(--text-primary)}
+            .rh-jorn-sub{font-size:.78rem;color:var(--text-muted);margin-top:4px;max-width:560px}
+            .rh-jorn-select{background:#1A1A1A;border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:9px 12px;font-family:var(--font-main);font-size:.88rem;min-width:240px;cursor:pointer}
+            .rh-jorn-empty{padding:40px;text-align:center;color:var(--text-muted);font-size:.88rem}
+            .rh-jorn-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+            .rh-jorn-kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+            .rh-jorn-kpi span{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)}
+            .rh-jorn-kpi b{font-family:var(--font-mono);font-size:1.25rem;color:var(--text-primary)}
+            .rh-jorn-table{width:100%;border-collapse:collapse;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+            .rh-jorn-table th{text-align:left;font-size:.66rem;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border)}
+            .rh-jorn-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-size:.85rem;color:var(--text-primary)}
+            .rh-jorn-table tbody tr:last-child td{border-bottom:none}
+            .rh-jorn-table tbody tr:hover{background:rgba(155,125,255,.04)}
+            .rh-jorn-num{text-align:right;font-family:var(--font-mono);white-space:nowrap}
+            .rh-jorn-est{display:inline-flex;font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:20px;border:1px solid transparent}
+            .rh-jorn-pendiente{color:#F28D15;background:rgba(242,141,21,.12);border-color:rgba(242,141,21,.3)}
+            .rh-jorn-parcial{color:#4A90D9;background:rgba(74,144,217,.12);border-color:rgba(74,144,217,.3)}
+            .rh-jorn-pagado{color:#00CC88;background:rgba(0,204,136,.12);border-color:rgba(0,204,136,.3)}
+            .rh-jorn-anulado{color:#888;background:rgba(255,255,255,.04);border-color:var(--border)}
+        `;
+        document.head.appendChild(el);
+    },
 
     // ════════════════════════════════════════════════════
     //  HELPERS
