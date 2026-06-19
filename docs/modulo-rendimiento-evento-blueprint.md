@@ -381,6 +381,8 @@ KPIs lado a lado:
 ### 9.1 IVA NO desglosado en el asiento (deuda global REAL)
 `fn_asiento_auto_egreso` (vigente, Fase E) arma solo 2 líneas: DEBE gasto / HABER banco por el `total`, **sin** línea de IVA crédito fiscal. El IVA del proveedor sí entra al **Libro IVA** vía `comprobantes_recibidos.iva` + `v_libro_iva_compras_extendido`, pero el **asiento contable queda incompleto** (el balance no cuadra el crédito fiscal). **Fix de roadmap (afecta a TODO Finanzas, no solo este módulo):** agregar 3ª línea DEBE `1.1.04.01 IVA crédito fiscal` por `comprobantes_recibidos.iva` cuando el egreso tiene comprobante. Coordinar con Fede/Sofi. **Gate de REND.3.**
 
+**DECISIÓN (2026-06-18 — Fede delegó "que quede mejor"):** se arregla el trigger global como **paso SEPARADO y aislado** (su propio SQL + test) que **NO bloquea** la construcción del módulo — el módulo registra comprobante + egreso + Libro IVA igual; solo falta la 3ª línea del asiento. Se construye el módulo primero; el trigger se arregla y testea aparte (afecta a TODO Finanzas → verificar egresos existentes + avisar a Sofi). Detalle en `docs/prompts/rendimiento-evento-oneshot.md` §6.
+
 ### 9.2 Anular egreso no revierte el asiento (deuda global REAL)
 El trigger solo dispara en transición *a* `pagado`; `estado='anulado'` no genera contra-asiento. La reversión contable es manual hoy. El módulo avisa en UI (§5.6) y gestiona su estado propio, pero NO inventa contabilidad. Fix de roadmap a nivel Finanzas.
 
@@ -390,8 +392,8 @@ El trigger solo dispara en transición *a* `pagado`; `estado='anulado'` no gener
 ### 9.4 Imputación automática de materiales (roadmap)
 v1 = carga manual (`evento_rendimiento.materiales_manual`). Roadmap = leer `inventario_movimiento_items` (`direccion='salida'`) imputados al evento/proyecto, valuados por `catalogo_items.costo_produccion`. La tabla está sub-poblada en prod → no confiable para v1.
 
-### 9.5 Sentido de "Facturado" (confirmar 1 pregunta con Fede)
-Asumido: Facturado = emitido al cliente (`comprobantes` emitidos), del lado ingresos, lado a lado con Cobrado. Confirmar que no se refiere a "costos con factura recibida".
+### 9.5 Sentido de "Facturado" — CERRADO (2026-06-18)
+**Facturado = emitido al cliente** (`comprobantes` emitidos de los proyectos del evento), del lado INGRESOS, lado a lado con Cobrado. NO son "costos con factura recibida". (Fede delegó la decisión; se toma este sentido, que es el correcto para un dashboard de ganancia.)
 
 ### 9.6 Adelantos a rendir / fondo fijo
 **Fuera de v1.** Idea futura: caja de adelanto a una persona que luego rinde gastos. No se modela ahora.
