@@ -1,6 +1,7 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 72%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 70%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈28%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈30%).
+> *(Rebalanceo 2026-06-20d — Fede pidió **auditoría + refactor integral de Finanzas** (ver PLAN §Fase 8). Universo creció → PROGRESO 72→70, PLAN 28→30. La Fase 13 sigue ✅; lo nuevo es la deuda de Finanzas que destapó probar la carga de comprobantes.)*
 > *(Rebalanceo 2026-06-20c — **Fase 13 Rediseño Lobby por rol v2 BUILD COMPLETO en 1 sesión autónoma** (Fede: "mandale hacha a pleno… hasta rematarlo"): 5 fases construidas+pusheadas+verificadas en preview (HomeModule por zonas · 43 widgets read-only por rol con scope · módulo Calendario Administrativo · Carga de comprobantes foto/IA · atajos por rol). Lo que vuelve a PROGRESO lo que el diseño había sumado → PROGRESO 67→72, PLAN 33→28. ⛔ Restan 3 pasos de infra de Fede (SQL grant calendario-adm · deploy VPS endpoint OCR · bucket Storage) — quedan en PLAN §Fase 13.)*
 > *(Rebalanceo 2026-06-20b — 🆕 Fase 13 Rediseño Lobby por rol v2 (diseño en curso): home superficie de acción + módulo Calendario Administrativo + Carga de comprobantes por foto/IA. Diseño super/admin cerrado (solo diseño, sin código); faltan venta/pm/taller + build. Universo creció → PROGRESO 72→67, PLAN 28→33. SPEC: `docs/rediseno-lobby-por-rol-v2-spec.md`.)*
 > *(Rebalanceo 2026-06-20 — **Fase 12 Saneamiento técnico casi completa en 1 sesión autónoma** (Fede: "dale todo derecho, auditás después"): 5 batches pusheados — 12.A router teardown + _esc global (`8f8f520`) · 12.C permisos (`1a4d5a5`) · 12.E quick-wins (`ebd1b4e`) · 12.B datos (`e72e7c5`) · 12.D perf (`59c1960`). ✅ verificado end-to-end en prod (auditoría Chrome 2026-06-20, 100% verde). 4 diferidos (SQL/overlap Fase 4). PROGRESO 69→72, PLAN 31→28.)*
@@ -22,7 +23,7 @@
 
 ---
 
-## Estado general — AVANCE ≈ 72%
+## Estado general — AVANCE ≈ 70%
 - **🆕 SESIÓN 2026-06-20 (build) — Fase 13 Rediseño Lobby por rol v2: BUILD COMPLETO (5 fases) + PUSHEADO + VERIFICADO EN PREVIEW (sesión autónoma "mandale hacha").** Commits en `origin/main`: `5421c1e`+`028fb9c` (13.1 esqueleto+docs) · `d464ce4` (13.2 widgets) · `362224c` (13.3 calendario adm) · `45036c4` (13.4 comprobantes IA) · `c89f21a` (13.5 atajos+pulido).
   - **13.1 — `HomeModule`** (reescribe `lobby.js?v=11`, alias `Lobby`): arquitectura por **zonas** (`_layouts[rol]`) + registro `_widgets` read-only + hidratación aislada (`Promise.allSettled` + try/catch por widget → uno que falla no rompe al resto) + grid responsive + estilos `home-` inyectados + saludo contextual + chip de rol coloreado + toggle Oficial/Interno (super/admin). `router.js?v=14`: **taller aterriza en su home** (lobbyRoles += taller; default `eventos`→`lobby`).
   - **13.2 — 43 widgets read-only por rol con scope** (registro `_R` + helpers). `_finData(ctx)` replica `finanzas._loadPanelData` UNA vez (memoizado) → alimenta pulso/margen/días-caja/cash30/cobros(+aging)/pagos/saldos/ritmo, respeta toggle de canal. Scope real: pm/super proyectos vía `responsable_id`; venta cotiz/casos vía `vendedorId`/`ownerId`; taller cola `estado='en_taller'`. KPIs no calculables hoy degradados con honestidad (DSO/DPO sin par factura→cobro; fechas-clientes sin data). **Verificado:** 5 roles, 0 errores de widget, 0 errores de consola, 0 respuestas 4xx/5xx; data real super/admin.
