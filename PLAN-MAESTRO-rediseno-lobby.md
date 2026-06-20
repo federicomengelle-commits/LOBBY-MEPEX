@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 28%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 33%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈72%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈67%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-20b — 🆕 **Fase 13 — Rediseño Lobby por rol v2** (diseño en curso): home como superficie de acción por rol (2 col operativo|admin para super/admin · 1 col enfocada para venta/pm/taller) + módulo **Calendario Administrativo** + **Carga de comprobantes por foto/IA**. Diseño de super/admin CERRADO; faltan venta/pm/taller + todo el build. Universo creció → PLAN 28→33, PROGRESO 72→67. SPEC: `docs/rediseno-lobby-por-rol-v2-spec.md`.)*
 > *(Rebalanceo 2026-06-20 — **Fase 12 Saneamiento técnico casi completa** (5 batches pusheados, 1 sesión autónoma): 12.A router teardown + _esc global (`8f8f520`) · 12.C permisos (`1a4d5a5`) · 12.E quick-wins (`ebd1b4e`) · 12.B datos (`e72e7c5`) · 12.D perf (`59c1960`). ⏳ verificación end-to-end en prod pendiente del pull de Fede (Fede autorizó "auditar después"). **Diferidos** (no autónomos / overlap con otras fases): inventario stock atómico (SQL/Fase 4) · Mayor server-filter (RPC) · eventos teardownEndDate→columna + transporte modal (refactor de raíz/Fase 4) · consolidar Usuarios y Roles. PLAN 31→28, PROGRESO 69→72.)*
 > *(Rebalanceo 2026-06-18c — AUDITORÍA de módulos (5 agentes) → nueva **Fase 12 Saneamiento técnico ≈4%** (router teardown, dummy data de eventos, _esc global, permisos, perf). El universo creció → PLAN 28→31, PROGRESO 72→69. Detalle: `docs/auditoria-modulos-2026-06-18.md`.)*
 > *(Rebalanceo 2026-06-18b — RECONCILIACIÓN código vs plan (3 agentes Explore). Confirmado YA HECHO (no estaba bien contado): **Costos UX F1-F4**, **Compras Fase 5 doble-paso completo** (incl. Pedido desde Taller), **Tareas Fase 11** (falta validación visual Fede), **CRM E1+R1+R2+R3+IA digest**. **El blocker del `:3000` ya está RESUELTO** (nginx `/api/`, la IA digest anda en el browser). RESTANTE REAL concentrado en: CRM comms E2/E4/R4 (diferido), Fase 6 Diseño (0%), Fase 4 (cotizador), 2 SQL Finanzas (Fede), pulido + Fase 5(a). PLAN 38→28, PROGRESO 62→72.)*
@@ -39,6 +40,7 @@
 - **Fase 11 — Centro de Tareas** ✅ v4 FUNCIONALMENTE COMPLETA (EN PRUEBA) — 7 fuentes por-item + ciclo completo + claim/notif/sync taller. Solo futuros menores → ver PROGRESO.
 - **🆕 Fase 12 — Saneamiento técnico** *(deuda de la auditoría 2026-06-18, ≈4%)* — 5 batches para tildar: **12.A** transversal (router `destroy()` + `_esc` global = mayor palanca) · **12.B** sacar dummy/localStorage de negocio (eventos.js) · **12.C** permisos (rrhh/admin guards, reset pass roto) · **12.D** correctness/perf (libro diario truncado, stock atómico, N+1 saldo) · **12.E** quick-wins (locaciones, onclick inline, console.logs). Detalle en `docs/auditoria-modulos-2026-06-18.md`.
 - **RRHH.5 — Jornales** ✅ HECHA (2026-06-18) — tab "Jornales" en RRHH (lente read-only por persona, consume `API.getJornalesByPersona`, KPIs por SUMA). Verificado en prod via Chrome. `rrhh.js?v=13`, commit `16e23aa`. **Con esto RRHH v2 queda 100%.**
+- **🆕 Fase 13 — Rediseño Lobby por rol v2** *(diseño en curso · ≈6%)* — el home como **superficie de acción por rol** (2 col operativo|admin para super/admin · 1 col enfocada para venta/pm/taller) + banda de KPIs macro (presupuestos env/cerr · margen mes · días de caja · cash proy 30d). **+ 2 piezas nuevas:** módulo **Calendario Administrativo** (vencimientos por día · digest en lobby) · **Carga de comprobantes por foto/IA** (Gemini del VPS extrae → humano confirma → guarda; vive en Finanzas, atajo en lobby admin). ✅ super/admin diseñados · ⏳ venta/pm/taller + build. SPEC: `docs/rediseno-lobby-por-rol-v2-spec.md`.
 - **Tracks paralelos** (no Claude Code): CAD/Diseño 3D · Configurador 2D
 
 ---
@@ -344,6 +346,20 @@ El vínculo **proyecto→perfil ya existe** (no hay que inventar): `proyectos.re
 > **Módulos MODELO (referencias del patrón, salieron limpios):** `proyectos.js`, `flota.js`, `remito-pdf.js`, `inventario.js` (gold-standard de cleanup de listeners — copiar para arreglar crm/calendario), `costos.js`, `rendimiento.js`, `tareas.js` (carga defensiva).
 
 ---
+
+### 🆕 Fase 13 — Rediseño Lobby por rol v2 (Home = superficie de acción) *(≈6% · diseño en curso)*
+
+> **El home se reconvierte en una superficie de acción por rol** (supera la Fase 9.6 Híbrido). UN solo `HomeModule` con `_layouts` (rol→widgets) + `_widgets` (read-only). **📘 SPEC OBLIGATORIA: `docs/rediseno-lobby-por-rol-v2-spec.md`** (matriz rol×widgets, layouts por rol, fórmulas KPI, reconocimiento técnico, build plan).
+
+- **Forma:** super/admin = **2 columnas** (operativo|administrativo) + banda KPI macro; venta/pm/taller = **1 columna enfocada**.
+- **KPIs macro nuevos (Fede):** Presupuestos enviados vs cerrados · Margen del mes % · Días de caja (runway) · Cash proyectado 30d · (admin) Aging de cobros · Ritmo cobro/pago (DSO/DPO).
+- **✅ DISEÑADO (mockups validados con Fede):** superadmin · admin. **⏳ FALTA DISEÑAR:** venta · pm · taller (1 columna c/u).
+- **Correcciones de Fede al brief:** admin ve **ambos canales** (toggle, NO solo Oficial) · admin = administrativo a pleno (saca casi todo lo operativo) · accesos rápidos viven en la **sidebar** (no fila del home) · taller **aterriza en su home** (router: + `taller` a lobbyRoles, default `eventos`→`lobby`).
+- **🆕 Pieza A — Módulo Calendario Administrativo (`#calendario-adm`):** vencimientos fijos por día (alquileres/servicios/seguros/sueldos/AFIP/cuotas) con estado + marcar-pagado→egreso + alimenta `Alertas`. **Módulo propio + digest en lobby admin** (decisión Fede). Fuente: `vencimientos_recurrentes/generados` + RRHH + Contabilidad. Ver spec §6.
+- **🆕 Pieza B — Carga de comprobantes por foto/PDF con IA:** foto (cámara del celu) o PDF → **Gemini del VPS** extrae (CUIT/razón social/fecha/neto/IVA/total/tipo/N°) → form pre-cargado → **humano confirma** → `comprobantes_recibidos` (+egreso opcional). **Sueño Fede:** multi-comprobante + grilla de preview/corrección + archivos guardados (bucket Storage). **Vive en Finanzas; atajo en el lobby admin.** Reusa infra IA ya deployada (proxy `mepex-api`, `/api/` nginx). Ver spec §7.
+- **Reconocimiento clave (no re-descubrir):** tablas reales `proyectos`/`eventos` (NO existen `_2026`) · proyecto↔PM = `proyectos.responsable_id` · proyecto↔vendedor NO directo (vía `cotizaciones.vendedor_id`) · finanzas sin métodos read públicos (query directa `API.supabase.from`) · `Alertas` alimenta widget alertas + dots sidebar · toggle `localStorage('finanzas_vista_canal')`. Spec §9.
+- **Build (cuando se ejecute):** esqueleto `HomeModule` (reescribe `lobby.js`, renombra objeto, alias `Lobby`) → widgets read-only por rol → módulo Calendario adm → carga comprobantes IA. Confirmar cada pieza con Fede; **diseñar venta/pm/taller antes de codearlos**.
+- **Test:** cada rol ve solo su set en orden · links andan · F12 limpio · responsive.
 
 ## 🆕 Ideas de mejora pendientes *(del análisis ultracode 2026-06-12 — lo ya hecho está en PROGRESO §Infra)*
 - **Cache-busting automático por git-hash** en vez de bumps `?v=N` manuales: un script (pre-commit/paso del deploy) que reescribe los `?v=` con el short-hash del commit. Elimina la clase de bug "pusheé pero no se ve". (Hecho parcial: el `check.sh` ya valida que el bump esté; falta automatizarlo.)
