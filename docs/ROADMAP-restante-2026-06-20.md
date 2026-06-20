@@ -32,7 +32,7 @@
 ## ETAPA 2 — CRM (sin Gmail/WhatsApp) *(PLAN §Fase 7 · `docs/crm-casos-blueprint.md`)*
 1. **Auditoría de cambios del CRM** (`audit_log`): registrar quién edita cliente / mueve pipeline / edita cotización (no solo interacciones). Engancha con el `audit_log` global.
 2. **Polish v3** pendiente (lote 2 de `docs/crm-casos-blueprint.md` §14, si quedó algo).
-3. **R4 — Listas de difusión** desde el CRM (**listmonk ya instalado en el VPS**) + clientes con acciones · link reverso cotización→caso · plan de cobro auto al convertir caso Ganado→proyecto.
+3. **R4 — Listas de difusión** desde el CRM (**listmonk ya instalado en el VPS**) + clientes con acciones · link reverso cotización→caso. *(⚠ "plan de cobro auto al convertir caso Ganado→proyecto" toca `plan_cobro` = tabla de Finanzas → DIFERIR con Fase 8 mientras Fede refactorea Finanzas.)*
 4. **E3 — Clasificación**: rubro como catálogo cerrado + tipo + eventos participados + tags (base para mailing en frío; el envío/marketing lo lidera Fede + community manager).
 
 ## ETAPA 3 — Fase 6: Integración de Diseño (lo que NO necesita ImageMagick) *(PLAN §Fase 6)*
