@@ -1,6 +1,7 @@
-# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 72%
+# PROGRESO — Rediseño LOBBY-MEPEX  ·  AVANCE ≈ 69%
 
-> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈28%).
+> **Registro de lo YA HECHO.** Lo que FALTA vive en `PLAN-MAESTRO-rediseno-lobby.md` (≈31%).
+> *(Rebalanceo 2026-06-18c — AUDITORÍA de módulos (5 agentes) → nueva Fase 12 "Saneamiento técnico" ≈4% en el PLAN (deuda real que estaba sin trackear). El universo creció → PROGRESO 72→69, PLAN 28→31. Informe: `docs/auditoria-modulos-2026-06-18.md`. **Fase 12 = a tildar y mover acá a medida que se haga.**)*
 > *(Rebalanceo 2026-06-18b — RECONCILIACIÓN código vs plan (3 agentes Explore): varias cosas dadas como "pendientes" en notas/memorias estaban YA HECHAS → **Costos UX refactor F1-F4 ✅** (quick-edits + editor full-screen + fila fantasma + recibo dirty + subalq + Listas/Parámetros), **Compras Fase 5 doble-paso ✅** (Pedidos+presupuestos+ganadora+OC→egreso+Pedir-compra-desde-Taller), **Tareas Fase 11 ✅** (9 fuentes, falta solo validación visual de Fede), **CRM E1+R1+R2+R3+IA digest ✅**. El plan inflaba lo pendiente. PROGRESO 65→72, PLAN 35→28. Lo que REALMENTE queda: CRM comms (E2 Gmail/E4 WhatsApp/R4 difusión — diferido), Fase 6 Diseño (0%, necesita motor gráficas), Fase 4 (bloqueada por cotizador), 2 SQL Finanzas (correr Fede), pulido + Fase 5(a).)*
 > *(Rebalanceo 2026-06-18: Fase 8 — módulo "Rendimiento por evento" CONSTRUIDO (REND.1→REND.5: planilla 5 categorías + pagos discriminados N egresos + dashboard ganancia + catálogo + duplicar + comparar + contrato RRHH.5). Desbloquea RRHH.5. PROGRESO 62→65, PLAN 38→35. Restan en Fase 8: fix global IVA en asiento + auditoría de integridad.)*
 > *(Rebalanceo 2026-06-14: Fase 7 CRM refactor v2 R1+R2+R3 (pipeline único de casos con DnD + tabs 5 planas + clientes full-screen + convertir a proyecto). PROGRESO 60→62, PLAN 40→38.)*
