@@ -834,6 +834,10 @@ const AdminPanel = {
                                     <button class="admpanel-action-btn" data-action="resetpw" data-uid="${u.id}" data-name="${u.name}" title="Cambiar contraseña">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
                                     </button>
+                                    ${u.role !== 'superadmin' ? `
+                                    <button class="admpanel-action-btn" data-action="perms" data-uid="${u.id}" title="Permisos del usuario">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                                    </button>` : ''}
                                     ${!isSelf ? `
                                     <button class="admpanel-action-btn" data-action="toggle" data-uid="${u.id}" data-name="${u.name}" data-active="${u.active}" title="${u.active ? 'Desactivar' : 'Activar'} usuario">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${u.active ? '#00CC88' : '#FF4757'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${u.active
@@ -905,6 +909,7 @@ const AdminPanel = {
                 switch (action) {
                     case 'edit': this._openEditUserModal(uid); break;
                     case 'resetpw': this._openResetPasswordModal(uid, name); break;
+                    case 'perms': this._openUserPermsModal(uid); break;
                     case 'toggle': this._toggleUserActive(uid, name, btn.dataset.active === 'true'); break;
                     case 'delete': this._deleteUser(uid, name); break;
                 }
@@ -1209,6 +1214,124 @@ const AdminPanel = {
         } catch (err) {
             Toast.error(err.message || 'Error al eliminar');
         }
+    },
+
+    // ─── PERMISOS POR USUARIO (override de visibilidad de módulos) ───
+    // Portado desde la ex pantalla #admin-usuarios de settings.js (2026-06-20):
+    // por defecto el usuario ve lo que su rol permite; el toggle "Personalizados"
+    // sobrescribe la visibilidad SOLO para esta persona (profiles.custom_permissions).
+    _openUserPermsModal(uid) {
+        const user = this._realUsers.find(u => u.id === uid);
+        if (!user) return;
+
+        const mods = Data.getPermissionableModules().flatMap(g => g.modules);
+        const rolePerms = Data.rolePermissions[user.role] || [];
+        const hasCustom = Array.isArray(user.custom_permissions) && user.custom_permissions.length > 0;
+        const activePerms = hasCustom ? user.custom_permissions : rolePerms;
+        const roleInfo = this._getRoleInfo(user.role);
+
+        const items = mods.map(m => {
+            const granted = activePerms.includes(m.id);
+            return `
+                <label class="settings-perm-item${granted ? ' granted' : ''}${hasCustom ? ' editable' : ''}" data-mod="${m.id}">
+                    <input type="checkbox" class="settings-perm-cb" data-mod="${m.id}" ${granted ? 'checked' : ''} ${hasCustom ? '' : 'disabled'} style="display:none">
+                    <span class="settings-perm-icon">${m.icon}</span>
+                    <span class="settings-perm-name">${m.name}</span>
+                    <span class="settings-perm-check">${granted ? '✓' : '—'}</span>
+                </label>`;
+        }).join('');
+
+        const body = `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                <span class="admpanel-role-badge" style="background:${roleInfo.color}18;color:${roleInfo.color};border:1px solid ${roleInfo.color}35;">${roleInfo.label}</span>
+                <span style="color:var(--text-muted);font-size:0.8rem;">Ve los módulos de su rol, salvo que actives "Personalizados".</span>
+            </div>
+            <div class="settings-perm-section">
+                <div class="settings-perm-header">
+                    <span class="form-label" style="margin:0">MÓDULOS VISIBLES</span>
+                    <label class="settings-perm-toggle">
+                        <span class="settings-perm-toggle-label" id="admPermToggleLabel">${hasCustom ? 'Personalizados' : 'Según rol'}</span>
+                        <label class="settings-switch settings-switch--sm">
+                            <input type="checkbox" id="admPermCustomToggle" ${hasCustom ? 'checked' : ''}>
+                            <span class="settings-switch-slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="settings-perm-matrix" id="admPermMatrix">${items}</div>
+            </div>
+        `;
+
+        const modal = Modal.open({
+            title: `Permisos — ${user.name}`,
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="admPermSaveBtn">Guardar permisos</button>
+            `,
+        });
+
+        const matrixEl = document.getElementById('admPermMatrix');
+        const toggle = document.getElementById('admPermCustomToggle');
+        const toggleLabel = document.getElementById('admPermToggleLabel');
+
+        // Al togglear: baseline = perms del rol; editable solo si "Personalizados".
+        toggle.addEventListener('change', () => {
+            const isCustom = toggle.checked;
+            toggleLabel.textContent = isCustom ? 'Personalizados' : 'Según rol';
+            const perms = Data.rolePermissions[user.role] || [];
+            matrixEl.querySelectorAll('.settings-perm-item').forEach(item => {
+                const cb = item.querySelector('.settings-perm-cb');
+                const granted = perms.includes(cb.dataset.mod);
+                cb.disabled = !isCustom;
+                cb.checked = granted;
+                item.classList.toggle('granted', granted);
+                item.classList.toggle('editable', isCustom);
+                item.querySelector('.settings-perm-check').textContent = granted ? '✓' : '—';
+            });
+        });
+
+        // Click en un módulo togglea su check (solo en modo personalizado).
+        matrixEl.querySelectorAll('.settings-perm-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                if (e.target.tagName === 'INPUT') return;
+                const cb = item.querySelector('.settings-perm-cb');
+                if (cb.disabled) return;
+                cb.checked = !cb.checked;
+                item.classList.toggle('granted', cb.checked);
+                item.querySelector('.settings-perm-check').textContent = cb.checked ? '✓' : '—';
+            });
+        });
+
+        document.getElementById('admPermSaveBtn').addEventListener('click', async () => {
+            const isCustom = toggle.checked;
+            let custom_permissions = null;
+            if (isCustom) {
+                custom_permissions = [];
+                matrixEl.querySelectorAll('.settings-perm-cb:checked').forEach(cb => custom_permissions.push(cb.dataset.mod));
+            }
+            const btn = document.getElementById('admPermSaveBtn');
+            btn.disabled = true;
+            btn.textContent = 'Guardando…';
+            try {
+                await API.updateProfile(uid, { custom_permissions });
+                Modal.close(modal.id);
+                Toast.success(custom_permissions
+                    ? `Permisos personalizados guardados para ${user.name}`
+                    : `${user.name} vuelve a permisos según su rol`);
+                if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'admin-panel', `Editó permisos de ${user.name}`, 'usuario', uid);
+                // Si edita sus propios permisos, refrescar el cache de Auth.
+                const self = Auth.getUser();
+                if (self && self.uid === uid && typeof Auth.updateCachedProfile === 'function') {
+                    Auth.updateCachedProfile({ customPermissions: custom_permissions });
+                }
+                this._loadUsuariosTab();
+            } catch (err) {
+                Toast.error(err.message || 'Error al guardar permisos');
+                btn.disabled = false;
+                btn.textContent = 'Guardar permisos';
+            }
+        });
     },
 
     // ═══════════════════════════════════════════
