@@ -120,6 +120,10 @@ const AdminPanel = {
     //  RENDER — Module shell with 4 tabs
     // ═══════════════════════════════════════════
     render() {
+        // Defensa en profundidad: el router ya gatea con superadminOnly, pero el
+        // Panel toca audit log completo + roles → reconfirmamos el rol. (Fase 12.C)
+        if (!Auth.isSuperAdmin()) return Router.navigate('lobby');
+
         const content = document.getElementById('mainContent');
         if (!content) return;
 

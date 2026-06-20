@@ -64,6 +64,10 @@ const RRHHModule = {
     async render() {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
+        // Defensa en profundidad: RRHH expone CUIL/CBU/sueldos → solo admin-level.
+        // El router ya gatea por module:'rrhh'; esto cubre custom_permissions raros
+        // y deja el módulo consistente con finanzas/costos. (Fase 12.C)
+        if (!Auth.isAdminLevel()) return Router.navigate('lobby');
 
         const content = document.getElementById('mainContent');
         if (!content) return;

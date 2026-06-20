@@ -91,7 +91,7 @@ const Router = {
 
             // ── Recursos ──
             'rrhh':             { render: () => RRHHModule.render(), requiresAuth: true, module: 'rrhh' },
-            'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras' },
+            'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras', adminOnly: true },
             'inventario':       { render: () => InventarioModule.render(), requiresAuth: true, module: 'inventario' },
             'locaciones':       { render: () => LocacionesModule.render(), requiresAuth: true, module: 'locaciones' },
             'flota':            { render: () => FlotaModule.render(), requiresAuth: true, module: 'flota' },

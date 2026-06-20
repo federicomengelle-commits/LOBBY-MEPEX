@@ -753,28 +753,15 @@ const Settings = {
             submitBtn.disabled = true;
             submitBtn.textContent = 'Reseteando…';
 
-            // Note: Supabase client-side can only change the current user's password.
-            // For other users, we need to use a workaround:
-            // Sign in as the target user with a temp session, change password, then restore admin.
-            // Since we can't know the user's current password, this requires Supabase Admin API.
-            // For now, we'll show a helpful message about doing it from Supabase dashboard.
+            // Reseteo vía el backend service-role (lobby-api) — el anon key del
+            // cliente NO puede usar auth.admin.updateUserById. Misma API que usa
+            // admin-panel.js (la que funciona). (Fase 12.C — antes esto siempre fallaba.)
             try {
-                // Try using Supabase admin.updateUserById if available
-                const { data, error } = await supabaseClient.auth.admin.updateUserById(target.uid, {
-                    password: newPassword,
-                });
-                if (error) throw error;
-
+                await API.adminResetPassword(target.uid, newPassword);
                 Modal.close(instance.id);
                 Toast.success(`Contraseña de @${target.username} reseteada exitosamente`);
             } catch (e) {
-                // Admin API not available with anon key — show instructions
-                errorEl.innerHTML = `
-                    <span style="color:#F28D15">El reseteo de contraseña requiere acceso al panel de Supabase.</span>
-                    <br><span style="color:#999;font-size:11px;line-height:1.4;display:block;margin-top:6px">
-                    Abrí <strong>Supabase → Authentication → Users</strong>, buscá a <strong>${target.name}</strong> (${target.username}@mepex.local) y usá "Send password recovery" o editá el usuario directamente.
-                    </span>
-                `;
+                errorEl.textContent = e.message || 'No se pudo resetear la contraseña. Reintentá o usá el Panel de Control.';
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Resetear';
             }
