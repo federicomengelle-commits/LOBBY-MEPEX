@@ -122,7 +122,7 @@ const HomeModule = {
         'pipeline-temp':     { title: 'Pipeline por temperatura',   icon: '🌡️', accent: '#F28D15' },
         'clientes-contactar':{ title: 'Clientes a contactar',       icon: '📞', accent: '#00A9C1' },
         'clientes-reactivar':{ title: 'Clientes para reactivar',    icon: '🔄', accent: '#9B7DFF' },
-        'fechas-clientes':   { title: 'Fechas de clientes',         icon: '🎂', accent: '#00A9C1' },
+        'fechas-clientes':   { title: 'Fechas relacionadas',        icon: '📆', accent: '#9B7DFF' },
         'tiempo-respuesta':  { title: 'Tiempo de respuesta',        icon: '⚡', accent: '#00A9C1' },
 
         // ── Radar PM ──
@@ -871,7 +871,35 @@ const HomeModule = {
             if (!list.length) return this._empty('Sin clientes inactivos');
             return list.map(c => this._li(c.nombre_empresa, '', c.ultimo_contacto ? 'últ. ' + this._agoLabel(c.ultimo_contacto, ctx.now) : 'inactivo', '#9B7DFF')).join('') + this._more('Ver clientes', 'crm');
         },
-        'fechas-clientes': async function (ctx) { return this._empty('Sin fechas de clientes cargadas (cumpleaños / aniversarios).'); },
+        'fechas-clientes': async function (ctx) {
+            // "Fechas relacionadas" = eventos próximos donde participa un cliente del vendedor
+            // (vía sus proyectos) + cotizaciones con fecha de evento. Excusa de contacto.
+            const cots = (await this._memo(ctx, 'cots', () => API.getCotizaciones()) || []).filter(c => c.vendedorId === ctx.userId);
+            const cliName = {}; cots.forEach(c => { if (c.clienteId) cliName[c.clienteId] = c.clienteNombre; });
+            const cliIds = Object.keys(cliName);
+            const today = this._todayStr(ctx.now);
+            const items = [], seen = new Set();
+            const push = (cliente, evento, fecha) => {
+                if (!fecha || fecha.slice(0, 10) < today) return;
+                const k = (cliente || '') + '|' + fecha.slice(0, 10) + '|' + (evento || '');
+                if (seen.has(k)) return; seen.add(k);
+                items.push({ cliente: cliente || 'Cliente', evento, fecha });
+            };
+            if (cliIds.length) {
+                const rows = await this._memo(ctx, 'fechasCli', async () => {
+                    const db = this._db(); if (!db) return [];
+                    const { data } = await db.from('proyectos')
+                        .select('cliente_id, evento:eventos!evento_id(nombre, fecha_evento_inicio)')
+                        .eq('_deleted', false).in('cliente_id', cliIds);
+                    return data || [];
+                }) || [];
+                rows.forEach(p => { if (p.evento) push(cliName[p.cliente_id], p.evento.nombre, p.evento.fecha_evento_inicio); });
+            }
+            cots.forEach(c => push(c.clienteNombre, c.nombreEvento, c.fechaEvento));
+            items.sort((a, b) => a.fecha.localeCompare(b.fecha));
+            if (!items.length) return this._empty('Sin fechas próximas de tus clientes');
+            return items.slice(0, 6).map(it => this._li(it.cliente, '', `${it.evento ? it.evento + ' · ' : ''}${this._dayLabel(it.fecha, ctx.now)}`, '#9B7DFF')).join('') + this._more('Ver CRM', 'crm');
+        },
         'tiempo-respuesta': async function (ctx) {
             const casos = await this._memo(ctx, 'casosMine', () => API.getCasos({ ownerId: ctx.userId })) || [];
             const leads = casos.filter(c => c.estado === 'lead');

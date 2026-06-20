@@ -2,9 +2,11 @@
    Carga de comprobantes por foto/IA — endpoint /api/ocr/comprobante (proxy VPS)
    =============================================
    OCR de un comprobante de compra (foto o PDF) → extrae datos estructurados.
-   Motor AGNÓSTICO del modelo (mismas env vars que crm-digest.js):
+   Motor AGNÓSTICO del modelo (reusa las env vars de crm-digest.js):
      MODEL_PROVIDER = gemini | claude        (default: gemini)
-     GEMINI_API_KEY / GEMINI_MODEL           (gemini-2.0-flash o superior; soporta imagen y PDF)
+     GEMINI_API_KEY                          (la misma del CRM)
+     OCR_MODEL                               (OPCIONAL: modelo para OCR; si no está usa GEMINI_MODEL)
+                                             recomendado gemini-2.5-flash o gemini-2.0-flash (mejor visión que flash-lite)
      ANTHROPIC_API_KEY / CLAUDE_MODEL        (si MODEL_PROVIDER=claude)
    La IA SUGIERE; el humano confirma en el front (form pre-cargado, nunca postea solo).
 
@@ -17,8 +19,9 @@
    ============================================= */
 
 const PROVIDER = (process.env.MODEL_PROVIDER || 'gemini').toLowerCase();
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
+// OCR_MODEL pisa al modelo del CRM solo para OCR (visión). Fallback: el del CRM, luego un default sólido.
+const GEMINI_MODEL = process.env.OCR_MODEL || process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const CLAUDE_MODEL = process.env.OCR_MODEL || process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
 
 // Contrato de salida. Le pedimos al modelo SOLO este JSON (taxonomía real de comprobantes_recibidos).
 function buildPrompt() {

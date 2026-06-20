@@ -362,7 +362,7 @@ El vínculo **proyecto→perfil ya existe** (no hay que inventar): `proyectos.re
 - **Carga de comprobantes — el "sueño" completo:** multi-comprobante en lote + grilla de preview/corrección antes de confirmar (v1 es de a uno).
 - **Registrar cobro/pago (atajos admin):** hoy navegan a Finanzas con el tab pre-seleccionado (`_activeTab`). Mejora: deep-link que ABRA el modal con la data ya cargada (requiere un hook en `finanzas.js render()` que lea un query param — no se hizo para no tocar el módulo de 8700 líneas en caliente).
 - **DSO/DPO real:** hoy el tile `ritmo-cp` muestra por-cobrar/por-pagar + "próximamente". Para los días promedio reales falta emparejar fecha de factura con fecha de cobro/pago (join custom sobre `cobro_aplicaciones`/`comprobantes`).
-- **`fechas-clientes` (venta):** sin data de cumpleaños/aniversarios en `clientes` → empty-state. Si se quiere, agregar columna y cargarla.
+- **`fechas-clientes` → "Fechas relacionadas" ✅ HECHO** (`lobby.js?v=12`): muestra eventos próximos de los clientes del vendedor (vía `proyectos→eventos` + `cotizaciones.fechaEvento`) como excusa de contacto. Futuro opcional (idea de Fede): sumar "día del rubro" = efeméride del sector, con un mapa curado `rubro→fecha`.
 - **materiales-faltantes:** hoy lee `proyecto_novedades.tipo='falta_material'` (poblada). La señal de stock bajo de `Alertas` usa `insumos_base.stock_actual/stock_minimo` que están **sin usar** (la app usa `stock`) → si se quiere stock-bajo confiable, alinear esa señal a `stock` (cruza con el RPC `ajustar_stock` de Fase 12.D).
 
 ## 🆕 Ideas de mejora pendientes *(del análisis ultracode 2026-06-12 — lo ya hecho está en PROGRESO §Infra)*
