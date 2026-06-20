@@ -418,6 +418,14 @@ const App = {
                     if (btn.dataset.actionRoute) Router.navigate(btn.dataset.actionRoute);
                 } else if (type === 'cargar-comprobante') {
                     if (typeof CargaComprobante !== 'undefined') CargaComprobante.open();
+                } else if (type === 'pedir-compra') {
+                    if (typeof PedidoCompra !== 'undefined') PedidoCompra.open();
+                } else if (type === 'registrar-cobro') {
+                    if (typeof FinanzasModule !== 'undefined') FinanzasModule._activeTab = 'ingresos';
+                    Router.navigate('finanzas');
+                } else if (type === 'registrar-pago') {
+                    if (typeof FinanzasModule !== 'undefined') FinanzasModule._activeTab = 'egresos';
+                    Router.navigate('finanzas');
                 } else if (type === 'create') {
                     const entity = btn.dataset.actionEntity;
                     if (entity && typeof Modules._openCreateModal === 'function') {

@@ -105,22 +105,22 @@ const Data = {
         ],
         admin: [
             { id: 'cargar-comprobante', icon: '📸', label: 'Cargar comprobante', action: 'cargar-comprobante' },
-            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
-            { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
-            { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'navigate', route: 'proyectos' },
+            { id: 'registrar-cobro', icon: '📥', label: 'Registrar cobro', action: 'registrar-cobro' },
+            { id: 'registrar-pago', icon: '📤', label: 'Registrar pago', action: 'registrar-pago' },
         ],
         venta: [
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
+            { id: 'agendar-seguimiento', icon: '⏭', label: 'Agendar seguimiento', action: 'navigate', route: 'crm' },
         ],
         pm: [
             { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'navigate', route: 'proyectos' },
             { id: 'nuevo-evento', icon: '📅', label: 'Nuevo evento', action: 'navigate', route: 'eventos' },
-            { id: 'ver-calendario', icon: '🗓️', label: 'Calendario', action: 'navigate', route: 'calendario' },
+            { id: 'pedir-compra', icon: '🛒', label: 'Pedir compra', action: 'pedir-compra' },
         ],
         taller: [
             { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'navigate', route: 'taller' },
-            { id: 'ver-calendario', icon: '🗓️', label: 'Calendario', action: 'navigate', route: 'calendario' },
+            { id: 'pedir-compra', icon: '🛒', label: 'Pedir compra', action: 'pedir-compra' },
             { id: 'ver-inventario', icon: '📦', label: 'Inventario', action: 'navigate', route: 'inventario' },
         ],
     },
