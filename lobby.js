@@ -592,7 +592,7 @@ const HomeModule = {
     },
 
     _OPER_MODS: ['proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'calendario', 'produccion', 'locaciones', 'flota'],
-    _ADMIN_MODS: ['finanzas', 'contabilidad', 'compras', 'rrhh', 'costos', 'rendimiento'],
+    _ADMIN_MODS: ['finanzas', 'contabilidad', 'compras', 'rrhh', 'costos', 'rendimiento', 'calendario-adm'],
     async _renderAlertas(ctx, mods) {
         let items = [];
         try { await Alertas.ensureFresh(); items = Alertas.getItems() || []; } catch (e) { return this._empty('Sin alertas'); }

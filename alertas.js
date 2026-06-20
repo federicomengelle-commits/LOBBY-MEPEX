@@ -39,6 +39,7 @@ const Alertas = {
         rrhh:       ['superadmin', 'admin'],
         inventario: ['superadmin', 'admin'],
         locaciones: ['superadmin', 'admin'],
+        'calendario-adm': ['superadmin', 'admin'],
     },
 
     // ─── Lifecycle ───
@@ -319,6 +320,33 @@ const Alertas = {
                 titulo: `${n} ${Alertas._plural(n, 'insumo')} con stock bajo`,
                 detalle: 'Por debajo del mínimo', link: '#inventario', count: n,
             }];
+        },
+
+        // Calendario administrativo: vencimientos pendientes (vencidos + próximos 7 días)
+        async 'calendario-adm'() {
+            const items = [];
+            const today = Alertas._dateOffset(0), in7 = Alertas._dateOffset(7);
+            try {
+                const { count: vencidos } = await supabaseClient
+                    .from('vencimientos_generados').select('id', { count: 'exact', head: true })
+                    .eq('_deleted', false).eq('estado', 'pendiente').lt('fecha_vencimiento', today);
+                if (vencidos > 0) items.push({
+                    moduleId: 'calendario-adm', tipo: 'venc_vencido', key: 'caladm_vencido',
+                    severidad: 'danger', icon: '🔴',
+                    titulo: `${vencidos} ${Alertas._plural(vencidos, 'vencimiento')} vencido${vencidos > 1 ? 's' : ''}`,
+                    detalle: 'Pago atrasado', link: '#calendario-adm', count: vencidos,
+                });
+                const { count: prox } = await supabaseClient
+                    .from('vencimientos_generados').select('id', { count: 'exact', head: true })
+                    .eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', today).lte('fecha_vencimiento', in7);
+                if (prox > 0) items.push({
+                    moduleId: 'calendario-adm', tipo: 'venc_proximo', key: 'caladm_proximo',
+                    severidad: 'warning', icon: '🗓️',
+                    titulo: `${prox} ${Alertas._plural(prox, 'vencimiento')} esta semana`,
+                    detalle: 'Próximos a vencer', link: '#calendario-adm', count: prox,
+                });
+            } catch (e) { /* tablas de vencimientos pueden no existir aún */ }
+            return items;
         },
 
         // Locaciones: documentación con vencimiento ≤30 días
