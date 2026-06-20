@@ -1,7 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 30%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 28%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈70%). No repetir acá lo que está en PROGRESO.
-> *(Rebalanceo 2026-06-20 — **Fase 12.A construida + pusheada** (`6346a44` router teardown + `8f8f520` _esc global): hallazgos T1 (leaks de listeners) y T2 (XSS interno del legacy) resueltos. ⏳ verificación end-to-end en prod pendiente del pull de Fede. PLAN 31→30, PROGRESO 69→70. Restan 12.B/C/D/E.)*
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈72%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-20 — **Fase 12 Saneamiento técnico casi completa** (5 batches pusheados, 1 sesión autónoma): 12.A router teardown + _esc global (`8f8f520`) · 12.C permisos (`1a4d5a5`) · 12.E quick-wins (`ebd1b4e`) · 12.B datos (`e72e7c5`) · 12.D perf (`59c1960`). ⏳ verificación end-to-end en prod pendiente del pull de Fede (Fede autorizó "auditar después"). **Diferidos** (no autónomos / overlap con otras fases): inventario stock atómico (SQL/Fase 4) · Mayor server-filter (RPC) · eventos teardownEndDate→columna + transporte modal (refactor de raíz/Fase 4) · consolidar Usuarios y Roles. PLAN 31→28, PROGRESO 69→72.)*
 > *(Rebalanceo 2026-06-18c — AUDITORÍA de módulos (5 agentes) → nueva **Fase 12 Saneamiento técnico ≈4%** (router teardown, dummy data de eventos, _esc global, permisos, perf). El universo creció → PLAN 28→31, PROGRESO 72→69. Detalle: `docs/auditoria-modulos-2026-06-18.md`.)*
 > *(Rebalanceo 2026-06-18b — RECONCILIACIÓN código vs plan (3 agentes Explore). Confirmado YA HECHO (no estaba bien contado): **Costos UX F1-F4**, **Compras Fase 5 doble-paso completo** (incl. Pedido desde Taller), **Tareas Fase 11** (falta validación visual Fede), **CRM E1+R1+R2+R3+IA digest**. **El blocker del `:3000` ya está RESUELTO** (nginx `/api/`, la IA digest anda en el browser). RESTANTE REAL concentrado en: CRM comms E2/E4/R4 (diferido), Fase 6 Diseño (0%), Fase 4 (cotizador), 2 SQL Finanzas (Fede), pulido + Fase 5(a). PLAN 38→28, PROGRESO 62→72.)*
 > *(Rebalanceo 2026-06-14: Fase 7 CRM refactor v2 R1+R2+R3 construidas → a PROGRESO. PLAN 40→38, PROGRESO 60→62.)*
@@ -307,7 +307,7 @@ El vínculo **proyecto→perfil ya existe** (no hay que inventar): `proyectos.re
 
 **Preguntas abiertas para Fede (a charlar):** (1) granularidad: ¿1 tarea por item de checklist o 1 por proyecto que abre el checklist? (2) generación SQL trigger vs job en `Alertas`: ¿las derivadas existen aunque nadie abra la app? (3) claim por rol: ¿la toma el primero o se asigna explícito? ¿quién reasigna? (4) alcance v1: ¿solo taller+compras+RRHH y después finanzas/admin, o todo de una? (5) tareas manuales: ¿cualquiera asigna a cualquiera, o jerarquía? (6) `proyecto_novedades` → ¿convertir novedad en tarea con un clic? (7) personal sin login: ¿sus tareas las ve el encargado o quedan fuera de v1? (8) recurrencia (cierres mensuales, renovaciones): ¿v1 o futuro?
 
-### 🆕 Fase 12 — Saneamiento técnico / deuda de arquitectura *(≈4% · de la auditoría 2026-06-18)*
+### 🆕 Fase 12 — Saneamiento técnico / deuda de arquitectura *(≈4% · ✅ CASI COMPLETA 2026-06-20 — 5 batches pusheados, ⏳ verificación en prod + 4 diferidos)*
 
 > **Detalle completo con evidencia (archivo:línea) + confianza en `docs/auditoria-modulos-2026-06-18.md`.** Acá = el plan fasado para ir tildando. 5 agentes auditaron ~22 módulos vs el patrón canónico (`docs/lobby-module-builder-SKILL-v2.md`). La deuda se concentra en los 3-4 módulos más viejos; los nuevos salieron limpios. **Al hacer cada batch → mover a PROGRESO §Fase 12 + tildar acá.**
 
@@ -315,31 +315,31 @@ El vínculo **proyecto→perfil ya existe** (no hay que inventar): `proyectos.re
 - [x] **Router lifecycle `destroy()`** (`6346a44`, `router.js?v=12`) — el router trackea el módulo activo (ref `obj` en rutas crm/calendario/proyectos:id) y llama `destroy()` al saliente antes de renderizar. Cada módulo que ata listeners a `document` expone `destroy()`: `crm.js?v=18` (2 escHandlers de panel: ref en estado + remove-before-add + cleanup), `proyecto-detalle.js?v=6` (click dropdown: ref en estado), `calendario-operativo.js?v=18` (su `destroy()` ya existía pero era código muerto; ahora se invoca + idempotente). Arregla los ~4 leaks de una.
 - [x] **`_esc()` global compartido** (`8f8f520`) — `window.escHtml`/`escAttr` en `components.js?v=8` (5 chars peligrosos). Aplicado a `modules.js?v=8` (render Clientes: tabla + resumen `:3398`) y `locaciones.js?v=4` (nombre/dirección/foto_url-en-style/archivo_url-en-href/notas). **`calendar.js` NO se tocó: muerto y borrado** (la auditoría lo listó por error). `eventos.js` ya tiene `_esc`/`_escAttr` propio → sus gaps menores caen en el refactor de 12.B.
 
-**12.B — Anti-patrones de datos (sacar dummy / localStorage de negocio):**
-- [ ] **`eventos.js`** (el más viejo) — sacar `_getDummyEvents()` (7 eventos ficticios servibles en prod, `:2988`/fallback `:268`) → empty-state real. Migrar `teardownEndDate` de localStorage (`ev_ext_${id}`, `:325`) a la columna real `fecha_desarme_fin`. Modal transporte: de `logistica_vehiculos`/`rrhh_personal` legacy → `vehiculos`/`personas`. Limpiar doble `_ROLES_OP` (`:812`/`:1237`).
-- [ ] **`lobby.js`** — no mostrar `Data.recentActivity` mock cuando `audit_log` viene vacío (`:548`) → empty-state real.
-- [ ] **`tareas.js`** — generador "Reponer stock" lee `insumos_base.stock_actual/stock_minimo` (columnas sin usar) → usar `stock` (`:251`) o nunca dispara.
-- [ ] **`calendario-operativo.js`** — docs vía `localStorage('ev_docs_${id}')` (`:263`) divergen del panel (que usa la API) → alinear `evento_documentos` y sacar el fallback.
+**12.B — Anti-patrones de datos — ✅ HECHO 2026-06-20 (`e72e7c5`), salvo migración diferida:**
+- [x] **`eventos.js`** — borrado el fallback `_getDummyEvents()` (+ método, ~55 líneas) → empty-state real; dedup del doble `_ROLES_OP`. ⏳ DIFERIDO al refactor de raíz de eventos: migrar `teardownEndDate` localStorage → `fecha_desarme_fin` (la columna EXISTE pero la deriva el trigger de jornadas Fase 4.1 → escribirla directo chocaría) + modal transporte legacy (lo retira Fase 4).
+- [x] **`lobby.js`** — feed de actividad ya no cae a `Data.recentActivity` mock cuando `audit_log` viene vacío → empty-state real.
+- [x] **`tareas.js`** — generador "Reponer stock" usa la columna real `stock` (no `stock_actual` fantasma, que dejaba la fuente muerta).
+- [x] **`calendario-operativo.js`** — docs ya no se leen del `localStorage('ev_docs_')` divergente → fuente única Supabase (`e._documentos` vía API).
 
-**12.C — Seguridad / permisos:**
-- [ ] **`settings.js`** — botón "Resetear contraseña" ROTO (usa `auth.admin.updateUserById`, no anda con anon key, `:763`) → apuntar a `API.adminResetPassword` (como admin-panel) o sacarlo.
-- [ ] **`rrhh.js`** — `render()` sin guard de rol (`:64`) → agregar `if (!Auth.isAdminLevel()) return Router.navigate('lobby')` (expone CUIL/CBU/sueldos).
-- [ ] **`admin-panel.js`** — `render()` sin `Auth.isSuperAdmin()` (`:122`) — defensa en profundidad.
-- [ ] **`compras.js`** — `adminOnly:true` ausente en el router (`router.js:94`) pese al "solo admin/superadmin" — alinear con `rendimiento` (`router.js:102`).
+**12.C — Seguridad / permisos — ✅ HECHO 2026-06-20 (`1a4d5a5`):**
+- [x] **`settings.js`** — "Resetear contraseña" usa `API.adminResetPassword` (backend lobby-api) en vez de `auth.admin.updateUserById` (siempre fallaba con el anon key).
+- [x] **`rrhh.js`** — `render()` con `if (!Auth.isAdminLevel()) return Router.navigate('lobby')` (expone CUIL/CBU/sueldos).
+- [x] **`admin-panel.js`** — `render()` con `if (!Auth.isSuperAdmin())` (defensa en profundidad).
+- [x] **`compras.js`** — `adminOnly:true` en la ruta (matriz verificada: solo superadmin+admin tienen `compras`).
 
-**12.D — Correctness / performance:**
-- [ ] **`contabilidad.js`** — totales Libro Diario truncados a 1000 filas (`:2685`, `count` exacto pero suma sobre `.data` capada) → agregación SQL/RPC o paginar. (Latente, hoy ~4 asientos.) + dead code `linea.debe/haber` (`:3164`, columnas inexistentes). + Libro Mayor sin filtro de fecha (`:3122`) → pushear al server.
-- [ ] **`inventario.js`** — RPC `stock = stock + delta` (atómico) → cierra la race + agrega error-check/rollback + paraleliza el loop secuencial (`:2126`).
-- [ ] **`finanzas.js`** — KPI "Saldo disponible" N+1 secuencial (`:5856`) → `Promise.all` o leer `saldos_mensuales` (materializado por trigger; además unifica el saldo con Contabilidad, evita divergencias).
+**12.D — Correctness / performance — ✅ HECHO 2026-06-20 (`59c1960`), salvo SQL-gated diferido:**
+- [x] **`contabilidad.js`** — totales Libro Diario ya no se truncan a 1000 (count `head:true` + suma paginada, closure de filtros compartida) + removido dead code `linea.debe/haber` (columnas inexistentes). ⏳ DIFERIDO: Libro Mayor sin filtro de fecha al server (necesita RPC para computar el saldo anterior).
+- [ ] **`inventario.js`** — ⏳ DIFERIDO (SQL-gated): RPC `stock = stock + delta` atómico + error-check/rollback + paralelizar el loop. Hogar natural = remito de Fase 4 (que descuenta inventario). Impacto hoy casi nulo (equipo chico).
+- [x] **`finanzas.js`** — KPI "Saldo disponible" paralelizado con `Promise.all` (era N+1 secuencial). Idea futura: unificar contra `saldos_mensuales` materializado.
 
-**12.E — Consistencia / quick-wins:**
-- [ ] **`locaciones.js`** (el más alejado del patrón) — agregar `_esc`/`_escAttr` + cambiar 3 `onclick="Modal.close()"` inline (`:414,644,912`) por `data-modal-close`.
-- [ ] **`catalogo.js`/`compras.js`** — 7 `onclick="Modal.close()"` inline → `data-modal-close`; `catalogo.js:605` `value="${val}"` sin escapar.
-- [ ] **`proyectos.js`** — búsqueda accent-insensitive con `normStr` (`:372`).
-- [ ] **Consolidar "Usuarios y Roles"** duplicado: `settings.js` (#admin-usuarios) vs `admin-panel.js` (tab Usuarios) — 2 UIs para lo mismo.
-- [ ] **`modules.js`** — sacar 2 `console.log` de debug (`:239`, `:437`).
-- [ ] **`taller.js`** — `setEstadoTaller` con `await` en el estado optimista (`:588`). **`flota.js`** — `_norm` regex con `̀-ͯ` (no literales, `:426`).
-- [ ] **Doc:** corregir `CLAUDE.md §5` (`modules.js` = 4354 líneas, no ~7100).
+**12.E — Consistencia / quick-wins — ✅ HECHO 2026-06-20 (`ebd1b4e`), salvo consolidación diferida:**
+- [x] **`locaciones.js`** — `_esc`/`_escAttr` (en 12.A) + 3 `onclick="Modal.close()"` → `data-modal-close`.
+- [x] **`catalogo.js`/`compras.js`** — 10 `onclick="Modal.close()"` → `data-modal-close` (bonus: los no-arg no cerraban → ahora sí); `catalogo.js` `value` escapado con `escAttr`.
+- [x] **`proyectos.js`** — búsqueda accent-insensitive con `normStr` (global).
+- [ ] **Consolidar "Usuarios y Roles"** duplicado (settings vs admin-panel) — ⏳ DIFERIDO (más grande, no quick-win; ambas UIs funcionan, es mantenimiento doble).
+- [x] **`modules.js`** — removidos 2 `console.log` de debug.
+- [x] **`taller.js`** — `setEstadoTaller` con `await` + revert si falla. **`flota.js`** — `_norm` → `normStr` (global).
+- [x] **Doc:** `CLAUDE.md §5` corregido (`modules.js` ~4350 líneas, no ~7100).
 
 > **Módulos MODELO (referencias del patrón, salieron limpios):** `proyectos.js`, `flota.js`, `remito-pdf.js`, `inventario.js` (gold-standard de cleanup de listeners — copiar para arreglar crm/calendario), `costos.js`, `rendimiento.js`, `tareas.js` (carga defensiva).
 
