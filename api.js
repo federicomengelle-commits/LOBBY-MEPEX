@@ -5832,6 +5832,46 @@ const API = {
         return data.id;
     },
 
+    // ── OCR de comprobante por IA (proxy VPS /api/ocr/comprobante) ──
+    //  imagen = base64 SIN prefijo data:. Devuelve {cuit, razon_social, fecha, neto,
+    //  iva, total, tipo, numero} o null (degrada a carga manual si el endpoint no está).
+    async ocrComprobante(imagenB64, mimeType) {
+        if (!imagenB64) return null;
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 45000); // la IA tarda 5-25s
+            const res = await fetch('/api/ocr/comprobante', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imagen: imagenB64, mimeType: mimeType || 'image/jpeg' }),
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`HTTP ${res.status}: ${t.slice(0, 200)}`); }
+            const json = await res.json();
+            if (!json || json.ok === false) throw new Error(json?.error || 'ocr sin ok');
+            return json;
+        } catch (e) { console.warn('[API] ocrComprobante no disponible:', e.message); return null; }
+    },
+
+    // ── Subir archivo de comprobante al bucket privado `comprobantes` ──
+    async uploadComprobante(file) {
+        try {
+            const ext = (file.type || '').includes('pdf') ? 'pdf' : (((file.name || '').split('.').pop() || 'jpg').toLowerCase());
+            const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('c' + Date.now());
+            const path = `${id}/original.${ext}`;
+            const { error } = await supabaseClient.storage.from('comprobantes').upload(path, file, { contentType: file.type || 'image/jpeg', upsert: true, cacheControl: '60' });
+            if (error) throw error;
+            return path;
+        } catch (e) { console.warn('[API] uploadComprobante:', e.message); return null; }
+    },
+
+    async getComprobanteSignedUrl(path, expiresInSec = 3600) {
+        if (!path) return null;
+        try { const { data } = await supabaseClient.storage.from('comprobantes').createSignedUrl(path, expiresInSec); return data?.signedUrl || null; }
+        catch (e) { return null; }
+    },
+
     // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──
     //  Pagos SIEMPRE discriminados: 1 pago = 1 egreso. Soporta tandas/adelantos (parcial).
     async pagarCostoEvento({ costo, monto, fecha, medio, canal, cuenta_id, comprobante = null, notas = null }) {
