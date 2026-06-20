@@ -158,7 +158,7 @@ LOBBY-MEPEX/
 ├── calendar.js             # Calendario global: grilla mensual CSS, filtros por tipo
 ├── calendario-operativo.js # Timeline vertical operativo: carriles por evento, fases, zoom
 ├── eventos.js              # Modulo Eventos: tabla + cards + ficha con secciones editables
-├── modules.js              # Renderer generico de modulos (~7100 lineas): tablas, fichas, CRUD
+├── modules.js              # Renderer generico de modulos (~4350 lineas): tablas, fichas, CRUD
 ├── settings.js             # Pantallas: Mi Perfil, Usuarios y Roles (admin), Notificaciones
 ├── admin-panel.js          # Panel de Control admin: metricas, tabla usuarios, audit log
 │

@@ -543,7 +543,7 @@ const CatalogoModule = {
             body: `<form id="catCreateForm" class="modal-form">${body}</form>`,
             size: 'md',
             footer: `
-                <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn btn-primary" id="catCreateSave">Crear item</button>
             `,
         });
@@ -602,7 +602,7 @@ const CatalogoModule = {
             return `
                 <div class="form-group">
                     <label class="form-label">${f.label}${f.required ? ' *' : ''}</label>
-                    <input type="${f.type}" class="form-input" name="${f.key}" value="${val}" placeholder="${f.placeholder || ''}" ${f.required ? 'required' : ''}>
+                    <input type="${f.type}" class="form-input" name="${f.key}" value="${escAttr(val)}" placeholder="${f.placeholder || ''}" ${f.required ? 'required' : ''}>
                 </div>`;
         }).join('');
 
@@ -611,7 +611,7 @@ const CatalogoModule = {
             body: `<form id="catEditForm" class="modal-form">${body}</form>`,
             size: 'md',
             footer: `
-                <button class="btn btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn btn-primary" id="catEditSave">Guardar cambios</button>
             `,
         });

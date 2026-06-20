@@ -369,12 +369,13 @@ const ProyectosModule = {
             list = list.filter(p => (p.tipos || []).some(t => t.tipo === this._typeFilter));
         }
         if (this._searchQuery) {
-            const q = this._searchQuery.toLowerCase();
+            // Accent-insensitive: "iluminacion" matchea "Iluminación" (Fase 12.E).
+            const q = normStr(this._searchQuery);
             list = list.filter(p => {
-                const nombre = (p.nombre || '').toLowerCase();
-                const clienteName = (p.cliente?.nombre_empresa || '').toLowerCase();
-                const eventoName = (p.evento?.nombre || '').toLowerCase();
-                const responsablesNames = (p.responsables || []).map(r => r.profile?.name || '').join(' ').toLowerCase();
+                const nombre = normStr(p.nombre);
+                const clienteName = normStr(p.cliente?.nombre_empresa);
+                const eventoName = normStr(p.evento?.nombre);
+                const responsablesNames = normStr((p.responsables || []).map(r => r.profile?.name || '').join(' '));
                 return nombre.includes(q) || clienteName.includes(q) || eventoName.includes(q) || responsablesNames.includes(q);
             });
         }

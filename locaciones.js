@@ -416,7 +416,7 @@ const LocacionesModule = {
         `;
 
         const footer = `
-            <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+            <button class="btn-ghost" data-modal-close>Cancelar</button>
             <button class="btn-primary" id="locSaveLugar">${isEdit ? 'Guardar' : 'Crear'}</button>
         `;
 
@@ -646,7 +646,7 @@ const LocacionesModule = {
         `;
 
         const footer = `
-            <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+            <button class="btn-ghost" data-modal-close>Cancelar</button>
             <button class="btn-primary" id="locSaveDoc">${isEdit ? 'Guardar' : 'Crear'}</button>
         `;
 
@@ -914,7 +914,7 @@ const LocacionesModule = {
         `;
 
         const footer = `
-            <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+            <button class="btn-ghost" data-modal-close>Cancelar</button>
             <button class="btn-primary" id="locSaveStock">${isEdit ? 'Guardar' : 'Asignar'}</button>
         `;
 

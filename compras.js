@@ -846,7 +846,7 @@ const ComprasModule = {
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn-primary" id="cmpPSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });
@@ -912,7 +912,7 @@ const ComprasModule = {
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn-primary" id="cmpCalifSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });
@@ -1333,7 +1333,7 @@ const ComprasModule = {
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn-primary" id="cmpOCSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });
@@ -1403,7 +1403,7 @@ const ComprasModule = {
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn-primary" id="cmpItemSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });
@@ -1638,7 +1638,7 @@ const ComprasModule = {
                 </div>
             `,
             footer: `
-                <button class="btn-ghost" onclick="Modal.close()">Cancelar</button>
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
                 <button class="btn-primary" id="cmpPagoSave" style="font-size:1rem;padding:10px 24px;">Guardar</button>
             `,
         });

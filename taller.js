@@ -584,8 +584,12 @@ const TallerModule = {
         // Auto-estado: primer check → en_armado.
         const p = this._proyectos.find(x => x.id === proyectoId);
         if (p && willCheck && (!p.estado_taller || p.estado_taller === 'pendiente')) {
+            // await + revert: si el write falla, no dejamos el badge local
+            // desincronizado de la DB (antes era fire-and-forget). (Fase 12.E)
+            const prevEstado = p.estado_taller;
             p.estado_taller = 'en_armado';
-            API.setEstadoTaller(proyectoId, 'en_armado');
+            const okEstado = await API.setEstadoTaller(proyectoId, 'en_armado').catch(() => null);
+            if (!okEstado) p.estado_taller = prevEstado;
         }
         this._refreshCardMeta(proyectoId);
         const r = await API.setChecklistItemChecked(itemId, willCheck);

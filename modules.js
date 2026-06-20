@@ -241,7 +241,6 @@ const Modules = {
     },
 
     render(moduleId) {
-        console.log('[Modules] render:', moduleId);
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
@@ -439,7 +438,6 @@ const Modules = {
     async _loadSectionData(mod, sectionId) {
 
         const apiType = this._getApiSectionType(mod.id, sectionId);
-        console.log('[Modules] _loadSectionData:', mod.id, sectionId, '→ apiType:', apiType);
         if (!apiType) return;
 
         const container = document.getElementById('apiDataContainer');

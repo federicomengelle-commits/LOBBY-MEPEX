@@ -423,7 +423,7 @@ const FlotaModule = {
         return `<div class="flota-kv"><span class="flota-k">${label}</span><span class="flota-v">${val}</span></div>`;
     },
 
-    _norm(s) { return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); },
+    _norm(s) { return normStr(s); },
     _esc(s) { return (s ?? '').toString().replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
     _escAttr(s) { return this._esc(s); },
     _fmtDate(d) { if (!d) return '—'; const x = new Date(d + 'T00:00:00'); return `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`; },
