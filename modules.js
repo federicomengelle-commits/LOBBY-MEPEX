@@ -11,6 +11,11 @@ const Modules = {
     currentModule: null,
     currentSection: null,
 
+    // Escape de datos de usuario antes de interpolar en innerHTML (Fase 12.A).
+    // Delega al helper global de components.js.
+    _esc(s) { return escHtml(s); },
+    _escAttr(s) { return escHtml(s); },
+
     // ─── Sort state ───
     _sortCol: null,
     _sortDir: 'asc',
@@ -2556,7 +2561,7 @@ const Modules = {
             filtersEl.innerHTML = `
                 <select class="mepex-type-select" id="clientRubroFilter">
                     <option value="Todos" ${!this._activeRubroFilter ? 'selected' : ''}>Todos los rubros</option>
-                    ${rubros.map(r => `<option value="${r}" ${this._activeRubroFilter === r ? 'selected' : ''}>${r}</option>`).join('')}
+                    ${rubros.map(r => `<option value="${this._escAttr(r)}" ${this._activeRubroFilter === r ? 'selected' : ''}>${this._esc(r)}</option>`).join('')}
                 </select>
             `;
         }
@@ -2580,21 +2585,21 @@ const Modules = {
             const cells = orderedCols.map(col => {
                 switch (col.id) {
                     case 'empresa':
-                        return `<td class="td-primary">${c.name || c.razonSocial || '—'}</td>`;
+                        return `<td class="td-primary">${this._esc(c.name || c.razonSocial || '—')}</td>`;
                     case 'contacto': {
                         const parts = [];
-                        if (c.contactName) parts.push(c.contactName);
-                        if (c.contactRole) parts.push(`<span class="text-muted">${c.contactRole}</span>`);
+                        if (c.contactName) parts.push(this._esc(c.contactName));
+                        if (c.contactRole) parts.push(`<span class="text-muted">${this._esc(c.contactRole)}</span>`);
                         return `<td>${parts.length > 0 ? parts.join(' · ') : '—'}</td>`;
                     }
                     case 'cuit':
                         return `<td>${API.formatCUIT(c.cuit)}</td>`;
                     case 'email':
-                        return `<td>${c.email || '—'}</td>`;
+                        return `<td>${this._esc(c.email || '—')}</td>`;
                     case 'telefono':
-                        return `<td>${c.phone || '—'}</td>`;
+                        return `<td>${this._esc(c.phone || '—')}</td>`;
                     case 'rubro':
-                        return `<td>${Array.isArray(c.rubro) ? c.rubro.join(', ') : (c.rubro || '—')}</td>`;
+                        return `<td>${this._esc(Array.isArray(c.rubro) ? c.rubro.join(', ') : (c.rubro || '—'))}</td>`;
                     default:
                         return `<td>—</td>`;
                 }
@@ -3397,8 +3402,8 @@ const Modules = {
                     <div class="ficha-mini-tl-item">
                         <span class="ficha-mini-tl-icon">${this._canalIcon(i.canal)}</span>
                         <span class="ficha-mini-tl-time">${API.formatDateTime(i.fecha)}</span>
-                        <span class="ficha-mini-tl-who">${i.quien}</span>
-                        <span class="ficha-mini-tl-text">${i.resumen}</span>
+                        <span class="ficha-mini-tl-who">${this._esc(i.quien)}</span>
+                        <span class="ficha-mini-tl-text">${this._esc(i.resumen)}</span>
                     </div>
                 `).join('');
             }

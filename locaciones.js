@@ -23,6 +23,11 @@ const LocacionesModule = {
     _filterStockEstado: '',
     _stockLocacionId: null,
 
+    // Escape de datos de usuario antes de interpolar en innerHTML (Fase 12.A).
+    // Delega al helper global de components.js.
+    _esc(s) { return escHtml(s); },
+    _escAttr(s) { return escHtml(s); },
+
     // ─── Config ───
     _tiposLugar: [
         { value: 'deposito', label: 'Depósito' },
@@ -255,7 +260,7 @@ const LocacionesModule = {
                         return `
                             <div class="loc-card" data-id="${l.id}">
                                 ${l.foto_url ? `
-                                    <div class="loc-card-img" style="background-image:url('${l.foto_url}')"></div>
+                                    <div class="loc-card-img" style="background-image:url('${this._escAttr(l.foto_url)}')"></div>
                                 ` : `
                                     <div class="loc-card-img loc-card-img-placeholder">
                                         <span>🏭</span>
@@ -263,14 +268,14 @@ const LocacionesModule = {
                                 `}
                                 <div class="loc-card-body">
                                     <div class="loc-card-header">
-                                        <h4 class="loc-card-name">${l.nombre || '—'}</h4>
+                                        <h4 class="loc-card-name">${this._esc(l.nombre || '—')}</h4>
                                         <span class="loc-badge" style="background:${estadoColor}20;color:${estadoColor};border:1px solid ${estadoColor}40">${this._getEstadoLabel(l.estado)}</span>
                                     </div>
                                     <div class="loc-card-meta">
                                         <span class="loc-card-tipo">${this._getTipoLabel(l.tipo)}</span>
                                         ${l.superficie ? `<span class="loc-card-sup">${l.superficie} m²</span>` : ''}
                                     </div>
-                                    ${l.direccion ? `<p class="loc-card-dir">${l.direccion}</p>` : ''}
+                                    ${l.direccion ? `<p class="loc-card-dir">${this._esc(l.direccion)}</p>` : ''}
                                 </div>
                             </div>
                         `;
@@ -318,12 +323,12 @@ const LocacionesModule = {
                     <div class="loc-ficha-main">
                         <div class="loc-ficha-header">
                             ${lugar.foto_url ? `
-                                <div class="loc-ficha-img" style="background-image:url('${lugar.foto_url}')"></div>
+                                <div class="loc-ficha-img" style="background-image:url('${this._escAttr(lugar.foto_url)}')"></div>
                             ` : `
                                 <div class="loc-ficha-img loc-ficha-img-placeholder"><span>🏭</span></div>
                             `}
                             <div class="loc-ficha-info">
-                                <h3 class="loc-ficha-name">${lugar.nombre || '—'}</h3>
+                                <h3 class="loc-ficha-name">${this._esc(lugar.nombre || '—')}</h3>
                                 <span class="loc-badge" style="background:${estadoColor}20;color:${estadoColor};border:1px solid ${estadoColor}40">${this._getEstadoLabel(lugar.estado)}</span>
                             </div>
                         </div>
@@ -334,7 +339,7 @@ const LocacionesModule = {
                             </div>
                             <div class="loc-ficha-field">
                                 <span class="loc-field-label">Dirección</span>
-                                <span class="loc-field-value">${lugar.direccion || '—'}</span>
+                                <span class="loc-field-value">${this._esc(lugar.direccion || '—')}</span>
                             </div>
                             <div class="loc-ficha-field">
                                 <span class="loc-field-label">Superficie</span>
@@ -546,15 +551,15 @@ const LocacionesModule = {
                                 const venc = this._getVencimientoInfo(d.fecha_vencimiento);
                                 return `
                                     <tr class="loc-row ${venc.class}">
-                                        <td>${this._getLugarName(d.locacion_id)}</td>
-                                        <td class="loc-cell-name">${d.nombre || '—'}</td>
+                                        <td>${this._esc(this._getLugarName(d.locacion_id))}</td>
+                                        <td class="loc-cell-name">${this._esc(d.nombre || '—')}</td>
                                         <td><span class="loc-badge-tipo">${this._getTipoDocLabel(d.tipo_doc)}</span></td>
                                         <td class="loc-mono">${this._formatDate(d.fecha_vencimiento)}</td>
                                         <td>
                                             ${venc.label ? `<span class="loc-venc-badge ${venc.class}">${venc.label}</span>` : '<span class="loc-venc-ok">Vigente</span>'}
                                         </td>
                                         <td>
-                                            ${d.archivo_url ? `<a href="${d.archivo_url}" target="_blank" class="loc-link-archivo">Ver archivo</a>` : '<span class="loc-no-file">Sin archivo</span>'}
+                                            ${d.archivo_url ? `<a href="${this._escAttr(d.archivo_url)}" target="_blank" rel="noopener" class="loc-link-archivo">Ver archivo</a>` : '<span class="loc-no-file">Sin archivo</span>'}
                                         </td>
                                         <td class="loc-cell-actions">
                                             <button class="loc-btn-icon loc-edit-doc" data-id="${d.id}" title="Editar">✏️</button>
@@ -809,11 +814,11 @@ const LocacionesModule = {
                                 const estColor = this._getEstadoStockColor(s.estado);
                                 return `
                                     <tr class="loc-row">
-                                        <td class="loc-cell-name">${s.insumo_nombre}</td>
-                                        <td><span class="loc-badge-tipo">${s.insumo_cat}</span></td>
+                                        <td class="loc-cell-name">${this._esc(s.insumo_nombre)}</td>
+                                        <td><span class="loc-badge-tipo">${this._esc(s.insumo_cat)}</span></td>
                                         <td class="loc-mono">${s.cantidad || 0}</td>
                                         <td><span class="loc-badge" style="background:${estColor}20;color:${estColor};border:1px solid ${estColor}40">${this._getEstadoStockLabel(s.estado)}</span></td>
-                                        <td class="loc-cell-notas">${s.notas || '—'}</td>
+                                        <td class="loc-cell-notas">${this._esc(s.notas || '—')}</td>
                                         <td class="loc-cell-actions">
                                             <button class="loc-btn-icon loc-edit-stock" data-id="${s.id}" title="Editar">✏️</button>
                                             <button class="loc-btn-icon loc-del-stock" data-id="${s.id}" title="Eliminar">🗑️</button>

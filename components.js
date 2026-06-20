@@ -14,6 +14,18 @@ window.normStr = function (s) {
     return String(s).normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 };
 
+// escHtml / escAttr: escapan datos de usuario antes de interpolarlos en innerHTML.
+// Cubren los 5 chars peligrosos (& < > " '). Helper compartido para los módulos
+// legacy que no definen su propio _esc (modules.js, locaciones.js). Los módulos
+// nuevos ya tienen su método _esc/_escAttr (mismo comportamiento). (Fase 12.A)
+// USO: `<td>${escHtml(item.nombre)}</td>`  ·  `value="${escAttr(item.nombre)}"`
+window.escHtml = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+};
+window.escAttr = window.escHtml;
+
 // ─── TOAST ──────────────────────────────────────
 const Toast = {
     _container: null,
