@@ -30,7 +30,7 @@ const Router = {
         admin:      'lobby',
         venta:      'lobby',     // Híbrido (Fase 9.6): venta/pm aterrizan en su home por rol
         pm:         'lobby',
-        taller:     'eventos',   // taller va DIRECTO a su tablero (ULTRA simple, tablet en galpón)
+        taller:     'lobby',     // Fase 13: taller aterriza en su HOME por rol (antes iba directo a #eventos)
     },
 
     // Acepta string (rol) o user object (con customPermissions). Si el módulo
@@ -186,11 +186,11 @@ const Router = {
             return;
         }
 
-        // Lobby = home por rol para oficina (super/admin/venta/pm). taller va directo a su
-        // tablero (Híbrido, Fase 9.6). Cualquier otro rol cae a su default.
+        // Lobby = home por rol para TODOS (super/admin/venta/pm/taller). Fase 13: taller
+        // dejó de ir directo a #eventos y ahora aterriza en su home. Otros roles → default.
         if (hash === 'lobby') {
             const user = Auth.getUser();
-            const lobbyRoles = ['superadmin', 'admin', 'venta', 'pm'];
+            const lobbyRoles = ['superadmin', 'admin', 'venta', 'pm', 'taller'];
             if (user && !lobbyRoles.includes(user.role)) {
                 this.navigate(this.getDefaultRoute(user));
                 return;

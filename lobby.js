@@ -1,833 +1,562 @@
-/* =============================================
-   MEPEX Lobby — Dashboard personalizado por rol
-   =============================================
-   Cada rol ve KPIs, alertas y contenido relevante.
-   Data real desde Supabase con fallback graceful.
-   ============================================= */
+/* =====================================================================
+   MEPEX HOME — Superficie de acción por rol (Rediseño v2 · Fase 13)
+   =====================================================================
+   UN solo módulo `HomeModule` (alias `Lobby` por compat con router/breadcrumbs).
+   Arquitectura:
+     · _layouts[role] → describe la FORMA del home de cada rol por zonas
+       (band KPI / columnas / hero+tiles / 1 columna / simple).
+     · _widgets[key]  → registro { title, icon, accent, render(ctx) }.
+       Cada widget es READ-ONLY y autocontenido: hace su query (try/catch),
+       devuelve su HTML y linkea a su módulo. Si falla → empty-state, NO
+       rompe al resto (Promise.allSettled + try/catch por widget).
+     · ctx = { user, role, userId(uid), now }.
+   Estilos `home-` inyectados una vez. Dark theme MEPEX siempre.
 
-const Lobby = {
+   ── Fase 1 (este commit): ESQUELETO ──
+   Shell + layouts + grid responsive + estilos + saludo/chip/toggle + registro
+   de widgets con PLACEHOLDER. Las queries reales de cada widget llegan en Fase 2
+   (cada def suma su `render(ctx)`; mientras tanto el hydrate cae al placeholder).
+   ===================================================================== */
 
-    _lastKPIs: null,
+const HomeModule = {
 
+    _stylesInjected: false,
+
+    // ─────────────────────────────────────────────────────────────────
+    //  LAYOUTS POR ROL (qué ve cada rol y en qué orden, por zonas)
+    //  Un item del array `single` puede ser un string (card full-width) o
+    //  un array de strings (fila de 2+ cards lado a lado).
+    // ─────────────────────────────────────────────────────────────────
+    _layouts: {
+        superadmin: {
+            kind: '2col',
+            toggle: true,
+            band: ['kpi-presupuestos', 'kpi-margen', 'kpi-dias-caja', 'kpi-cash30'],
+            left:  { label: 'OPERATIVO',      keys: ['agenda-proxima', 'proyectos-curso', 'cola-taller', 'alertas-operativas', 'materiales-faltantes'] },
+            right: { label: 'ADMINISTRATIVO', keys: ['pulso-financiero', 'cobros-pendientes', 'pagos-proximos', 'pipeline-comercial', 'alertas-admin'] },
+        },
+        admin: {
+            kind: 'admin',
+            toggle: true,
+            band: ['kpi-presupuestos', 'kpi-margen', 'kpi-dias-caja', 'kpi-cash30'],
+            hero: 'calendario-admin-digest',
+            side: ['pulso-financiero', 'cobros-pendientes', 'pagos-proximos'],
+            tiles: ['posicion-iva', 'sueldos-mes', 'saldos-cuenta', 'conciliacion-pendiente', 'ritmo-cp'],
+        },
+        venta: {
+            kind: '1col',
+            band: ['kpi-conversion', 'kpi-calientes', 'kpi-cotiz-semana', 'kpi-acciones-hoy'],
+            single: [
+                'para-seguir',
+                'proximas-acciones',
+                'pipeline-temp',
+                ['clientes-contactar', 'agenda-proxima'],
+                ['clientes-reactivar', 'fechas-clientes'],
+                'tiempo-respuesta',
+            ],
+        },
+        pm: {
+            kind: '1col',
+            band: ['kpi-mis-proyectos', 'kpi-en-armado', 'kpi-montajes-7d', 'kpi-en-riesgo'],
+            single: [
+                'mis-proyectos',
+                'agenda-proxima',
+                ['cola-taller', 'materiales-faltantes'],
+                'alertas-mias',
+                ['carga-trabajo', 'pendientes-cliente'],
+                'equipo-eventos',
+            ],
+        },
+        taller: {
+            kind: 'simple',
+            tiles: ['tile-armar-hoy', 'tile-stands-taller'],
+            single: ['para-hacer', 'agenda-proxima', 'materiales-faltantes'],
+        },
+    },
+
+    // ─────────────────────────────────────────────────────────────────
+    //  REGISTRO DE WIDGETS — metadata. `render(ctx)` se suma en Fase 2.
+    //  Mientras no haya render, el hydrate muestra placeholder.
+    //  `title` puede ser string o (ctx)=>string.
+    // ─────────────────────────────────────────────────────────────────
+    _widgets: {
+        // ── KPIs (band) ──
+        'kpi-presupuestos': { title: 'Presupuestos',   icon: '📄', accent: '#F28D15' },
+        'kpi-margen':       { title: 'Margen del mes',  icon: '📈', accent: '#00CC88' },
+        'kpi-dias-caja':    { title: 'Días de caja',    icon: '💧', accent: '#00A9C1' },
+        'kpi-cash30':       { title: 'Cash 30 días',    icon: '💵', accent: '#00A9C1' },
+        'kpi-conversion':   { title: 'Conversión',      icon: '🎯', accent: '#F28D15' },
+        'kpi-calientes':    { title: 'Calientes',       icon: '🔥', accent: '#ff4444' },
+        'kpi-cotiz-semana': { title: 'Cotiz. semana',   icon: '📄', accent: '#00A9C1' },
+        'kpi-acciones-hoy': { title: 'Acciones hoy',    icon: '✅', accent: '#00CC88' },
+        'kpi-mis-proyectos':{ title: 'Mis proyectos',   icon: '📋', accent: '#00CC88' },
+        'kpi-en-armado':    { title: 'En armado',       icon: '🔨', accent: '#F28D15' },
+        'kpi-montajes-7d':  { title: 'Montajes 7d',     icon: '📅', accent: '#00A9C1' },
+        'kpi-en-riesgo':    { title: 'En riesgo',       icon: '🚨', accent: '#ff4444' },
+
+        // ── Operativo ──
+        'agenda-proxima':     { title: (ctx) => ctx.role === 'venta' ? 'Ferias próximas' : (ctx.role === 'taller' ? 'Próximos días' : 'Agenda / montajes'), icon: '📅', accent: '#00CC88' },
+        'proyectos-curso':    { title: 'Proyectos en curso',   icon: '🏗️', accent: '#00CC88' },
+        'mis-proyectos':      { title: 'Mis proyectos',        icon: '📋', accent: '#00CC88' },
+        'cola-taller':        { title: 'Cola de taller',       icon: '🔧', accent: '#9B7DFF' },
+        'materiales-faltantes':{ title: 'Materiales faltantes',icon: '📦', accent: '#9B7DFF' },
+        'alertas-operativas': { title: 'Alertas operativas',   icon: '⚠️', accent: '#F28D15' },
+        'alertas-admin':      { title: 'Alertas administrativas',icon: '⚠️', accent: '#F28D15' },
+        'alertas-mias':       { title: 'Alertas de mis proyectos',icon: '⚠️', accent: '#F28D15' },
+
+        // ── Administrativo ──
+        'pulso-financiero':      { title: 'Pulso financiero',    icon: '💰', accent: '#00A9C1' },
+        'cobros-pendientes':     { title: 'Cobros pendientes',   icon: '📥', accent: '#00CC88' },
+        'pagos-proximos':        { title: 'Pagos próximos',      icon: '📤', accent: '#F28D15' },
+        'pipeline-comercial':    { title: 'Pipeline comercial',  icon: '🪜', accent: '#F28D15' },
+        'calendario-admin-digest':{ title: 'Calendario administrativo', icon: '🗓️', accent: '#4A90D9' },
+        'posicion-iva':          { title: 'Posición IVA',        icon: '🧾', accent: '#ff4444' },
+        'sueldos-mes':           { title: 'Sueldos del mes',     icon: '👥', accent: '#00CC88' },
+        'saldos-cuenta':         { title: 'Saldos por cuenta',   icon: '🏦', accent: '#4A90D9' },
+        'conciliacion-pendiente':{ title: 'Conciliación pendiente', icon: '🔗', accent: '#00A9C1' },
+        'ritmo-cp':              { title: 'Ritmo cobro/pago',    icon: '⏱️', accent: '#00A9C1' },
+
+        // ── Comercial (venta) ──
+        'para-seguir':       { title: 'Para seguir',                icon: '🎯', accent: '#F28D15' },
+        'proximas-acciones': { title: 'Próximas acciones',          icon: '📌', accent: '#00A9C1' },
+        'pipeline-temp':     { title: 'Pipeline por temperatura',   icon: '🌡️', accent: '#F28D15' },
+        'clientes-contactar':{ title: 'Clientes a contactar',       icon: '📞', accent: '#00A9C1' },
+        'clientes-reactivar':{ title: 'Clientes para reactivar',    icon: '🔄', accent: '#9B7DFF' },
+        'fechas-clientes':   { title: 'Fechas de clientes',         icon: '🎂', accent: '#00A9C1' },
+        'tiempo-respuesta':  { title: 'Tiempo de respuesta',        icon: '⚡', accent: '#00A9C1' },
+
+        // ── Radar PM ──
+        'carga-trabajo':     { title: 'Carga de trabajo',          icon: '📊', accent: '#00CC88' },
+        'pendientes-cliente':{ title: 'Pendientes con el cliente',  icon: '💬', accent: '#F28D15' },
+        'equipo-eventos':    { title: 'Equipo de mis eventos',      icon: '👷', accent: '#00CC88' },
+
+        // ── Taller (tiles grandes + cards grandes) ──
+        'tile-armar-hoy':    { title: 'Para armar hoy',   icon: '🔨', accent: '#F28D15' },
+        'tile-stands-taller':{ title: 'Stands en el taller', icon: '🏗️', accent: '#00A9C1' },
+        'para-hacer':        { title: 'Para hacer',       icon: '✅', accent: '#00CC88' },
+    },
+
+    // Color del chip de rol (saludo contextual)
+    _roleMeta: {
+        superadmin: { label: 'Superadmin', color: '#00A9C1' },
+        admin:      { label: 'Admin',      color: '#4A90D9' },
+        venta:      { label: 'Ventas',     color: '#F28D15' },
+        pm:         { label: 'PM',         color: '#00CC88' },
+        taller:     { label: 'Taller',     color: '#9B7DFF' },
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  RENDER
+    // ═══════════════════════════════════════════════════════════════════
     async render() {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
+        const role = user.role || 'taller';
+        const layout = this._layouts[role] || this._layouts.taller;
         const now = new Date();
-        const dateStr = now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const ctx = { user, role, userId: user.uid, now };
+
+        this._injectStyles();
 
         const content = document.getElementById('mainContent');
         if (!content) return;
 
-        const role = user.role || 'taller';
-
         content.innerHTML = `
-            <div class="lobby-content">
-                <div class="lobby-greeting" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
-                    <div>
-                        <h1 class="title-1">Bienvenido, <span class="text-primary">${user.name}</span></h1>
-                        <p class="subtitle">${dateStr.charAt(0).toUpperCase() + dateStr.slice(1)}</p>
-                    </div>
-                    <img src="assets/mepex_iso.png" alt="MEPEX" style="height:84px;width:auto;opacity:1;flex-shrink:0;filter:drop-shadow(0 0 18px rgba(0,169,193,0.35));" />
-                </div>
-
-                <div class="lobby-dashboard" id="lobbyDashboard">
-                    ${this._renderIndicatorSkeleton(this._getKPICount(role))}
-                </div>
-
-                <div class="lobby-alerts" id="lobbyAlerts">
-                    <div class="lobby-alerts-loading">Verificando alertas…</div>
-                </div>
-
-                <div class="lobby-body-split">
-                    <div class="lobby-main-col" id="lobbyMainCol">
-                        ${this._renderMainPlaceholder(role)}
-                    </div>
-
-                    <div class="lobby-side-col">
-                        <div class="lobby-calendar-widget" id="lobbyCalendar">
-                            <div class="lobby-section-label">
-                                <span class="label">CALENDARIO</span>
-                                <div class="divider-primary"></div>
-                            </div>
-                            ${this._renderMiniCalendar(now)}
-                            <div class="lobby-upcoming" id="lobbyUpcoming">
-                                <div class="lobby-upcoming-loading">Cargando eventos…</div>
-                            </div>
-                        </div>
-
-                        ${(role === 'superadmin' || role === 'admin') ? `
-                        <div class="lobby-activity-area">
-                            <div class="lobby-section-label">
-                                <span class="label">ACTIVIDAD RECIENTE</span>
-                                <div class="divider-primary"></div>
-                            </div>
-                            <div class="activity-feed" id="lobbyActivityFeed">
-                                <div class="lobby-upcoming-loading">Cargando actividad…</div>
-                            </div>
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
+            <div class="home home-v-${layout.kind}" data-role="${role}">
+                ${this._header(ctx, layout)}
+                ${this._body(ctx, layout)}
             </div>
         `;
 
-        this._attachEvents();
-        // Load all data in parallel
-        this._loadDashboardData(user, role, now);
+        this._attachEvents(ctx);
+        this._hydrate(ctx, layout);
     },
 
-    // ─── LOAD ALL DATA ───
-    async _loadDashboardData(user, role, now) {
-        const loaders = [
-            this._loadKPIs(user, role),
-            this._loadAlerts(user, role),
-            this._loadMainContent(user, role, now),
-            this._loadCalendarData(now),
-        ];
-        if (role === 'superadmin' || role === 'admin') {
-            loaders.push(this._loadActivityFeed());
-        }
-        await Promise.allSettled(loaders);
-    },
+    // ─── HEADER (saludo + chip de rol + toggle de canal) ───
+    _header(ctx, layout) {
+        const { user, role, now } = ctx;
+        const rm = this._roleMeta[role] || { label: user._roleLabel || role, color: '#00A9C1' };
+        const dateStr = this._dateStr(now);
+        const name = this._esc(user.name || '');
 
-    _getKPICount(role) {
-        const counts = { superadmin: 4, admin: 4, venta: 3, pm: 3, taller: 2 };
-        return counts[role] || 3;
-    },
+        const greeting = role === 'taller'
+            ? `¡Hola, <span class="home-name">${name}</span>!`
+            : `${this._greeting(now)}, <span class="home-name">${name}</span>`;
 
-    // ═════════════════════════════════════════
-    //  KPIs POR ROL
-    // ═════════════════════════════════════════
-
-    async _loadKPIs(user, role) {
-        const dashboard = document.getElementById('lobbyDashboard');
-        if (!dashboard) return;
-
-        try {
-            const indicators = await this._fetchKPIsForRole(user, role);
-            dashboard.innerHTML = indicators.map(ind => this._renderIndicator(ind)).join('');
-        } catch (e) {
-            console.error('Lobby KPI error:', e);
-            const fallback = Data.getIndicatorsForRole(role);
-            dashboard.innerHTML = fallback.map(ind => this._renderIndicator(ind)).join('');
-        }
-    },
-
-    async _fetchKPIsForRole(user, role) {
-        if (role === 'superadmin' || role === 'admin') {
-            return this._fetchAdminKPIs();
-        } else if (role === 'venta') {
-            return this._fetchVentaKPIs(user);
-        } else if (role === 'pm') {
-            return this._fetchPMKPIs(user);
-        } else {
-            return this._fetchTallerKPIs();
-        }
-    },
-
-    async _fetchAdminKPIs() {
-        const [cotizaciones, proyectos, eventos] = await Promise.allSettled([
-            this._safeFetch(() => API.getCotizaciones()),
-            this._safeFetch(() => API.getProjects()),
-            this._safeFetch(() => API.getEvents()),
-        ]);
-
-        const cots = cotizaciones.value || [];
-        const proys = proyectos.value || [];
-        const evts = eventos.value || [];
-
-        const activeCots = cots.filter(c => ['borrador', 'enviada', 'negociacion', 'aprobada'].includes(c.estado));
-        const activeProys = proys.filter(p => !['Finalizado', 'Rechazado', 'finalizado', 'rechazado'].includes(p.status));
-        const todayStr = new Date().toISOString().split('T')[0];
-        const upcomingEvents = evts.filter(e => e.eventStartDate && e.eventStartDate >= todayStr);
-
-        // Cobros pendientes placeholder
-        const pendingAmount = cots
-            .filter(c => c.estado === 'aprobada' || c.estado === 'ganada')
-            .reduce((sum, c) => sum + (c.montoTotal || 0), 0);
-
-        return [
-            { icon: '📄', value: activeCots.length, label: 'Cotizaciones activas', trend: '' },
-            { icon: '🏗️', value: activeProys.length, label: 'Proyectos en curso', trend: '' },
-            { icon: '📅', value: upcomingEvents.length, label: 'Eventos próximos', trend: '' },
-            { icon: '💰', value: pendingAmount > 0 ? this._formatMoney(pendingAmount) : '—', label: 'Cobros pendientes', trend: '' },
-        ];
-    },
-
-    async _fetchVentaKPIs(user) {
-        const cots = await this._safeFetch(() => API.getCotizaciones()) || [];
-
-        // Filter by vendedor
-        const myCots = cots.filter(c => c.vendedorId === user.id || c.vendedorId === user.uid);
-        const activeCots = myCots.filter(c => ['borrador', 'enviada', 'negociacion', 'aprobada'].includes(c.estado));
-
-        // Pipeline summary
-        const pipeline = {};
-        ['borrador', 'enviada', 'negociacion', 'aprobada', 'ganada', 'perdida'].forEach(s => {
-            pipeline[s] = myCots.filter(c => c.estado === s).length;
-        });
-        const pipelineStr = `${pipeline.enviada || 0} env · ${pipeline.negociacion || 0} neg · ${pipeline.aprobada || 0} apr`;
-
-        // Monto en negociación
-        const montoNeg = myCots
-            .filter(c => ['enviada', 'negociacion', 'aprobada'].includes(c.estado))
-            .reduce((sum, c) => sum + (c.montoTotal || 0), 0);
-
-        return [
-            { icon: '📄', value: activeCots.length, label: 'Mis cotizaciones activas', trend: pipelineStr },
-            { icon: '🤝', value: pipeline.negociacion || 0, label: 'En negociación', trend: '' },
-            { icon: '💰', value: montoNeg > 0 ? this._formatMoney(montoNeg) : '$0', label: 'Monto en negociación', trend: '' },
-        ];
-    },
-
-    async _fetchPMKPIs(user) {
-        const [proyectos, eventos] = await Promise.allSettled([
-            this._safeFetch(() => API.getProjects()),
-            this._safeFetch(() => API.getEvents()),
-        ]);
-
-        const proys = proyectos.value || [];
-        const evts = eventos.value || [];
-
-        // PM projects — assigned to this user
-        const myProys = proys.filter(p =>
-            p.responsible && p.responsible.toLowerCase().includes(user.name.toLowerCase())
-        );
-        const activeMyProys = myProys.filter(p => !['Finalizado', 'Rechazado', 'finalizado', 'rechazado'].includes(p.status));
-
-        // Events this week
-        const now = new Date();
-        const weekEnd = new Date(now);
-        weekEnd.setDate(weekEnd.getDate() + 7);
-        const weekEndStr = weekEnd.toISOString().split('T')[0];
-        const todayStr = now.toISOString().split('T')[0];
-        const weekEvents = evts.filter(e =>
-            e.eventStartDate && e.eventStartDate >= todayStr && e.eventStartDate <= weekEndStr
-        );
-
-        // Count by status
-        const byStatus = {};
-        activeMyProys.forEach(p => {
-            const st = p.status || 'Pendiente';
-            byStatus[st] = (byStatus[st] || 0) + 1;
-        });
-        const statusStr = Object.entries(byStatus).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ');
-
-        return [
-            { icon: '📋', value: activeMyProys.length, label: 'Mis proyectos activos', trend: statusStr },
-            { icon: '📅', value: weekEvents.length, label: 'Eventos de la semana', trend: '' },
-            { icon: '🏗️', value: myProys.length, label: 'Total asignados', trend: '' },
-        ];
-    },
-
-    async _fetchTallerKPIs() {
-        const eventos = await this._safeFetch(() => API.getEvents()) || [];
-        const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
-
-        // Next setup
-        const upcomingSetups = eventos
-            .filter(e => e.setupDate && e.setupDate >= todayStr)
-            .sort((a, b) => a.setupDate.localeCompare(b.setupDate));
-
-        const nextSetup = upcomingSetups[0];
-        let countdownStr = '—';
-        if (nextSetup) {
-            const diff = Math.ceil((new Date(nextSetup.setupDate + 'T00:00:00') - now) / (1000 * 60 * 60 * 24));
-            countdownStr = diff === 0 ? 'HOY' : diff === 1 ? 'MAÑANA' : `en ${diff} días`;
-        }
-
-        return [
-            { icon: '🔨', value: upcomingSetups.length, label: 'Armados pendientes', trend: '' },
-            { icon: '📅', value: nextSetup ? countdownStr : '—', label: 'Próximo armado', trend: nextSetup ? nextSetup.name : '' },
-        ];
-    },
-
-    // ═════════════════════════════════════════
-    //  ALERTAS POR ROL
-    // ═════════════════════════════════════════
-
-    async _loadAlerts(user, role) {
-        const el = document.getElementById('lobbyAlerts');
-        if (!el) return;
-
-        try {
-            // Fase 9: los pendientes salen del motor único `Alertas` (mismos datos
-            // que los dots del sidebar). Mostramos los más severos, capados a 6.
-            await Alertas.ensureFresh();
-            const order = { danger: 0, warning: 1, info: 2, ok: 2 };
-            const alerts = Alertas.getItems()
-                .slice()
-                .sort((a, b) => (order[a.severidad] ?? 9) - (order[b.severidad] ?? 9))
-                .slice(0, 6);
-            if (alerts.length === 0) {
-                el.innerHTML = '';
-                return;
-            }
-            el.innerHTML = `
-                <div class="lobby-section-label">
-                    <span class="label">ALERTAS</span>
-                    <div class="divider-primary"></div>
-                </div>
-                <div class="lobby-alerts-grid">
-                    ${alerts.map(a => this._renderAlert(a)).join('')}
-                </div>
-            `;
-        } catch (e) {
-            console.error('Lobby alerts error:', e);
-            el.innerHTML = '';
-        }
-    },
-
-    // (Pendientes/alertas movidos al motor único `Alertas` — Fase 9.1.
-    //  Antes acá vivían _fetchAlertsForRole + _checkCotizacionesVencer/
-    //  _checkEventosSinEquipo/_checkProyectosTrabados/_checkClientesSinFollowUp,
-    //  con definiciones que no coincidían con los dots del sidebar.)
-
-    _renderAlert(alert) {
-        const colorMap = {
-            danger: { bg: 'rgba(255, 68, 68, 0.08)', border: 'rgba(255, 68, 68, 0.3)', text: '#ff4444' },
-            warning: { bg: 'rgba(242, 141, 21, 0.08)', border: 'rgba(242, 141, 21, 0.3)', text: '#F28D15' },
-            info: { bg: 'rgba(0, 169, 193, 0.08)', border: 'rgba(0, 169, 193, 0.3)', text: '#00A9C1' },
-            ok: { bg: 'rgba(0, 204, 136, 0.08)', border: 'rgba(0, 204, 136, 0.3)', text: '#00CC88' },
-        };
-        // Soporta el shape nuevo del motor Alertas (severidad/titulo/detalle/link)
-        const sev = alert.severidad || alert.type || 'warning';
-        const c = colorMap[sev] || colorMap.warning;
-        const title = alert.titulo || alert.title || '';
-        const detail = alert.detalle || alert.detail || '';
-        const link = alert.link || '';
-        const tag = link ? 'a' : 'div';
-        const href = link ? ` href="${link}"` : '';
-        const clickable = link ? ' lobby-alert-clickable' : '';
-        const extra = link ? ' text-decoration:none; cursor:pointer;' : '';
+        const toggle = layout.toggle ? this._toggleHTML() : '';
 
         return `
-            <${tag} class="lobby-alert-card${clickable}"${href} style="background:${c.bg}; border-color:${c.border};${extra}">
-                <span class="lobby-alert-icon">${alert.icon || '⚠️'}</span>
-                <div class="lobby-alert-info">
-                    <span class="lobby-alert-title" style="color:${c.text}">${title}</span>
-                    <span class="lobby-alert-detail">${detail}</span>
+            <div class="home-header">
+                <div class="home-header-l">
+                    <h1 class="home-hello">${greeting}</h1>
+                    <p class="home-date">${dateStr}</p>
                 </div>
-            </${tag}>
+                <div class="home-header-r">
+                    ${toggle}
+                    <span class="home-rolechip" style="--rc:${rm.color}">${this._esc(rm.label)}</span>
+                </div>
+            </div>
         `;
     },
 
-    // ═════════════════════════════════════════
-    //  CONTENIDO PRINCIPAL POR ROL
-    // ═════════════════════════════════════════
-
-    _renderMainPlaceholder(role) {
-        if (role === 'taller') {
-            return `
-                <div class="lobby-section-label">
-                    <span class="label">PRÓXIMOS TRABAJOS</span>
-                    <div class="divider-primary"></div>
-                </div>
-                <div id="lobbyTallerList" class="lobby-taller-list">
-                    <div class="lobby-upcoming-loading">Cargando tareas…</div>
-                </div>
-            `;
-        }
+    _toggleHTML() {
+        const canal = (localStorage.getItem('finanzas_vista_canal') || 'oficial');
+        const interno = canal === 'interno';
         return `
-            <div class="lobby-section-label">
-                <span class="label">MÓDULOS</span>
-                <div class="divider-primary"></div>
+            <div class="home-toggle" role="group" aria-label="Canal financiero">
+                <button class="home-toggle-btn${!interno ? ' active' : ''}" data-canal="oficial">Oficial</button>
+                <button class="home-toggle-btn${interno ? ' active' : ''}" data-canal="interno">Interno</button>
             </div>
-            <div class="lobby-category-blocks" id="lobbyCategoryBlocks"></div>
         `;
     },
 
-    async _loadMainContent(user, role, now) {
-        if (role === 'taller') {
-            await this._loadTallerContent(now);
-        } else if (role === 'venta') {
-            await this._loadVentaContent(user, now);
-        } else if (role === 'pm') {
-            await this._loadPMContent(user, now);
-        } else {
-            // admin/superadmin — category blocks
-            const el = document.getElementById('lobbyCategoryBlocks');
-            if (el) el.innerHTML = this._renderCategoryBlocks(user);
-            this._attachModuleChipEvents();
+    // ─── BODY (según la forma del layout) ───
+    _body(ctx, layout) {
+        switch (layout.kind) {
+            case '2col':
+                return `
+                    ${this._band(layout.band, ctx)}
+                    <div class="home-2col">
+                        <section class="home-col">
+                            ${this._colLabel(layout.left.label)}
+                            ${layout.left.keys.map(k => this._card(k, ctx)).join('')}
+                        </section>
+                        <section class="home-col">
+                            ${this._colLabel(layout.right.label)}
+                            ${layout.right.keys.map(k => this._card(k, ctx)).join('')}
+                        </section>
+                    </div>
+                `;
+            case 'admin':
+                return `
+                    ${this._band(layout.band, ctx)}
+                    <div class="home-admin-top">
+                        <div class="home-admin-hero">${this._card(layout.hero, ctx, { hero: true })}</div>
+                        <section class="home-col">
+                            ${layout.side.map(k => this._card(k, ctx)).join('')}
+                        </section>
+                    </div>
+                    <div class="home-admin-tiles">
+                        ${layout.tiles.map(k => this._card(k, ctx, { tile: true })).join('')}
+                    </div>
+                `;
+            case '1col':
+                return `
+                    ${this._band(layout.band, ctx)}
+                    <div class="home-1col">
+                        ${layout.single.map(item => this._rowOrCard(item, ctx)).join('')}
+                    </div>
+                `;
+            case 'simple':
+                return `
+                    <div class="home-tiles2">
+                        ${layout.tiles.map(k => this._tileBig(k, ctx)).join('')}
+                    </div>
+                    <div class="home-1col home-1col-wide">
+                        ${layout.single.map(item => this._rowOrCard(item, ctx)).join('')}
+                    </div>
+                `;
+            default:
+                return '';
         }
     },
 
-    async _loadTallerContent(now) {
-        const el = document.getElementById('lobbyTallerList');
-        if (!el) return;
-
-        const eventos = await this._safeFetch(() => API.getEvents()) || [];
-        const todayStr = now.toISOString().split('T')[0];
-
-        // Get upcoming setups/teardowns in next 14 days
-        const twoWeeks = new Date(now);
-        twoWeeks.setDate(twoWeeks.getDate() + 14);
-        const twoWeeksStr = twoWeeks.toISOString().split('T')[0];
-
-        const tasks = [];
-        eventos.forEach(e => {
-            if (e.setupDate && e.setupDate >= todayStr && e.setupDate <= twoWeeksStr) {
-                tasks.push({
-                    date: e.setupDate,
-                    type: 'armado',
-                    name: e.name,
-                    venue: e.venue || '',
-                    icon: '🔨',
-                    color: '#F28D15',
-                });
-            }
-            if (e.teardownDate && e.teardownDate >= todayStr && e.teardownDate <= twoWeeksStr) {
-                tasks.push({
-                    date: e.teardownDate,
-                    type: 'desarme',
-                    name: e.name,
-                    venue: e.venue || '',
-                    icon: '📦',
-                    color: '#9B7DFF',
-                });
-            }
-        });
-
-        tasks.sort((a, b) => a.date.localeCompare(b.date));
-
-        if (tasks.length === 0) {
-            el.innerHTML = '<div class="lobby-upcoming-empty">Sin trabajos próximos</div>';
-            return;
+    _rowOrCard(item, ctx) {
+        if (Array.isArray(item)) {
+            return `<div class="home-row">${item.map(k => this._card(k, ctx)).join('')}</div>`;
         }
+        return this._card(item, ctx);
+    },
 
-        el.innerHTML = tasks.map(t => {
-            const diff = Math.ceil((new Date(t.date + 'T00:00:00') - now) / (1000 * 60 * 60 * 24));
-            const when = diff === 0 ? 'HOY' : diff === 1 ? 'MAÑANA' : `en ${diff} días`;
-            const isUrgent = diff <= 1;
+    _band(keys, ctx) {
+        if (!keys || !keys.length) return '';
+        return `<div class="home-band">${keys.map(k => this._kpi(k, ctx)).join('')}</div>`;
+    },
 
-            return `
-                <div class="lobby-taller-card${isUrgent ? ' urgent' : ''}" style="--task-color: ${t.color}">
-                    <div class="lobby-taller-card-left">
-                        <span class="lobby-taller-card-icon">${t.icon}</span>
-                        <div class="lobby-taller-card-info">
-                            <span class="lobby-taller-card-type">${t.type.toUpperCase()}</span>
-                            <span class="lobby-taller-card-name">${t.name}</span>
-                            ${t.venue ? `<span class="lobby-taller-card-venue">${t.venue}</span>` : ''}
-                        </div>
-                    </div>
-                    <div class="lobby-taller-card-when${isUrgent ? ' urgent' : ''}">
-                        <span class="lobby-taller-card-date">${API.formatDate ? API.formatDate(t.date) : t.date}</span>
-                        <span class="lobby-taller-card-countdown">${when}</span>
-                    </div>
+    _colLabel(text) {
+        return `
+            <div class="home-collabel">
+                <span>${this._esc(text)}</span>
+                <span class="home-collabel-line"></span>
+            </div>
+        `;
+    },
+
+    // ─── FRAMES ───
+    _resolve(key) {
+        return this._widgets[key] || { title: key, icon: '•', accent: '#00A9C1' };
+    },
+
+    _title(def, ctx) {
+        return typeof def.title === 'function' ? def.title(ctx) : (def.title || '');
+    },
+
+    _card(key, ctx, opts = {}) {
+        const def = this._resolve(key);
+        const cls = 'home-card' + (opts.hero ? ' home-card-hero' : '') + (opts.tile ? ' home-card-tile' : '');
+        return `
+            <article class="${cls}" data-widget="${key}" style="--accent:${def.accent}">
+                <header class="home-card-head">
+                    <span class="home-card-icon">${def.icon}</span>
+                    <span class="home-card-title">${this._esc(this._title(def, ctx))}</span>
+                </header>
+                <div class="home-card-body" id="home-w-${key}">${this._placeholder()}</div>
+            </article>
+        `;
+    },
+
+    _kpi(key, ctx) {
+        const def = this._resolve(key);
+        return `
+            <div class="home-kpi" data-widget="${key}" style="--accent:${def.accent}">
+                <div class="home-kpi-head">
+                    <span class="home-kpi-icon">${def.icon}</span>
+                    <span class="home-kpi-title">${this._esc(this._title(def, ctx))}</span>
                 </div>
-            `;
-        }).join('');
-    },
-
-    async _loadVentaContent(user, now) {
-        const mainCol = document.getElementById('lobbyMainCol');
-        if (!mainCol) return;
-
-        // Load events + render category blocks
-        const eventos = await this._safeFetch(() => API.getEvents()) || [];
-        const todayStr = now.toISOString().split('T')[0];
-        const upcoming = eventos
-            .filter(e => e.eventStartDate && e.eventStartDate >= todayStr)
-            .sort((a, b) => a.eventStartDate.localeCompare(b.eventStartDate))
-            .slice(0, 5);
-
-        mainCol.innerHTML = `
-            <div class="lobby-section-label">
-                <span class="label">MÓDULOS</span>
-                <div class="divider-primary"></div>
+                <div class="home-kpi-body" id="home-w-${key}">${this._kpiPlaceholder()}</div>
             </div>
-            <div class="lobby-category-blocks" id="lobbyCategoryBlocks">
-                ${this._renderCategoryBlocks(user)}
-            </div>
-
-            ${upcoming.length > 0 ? `
-            <div class="lobby-section-label" style="margin-top:28px">
-                <span class="label">MIS PRÓXIMOS EVENTOS</span>
-                <div class="divider-primary"></div>
-            </div>
-            <div class="lobby-events-list">
-                ${upcoming.map(e => `
-                    <div class="lobby-event-row">
-                        <span class="lobby-event-row-dot" style="background:#00CC88"></span>
-                        <span class="lobby-event-row-name">${e.name}</span>
-                        <span class="lobby-event-row-venue">${e.venue || ''}</span>
-                        <span class="lobby-event-row-date">${API.formatDate ? API.formatDate(e.eventStartDate) : e.eventStartDate}</span>
-                    </div>
-                `).join('')}
-            </div>
-            ` : ''}
         `;
-        this._attachModuleChipEvents();
     },
 
-    async _loadPMContent(user, now) {
-        const mainCol = document.getElementById('lobbyMainCol');
-        if (!mainCol) return;
+    _tileBig(key, ctx) {
+        const def = this._resolve(key);
+        return `
+            <div class="home-tilebig" data-widget="${key}" style="--accent:${def.accent}">
+                <span class="home-tilebig-icon">${def.icon}</span>
+                <div class="home-tilebig-body" id="home-w-${key}">
+                    <div class="home-skel home-skel-big"></div>
+                    <div class="home-tilebig-label">${this._esc(this._title(def, ctx))}</div>
+                </div>
+            </div>
+        `;
+    },
 
-        const eventos = await this._safeFetch(() => API.getEvents()) || [];
-        const todayStr = now.toISOString().split('T')[0];
-        const weekEnd = new Date(now);
-        weekEnd.setDate(weekEnd.getDate() + 7);
-        const weekEndStr = weekEnd.toISOString().split('T')[0];
+    // ═══════════════════════════════════════════════════════════════════
+    //  HYDRATE — corre el render(ctx) de cada widget, aislado.
+    // ═══════════════════════════════════════════════════════════════════
+    async _hydrate(ctx, layout) {
+        const keys = this._allKeys(layout);
+        await Promise.allSettled(keys.map(async (key) => {
+            const mount = document.getElementById('home-w-' + key);
+            if (!mount) return;
+            const def = this._widgets[key];
+            if (!def || typeof def.render !== 'function') return; // Fase 1: sin render → queda placeholder
+            try {
+                mount.innerHTML = await def.render(ctx);
+            } catch (e) {
+                console.warn('[home] widget "' + key + '":', e && e.message);
+                mount.innerHTML = this._error();
+            }
+        }));
+    },
 
-        // Week schedule: setups + teardowns + events
-        const weekItems = [];
-        eventos.forEach(e => {
-            if (e.setupDate && e.setupDate >= todayStr && e.setupDate <= weekEndStr) {
-                weekItems.push({ date: e.setupDate, type: 'Armado', name: e.name, icon: '🔨', color: '#F28D15' });
-            }
-            if (e.eventStartDate && e.eventStartDate >= todayStr && e.eventStartDate <= weekEndStr) {
-                weekItems.push({ date: e.eventStartDate, type: 'Evento', name: e.name, icon: '📅', color: '#00CC88' });
-            }
-            if (e.teardownDate && e.teardownDate >= todayStr && e.teardownDate <= weekEndStr) {
-                weekItems.push({ date: e.teardownDate, type: 'Desarme', name: e.name, icon: '📦', color: '#9B7DFF' });
-            }
+    _allKeys(layout) {
+        const out = [];
+        const push = (x) => { if (Array.isArray(x)) x.forEach(push); else if (x) out.push(x); };
+        push(layout.band);
+        push(layout.tiles);
+        if (layout.hero) push(layout.hero);
+        if (layout.left) push(layout.left.keys);
+        if (layout.right) push(layout.right.keys);
+        push(layout.side);
+        push(layout.single);
+        return out;
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  EVENTOS
+    // ═══════════════════════════════════════════════════════════════════
+    _attachEvents(ctx) {
+        const root = document.querySelector('.home');
+        if (!root) return;
+
+        // Toggle de canal Oficial/Interno (super/admin) → setea localStorage + re-render
+        root.querySelectorAll('.home-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const canal = btn.dataset.canal;
+                if ((localStorage.getItem('finanzas_vista_canal') || 'oficial') === canal) return;
+                localStorage.setItem('finanzas_vista_canal', canal);
+                this.render();
+            });
         });
-        weekItems.sort((a, b) => a.date.localeCompare(b.date));
 
-        mainCol.innerHTML = `
-            ${weekItems.length > 0 ? `
-            <div class="lobby-section-label">
-                <span class="label">ESTA SEMANA</span>
-                <div class="divider-primary"></div>
-            </div>
-            <div class="lobby-events-list">
-                ${weekItems.map(item => `
-                    <div class="lobby-event-row">
-                        <span class="lobby-event-row-dot" style="background:${item.color}"></span>
-                        <span class="lobby-event-row-type" style="color:${item.color}">${item.type}</span>
-                        <span class="lobby-event-row-name">${item.name}</span>
-                        <span class="lobby-event-row-date">${API.formatDate ? API.formatDate(item.date) : item.date}</span>
-                    </div>
-                `).join('')}
-            </div>
-            ` : ''}
-
-            <div class="lobby-section-label" ${weekItems.length > 0 ? 'style="margin-top:28px"' : ''}>
-                <span class="label">MÓDULOS</span>
-                <div class="divider-primary"></div>
-            </div>
-            <div class="lobby-category-blocks" id="lobbyCategoryBlocks">
-                ${this._renderCategoryBlocks(user)}
-            </div>
-        `;
-        this._attachModuleChipEvents();
+        // Navegación delegada: cualquier widget puede emitir [data-nav="modulo"]
+        root.addEventListener('click', (e) => {
+            const el = e.target.closest('[data-nav]');
+            if (!el) return;
+            e.preventDefault();
+            Router.navigate(el.dataset.nav);
+        });
     },
 
-    // ─── ACTIVITY FEED (admin/superadmin) ───
-    async _loadActivityFeed() {
-        const el = document.getElementById('lobbyActivityFeed');
-        if (!el) return;
-
-        // Try to load from audit_logs
-        let activities = [];
-        try {
-            const { data } = await supabaseClient
-                .from('audit_log')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(8);
-
-            if (data && data.length > 0) {
-                activities = data.map(log => ({
-                    time: this._timeAgo(new Date(log.created_at)),
-                    user: log.user_name || 'Sistema',
-                    action: log.action || '',
-                    detail: (log.details?.message) || '',
-                    icon: this._actionIcon(log.action),
-                    color: 'var(--primary)',
-                }));
-            }
-        } catch (e) {
-            // Table might not exist — use mock data
-        }
-
-        // Sin actividad en audit_log → empty-state real. Antes caía a
-        // Data.recentActivity (mock con nombres/cotizaciones inventados). (Fase 12.B)
-        if (activities.length === 0) {
-            el.innerHTML = '<div class="lobby-upcoming-empty">Sin actividad reciente</div>';
-            return;
-        }
-
-        el.innerHTML = `
-            ${activities.map(act => this._renderActivityItem(act)).join('')}
-            <div class="activity-feed-footer">
-                <span class="activity-feed-link" data-action="admin-panel">Ver toda la actividad</span>
+    // ═══════════════════════════════════════════════════════════════════
+    //  PLACEHOLDERS / EMPTY / ERROR (compartidos por los widgets)
+    // ═══════════════════════════════════════════════════════════════════
+    _placeholder() {
+        return `
+            <div class="home-skel-wrap">
+                <div class="home-skel" style="width:82%"></div>
+                <div class="home-skel" style="width:64%"></div>
+                <div class="home-skel" style="width:73%"></div>
             </div>
         `;
+    },
 
-        el.querySelector('.activity-feed-link')?.addEventListener('click', () => {
-            Router.navigate('admin-panel');
-        });
+    _kpiPlaceholder() {
+        return `<div class="home-skel home-skel-num"></div>`;
+    },
+
+    _empty(msg) {
+        return `<div class="home-empty">${this._esc(msg || 'Sin datos')}</div>`;
+    },
+
+    _error() {
+        return `<div class="home-empty home-empty-err">No se pudo cargar</div>`;
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  UTILIDADES (reusadas por los widgets en Fase 2)
+    // ═══════════════════════════════════════════════════════════════════
+    _greeting(now) {
+        const h = now.getHours();
+        if (h < 13) return 'Buenos días';
+        if (h < 20) return 'Buenas tardes';
+        return 'Buenas noches';
+    },
+
+    _dateStr(now) {
+        const s = now.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        return s.charAt(0).toUpperCase() + s.slice(1);
+    },
+
+    _formatMoney(amount) {
+        const n = Number(amount) || 0;
+        return '$' + Math.round(n).toLocaleString('es-AR');
     },
 
     _timeAgo(date) {
-        const now = new Date();
-        const diffMs = now - date;
-        const mins = Math.floor(diffMs / 60000);
+        const mins = Math.floor((Date.now() - date) / 60000);
         if (mins < 1) return 'Ahora';
         if (mins < 60) return `Hace ${mins} min`;
         const hours = Math.floor(mins / 60);
         if (hours < 24) return `Hace ${hours}h`;
-        const days = Math.floor(hours / 24);
-        return `Hace ${days}d`;
-    },
-
-    _actionIcon(action) {
-        const icons = {
-            create: '➕', update: '✏️', delete: '🗑️',
-            login: '🔑', status_change: '🔄',
-        };
-        return icons[action] || '📝';
-    },
-
-    // ═════════════════════════════════════════
-    //  CATEGORY BLOCKS
-    // ═════════════════════════════════════════
-
-    _renderCategoryBlocks(user) {
-        const categories = Data.getCategoriesForRole(user.role);
-        const moduleCats = categories.filter(c => c.id !== 'principal');
-
-        return moduleCats.map(cat => {
-            const modules = cat.modules || (cat.moduleIds || []).map(id => {
-                const m = Data.getModuleById(id);
-                return m ? { id: m.id, shortName: m.shortName, icon: m.icon, description: m.description } : null;
-            }).filter(Boolean);
-
-            return `
-                <div class="lobby-cat-block" style="--cat-color: ${cat.color}">
-                    <div class="lobby-cat-block-header">
-                        <span class="lobby-cat-block-icon">${cat.icon}</span>
-                        <span class="lobby-cat-block-name">${cat.name}</span>
-                    </div>
-                    <div class="lobby-cat-block-modules">
-                        ${modules.map(m => `
-                            <button class="lobby-module-chip" data-module="${m.id}">
-                                <span class="lobby-module-chip-icon">${m.icon}</span>
-                                <div class="lobby-module-chip-info">
-                                    <span class="lobby-module-chip-name">${m.shortName}</span>
-                                    <span class="lobby-module-chip-desc">${m.description || ''}</span>
-                                </div>
-                                <svg class="lobby-module-chip-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                            </button>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }).join('');
-    },
-
-    // ═════════════════════════════════════════
-    //  MINI CALENDAR
-    // ═════════════════════════════════════════
-
-    _renderMiniCalendar(now) {
-        const year = now.getFullYear();
-        const month = now.getMonth();
-        const today = now.getDate();
-
-        const firstDay = new Date(year, month, 1).getDay();
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const monthName = now.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-
-        const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
-
-        let cells = '';
-        cells += dayNames.map(d => `<span class="cal-day-name">${d}</span>`).join('');
-        for (let i = 0; i < firstDay; i++) {
-            cells += '<span class="cal-cell empty"></span>';
-        }
-        for (let d = 1; d <= daysInMonth; d++) {
-            const isToday = d === today;
-            cells += `<span class="cal-cell${isToday ? ' today' : ''}" data-day="${d}">${d}</span>`;
-        }
-
-        return `
-            <div class="mini-cal">
-                <div class="mini-cal-header">
-                    <span class="mini-cal-month">${monthName.charAt(0).toUpperCase() + monthName.slice(1)}</span>
-                </div>
-                <div class="mini-cal-grid" id="miniCalGrid">
-                    ${cells}
-                </div>
-            </div>
-        `;
-    },
-
-    async _loadCalendarData(now) {
-        const events = await this._safeFetch(() => API.getEvents());
-        const projects = await this._safeFetch(() => API.getProjects());
-        if (!events && !projects) return;
-
-        const year = now.getFullYear();
-        const month = now.getMonth();
-
-        const dayItems = {};
-        const addItem = (day, item) => {
-            if (!dayItems[day]) dayItems[day] = [];
-            dayItems[day].push(item);
-        };
-
-        (events || []).forEach(e => {
-            if (e.eventStartDate) {
-                const d = new Date(e.eventStartDate + 'T00:00:00');
-                if (d.getFullYear() === year && d.getMonth() === month) {
-                    addItem(d.getDate(), { title: e.name, color: '#00CC88' });
-                }
-            }
-            if (e.setupDate) {
-                const d = new Date(e.setupDate + 'T00:00:00');
-                if (d.getFullYear() === year && d.getMonth() === month) {
-                    addItem(d.getDate(), { title: `Armado: ${e.name}`, color: '#F28D15' });
-                }
-            }
-        });
-
-        Object.entries(dayItems).forEach(([day, items]) => {
-            const cell = document.querySelector(`.cal-cell[data-day="${day}"]`);
-            if (cell) {
-                const dots = items.slice(0, 3).map(i =>
-                    `<span class="cal-dot" style="background:${i.color}" title="${i.title}"></span>`
-                ).join('');
-                cell.insertAdjacentHTML('beforeend', `<span class="cal-dots">${dots}</span>`);
-                cell.classList.add('has-items');
-            }
-        });
-
-        this._renderUpcoming(events, projects, now);
-    },
-
-    _renderUpcoming(events, projects, now) {
-        const el = document.getElementById('lobbyUpcoming');
-        if (!el) return;
-
-        const upcoming = [];
-        const todayStr = now.toISOString().split('T')[0];
-
-        (events || []).forEach(e => {
-            if (e.eventStartDate && e.eventStartDate >= todayStr) {
-                upcoming.push({
-                    date: e.eventStartDate,
-                    title: e.name,
-                    sub: e.venue || '',
-                    color: '#00CC88',
-                });
-            }
-        });
-
-        upcoming.sort((a, b) => a.date.localeCompare(b.date));
-        const show = upcoming.slice(0, 5);
-
-        if (show.length === 0) {
-            el.innerHTML = '<div class="lobby-upcoming-empty">Sin eventos próximos</div>';
-            return;
-        }
-
-        el.innerHTML = `
-            <div class="lobby-upcoming-label">PRÓXIMOS</div>
-            ${show.map(item => `
-                <div class="lobby-upcoming-item">
-                    <span class="lobby-upcoming-dot" style="background:${item.color}"></span>
-                    <div class="lobby-upcoming-info">
-                        <span class="lobby-upcoming-title">${item.title}</span>
-                        <span class="lobby-upcoming-sub">${item.sub} · ${API.formatDate ? API.formatDate(item.date) : item.date}</span>
-                    </div>
-                </div>
-            `).join('')}
-        `;
-    },
-
-    // ═════════════════════════════════════════
-    //  RENDER HELPERS
-    // ═════════════════════════════════════════
-
-    _renderIndicatorSkeleton(count) {
-        let html = '';
-        for (let i = 0; i < count; i++) {
-            html += `
-                <div class="dashboard-indicator skeleton-indicator">
-                    <div class="indicator-icon-wrap">
-                        <span class="indicator-icon skeleton-icon"></span>
-                    </div>
-                    <div class="indicator-data">
-                        <span class="indicator-value skeleton-bar" style="width:60px">&nbsp;</span>
-                        <span class="indicator-label skeleton-bar" style="width:100px">&nbsp;</span>
-                    </div>
-                </div>
-            `;
-        }
-        return html;
-    },
-
-    _renderIndicator(ind) {
-        const trendText = ind.trend || '';
-        let trendClass = 'trend-neutral';
-        let trendArrow = '';
-        if (trendText.startsWith('+') || trendText.toLowerCase().includes('próximo')) {
-            trendClass = 'trend-up';
-            trendArrow = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>';
-        }
-
-        return `
-            <div class="dashboard-indicator">
-                <div class="indicator-icon-wrap">
-                    <span class="indicator-icon">${ind.icon}</span>
-                </div>
-                <div class="indicator-data">
-                    <span class="indicator-value">${ind.value}</span>
-                    <span class="indicator-label">${ind.label}</span>
-                    ${trendText ? `<span class="indicator-trend ${trendClass}">${trendArrow} ${trendText}</span>` : ''}
-                </div>
-            </div>
-        `;
-    },
-
-    _renderActivityItem(act) {
-        return `
-            <div class="activity-item">
-                <div class="activity-dot" style="background:${act.color}"></div>
-                <div class="activity-body">
-                    <div class="activity-main">
-                        <span class="activity-icon">${act.icon}</span>
-                        <span class="activity-user">${act.user}</span>
-                        <span class="activity-action">${act.action}</span>
-                    </div>
-                    <div class="activity-detail">${act.detail}</div>
-                    <div class="activity-time text-muted">${act.time}</div>
-                </div>
-            </div>
-        `;
-    },
-
-    // ═════════════════════════════════════════
-    //  UTILITIES
-    // ═════════════════════════════════════════
-
-    _formatMoney(amount) {
-        return '$' + Math.round(amount).toLocaleString('es-AR');
+        return `Hace ${Math.floor(hours / 24)}d`;
     },
 
     async _safeFetch(fn) {
-        try {
-            return await fn();
-        } catch (e) {
-            console.warn('Lobby safe fetch:', e.message);
-            return null;
+        try { return await fn(); }
+        catch (e) { console.warn('[home] fetch:', e && e.message); return null; }
+    },
+
+    _esc(s) {
+        if (window.escHtml) return window.escHtml(s);
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        ));
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  ESTILOS (inyectados una vez)
+    // ═══════════════════════════════════════════════════════════════════
+    _injectStyles() {
+        if (this._stylesInjected || document.getElementById('home-styles')) {
+            this._stylesInjected = true;
+            return;
         }
-    },
+        const style = document.createElement('style');
+        style.id = 'home-styles';
+        style.textContent = `
+        .home { display:flex; flex-direction:column; gap:22px; padding:6px 0 48px; }
 
-    _attachEvents() {
-        this._attachModuleChipEvents();
-    },
+        /* Header */
+        .home-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+        .home-hello { font-family:var(--font-main,'Outfit',sans-serif); font-size:1.85rem; font-weight:700; color:var(--text-primary,#E8E8E8); margin:0; line-height:1.1; }
+        .home-hello .home-name { color:var(--primary,#00A9C1); }
+        .home-date { font-family:var(--font-mono,'Space Mono',monospace); font-size:.78rem; letter-spacing:.04em; color:var(--text-muted,#888); margin:6px 0 0; }
+        .home-header-r { display:flex; align-items:center; gap:12px; }
+        .home-rolechip { font-family:var(--font-mono,'Space Mono',monospace); font-size:.7rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--rc,#00A9C1); border:1px solid var(--rc,#00A9C1); border-radius:999px; padding:5px 12px; background:color-mix(in srgb, var(--rc) 12%, transparent); white-space:nowrap; }
 
-    _attachModuleChipEvents() {
-        document.querySelectorAll('.lobby-module-chip').forEach(chip => {
-            chip.addEventListener('click', () => {
-                Router.navigate(chip.dataset.module);
-            });
-        });
+        /* Toggle canal */
+        .home-toggle { display:inline-flex; border:1px solid var(--border,#2a2a2a); border-radius:8px; overflow:hidden; background:#0c0c0c; }
+        .home-toggle-btn { font-family:var(--font-mono,'Space Mono',monospace); font-size:.72rem; font-weight:700; letter-spacing:.04em; color:var(--text-muted,#888); background:transparent; border:0; padding:7px 14px; cursor:pointer; transition:all .2s ease; }
+        .home-toggle-btn:hover { color:var(--text-primary,#E8E8E8); }
+        .home-toggle-btn.active { color:#050505; background:var(--primary,#00A9C1); }
+
+        /* Section labels (columnas super) */
+        .home-collabel { display:flex; align-items:center; gap:12px; margin:2px 0 4px; }
+        .home-collabel > span:first-child { font-family:var(--font-mono,'Space Mono',monospace); font-size:.72rem; font-weight:700; letter-spacing:.12em; color:var(--text-muted,#888); white-space:nowrap; }
+        .home-collabel-line { flex:1; height:1px; background:linear-gradient(90deg, var(--primary,#00A9C1), transparent); opacity:.5; }
+
+        /* KPI band */
+        .home-band { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+        .home-kpi { background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-radius:12px; padding:16px 16px 18px; position:relative; overflow:hidden; }
+        .home-kpi::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%; background:var(--accent,#00A9C1); opacity:.85; }
+        .home-kpi-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+        .home-kpi-icon { font-size:1rem; }
+        .home-kpi-title { font-family:var(--font-mono,'Space Mono',monospace); font-size:.68rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted,#888); }
+        .home-kpi-value { font-family:var(--font-mono,'Space Mono',monospace); font-size:1.7rem; font-weight:700; color:var(--text-primary,#E8E8E8); line-height:1; }
+        .home-kpi-sub { font-size:.74rem; color:var(--text-muted,#888); margin-top:6px; }
+
+        /* Layout grids */
+        .home-2col { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+        .home-col { display:flex; flex-direction:column; gap:14px; }
+        .home-admin-top { display:grid; grid-template-columns:1.45fr 1fr; gap:20px; align-items:start; }
+        .home-admin-tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px; }
+        .home-1col { display:flex; flex-direction:column; gap:16px; max-width:980px; }
+        .home-1col-wide { max-width:none; }
+        .home-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:16px; }
+
+        /* Cards */
+        .home-card { background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-radius:12px; padding:0; overflow:hidden; transition:border-color .2s ease, box-shadow .2s ease; }
+        .home-card:hover { border-color:color-mix(in srgb, var(--accent) 45%, var(--border,#2a2a2a)); }
+        .home-card-head { display:flex; align-items:center; gap:9px; padding:13px 16px; border-bottom:1px solid var(--border,#2a2a2a); }
+        .home-card-icon { font-size:.95rem; }
+        .home-card-title { font-family:var(--font-mono,'Space Mono',monospace); font-size:.74rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-primary,#E8E8E8); }
+        .home-card-head::after { content:''; flex:1; }
+        .home-card-body { padding:14px 16px; min-height:54px; }
+        .home-card-hero .home-card-body { min-height:280px; }
+        .home-card-tile .home-card-body { padding:12px 14px; }
+
+        /* Taller — tiles grandes */
+        .home-tiles2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+        .home-tilebig { display:flex; align-items:center; gap:18px; background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-left:4px solid var(--accent,#00A9C1); border-radius:14px; padding:24px 26px; min-height:120px; }
+        .home-tilebig-icon { font-size:2.4rem; line-height:1; }
+        .home-tilebig-num { font-family:var(--font-mono,'Space Mono',monospace); font-size:3rem; font-weight:700; color:var(--text-primary,#E8E8E8); line-height:1; }
+        .home-tilebig-label { font-size:1.05rem; font-weight:600; color:var(--text-muted,#888); margin-top:6px; }
+
+        /* Empty / error */
+        .home-empty { font-size:.82rem; color:var(--text-muted,#888); padding:8px 2px; }
+        .home-empty-err { color:#ff6b6b; }
+
+        /* Skeletons */
+        .home-skel-wrap { display:flex; flex-direction:column; gap:9px; }
+        .home-skel { height:11px; border-radius:5px; background:linear-gradient(90deg,#1a1a1a 25%,#222 37%,#1a1a1a 63%); background-size:400% 100%; animation:home-shimmer 1.4s ease infinite; }
+        .home-skel-num { height:30px; width:60%; border-radius:6px; }
+        .home-skel-big { height:46px; width:50%; border-radius:8px; margin-bottom:4px; }
+        @keyframes home-shimmer { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
+
+        /* Taller = texto más grande (tablet de galpón) */
+        .home-v-simple .home-hello { font-size:2.3rem; }
+        .home-v-simple .home-card-title { font-size:.92rem; }
+        .home-v-simple .home-card-body { font-size:1rem; }
+
+        /* Responsive */
+        @media (max-width:1100px) { .home-band { grid-template-columns:repeat(2,1fr); } }
+        @media (max-width:980px) {
+            .home-2col, .home-admin-top { grid-template-columns:1fr; }
+            .home-tiles2 { grid-template-columns:1fr; }
+        }
+        @media (max-width:560px) {
+            .home-band { grid-template-columns:1fr; }
+            .home-hello { font-size:1.5rem; }
+            .home-header-r { width:100%; justify-content:space-between; }
+        }
+        `;
+        document.head.appendChild(style);
+        this._stylesInjected = true;
     },
 };
+
+// Alias de compat: el router y los breadcrumbs viejos referencian `Lobby`.
+const Lobby = HomeModule;
