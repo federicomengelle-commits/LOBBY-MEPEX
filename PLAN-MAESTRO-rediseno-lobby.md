@@ -79,11 +79,9 @@
 
 ---
 
-## 🗺️ MAPA MACRO — lo que falta *(índice rápido; el detalle, en cada fase abajo)*
+## 🗺️ MAPA MACRO — estado de cada fase *(índice rápido por fase; el ORDEN de ataque está en §ORDEN DE EJECUCIÓN arriba · el detalle, en cada fase abajo)*
 
-- **Fase 4 — Operaciones** — 🔓 **DESBLOQUEADA: importador de cotización CONSTRUIDO+PUSHEADO** (`importar-cotizacion.js`, commit `3e4ff01`; ⏳ falta pull+verify de Fede + chequear RLS insert). Escribe `cotizacion_items` desde el texto del PDF → ya no depende de que el cotizador escriba.
-  - **Próximo (ya construible, lee `cotizacion_items`):** Remito simple (proyecto/evento, reusar `remito-pdf.js` despegado de cargas) + Subalquileres por proveedor (vista doble evento/stand + PDF/mail de pedido)
-  - Retirar legacy de Logística (cargas/movimientos viejos) — destructivo, confirmar con Fede
+- **Fase 4 — Operaciones** — 🔓 DESBLOQUEADA (importador de cotización ✅ construido+pusheado, `3e4ff01`; ⏳ falta pull+verify). Restan: remito simple · subalquileres por proveedor · retiro legacy de cargas. **→ orden + detalle en §ORDEN DE EJECUCIÓN · Etapa 1 (arriba).**
 - **Fase 5 — Compras** *(doble paso ✅, quedan mejoras)*
   - Botón "Pedido" en Operaciones → OC en Compras · columna presupuesto vs gasto real · hard-link OC↔egreso
 - **Fase 6 — Diseño** *(liviana)* — BOM al cierre (CSV) cruza Costos · gráficas/mockups · planos→Drive
