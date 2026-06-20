@@ -6,8 +6,7 @@
 > resolver, en el orden en que lo necesita.
 >
 > **Estado (2026-06-20):** DISEÑO en curso, fase mockups aprobada por Fede.
-> - ✅ Dirección visual elegida + **superadmin** y **admin** cerrados (mockups validados).
-> - ⏳ Faltan diseñar: **venta · pm · taller** (1 columna enfocada c/u).
+> - ✅ **Los 5 roles DISEÑADOS** (mockups validados con Fede): superadmin · admin · venta · pm · taller.
 > - ⛔ **Código NO empezado.** (Un esqueleto inicial se construyó y se **revirtió** a pedido de
 >   Fede para diseñar primero — repo quedó limpio en `lobby.js?v=7` original.)
 > - Branch: `rediseno` (Fede pushea a main).
@@ -106,16 +105,48 @@
 
 ---
 
-## 4. VENTA · PM · TALLER — ⏳ PENDIENTES DE DISEÑAR (1 columna enfocada)
+## 4. VENTA · PM · TALLER — diseño cerrado (1 columna enfocada)
 
-Lineamiento (del brief + decisiones tomadas), a mockear uno por uno:
-- **venta (comercial):** KPI presupuestos enviados/cerrados como headline + mis cotizaciones activas +
-  monto en negociación → Cotizaciones pendientes (las suyas, por `vendedor_id`) · Proyectos que vendió ·
-  Agenda (ferias) · accesos comerciales en sidebar. 1 columna.
-- **pm (operativo):** Proyectos (los suyos, `responsable_id`) · Cola de taller (de sus proyectos) ·
-  Agenda (montajes/entregas) · Materiales faltantes · Alertas de sus proyectos · accesos operativos. 1 col.
-- **taller (ultra simple, tablet en galpón):** Cola de taller (la suya) · Agenda (entregas/montajes) ·
-  Materiales faltantes · accesos taller. Cards grandes, tap targets ≥44px. 1 col.
+### 4.1 VENTA (comercial · Noe) — actividad y relación, SIN montos totales
+- **Header:** saludo + fecha + chip "Ventas". Sin toggle de canal.
+- **KPI band (4 — ratio/actividad, NO sumas de plata):** Conversión % · Oportunidades calientes 🔥
+  (`crm_casos.temperatura`) · Cotizaciones enviadas (semana) · Acciones de hoy.
+- **"Para seguir"** (block estrella): sus cotizaciones/casos que piden acción, ordenadas por urgencia
+  (arriba el evento próximo sin cerrar) + estado chip + antigüedad. Scope = `cotizaciones.vendedor_id`.
+- **"Próximas acciones"** (agenda del vendedor): `crm_casos.proxima_accion` + `proxima_accion_fecha`
+  (llamar / mandar propuesta / visitar, con fecha).
+- **"Pipeline por temperatura"**: Calientes / Tibios / Fríos (no etapas frías).
+- **"Clientes a contactar"** (sin follow-up ≥15d, alerta `crm:cliente_sin_followup`) · **"Ferias próximas"**.
+- **Extras elegidos (Fede):** Clientes para reactivar · Fechas de clientes (cumpleaños/aniversarios →
+  excusa de contacto) · Tiempo de respuesta (qué tan rápido sigue un lead nuevo).
+- **Descartado:** "Proyectos que vendí" · montos totales (en negociación/ganado mes) · meta de cierres.
+- **Atajos sidebar:** Nueva cotización · Nuevo cliente · Agendar seguimiento.
+
+### 4.2 PM (operativo · Meli/Leo) — radar de sus stands
+- **Header:** saludo + fecha + chip "PM". Sin toggle.
+- **KPI band (4):** Mis proyectos activos · En armado · Montajes (7d) · **🚨 En riesgo** (armado cerca +
+  checklist incompleto).
+- **"Mis proyectos"** (block estrella): sus stands con `estado_taller` + barra de avance + próximo hito
+  (armado/entrega). Scope = `proyectos.responsable_id`.
+- **"Próximos montajes / entregas"** (timeline) · **"Cola de taller"** (de sus stands) ·
+  **"Materiales faltantes"** (de sus proyectos) · **"Alertas de mis proyectos"**.
+- **Extras elegidos (Fede):** Carga de trabajo (stands en simultáneo próx. 2 semanas — capacidad) ·
+  Pendientes con el cliente (aprobaciones/respuestas que traban; PM = nexo) · Equipo de mis eventos
+  (`asignaciones_evento`: quién en cada montaje por jornada).
+- **Descartado:** Feedback de eventos cerrados.
+- **Atajos sidebar:** Nuevo proyecto · Nuevo evento · Pedir compra.
+
+### 4.3 TALLER (ultra simple · Diego/Juan/Carlos/Willy) — tablet en galpón
+- **Regla (CLAUDE.md):** ULTRA simple. Texto grande, botón grande, UNA acción clara por tarjeta.
+  NO KPIs, NO plata, NO temperatura.
+- **Header:** "Hola, \<nombre\>" grande + fecha.
+- **2 tiles grandes:** Para armar hoy · Stands en el taller.
+- **"Para hacer"** (cards grandes): cada stand con cliente/evento + progreso de checklist (N de M pasos) +
+  aviso si el armado está cerca + **botón grande** ("Seguir armando") + secundario ("Planos"). Es la
+  puerta simple al tablero de Taller que ya existe.
+- **"Próximos días"** (lista simple: despachos/armados) · **"Faltan materiales"** (lista simple).
+- **Acción contextual:** "Subir foto del remito" cuando el stand se despacha (en la card, no atajo global).
+- **Atajos sidebar:** Mis tareas · Pedir compra · Inventario.
 
 ---
 
@@ -199,8 +230,21 @@ lobby es la ventanita, el módulo es la fuente).
   `alertas` del home → home y sidebar nunca se contradicen.
 - **3 estados:** completa / colapsada (tira de íconos + flyout al hover) / oculta. Configurable por
   usuario (drag&drop, se guarda en localStorage del navegador).
-- **Atajos por rol** (en `data.quickActions`): superadmin/venta = comercial; admin = **administrativos**
-  (cargar comprobante/registrar cobro/registrar pago); pm = operativo; taller = taller.
+- **Atajos por rol** (en `data.quickActions` — actualizar en build; varios son acciones NUEVAS):
+
+| Rol | Atajos (sidebar) |
+|---|---|
+| superadmin | Nueva cotización · Nuevo cliente · Nuevo proyecto |
+| admin | **Cargar comprobante** (foto/IA, §7) · Registrar cobro · Registrar pago |
+| venta | Nueva cotización · Nuevo cliente · Agendar seguimiento |
+| pm | Nuevo proyecto · Nuevo evento · Pedir compra |
+| taller | Mis tareas · Pedir compra · Inventario |
+
+> Acciones NUEVAS a crear (no existen hoy en `data.quickActions`): **Cargar comprobante** (§7) ·
+> **Registrar cobro/pago** (modales de Finanzas) · **Agendar seguimiento** (próxima acción CRM) ·
+> **Pedir compra** (pedido liviano, Fase 5). El resto (nueva cotización/cliente/proyecto/evento, mis
+> tareas, inventario) ya existen. La **navegación** por categorías la maneja el RBAC (`Data.rolePermissions`),
+> no se rediseña acá.
 
 ---
 
