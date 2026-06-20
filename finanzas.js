@@ -2651,6 +2651,7 @@ const FinanzasModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Nuevo ingreso
                 </button>
+                <button class="fin-btn-new" id="finBtnCargarCompIng" style="background:rgba(155,125,255,.12);border-color:#9B7DFF;color:#9B7DFF">📸 Cargar comprobante</button>
                 ` : ''}
             </div>
             <div class="fin-filters">
@@ -3586,6 +3587,7 @@ const FinanzasModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Nuevo egreso
                 </button>
+                <button class="fin-btn-new" id="finBtnCargarCompEgr" style="background:rgba(155,125,255,.12);border-color:#9B7DFF;color:#9B7DFF">📸 Cargar comprobante</button>
                 ` : ''}
             </div>
             <div class="fin-filters">
@@ -5637,6 +5639,7 @@ const FinanzasModule = {
         }
 
         document.getElementById('finBtnNewEgreso')?.addEventListener('click', () => this._showEgresoModal());
+        document.getElementById('finBtnCargarCompEgr')?.addEventListener('click', () => { if (typeof CargaComprobante !== 'undefined') CargaComprobante.open(); });
 
         document.getElementById('finEgrCatFilter')?.addEventListener('change', (ev) => {
             this._egresosCatFilter = ev.target.value;
@@ -5704,6 +5707,7 @@ const FinanzasModule = {
 
         // New button
         document.getElementById('finBtnNewIngreso')?.addEventListener('click', () => this._showIngresoModal());
+        document.getElementById('finBtnCargarCompIng')?.addEventListener('click', () => { if (typeof CargaComprobante !== 'undefined') CargaComprobante.open(); });
 
         // Filters
         document.getElementById('finIngMedioFilter')?.addEventListener('change', (e) => {

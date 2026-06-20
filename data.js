@@ -99,6 +99,7 @@ const Data = {
     // ─── ACCIONES RÁPIDAS POR ROL ───
     quickActions: {
         superadmin: [
+            { id: 'cargar-comprobante', icon: '📸', label: 'Cargar comprobante', action: 'cargar-comprobante' },
             { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
             { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'navigate', route: 'proyectos' },
