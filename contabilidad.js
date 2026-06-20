@@ -2681,51 +2681,45 @@ const ContabilidadModule = {
 
     async _loadAsientos() {
         try {
-            // 1. Count + totals query
-            let countQuery = supabaseClient
-                .from('asientos')
-                .select('id, total_debe, total_haber', { count: 'exact' })
-                .eq('_deleted', false);
-
+            // Filtros compartidos por las queries de count / totales / listado.
             const canal = this._getCanalFilter();
-            if (canal) countQuery = countQuery.eq('canal', canal);
-            if (this._diarioFechaDesde) countQuery = countQuery.gte('fecha', this._diarioFechaDesde);
-            if (this._diarioFechaHasta) countQuery = countQuery.lte('fecha', this._diarioFechaHasta);
-            if (this._diarioTipoFiltro && this._diarioTipoFiltro !== 'todos') {
-                countQuery = countQuery.eq('tipo', this._diarioTipoFiltro);
-            }
-            if (this._diarioSearch) {
-                countQuery = countQuery.ilike('concepto', `%${this._diarioSearch}%`);
-            }
-
-            const countRes = await countQuery;
-            this._diarioTotal = countRes.count || 0;
-
-            // Calculate totals from all filtered results
-            const allData = countRes.data || [];
-            this._diarioTotales = {
-                debe: allData.reduce((s, a) => s + (parseFloat(a.total_debe) || 0), 0),
-                haber: allData.reduce((s, a) => s + (parseFloat(a.total_haber) || 0), 0),
-                count: this._diarioTotal,
+            const applyFilters = (q) => {
+                if (canal) q = q.eq('canal', canal);
+                if (this._diarioFechaDesde) q = q.gte('fecha', this._diarioFechaDesde);
+                if (this._diarioFechaHasta) q = q.lte('fecha', this._diarioFechaHasta);
+                if (this._diarioTipoFiltro && this._diarioTipoFiltro !== 'todos') q = q.eq('tipo', this._diarioTipoFiltro);
+                if (this._diarioSearch) q = q.ilike('concepto', `%${this._diarioSearch}%`);
+                return q;
             };
 
+            // 1. Count exacto (head: true → no trae filas).
+            const countRes = await applyFilters(
+                supabaseClient.from('asientos').select('id', { count: 'exact', head: true }).eq('_deleted', false)
+            );
+            this._diarioTotal = countRes.count || 0;
+
+            // 1b. Totales sobre TODOS los asientos filtrados — paginado para no
+            // truncar a las primeras 1000 filas que PostgREST devuelve por defecto
+            // (antes los totales se subvaluaban con >1000 asientos). (Fase 12.D)
+            let totDebe = 0, totHaber = 0, from = 0;
+            const TOT_PAGE = 1000;
+            while (true) {
+                const { data: page, error: pErr } = await applyFilters(
+                    supabaseClient.from('asientos').select('total_debe, total_haber').eq('_deleted', false)
+                ).range(from, from + TOT_PAGE - 1);
+                if (pErr || !page || page.length === 0) break;
+                for (const a of page) { totDebe += parseFloat(a.total_debe) || 0; totHaber += parseFloat(a.total_haber) || 0; }
+                if (page.length < TOT_PAGE) break;
+                from += TOT_PAGE;
+            }
+            this._diarioTotales = { debe: totDebe, haber: totHaber, count: this._diarioTotal };
+
             // 2. Paginated asientos query
-            let query = supabaseClient
-                .from('asientos')
-                .select('*')
-                .eq('_deleted', false)
+            let query = applyFilters(
+                supabaseClient.from('asientos').select('*').eq('_deleted', false)
+            )
                 .order('fecha', { ascending: false })
                 .order('numero', { ascending: false });
-
-            if (canal) query = query.eq('canal', canal);
-            if (this._diarioFechaDesde) query = query.gte('fecha', this._diarioFechaDesde);
-            if (this._diarioFechaHasta) query = query.lte('fecha', this._diarioFechaHasta);
-            if (this._diarioTipoFiltro && this._diarioTipoFiltro !== 'todos') {
-                query = query.eq('tipo', this._diarioTipoFiltro);
-            }
-            if (this._diarioSearch) {
-                query = query.ilike('concepto', `%${this._diarioSearch}%`);
-            }
 
             const offset = this._diarioPagina * 50;
             query = query.range(offset, offset + 49);
@@ -3160,14 +3154,12 @@ const ContabilidadModule = {
                 const asiento = asientosMap[linea.asiento_id];
                 if (!asiento) continue; // filtered out by canal or deleted
 
-                // Normalize debe/haber
-                let debe = parseFloat(linea.debe) || 0;
-                let haber = parseFloat(linea.haber) || 0;
-                if (debe === 0 && haber === 0 && linea.monto) {
-                    const monto = parseFloat(linea.monto) || 0;
-                    if (linea.tipo_movimiento === 'debe') debe = monto;
-                    else if (linea.tipo_movimiento === 'haber') haber = monto;
-                }
+                // asiento_lineas usa tipo_movimiento + monto (las columnas debe/haber
+                // NO existen → los reads anteriores siempre daban 0). (Fase 12.D)
+                let debe = 0, haber = 0;
+                const monto = parseFloat(linea.monto) || 0;
+                if (linea.tipo_movimiento === 'debe') debe = monto;
+                else if (linea.tipo_movimiento === 'haber') haber = monto;
 
                 const entry = { ...linea, debe, haber, _asiento: asiento };
 

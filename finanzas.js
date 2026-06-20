@@ -5852,24 +5852,23 @@ const FinanzasModule = {
         try {
             let cuentasActivas = this._cuentas.length > 0 ? this._cuentas.filter(c => c.activa) : [];
             if (canal) cuentasActivas = cuentasActivas.filter(c => c.canal_default === canal);
-            let totalSaldo = 0;
-            for (const cuenta of cuentasActivas) {
+            // Paralelizado: antes era N+1 secuencial (2 awaits por cuenta, en serie).
+            // Ahora todas las cuentas en paralelo y, dentro de cada una, ingresos+egresos
+            // juntos. (Fase 12.D — mejora futura: leer saldos_mensuales materializado.)
+            const saldosPorCuenta = await Promise.all(cuentasActivas.map(async (cuenta) => {
                 let saldo = Number(cuenta.saldo_inicial) || 0;
                 try {
                     let qi = supabaseClient.from('ingresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'confirmado');
                     if (canal) qi = qi.eq('canal', canal);
-                    const { data: ing } = await qi;
-                    saldo += (ing || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-                } catch (_) {}
-                try {
                     let qe = supabaseClient.from('egresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'pagado');
                     if (canal) qe = qe.eq('canal', canal);
-                    const { data: egr } = await qe;
+                    const [{ data: ing }, { data: egr }] = await Promise.all([qi, qe]);
+                    saldo += (ing || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
                     saldo -= (egr || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
                 } catch (_) {}
-                totalSaldo += saldo;
-            }
-            kpi.saldo = totalSaldo;
+                return saldo;
+            }));
+            kpi.saldo = saldosPorCuenta.reduce((s, v) => s + v, 0);
         } catch (_) {}
 
         // Por cobrar (plan_cobro_items pendientes)
