@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 33%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 28%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈67%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈72%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-20c — **Fase 13 BUILD COMPLETO** (5 fases pusheadas+verificadas en preview, sesión autónoma): HomeModule por zonas · 43 widgets read-only · módulo Calendario Adm · carga comprobantes foto/IA · atajos por rol. Vuelve a PROGRESO lo que el diseño sumó → PLAN 33→28, PROGRESO 67→72. **Solo resta infra de Fede** (3 pasos SQL/VPS) — ver §Fase 13 abajo.)*
 > *(Rebalanceo 2026-06-20b — 🆕 **Fase 13 — Rediseño Lobby por rol v2** (diseño en curso): home como superficie de acción por rol (2 col operativo|admin para super/admin · 1 col enfocada para venta/pm/taller) + módulo **Calendario Administrativo** + **Carga de comprobantes por foto/IA**. Diseño de super/admin CERRADO; faltan venta/pm/taller + todo el build. Universo creció → PLAN 28→33, PROGRESO 72→67. SPEC: `docs/rediseno-lobby-por-rol-v2-spec.md`.)*
 > *(Rebalanceo 2026-06-20 — **Fase 12 Saneamiento técnico casi completa** (5 batches pusheados, 1 sesión autónoma): 12.A router teardown + _esc global (`8f8f520`) · 12.C permisos (`1a4d5a5`) · 12.E quick-wins (`ebd1b4e`) · 12.B datos (`e72e7c5`) · 12.D perf (`59c1960`). ✅ verificado end-to-end en prod (auditoría Chrome 2026-06-20, 100% verde — router teardown probado en vivo, escapes, guards, totales balanceados, cero errores). **Diferidos** (no autónomos / overlap con otras fases): inventario stock atómico (SQL/Fase 4) · Mayor server-filter (RPC) · eventos teardownEndDate→columna + transporte modal (refactor de raíz/Fase 4) · consolidar Usuarios y Roles. PLAN 31→28, PROGRESO 69→72.)*
 > *(Rebalanceo 2026-06-18c — AUDITORÍA de módulos (5 agentes) → nueva **Fase 12 Saneamiento técnico ≈4%** (router teardown, dummy data de eventos, _esc global, permisos, perf). El universo creció → PLAN 28→31, PROGRESO 72→69. Detalle: `docs/auditoria-modulos-2026-06-18.md`.)*
@@ -347,19 +348,22 @@ El vínculo **proyecto→perfil ya existe** (no hay que inventar): `proyectos.re
 
 ---
 
-### 🆕 Fase 13 — Rediseño Lobby por rol v2 (Home = superficie de acción) *(≈6% · diseño en curso)*
+### 🆕 Fase 13 — Rediseño Lobby por rol v2 *(BUILD ✅ — solo resta infra de Fede + nice-to-haves)*
 
-> **El home se reconvierte en una superficie de acción por rol** (supera la Fase 9.6 Híbrido). UN solo `HomeModule` con `_layouts` (rol→widgets) + `_widgets` (read-only). **📘 SPEC OBLIGATORIA: `docs/rediseno-lobby-por-rol-v2-spec.md`** (matriz rol×widgets, layouts por rol, fórmulas KPI, reconocimiento técnico, build plan).
+> **✅ BUILD COMPLETO Y VERIFICADO EN PREVIEW (2026-06-20, sesión autónoma).** El detalle de lo construido (las 5 fases, archivos, commits) está en `PROGRESO.md` §Estado general. Acá queda SOLO lo que falta. SPEC `docs/rediseno-lobby-por-rol-v2-spec.md` · HANDOFF `docs/rediseno-lobby-HANDOFF-build.md`.
 
-- **Forma:** super/admin = **2 columnas** (operativo|administrativo) + banda KPI macro; venta/pm/taller = **1 columna enfocada**.
-- **KPIs macro nuevos (Fede):** Presupuestos enviados vs cerrados · Margen del mes % · Días de caja (runway) · Cash proyectado 30d · (admin) Aging de cobros · Ritmo cobro/pago (DSO/DPO).
-- **✅ Los 5 roles DISEÑADOS** (mockups validados con Fede): superadmin · admin · venta · pm · taller. **⏳ Falta el build.** 🎨 **HANDOFF de build autocontenido: `docs/rediseno-lobby-HANDOFF-build.md`** (matriz, layouts por rol, catálogo de widgets, atajos por rol, fases con checkpoints).
-- **Correcciones de Fede al brief:** admin ve **ambos canales** (toggle, NO solo Oficial) · admin = administrativo a pleno (saca casi todo lo operativo) · accesos rápidos viven en la **sidebar** (no fila del home) · taller **aterriza en su home** (router: + `taller` a lobbyRoles, default `eventos`→`lobby`).
-- **🆕 Pieza A — Módulo Calendario Administrativo (`#calendario-adm`):** vencimientos fijos por día (alquileres/servicios/seguros/sueldos/AFIP/cuotas) con estado + marcar-pagado→egreso + alimenta `Alertas`. **Módulo propio + digest en lobby admin** (decisión Fede). Fuente: `vencimientos_recurrentes/generados` + RRHH + Contabilidad. Ver spec §6.
-- **🆕 Pieza B — Carga de comprobantes por foto/PDF con IA:** foto (cámara del celu) o PDF → **Gemini del VPS** extrae (CUIT/razón social/fecha/neto/IVA/total/tipo/N°) → form pre-cargado → **humano confirma** → `comprobantes_recibidos` (+egreso opcional). **Sueño Fede:** multi-comprobante + grilla de preview/corrección + archivos guardados (bucket Storage). **Vive en Finanzas; atajo en el lobby admin.** Reusa infra IA ya deployada (proxy `mepex-api`, `/api/` nginx). Ver spec §7.
-- **Reconocimiento clave (no re-descubrir):** tablas reales `proyectos`/`eventos` (NO existen `_2026`) · proyecto↔PM = `proyectos.responsable_id` · proyecto↔vendedor NO directo (vía `cotizaciones.vendedor_id`) · finanzas sin métodos read públicos (query directa `API.supabase.from`) · `Alertas` alimenta widget alertas + dots sidebar · toggle `localStorage('finanzas_vista_canal')`. Spec §9.
-- **Build (cuando se ejecute):** esqueleto `HomeModule` (reescribe `lobby.js`, renombra objeto, alias `Lobby`) → widgets read-only por rol → módulo Calendario adm → carga comprobantes IA. Confirmar cada pieza con Fede; **diseñar venta/pm/taller antes de codearlos**.
-- **Test:** cada rol ve solo su set en orden · links andan · F12 limpio · responsive.
+**⛔ ACTIVACIÓN — pasos de infra de Fede (sin esto, las piezas nuevas quedan gateadas pero NADA rompe):**
+1. **SQL grant Calendario adm:** correr `sql/fase13_calendario_adm_grant.sql` en Supabase (agrega `"calendario-adm":"write"` a `roles.permissions` de super/admin). Sin esto el router bloquea `#calendario-adm` y la sidebar oculta el ítem (mismo paso que necesitó `rendimiento`).
+2. **Deploy VPS — endpoint OCR:** copiar `tools/vps/ocr-comprobante.js` a `/home/mepex/api/` y montarlo en `server.js`: `app.post('/api/ocr/comprobante', express.json({limit:'15mb'}), require('./ocr-comprobante').handler);` + `pm2 restart mepex-api`. Reusa la `GEMINI_API_KEY` ya configurada para el CRM digest. Sin esto, la carga de comprobantes cae a **modo manual** (anda igual).
+3. **Bucket Storage:** correr `sql/fase13_comprobantes_bucket.sql` (bucket privado `comprobantes` + policies). Sin esto, el comprobante se guarda **sin adjuntar el archivo**.
+4. **`~/pull-lobby.sh`** en el VPS para servir las versiones nuevas (hoy sirve las viejas).
+
+**Nice-to-haves (futuro, no bloquean):**
+- **Carga de comprobantes — el "sueño" completo:** multi-comprobante en lote + grilla de preview/corrección antes de confirmar (v1 es de a uno).
+- **Registrar cobro/pago (atajos admin):** hoy navegan a Finanzas con el tab pre-seleccionado (`_activeTab`). Mejora: deep-link que ABRA el modal con la data ya cargada (requiere un hook en `finanzas.js render()` que lea un query param — no se hizo para no tocar el módulo de 8700 líneas en caliente).
+- **DSO/DPO real:** hoy el tile `ritmo-cp` muestra por-cobrar/por-pagar + "próximamente". Para los días promedio reales falta emparejar fecha de factura con fecha de cobro/pago (join custom sobre `cobro_aplicaciones`/`comprobantes`).
+- **`fechas-clientes` (venta):** sin data de cumpleaños/aniversarios en `clientes` → empty-state. Si se quiere, agregar columna y cargarla.
+- **materiales-faltantes:** hoy lee `proyecto_novedades.tipo='falta_material'` (poblada). La señal de stock bajo de `Alertas` usa `insumos_base.stock_actual/stock_minimo` que están **sin usar** (la app usa `stock`) → si se quiere stock-bajo confiable, alinear esa señal a `stock` (cruza con el RPC `ajustar_stock` de Fase 12.D).
 
 ## 🆕 Ideas de mejora pendientes *(del análisis ultracode 2026-06-12 — lo ya hecho está en PROGRESO §Infra)*
 - **Cache-busting automático por git-hash** en vez de bumps `?v=N` manuales: un script (pre-commit/paso del deploy) que reescribe los `?v=` con el short-hash del commit. Elimina la clase de bug "pusheé pero no se ve". (Hecho parcial: el `check.sh` ya valida que el bump esté; falta automatizarlo.)
