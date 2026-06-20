@@ -544,10 +544,8 @@ const Lobby = {
             // Table might not exist — use mock data
         }
 
-        if (activities.length === 0) {
-            activities = Data.recentActivity || [];
-        }
-
+        // Sin actividad en audit_log → empty-state real. Antes caía a
+        // Data.recentActivity (mock con nombres/cotizaciones inventados). (Fase 12.B)
         if (activities.length === 0) {
             el.innerHTML = '<div class="lobby-upcoming-empty">Sin actividad reciente</div>';
             return;

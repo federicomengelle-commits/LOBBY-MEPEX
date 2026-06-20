@@ -248,14 +248,16 @@ const Tareas = {
         },
         async inventario() {
             const { data } = await supabaseClient
-                .from('insumos_base').select('id, nombre, stock_actual, stock_minimo')
+                .from('insumos_base').select('id, nombre, stock, stock_minimo')
                 .eq('_deleted', false).not('stock_minimo', 'is', null);
             if (!data) return [];
-            return data.filter(i => i.stock_actual !== null && i.stock_minimo !== null && i.stock_actual < i.stock_minimo)
+            // Usa la columna real `stock` (no `stock_actual`, que está sin usar y
+            // dejaba esta fuente muerta). Dispara cuando el insumo tenga stock_minimo. (Fase 12.B)
+            return data.filter(i => i.stock !== null && i.stock_minimo !== null && i.stock < i.stock_minimo)
                 .slice(0, 100).map(i => ({
                     id: `inv_stock:${i.id}`, dedupe_key: `inv_stock:${i.id}`, es_derivada: true,
                     titulo: `Reponer stock: ${i.nombre || 'insumo #' + i.id}`,
-                    descripcion: `Bajo el mínimo (${i.stock_actual}/${i.stock_minimo})`,
+                    descripcion: `Bajo el mínimo (${i.stock}/${i.stock_minimo})`,
                     origen: 'manual', modulo: 'inventario', proyecto_id: null, prioridad: 'alta',
                     fecha_limite: null, estado: 'pendiente', target_role: 'admin', link: '#inventario',
                 }));

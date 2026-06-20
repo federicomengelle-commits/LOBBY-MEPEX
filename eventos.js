@@ -266,8 +266,10 @@ const EventosModule = {
                 ...this._getLocalData(e.id),
             }));
         } else {
-            // Dummy data for dev
-            this._events = this._getDummyEvents();
+            // Sin eventos → empty-state real (.ev-empty). Antes caía a 7 eventos
+            // ficticios servibles en prod (IDs ev-001…) → cualquier click operaba
+            // sobre un fantasma. (Fase 12.B)
+            this._events = [];
         }
 
         await this._loadProyectoCounts();
@@ -1234,7 +1236,6 @@ const EventosModule = {
         desarme:        { label: 'Desarme',        color: '#F28D15' },
     },
 
-    _ROLES_OP: ['armador','chofer','ayudante','electricista','montajista','encargado_armado','tecnico','azafata','colaborador'],
     _ROL_LABELS: {
         armador:'Armador', chofer:'Chofer', ayudante:'Ayudante',
         electricista:'Electricista', montajista:'Montajista',
@@ -2982,60 +2983,5 @@ const EventosModule = {
     _getDocTypeLabel(tipo) {
         const dt = this._docTypes.find(d => d.value === tipo);
         return dt ? dt.label : tipo;
-    },
-
-    // ─── Dummy events for dev ───
-    _getDummyEvents() {
-        return [
-            {
-                id: 'ev-001', name: 'Expo Alimentek 2026', venue: 'La Rural, Buenos Aires',
-                setupDate: '2026-03-10', setupEndDate: '2026-03-12',
-                eventStartDate: '2026-03-13', eventEndDate: '2026-03-16',
-                teardownDate: '2026-03-17', teardownEndDate: '2026-03-18',
-                estado: 'proximo', color: '#00BCD4', notas: '',
-            },
-            {
-                id: 'ev-002', name: 'ArquiExpo 2026', venue: 'Costa Salguero',
-                setupDate: '2026-03-14', setupEndDate: '2026-03-16',
-                eventStartDate: '2026-03-17', eventEndDate: '2026-03-22',
-                teardownDate: '2026-03-23', teardownEndDate: '2026-03-24',
-                estado: 'proximo', color: '#FF9800', notas: '',
-            },
-            {
-                id: 'ev-003', name: 'Expo Construir 2026', venue: 'Centro Costa Salguero',
-                setupDate: '2026-04-05', setupEndDate: '2026-04-07',
-                eventStartDate: '2026-04-08', eventEndDate: '2026-04-12',
-                teardownDate: '2026-04-13', teardownEndDate: '2026-04-14',
-                estado: 'proximo', color: '#9C27B0', notas: '',
-            },
-            {
-                id: 'ev-004', name: 'ExpoAgro 2026', venue: 'San Nicolás',
-                setupDate: '2026-03-01', setupEndDate: '2026-03-03',
-                eventStartDate: '2026-03-04', eventEndDate: '2026-03-08',
-                teardownDate: '2026-03-09', teardownEndDate: '2026-03-09',
-                estado: 'en_curso', color: '#4CAF50', notas: '',
-            },
-            {
-                id: 'ev-005', name: 'Congreso CREA 2026', venue: 'Hilton Buenos Aires',
-                setupDate: '2026-02-25', setupEndDate: '2026-02-26',
-                eventStartDate: '2026-02-27', eventEndDate: '2026-02-28',
-                teardownDate: '2026-03-01', teardownEndDate: '2026-03-01',
-                estado: 'finalizado', color: '#607D8B', notas: '',
-            },
-            {
-                id: 'ev-006', name: 'Feria del Libro 2026', venue: 'La Rural, Buenos Aires',
-                setupDate: '2026-04-20', setupEndDate: '2026-04-23',
-                eventStartDate: '2026-04-24', eventEndDate: '2026-05-12',
-                teardownDate: '2026-05-13', teardownEndDate: '2026-05-14',
-                estado: 'proximo', color: '#3F51B5', notas: '',
-            },
-            {
-                id: 'ev-007', name: 'ExpoMedica 2026', venue: 'Centro Costa Salguero',
-                setupDate: '2026-05-18', setupEndDate: '2026-05-20',
-                eventStartDate: '2026-05-21', eventEndDate: '2026-05-24',
-                teardownDate: '2026-05-25', teardownEndDate: '2026-05-25',
-                estado: 'proximo', color: '#009688', notas: '',
-            },
-        ];
     },
 };

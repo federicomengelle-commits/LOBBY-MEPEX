@@ -258,11 +258,10 @@ const CalendarioOperativo = {
                     notes: e.notasOperativas || '',
                 };
 
-                // Docs: localStorage hasta Fase 6 (evento_documentos schema desalineado)
-                try {
-                    const docs = JSON.parse(localStorage.getItem(`ev_docs_${e.id}`) || '[]');
-                    e.documents = { items: docs };
-                } catch { e.documents = { items: [] }; }
+                // Docs: el panel carga evento_documentos vía API.getEventDocumentos
+                // (e._documentos, preferido en el render). NO leemos el localStorage
+                // legacy ev_docs_ — divergía de la fuente real de Supabase. (Fase 12.B)
+                e.documents = { items: [] };
 
                 // PM heredado del primer proyecto si lo tuviera, si no vacío
                 if (!e.pm && e.projects.length > 0) e.pm = e.projects[0].pm || '';
