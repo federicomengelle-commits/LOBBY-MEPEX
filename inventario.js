@@ -1706,6 +1706,26 @@ const InventarioModule = {
         `;
     },
 
+    // Ajuste ATÓMICO de stock (stock = stock + delta) vía RPC. Reemplaza el
+    // read-modify-write con valor cacheado (race + sin rollback). Si la RPC
+    // todavía no está creada en la DB (sql/inventario_ajustar_stock.sql), cae a
+    // un fallback read-modify-write con lectura FRESCA. Propaga errores reales
+    // → el try/catch del handler muestra el Toast. (Fase 12.D)
+    async _ajustarStock(tabla, id, delta) {
+        const { error } = await supabaseClient.rpc('ajustar_stock', { p_tabla: tabla, p_id: id, p_delta: delta });
+        if (!error) return;
+        // ¿La RPC no existe aún? → fallback. Cualquier otro error es real → propagar.
+        const code = error.code || '';
+        const msg = (error.message || '').toLowerCase();
+        const rpcMissing = code === 'PGRST202' || code === '42883' || msg.includes('could not find the function') || msg.includes('does not exist');
+        if (!rpcMissing) throw error;
+        const { data: row, error: readErr } = await supabaseClient.from(tabla).select('stock').eq('id', id).single();
+        if (readErr) throw readErr;
+        const current = Number(row?.stock) || 0;
+        const { error: updErr } = await supabaseClient.from(tabla).update({ stock: current + delta }).eq('id', id);
+        if (updErr) throw updErr;
+    },
+
     async _loadMovimientos() {
         try {
             // Load movimientos with items
@@ -2122,16 +2142,10 @@ const InventarioModule = {
                     const { error: itemsErr } = await supabaseClient.from('inventario_movimiento_items').insert(itemRows);
                     if (itemsErr) throw itemsErr;
 
-                    // 3. Update stock
-                    for (const item of validItems) {
-                        if (item._tipo === 'catalogo') {
-                            const current = item.stock || 0;
-                            await supabaseClient.from('catalogo_items').update({ stock: current + item._qty }).eq('id', item.id);
-                        } else {
-                            const current = item.stock || 0;
-                            await supabaseClient.from('insumos_base').update({ stock: current + item._qty }).eq('id', item.id);
-                        }
-                    }
+                    // 3. Update stock — atómico (RPC) + en paralelo (Fase 12.D)
+                    await Promise.all(validItems.map(item =>
+                        this._ajustarStock(item._tipo === 'catalogo' ? 'catalogo_items' : 'insumos_base', item.id, item._qty)
+                    ));
 
                     Toast.success(`Entrada registrada: ${validItems.length} item${validItems.length > 1 ? 's' : ''}`);
                     Modal.close();
@@ -2246,11 +2260,10 @@ const InventarioModule = {
                     const { error: itemsErr } = await supabaseClient.from('inventario_movimiento_items').insert(itemRows);
                     if (itemsErr) throw itemsErr;
 
-                    // 3. Update stock (descontar)
-                    for (const item of validItems) {
-                        const current = item.stock || 0;
-                        await supabaseClient.from('insumos_base').update({ stock: current - item._qty }).eq('id', item.id);
-                    }
+                    // 3. Update stock (descontar) — atómico (RPC) + en paralelo (Fase 12.D)
+                    await Promise.all(validItems.map(item =>
+                        this._ajustarStock('insumos_base', item.id, -item._qty)
+                    ));
 
                     Toast.success(`Consumo registrado: ${validItems.length} material${validItems.length > 1 ? 'es' : ''}`);
                     Modal.close();
@@ -2392,17 +2405,11 @@ const InventarioModule = {
                     const { error: itemsErr } = await supabaseClient.from('inventario_movimiento_items').insert(itemRows);
                     if (itemsErr) throw itemsErr;
 
-                    // 3. Update stocks — descontar usados, sumar generados
-                    for (const item of validUsados) {
-                        const table = item._tipo === 'catalogo' ? 'catalogo_items' : 'insumos_base';
-                        const current = item.stock || 0;
-                        await supabaseClient.from(table).update({ stock: current - item._qty }).eq('id', item.id);
-                    }
-                    for (const item of validGenerados) {
-                        const table = item._tipo === 'catalogo' ? 'catalogo_items' : 'insumos_base';
-                        const current = item.stock || 0;
-                        await supabaseClient.from(table).update({ stock: current + item._qty }).eq('id', item.id);
-                    }
+                    // 3. Update stocks — descontar usados, sumar generados (atómico RPC + paralelo, Fase 12.D)
+                    await Promise.all([
+                        ...validUsados.map(item => this._ajustarStock(item._tipo === 'catalogo' ? 'catalogo_items' : 'insumos_base', item.id, -item._qty)),
+                        ...validGenerados.map(item => this._ajustarStock(item._tipo === 'catalogo' ? 'catalogo_items' : 'insumos_base', item.id, item._qty)),
+                    ]);
 
                     Toast.success(`Transformación registrada: ${validUsados.length} usado${validUsados.length > 1 ? 's' : ''} → ${validGenerados.length} generado${validGenerados.length > 1 ? 's' : ''}`);
                     Modal.close();
