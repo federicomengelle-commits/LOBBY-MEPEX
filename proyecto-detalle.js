@@ -1003,9 +1003,15 @@ const ProyectoDetalle = {
                 e.stopPropagation();
                 statusMenu.classList.toggle('open');
             });
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('#pjdStatusDropdown')) statusMenu.classList.remove('open');
-            });
+            // Cerrar el dropdown al click afuera. Guardamos el handler y removemos
+            // el previo: _attachShellEvents corre en cada re-render del shell
+            // (_changeStatus/_pasarATaller) y antes acumulaba un listener por vez (Fase 12.A).
+            if (this._statusDocClick) document.removeEventListener('click', this._statusDocClick);
+            this._statusDocClick = (e) => {
+                const menu = document.getElementById('pjdStatusMenu');
+                if (menu && !e.target.closest('#pjdStatusDropdown')) menu.classList.remove('open');
+            };
+            document.addEventListener('click', this._statusDocClick);
             statusMenu.querySelectorAll('.pjd-status-option').forEach(opt => {
                 opt.addEventListener('click', async () => {
                     const newStatus = opt.dataset.status;
@@ -1032,6 +1038,14 @@ const ProyectoDetalle = {
 
     _attachNotFoundEvents() {
         // No-op for now; link is plain href
+    },
+
+    // Cleanup al navegar fuera del módulo (lo invoca Router, Fase 12.A).
+    destroy() {
+        if (this._statusDocClick) {
+            document.removeEventListener('click', this._statusDocClick);
+            this._statusDocClick = null;
+        }
     },
 
     async _changeStatus(newStatus) {

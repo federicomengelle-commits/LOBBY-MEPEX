@@ -71,20 +71,20 @@ const Router = {
         this.routes = {
             'login':            { render: () => Auth.renderLogin(), requiresAuth: false },
             'lobby':            { render: () => Lobby.render(), requiresAuth: true },
-            'calendario':       { render: () => CalendarioOperativo.render(), requiresAuth: true },
+            'calendario':       { render: () => CalendarioOperativo.render(), requiresAuth: true, obj: typeof CalendarioOperativo !== 'undefined' ? CalendarioOperativo : null },
             'perfil':           { render: () => Settings.renderProfile(), requiresAuth: true },
             'admin-panel':      { render: () => AdminPanel.render(), requiresAuth: true, superadminOnly: true },
             'notificaciones':   { render: () => Settings.renderNotifications(), requiresAuth: true },
             'tareas':           { render: () => Tareas.render(), requiresAuth: true },
 
             // ── Comercial ──
-            'crm':              { render: () => CRM.render(), requiresAuth: true, module: 'crm' },
+            'crm':              { render: () => CRM.render(), requiresAuth: true, module: 'crm', obj: typeof CRM !== 'undefined' ? CRM : null },
             'cotizador':        { render: () => this._openExternal('http://195.200.1.250/cotizador/'), requiresAuth: true, module: 'cotizador' },
             'catalogo':         { render: () => CatalogoModule.render(), requiresAuth: true, module: 'catalogo' },
 
             // ── Operaciones ──
             'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },
-            'proyectos/:id':    { render: (params) => ProyectoDetalle.render(params.id), requiresAuth: true, module: 'proyectos' },
+            'proyectos/:id':    { render: (params) => ProyectoDetalle.render(params.id), requiresAuth: true, module: 'proyectos', obj: typeof ProyectoDetalle !== 'undefined' ? ProyectoDetalle : null },
             'eventos':          { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos' },
             'taller':           { render: () => TallerModule.render(), requiresAuth: true, module: 'taller' },
             'logistica':        { render: () => LogisticaModule.render(), requiresAuth: true, module: 'logistica' },
@@ -231,6 +231,18 @@ const Router = {
         if (hash === 'login') {
             this.shellRendered = false;
         }
+
+        // ── Teardown del módulo saliente (Fase 12.A) ──
+        // El router nunca destruía el módulo previo → sus listeners globales
+        // (keydown/click en `document`) quedaban colgados y se acumulaban en cada
+        // navegación. Si el módulo entrante es distinto al activo y el saliente
+        // expone destroy(), lo desmontamos antes de renderizar el nuevo.
+        if (this._activeModuleObj && this._activeModuleObj !== route.obj &&
+            typeof this._activeModuleObj.destroy === 'function') {
+            try { this._activeModuleObj.destroy(); }
+            catch (e) { console.warn('[Router] destroy() del módulo saliente falló:', e); }
+        }
+        this._activeModuleObj = route.obj || null;
 
         // Render the route
         route.render(routeParams);

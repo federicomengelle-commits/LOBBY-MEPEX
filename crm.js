@@ -190,6 +190,12 @@ const CRM = {
         this._attachEvents();
     },
 
+    // Cleanup al navegar fuera del módulo (lo invoca Router, Fase 12.A).
+    destroy() {
+        if (this._panelEscHandler) { document.removeEventListener('keydown', this._panelEscHandler); this._panelEscHandler = null; }
+        if (this._cotEscHandler) { document.removeEventListener('keydown', this._cotEscHandler); this._cotEscHandler = null; }
+    },
+
     _buildShell() {
         const user = Auth.getUser();
         const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : false;
@@ -785,6 +791,7 @@ const CRM = {
     _closePanel() {
         this._activePanel = null;
         this._activePanelData = null;
+        if (this._panelEscHandler) { document.removeEventListener('keydown', this._panelEscHandler); this._panelEscHandler = null; }
 
         const panel = document.getElementById('crmPanel');
         if (panel) {
@@ -975,14 +982,12 @@ const CRM = {
         const deleteBtn = document.getElementById('crmPanelDelete');
         if (deleteBtn) deleteBtn.addEventListener('click', () => this._deleteClient(client));
 
-        // Escape key
-        const escHandler = (e) => {
-            if (e.key === 'Escape' && this._activePanel) {
-                this._closePanel();
-                document.removeEventListener('keydown', escHandler);
-            }
-        };
-        document.addEventListener('keydown', escHandler);
+        // Escape cierra el panel. Guardamos el ref (remove-before-add) y lo
+        // removemos en _closePanel/destroy — antes quedaba colgado si cerrabas
+        // con la X o navegando, acumulando uno por apertura (Fase 12.A).
+        if (this._panelEscHandler) document.removeEventListener('keydown', this._panelEscHandler);
+        this._panelEscHandler = (e) => { if (e.key === 'Escape' && this._activePanel) this._closePanel(); };
+        document.addEventListener('keydown', this._panelEscHandler);
     },
 
 
@@ -2357,6 +2362,7 @@ const CRM = {
         this._cotPanelId = null;
         this._cotPanelData = null;
         this._cotTimeline = [];
+        if (this._cotEscHandler) { document.removeEventListener('keydown', this._cotEscHandler); this._cotEscHandler = null; }
 
         const panel = document.getElementById('crmPanel');
         if (panel) {
@@ -2863,14 +2869,11 @@ const CRM = {
             el.addEventListener('click', () => Router.navigate('proyectos'));
         });
 
-        // Escape
-        const escHandler = (e) => {
-            if (e.key === 'Escape' && this._cotPanelId) {
-                this._closeCotPanel();
-                document.removeEventListener('keydown', escHandler);
-            }
-        };
-        document.addEventListener('keydown', escHandler);
+        // Escape cierra el panel de cotización. Mismo patrón que el panel de
+        // cliente: ref guardado + remove-before-add + cleanup en destroy (Fase 12.A).
+        if (this._cotEscHandler) document.removeEventListener('keydown', this._cotEscHandler);
+        this._cotEscHandler = (e) => { if (e.key === 'Escape' && this._cotPanelId) this._closeCotPanel(); };
+        document.addEventListener('keydown', this._cotEscHandler);
 
         // Attach sub-tab specific events
         this._attachCotSubTabEvents(cot);

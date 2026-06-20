@@ -724,7 +724,9 @@ const CalendarioOperativo = {
             }
         });
 
-        // Keyboard: +/- for zoom, Escape to close panel
+        // Keyboard: +/- for zoom, Escape to close panel.
+        // remove-before-add: evita duplicar el handler si _attachEvents corre 2 veces (Fase 12.A).
+        if (this._keyHandler) document.removeEventListener('keydown', this._keyHandler);
         this._keyHandler = (e) => {
             if (e.key === 'Escape') {
                 this._closeSidePanel();
@@ -1635,6 +1637,6 @@ const CalendarioOperativo = {
     destroy() {
         if (this._observers.top) this._observers.top.disconnect();
         if (this._observers.bottom) this._observers.bottom.disconnect();
-        if (this._keyHandler) document.removeEventListener('keydown', this._keyHandler);
+        if (this._keyHandler) { document.removeEventListener('keydown', this._keyHandler); this._keyHandler = null; }
     },
 };
