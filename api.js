@@ -3873,11 +3873,11 @@ const API = {
         } catch (e) { return null; }
     },
 
-    // 5.C — genera el egreso de la OC (gasto real → Finanzas; al pagarse entra como costo del proyecto).
-    // NOTA: egresos.orden_compra_id y egresos.proveedor_id son UUID en prod y NO matchean los ids bigint
-    // de compras_ordenes/compras_proveedores → se omiten. El proveedor va como texto (destinatario), el
-    // link OC↔egreso se trackea por estado de la OC ('recibida') + el N° de OC en el concepto. La imputación
-    // al proyecto (proyecto_id es uuid, OK) es lo que cierra el loop de rentabilidad.
+    // 5.C — genera el egreso de la OC por el CIRCUITO ÚNICO (registrarGasto). Fase 3b.
+    // Proveedor ahora es UUID (proveedores unificados) → se setea egresos.proveedor_id real.
+    // El egreso nace 'pendiente'; el asiento se dispara al pagarse en Finanzas. Imputa proyecto/evento.
+    // NOTA: el FK real OC↔egreso queda pendiente — egresos.orden_compra_id es UUID y compras_ordenes.id
+    //       es BIGINT → no matchean. Dedup sigue por N° de OC en el concepto (_egresoForOC).
     async generarEgresoDeOC(ordenId) {
         try {
             const { data: oc, error } = await supabaseClient.from('compras_ordenes').select('*').eq('id', ordenId).maybeSingle();
@@ -3885,37 +3885,35 @@ const API = {
             if (!oc) return { error: 'OC no encontrada' };
             // Ganadora VIGENTE (es_ganadora + no borrada) = fuente de verdad (no el cache de la OC).
             const { data: gan } = await supabaseClient.from('compras_oc_presupuestos')
-                .select('proveedor_id, proveedor_nombre, monto').eq('orden_id', ordenId)
+                .select('proveedor_id, proveedor_uuid, proveedor_nombre, monto').eq('orden_id', ordenId)
                 .eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
             if (!gan) return { error: 'Elegí una ganadora primero' };
             const numeroOc = oc.numero_oc || ('#' + oc.id);
-            // ¿Ya tiene un egreso (no borrado)?
             if (await this._egresoForOC(numeroOc)) return { error: 'Esta OC ya generó su egreso' };
+            // Proveedor UUID: el de la ganadora; fallback resolviendo el BIGINT viejo vía compras_proveedor_id.
+            let provUuid = gan.proveedor_uuid || oc.proveedor_uuid || null;
+            if (!provUuid && gan.proveedor_id) {
+                const { data: p } = await supabaseClient.from('proveedor').select('id, nombre, razon_social').eq('compras_proveedor_id', gan.proveedor_id).maybeSingle();
+                provUuid = p?.id || null;
+                if (p && !gan.proveedor_nombre) gan.proveedor_nombre = p.nombre || p.razon_social;
+            }
             let destinatario = gan.proveedor_nombre || null;
-            if (!destinatario && gan.proveedor_id) {
-                const { data: prov } = await supabaseClient.from('compras_proveedores').select('nombre, razon_social').eq('id', gan.proveedor_id).maybeSingle();
+            if (!destinatario && provUuid) {
+                const { data: prov } = await supabaseClient.from('proveedor').select('nombre, razon_social').eq('id', provUuid).maybeSingle();
                 destinatario = prov?.nombre || prov?.razon_social || null;
             }
-            const user = Auth.getUser?.();
-            const payload = {
-                fecha: new Date().toISOString().split('T')[0],
-                categoria: 'proveedor',   // CHECK de egresos: proveedor/credito_fiscal/servicio
-                subcategoria: oc.categoria_gasto || null,   // taxonomía de gasto de la OC (oficina/material/…)
-                destinatario,
-                proyecto_id: oc.proyecto_id || null,
-                evento_id: oc.evento_id || null,
+            const { egreso_id } = await this.registrarGasto({
+                categoria_dominio: 'proveedor',
+                subcategoria: oc.categoria_gasto || null,
                 concepto: `OC ${numeroOc}${oc.descripcion ? ' — ' + oc.descripcion : ''}`,
-                monto: gan.monto || 0,   // monto de la ganadora vigente (no el cache)
-                estado: 'pendiente',
-                medio: 'transferencia',   // egresos.medio es NOT NULL; se ajusta al pagar en Finanzas
-                canal: 'oficial',
-                created_by: user?.uid || user?.id || null,
-                _deleted: false,
-            };
-            const { data: eg, error: egErr } = await supabaseClient.from('egresos').insert(payload).select('id').single();
-            if (egErr) throw egErr;
+                monto: gan.monto || 0,
+                estado: 'pendiente',          // nace pendiente; el asiento se dispara al pagar en Finanzas
+                medio: 'transferencia', canal: 'oficial',
+                proyecto_id: oc.proyecto_id || null, evento_id: oc.evento_id || null,
+                proveedor_id: provUuid, destinatario,
+            });
             if (oc.pedido_id) await this.setPedidoEstado(oc.pedido_id, 'comprado');
-            return { egreso_id: eg.id };
+            return { egreso_id };
         } catch (e) { console.warn('[API] generarEgresoDeOC:', e.message); return { error: e.message }; }
     },
 
