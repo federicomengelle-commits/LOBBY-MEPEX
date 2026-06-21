@@ -5946,6 +5946,38 @@ const API = {
         return { egreso_id, comprobante_recibido_id };
     },
 
+    // ── registrar_cobro: el circuito ÚNICO de cobro (lado ingreso, espejo de registrarGasto) ──
+    //  Inserta el ingreso (el asiento lo dispara el trigger: con factura → Ventas+IVA débito;
+    //  sin factura → Anticipos 2.1.06) + sync del plan de cobro + dif. de cambio automática.
+    async registrarCobro(payload, { syncPlanItem = false } = {}) {
+        const row = { ...payload, created_by: this._uid() };
+        ['proyecto_id','cliente_id','cuenta_id','plan_cobro_item_id','evento_id','comprobante_id'].forEach(k => {
+            if (row[k] === 'undefined' || row[k] === 'null' || row[k] === '') row[k] = null;
+        });
+        const { data: ing, error } = await supabaseClient.from('ingresos').insert([row]).select('id').single();
+        if (error) throw error;
+        const out = { ingreso_id: ing.id, plan_sync: null, dif_cambio: null };
+        // 1) Sync del plan de cobro (monto_cobrado/estado)
+        if (syncPlanItem && row.plan_cobro_item_id) {
+            try {
+                const { data: item } = await supabaseClient.from('plan_cobro_items')
+                    .select('monto, monto_cobrado').eq('id', row.plan_cobro_item_id).single();
+                if (item) {
+                    const cobrado = (Number(item.monto_cobrado) || 0) + Number(row.monto);
+                    const estado = cobrado >= Number(item.monto) ? 'cobrado' : 'parcial';
+                    await supabaseClient.from('plan_cobro_items').update({ monto_cobrado: cobrado, estado }).eq('id', row.plan_cobro_item_id);
+                    out.plan_sync = { monto_cobrado: cobrado, estado };
+                }
+            } catch (e) { console.warn('[API] registrarCobro plan sync:', e.message); }
+        }
+        // 2) Diferencia de cambio (si cobra una factura ME con cotización distinta)
+        if (row.plan_cobro_item_id) {
+            try { out.dif_cambio = await this.detectarYRegistrarDifCambio(ing.id); }
+            catch (e) { console.warn('[API] registrarCobro dif-cambio:', e.message); }
+        }
+        return out;
+    },
+
     // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──
     //  Pagos SIEMPRE discriminados: 1 pago = 1 egreso. Soporta tandas/adelantos (parcial).
     async pagarCostoEvento({ costo, monto, fecha, medio, canal, cuenta_id, comprobante = null, notas = null }) {

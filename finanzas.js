@@ -3501,51 +3501,16 @@ const FinanzasModule = {
                     if (error) throw error;
                     Toast.success('Ingreso actualizado');
                 } else {
-                    payload.created_by = Auth.getUser()?.uid || null;
-                    const { data: ingInserted, error } = await supabaseClient
-                        .from('ingresos')
-                        .insert([payload])
-                        .select('id')
-                        .single();
-                    if (error) throw error;
+                    // Circuito único de cobro (lado ingreso). El asiento lo dispara el trigger:
+                    // con factura → Ventas + IVA débito; sin factura → Anticipos 2.1.06.
+                    const cobro = await API.registrarCobro(payload, { syncPlanItem: !!i._prefillPlanItem });
                     Toast.success('Ingreso registrado');
-
-                    // Update plan_cobro_item if linked
-                    if (i._prefillPlanItem && i.plan_cobro_item_id) {
-                        try {
-                            const { data: currentItem } = await supabaseClient
-                                .from('plan_cobro_items')
-                                .select('monto, monto_cobrado')
-                                .eq('id', i.plan_cobro_item_id)
-                                .single();
-                            if (currentItem) {
-                                const newCobrado = (Number(currentItem.monto_cobrado) || 0) + monto;
-                                const newEstado = newCobrado >= Number(currentItem.monto) ? 'cobrado' : 'parcial';
-                                await supabaseClient
-                                    .from('plan_cobro_items')
-                                    .update({ monto_cobrado: newCobrado, estado: newEstado })
-                                    .eq('id', i.plan_cobro_item_id);
-                            }
-                        } catch (planErr) {
-                            console.warn('[Finanzas] Error actualizando plan item:', planErr);
-                        }
-                    }
-
-                    // Fase G.3 — diferencia de cambio automática.
-                    // Si el ingreso cobra una factura ME con cotización distinta,
-                    // disparamos el asiento de dif. cambio sobre la marcha.
-                    if (ingInserted?.id && payload.plan_cobro_item_id) {
-                        try {
-                            const res = await API.detectarYRegistrarDifCambio(ingInserted.id);
-                            if (res?.detected && res.asientoId) {
-                                const signo = res.montoArs > 0 ? '+' : '−';
-                                Toast.info(`Diferencia de cambio registrada: ${signo}${this._formatMoney(Math.abs(res.montoArs))} (cuenta ${res.montoArs > 0 ? '4.9.01' : '5.9.01'})`);
-                            } else if (res?.detected && !res.asientoId) {
-                                Toast.warning(`Dif. de cambio detectada pero no se pudo registrar — ${res.motivo}`);
-                            }
-                        } catch (dcErr) {
-                            console.warn('[Finanzas] Dif. cambio falló silenciosamente:', dcErr);
-                        }
+                    const dc = cobro.dif_cambio;
+                    if (dc?.detected && dc.asientoId) {
+                        const signo = dc.montoArs > 0 ? '+' : '−';
+                        Toast.info(`Diferencia de cambio registrada: ${signo}${this._formatMoney(Math.abs(dc.montoArs))} (cuenta ${dc.montoArs > 0 ? '4.9.01' : '5.9.01'})`);
+                    } else if (dc?.detected && !dc.asientoId) {
+                        Toast.warning(`Dif. de cambio detectada pero no se pudo registrar — ${dc.motivo}`);
                     }
                 }
 
