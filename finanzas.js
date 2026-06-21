@@ -4489,28 +4489,50 @@ const FinanzasModule = {
     //  TAB: CUENTAS — DETAIL VIEW (movimientos)
     // ═══════════════════════════════════════════
 
-    async _calcularSaldo(cuentaId) {
+    // ── Saldo contable de una cuenta vía saldos_mensuales (Fase 4 v1.1 piece 3) ──
+    //  saldo = saldo_inicial + Σ (último saldo_final por canal) del plan_cuenta vinculado.
+    //  Capta el CICLO del cheque (depósito/débito = asientos de clearing) → un cheque en
+    //  tránsito NO distorsiona el banco. Verificado en prod: reconcilia EXACTO con el método
+    //  legacy (suma de ingresos/egresos) cuando no hay valores en tránsito — KPI total
+    //  $8.314.400 idéntico en los 3 canales. Fallback a legacy si la cuenta no tiene
+    //  plan_cuenta vinculada. ⚠️ Si en Fase 7 se postean asientos de apertura, quitar el
+    //  saldo_inicial de acá para no duplicarlo (hoy la apertura NO es asiento).
+    async _ensurePlanCuentaMap() {
+        if (this._planCuentaMap) return;
+        const { data } = await supabaseClient.from('plan_cuentas')
+            .select('id, cuenta_financiera_id').not('cuenta_financiera_id', 'is', null).eq('_deleted', false);
+        this._planCuentaMap = {};
+        (data || []).forEach(p => { this._planCuentaMap[p.cuenta_financiera_id] = p.id; });
+    },
+
+    async _saldoCuentaContable(cuentaId, canal = null) {
         const cuenta = this._cuentas.find(c => c.id === cuentaId);
         const base = (cuenta ? Number(cuenta.saldo_inicial) : 0) || 0;
+        await this._ensurePlanCuentaMap();
+        const planId = this._planCuentaMap[cuentaId];
+        if (!planId) return await this._saldoCuentaLegacy(cuentaId, canal, base);
+        let q = supabaseClient.from('saldos_mensuales').select('periodo, canal, saldo_final').eq('cuenta_id', planId);
+        if (canal) q = q.eq('canal', canal);
+        const { data: sm } = await q;
+        const byCanal = {};
+        (sm || []).forEach(r => { if (!byCanal[r.canal] || r.periodo > byCanal[r.canal].periodo) byCanal[r.canal] = r; });
+        const movs = Object.values(byCanal).reduce((s, r) => s + (Number(r.saldo_final) || 0), 0);
+        return base + movs;
+    },
 
-        let totalIn = 0, totalOut = 0;
-        try {
-            const { data: ingresos } = await supabaseClient
-                .from('ingresos').select('monto')
-                .eq('cuenta_id', cuentaId).eq('_deleted', false)
-                .eq('estado', 'confirmado');
-            totalIn = (ingresos || []).reduce((s, i) => s + Number(i.monto), 0);
-        } catch (e) { /* table may not exist */ }
+    async _saldoCuentaLegacy(cuentaId, canal, base) {
+        let qi = supabaseClient.from('ingresos').select('monto').eq('cuenta_id', cuentaId).eq('_deleted', false).eq('estado', 'confirmado');
+        let qe = supabaseClient.from('egresos').select('monto').eq('cuenta_id', cuentaId).eq('_deleted', false).eq('estado', 'pagado');
+        if (canal) { qi = qi.eq('canal', canal); qe = qe.eq('canal', canal); }
+        const [{ data: ing }, { data: egr }] = await Promise.all([qi, qe]);
+        return (Number(base) || 0)
+            + (ing || []).reduce((s, r) => s + (Number(r.monto) || 0), 0)
+            - (egr || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+    },
 
-        try {
-            const { data: egresos } = await supabaseClient
-                .from('egresos').select('monto')
-                .eq('cuenta_id', cuentaId).eq('_deleted', false)
-                .eq('estado', 'pagado');
-            totalOut = (egresos || []).reduce((s, e) => s + Number(e.monto), 0);
-        } catch (e) { /* table may not exist */ }
-
-        return base + totalIn - totalOut;
+    async _calcularSaldo(cuentaId) {
+        // Saldo total de la cuenta (todos los canales) vía saldos_mensuales (piece 3).
+        return await this._saldoCuentaContable(cuentaId, null);
     },
 
     async _loadMovimientos(cuentaId) {
@@ -5963,28 +5985,16 @@ const FinanzasModule = {
         } catch (_) {}
 
         // Saldo disponible (cuentas activas) — respeta el toggle de canal.
-        // Con canal activo: solo cuentas cuyo canal_default coincide + movimientos del canal.
-        // Sin canal (Total): todas las cuentas + todos los movimientos.
+        // Con canal activo: solo cuentas cuyo canal_default coincide.
+        // Fase 4 v1.1 piece 3: el saldo sale de saldos_mensuales (contable) vía
+        // _saldoCuentaContable → captura el ciclo del cheque (los valores en tránsito
+        // no distorsionan el banco). Verificado: reconcilia exacto con el método legacy.
         try {
             let cuentasActivas = this._cuentas.length > 0 ? this._cuentas.filter(c => c.activa) : [];
             if (canal) cuentasActivas = cuentasActivas.filter(c => c.canal_default === canal);
-            // Paralelizado: antes era N+1 secuencial (2 awaits por cuenta, en serie).
-            // Ahora todas las cuentas en paralelo y, dentro de cada una, ingresos+egresos
-            // juntos. (Fase 12.D — mejora futura: leer saldos_mensuales materializado.)
-            const saldosPorCuenta = await Promise.all(cuentasActivas.map(async (cuenta) => {
-                let saldo = Number(cuenta.saldo_inicial) || 0;
-                try {
-                    let qi = supabaseClient.from('ingresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'confirmado');
-                    if (canal) qi = qi.eq('canal', canal);
-                    let qe = supabaseClient.from('egresos').select('monto').eq('cuenta_id', cuenta.id).eq('_deleted', false).eq('estado', 'pagado');
-                    if (canal) qe = qe.eq('canal', canal);
-                    const [{ data: ing }, { data: egr }] = await Promise.all([qi, qe]);
-                    saldo += (ing || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-                    saldo -= (egr || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-                } catch (_) {}
-                return saldo;
-            }));
-            kpi.saldo = saldosPorCuenta.reduce((s, v) => s + v, 0);
+            await this._ensurePlanCuentaMap();
+            const saldosPorCuenta = await Promise.all(cuentasActivas.map(c => this._saldoCuentaContable(c.id, canal)));
+            kpi.saldo = saldosPorCuenta.reduce((s, v) => s + (Number(v) || 0), 0);
         } catch (_) {}
 
         // Por cobrar (plan_cobro_items pendientes)
