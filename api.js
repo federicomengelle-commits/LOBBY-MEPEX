@@ -5821,6 +5821,7 @@ const API = {
             categoria: payload.categoria,
             canal: payload.canal || 'oficial',
             proyecto_id: payload.proyecto_id || null,
+            evento_id: payload.evento_id || null,
             egreso_id: payload.egreso_id || null,
             archivo_url: payload.archivo_url || null,
             notas: payload.notas || null,
@@ -5926,6 +5927,7 @@ const API = {
                 categoria: comprobante.categoria || map.recibido,
                 canal,
                 proyecto_id: proyecto_id || null,
+                evento_id: evento_id || null,
                 archivo_url: comprobante.archivo_url || null,
                 moneda, cotizacion,
             });
@@ -6112,6 +6114,7 @@ const API = {
             destinatario: c.proveedor_nombre || null,
             proveedor_id: c.proveedor_id || null,
             proyecto_id: c.proyecto_id || null,
+            evento_id: c.evento_id || null,
             concepto: c.concepto || ('Comprobante ' + (c.numero || c.proveedor_nombre || '')),
             monto: c.total,
             medio, canal: c.canal || 'oficial', cuenta_id,
@@ -6120,6 +6123,30 @@ const API = {
         });
         await supabaseClient.from('comprobantes_recibidos').update({ egreso_id }).eq('id', c.id);
         return { egreso_id };
+    },
+
+    // ── Generar el cobro/ingreso de un comprobante EMITIDO (factura de venta). Fase 3d.2. ──
+    //  Espejo de generarEgresoDeComprobante: el comprobante existe (lo emitió ARCA/La PyME),
+    //  falta su ingreso. Crea el ingreso linkeado (comprobante_id → el trigger clasifica por
+    //  servicio + IVA débito) + el link bidireccional comprobantes.ingreso_id.
+    async generarIngresoDeComprobante(comprobanteId, { cuenta_id = null, medio = 'transferencia', estado = 'confirmado', fecha = null } = {}) {
+        const { data: c, error } = await supabaseClient.from('comprobantes').select('*').eq('id', comprobanteId).maybeSingle();
+        if (error) throw error;
+        if (!c) return { error: 'Comprobante no encontrado' };
+        if (c.ingreso_id) {
+            const { data: ing } = await supabaseClient.from('ingresos').select('id, _deleted').eq('id', c.ingreso_id).maybeSingle();
+            if (ing && !ing._deleted) return { error: 'Este comprobante ya tiene un cobro' };
+        }
+        const { ingreso_id } = await this.registrarCobro({
+            fecha: fecha || c.fecha || this._today(),
+            concepto: 'Cobro factura ' + (c.numero || c.tipo || ''),
+            monto: c.total,
+            medio, canal: c.canal || 'oficial', cuenta_id,
+            cliente_id: c.cliente_id || null, proyecto_id: c.proyecto_id || null,
+            comprobante_id: c.id, estado, moneda: c.moneda || 'ARS', cotizacion: c.cotizacion || 1,
+        });
+        await supabaseClient.from('comprobantes').update({ ingreso_id }).eq('id', c.id);
+        return { ingreso_id };
     },
 
     // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──

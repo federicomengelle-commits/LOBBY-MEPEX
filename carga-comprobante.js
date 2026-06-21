@@ -89,6 +89,10 @@ const CargaComprobante = {
                     </div>
                     <div class="ccmp-2">
                         <div><label class="ccmp-lbl">Canal</label><select id="ccmpCanal" class="ccmp-in"><option value="oficial">Oficial</option><option value="interno">Interno</option></select></div>
+                        <div><label class="ccmp-lbl">Proyecto</label><select id="ccmpProy" class="ccmp-in"><option value="">— Sin proyecto —</option></select></div>
+                    </div>
+                    <div class="ccmp-2">
+                        <div><label class="ccmp-lbl">Evento (imputación)</label><select id="ccmpEvento" class="ccmp-in"><option value="">— Sin evento —</option></select></div>
                         <div></div>
                     </div>
                 </div>
@@ -98,6 +102,7 @@ const CargaComprobante = {
         this._attach();
         // cargar cuentas si Finanzas no las tenía
         if (!cuentas.length) this._loadCuentas();
+        this._loadImputacion();
     },
 
     async _loadCuentas() {
@@ -105,6 +110,20 @@ const CargaComprobante = {
             const { data } = await supabaseClient.from('cuentas_financieras').select('id,nombre').eq('_deleted', false).eq('activa', true).order('nombre');
             const sel = document.getElementById('ccmpCuenta');
             if (sel && data) sel.innerHTML = '<option value="">— Sin cuenta —</option>' + data.map(c => `<option value="${c.id}">${this._esc(c.nombre)}</option>`).join('');
+        } catch (e) {}
+    },
+
+    // Fase 3d.2 — proyecto/evento para imputar el comprobante (rentabilidad)
+    async _loadImputacion() {
+        try {
+            const [proy, ev] = await Promise.all([
+                supabaseClient.from('proyectos').select('id,nombre').eq('_deleted', false).order('nombre'),
+                supabaseClient.from('eventos').select('id,nombre').eq('_deleted', false).order('nombre'),
+            ]);
+            const ps = document.getElementById('ccmpProy');
+            if (ps && proy.data) ps.innerHTML = '<option value="">— Sin proyecto —</option>' + proy.data.map(p => `<option value="${p.id}">${this._esc(p.nombre)}</option>`).join('');
+            const es = document.getElementById('ccmpEvento');
+            if (es && ev.data) es.innerHTML = '<option value="">— Sin evento —</option>' + ev.data.map(e => `<option value="${e.id}">${this._esc(e.nombre)}</option>`).join('');
         } catch (e) {}
     },
 
@@ -186,6 +205,8 @@ const CargaComprobante = {
         const btn = $('ccmpSave'); btn.disabled = true; btn.textContent = 'Guardando…';
         const canal = $('ccmpCanal').value;
         const categoria = $('ccmpCat').value;
+        const proyecto_id = $('ccmpProy')?.value || null;
+        const evento_id = $('ccmpEvento')?.value || null;
         try {
             // 1. archivo (si hay bucket; si falla, sigue sin adjunto)
             let archivo_url = null;
@@ -210,6 +231,7 @@ const CargaComprobante = {
                     categoria_dominio: categoria,
                     concepto, monto: total, fecha,
                     medio: $('ccmpMedio').value, canal, cuenta_id, estado: 'pagado',
+                    proyecto_id, evento_id,
                     comprobante,
                 });
                 Toast.success('Comprobante + pago registrados' + (cuenta_id ? ' + asiento' : ' (sin cuenta: sin contrapartida)'));
@@ -219,7 +241,7 @@ const CargaComprobante = {
                     fecha, tipo: comprobante.tipo, numero: comprobante.numero,
                     proveedor_nombre: comprobante.razon_social, cuit: comprobante.cuit,
                     concepto, neto: comprobante.neto, iva: comprobante.iva, total,
-                    categoria, canal, archivo_url,
+                    categoria, canal, archivo_url, proyecto_id, evento_id,
                 });
                 Toast.success('Comprobante guardado' + (archivo_url ? ' con archivo' : ''));
             }

@@ -2633,6 +2633,17 @@ const FinanzasModule = {
             (data || []).forEach(c => { this._clientesMap[c.id] = c.nombre_empresa; });
         } catch (e) { /* table may not exist */ }
 
+        // Eventos (graceful) — Fase 3d.2: imputación de comprobantes a evento
+        this._eventosMap = this._eventosMap || {};
+        try {
+            const { data } = await supabaseClient
+                .from('eventos')
+                .select('id, nombre')
+                .eq('_deleted', false)
+                .order('nombre');
+            (data || []).forEach(ev => { this._eventosMap[ev.id] = ev.nombre; });
+        } catch (e) { /* table may not exist */ }
+
         this._lookupsLoaded = true;
     },
 
@@ -7529,6 +7540,12 @@ const FinanzasModule = {
                     <div style="color:#aaa;font-size:0.85rem;">${comp.descripcion}</div>
                 </div>
                 ` : ''}
+
+                <div class="fin-panel-section">
+                    ${comp.ingreso_id
+                        ? `<div style="color:var(--color-success,#00CC88);font-size:0.82rem;">✓ Cobro vinculado a este comprobante.</div>`
+                        : `<button class="fin-panel-btn fin-panel-btn-primary" id="finEmiPanelCobrar">⎘ Generar cobro</button>`}
+                </div>
             </div>
         `;
 
@@ -7536,6 +7553,7 @@ const FinanzasModule = {
         document.querySelectorAll('.fin-row').forEach(r => r.classList.toggle('active', r.dataset.id === id));
 
         document.getElementById('finPanelClose')?.addEventListener('click', () => this._closePanel());
+        document.getElementById('finEmiPanelCobrar')?.addEventListener('click', () => this._showGenerarIngresoModal(comp));
         document.getElementById('finJsonToggle')?.addEventListener('click', () => {
             const block = document.getElementById('finJsonBlock');
             const toggle = document.getElementById('finJsonToggle');
@@ -7628,6 +7646,9 @@ const FinanzasModule = {
                     <option value="">Todas</option>
                     ${Object.entries(this._catRecibido).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
                 </select>
+                <label class="fin-filter-label" style="display:inline-flex;align-items:center;gap:6px;margin-left:14px;cursor:pointer;">
+                    <input type="checkbox" id="finFactRecSinEgreso" ${this._factRecibidosSoloSinEgreso ? 'checked' : ''}> Solo sin pago
+                </label>
             </div>
             <div class="fin-body">
                 <div class="fin-main" id="finFactRecMain">
@@ -7672,6 +7693,7 @@ const FinanzasModule = {
             );
         }
         if (this._factRecibidosCatFilter) items = items.filter(c => c.categoria === this._factRecibidosCatFilter);
+        if (this._factRecibidosSoloSinEgreso) items = items.filter(c => !c.egreso_id);
 
         const col = this._factRecibidosSortCol;
         const dir = this._factRecibidosSortDir === 'asc' ? 1 : -1;
@@ -7732,6 +7754,7 @@ const FinanzasModule = {
                             <th class="fin-th" style="text-align:right;">IVA</th>
                             <th class="fin-th sortable" data-sort="total" style="text-align:right;">Total ${sortIcon('total')}</th>
                             <th class="fin-th">Categoría</th>
+                            <th class="fin-th">Pago</th>
                             <th class="fin-th">Archivo</th>
                         </tr>
                     </thead>
@@ -7750,6 +7773,7 @@ const FinanzasModule = {
                                 <td class="fin-td fin-td-money" style="color:#888;">${c.iva ? this._formatMoney(c.iva) : '—'}</td>
                                 <td class="fin-td fin-td-money">${this._formatMoney(c.total)}</td>
                                 <td class="fin-td"><span class="fin-cat-badge-rec" style="background:${catInfo.color}18;color:${catInfo.color};">${catInfo.label}</span></td>
+                                <td class="fin-td">${c.egreso_id ? '<span style="color:#00CC88;font-size:0.78rem;">✓ pagado</span>' : '<span style="color:var(--accent,#F28D15);font-size:0.7rem;font-weight:600;background:rgba(242,141,21,.12);padding:1px 7px;border-radius:4px;">sin pago</span>'}</td>
                                 <td class="fin-td">${c.archivo_url ? `<a href="${c.archivo_url}" target="_blank" class="fin-file-link">📎</a>` : '<span class="fin-td-muted">—</span>'}</td>
                             </tr>`;
                         }).join('')}
@@ -7950,6 +7974,37 @@ const FinanzasModule = {
                 Modal.close(inst.id);
                 this._closePanel();
                 await this._loadFactRecibidos();
+            } catch (e) { Toast.error('Error: ' + (e.message || e)); }
+        });
+    },
+
+    // Fase 3d.2 — generar el cobro/ingreso de un comprobante EMITIDO (espejo de "Generar pago")
+    _showGenerarIngresoModal(comp) {
+        const cuentas = (this._cuentas && this._cuentas.length) ? this._cuentas : Object.values(this._cuentasMap || {});
+        const cuentaOpts = cuentas.map(c => `<option value="${c.id}">${escHtml(c.nombre)}${c.tipo ? ' (' + escHtml(c.tipo) + ')' : ''}</option>`).join('');
+        const cli = this._clientesMap[comp.cliente_id] || comp.cliente_nombre || 'Cliente';
+        const body = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">${escHtml(cli)} · <b style="color:#00CC88;">${this._formatMoney(comp.total)}</b></p>
+                <div><label class="fin-form-label">Medio</label>
+                    <select class="fin-form-select" id="finGenIngMedio"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="cheque">Cheque / e-cheq</option><option value="mercadopago">MercadoPago</option></select></div>
+                <div><label class="fin-form-label">Cuenta (tesorería) <span style="color:var(--text-dim);font-size:0.74rem;">— necesaria para el asiento</span></label>
+                    <select class="fin-form-select" id="finGenIngCuenta"><option value="">— Sin cuenta —</option>${cuentaOpts}</select></div>
+            </div>`;
+        const inst = Modal.open({
+            title: 'Generar cobro del comprobante', body, size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="finGenIngOk">Generar cobro</button>`,
+        });
+        document.getElementById('finGenIngOk')?.addEventListener('click', async () => {
+            const cuenta_id = document.getElementById('finGenIngCuenta')?.value || null;
+            const medio = document.getElementById('finGenIngMedio')?.value || 'transferencia';
+            try {
+                const res = await API.generarIngresoDeComprobante(comp.id, { cuenta_id, medio, estado: 'confirmado' });
+                if (res.error) { Toast.error(res.error); return; }
+                Toast.success('Cobro generado' + (cuenta_id ? ' + asiento contable' : ' (sin cuenta: sin asiento)'));
+                Modal.close(inst.id);
+                this._closePanel();
+                await this._loadFactEmitidos();
             } catch (e) { Toast.error('Error: ' + (e.message || e)); }
         });
     },
@@ -8280,6 +8335,10 @@ const FinanzasModule = {
             `<option value="${k}" ${c.proyecto_id === k ? 'selected' : ''}>${this._proyectosMap[k]}</option>`
         ).join('');
 
+        const eventoOpts = Object.keys(this._eventosMap || {}).map(k =>
+            `<option value="${k}" ${c.evento_id === k ? 'selected' : ''}>${escHtml(this._eventosMap[k])}</option>`
+        ).join('');
+
         const egresoOpts = this._egresosLookup.map(e =>
             `<option value="${e.id}" ${c.egreso_id === e.id ? 'selected' : ''}>${this._formatDate(e.fecha)} — ${e.concepto} (${this._formatMoney(e.monto)})</option>`
         ).join('');
@@ -8354,6 +8413,15 @@ const FinanzasModule = {
                             </select>
                         </div>
                         <div class="fin-form-group">
+                            <label class="fin-form-label">Evento (imputación)</label>
+                            <select class="fin-form-select" id="finRecFormEvento">
+                                <option value="">— Sin evento —</option>
+                                ${eventoOpts}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
                             <label class="fin-form-label">Vincular a egreso</label>
                             <select class="fin-form-select" id="finRecFormEgreso">
                                 <option value="">— Sin vincular —</option>
@@ -8406,6 +8474,7 @@ const FinanzasModule = {
             const categoria = document.getElementById('finRecFormCat')?.value;
             const canal = document.getElementById('finRecFormCanal')?.value;
             const proyecto_id = document.getElementById('finRecFormProyecto')?.value || null;
+            const evento_id = document.getElementById('finRecFormEvento')?.value || null;
             const egreso_id = document.getElementById('finRecFormEgreso')?.value || null;
             const archivo_url = document.getElementById('finRecFormArchivo')?.value.trim() || null;
             const notas = document.getElementById('finRecFormNotas')?.value.trim() || null;
@@ -8420,7 +8489,7 @@ const FinanzasModule = {
             const payload = {
                 fecha, tipo, numero, proveedor_nombre, cuit,
                 concepto, neto, iva, total, categoria, canal,
-                proyecto_id, egreso_id, archivo_url, notas,
+                proyecto_id, evento_id, egreso_id, archivo_url, notas,
                 moneda: monedaData.moneda,
                 cotizacion: monedaData.cotizacion,
             };
@@ -8474,6 +8543,11 @@ const FinanzasModule = {
         // Filter
         document.getElementById('finFactRecCatFilter')?.addEventListener('change', (e) => {
             this._factRecibidosCatFilter = e.target.value;
+            this._applyFactRecibidosFilter();
+            this._renderFactRecibidosTable();
+        });
+        document.getElementById('finFactRecSinEgreso')?.addEventListener('change', (e) => {
+            this._factRecibidosSoloSinEgreso = e.target.checked;
             this._applyFactRecibidosFilter();
             this._renderFactRecibidosTable();
         });
