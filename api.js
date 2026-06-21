@@ -6258,10 +6258,25 @@ const API = {
                     .reduce((s, r) => s + (Number(r.total_en_ars) || Number(r.total) || 0), 0);
             }
 
-            // Costos = Σ líneas no anuladas
+            // Costos = planilla (evento_costos no anuladas) + egresos imputados al evento
+            // cargados DIRECTO en Finanzas (evento_id) que NO son pago de una línea de planilla.
+            // Opción A: Rendimiento refleja TODO costo del evento, venga de la planilla o de Finanzas.
             const { data: costos } = await supabaseClient.from('evento_costos')
                 .select('monto, estado').eq('evento_id', eventoId).eq('_deleted', false).neq('estado', 'anulado');
-            out.costos = (costos || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            out.costos_planilla = (costos || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+
+            const { data: egEvento } = await supabaseClient.from('egresos')
+                .select('id, monto, total_en_ars, estado').eq('evento_id', eventoId).eq('_deleted', false).neq('estado', 'anulado');
+            let costoDirecto = 0;
+            const egIds = (egEvento || []).map(e => e.id);
+            if (egIds.length) {
+                const { data: pagados } = await supabaseClient.from('evento_costo_pagos').select('egreso_id').in('egreso_id', egIds);
+                const linked = new Set((pagados || []).map(p => p.egreso_id).filter(Boolean));
+                costoDirecto = (egEvento || []).filter(e => !linked.has(e.id))
+                    .reduce((s, e) => s + (Number(e.total_en_ars) || Number(e.monto) || 0), 0);
+            }
+            out.costos_directo = costoDirecto;
+            out.costos = out.costos_planilla + costoDirecto;
 
             // Materiales (carga manual)
             const rend = await this.getEventoRendimiento(eventoId);

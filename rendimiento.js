@@ -828,7 +828,7 @@ const RendimientoModule = {
                     <div class="rend-kpi" style="--k:var(--accent)">
                         <div class="rend-k-lbl">Costos del evento</div>
                         <div class="rend-k-val" style="color:var(--accent)">${this._money(d.costos)}</div>
-                        <div class="rend-k-sub">la planilla</div>
+                        <div class="rend-k-sub">${d.costos_directo > 0 ? `planilla ${this._money(d.costos_planilla)} + Finanzas ${this._money(d.costos_directo)}` : 'la planilla'}</div>
                     </div>
                     <div class="rend-kpi" style="--k:#9B7DFF">
                         <div class="rend-k-lbl">Materiales</div>
@@ -848,7 +848,7 @@ const RendimientoModule = {
                     <div class="rend-wf-row"><span class="rend-wf-lbl">− Costos del evento</span><div class="rend-wf-bar"><div class="rend-wf-fill" style="width:${pct(d.costos)}%;background:var(--accent)"></div></div><span class="rend-wf-amt" style="color:var(--accent)">−${this._money(d.costos)}</span></div>
                     <div class="rend-wf-row"><span class="rend-wf-lbl">− Materiales</span><div class="rend-wf-bar"><div class="rend-wf-fill" style="width:${pct(d.materiales)}%;background:#9B7DFF"></div></div><span class="rend-wf-amt" style="color:#9B7DFF">−${this._money(d.materiales)}</span></div>
                     <div class="rend-wf-row rend-wf-total"><span class="rend-wf-lbl">= Ganancia neta</span><div class="rend-wf-bar"><div class="rend-wf-fill" style="width:${pct(Math.max(ganancia, 0))}%;background:var(--primary)"></div></div><span class="rend-wf-amt" style="color:var(--primary);font-weight:700">${this._money(ganancia)}</span></div>
-                    <p class="rend-note">Cobrado = ingresos confirmados de los proyectos del evento. Facturado = comprobantes emitidos al cliente (lado a lado, no se resta dos veces). Costos = la planilla. Materiales = insumos consumidos (carga manual). Margen sobre Cobrado.</p>
+                    <p class="rend-note">Cobrado = ingresos confirmados de los proyectos del evento. Facturado = comprobantes emitidos al cliente (lado a lado, no se resta dos veces). Costos = la planilla + gastos imputados al evento desde Finanzas (egresos con este evento). Materiales = insumos consumidos (carga manual). Margen sobre Cobrado.</p>
                 </div>
 
                 <div class="rend-materiales">
