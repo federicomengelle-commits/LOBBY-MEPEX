@@ -542,15 +542,34 @@ const HomeModule = {
                 const days = r.fecha_estimada ? Math.floor((new Date(today) - new Date(r.fecha_estimada.slice(0, 10))) / 86400000) : 0;
                 if (days > 60) aging.b60 += pend; else if (days > 30) aging.b30 += pend; else aging.b0 += pend;
             });
-            // saldo por cuenta (mismo método que finanzas: por cuenta, respeta canal)
+            // saldo por cuenta vía saldos_mensuales (contable) — igual que finanzas (piece 3):
+            // saldo = saldo_inicial + Σ último saldo_final por canal. Capta el ciclo del cheque
+            // (depósito/débito = asientos de clearing) → un cheque en tránsito no distorsiona el
+            // banco. Fallback a suma de movimientos si la cuenta no tiene plan_cuenta vinculada.
             let cuentas = (ctasR.data || []).filter(c => c.activa);
             if (canal) cuentas = cuentas.filter(c => c.canal_default === canal);
+            const { data: planLinks } = await db.from('plan_cuentas').select('id, cuenta_financiera_id').not('cuenta_financiera_id', 'is', null).eq('_deleted', false);
+            const planByCf = {}; (planLinks || []).forEach(p => { planByCf[p.cuenta_financiera_id] = p.id; });
+            const planIds = cuentas.map(c => planByCf[c.id]).filter(Boolean);
+            const smByPlan = {};
+            if (planIds.length) {
+                let qs = db.from('saldos_mensuales').select('cuenta_id, periodo, canal, saldo_final').in('cuenta_id', planIds);
+                if (canal) qs = qs.eq('canal', canal);
+                const { data: sm } = await qs;
+                (sm || []).forEach(r => { const m = (smByPlan[r.cuenta_id] = smByPlan[r.cuenta_id] || {}); if (!m[r.canal] || r.periodo > m[r.canal].periodo) m[r.canal] = r; });
+            }
             const cuentasSaldos = await Promise.all(cuentas.map(async c => {
+                const base = Number(c.saldo_inicial) || 0;
+                const planId = planByCf[c.id];
+                if (planId) {
+                    const byCanal = smByPlan[planId] || {};
+                    return { nombre: c.nombre, tipo: c.tipo, saldo: base + Object.values(byCanal).reduce((s, r) => s + (Number(r.saldo_final) || 0), 0) };
+                }
                 let qi = db.from('ingresos').select('monto').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'confirmado');
                 let qe = db.from('egresos').select('monto').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'pagado');
                 if (canal) { qi = qi.eq('canal', canal); qe = qe.eq('canal', canal); }
                 const [ir, er] = await Promise.all([qi, qe]);
-                return { nombre: c.nombre, tipo: c.tipo, saldo: (Number(c.saldo_inicial) || 0) + this._sum(ir.data, 'monto') - this._sum(er.data, 'monto') };
+                return { nombre: c.nombre, tipo: c.tipo, saldo: base + this._sum(ir.data, 'monto') - this._sum(er.data, 'monto') };
             }));
             const saldo = cuentasSaldos.reduce((s, c) => s + c.saldo, 0);
             return { facturado, cobrado, pagado, saldo, porCobrar, porPagar, gastoProm, cuentasSaldos, aging };
