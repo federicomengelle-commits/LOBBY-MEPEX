@@ -6951,9 +6951,9 @@ const FinanzasModule = {
         razon_social: 'MEPEX S.A.',
         cuit: '30-70999081-7',
         condicion_iva: 'IVA Responsable Inscripto',
-        domicilio: 'Buenos Aires, Argentina',
-        iibb: '',           // Ingresos Brutos (completar)
-        inicio_actividades: '', // dd/mm/aaaa (completar)
+        domicilio: 'Colombia 1173 - Lanús, Buenos Aires',
+        iibb: '902-496739-1',
+        inicio_actividades: '01/01/2007',
     },
 
     _tipoBadgeComp(tipo) {
