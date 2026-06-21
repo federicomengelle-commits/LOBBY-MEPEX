@@ -5790,6 +5790,7 @@ const API = {
             canal: payload.canal || 'oficial',
             cuenta_id: payload.cuenta_id || null,
             comprobante_recibido_id: payload.comprobante_recibido_id || null,
+            orden_compra_id: payload.orden_compra_id || null,
             estado: payload.estado || 'pagado',
             moneda: payload.moneda || 'ARS',
             cotizacion: payload.cotizacion || 1,
@@ -5872,61 +5873,104 @@ const API = {
         catch (e) { return null; }
     },
 
-    // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──
-    //  Pagos SIEMPRE discriminados: 1 pago = 1 egreso. Soporta tandas/adelantos (parcial).
-    async pagarCostoEvento({ costo, monto, fecha, medio, canal, cuenta_id, comprobante = null, notas = null }) {
-        const egCat = this.RENDIMIENTO_CAT_TO_EGRESO[costo.categoria] || 'otro';
-        const catLabel = this.RENDIMIENTO_CAT_LABEL[costo.categoria] || 'Costo';
+    // ═══ FASE 3a — CIRCUITO ÚNICO DE GASTO ═══
+    // Mapa único de categoría de dominio → cuentas. Consolida las 4 traducciones que
+    // vivían sueltas (RENDIMIENTO_CAT_TO_*, _CAT_TO_EGRESO del OCR, hardcodes): un gasto
+    // se clasifica IGUAL venga de donde venga. egresos.categoria (8) · comprobantes_recibidos.categoria (6).
+    GASTO_DOMINIO: {
+        jornal:         { egreso: 'rrhh',           recibido: 'otro',           label: 'Jornal' },
+        flete:          { egreso: 'logistica',      recibido: 'logistica',      label: 'Flete' },
+        proveedor:      { egreso: 'proveedor',      recibido: 'material',       label: 'Proveedor' },
+        seguro:         { egreso: 'servicio',       recibido: 'servicio',       label: 'Seguro' },
+        comida:         { egreso: 'otro',           recibido: 'otro',           label: 'Comida' },
+        material:       { egreso: 'proveedor',      recibido: 'material',       label: 'Material' },
+        servicio:       { egreso: 'servicio',       recibido: 'servicio',       label: 'Servicio' },
+        alquiler:       { egreso: 'alquiler',       recibido: 'alquiler',       label: 'Alquiler' },
+        credito_fiscal: { egreso: 'credito_fiscal', recibido: 'credito_fiscal', label: 'Crédito fiscal' },
+        logistica:      { egreso: 'logistica',      recibido: 'logistica',      label: 'Logística' },
+        impuesto:       { egreso: 'impuesto',       recibido: 'otro',           label: 'Impuesto' },
+        rrhh:           { egreso: 'rrhh',           recibido: 'otro',           label: 'RRHH' },
+        otro:           { egreso: 'otro',           recibido: 'otro',           label: 'Otro' },
+    },
+    _gastoDominio(dom) { return this.GASTO_DOMINIO[dom] || this.GASTO_DOMINIO.otro; },
+
+    // ── registrar_gasto: el circuito ÚNICO de gasto (generaliza pagarCostoEvento) ──
+    //  comprobante? → egreso (asiento auto, con IVA si hay comprobante) → link bidireccional.
+    //  Productores (OCR/Rendimiento/Compras/Calendario/Finanzas) pasan a usar ESTE punto:
+    //  una sola traducción de categoría + links tipados + canal/imputación reales.
+    async registrarGasto({
+        categoria_dominio, concepto, monto, fecha = null, medio = null, canal = null,
+        cuenta_id = null, estado = 'pagado', proyecto_id = null, evento_id = null,
+        proveedor_id = null, empleado_id = null, destinatario = null, subcategoria = null,
+        comprobante = null, orden_compra_id = null, moneda = 'ARS', cotizacion = 1, notas = null,
+    } = {}) {
+        const map = this._gastoDominio(categoria_dominio);
         fecha = fecha || this._today();
         canal = canal || 'oficial';
         medio = medio || 'transferencia';
         let comprobante_recibido_id = null;
 
-        // 1) Comprobante recibido (proveedor que factura)
+        // 1) Comprobante recibido (si el proveedor factura)
         if (comprobante && Number(comprobante.total) > 0) {
             comprobante_recibido_id = await this.createComprobanteRecibido({
                 fecha,
-                tipo: comprobante.tipo || 'A',
+                tipo: comprobante.tipo || 'factura_a',   // FIX: 'A' violaba el CHECK del enum
                 numero: comprobante.numero || null,
-                proveedor_id: costo.proveedor_id || null,
-                proveedor_nombre: comprobante.razon_social || costo.proveedor_nombre || null,
+                proveedor_id: proveedor_id || null,
+                proveedor_nombre: comprobante.razon_social || comprobante.proveedor_nombre || destinatario || null,
                 cuit: comprobante.cuit || null,
-                concepto: costo.descripcion,
+                concepto,
                 neto: comprobante.neto ?? null,
                 iva: comprobante.iva ?? null,
                 total: comprobante.total,
-                categoria: comprobante.categoria || this.RENDIMIENTO_CAT_TO_RECIBIDO[costo.categoria] || 'otro',
+                categoria: comprobante.categoria || map.recibido,
                 canal,
-                proyecto_id: costo.proyecto_id || null,
+                proyecto_id: proyecto_id || null,
+                archivo_url: comprobante.archivo_url || null,
+                moneda, cotizacion,
             });
         }
 
-        // 2) Egreso → dispara trg_asiento_auto_egreso (DEBE gasto / HABER banco)
+        // 2) Egreso → dispara el asiento automático
         const egreso_id = await this.createEgreso({
-            fecha,
-            categoria: egCat,
-            subcategoria: costo.categoria,                 // categoría del módulo (taxonomía interna)
-            destinatario: costo.persona_nombre || costo.proveedor_nombre || costo.descripcion || null,
-            proveedor_id: (costo.categoria === 'flete' || costo.categoria === 'proveedor') ? (costo.proveedor_id || null) : null,
-            empleado_id: costo.categoria === 'jornal' ? (costo.persona_id || null) : null,
-            proyecto_id: costo.proyecto_id || null,
-            evento_id: costo.evento_id || null,
-            concepto: `${catLabel}: ${costo.descripcion}`,
-            monto,
-            medio, canal, cuenta_id: cuenta_id || null,
-            comprobante_recibido_id,
-            estado: 'pagado',
-            notas,
+            fecha, categoria: map.egreso, subcategoria: subcategoria || categoria_dominio,
+            destinatario, proveedor_id, empleado_id, proyecto_id, evento_id,
+            concepto, monto, medio, canal, cuenta_id,
+            comprobante_recibido_id, orden_compra_id, estado, moneda, cotizacion, notas,
         });
 
         // 3) Link bidireccional comprobante ↔ egreso
         if (comprobante_recibido_id) {
             await supabaseClient.from('comprobantes_recibidos').update({ egreso_id }).eq('id', comprobante_recibido_id);
         }
+        return { egreso_id, comprobante_recibido_id };
+    },
 
-        // 4) Registrar el pago → trg_sync_costo_desde_pago recalcula monto_pagado/estado
+    // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──
+    //  Pagos SIEMPRE discriminados: 1 pago = 1 egreso. Soporta tandas/adelantos (parcial).
+    async pagarCostoEvento({ costo, monto, fecha, medio, canal, cuenta_id, comprobante = null, notas = null }) {
+        const dom = costo.categoria; // jornal/flete/proveedor/seguro/comida (∈ GASTO_DOMINIO)
+        const catLabel = this.RENDIMIENTO_CAT_LABEL[costo.categoria] || 'Costo';
+
+        // Rendimiento decide el dominio + las FK específicas; registrarGasto unifica el resto.
+        const { egreso_id, comprobante_recibido_id } = await this.registrarGasto({
+            categoria_dominio: dom,
+            concepto: `${catLabel}: ${costo.descripcion}`,
+            monto, fecha, medio, canal, cuenta_id,
+            estado: 'pagado',
+            proyecto_id: costo.proyecto_id || null,
+            evento_id: costo.evento_id || null,
+            proveedor_id: (dom === 'flete' || dom === 'proveedor') ? (costo.proveedor_id || null) : null,
+            empleado_id: dom === 'jornal' ? (costo.persona_id || null) : null,
+            destinatario: costo.persona_nombre || costo.proveedor_nombre || costo.descripcion || null,
+            subcategoria: dom,
+            comprobante: comprobante ? { ...comprobante, proveedor_nombre: comprobante.razon_social || costo.proveedor_nombre || null } : null,
+            notas,
+        });
+
+        // Pago (específico de Rendimiento) → trg_sync_costo_desde_pago recalcula monto_pagado/estado
         const { data: pago, error } = await supabaseClient.from('evento_costo_pagos').insert({
-            costo_id: costo.id, monto, fecha,
+            costo_id: costo.id, monto, fecha: fecha || this._today(),
             egreso_id, comprobante_recibido_id, notas: notas || null,
             created_by: this._uid(),
         }).select('id').single();
