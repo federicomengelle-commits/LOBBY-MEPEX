@@ -3452,6 +3452,48 @@ const FinanzasModule = {
                             </select>
                         </div>
                     </div>
+                    ${!isEdit ? `
+                    <div class="fin-form-cheque" id="finIngChequeFields" style="display:none;border:1px dashed var(--border,#2a2a2a);border-radius:6px;padding:10px;margin-top:4px;">
+                        <div class="fin-form-label" style="color:#1ABC9C;margin-bottom:6px;">💳 Datos del valor (cheque / e-cheq recibido)</div>
+                        <div class="fin-form-row">
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Tipo</label>
+                                <select class="fin-form-select" id="finIngChqTipo">
+                                    <option value="echeq">e-cheq</option>
+                                    <option value="cheque">Cheque físico</option>
+                                </select>
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Origen</label>
+                                <select class="fin-form-select" id="finIngChqPropio">
+                                    <option value="false">De tercero</option>
+                                    <option value="true">Propio</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="fin-form-row">
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Banco</label>
+                                <input type="text" class="fin-form-input" id="finIngChqBanco" placeholder="Galicia, Nación…">
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Número</label>
+                                <input type="text" class="fin-form-input" id="finIngChqNumero" placeholder="N° de cheque">
+                            </div>
+                        </div>
+                        <div class="fin-form-row">
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Titular</label>
+                                <input type="text" class="fin-form-input" id="finIngChqTitular" placeholder="Quién lo libró">
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Fecha de cobro *</label>
+                                <input type="date" class="fin-form-input" id="finIngChqFechaCobro" value="${today}">
+                            </div>
+                        </div>
+                        <div style="font-size:0.72rem;color:var(--text-muted,#888);margin-top:4px;">Entra a <b>Cheques a cobrar (1.1.07)</b>; pasa al banco recién al acreditarse. Se gestiona en la pestaña <b>Valores</b>.</div>
+                    </div>
+                    ` : ''}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
                         <textarea class="fin-form-textarea" id="finIngFormNotas" placeholder="Notas internas…">${i.notas || ''}</textarea>
@@ -3465,6 +3507,14 @@ const FinanzasModule = {
         });
 
         this._attachMonedaListeners('finIng');
+        // Cheque/e-cheq: mostrar campos del valor sólo cuando medio = cheque (alta nueva).
+        if (!isEdit) {
+            const ingMedioEl = document.getElementById('finIngFormMedio');
+            const ingChqEl = document.getElementById('finIngChequeFields');
+            const toggleIngChq = () => { if (ingChqEl) ingChqEl.style.display = (ingMedioEl?.value === 'cheque') ? 'block' : 'none'; };
+            ingMedioEl?.addEventListener('change', toggleIngChq);
+            toggleIngChq();
+        }
 
         document.getElementById('finBtnSaveIngreso')?.addEventListener('click', async () => {
             const fecha = document.getElementById('finIngFormFecha')?.value;
@@ -3519,6 +3569,21 @@ const FinanzasModule = {
                         .eq('id', ingreso.id);
                     if (error) throw error;
                     Toast.success('Ingreso actualizado');
+                } else if (medio === 'cheque') {
+                    // Cobro con cheque/e-cheq → ingreso + valor en cartera (1.1.07).
+                    // El clearing (pasar al banco) se hace desde la pestaña Valores.
+                    const chqFechaCobro = document.getElementById('finIngChqFechaCobro')?.value || fecha;
+                    await API.crearValorRecibido({
+                        tipo: document.getElementById('finIngChqTipo')?.value || 'echeq',
+                        propio: document.getElementById('finIngChqPropio')?.value === 'true',
+                        banco: document.getElementById('finIngChqBanco')?.value.trim() || null,
+                        numero: document.getElementById('finIngChqNumero')?.value.trim() || null,
+                        titular: document.getElementById('finIngChqTitular')?.value.trim() || null,
+                        monto, fecha_emision: fecha, fecha_cobro: chqFechaCobro,
+                        concepto, canal, cuenta_id, proyecto_id, cliente_id,
+                        moneda: monedaData.moneda, cotizacion: monedaData.cotizacion, notas,
+                    });
+                    Toast.success('Cobro con valor registrado — en cartera (1.1.07)');
                 } else {
                     // Circuito único de cobro (lado ingreso). El asiento lo dispara el trigger:
                     // con factura → Ventas + IVA débito; sin factura → Anticipos 2.1.06.
@@ -4237,6 +4302,35 @@ const FinanzasModule = {
                             </div>
                         </div>
                     </div>
+                    ${!isEdit ? `
+                    <div class="fin-form-cheque" id="finEgrChequeFields" style="display:none;border:1px dashed var(--border,#2a2a2a);border-radius:6px;padding:10px;margin-top:4px;">
+                        <div class="fin-form-label" style="color:#1ABC9C;margin-bottom:6px;">💳 Datos del valor (cheque / e-cheq propio)</div>
+                        <div class="fin-form-row">
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Tipo</label>
+                                <select class="fin-form-select" id="finEgrChqTipo">
+                                    <option value="echeq">e-cheq</option>
+                                    <option value="cheque">Cheque físico</option>
+                                </select>
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Fecha de débito *</label>
+                                <input type="date" class="fin-form-input" id="finEgrChqFechaCobro" value="${today}">
+                            </div>
+                        </div>
+                        <div class="fin-form-row">
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Banco</label>
+                                <input type="text" class="fin-form-input" id="finEgrChqBanco" placeholder="Galicia, Nación…">
+                            </div>
+                            <div class="fin-form-group">
+                                <label class="fin-form-label">Número</label>
+                                <input type="text" class="fin-form-input" id="finEgrChqNumero" placeholder="N° de cheque">
+                            </div>
+                        </div>
+                        <div style="font-size:0.72rem;color:var(--text-muted,#888);margin-top:4px;">Pasivo en <b>Cheques emitidos (2.1.07)</b>; debita del banco recién en la fecha de débito. Requiere elegir la <b>cuenta origen</b>. Se gestiona en <b>Valores</b>.</div>
+                    </div>
+                    ` : ''}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
                         <textarea class="fin-form-textarea" id="finEgrFormNotas" placeholder="Notas internas…">${(!isCF && e.notas) ? e.notas : ''}</textarea>
@@ -4286,6 +4380,15 @@ const FinanzasModule = {
 
         // Multi-moneda listeners
         this._attachMonedaListeners('finEgr');
+
+        // Cheque/e-cheq propio: mostrar campos del valor sólo cuando medio = cheque (alta nueva).
+        if (!isEdit) {
+            const egrMedioEl = document.getElementById('finEgrFormMedio');
+            const egrChqEl = document.getElementById('finEgrChequeFields');
+            const toggleEgrChq = () => { if (egrChqEl) egrChqEl.style.display = (egrMedioEl?.value === 'cheque') ? 'block' : 'none'; };
+            egrMedioEl?.addEventListener('change', toggleEgrChq);
+            toggleEgrChq();
+        }
 
         // Save
         document.getElementById('finBtnSaveEgreso')?.addEventListener('click', async () => {
@@ -4340,6 +4443,31 @@ const FinanzasModule = {
                     const { error } = await supabaseClient.from('egresos').update(payload).eq('id', egreso.id);
                     if (error) throw error;
                     Toast.success('Egreso actualizado');
+                } else if (medio === 'cheque') {
+                    // Pago con cheque/e-cheq propio → egreso (HABER 2.1.07) + valor emitido en cartera.
+                    // Requiere cuenta origen: el trigger la usa para pasar el guard y debitarla en el clearing.
+                    if (!cuenta_id) { Toast.warning('Elegí la cuenta origen (banco del cheque)'); return; }
+                    payload.created_by = Auth.getUser()?.uid || null;
+                    payload.estado = 'pagado'; // un cheque emitido es un pago (devengado)
+                    payload.fecha_programada = null;
+                    const { data: egIns, error } = await supabaseClient.from('egresos').insert([payload]).select('id').single();
+                    if (error) throw error;
+                    const chqFechaCobro = document.getElementById('finEgrChqFechaCobro')?.value || fecha;
+                    const { error: ev } = await supabaseClient.from('cartera_valores').insert({
+                        sentido: 'emitido',
+                        tipo: document.getElementById('finEgrChqTipo')?.value || 'echeq',
+                        propio: true,
+                        banco: document.getElementById('finEgrChqBanco')?.value.trim() || null,
+                        numero: document.getElementById('finEgrChqNumero')?.value.trim() || null,
+                        titular: destinatario,
+                        monto, moneda: monedaData.moneda, cotizacion: monedaData.cotizacion,
+                        fecha_emision: fecha, fecha_cobro: chqFechaCobro,
+                        estado: 'en_cartera', cuenta_id, canal,
+                        proyecto_id, proveedor_id, egreso_id: egIns.id,
+                        notas, created_by: Auth.getUser()?.uid || null,
+                    });
+                    if (ev) throw ev;
+                    Toast.success('Pago con valor registrado — emitido (2.1.07)');
                 } else {
                     payload.created_by = Auth.getUser()?.uid || null;
                     const { error } = await supabaseClient.from('egresos').insert([payload]);
@@ -5873,6 +6001,17 @@ const FinanzasModule = {
             kpi.porPagar = (data || []).reduce((s, r) => s + (Number(r.monto_estimado) || 0), 0);
         } catch (_) {}
 
+        // Valores en cartera (cheques/e-cheq sin clearing) — respeta el toggle de canal.
+        // A cobrar = recibidos en cartera (1.1.07) · A pagar = emitidos en cartera (2.1.07).
+        try {
+            let q = supabaseClient.from('cartera_valores').select('monto, total_en_ars, sentido').eq('_deleted', false).eq('estado', 'en_cartera');
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            const monto = (v) => Number(v.total_en_ars) || Number(v.monto) || 0;
+            kpi.valoresACobrar = (data || []).filter(v => v.sentido === 'recibido').reduce((s, v) => s + monto(v), 0);
+            kpi.valoresAPagar = (data || []).filter(v => v.sentido === 'emitido').reduce((s, v) => s + monto(v), 0);
+        } catch (_) {}
+
         this._panelKPIs = kpi;
         this._renderKPIs();
         await this._loadMiniCal();
@@ -5901,6 +6040,8 @@ const FinanzasModule = {
             { label: 'Saldo disponible', value: k.saldo, color: '#4A90D9', delta: null },
             { label: 'Por cobrar', value: k.porCobrar, color: '#F28D15', delta: null },
             { label: 'Por pagar (30d)', value: k.porPagar, color: '#9B7DFF', delta: null },
+            { label: 'Valores en cartera', value: k.valoresACobrar || 0, color: '#1ABC9C',
+              delta: { text: `a pagar ${this._formatMoney(k.valoresAPagar || 0)}`, cls: 'neutral' } },
         ];
 
         container.innerHTML = cards.map(c => `
