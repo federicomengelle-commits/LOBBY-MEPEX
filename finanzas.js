@@ -16,6 +16,7 @@ const FinanzasModule = {
         { key: 'egresos',      label: 'Egresos',       icon: '💸' },
         { key: 'facturacion',  label: 'Facturación',   icon: '🧾' },
         { key: 'cuentas',      label: 'Cuentas',       icon: '🏦' },
+        { key: 'valores',      label: 'Valores',       icon: '💳' },
         { key: 'conciliacion', label: 'Conciliación',  icon: '🔄' },
         { key: 'calendario',   label: 'Calendario',    icon: '📅' },
         { key: 'reportes',     label: 'Reportes',      icon: '📈' },
@@ -1927,6 +1928,13 @@ const FinanzasModule = {
                     await this._loadConciliaciones();
                     this._attachConcilListEvents();
                 }
+                break;
+            case 'valores':
+                await this._loadLookups();
+                await this._loadCuentas();
+                container.innerHTML = this._buildValoresHTML();
+                await this._loadValores();
+                this._attachValoresEvents();
                 break;
             default:
                 container.innerHTML = this._buildPlaceholder(this._activeTab);
@@ -7944,6 +7952,313 @@ const FinanzasModule = {
                 await this._loadFactRecibidos();
             } catch (e) { Toast.error('Error: ' + (e.message || e)); }
         });
+    },
+
+    // ═══════════════════════════════════════════════════════════
+    //  FASE 4 — CARTERA DE VALORES (cheques / e-cheq diferidos)
+    // ═══════════════════════════════════════════════════════════
+    _valores: [],
+    _valoresSentido: 'todos',
+    _valoresEstado: '',
+    _provVal: null,
+    _valorEstadoMeta: {
+        en_cartera: { label: 'En cartera', color: '#F28D15' },
+        depositado: { label: 'Depositado', color: '#4A90D9' },
+        cobrado:    { label: 'Cobrado',    color: '#00CC88' },
+        debitado:   { label: 'Debitado',   color: '#00CC88' },
+        endosado:   { label: 'Endosado',   color: '#9B7DFF' },
+        rechazado:  { label: 'Rechazado',  color: '#ff4444' },
+        anulado:    { label: 'Anulado',    color: '#888888' },
+        entregado:  { label: 'Entregado',  color: '#4A90D9' },
+    },
+
+    _ensureValoresStyles() {
+        if (document.getElementById('finval-styles')) return;
+        const s = document.createElement('style'); s.id = 'finval-styles';
+        s.textContent = `
+            .finval-seg{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+            .finval-seg-btn{background:transparent;border:none;color:var(--text-muted);padding:6px 13px;cursor:pointer;font-family:var(--font-main);font-size:.82rem;}
+            .finval-seg-btn.active{background:var(--primary);color:#000;font-weight:600;}
+            .finval-chip{display:inline-block;background:var(--bg-card,#111);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;}
+            .finval-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+            .finval-kpi{background:var(--bg-card,#111);border:1px solid var(--border);border-radius:8px;padding:12px 14px;}
+            .finval-kpi-l{color:var(--text-muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;}
+            .finval-kpi-v{font-family:var(--font-mono,monospace);font-size:1.25rem;margin-top:4px;}
+            .finval-btn{background:var(--bg-card,#111);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;padding:3px 9px;cursor:pointer;font-size:.78rem;margin-right:3px;}
+            .finval-btn:hover{border-color:var(--primary);}
+            .finval-btn.danger{color:var(--color-error,#ff4444);}
+            .finval-badge{border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;}
+            .finval-empty{color:var(--text-muted);text-align:center;padding:42px;}`;
+        document.head.appendChild(s);
+    },
+
+    _buildValoresHTML() {
+        this._ensureValoresStyles();
+        return `
+            <div class="fin-valores">
+                <div id="finValoresKpis" class="finval-kpis" style="margin-bottom:16px;"></div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+                    <div class="finval-seg" id="finValSentido">
+                        ${['todos','recibido','emitido'].map(s => `<button class="finval-seg-btn ${this._valoresSentido===s?'active':''}" data-s="${s}">${s==='todos'?'Todos':s==='recibido'?'A cobrar':'A pagar'}</button>`).join('')}
+                    </div>
+                    <select class="fin-form-select" id="finValEstado" style="max-width:200px;">
+                        <option value="">Todos los estados</option>
+                        ${Object.entries(this._valorEstadoMeta).map(([k,v])=>`<option value="${k}" ${this._valoresEstado===k?'selected':''}>${v.label}</option>`).join('')}
+                    </select>
+                    <div style="flex:1;"></div>
+                    <button class="btn btn-primary" id="finValNuevo">+ Nuevo valor</button>
+                </div>
+                <div id="finValoresTable"></div>
+            </div>`;
+    },
+
+    async _loadValores() {
+        try {
+            let vals = await API.getValores({ vivos: true });
+            if (this._canalVista !== 'total') vals = vals.filter(v => (v.canal || 'oficial') === this._canalVista);
+            this._valores = vals;
+        } catch (e) { this._valores = []; console.warn('[Finanzas] getValores:', e.message); }
+        this._renderValoresKpis();
+        this._renderValoresTable();
+    },
+
+    _renderValoresKpis() {
+        const el = document.getElementById('finValoresKpis'); if (!el) return;
+        const enC = this._valores.filter(v => v.estado === 'en_cartera');
+        const aCobrar = enC.filter(v => v.sentido === 'recibido').reduce((s,v)=>s+Number(v.total_en_ars||v.monto||0),0);
+        const aPagar = enC.filter(v => v.sentido === 'emitido').reduce((s,v)=>s+Number(v.total_en_ars||v.monto||0),0);
+        const hoy = new Date().toISOString().slice(0,10);
+        const venc = enC.filter(v => v.fecha_cobro && v.fecha_cobro < hoy).length;
+        const k = (l,val,c) => `<div class="finval-kpi"><div class="finval-kpi-l">${l}</div><div class="finval-kpi-v" style="color:${c};">${val}</div></div>`;
+        el.innerHTML = k('A cobrar (cartera)', this._formatMoney(aCobrar), '#00CC88')
+            + k('A pagar (cartera)', this._formatMoney(aPagar), '#E84855')
+            + k('En cartera', enC.length, '#00A9C1')
+            + k('Vencidos s/cobrar', venc, venc ? '#ff4444' : '#888888');
+    },
+
+    _renderValoresTable() {
+        const el = document.getElementById('finValoresTable'); if (!el) return;
+        let rows = this._valores;
+        if (this._valoresSentido !== 'todos') rows = rows.filter(v => v.sentido === this._valoresSentido);
+        if (this._valoresEstado) rows = rows.filter(v => v.estado === this._valoresEstado);
+        if (!rows.length) { el.innerHTML = `<div class="finval-empty">No hay valores. Usá "+ Nuevo valor" para registrar un cheque o e-cheq.</div>`; return; }
+        el.innerHTML = `
+            <table class="fin-table">
+                <thead><tr>
+                    <th>Vence</th><th>Tipo</th><th>Sentido</th><th>Banco / Nº</th><th>Titular</th>
+                    <th style="text-align:right;">Monto</th><th>Estado</th><th>Acciones</th>
+                </tr></thead>
+                <tbody>${rows.map(v => this._valorRow(v)).join('')}</tbody>
+            </table>`;
+    },
+
+    _valorRow(v) {
+        const em = this._valorEstadoMeta[v.estado] || { label: v.estado, color: '#888888' };
+        const tipoLabel = v.tipo === 'echeq' ? 'e-cheq' : (v.tipo === 'cheque' ? 'Cheque' : v.tipo);
+        const sent = v.sentido === 'recibido' ? `<span style="color:#00CC88;">▼ A cobrar</span>` : `<span style="color:#E84855;">▲ A pagar</span>`;
+        const mon = (v.moneda && v.moneda !== 'ARS') ? ` <span style="color:var(--accent);font-size:10px;">${v.moneda}</span>` : '';
+        return `<tr data-id="${v.id}">
+            <td>${this._formatDate(v.fecha_cobro)}</td>
+            <td><span class="finval-chip">${escHtml(tipoLabel)}</span>${v.propio?' <span class="finval-chip" style="opacity:.7;">propio</span>':''}</td>
+            <td>${sent}</td>
+            <td>${escHtml(v.banco||'—')}${v.numero?' · '+escHtml(v.numero):''}</td>
+            <td>${escHtml(v.titular||'—')}</td>
+            <td style="text-align:right;font-family:var(--font-mono);">${this._formatMoney(v.monto)}${mon}</td>
+            <td><span class="finval-badge" style="background:${em.color}22;color:${em.color};">${em.label}</span></td>
+            <td>${this._valorAcciones(v)} ${v.archivo_url?'<span title="Tiene comprobante adjunto">📎</span>':''}</td>
+        </tr>`;
+    },
+
+    _valorAcciones(v) {
+        const b = (act, label, danger) => `<button class="finval-btn${danger?' danger':''}" data-act="${act}" data-id="${v.id}">${label}</button>`;
+        if (v.estado !== 'en_cartera') return b('ver', 'Ver');
+        if (v.sentido === 'recibido') return b('cobrar','Cobrar') + b('endosar','Endosar') + b('rechazar','✕', true);
+        return b('debitar','Debitar') + b('anular','✕', true);
+    },
+
+    _attachValoresEvents() {
+        document.querySelectorAll('#finValSentido .finval-seg-btn').forEach(btn => btn.addEventListener('click', () => {
+            this._valoresSentido = btn.dataset.s;
+            document.querySelectorAll('#finValSentido .finval-seg-btn').forEach(b=>b.classList.toggle('active', b===btn));
+            this._renderValoresTable();
+        }));
+        document.getElementById('finValEstado')?.addEventListener('change', e => { this._valoresEstado = e.target.value; this._renderValoresTable(); });
+        document.getElementById('finValNuevo')?.addEventListener('click', () => this._showNuevoValorModal());
+        document.getElementById('finValoresTable')?.addEventListener('click', e => {
+            const btn = e.target.closest('[data-act]'); if (!btn) return;
+            const v = this._valores.find(x => x.id === btn.dataset.id); if (!v) return;
+            const act = btn.dataset.act;
+            if (act === 'cobrar') this._showClearingModal(v, 'cobrado');
+            else if (act === 'debitar') this._showClearingModal(v, 'debitado');
+            else if (act === 'endosar') this._showEndosarModal(v);
+            else if (act === 'rechazar') this._confirmValorEstado(v, 'rechazado', '¿Marcar el cheque como rechazado (rebotó)? Genera DEBE 1.1.08 Clientes / HABER 1.1.07.');
+            else if (act === 'anular') this._confirmValorEstado(v, 'anulado', '¿Anular el cheque emitido? Genera DEBE 2.1.07 / HABER 2.1.01 Proveedores.');
+            else if (act === 'ver') this._showValorDetail(v);
+        });
+    },
+
+    async _showNuevoValorModal() {
+        const cuentaOpts = (this._cuentas||[]).map(c => `<option value="${c.id}">${escHtml(c.nombre)}</option>`).join('');
+        const proyOpts = Object.keys(this._proyectosMap||{}).map(k => `<option value="${k}">${escHtml(this._proyectosMap[k])}</option>`).join('');
+        if (!this._provVal) { try { this._provVal = await API.getProveedores(); } catch { this._provVal = []; } }
+        const provOpts = (this._provVal||[]).map(p => `<option value="${p.id}">${escHtml(p.nombre||p.razon_social||'—')}</option>`).join('');
+        const today = new Date().toISOString().slice(0,10);
+        const defCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
+        const body = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div class="finval-seg" id="nvSentido">
+                    <button class="finval-seg-btn active" data-s="recibido">▼ Recibido (a cobrar)</button>
+                    <button class="finval-seg-btn" data-s="emitido">▲ Emitido (a pagar)</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <div><label class="fin-form-label">Tipo</label><select class="fin-form-select" id="nvTipo"><option value="echeq">e-cheq</option><option value="cheque">Cheque físico</option></select></div>
+                    <div><label class="fin-form-label">Monto *</label><input type="number" class="fin-form-input" id="nvMonto" placeholder="0"></div>
+                    <div><label class="fin-form-label">Banco</label><input type="text" class="fin-form-input" id="nvBanco" placeholder="Galicia…"></div>
+                    <div><label class="fin-form-label">Nº / ID e-cheq</label><input type="text" class="fin-form-input" id="nvNumero"></div>
+                    <div><label class="fin-form-label" id="nvTitularLbl">Librador (de quién)</label><input type="text" class="fin-form-input" id="nvTitular"></div>
+                    <div><label class="fin-form-label">Vence (fecha de cobro) *</label><input type="date" class="fin-form-input" id="nvFechaCobro" value="${today}"></div>
+                    <div><label class="fin-form-label" id="nvCuentaLbl">Cuenta de depósito (opcional)</label><select class="fin-form-select" id="nvCuenta"><option value="">—</option>${cuentaOpts}</select></div>
+                    <div><label class="fin-form-label">Canal</label><select class="fin-form-select" id="nvCanal"><option value="oficial" ${defCanal==='oficial'?'selected':''}>Oficial</option><option value="interno" ${defCanal==='interno'?'selected':''}>Interno</option></select></div>
+                    <div id="nvProyWrap"><label class="fin-form-label">Proyecto</label><select class="fin-form-select" id="nvProy"><option value="">—</option>${proyOpts}</select></div>
+                    <div id="nvProvWrap" style="display:none;"><label class="fin-form-label">Proveedor</label><select class="fin-form-select" id="nvProv"><option value="">—</option>${provOpts}</select></div>
+                </div>
+                <div><label class="fin-form-label">Concepto</label><input type="text" class="fin-form-input" id="nvConcepto" placeholder="opcional"></div>
+                <div><label class="fin-form-label">Comprobante del banco (PDF/imagen)</label><input type="file" class="fin-form-input" id="nvArchivo" accept="image/*,application/pdf"></div>
+                <p id="nvHint" style="color:var(--text-dim);font-size:.78rem;margin:0;">Recibido: entra a cartera (1.1.07). Después lo cobrás/depositás o lo endosás a un proveedor.</p>
+            </div>`;
+        const inst = Modal.open({ title: 'Nuevo valor', body, size: 'md',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="nvOk">Crear</button>` });
+        let sentido = 'recibido';
+        const sync = () => {
+            document.getElementById('nvProvWrap').style.display = sentido==='emitido' ? '' : 'none';
+            document.getElementById('nvProyWrap').style.display = sentido==='emitido' ? 'none' : '';
+            document.getElementById('nvTitularLbl').textContent = sentido==='emitido' ? 'Beneficiario (a quién)' : 'Librador (de quién)';
+            document.getElementById('nvCuentaLbl').textContent = sentido==='emitido' ? 'Cuenta que gira *' : 'Cuenta de depósito (opcional)';
+            document.getElementById('nvHint').textContent = sentido==='emitido'
+                ? 'Emitido: registra el pago (HABER 2.1.07). Marcalo "Debitado" cuando el banco lo descuente.'
+                : 'Recibido: entra a cartera (1.1.07). Después lo cobrás/depositás o lo endosás a un proveedor.';
+        };
+        document.querySelectorAll('#nvSentido .finval-seg-btn').forEach(btn => btn.addEventListener('click', () => {
+            sentido = btn.dataset.s;
+            document.querySelectorAll('#nvSentido .finval-seg-btn').forEach(b=>b.classList.toggle('active', b===btn));
+            sync();
+        }));
+        document.getElementById('nvOk').addEventListener('click', async () => {
+            const monto = Number(document.getElementById('nvMonto').value);
+            const fecha_cobro = document.getElementById('nvFechaCobro').value;
+            if (!monto || monto <= 0) { Toast.error('Ingresá un monto válido'); return; }
+            if (!fecha_cobro) { Toast.error('Ingresá la fecha de cobro'); return; }
+            const cuenta_id = document.getElementById('nvCuenta').value || null;
+            if (sentido === 'emitido' && !cuenta_id) { Toast.error('Elegí la cuenta que gira el cheque'); return; }
+            const common = {
+                tipo: document.getElementById('nvTipo').value,
+                banco: document.getElementById('nvBanco').value || null,
+                numero: document.getElementById('nvNumero').value || null,
+                titular: document.getElementById('nvTitular').value || null,
+                monto, fecha_cobro, canal: document.getElementById('nvCanal').value,
+                concepto: document.getElementById('nvConcepto').value || null,
+            };
+            const file = document.getElementById('nvArchivo').files[0];
+            const okBtn = document.getElementById('nvOk'); okBtn.disabled = true; okBtn.textContent = 'Creando…';
+            try {
+                let archivo_url = null;
+                if (file) archivo_url = await API.uploadComprobante(file);
+                if (sentido === 'emitido') {
+                    await API.crearValorEmitido({ ...common, propio: true, cuenta_id,
+                        proveedor_id: document.getElementById('nvProv').value || null, archivo_url });
+                } else {
+                    await API.crearValorRecibido({ ...common, propio: false, cuenta_id,
+                        proyecto_id: document.getElementById('nvProy').value || null, archivo_url });
+                }
+                Toast.success('Valor creado · ' + (sentido==='emitido' ? 'pago registrado (2.1.07)' : 'cobro en cartera (1.1.07)'));
+                Modal.close(inst.id);
+                await this._loadValores();
+            } catch (e) { Toast.error('Error: ' + (e.message||e)); okBtn.disabled = false; okBtn.textContent = 'Crear'; }
+        });
+    },
+
+    _showClearingModal(v, estado) {
+        const cuentaOpts = (this._cuentas||[]).map(c => `<option value="${c.id}" ${v.cuenta_id===c.id?'selected':''}>${escHtml(c.nombre)}</option>`).join('');
+        const titulo = estado === 'debitado' ? 'Debitar (sale del banco)' : 'Cobrar / Depositar (entra al banco)';
+        const today = new Date().toISOString().slice(0,10);
+        const body = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <p style="color:var(--text-muted);font-size:.85rem;margin:0;">${escHtml(v.banco||'')} ${escHtml(v.numero||'')} · <b>${this._formatMoney(v.monto)}</b></p>
+                <div><label class="fin-form-label">Cuenta (banco) *</label><select class="fin-form-select" id="vcCuenta"><option value="">— Elegí cuenta —</option>${cuentaOpts}</select></div>
+                <div><label class="fin-form-label">Fecha real</label><input type="date" class="fin-form-input" id="vcFecha" value="${v.fecha_cobro||today}"></div>
+                <p style="color:var(--text-dim);font-size:.78rem;margin:0;">Asiento de tesorería: ${estado==='debitado'?'DEBE 2.1.07 / HABER banco':'DEBE banco / HABER 1.1.07'}.</p>
+            </div>`;
+        const inst = Modal.open({ title: titulo, body, size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="vcOk">Confirmar</button>` });
+        document.getElementById('vcOk').addEventListener('click', async () => {
+            const cuenta_id = document.getElementById('vcCuenta').value;
+            if (!cuenta_id) { Toast.error('Elegí la cuenta'); return; }
+            try {
+                await API.setValorEstado(v.id, estado, { cuenta_id, fecha_realizado: document.getElementById('vcFecha').value || null });
+                Toast.success('Valor ' + estado + ' + asiento de tesorería');
+                Modal.close(inst.id);
+                await this._loadValores();
+            } catch (e) { Toast.error('Error: ' + (e.message||e)); }
+        });
+    },
+
+    async _showEndosarModal(v) {
+        if (v.sentido !== 'recibido' || v.estado !== 'en_cartera') { Toast.warning('Solo se endosan valores recibidos en cartera'); return; }
+        if (!this._provVal) { try { this._provVal = await API.getProveedores(); } catch { this._provVal = []; } }
+        const provOpts = (this._provVal||[]).map(p => `<option value="${p.id}">${escHtml(p.nombre||p.razon_social||'—')}</option>`).join('');
+        const catOpts = Object.entries(API.GASTO_DOMINIO).map(([k,m]) => `<option value="${k}" ${k==='proveedor'?'selected':''}>${escHtml(m.label)}</option>`).join('');
+        const body = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <p style="color:var(--text-muted);font-size:.85rem;margin:0;">Endosás ${escHtml(v.tipo==='echeq'?'e-cheq':'cheque')} ${escHtml(v.numero||'')} · <b>${this._formatMoney(v.monto)}</b> para pagar a un proveedor.</p>
+                <div><label class="fin-form-label">Proveedor</label><select class="fin-form-select" id="enProv"><option value="">—</option>${provOpts}</select></div>
+                <div><label class="fin-form-label">Beneficiario (texto, si no figura)</label><input type="text" class="fin-form-input" id="enDest" placeholder="opcional"></div>
+                <div><label class="fin-form-label">Rubro del gasto</label><select class="fin-form-select" id="enCat">${catOpts}</select></div>
+                <div><label class="fin-form-label">Concepto</label><input type="text" class="fin-form-input" id="enConc" placeholder="¿qué se paga?"></div>
+                <p style="color:var(--text-dim);font-size:.78rem;margin:0;">Egreso: DEBE gasto / HABER 1.1.07 (el cheque deja la cartera). No toca banco.</p>
+            </div>`;
+        const inst = Modal.open({ title: 'Endosar a proveedor', body, size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="enOk">Endosar</button>` });
+        document.getElementById('enOk').addEventListener('click', async () => {
+            const proveedor_id = document.getElementById('enProv').value || null;
+            const destinatario = document.getElementById('enDest').value || null;
+            if (!proveedor_id && !destinatario) { Toast.error('Indicá el proveedor o un beneficiario'); return; }
+            try {
+                const res = await API.endosarValor(v.id, {
+                    categoria_dominio: document.getElementById('enCat').value, proveedor_id, destinatario,
+                    concepto: document.getElementById('enConc').value || null,
+                    proyecto_id: v.proyecto_id || null, evento_id: v.evento_id || null,
+                });
+                if (res.error) { Toast.error(res.error); return; }
+                Toast.success('Cheque endosado · egreso generado (HABER 1.1.07)');
+                Modal.close(inst.id);
+                await this._loadValores();
+            } catch (e) { Toast.error('Error: ' + (e.message||e)); }
+        });
+    },
+
+    async _confirmValorEstado(v, estado, msg) {
+        const ok = await Modal.confirm({ title: 'Confirmar', message: msg, confirmText: 'Confirmar', danger: true });
+        if (!ok) return;
+        try { await API.setValorEstado(v.id, estado); Toast.success('Valor ' + estado); await this._loadValores(); }
+        catch (e) { Toast.error('Error: ' + (e.message||e)); }
+    },
+
+    async _showValorDetail(v) {
+        let url = null;
+        if (v.archivo_url) { try { url = await API.getComprobanteSignedUrl(v.archivo_url); } catch {} }
+        const em = this._valorEstadoMeta[v.estado] || { label: v.estado };
+        const row = (l, val) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text-muted);">${l}</span><span>${val}</span></div>`;
+        Modal.open({ title: 'Valor ' + (v.tipo==='echeq'?'e-cheq':'cheque'), size: 'sm', body: `
+            <div>
+                ${row('Sentido', v.sentido==='recibido'?'A cobrar':'A pagar')}
+                ${row('Estado', escHtml(em.label))}
+                ${row('Banco / Nº', escHtml((v.banco||'—')+' '+(v.numero||'')))}
+                ${row('Titular', escHtml(v.titular||'—'))}
+                ${row('Monto', this._formatMoney(v.monto))}
+                ${row('Vence', this._formatDate(v.fecha_cobro))}
+                ${v.fecha_realizado?row('Realizado', this._formatDate(v.fecha_realizado)):''}
+                ${url?`<div style="margin-top:12px;"><a href="${url}" target="_blank" rel="noopener" class="btn btn-ghost">📎 Ver comprobante</a></div>`:''}
+            </div>` });
     },
 
     _showRecibidoModal(comp = null) {

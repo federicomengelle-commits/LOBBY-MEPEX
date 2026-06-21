@@ -227,28 +227,30 @@ BEGIN
     IF NEW.estado IS DISTINCT FROM 'confirmado' THEN RETURN NEW; END IF;
     IF TG_OP = 'UPDATE' AND OLD.estado = 'confirmado' THEN RETURN NEW; END IF;
 
-    IF NEW.cuenta_id IS NULL THEN
-        RAISE NOTICE '[Contabilidad] Ingreso % sin cuenta_id — sin asiento.', NEW.id;
-        RETURN NEW;
-    END IF;
-
-    SELECT id INTO v_cuenta_activo
-    FROM plan_cuentas
-    WHERE cuenta_financiera_id = NEW.cuenta_id AND _deleted = false
-    LIMIT 1;
-
-    IF v_cuenta_activo IS NULL THEN
-        RAISE WARNING '[Contabilidad] Ingreso %: cuenta financiera % sin vínculo contable.', NEW.id, NEW.cuenta_id;
-        RETURN NEW;
-    END IF;
-
-    -- ── FASE 4: cobro con cheque/e-cheq (medio='cheque', el e-cheq se distingue
-    --    por el tipo del valor) → la pata de tesorería se DIFIERE al valor
-    --    account 1.1.07 (no al banco). El banco entra en el clearing.
+    -- ── FASE 4: derivar la pata de tesorería según el instrumento. El banco se
+    --    mueve recién en el clearing del valor. El resto del cuerpo queda IGUAL.
+    --   COBRO con cheque/e-cheq (medio='cheque') → entra a cartera 1.1.07. NO
+    --   necesita banco: un e-cheq recibido puede endosarse sin depositarse nunca.
     IF NEW.medio = 'cheque' THEN
-        SELECT id INTO v_cuenta_valor FROM plan_cuentas
-        WHERE codigo = '1.1.07' AND _deleted = false LIMIT 1;
-        IF v_cuenta_valor IS NOT NULL THEN v_cuenta_activo := v_cuenta_valor; END IF;
+        SELECT id INTO v_cuenta_activo FROM plan_cuentas WHERE codigo = '1.1.07' AND _deleted = false LIMIT 1;
+        IF v_cuenta_activo IS NULL THEN
+            RAISE NOTICE '[Contabilidad] Cuenta 1.1.07 no encontrada — ingreso % sin asiento.', NEW.id;
+            RETURN NEW;
+        END IF;
+    ELSE
+        -- (normal) la tesorería entra al banco (requiere cuenta_id)
+        IF NEW.cuenta_id IS NULL THEN
+            RAISE NOTICE '[Contabilidad] Ingreso % sin cuenta_id — sin asiento.', NEW.id;
+            RETURN NEW;
+        END IF;
+        SELECT id INTO v_cuenta_activo
+        FROM plan_cuentas
+        WHERE cuenta_financiera_id = NEW.cuenta_id AND _deleted = false
+        LIMIT 1;
+        IF v_cuenta_activo IS NULL THEN
+            RAISE WARNING '[Contabilidad] Ingreso %: cuenta financiera % sin vínculo contable.', NEW.id, NEW.cuenta_id;
+            RETURN NEW;
+        END IF;
     END IF;
 
     IF NEW.comprobante_id IS NOT NULL THEN

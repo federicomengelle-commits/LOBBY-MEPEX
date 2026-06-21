@@ -5789,6 +5789,8 @@ const API = {
             cuenta_id: payload.cuenta_id || null,
             comprobante_recibido_id: payload.comprobante_recibido_id || null,
             orden_compra_id: payload.orden_compra_id || null,
+            cartera_valor_id: payload.cartera_valor_id || null,   // Fase 4: endoso de un valor recibido
+            archivo_op_url: payload.archivo_op_url || null,       // Fase 4: comprobante de operación bancaria
             estado: payload.estado || 'pagado',
             moneda: payload.moneda || 'ARS',
             cotizacion: payload.cotizacion || 1,
@@ -5974,6 +5976,121 @@ const API = {
             catch (e) { console.warn('[API] registrarCobro dif-cambio:', e.message); }
         }
         return out;
+    },
+
+    // ═══ FASE 4 — CARTERA DE VALORES (cheques / e-cheq diferidos) ═══
+    //  El valor es un MEDIO DIFERIDO del circuito único. La entrada va por
+    //  registrarCobro/registrarGasto (medio='cheque') → la tesorería se difiere al
+    //  valor account (1.1.07 recibido / 2.1.07 emitido); el clearing (cambio de
+    //  estado del valor) mueve valor↔banco en la fecha real. Endoso = egreso
+    //  linkeado al valor recibido (sale de 1.1.07, sin tocar banco).
+
+    async getValores({ sentido = null, estado = null, vivos = true } = {}) {
+        let q = supabaseClient.from('cartera_valores').select('*').order('fecha_cobro', { ascending: true });
+        if (vivos) q = q.eq('_deleted', false);
+        if (sentido) q = q.eq('sentido', sentido);
+        if (estado) q = q.eq('estado', estado);
+        const { data, error } = await q;
+        if (error) throw error;
+        return data || [];
+    },
+
+    // Cobro con cheque/e-cheq → ingreso (asiento DEBE 1.1.07) + valor en cartera (recibido)
+    async crearValorRecibido({ tipo = 'echeq', propio = false, banco = null, numero = null, titular = null, cuit_titular = null,
+        monto, fecha_emision = null, fecha_cobro, concepto = null, canal = 'oficial', cuenta_id = null,
+        proyecto_id = null, evento_id = null, cliente_id = null, moneda = 'ARS', cotizacion = 1,
+        archivo_url = null, notas = null } = {}) {
+        const { ingreso_id } = await this.registrarCobro({
+            fecha: fecha_cobro || this._today(),
+            concepto: concepto || ('Cobro con ' + (tipo === 'echeq' ? 'e-cheq' : 'cheque') + (titular ? ' de ' + titular : '')),
+            monto, medio: 'cheque', canal, cuenta_id: cuenta_id || null,
+            proyecto_id, evento_id, cliente_id, estado: 'confirmado', moneda, cotizacion,
+        });
+        const { data, error } = await supabaseClient.from('cartera_valores').insert({
+            sentido: 'recibido', tipo, propio, banco, numero, titular, cuit_titular,
+            monto, moneda, cotizacion, fecha_emision, fecha_cobro,
+            estado: 'en_cartera', cuenta_id: cuenta_id || null, canal,
+            proyecto_id, evento_id, cliente_id, ingreso_id,
+            archivo_url, notas, created_by: this._uid(),
+        }).select('id').single();
+        if (error) throw error;
+        return { ingreso_id, valor_id: data.id };
+    },
+
+    // Pago con cheque/e-cheq PROPIO → egreso (asiento HABER 2.1.07) + valor (emitido)
+    async crearValorEmitido({ categoria_dominio = 'proveedor', tipo = 'echeq', propio = true, banco = null, numero = null, titular = null,
+        monto, fecha_emision = null, fecha_cobro, concepto = null, canal = 'oficial', cuenta_id,
+        proyecto_id = null, evento_id = null, proveedor_id = null, moneda = 'ARS', cotizacion = 1,
+        comprobante = null, archivo_url = null, notas = null } = {}) {
+        const { egreso_id, comprobante_recibido_id } = await this.registrarGasto({
+            categoria_dominio, concepto: concepto || ('Pago con ' + (tipo === 'echeq' ? 'e-cheq' : 'cheque') + (titular ? ' a ' + titular : '')),
+            monto, fecha: fecha_emision || this._today(), medio: 'cheque', canal, cuenta_id,
+            estado: 'pagado', proyecto_id, evento_id, proveedor_id, destinatario: titular,
+            comprobante, moneda, cotizacion, notas,
+        });
+        const { data, error } = await supabaseClient.from('cartera_valores').insert({
+            sentido: 'emitido', tipo, propio, banco, numero, titular,
+            monto, moneda, cotizacion, fecha_emision, fecha_cobro,
+            estado: 'en_cartera', cuenta_id, canal,
+            proyecto_id, evento_id, proveedor_id, egreso_id,
+            archivo_url, notas, created_by: this._uid(),
+        }).select('id').single();
+        if (error) throw error;
+        return { egreso_id, comprobante_recibido_id, valor_id: data.id };
+    },
+
+    // Endosar un valor RECIBIDO para pagar a un proveedor → egreso (HABER 1.1.07) + valor 'endosado'
+    async endosarValor(valorId, { categoria_dominio = 'proveedor', concepto = null, proveedor_id = null, destinatario = null,
+        proyecto_id = null, evento_id = null, comprobante = null, archivo_url = null, notas = null } = {}) {
+        const { data: v, error: ev } = await supabaseClient.from('cartera_valores').select('*').eq('id', valorId).maybeSingle();
+        if (ev) throw ev;
+        if (!v) return { error: 'Valor no encontrado' };
+        if (v.sentido !== 'recibido') return { error: 'Solo se endosan valores recibidos' };
+        if (v.estado !== 'en_cartera') return { error: 'El valor no está en cartera (estado: ' + v.estado + ')' };
+        const map = this._gastoDominio(categoria_dominio);
+        const etiqueta = (v.tipo === 'echeq' ? 'e-cheq' : 'cheque') + (v.numero ? ' ' + v.numero : '');
+        let comprobante_recibido_id = null;
+        if (comprobante && Number(comprobante.total) > 0) {
+            comprobante_recibido_id = await this.createComprobanteRecibido({
+                fecha: this._today(), tipo: comprobante.tipo || 'factura_a', numero: comprobante.numero || null,
+                proveedor_id, proveedor_nombre: comprobante.razon_social || destinatario || null, cuit: comprobante.cuit || null,
+                concepto: concepto || ('Endoso ' + etiqueta),
+                neto: comprobante.neto ?? null, iva: comprobante.iva ?? null, total: comprobante.total,
+                categoria: comprobante.categoria || map.recibido, canal: v.canal, proyecto_id, moneda: v.moneda, cotizacion: v.cotizacion,
+            });
+        }
+        const egreso_id = await this.createEgreso({
+            fecha: this._today(), categoria: map.egreso, subcategoria: 'endoso',
+            destinatario: destinatario || null, proveedor_id, proyecto_id, evento_id,
+            concepto: concepto || ('Endoso ' + etiqueta + (destinatario ? ' a ' + destinatario : '')),
+            monto: v.monto, medio: 'cheque', canal: v.canal, cuenta_id: null,
+            cartera_valor_id: v.id, comprobante_recibido_id, estado: 'pagado', moneda: v.moneda, cotizacion: v.cotizacion, notas,
+        });
+        if (comprobante_recibido_id) {
+            await supabaseClient.from('comprobantes_recibidos').update({ egreso_id }).eq('id', comprobante_recibido_id);
+        }
+        await supabaseClient.from('cartera_valores').update({
+            estado: 'endosado', endoso_egreso_id: egreso_id, endosado_a_proveedor_id: proveedor_id || null,
+            archivo_url: archivo_url || v.archivo_url,
+        }).eq('id', v.id);
+        return { egreso_id, comprobante_recibido_id };
+    },
+
+    // Cambiar estado del valor (cobrado/depositado/debitado/rechazado/anulado) → dispara clearing/rebote
+    async setValorEstado(valorId, estado, { cuenta_id = null, fecha_realizado = null } = {}) {
+        const patch = { estado };
+        if (cuenta_id) patch.cuenta_id = cuenta_id;
+        if (fecha_realizado) patch.fecha_realizado = fecha_realizado;
+        else if (['cobrado', 'depositado', 'debitado'].includes(estado)) patch.fecha_realizado = this._today();
+        const { error } = await supabaseClient.from('cartera_valores').update(patch).eq('id', valorId);
+        if (error) throw error;
+        return { ok: true };
+    },
+
+    async setValorArchivo(valorId, url) {
+        const { error } = await supabaseClient.from('cartera_valores').update({ archivo_url: url }).eq('id', valorId);
+        if (error) throw error;
+        return { ok: true };
     },
 
     // ── Generar el egreso/pago de un comprobante recibido YA cargado (OCR/manual). Fase 3d. ──
