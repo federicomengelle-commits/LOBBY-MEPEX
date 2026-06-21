@@ -7298,8 +7298,11 @@ const FinanzasModule = {
                     <option value="anulada">Anulada</option>
                 </select>
             </div>
-            <div id="finFactEmMain">
-                <div class="fin-loading"><div class="spinner"></div> Cargando comprobantes…</div>
+            <div class="fin-body">
+                <div class="fin-main" id="finFactEmMain">
+                    <div class="fin-loading"><div class="spinner"></div> Cargando comprobantes…</div>
+                </div>
+                <div class="fin-side-panel" id="finCuentasPanel"></div>
             </div>
         `;
     },
@@ -7653,8 +7656,11 @@ const FinanzasModule = {
                     ${Object.entries(this._catRecibido).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
                 </select>
             </div>
-            <div id="finFactRecMain">
-                <div class="fin-loading"><div class="spinner"></div> Cargando comprobantes recibidos…</div>
+            <div class="fin-body">
+                <div class="fin-main" id="finFactRecMain">
+                    <div class="fin-loading"><div class="spinner"></div> Cargando comprobantes recibidos…</div>
+                </div>
+                <div class="fin-side-panel" id="finCuentasPanel"></div>
             </div>
         `;
     },
@@ -7910,6 +7916,16 @@ const FinanzasModule = {
         document.getElementById('finPanelClose')?.addEventListener('click', () => this._closePanel());
         document.getElementById('finRecPanelEdit')?.addEventListener('click', () => this._showRecibidoModal(comp));
         document.getElementById('finRecPanelDelete')?.addEventListener('click', async () => {
+            // Coherencia de interconexiones: si el comprobante está vinculado a un egreso vivo,
+            // borrarlo dejaría el egreso (y su asiento/IVA) apuntando a un comprobante fantasma.
+            if (comp.egreso_id) {
+                const { data: eg } = await supabaseClient
+                    .from('egresos').select('id, _deleted').eq('id', comp.egreso_id).maybeSingle();
+                if (eg && !eg._deleted) {
+                    Toast.warning('Este comprobante está vinculado a un egreso activo. Desvinculá o eliminá ese egreso primero.');
+                    return;
+                }
+            }
             const ok = await Modal.confirm({
                 title: 'Eliminar comprobante',
                 message: '¿Seguro que querés eliminar este comprobante recibido?',
