@@ -5976,6 +5976,35 @@ const API = {
         return out;
     },
 
+    // ── Generar el egreso/pago de un comprobante recibido YA cargado (OCR/manual). Fase 3d. ──
+    //  El comprobante existe; falta su egreso. Crea el egreso linkeado (asiento auto con IVA) +
+    //  el link bidireccional. La categoría del egreso sale de la del comprobante (vía GASTO_DOMINIO).
+    async generarEgresoDeComprobante(comprobanteId, { cuenta_id = null, medio = 'transferencia', estado = 'pagado', fecha = null } = {}) {
+        const { data: c, error } = await supabaseClient.from('comprobantes_recibidos').select('*').eq('id', comprobanteId).maybeSingle();
+        if (error) throw error;
+        if (!c) return { error: 'Comprobante no encontrado' };
+        if (c.egreso_id) {
+            const { data: eg } = await supabaseClient.from('egresos').select('id, _deleted').eq('id', c.egreso_id).maybeSingle();
+            if (eg && !eg._deleted) return { error: 'Este comprobante ya tiene un egreso' };
+        }
+        const map = this._gastoDominio(c.categoria);
+        const egreso_id = await this.createEgreso({
+            fecha: fecha || c.fecha || this._today(),
+            categoria: map.egreso,
+            subcategoria: c.categoria,
+            destinatario: c.proveedor_nombre || null,
+            proveedor_id: c.proveedor_id || null,
+            proyecto_id: c.proyecto_id || null,
+            concepto: c.concepto || ('Comprobante ' + (c.numero || c.proveedor_nombre || '')),
+            monto: c.total,
+            medio, canal: c.canal || 'oficial', cuenta_id,
+            comprobante_recibido_id: c.id,
+            estado, moneda: c.moneda || 'ARS', cotizacion: c.cotizacion || 1,
+        });
+        await supabaseClient.from('comprobantes_recibidos').update({ egreso_id }).eq('id', c.id);
+        return { egreso_id };
+    },
+
     // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──
     //  Pagos SIEMPRE discriminados: 1 pago = 1 egreso. Soporta tandas/adelantos (parcial).
     async pagarCostoEvento({ costo, monto, fecha, medio, canal, cuenta_id, comprobante = null, notas = null }) {

@@ -7863,6 +7863,9 @@ const FinanzasModule = {
 
                 ${!this._isRO ? `
                 <div class="fin-panel-actions">
+                    ${!comp.egreso_id ? `
+                    <button class="fin-panel-btn fin-panel-btn-primary" id="finRecPanelPagar">⎘ Generar pago</button>
+                    ` : `<span style="color:var(--color-success,#00CC88);font-size:0.8rem;align-self:center;">✓ Ligado a un egreso</span>`}
                     <button class="fin-panel-btn" id="finRecPanelEdit">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                         Editar
@@ -7879,6 +7882,7 @@ const FinanzasModule = {
         document.querySelectorAll('.fin-row').forEach(r => r.classList.toggle('active', r.dataset.id === id));
 
         document.getElementById('finPanelClose')?.addEventListener('click', () => this._closePanel());
+        document.getElementById('finRecPanelPagar')?.addEventListener('click', () => this._showGenerarEgresoModal(comp));
         document.getElementById('finRecPanelEdit')?.addEventListener('click', () => this._showRecibidoModal(comp));
         document.getElementById('finRecPanelDelete')?.addEventListener('click', async () => {
             // Coherencia de interconexiones: si el comprobante está vinculado a un egreso vivo,
@@ -7911,6 +7915,35 @@ const FinanzasModule = {
         if (this._panelEscHandler) document.removeEventListener('keydown', this._panelEscHandler);
         this._panelEscHandler = (e) => { if (e.key === 'Escape') this._closePanel(); };
         document.addEventListener('keydown', this._panelEscHandler);
+    },
+
+    _showGenerarEgresoModal(comp) {
+        const cuentas = this._cuentas || [];
+        const cuentaOpts = cuentas.map(c => `<option value="${c.id}">${this._esc(c.nombre)}${c.tipo ? ' (' + this._esc(c.tipo) + ')' : ''}</option>`).join('');
+        const body = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">${this._esc(comp.proveedor_nombre || 'Comprobante')} · <b style="color:#E84855;">${this._formatMoney(comp.total)}</b></p>
+                <div><label class="fin-form-label">Medio</label>
+                    <select class="fin-form-select" id="finGenMedio"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="cheque">Cheque</option><option value="mercadopago">MercadoPago</option><option value="debito_automatico">Débito automático</option></select></div>
+                <div><label class="fin-form-label">Cuenta (tesorería) <span style="color:var(--text-dim);font-size:0.74rem;">— necesaria para el asiento contable</span></label>
+                    <select class="fin-form-select" id="finGenCuenta"><option value="">— Sin cuenta —</option>${cuentaOpts}</select></div>
+            </div>`;
+        const inst = Modal.open({
+            title: 'Generar pago del comprobante', body, size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="finGenOk">Generar egreso</button>`,
+        });
+        document.getElementById('finGenOk')?.addEventListener('click', async () => {
+            const cuenta_id = document.getElementById('finGenCuenta')?.value || null;
+            const medio = document.getElementById('finGenMedio')?.value || 'transferencia';
+            try {
+                const res = await API.generarEgresoDeComprobante(comp.id, { cuenta_id, medio, estado: 'pagado' });
+                if (res.error) { Toast.error(res.error); return; }
+                Toast.success('Egreso generado' + (cuenta_id ? ' + asiento contable' : ' (sin cuenta: sin asiento)'));
+                Modal.close(inst.id);
+                this._closePanel();
+                await this._loadFactRecibidos();
+            } catch (e) { Toast.error('Error: ' + (e.message || e)); }
+        });
     },
 
     _showRecibidoModal(comp = null) {
