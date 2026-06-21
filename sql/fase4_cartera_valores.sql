@@ -49,10 +49,11 @@ CREATE TABLE IF NOT EXISTS public.cartera_valores (
     proveedor_id             UUID,
     ingreso_id               UUID REFERENCES public.ingresos(id),  -- cobro que lo originó (recibido)
     egreso_id                UUID REFERENCES public.egresos(id),   -- pago que lo originó (emitido)
-    endosado_a_proveedor_id  UUID,                              -- v1.1
-    endoso_egreso_id         UUID,                              -- v1.1
+    endosado_a_proveedor_id  UUID,                              -- v1: a quién se endosó (proveedor)
+    endoso_egreso_id         UUID,                              -- v1: el egreso generado por el endoso
     asiento_clearing_id      UUID,                              -- asiento de acreditación/débito (traza/anti-doble)
     asiento_rechazo_id       UUID,                              -- asiento de rebote/anulación
+    archivo_url              TEXT,                              -- comprobante de la operación (banco / e-cheq / endoso)
     notas                    TEXT,
     created_by               UUID,
     created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -66,9 +67,15 @@ CREATE INDEX IF NOT EXISTS idx_cv_ingreso      ON public.cartera_valores (ingres
 CREATE INDEX IF NOT EXISTS idx_cv_egreso       ON public.cartera_valores (egreso_id);
 
 -- ------------------------------------------------------------
--- B. ALTER asientos — link del asiento de clearing del valor
+-- B. ALTER asientos + egresos/ingresos/transferencias
 -- ------------------------------------------------------------
 ALTER TABLE public.asientos ADD COLUMN IF NOT EXISTS cartera_valor_id UUID;
+-- Endoso: un egreso puede endosar un valor RECIBIDO (sale de cartera 1.1.07).
+ALTER TABLE public.egresos                 ADD COLUMN IF NOT EXISTS cartera_valor_id UUID;
+-- Comprobante de operación bancaria (el PDF que da el banco: e-cheq, transferencia, etc.).
+ALTER TABLE public.egresos                 ADD COLUMN IF NOT EXISTS archivo_op_url TEXT;
+ALTER TABLE public.ingresos                ADD COLUMN IF NOT EXISTS archivo_op_url TEXT;
+ALTER TABLE public.transferencias_internas ADD COLUMN IF NOT EXISTS archivo_op_url TEXT;
 
 -- ------------------------------------------------------------
 -- B.2 total_en_ars del valor (reusa fn_snapshot_total_ars_monto de Fase E)
@@ -93,7 +100,7 @@ CREATE POLICY cv_delete ON public.cartera_valores FOR DELETE TO authenticated
     USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin','superadmin')));
 
 -- ------------------------------------------------------------
--- C. EGRESO — cuerpo VIVO (Fase 2) + IF Fase 4 (cheque → 2.1.07)
+-- C. EGRESO — cuerpo VIVO (Fase 2) + Fase 4 (endoso → 1.1.07 / cheque propio → 2.1.07)
 -- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.fn_asiento_auto_egreso()
 RETURNS TRIGGER AS $$
@@ -112,28 +119,35 @@ BEGIN
     IF NEW.estado IS DISTINCT FROM 'pagado' THEN RETURN NEW; END IF;
     IF TG_OP = 'UPDATE' AND OLD.estado = 'pagado' THEN RETURN NEW; END IF;
 
-    IF NEW.cuenta_id IS NULL THEN
-        RAISE NOTICE '[Contabilidad] Egreso % sin cuenta_id — sin asiento.', NEW.id;
-        RETURN NEW;
-    END IF;
-
-    SELECT id INTO v_cuenta_activo
-    FROM plan_cuentas
-    WHERE cuenta_financiera_id = NEW.cuenta_id AND _deleted = false
-    LIMIT 1;
-
-    IF v_cuenta_activo IS NULL THEN
-        RAISE WARNING '[Contabilidad] Egreso %: cuenta financiera % sin vínculo contable.', NEW.id, NEW.cuenta_id;
-        RETURN NEW;
-    END IF;
-
-    -- ── FASE 4: pago con cheque/echeq → la pata de tesorería se DIFIERE al
-    --    valor account 2.1.07 (no al banco). El banco se mueve en el clearing
-    --    del valor (fn_asiento_auto_valor). Todo lo demás queda IGUAL.
-    IF NEW.medio IN ('cheque','echeq') THEN
-        SELECT id INTO v_cuenta_valor FROM plan_cuentas
-        WHERE codigo = '2.1.07' AND _deleted = false LIMIT 1;
-        IF v_cuenta_valor IS NOT NULL THEN v_cuenta_activo := v_cuenta_valor; END IF;
+    -- ── FASE 4: derivar la pata de tesorería según el instrumento. El banco se
+    --    mueve recién en el clearing del valor. El resto del cuerpo queda IGUAL.
+    --   (a) ENDOSO (cartera_valor_id): el egreso endosa un valor RECIBIDO → sale
+    --       de cartera 1.1.07 (cheque físico o e-cheq de tercero). NO usa banco.
+    IF NEW.cartera_valor_id IS NOT NULL THEN
+        SELECT id INTO v_cuenta_activo FROM plan_cuentas WHERE codigo = '1.1.07' AND _deleted = false LIMIT 1;
+        IF v_cuenta_activo IS NULL THEN
+            RAISE NOTICE '[Contabilidad] Cuenta 1.1.07 no encontrada — endoso % sin asiento.', NEW.id;
+            RETURN NEW;
+        END IF;
+    ELSE
+        -- (normal) la tesorería sale del banco (requiere cuenta_id)
+        IF NEW.cuenta_id IS NULL THEN
+            RAISE NOTICE '[Contabilidad] Egreso % sin cuenta_id — sin asiento.', NEW.id;
+            RETURN NEW;
+        END IF;
+        SELECT id INTO v_cuenta_activo
+        FROM plan_cuentas
+        WHERE cuenta_financiera_id = NEW.cuenta_id AND _deleted = false
+        LIMIT 1;
+        IF v_cuenta_activo IS NULL THEN
+            RAISE WARNING '[Contabilidad] Egreso %: cuenta financiera % sin vínculo contable.', NEW.id, NEW.cuenta_id;
+            RETURN NEW;
+        END IF;
+        --   (b) EMISIÓN: cheque/e-cheq propio (medio='cheque') → pasivo diferido 2.1.07.
+        IF NEW.medio = 'cheque' THEN
+            SELECT id INTO v_cuenta_valor FROM plan_cuentas WHERE codigo = '2.1.07' AND _deleted = false LIMIT 1;
+            IF v_cuenta_valor IS NOT NULL THEN v_cuenta_activo := v_cuenta_valor; END IF;
+        END IF;
     END IF;
 
     -- Match por categoría primero, después genérico (lógica viva, intacta)
@@ -166,7 +180,8 @@ BEGIN
     END IF;
 
     v_desc := 'Egreso: ' || COALESCE(NEW.concepto, 'Sin concepto');
-    IF NEW.medio IN ('cheque','echeq') THEN v_desc := v_desc || ' [cheque diferido]'; END IF;  -- FASE 4
+    IF NEW.cartera_valor_id IS NOT NULL THEN v_desc := v_desc || ' [endoso de valor]';       -- FASE 4
+    ELSIF NEW.medio = 'cheque' THEN v_desc := v_desc || ' [cheque diferido]'; END IF;
     IF NEW.moneda IS NOT NULL AND NEW.moneda <> 'ARS' THEN
         v_desc := v_desc || ' [' || NEW.moneda || ' ' || NEW.monto::TEXT || ' @ ' || NEW.cotizacion::TEXT || ']';
     END IF;
@@ -227,9 +242,10 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- ── FASE 4: cobro con cheque/echeq → la pata de tesorería se DIFIERE al
-    --    valor account 1.1.07 (no al banco). El banco entra en el clearing.
-    IF NEW.medio IN ('cheque','echeq') THEN
+    -- ── FASE 4: cobro con cheque/e-cheq (medio='cheque', el e-cheq se distingue
+    --    por el tipo del valor) → la pata de tesorería se DIFIERE al valor
+    --    account 1.1.07 (no al banco). El banco entra en el clearing.
+    IF NEW.medio = 'cheque' THEN
         SELECT id INTO v_cuenta_valor FROM plan_cuentas
         WHERE codigo = '1.1.07' AND _deleted = false LIMIT 1;
         IF v_cuenta_valor IS NOT NULL THEN v_cuenta_activo := v_cuenta_valor; END IF;
@@ -265,7 +281,7 @@ BEGIN
     END IF;
 
     v_desc := 'Ingreso: ' || COALESCE(NEW.concepto, 'Sin concepto');
-    IF NEW.medio IN ('cheque','echeq') THEN v_desc := v_desc || ' [cheque en cartera]'; END IF;  -- FASE 4
+    IF NEW.medio = 'cheque' THEN v_desc := v_desc || ' [cheque en cartera]'; END IF;  -- FASE 4
     IF NEW.moneda IS NOT NULL AND NEW.moneda <> 'ARS' THEN
         v_desc := v_desc || ' [' || NEW.moneda || ' ' || NEW.monto::TEXT || ' @ ' || NEW.cotizacion::TEXT || ']';
     END IF;
@@ -401,6 +417,9 @@ CREATE TRIGGER trg_asiento_auto_valor
 --    HABER 2.1.07. Valor 'en_cartera'.
 -- D) Valor emitido → 'debitado' → clearing DEBE 2.1.07 / HABER banco. 2.1.07 = 0.
 -- E) Cheque recibido → 'rechazado' → DEBE 1.1.08 / HABER 1.1.07.
+-- F) ENDOSO (caso e-cheq a proveedor): valor recibido 'en_cartera' → egreso con
+--    cartera_valor_id seteado → entrada DEBE gasto(+IVA) / HABER 1.1.07 (sale de
+--    cartera). El valor pasa a 'endosado'. 1.1.07 netea a 0 (recepción + / endoso −).
 -- Verificación:
 --   SELECT codigo, sum(CASE WHEN tipo_movimiento='debe' THEN monto ELSE -monto END)
 --   FROM asiento_lineas l JOIN plan_cuentas c ON c.id=l.cuenta_id

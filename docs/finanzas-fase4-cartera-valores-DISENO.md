@@ -18,9 +18,15 @@
 
 ---
 
-## §1 · Modelo elegido — cheque = medio diferido del circuito único
+## §1 · Modelo elegido — cheque/e-cheq = medio diferido del circuito único
 
-**Por qué (no es un libro paralelo):** Fede pidió "unir al mismo circuito". El cheque entra por `registrarCobro` (recibido) / `registrarGasto` (emitido) como cualquier cobro/pago → genera el `ingreso`/`egreso` (Panel, plan_cobro, rentabilidad siguen andando **sin tocar**). La única diferencia: el dinero **no toca el banco hasta `fecha_cobro`**.
+> **Realidad MEPEX 2026 (Fede):** el físico está en retroceso — casi no se depositan cheques de papel. El instrumento real es el **e-cheq** (cheque electrónico), usado sobre todo para **pagar proveedores/compras**, muchas veces **endosando** un e-cheq de tercero. Por eso: e-cheq y endoso son **ciudadanos de primera** en v1, y cada valor/operación puede llevar adjunto el **comprobante que da el banco** (igual que el comprobante batch de transferencias).
+
+**Por qué (no es un libro paralelo):** Fede pidió "unir al mismo circuito". El valor entra por `registrarCobro` (recibido) / `registrarGasto` (emitido/endoso) como cualquier cobro/pago → genera el `ingreso`/`egreso` (Panel, plan_cobro, rentabilidad siguen andando **sin tocar**). La única diferencia: el dinero **no toca el banco hasta `fecha_cobro`**.
+
+- **e-cheq ≠ medio nuevo:** es un `tipo` del valor (`cheque` físico vs `echeq`). El `medio` sigue siendo `'cheque'` → **cero cambio de enum**, mismo ruteo contable.
+- **Endoso (e-cheq de tercero → proveedor):** un egreso **linkeado al valor recibido** (`egresos.cartera_valor_id`). Su tesorería sale de **cartera `1.1.07`** (no del banco ni de `2.1.07`). Reusa toda la clasificación + IVA de `registrarGasto`. El valor pasa a `endosado`.
+- **Comprobante de operación bancaria:** `cartera_valores.archivo_url` (el PDF del e-cheq/endoso) + `archivo_op_url` en egresos/ingresos/transferencias (el comprobante que da el banco, incluso el batch de varias transferencias).
 
 Dos patas contables por valor:
 
@@ -68,10 +74,11 @@ EMITIDO:   en_cartera ──► debitado      (se debita del banco: DEBE 2.1.07 
 
 | Evento | Origen del asiento | DEBE | HABER |
 |---|---|---|---|
-| Recibir cheque (cobro) | trigger ingreso (1 IF nuevo) | **1.1.07** | venta/anticipo + 2.1.02 IVA |
+| Recibir cheque/e-cheq (cobro) | trigger ingreso (1 IF nuevo) | **1.1.07** | venta/anticipo + 2.1.02 IVA |
 | Acreditar/cobrar | trigger valor (nuevo) | banco (`cuenta_id`) | **1.1.07** |
+| **Endosar valor recibido** (pagar a proveedor) | trigger egreso (link) | gasto + 1.1.09 IVA | **1.1.07** |
 | Cheque recibido rebota | trigger valor (nuevo) | 1.1.08 Clientes | **1.1.07** |
-| Emitir cheque (pago) | trigger egreso (1 IF nuevo) | gasto + 1.1.09 IVA | **2.1.07** |
+| Emitir cheque/e-cheq propio (pago) | trigger egreso (1 IF nuevo) | gasto + 1.1.09 IVA | **2.1.07** |
 | Débito del cheque emitido | trigger valor (nuevo) | **2.1.07** | banco (`cuenta_id`) |
 | Cheque emitido anulado | trigger valor (nuevo) | **2.1.07** | 2.1.01 Proveedores |
 
@@ -80,8 +87,8 @@ Todas las patas de clearing son **transferencias de tesorería puras** (sin IVA,
 ## §5 · Cambios SQL (`sql/fase4_cartera_valores.sql`, idempotente)
 
 1. **DDL** `cartera_valores` + índices (`fecha_cobro`, `estado`, `sentido`, parciales por moneda) + RLS (authenticated R/W, DELETE admin/superadmin) + trigger `total_en_ars`.
-2. **ALTER `asientos`** add `cartera_valor_id UUID` (link del asiento de clearing).
-3. **`fn_asiento_auto_egreso` / `_ingreso`**: 1 IF — si `medio ∈ (cheque,echeq)` y existe la cuenta valor, `v_cuenta_activo := 2.1.07/1.1.07` en lugar del banco. **El resto del cuerpo no cambia** (IVA, mapeo, anticipo, reversa, moneda).
+2. **ALTER** `asientos.cartera_valor_id` (link del asiento de clearing) · `egresos.cartera_valor_id` (endoso) · `archivo_op_url` en `egresos`/`ingresos`/`transferencias_internas` (comprobante bancario). Todo `ADD COLUMN IF NOT EXISTS`.
+3. **`fn_asiento_auto_egreso`**: routing diferido — `cartera_valor_id` set (endoso) → `1.1.07`; si no, `medio='cheque'` (emisión) → `2.1.07`. **`fn_asiento_auto_ingreso`**: `medio='cheque'` → `1.1.07`. **El resto del cuerpo no cambia** (IVA, mapeo, anticipo, reversa, moneda).
 4. **`fn_asiento_auto_valor`** (trigger nuevo en `cartera_valores`): genera la pata de clearing / rebote / anulación según transición de `estado`, con silencio defensivo y anti-doble (no re-postea si `asiento_clearing_id` ya está).
 5. **(Guard)** `cuenta_id` obligatorio para egreso `pagado` / ingreso `confirmado` — hoy es NOTICE+skip; se mantiene defensivo (no rompe la caja), pero la UI lo exige.
 
@@ -97,8 +104,8 @@ Todas las patas de clearing son **transferencias de tesorería puras** (sin IVA,
 
 ## §7 · Alcance v1 vs v1.1
 
-- **v1:** tabla + entrada (routing) + clearing (cobrado/depositado/debitado) + rebote/anulado + UI cartera + cheque en modales + KPI Panel.
-- **v1.1 (después):** endoso de cheque de tercero (pagar a proveedor con un recibido), e-cheq con archivo adjunto, recordatorio de vencimiento (se engancha al Calendario adm. de Fase 5).
+- **v1:** tabla + entrada (routing cheque/e-cheq) + clearing (cobrado/depositado/debitado) + **endoso** (e-cheq de tercero → proveedor) + rebote/anulado + **adjunto del comprobante bancario** (valor + transferencias/pagos) + UI cartera + cheque/e-cheq en modales de cobro/pago + KPI Panel "valores en cartera".
+- **v1.1 (después):** comprobante batch de transferencias (1 PDF ↔ N operaciones), recordatorio de vencimiento de e-cheq (se engancha al Calendario adm. de Fase 5), re-endoso (endosar un valor ya endosado).
 
 ## §8 · Decisiones tomadas (y la única que confirmo con Fede)
 
