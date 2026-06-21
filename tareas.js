@@ -265,11 +265,11 @@ const Tareas = {
         async locaciones() {
             const en30 = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
             const { data } = await supabaseClient
-                .from('locaciones_documentos').select('id, nombre, tipo, fecha_vencimiento')
+                .from('locaciones_documentos').select('id, nombre, tipo_doc, fecha_vencimiento')
                 .eq('_deleted', false).not('fecha_vencimiento', 'is', null).lte('fecha_vencimiento', en30);
             return (data || []).map(d => ({
                 id: `loc_doc:${d.id}`, dedupe_key: `loc_doc:${d.id}`, es_derivada: true,
-                titulo: `Renovar ${d.tipo || d.nombre || 'documento'} (locación)`,
+                titulo: `Renovar ${d.tipo_doc || d.nombre || 'documento'} (locación)`,
                 descripcion: 'Documento de locación por vencer ≤30d',
                 origen: 'manual', modulo: 'locaciones', proyecto_id: null, prioridad: 'alta',
                 fecha_limite: d.fecha_vencimiento, estado: 'pendiente', target_role: 'admin', link: '#locaciones',
