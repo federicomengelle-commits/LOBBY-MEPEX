@@ -1,6 +1,6 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 27%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 26%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈73%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈74%). No repetir acá lo que está en PROGRESO.
 > *(Rebalanceo 2026-06-20f — **Refactor Finanzas+Contab EN CURSO** (sesión dedicada, plan-first): Fase 0 recon + Fase 1 P0 comprobantes + blast-radius 107 paths ✅; Fase 2 SQL listo (⏳ Fede corre). Plan de ejecución 7 fases: `docs/finanzas-contabilidad-refactor-PLAN-EJECUCION.md`. PLAN 29→27, PROGRESO 71→73.)*
 > *(Rebalanceo 2026-06-20e — **Fase 4 arrancó**: importador de cotización construido+pusheado (desbloquea remito + subalquileres) + leftover Usuarios y Roles consolidado. ⏳ pendientes de pull+verify de Fede. PLAN 30→29, PROGRESO 70→71.)*
 > *(Rebalanceo 2026-06-20d — Fede pidió **auditoría + refactor integral de Finanzas** (módulo "mal planteado": comprobantes OCR no editables en Facturación · falta flujo comprobante→egreso/ingreso · falta pago desde tesorería con cheque/valor/transferencia atada a la cuenta · auditoría 360° de endpoints interconectados). Sumado a §Fase 8 (≈10→12%). Universo creció → PLAN 28→30, PROGRESO 72→70.)*
