@@ -191,34 +191,36 @@ const CargaComprobante = {
             let archivo_url = null;
             if (this._file) { archivo_url = await API.uploadComprobante(this._file); }
 
-            // 2. comprobante recibido
-            const comprobanteId = await API.createComprobanteRecibido({
-                fecha: $('ccmpFecha').value || this._today(),
+            // 2-3. comprobante (+ egreso opcional) por el circuito único registrarGasto
+            const fecha = $('ccmpFecha').value || this._today();
+            const comprobante = {
                 tipo: $('ccmpTipo').value,
                 numero: $('ccmpNum').value || null,
-                proveedor_nombre: $('ccmpProv').value || null,
+                razon_social: $('ccmpProv').value || null,
                 cuit: $('ccmpCuit').value || null,
-                concepto,
                 neto: parseFloat($('ccmpNeto').value) || null,
                 iva: parseFloat($('ccmpIva').value) || null,
-                total,
-                categoria,
-                canal,
-                archivo_url,
-            });
+                total, categoria, archivo_url,
+            };
 
-            // 3. egreso opcional → asiento auto (necesita cuenta para contrapartida)
             if ($('ccmpGenEgreso').checked) {
+                // Circuito único: comprobante + egreso + link bidireccional → asiento auto (con IVA, Fase 2)
                 const cuenta_id = $('ccmpCuenta').value || null;
-                const egresoId = await API.createEgreso({
-                    fecha: $('ccmpFecha').value || this._today(),
-                    categoria: this._CAT_TO_EGRESO[categoria] || 'otro',
-                    concepto, monto: total, medio: $('ccmpMedio').value,
-                    canal, cuenta_id, estado: 'pagado', comprobante_recibido_id: comprobanteId,
+                await API.registrarGasto({
+                    categoria_dominio: categoria,
+                    concepto, monto: total, fecha,
+                    medio: $('ccmpMedio').value, canal, cuenta_id, estado: 'pagado',
+                    comprobante,
                 });
-                await supabaseClient.from('comprobantes_recibidos').update({ egreso_id: egresoId }).eq('id', comprobanteId);
                 Toast.success('Comprobante + pago registrados' + (cuenta_id ? ' + asiento' : ' (sin cuenta: sin contrapartida)'));
             } else {
+                // Solo comprobante (el pago se le puede generar después desde Finanzas)
+                await API.createComprobanteRecibido({
+                    fecha, tipo: comprobante.tipo, numero: comprobante.numero,
+                    proveedor_nombre: comprobante.razon_social, cuit: comprobante.cuit,
+                    concepto, neto: comprobante.neto, iva: comprobante.iva, total,
+                    categoria, canal, archivo_url,
+                });
                 Toast.success('Comprobante guardado' + (archivo_url ? ' con archivo' : ''));
             }
             Modal.close(this._inst.id);
