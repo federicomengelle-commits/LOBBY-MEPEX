@@ -225,11 +225,13 @@ const CalendarioAdm = {
             const medio = document.getElementById('cadmPagMedio').value;
             const cuenta_id = document.getElementById('cadmPagCuenta').value || null;
             try {
-                const egresoId = await API.createEgreso({
-                    fecha: this._today(), categoria: g.rec?.categoria_egreso || 'otro',
-                    concepto: g.concepto, monto, medio, cuenta_id, canal: 'oficial', estado: 'pagado',
+                // Circuito único; canal de la plantilla (antes hardcodeado 'oficial')
+                const { egreso_id } = await API.registrarGasto({
+                    categoria_dominio: g.rec?.categoria_egreso || 'otro',
+                    concepto: g.concepto, monto, fecha: this._today(),
+                    medio, cuenta_id, canal: g.rec?.canal || 'oficial', estado: 'pagado',
                 });
-                await supabaseClient.from('vencimientos_generados').update({ estado: 'pagado', egreso_id: egresoId }).eq('id', g.id);
+                await supabaseClient.from('vencimientos_generados').update({ estado: 'pagado', egreso_id }).eq('id', g.id);
                 Toast.success('Pago registrado' + (cuenta_id ? ' + asiento contable' : ' (sin cuenta: sin contrapartida contable)'));
                 Modal.close(inst.id);
                 await this._reload();

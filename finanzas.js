@@ -8534,34 +8534,24 @@ const FinanzasModule = {
                 return;
             }
 
-            const uid = Auth.getUser()?.uid || null;
             const today = new Date().toISOString().slice(0, 10);
 
-            // Get vencimiento data for categoria
-            const vencData = venc.data;
-            const catEgreso = vencData?.vencimientos_recurrentes?.categoria_egreso || 'otro';
+            // categoria + canal de la plantilla (antes el canal estaba hardcodeado 'oficial')
+            const rec = venc.data?.vencimientos_recurrentes || {};
+            const catEgreso = rec.categoria_egreso || 'otro';
 
             try {
-                // 1. Create egreso
-                const { data: egresoData, error: e1 } = await supabaseClient
-                    .from('egresos')
-                    .insert([{
-                        fecha: today,
-                        categoria: catEgreso,
-                        concepto: venc.label,
-                        monto, medio,
-                        canal: 'oficial',
-                        cuenta_id,
-                        estado: 'pagado',
-                        created_by: uid,
-                    }])
-                    .select('id').single();
-                if (e1) throw e1;
+                // 1. Egreso por el circuito único registrarGasto (asiento auto)
+                const { egreso_id } = await API.registrarGasto({
+                    categoria_dominio: catEgreso,
+                    concepto: venc.label, monto, fecha: today,
+                    medio, cuenta_id, canal: rec.canal || 'oficial', estado: 'pagado',
+                });
 
                 // 2. Update vencimiento
                 const { error: e2 } = await supabaseClient
                     .from('vencimientos_generados')
-                    .update({ estado: 'pagado', egreso_id: egresoData?.id || null })
+                    .update({ estado: 'pagado', egreso_id })
                     .eq('id', vencId);
                 if (e2) throw e2;
 
