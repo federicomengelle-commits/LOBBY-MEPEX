@@ -64,3 +64,49 @@ El conector hoy solo consulta. Para emitir:
 3. Refactor Panel → Dashboard (cards + gráficos).
 
 > **Nota de seguridad:** el cert es de PRODUCCIÓN. Toda emisión vía `FECAESolicitar` es un comprobante fiscal REAL (CAE, cuenta para AFIP). Probar primero con consultas (`FEDummy`/`FECompUltimoAutorizado`), emitir solo cuando el flujo + preview estén validados.
+
+---
+
+## E) CONSTRUIDO (sesión 2026-06-21 cont.) — falta deploy de Fede
+
+### Backend — `tools/vps/arca-connector.js` (reescrito como módulo Express)
+Tres endpoints: `GET /api/arca/status` (FEDummy), `GET /api/arca/ultimo?pv=5&tipo=1` (FECompUltimoAutorizado) y `POST /api/arca/facturar` (FECAESolicitar). Reusa los 3 trucos verificados (SOAPAction vacío en WSAA · TLS `SECLEVEL=1`+`minDHSize:1024` en WSFE · TA cacheado 12h en disco + login serializado). Maneja **CondicionIVAReceptorId** (RG 5616, obligatorio aunque el XSD lo marque opcional) y **CbtesAsoc** (NC/ND). Orden de elementos = XSD `FECAEDetRequest` verificado contra el WSDL vivo.
+
+**Pasos de Fede en el VPS (`/home/mepex/api/`):**
+1. **Subir cert+clave** a `/home/mepex/api/certs/` (FUERA del repo; `chmod 600`):
+   - `lobby-mepex.crt` (renombrar el `lobby-mepex_45fa910f68251996.crt`) y `homo.key`.
+   - (o dejar el nombre original y apuntar `ARCA_CERT` al path exacto.)
+2. **Copiar** `arca-connector.js` del repo a `/home/mepex/api/arca-connector.js` (sale con `~/pull-lobby.sh` si el script copia tools/vps; si no, `cp`).
+3. **`.env`** (junto a los del CRM/OCR):
+   ```
+   ARCA_CUIT=30709990817
+   ARCA_CERT=/home/mepex/api/certs/lobby-mepex.crt
+   ARCA_KEY=/home/mepex/api/certs/homo.key
+   ARCA_TA_DIR=/home/mepex/api/certs
+   ARCA_PROD=1
+   ```
+4. **Montar en `server.js`:**
+   ```js
+   const arca = require('./arca-connector');
+   app.get ('/api/arca/status',   arca.statusHandler);
+   app.get ('/api/arca/ultimo',   arca.ultimoHandler);
+   app.post('/api/arca/facturar', express.json({ limit: '1mb' }), arca.facturarHandler);
+   ```
+5. `pm2 restart mepex-api` → probar SIN emitir:
+   - `curl localhost:3000/api/arca/status` → AppServer/DbServer/AuthServer OK.
+   - `curl 'localhost:3000/api/arca/ultimo?pv=5&tipo=1'` → `{proximo: N}`.
+6. nginx ya rutea `/api/` → el front llama relativo (igual que crm/ocr).
+
+### Frontend — `finanzas.js?v=33` + `index.html` (QR lib agregada)
+- **Pestaña Facturación → subtab "Emitir"**: wizard 3 pasos (Datos → Montos → **PREVIEW visual**). El preview muestra el comprobante "en papel" (membrete MEPEX, emisor/receptor, ítems, IVA discriminado en A / total en B, **próximo número consultado a ARCA en vivo**, "CAE: pendiente"). Botón **"Emitir en ARCA"** → `POST /api/arca/facturar` → guarda en `comprobantes` (CAE en `cae`/`cae_vencimiento`, respuesta ARCA en `lapyme_response`), **descarga el PDF con QR de AFIP** y muestra pantalla de éxito con **"Generar cobro"** (decisión Fede: NO auto-dispara el ingreso, lo ofrece). Tipos: **A, B, NC A/B, ND A/B** (las notas piden comprobante asociado). Factura C / informal / E / M = siguen por carga manual.
+- **Panel de Emitidos**: botón "📄 Descargar / imprimir PDF" (reimprime desde la fila) + label "Respuesta ARCA (JSON)".
+- **SIN DDL** (Part 2/3): se reusa la columna `comprobantes.lapyme_response` (greenfield, 0 La PyME) para la respuesta de ARCA.
+
+### Dashboard — `finanzas.js?v=33`
+"Panel" → **"Dashboard"** (label del tab). Header con mes + badge de canal; KPIs agrupados (Resultado del mes: Facturado/Cobrado/Pagado/**Resultado neto** con delta vs mes anterior · Posición: Saldo/Por cobrar/Por pagar/Valores). Charts y toggle Oficial/Interno intactos.
+
+### Verificado en preview (local, sin backend)
+Preview visual del comprobante (A y B) ✅ · generación de QR (dataURL PNG) ✅ · Dashboard (KPIs + deltas) ✅ · 0 errores de consola. **Falta:** deploy del backend + 1ª emisión REAL controlada (cliente real) — en prod NO hay dummy.
+
+### Pendiente / a completar
+- **`_EMISOR` en `finanzas.js`**: domicilio fiscal exacto + IIBB + inicio de actividades de MEPEX (hoy domicilio genérico, IIBB/inicio vacíos). Para que el PDF impreso sea correcto.

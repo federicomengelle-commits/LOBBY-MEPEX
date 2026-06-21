@@ -11,7 +11,7 @@ const FinanzasModule = {
     // ─── State ───
     _activeTab: 'cuentas',
     _tabs: [
-        { key: 'panel',        label: 'Panel',         icon: '📊' },
+        { key: 'panel',        label: 'Dashboard',     icon: '📊' },
         { key: 'ingresos',     label: 'Ingresos',      icon: '💰' },
         { key: 'egresos',      label: 'Egresos',       icon: '💸' },
         { key: 'facturacion',  label: 'Facturación',   icon: '🧾' },
@@ -1892,6 +1892,7 @@ const FinanzasModule = {
                 await this._loadLookups();
                 await this._loadEgresosForLookup();
                 if (this._factSubtab === 'emitir') {
+                    await this._loadFactEmitidos();   // para el selector de comprobante asociado (NC/ND)
                     container.innerHTML = this._buildFactEmitirHTML();
                     this._attachFactEmitirEvents();
                 } else if (this._factSubtab === 'recibidos') {
@@ -5904,9 +5905,26 @@ const FinanzasModule = {
     // ═══════════════════════════════════════════
 
     _buildPanelHTML() {
+        const now = new Date();
+        const mes = now.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+        const canal = this._getCanalFilter();
+        const canalLabel = canal ? (canal === 'oficial' ? 'Canal oficial' : 'Canal interno') : 'Todos los canales';
         return `
-            <div id="finPanelKPIs" class="fin-kpis"></div>
-            <div class="fin-charts-grid">
+            <div class="fin-dash-header" style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+                <div>
+                    <div style="font-size:1.15rem;font-weight:700;color:var(--text-primary,#E8E8E8);">Dashboard financiero</div>
+                    <div style="font-size:0.82rem;color:#888;text-transform:capitalize;">${mes}</div>
+                </div>
+                <div style="font-size:0.75rem;color:#00A9C1;border:1px solid rgba(0,169,193,0.35);border-radius:999px;padding:3px 12px;">${canalLabel}</div>
+            </div>
+
+            <div class="fin-dash-section-label" style="font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:#666;margin:0 0 8px;">Resultado del mes</div>
+            <div id="finPanelKPIsMes" class="fin-kpis"></div>
+
+            <div class="fin-dash-section-label" style="font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:#666;margin:18px 0 8px;">Posición</div>
+            <div id="finPanelKPIsPos" class="fin-kpis"></div>
+
+            <div class="fin-charts-grid" style="margin-top:18px;">
                 <div class="fin-chart-card" style="grid-column: span 2;">
                     <div class="fin-chart-title">Cashflow mensual (12 meses)</div>
                     <div class="fin-chart-wrap"><canvas id="finChartCashflow"></canvas></div>
@@ -5920,7 +5938,7 @@ const FinanzasModule = {
                     <div class="fin-chart-wrap-sm"><canvas id="finChartAging"></canvas></div>
                 </div>
             </div>
-            <div class="fin-chart-card">
+            <div class="fin-chart-card" style="margin-top:14px;">
                 <div class="fin-chart-title">Próximos 7 días</div>
                 <div id="finMiniCal"></div>
             </div>
@@ -6028,25 +6046,32 @@ const FinanzasModule = {
     },
 
     _renderKPIs() {
-        const container = document.getElementById('finPanelKPIs');
-        if (!container) return;
         const k = this._panelKPIs;
-
         const delta = (curr, prev) => {
-            if (!prev) return { text: '', cls: 'neutral' };
+            if (!prev) return null;
             const pct = Math.round(((curr - prev) / (prev || 1)) * 100);
-            if (pct > 0) return { text: `+${pct}% vs anterior`, cls: 'up' };
-            if (pct < 0) return { text: `${pct}% vs anterior`, cls: 'down' };
-            return { text: '= vs anterior', cls: 'neutral' };
+            if (pct > 0) return { text: `+${pct}% vs mes anterior`, cls: 'up' };
+            if (pct < 0) return { text: `${pct}% vs mes anterior`, cls: 'down' };
+            return { text: '= vs mes anterior', cls: 'neutral' };
         };
 
-        const cobDelta = delta(k.cobrado, k.prevCobrado);
-        const pagDelta = delta(k.pagado, k.prevPagado);
+        const neto = (k.cobrado || 0) - (k.pagado || 0);
+        const netoPrev = (k.prevCobrado || 0) - (k.prevPagado || 0);
 
-        const cards = [
-            { label: 'Facturado del mes', value: k.facturado, color: '#00A9C1', delta: null },
-            { label: 'Cobrado del mes', value: k.cobrado, color: '#00CC88', delta: cobDelta },
-            { label: 'Pagado del mes', value: k.pagado, color: '#E84855', delta: pagDelta },
+        const cardHtml = (c) => `
+            <div class="fin-kpi-card" style="border-left-color:${c.color};">
+                <div class="fin-kpi-label">${c.label}</div>
+                <div class="fin-kpi-value" style="color:${c.color};">${this._formatMoney(c.value)}</div>
+                ${c.delta ? `<div class="fin-kpi-delta ${c.delta.cls}">${c.delta.text}</div>` : ''}
+            </div>`;
+
+        const mes = [
+            { label: 'Facturado', value: k.facturado, color: '#00A9C1', delta: null },
+            { label: 'Cobrado', value: k.cobrado, color: '#00CC88', delta: delta(k.cobrado, k.prevCobrado) },
+            { label: 'Pagado', value: k.pagado, color: '#E84855', delta: delta(k.pagado, k.prevPagado) },
+            { label: 'Resultado neto', value: neto, color: neto >= 0 ? '#00CC88' : '#E84855', delta: delta(neto, netoPrev) },
+        ];
+        const pos = [
             { label: 'Saldo disponible', value: k.saldo, color: '#4A90D9', delta: null },
             { label: 'Por cobrar', value: k.porCobrar, color: '#F28D15', delta: null },
             { label: 'Por pagar (30d)', value: k.porPagar, color: '#9B7DFF', delta: null },
@@ -6054,13 +6079,10 @@ const FinanzasModule = {
               delta: { text: `a pagar ${this._formatMoney(k.valoresAPagar || 0)}`, cls: 'neutral' } },
         ];
 
-        container.innerHTML = cards.map(c => `
-            <div class="fin-kpi-card" style="border-left-color:${c.color};">
-                <div class="fin-kpi-label">${c.label}</div>
-                <div class="fin-kpi-value" style="color:${c.color};">${this._formatMoney(c.value)}</div>
-                ${c.delta ? `<div class="fin-kpi-delta ${c.delta.cls}">${c.delta.text}</div>` : ''}
-            </div>
-        `).join('');
+        const elMes = document.getElementById('finPanelKPIsMes');
+        const elPos = document.getElementById('finPanelKPIsPos');
+        if (elMes) elMes.innerHTML = mes.map(cardHtml).join('');
+        if (elPos) elPos.innerHTML = pos.map(cardHtml).join('');
     },
 
     // ═══════════════════════════════════════════
@@ -6911,6 +6933,29 @@ const FinanzasModule = {
         otro:           { label: 'Otro',            color: '#888' },
     },
 
+    // ── ARCA (facturación electrónica nativa) ──
+    // Tipos emitibles vía ARCA (MEPEX = Responsable Inscripto). C/recibo no se emiten por wsfe.
+    _arcaTipos: ['factura_a', 'factura_b', 'nota_credito_a', 'nota_credito_b', 'nota_debito_a', 'nota_debito_b'],
+    // Condición frente al IVA del receptor (RG 5616 — Id de AFIP)
+    _condIvaReceptor: {
+        1: 'IVA Responsable Inscripto',
+        6: 'Responsable Monotributo',
+        4: 'IVA Sujeto Exento',
+        5: 'Consumidor Final',
+    },
+    // Concepto AFIP
+    _conceptoAfip: { 1: 'Productos', 2: 'Servicios', 3: 'Productos y Servicios' },
+    // Datos fiscales del emisor (MEPEX) para el preview + PDF.
+    // ⚠️ Domicilio / IIBB / inicio de actividades: verificar/completar con Fede.
+    _EMISOR: {
+        razon_social: 'MEPEX S.A.',
+        cuit: '30-70999081-7',
+        condicion_iva: 'IVA Responsable Inscripto',
+        domicilio: 'Buenos Aires, Argentina',
+        iibb: '',           // Ingresos Brutos (completar)
+        inicio_actividades: '', // dd/mm/aaaa (completar)
+    },
+
     _tipoBadgeComp(tipo) {
         const t = this._tipoComprobante[tipo] || { short: tipo, color: '#888' };
         return `<span class="fin-comp-badge" style="background:${t.color}22;color:${t.color};">${t.short}</span>`;
@@ -6970,8 +7015,12 @@ const FinanzasModule = {
     },
 
     _buildWizardStep1(d) {
-        const tipoOpts = Object.entries(this._tipoComprobante).map(([k, v]) =>
-            `<option value="${k}" ${d.tipo === k ? 'selected' : ''}>${v.label}</option>`
+        const tipo = d.tipo || 'factura_a';
+        const isNota = tipo.startsWith('nota_');
+        const letra = tipo.endsWith('_a') ? 'a' : 'b';
+
+        const tipoOpts = this._arcaTipos.map(k =>
+            `<option value="${k}" ${tipo === k ? 'selected' : ''}>${(this._tipoComprobante[k] || {}).label || k}</option>`
         ).join('');
 
         const proyOpts = Object.keys(this._proyectosMap).map(k =>
@@ -6986,6 +7035,38 @@ const FinanzasModule = {
             `<option value="${k}" ${d.servicio === k ? 'selected' : ''}>${v}</option>`
         ).join('');
 
+        // Default condición IVA por tipo si el usuario no la fijó
+        const condDef = d.cond_iva_receptor || (letra === 'a' ? 1 : 5);
+        const condOpts = Object.entries(this._condIvaReceptor).map(([k, v]) =>
+            `<option value="${k}" ${String(condDef) === k ? 'selected' : ''}>${v}</option>`
+        ).join('');
+
+        const concDef = d.concepto || 2;
+        const concOpts = Object.entries(this._conceptoAfip).map(([k, v]) =>
+            `<option value="${k}" ${String(concDef) === k ? 'selected' : ''}>${v}</option>`
+        ).join('');
+
+        // Comprobante asociado (solo NC/ND): facturas emitidas con CAE de la misma letra
+        let asocBlock = '';
+        if (isNota) {
+            const facTipo = letra === 'a' ? 'factura_a' : 'factura_b';
+            const cands = (this._factEmitidos || []).filter(c => c.tipo === facTipo && c.estado === 'emitida' && c.cae);
+            const asocOpts = cands.map(c => {
+                const cli = this._clientesMap[c.cliente_id] || c.cuit_dni || '—';
+                return `<option value="${c.id}" ${d.cbte_asoc_id === c.id ? 'selected' : ''}>${(this._tipoComprobante[c.tipo] || {}).short || ''} ${c.numero || ''} · ${cli} · ${this._formatMoney(c.total)}</option>`;
+            }).join('');
+            asocBlock = `
+                <div class="fin-form-group">
+                    <label class="fin-form-label">Comprobante asociado * <span style="color:#888;font-weight:400;">(la factura que ajusta esta nota)</span></label>
+                    <select class="fin-form-select" id="finWizAsoc">
+                        <option value="">— Seleccionar factura ${letra.toUpperCase()} —</option>
+                        ${asocOpts}
+                    </select>
+                    ${cands.length === 0 ? `<div style="color:#F28D15;font-size:0.78rem;margin-top:4px;">No hay facturas ${letra.toUpperCase()} emitidas para asociar.</div>` : ''}
+                </div>
+            `;
+        }
+
         return `
             <div class="fin-form-grid">
                 <div class="fin-form-row">
@@ -6994,18 +7075,12 @@ const FinanzasModule = {
                         <select class="fin-form-select" id="finWizTipo">${tipoOpts}</select>
                     </div>
                     <div class="fin-form-group">
-                        <label class="fin-form-label">Servicio *</label>
-                        <select class="fin-form-select" id="finWizServicio">${srvOpts}</select>
+                        <label class="fin-form-label">Punto de venta</label>
+                        <input type="number" class="fin-form-input" id="finWizPV" value="${d.punto_venta || 5}" min="1" max="99999">
                     </div>
                 </div>
+                ${asocBlock}
                 <div class="fin-form-row">
-                    <div class="fin-form-group">
-                        <label class="fin-form-label">Proyecto</label>
-                        <select class="fin-form-select" id="finWizProyecto">
-                            <option value="">— Sin proyecto —</option>
-                            ${proyOpts}
-                        </select>
-                    </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Cliente *</label>
                         <select class="fin-form-select" id="finWizCliente">
@@ -7013,15 +7088,32 @@ const FinanzasModule = {
                             ${cliOpts}
                         </select>
                     </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Proyecto</label>
+                        <select class="fin-form-select" id="finWizProyecto">
+                            <option value="">— Sin proyecto —</option>
+                            ${proyOpts}
+                        </select>
+                    </div>
                 </div>
                 <div class="fin-form-row">
                     <div class="fin-form-group">
                         <label class="fin-form-label">CUIT / DNI *</label>
-                        <input type="text" class="fin-form-input" id="finWizCuit" value="${d.cuit_dni || ''}" placeholder="20-12345678-9">
+                        <input type="text" class="fin-form-input" id="finWizCuit" value="${d.cuit_dni || ''}" placeholder="30-12345678-9">
                     </div>
                     <div class="fin-form-group">
-                        <label class="fin-form-label">Punto de venta</label>
-                        <input type="number" class="fin-form-input" id="finWizPV" value="${d.punto_venta || 5}" min="1" max="99999">
+                        <label class="fin-form-label">Condición IVA receptor *</label>
+                        <select class="fin-form-select" id="finWizCondIva">${condOpts}</select>
+                    </div>
+                </div>
+                <div class="fin-form-row">
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Concepto *</label>
+                        <select class="fin-form-select" id="finWizConcepto">${concOpts}</select>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Servicio *</label>
+                        <select class="fin-form-select" id="finWizServicio">${srvOpts}</select>
                     </div>
                 </div>
                 <div class="fin-form-group">
@@ -7038,17 +7130,25 @@ const FinanzasModule = {
 
     _buildWizardStep2(d) {
         const tipo = d.tipo || 'factura_a';
-        const isA = tipo.includes('_a') || tipo === 'nota_debito_a' || tipo === 'nota_credito_a';
+        const isA = tipo.endsWith('_a');
         const isC = tipo === 'factura_c';
         const today = new Date().toISOString().slice(0, 10);
+        const alic = d.iva_alicuota || 21;
 
         let montoFields;
         if (isA) {
-            // FC A: neto → IVA 21% → total
+            // A: neto → IVA (alícuota elegible) → total
+            const alicOpts = [21, 10.5, 27].map(a => `<option value="${a}" ${alic === a ? 'selected' : ''}>${a}%</option>`).join('');
             montoFields = `
-                <div class="fin-form-group">
-                    <label class="fin-form-label">Neto gravado *</label>
-                    <input type="number" class="fin-form-input" id="finWizNeto" value="${d.neto || ''}" step="0.01" placeholder="0.00">
+                <div class="fin-form-row">
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Neto gravado *</label>
+                        <input type="number" class="fin-form-input" id="finWizNeto" value="${d.neto || ''}" step="0.01" placeholder="0.00">
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Alícuota IVA *</label>
+                        <select class="fin-form-select" id="finWizAlic">${alicOpts}</select>
+                    </div>
                 </div>
                 <div class="fin-iva-calc" id="finWizIvaCalc">
                     <div class="fin-iva-calc-item">
@@ -7057,7 +7157,7 @@ const FinanzasModule = {
                     </div>
                     <div class="fin-iva-calc-sep">+</div>
                     <div class="fin-iva-calc-item">
-                        <div class="fin-iva-calc-label">IVA 21%</div>
+                        <div class="fin-iva-calc-label" id="finWizCalcIvaLbl">IVA ${alic}%</div>
                         <div class="fin-iva-calc-value" id="finWizCalcIva">$0</div>
                     </div>
                     <div class="fin-iva-calc-sep">=</div>
@@ -7077,13 +7177,13 @@ const FinanzasModule = {
                 <div style="color:#888;font-size:0.78rem;margin-top:4px;">Factura C — sin discriminación de IVA</div>
             `;
         } else {
-            // FC B y otros: total con IVA incluido
+            // B y notas B: total con IVA incluido (se desglosa al 21% para AFIP)
             montoFields = `
                 <div class="fin-form-group">
                     <label class="fin-form-label">Total (IVA incluido) *</label>
                     <input type="number" class="fin-form-input" id="finWizTotal" value="${d.total || ''}" step="0.01" placeholder="0.00">
                 </div>
-                <div style="color:#888;font-size:0.78rem;margin-top:4px;">IVA incluido en el total</div>
+                <div style="color:#888;font-size:0.78rem;margin-top:4px;">El IVA va incluido en el total (no se discrimina en el comprobante B).</div>
             `;
         }
 
@@ -7113,59 +7213,112 @@ const FinanzasModule = {
     },
 
     _buildWizardStep3(d) {
-        const tipoInfo = this._tipoComprobante[d.tipo] || { label: d.tipo };
-        const srvLabel = this._servicioLabel[d.servicio] || d.servicio;
-        const cliName = d.cliente_id ? (this._clientesMap[d.cliente_id] || '—') : '—';
-        const proyName = d.proyecto_id ? (this._proyectosMap[d.proyecto_id] || '—') : '—';
-
         return `
-            <div class="fin-wizard-summary">
-                <div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">Tipo</span>
-                    <span class="fin-wizard-summary-value">${tipoInfo.label}</span>
-                </div>
-                <div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">Cliente</span>
-                    <span class="fin-wizard-summary-value">${cliName}</span>
-                </div>
-                <div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">CUIT/DNI</span>
-                    <span class="fin-wizard-summary-value" style="font-family:var(--font-mono,'Space Mono',monospace);">${d.cuit_dni || '—'}</span>
-                </div>
-                <div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">Servicio</span>
-                    <span class="fin-wizard-summary-value">${srvLabel}</span>
-                </div>
-                ${d.descripcion ? `<div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">Descripción</span>
-                    <span class="fin-wizard-summary-value">${d.descripcion}</span>
-                </div>` : ''}
-                <div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">Proyecto</span>
-                    <span class="fin-wizard-summary-value">${proyName}</span>
-                </div>
-                <div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">Punto de venta</span>
-                    <span class="fin-wizard-summary-value">${d.punto_venta || 5}</span>
-                </div>
-                <div class="fin-wizard-summary-row fin-wizard-summary-total">
-                    <span class="fin-wizard-summary-label">Neto</span>
-                    <span class="fin-wizard-summary-value">${this._formatMoney(d.neto || 0)}</span>
-                </div>
-                <div class="fin-wizard-summary-row">
-                    <span class="fin-wizard-summary-label">IVA (${d.iva_alicuota || 21}%)</span>
-                    <span class="fin-wizard-summary-value">${this._formatMoney(d.iva || 0)}</span>
-                </div>
-                <div class="fin-wizard-summary-row" style="font-size:1.1rem;">
-                    <span class="fin-wizard-summary-label" style="color:#E8E8E8;font-weight:700;">TOTAL</span>
-                    <span class="fin-wizard-summary-value" style="color:#00CC88;font-family:var(--font-mono,'Space Mono',monospace);font-size:1.15rem;">${this._formatMoney(d.total || 0)}</span>
-                </div>
+            <div style="margin-bottom:14px;color:#888;font-size:0.85rem;">
+                Revisá la factura antes de emitir. Al confirmar se envía a <b style="color:#00A9C1;">ARCA</b> y se obtiene el CAE — <b style="color:#F28D15;">es un comprobante fiscal real</b>.
             </div>
-            <div class="fin-wizard-nav">
+            ${this._buildComprobantePreview(d, { proximo: true })}
+            <div class="fin-wizard-nav" style="margin-top:16px;">
                 <button class="fin-wizard-btn" id="finWizBack3">← Atrás</button>
-                <button class="fin-wizard-btn fin-wizard-btn-emit" id="finWizEmit">🧾 Emitir comprobante</button>
+                <button class="fin-wizard-btn fin-wizard-btn-emit" id="finWizEmit">🧾 Emitir en ARCA</button>
             </div>
             <div id="finWizEmitStatus" style="margin-top:12px;"></div>
+        `;
+    },
+
+    // Render visual del comprobante (estilo "papel") — sirve para el preview y como base del PDF.
+    _buildComprobantePreview(d, { proximo = false, comp = null } = {}) {
+        const tipo = d.tipo || 'factura_a';
+        const tipoInfo = this._tipoComprobante[tipo] || { label: tipo };
+        const letra = tipo.endsWith('_a') ? 'A' : (tipo.endsWith('_b') ? 'B' : 'C');
+        const codAfip = { factura_a: '01', factura_b: '06', nota_debito_a: '02', nota_debito_b: '07', nota_credito_a: '03', nota_credito_b: '08' }[tipo] || '';
+        const cliName = d.cliente_id ? (this._clientesMap[d.cliente_id] || '—') : (escHtml(d.razon_social || '') || '—');
+        const srvLabel = this._servicioLabel[d.servicio] || d.servicio || 'Servicios';
+        const concLabel = this._conceptoAfip[d.concepto || 2] || 'Servicios';
+        const condRec = this._condIvaReceptor[d.cond_iva_receptor || (letra === 'A' ? 1 : 5)] || '';
+        const e = this._EMISOR;
+        const hoy = this._formatDate(new Date().toISOString().slice(0, 10));
+        const isA = letra === 'A';
+
+        const nroTxt = comp && comp.numero
+            ? comp.numero
+            : (proximo ? `<span id="finWizNro" style="color:#888;">consultando ARCA…</span>` : `${String(d.punto_venta || 5).padStart(5, '0')}-········`);
+
+        const itemRow = `
+            <tr>
+                <td style="padding:7px 8px;border-bottom:1px solid #eee;">${escHtml(srvLabel)}${d.descripcion ? ` — ${escHtml(d.descripcion)}` : ''}</td>
+                <td style="padding:7px 8px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">${this._formatMoney(isA ? (d.neto || 0) : (d.total || 0))}</td>
+            </tr>`;
+
+        const totalsBlock = isA ? `
+            <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>Neto gravado</span><span>${this._formatMoney(d.neto || 0)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>IVA ${d.iva_alicuota || 21}%</span><span>${this._formatMoney(d.iva || 0)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:6px 0 0;border-top:2px solid #00A9C1;margin-top:4px;font-weight:700;font-size:1.05rem;"><span>TOTAL</span><span>${this._formatMoney(d.total || 0)}</span></div>
+        ` : `
+            <div style="display:flex;justify-content:space-between;padding:6px 0 0;border-top:2px solid #00A9C1;margin-top:4px;font-weight:700;font-size:1.05rem;"><span>TOTAL</span><span>${this._formatMoney(d.total || 0)}</span></div>
+        `;
+
+        const caeBlock = comp && comp.cae ? `
+            <div style="font-size:0.8rem;color:#333;">
+                <div><b>CAE:</b> <span style="font-family:monospace;">${comp.cae}</span></div>
+                <div><b>Vto CAE:</b> ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}</div>
+            </div>
+            <div style="width:96px;height:96px;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.7rem;" id="finPreviewQR">QR</div>
+        ` : `
+            <div style="font-size:0.85rem;color:#F28D15;font-weight:600;">CAE: pendiente de emisión</div>
+            <div style="width:96px;height:96px;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:0.7rem;text-align:center;">QR AFIP<br>al emitir</div>
+        `;
+
+        return `
+            <div class="fin-comprobante-paper" style="background:#fff;color:#1a1a1a;border-radius:6px;padding:0;max-width:620px;margin:0 auto;box-shadow:0 4px 24px rgba(0,0,0,0.35);font-family:'Outfit',Arial,sans-serif;overflow:hidden;">
+                <div style="display:flex;border-bottom:2px solid #1a1a1a;position:relative;">
+                    <div style="flex:1;padding:14px 16px;">
+                        <div style="font-size:1.15rem;font-weight:800;color:#00A9C1;letter-spacing:1px;">MEPEX</div>
+                        <div style="font-size:0.82rem;font-weight:700;margin-top:2px;">${escHtml(e.razon_social)}</div>
+                        <div style="font-size:0.72rem;color:#555;margin-top:3px;line-height:1.5;">
+                            CUIT: ${e.cuit}<br>
+                            ${e.condicion_iva}<br>
+                            ${escHtml(e.domicilio)}${e.iibb ? `<br>IIBB: ${escHtml(e.iibb)}` : ''}${e.inicio_actividades ? `<br>Inicio act.: ${escHtml(e.inicio_actividades)}` : ''}
+                        </div>
+                    </div>
+                    <div style="position:absolute;left:50%;top:8px;transform:translateX(-50%);width:50px;height:50px;border:2px solid #1a1a1a;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;">
+                        <span style="font-size:1.8rem;font-weight:800;line-height:1;">${letra}</span>
+                        <span style="font-size:0.55rem;color:#555;">COD ${codAfip}</span>
+                    </div>
+                    <div style="flex:1;padding:14px 16px;text-align:right;">
+                        <div style="font-size:1.05rem;font-weight:800;">${tipoInfo.label}</div>
+                        <div style="font-size:0.78rem;margin-top:4px;">Nº ${nroTxt}</div>
+                        <div style="font-size:0.72rem;color:#555;margin-top:3px;">Fecha: ${comp ? this._formatDate(comp.fecha) : hoy}</div>
+                        <div style="font-size:0.72rem;color:#555;">Pto. Venta: ${String((comp ? comp.punto_venta : d.punto_venta) || 5).padStart(4, '0')}</div>
+                    </div>
+                </div>
+
+                <div style="padding:10px 16px;border-bottom:1px solid #eee;font-size:0.76rem;color:#333;">
+                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+                        <span><b>Cliente:</b> ${escHtml(cliName)}</span>
+                        <span><b>CUIT/DNI:</b> ${escHtml(d.cuit_dni || (comp && comp.cuit_dni) || '—')}</span>
+                    </div>
+                    <div style="margin-top:3px;"><b>Condición IVA:</b> ${condRec} &nbsp;·&nbsp; <b>Concepto:</b> ${concLabel}</div>
+                </div>
+
+                <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+                    <thead>
+                        <tr style="background:#f5f5f5;">
+                            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #ddd;">Detalle</th>
+                            <th style="padding:7px 8px;text-align:right;border-bottom:1px solid #ddd;width:140px;">Importe</th>
+                        </tr>
+                    </thead>
+                    <tbody>${itemRow}</tbody>
+                </table>
+
+                <div style="display:flex;justify-content:flex-end;padding:10px 16px;">
+                    <div style="min-width:240px;font-size:0.82rem;">${totalsBlock}</div>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid #eee;background:#fafafa;gap:12px;">
+                    ${caeBlock}
+                </div>
+            </div>
         `;
     },
 
@@ -7179,27 +7332,51 @@ const FinanzasModule = {
         });
 
         if (this._factWizardStep === 1) {
-            // Auto-fill CUIT when selecting a client
-            document.getElementById('finWizCliente')?.addEventListener('change', (e) => {
-                // We don't have CUIT in clientesMap, user fills manually
-                // But store selection
+            const readStep1 = () => {
+                Object.assign(this._factWizardData, {
+                    tipo: document.getElementById('finWizTipo')?.value || 'factura_a',
+                    servicio: document.getElementById('finWizServicio')?.value || null,
+                    cliente_id: document.getElementById('finWizCliente')?.value || null,
+                    cuit_dni: document.getElementById('finWizCuit')?.value.trim() || '',
+                    cond_iva_receptor: parseInt(document.getElementById('finWizCondIva')?.value) || null,
+                    concepto: parseInt(document.getElementById('finWizConcepto')?.value) || 2,
+                    punto_venta: parseInt(document.getElementById('finWizPV')?.value) || 5,
+                    proyecto_id: document.getElementById('finWizProyecto')?.value || null,
+                    descripcion: document.getElementById('finWizDesc')?.value.trim() || '',
+                    cbte_asoc_id: document.getElementById('finWizAsoc')?.value || null,
+                });
+            };
+
+            // Cambiar el tipo re-renderiza (muestra/oculta asociado + ajusta default cond IVA)
+            document.getElementById('finWizTipo')?.addEventListener('change', (ev) => {
+                readStep1();
+                this._factWizardData.tipo = ev.target.value;
+                this._factWizardData.cond_iva_receptor = null;  // recalcula default por tipo
+                this._rerenderWizard();
             });
 
             document.getElementById('finWizNext1')?.addEventListener('click', () => {
-                const tipo = document.getElementById('finWizTipo')?.value;
-                const servicio = document.getElementById('finWizServicio')?.value;
-                const cliente_id = document.getElementById('finWizCliente')?.value || null;
-                const cuit_dni = document.getElementById('finWizCuit')?.value.trim();
-                const punto_venta = parseInt(document.getElementById('finWizPV')?.value) || 5;
-                const proyecto_id = document.getElementById('finWizProyecto')?.value || null;
-                const descripcion = document.getElementById('finWizDesc')?.value.trim() || '';
-
-                if (!tipo || !servicio || !cuit_dni) {
+                readStep1();
+                const d = this._factWizardData;
+                if (!d.tipo || !d.servicio || !d.cuit_dni) {
                     Toast.warning('Tipo, servicio y CUIT/DNI son obligatorios');
                     return;
                 }
-
-                Object.assign(this._factWizardData, { tipo, servicio, cliente_id, cuit_dni, punto_venta, proyecto_id, descripcion });
+                if (d.tipo.endsWith('_a') && d.cuit_dni.replace(/\D/g, '').length !== 11) {
+                    Toast.warning('Factura/Nota A requiere CUIT (11 dígitos) del receptor');
+                    return;
+                }
+                // Notas: resolver el comprobante asociado
+                if (d.tipo.startsWith('nota_')) {
+                    if (!d.cbte_asoc_id) { Toast.warning('Elegí el comprobante asociado'); return; }
+                    const ref = (this._factEmitidos || []).find(c => c.id === d.cbte_asoc_id);
+                    if (!ref) { Toast.warning('Comprobante asociado no encontrado'); return; }
+                    const nro = parseInt(String(ref.numero || '').split('-').pop(), 10) || 0;
+                    d.cbte_asoc = [{ tipo: ref.tipo, pto_vta: ref.punto_venta || 5, nro }];
+                    d.cbte_asoc_desc = `${(this._tipoComprobante[ref.tipo] || {}).short || ''} ${ref.numero || ''}`;
+                } else {
+                    d.cbte_asoc = null; d.cbte_asoc_desc = null;
+                }
                 this._factWizardStep = 2;
                 this._rerenderWizard();
             });
@@ -7207,20 +7384,24 @@ const FinanzasModule = {
 
         if (this._factWizardStep === 2) {
             const tipo = this._factWizardData.tipo || 'factura_a';
-            const isA = tipo.includes('_a');
+            const isA = tipo.endsWith('_a');
 
             if (isA) {
                 const netoInput = document.getElementById('finWizNeto');
+                const alicSel = document.getElementById('finWizAlic');
                 const updateCalc = () => {
                     const neto = parseFloat(netoInput?.value) || 0;
-                    const iva = Math.round(neto * 0.21 * 100) / 100;
+                    const alic = parseFloat(alicSel?.value) || 21;
+                    const iva = Math.round(neto * (alic / 100) * 100) / 100;
                     const total = Math.round((neto + iva) * 100) / 100;
                     const el = (id) => document.getElementById(id);
                     if (el('finWizCalcNeto')) el('finWizCalcNeto').textContent = this._formatMoney(neto);
+                    if (el('finWizCalcIvaLbl')) el('finWizCalcIvaLbl').textContent = `IVA ${alic}%`;
                     if (el('finWizCalcIva')) el('finWizCalcIva').textContent = this._formatMoney(iva);
                     if (el('finWizCalcTotal')) el('finWizCalcTotal').textContent = this._formatMoney(total);
                 };
                 netoInput?.addEventListener('input', updateCalc);
+                alicSel?.addEventListener('change', updateCalc);
                 updateCalc();
             }
 
@@ -7231,22 +7412,23 @@ const FinanzasModule = {
 
             document.getElementById('finWizNext2')?.addEventListener('click', () => {
                 const tipo = this._factWizardData.tipo;
-                const isA = tipo.includes('_a');
+                const isA = tipo.endsWith('_a');
                 const isC = tipo === 'factura_c';
 
-                let neto, iva, total;
+                let neto, iva, total, alic;
                 if (isA) {
                     neto = parseFloat(document.getElementById('finWizNeto')?.value) || 0;
-                    iva = Math.round(neto * 0.21 * 100) / 100;
+                    alic = parseFloat(document.getElementById('finWizAlic')?.value) || 21;
+                    iva = Math.round(neto * (alic / 100) * 100) / 100;
                     total = Math.round((neto + iva) * 100) / 100;
                 } else if (isC) {
                     total = parseFloat(document.getElementById('finWizTotal')?.value) || 0;
-                    neto = total;
-                    iva = 0;
+                    neto = total; iva = 0; alic = 0;
                 } else {
                     total = parseFloat(document.getElementById('finWizTotal')?.value) || 0;
                     neto = Math.round((total / 1.21) * 100) / 100;
                     iva = Math.round((total - neto) * 100) / 100;
+                    alic = 21;
                 }
 
                 if (!total || total <= 0) {
@@ -7259,8 +7441,7 @@ const FinanzasModule = {
                 const vto_pago = document.getElementById('finWizVtoPago')?.value || null;
 
                 Object.assign(this._factWizardData, {
-                    neto, iva, total,
-                    iva_alicuota: isC ? 0 : 21,
+                    neto, iva, total, iva_alicuota: alic,
                     periodo_desde, periodo_hasta, vto_pago,
                 });
                 this._factWizardStep = 3;
@@ -7269,12 +7450,40 @@ const FinanzasModule = {
         }
 
         if (this._factWizardStep === 3) {
+            // Consultar el próximo número en ARCA (también valida conectividad sin emitir)
+            this._fillProximoNumero();
+
             document.getElementById('finWizBack3')?.addEventListener('click', () => {
                 this._factWizardStep = 2;
                 this._rerenderWizard();
             });
 
             document.getElementById('finWizEmit')?.addEventListener('click', () => this._emitirComprobante());
+        }
+    },
+
+    _arcaCbteTipo(tipo) {
+        return { factura_a: 1, factura_b: 6, nota_debito_a: 2, nota_debito_b: 7, nota_credito_a: 3, nota_credito_b: 8 }[tipo] || 1;
+    },
+
+    async _fillProximoNumero() {
+        const span = document.getElementById('finWizNro');
+        if (!span) return;
+        const d = this._factWizardData;
+        const pv = d.punto_venta || 5;
+        const tipo = this._arcaCbteTipo(d.tipo);
+        try {
+            const r = await fetch(`${this._VPS_URL}/api/arca/ultimo?pv=${pv}&tipo=${tipo}`);
+            const j = await r.json();
+            if (!r.ok || !j.ok) throw new Error(j.error || 'sin respuesta');
+            const nro = `${String(pv).padStart(5, '0')}-${String(j.proximo).padStart(8, '0')}`;
+            span.textContent = nro;
+            span.style.color = '#1a1a1a';
+            this._factWizardData._proximo = nro;
+        } catch (e) {
+            span.textContent = '(se asignará al emitir)';
+            span.style.color = '#888';
+            console.warn('[ARCA] no se pudo consultar próximo número:', e.message);
         }
     },
 
@@ -7294,114 +7503,255 @@ const FinanzasModule = {
         const d = this._factWizardData;
         const today = new Date().toISOString().slice(0, 10);
         const uid = Auth.getUser()?.uid || null;
+        const esC = d.tipo === 'factura_c';
 
-        const datosComprobante = {
+        const payload = {
             tipo: d.tipo,
             punto_venta: d.punto_venta || 5,
+            concepto: d.concepto || 2,
             cuit_dni: d.cuit_dni,
-            servicio: d.servicio,
-            descripcion: d.descripcion || `${this._servicioLabel[d.servicio] || d.servicio}`,
+            cond_iva_receptor: d.cond_iva_receptor || (d.tipo.endsWith('_a') ? 1 : 5),
             neto: d.neto,
             iva: d.iva,
-            total: d.total,
             iva_alicuota: d.iva_alicuota || 21,
-            periodo_desde: d.periodo_desde || today,
-            periodo_hasta: d.periodo_hasta || today,
-            vto_pago: d.vto_pago || null,
+            total: d.total,
+            fecha: today,
+            serv_desde: d.periodo_desde || today,
+            serv_hasta: d.periodo_hasta || today,
+            vto_pago: d.vto_pago || today,
+            cbtes_asoc: d.cbte_asoc || null,
         };
 
         try {
-            // Call Express proxy → La PyME
-            const response = await fetch(`${this._VPS_URL}/api/lapyme/facturar`, {
+            // Express proxy → ARCA (FECAESolicitar). Emite un comprobante fiscal REAL.
+            const response = await fetch(`${this._VPS_URL}/api/arca/facturar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(datosComprobante),
+                body: JSON.stringify(payload),
             });
-
-            if (!response.ok) {
-                const errText = await response.text().catch(() => 'Sin detalle');
-                throw new Error(`HTTP ${response.status}: ${errText}`);
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || `HTTP ${response.status}`);
             }
 
-            const result = await response.json();
-
-            // Save to Supabase with success
+            // Guardar el comprobante con CAE
             const record = {
-                fecha: today,
+                fecha: result.fecha || today,
                 tipo: d.tipo,
-                punto_venta: d.punto_venta || 5,
-                numero: result.numero || result.invoiceNumber || null,
+                punto_venta: result.punto_venta || d.punto_venta || 5,
+                numero: result.numero_completo || null,
                 cliente_id: d.cliente_id || null,
                 cuit_dni: d.cuit_dni,
                 servicio: d.servicio,
                 descripcion: d.descripcion || null,
-                neto: d.neto,
+                neto: esC ? 0 : d.neto,
                 iva_alicuota: d.iva_alicuota || 21,
-                iva: d.iva,
+                iva: esC ? 0 : d.iva,
                 total: d.total,
-                cae: result.cae || result.CAE || null,
-                cae_vencimiento: result.cae_vencimiento || result.CAEFchVto || null,
+                cae: result.cae || null,
+                cae_vencimiento: result.cae_vencimiento || null,
                 estado: 'emitida',
-                pdf_url: result.pdf_url || null,
+                pdf_url: null,
                 proyecto_id: d.proyecto_id || null,
-                lapyme_response: result,
+                lapyme_response: result,   // greenfield: reusamos la columna JSONB para la respuesta ARCA
                 canal: 'oficial',
                 created_by: uid,
             };
 
-            const { error } = await supabaseClient.from('comprobantes').insert([record]);
-            if (error) console.warn('[Finanzas] Error guardando comprobante en DB:', error);
+            const { data: inserted, error } = await supabaseClient.from('comprobantes').insert([record]).select().single();
+            if (error) { console.warn('[Finanzas] Error guardando comprobante:', error); }
+            const comp = inserted || { ...record, id: null };
 
-            Toast.success(`Comprobante emitido — CAE: ${record.cae || 'pendiente'}`);
-            this._factWizardStep = 1;
-            this._factWizardData = {};
-            this._factSubtab = 'emitidos';
-            this._renderTabContent();
+            Toast.success(`✓ Emitido — CAE ${result.cae}`);
+
+            // PDF automático (descarga) + pantalla de éxito con opción de cobro
+            try { await this._generarFacturaPDF(comp); } catch (e) { console.warn('[Finanzas] PDF:', e.message); }
+            this._renderEmitSuccess(comp);
 
         } catch (err) {
-            console.error('[Finanzas] Error emitiendo comprobante:', err);
+            console.error('[Finanzas] Error emitiendo en ARCA:', err);
 
-            // Save as error
+            // Registrar el intento fallido (NO consume número en AFIP)
             try {
-                const errorRecord = {
-                    fecha: today,
-                    tipo: d.tipo,
-                    punto_venta: d.punto_venta || 5,
-                    cliente_id: d.cliente_id || null,
-                    cuit_dni: d.cuit_dni,
-                    servicio: d.servicio,
-                    descripcion: d.descripcion || null,
-                    neto: d.neto, iva_alicuota: d.iva_alicuota || 21,
-                    iva: d.iva, total: d.total,
-                    estado: 'error',
-                    error_detalle: err.message || String(err),
-                    canal: 'oficial',
-                    created_by: uid,
-                };
-                await supabaseClient.from('comprobantes').insert([errorRecord]).catch(() => {});
+                await supabaseClient.from('comprobantes').insert([{
+                    fecha: today, tipo: d.tipo, punto_venta: d.punto_venta || 5,
+                    cliente_id: d.cliente_id || null, cuit_dni: d.cuit_dni,
+                    servicio: d.servicio, descripcion: d.descripcion || null,
+                    neto: esC ? 0 : d.neto, iva_alicuota: d.iva_alicuota || 21, iva: esC ? 0 : d.iva, total: d.total,
+                    estado: 'error', error_detalle: err.message || String(err),
+                    canal: 'oficial', created_by: uid,
+                }]);
             } catch (_) { /* ignore */ }
 
-            const isNetworkError = err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
-            const msg = isNetworkError
-                ? 'No se pudo conectar al servidor de facturación'
-                : `Error al emitir: ${err.message || err}`;
-
+            const isNet = /Failed to fetch|NetworkError/i.test(err.message || '');
+            const msg = isNet ? 'No se pudo conectar al servidor de facturación (ARCA)' : `ARCA: ${err.message || err}`;
             if (statusEl) {
                 statusEl.innerHTML = `
                     <div style="background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.2);border-radius:4px;padding:12px;color:#ff4444;font-size:0.85rem;">
-                        ❌ ${msg}
+                        ❌ ${escHtml(msg)}
                         <button class="fin-wizard-btn" id="finWizRetry" style="margin-top:10px;border-color:#ff4444;color:#ff4444;">Reintentar</button>
-                    </div>
-                `;
+                    </div>`;
                 document.getElementById('finWizRetry')?.addEventListener('click', () => this._emitirComprobante());
             } else {
                 Toast.error(msg);
             }
+            if (btn) { btn.disabled = false; btn.innerHTML = '🧾 Emitir en ARCA'; }
+        }
+    },
 
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '🧾 Emitir comprobante';
-            }
+    // Pantalla de éxito tras emitir: muestra el comprobante real + acciones (PDF / cobro / otro).
+    _renderEmitSuccess(comp) {
+        const body = document.getElementById('finWizardBody');
+        if (!body) { this._factSubtab = 'emitidos'; this._factWizardStep = 1; this._factWizardData = {}; this._renderTabContent(); return; }
+        body.innerHTML = `
+            <div style="text-align:center;padding:6px 0 14px;">
+                <div style="font-size:2rem;">✅</div>
+                <div style="font-size:1.05rem;font-weight:700;color:#00CC88;margin-top:4px;">Comprobante emitido</div>
+                <div style="color:#888;font-size:0.85rem;margin-top:2px;">
+                    ${(this._tipoComprobante[comp.tipo] || {}).label || comp.tipo} Nº ${comp.numero || ''} · CAE ${comp.cae || '—'}
+                </div>
+            </div>
+            ${this._buildComprobantePreview({
+                tipo: comp.tipo, cliente_id: comp.cliente_id, cuit_dni: comp.cuit_dni,
+                servicio: comp.servicio, descripcion: comp.descripcion, concepto: 2,
+                cond_iva_receptor: (comp.lapyme_response || {}).cond_iva_receptor,
+                neto: comp.neto, iva: comp.iva, iva_alicuota: comp.iva_alicuota, total: comp.total,
+            }, { comp })}
+            <div class="fin-wizard-nav" style="margin-top:16px;gap:8px;flex-wrap:wrap;">
+                <button class="fin-wizard-btn" id="finEmitPDF">📄 Descargar PDF</button>
+                ${comp.id ? `<button class="fin-wizard-btn fin-wizard-btn-primary" id="finEmitCobrar">⎘ Generar cobro</button>` : ''}
+                <button class="fin-wizard-btn fin-wizard-btn-primary" id="finEmitOtro">🧾 Emitir otro</button>
+            </div>
+        `;
+        document.getElementById('finEmitPDF')?.addEventListener('click', () => this._generarFacturaPDF(comp));
+        document.getElementById('finEmitCobrar')?.addEventListener('click', () => this._showGenerarIngresoModal(comp));
+        document.getElementById('finEmitOtro')?.addEventListener('click', () => {
+            this._factWizardStep = 1; this._factWizardData = {}; this._renderTabContent();
+        });
+    },
+
+    // PDF del comprobante (jsPDF) con QR de AFIP. Reimprimible desde el panel de Emitidos.
+    async _generarFacturaPDF(comp) {
+        if (!window.jspdf) { Toast.error('jsPDF no disponible'); return; }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        const e = this._EMISOR;
+        const r = comp.lapyme_response || {};
+        const tipo = comp.tipo;
+        const letra = tipo.endsWith('_a') ? 'A' : (tipo.endsWith('_b') ? 'B' : 'C');
+        const codAfip = { factura_a: '01', factura_b: '06', nota_debito_a: '02', nota_debito_b: '07', nota_credito_a: '03', nota_credito_b: '08' }[tipo] || '';
+        const cliName = this._clientesMap[comp.cliente_id] || comp.cuit_dni || '—';
+        const isA = letra === 'A';
+        const W = 210;
+
+        // Header
+        doc.setTextColor(0, 169, 193); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+        doc.text('MEPEX', 16, 20);
+        doc.setTextColor(20, 20, 20); doc.setFontSize(10);
+        doc.text(e.razon_social, 16, 27);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
+        doc.text([`CUIT: ${e.cuit}`, e.condicion_iva, e.domicilio].concat(e.iibb ? [`IIBB: ${e.iibb}`] : []).concat(e.inicio_actividades ? [`Inicio act.: ${e.inicio_actividades}`] : []), 16, 33);
+
+        // Letra box (centro)
+        doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.5); doc.rect(W / 2 - 8, 12, 16, 16);
+        doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+        doc.text(letra, W / 2, 22, { align: 'center' });
+        doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+        doc.text(`COD ${codAfip}`, W / 2, 26, { align: 'center' });
+
+        // Datos comprobante (derecha)
+        doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.text((this._tipoComprobante[tipo] || {}).label || tipo, W - 16, 18, { align: 'right' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+        doc.text(`Nº ${comp.numero || ''}`, W - 16, 24, { align: 'right' });
+        doc.setFontSize(8); doc.setTextColor(80, 80, 80);
+        doc.text(`Fecha: ${this._formatDate(comp.fecha)}`, W - 16, 29, { align: 'right' });
+        doc.text(`Pto. Venta: ${String(comp.punto_venta || 5).padStart(4, '0')}`, W - 16, 33, { align: 'right' });
+
+        doc.setDrawColor(20, 20, 20); doc.line(16, 40, W - 16, 40);
+
+        // Receptor
+        doc.setTextColor(20, 20, 20); doc.setFontSize(9);
+        doc.text(`Cliente: ${cliName}`, 16, 47);
+        doc.text(`CUIT/DNI: ${comp.cuit_dni || '—'}`, W - 16, 47, { align: 'right' });
+        const condRec = this._condIvaReceptor[r.cond_iva_receptor || (isA ? 1 : 5)] || '';
+        doc.setTextColor(80, 80, 80); doc.setFontSize(8);
+        doc.text(`Condición IVA: ${condRec}`, 16, 52);
+
+        // Items + totales (autotable)
+        const detalle = `${this._servicioLabel[comp.servicio] || comp.servicio || 'Servicios'}${comp.descripcion ? ' — ' + comp.descripcion : ''}`;
+        const body = [[detalle, this._formatMoney(isA ? (comp.neto || 0) : (comp.total || 0))]];
+        const foot = isA
+            ? [['Neto gravado', this._formatMoney(comp.neto || 0)], [`IVA ${comp.iva_alicuota || 21}%`, this._formatMoney(comp.iva || 0)], ['TOTAL', this._formatMoney(comp.total || 0)]]
+            : [['TOTAL', this._formatMoney(comp.total || 0)]];
+        doc.autoTable({
+            startY: 58, head: [['Detalle', 'Importe']], body, foot,
+            theme: 'grid', headStyles: { fillColor: [0, 169, 193], textColor: 255, fontStyle: 'bold' },
+            footStyles: { fillColor: [245, 245, 245], textColor: 20, fontStyle: 'bold' },
+            columnStyles: { 1: { halign: 'right', cellWidth: 50 } },
+            margin: { left: 16, right: 16 },
+        });
+
+        // CAE + QR
+        let y = (doc.lastAutoTable?.finalY || 100) + 12;
+        doc.setTextColor(20, 20, 20); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+        doc.text(`CAE: ${comp.cae || '—'}`, 16, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Vto. CAE: ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}`, 16, y + 5);
+
+        // QR AFIP
+        try {
+            const qrUrl = this._buildAfipQR(comp, r);
+            const dataUrl = qrUrl ? await this._qrDataUrl(qrUrl) : null;
+            if (dataUrl) doc.addImage(dataUrl, 'PNG', W - 16 - 30, y - 6, 30, 30);
+        } catch (qe) { console.warn('[Finanzas] QR:', qe.message); }
+
+        doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+        doc.text('Comprobante autorizado por ARCA (AFIP). Verificable con el QR.', 16, y + 14);
+
+        const fname = `MEPEX_${(this._tipoComprobante[tipo] || {}).short || tipo}_${(comp.numero || '').replace(/[^\d-]/g, '') || 's-n'}.pdf`;
+        doc.save(fname);
+    },
+
+    // Construye la URL del QR de AFIP (spec oficial: base64 del JSON).
+    _buildAfipQR(comp, r) {
+        const cuitEmisor = parseInt((r.cuit_emisor || this._EMISOR.cuit).replace(/\D/g, ''), 10);
+        const nroCmp = parseInt(String(comp.numero || '').split('-').pop(), 10) || (r.numero || 0);
+        const obj = {
+            ver: 1,
+            fecha: comp.fecha,
+            cuit: cuitEmisor,
+            ptoVta: comp.punto_venta || r.punto_venta || 5,
+            tipoCmp: r.cbte_tipo || this._arcaCbteTipo(comp.tipo),
+            nroCmp,
+            importe: Number(comp.total) || 0,
+            moneda: 'PES',
+            ctz: 1,
+            tipoDocRec: r.doc_tipo || 80,
+            nroDocRec: parseInt(r.doc_nro || String(comp.cuit_dni || '').replace(/\D/g, ''), 10) || 0,
+            tipoCodAut: 'E',
+            codAut: parseInt(comp.cae, 10) || 0,
+        };
+        const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+        return `https://www.afip.gob.ar/fe/qr/?p=${b64}`;
+    },
+
+    // Genera un dataURL PNG del QR usando qrcodejs (renderiza en un div oculto → canvas/img).
+    async _qrDataUrl(text) {
+        if (typeof QRCode === 'undefined') { console.warn('[Finanzas] QRCode lib no disponible'); return null; }
+        const div = document.createElement('div');
+        div.style.position = 'fixed'; div.style.left = '-9999px'; div.style.top = '0';
+        document.body.appendChild(div);
+        try {
+            // eslint-disable-next-line no-new
+            new QRCode(div, { text, width: 240, height: 240, correctLevel: (QRCode.CorrectLevel ? QRCode.CorrectLevel.M : 0) });
+            await new Promise(r => setTimeout(r, 30));  // deja pintar el canvas
+            const canvas = div.querySelector('canvas');
+            if (canvas) return canvas.toDataURL('image/png');
+            const img = div.querySelector('img');
+            return img ? img.src : null;
+        } finally {
+            document.body.removeChild(div);
         }
     },
 
@@ -7680,7 +8030,7 @@ const FinanzasModule = {
 
                 ${jsonStr ? `
                 <div class="fin-panel-section">
-                    <button class="fin-json-toggle" id="finJsonToggle">▸ Respuesta La PyME (JSON)</button>
+                    <button class="fin-json-toggle" id="finJsonToggle">▸ Respuesta ARCA (JSON)</button>
                     <div class="fin-json-block" id="finJsonBlock">${jsonStr}</div>
                 </div>
                 ` : ''}
@@ -7693,6 +8043,7 @@ const FinanzasModule = {
                 ` : ''}
 
                 <div class="fin-panel-section">
+                    ${comp.cae ? `<button class="fin-panel-btn" id="finEmiPanelPDF" style="margin-bottom:8px;">📄 Descargar / imprimir PDF</button>` : ''}
                     ${comp.ingreso_id
                         ? `<div style="color:var(--color-success,#00CC88);font-size:0.82rem;">✓ Cobro vinculado a este comprobante.</div>`
                         : `<button class="fin-panel-btn fin-panel-btn-primary" id="finEmiPanelCobrar">⎘ Generar cobro</button>`}
@@ -7704,13 +8055,14 @@ const FinanzasModule = {
         document.querySelectorAll('.fin-row').forEach(r => r.classList.toggle('active', r.dataset.id === id));
 
         document.getElementById('finPanelClose')?.addEventListener('click', () => this._closePanel());
+        document.getElementById('finEmiPanelPDF')?.addEventListener('click', () => this._generarFacturaPDF(comp));
         document.getElementById('finEmiPanelCobrar')?.addEventListener('click', () => this._showGenerarIngresoModal(comp));
         document.getElementById('finJsonToggle')?.addEventListener('click', () => {
             const block = document.getElementById('finJsonBlock');
             const toggle = document.getElementById('finJsonToggle');
             if (block) {
                 block.classList.toggle('open');
-                if (toggle) toggle.textContent = block.classList.contains('open') ? '▾ Respuesta La PyME (JSON)' : '▸ Respuesta La PyME (JSON)';
+                if (toggle) toggle.textContent = block.classList.contains('open') ? '▾ Respuesta ARCA (JSON)' : '▸ Respuesta ARCA (JSON)';
             }
         });
 
