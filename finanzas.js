@@ -7919,10 +7919,10 @@ const FinanzasModule = {
 
     _showGenerarEgresoModal(comp) {
         const cuentas = this._cuentas || [];
-        const cuentaOpts = cuentas.map(c => `<option value="${c.id}">${this._esc(c.nombre)}${c.tipo ? ' (' + this._esc(c.tipo) + ')' : ''}</option>`).join('');
+        const cuentaOpts = cuentas.map(c => `<option value="${c.id}">${escHtml(c.nombre)}${c.tipo ? ' (' + escHtml(c.tipo) + ')' : ''}</option>`).join('');
         const body = `
             <div style="display:flex;flex-direction:column;gap:12px;">
-                <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">${this._esc(comp.proveedor_nombre || 'Comprobante')} · <b style="color:#E84855;">${this._formatMoney(comp.total)}</b></p>
+                <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">${escHtml(comp.proveedor_nombre || 'Comprobante')} · <b style="color:#E84855;">${this._formatMoney(comp.total)}</b></p>
                 <div><label class="fin-form-label">Medio</label>
                     <select class="fin-form-select" id="finGenMedio"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="cheque">Cheque</option><option value="mercadopago">MercadoPago</option><option value="debito_automatico">Débito automático</option></select></div>
                 <div><label class="fin-form-label">Cuenta (tesorería) <span style="color:var(--text-dim);font-size:0.74rem;">— necesaria para el asiento contable</span></label>
