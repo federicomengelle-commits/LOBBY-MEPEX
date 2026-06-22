@@ -44,12 +44,12 @@ const { execFileSync } = require('child_process');
 const PROD = (process.env.ARCA_PROD || '1') !== '0';
 const CUIT = (process.env.ARCA_CUIT || '30709990817').replace(/\D/g, '');
 const OPENSSL = process.env.ARCA_OPENSSL || 'openssl';
-const SERVICE = 'wsfe';
 
 const CERT = process.env.ARCA_CERT || '/home/mepex/api/certs/lobby-mepex.crt';
 const KEY = process.env.ARCA_KEY || '/home/mepex/api/certs/homo.key';
 const TA_DIR = process.env.ARCA_TA_DIR || path.dirname(CERT);
-const TA_CACHE = path.join(TA_DIR, '_ta_wsfe.json');
+// El TA se cachea POR SERVICIO (wsfe / ws_sr_constancia_inscripcion tienen tickets distintos).
+const taCachePath = (service) => path.join(TA_DIR, `_ta_${service}.json`);
 
 const WSAA_URL = PROD
   ? 'https://wsaa.afip.gov.ar/ws/services/LoginCms'
@@ -57,6 +57,12 @@ const WSAA_URL = PROD
 const WSFE_URL = PROD
   ? 'https://servicios1.afip.gov.ar/wsfev1/service.asmx'
   : 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx';
+// Padrón / Constancia de Inscripción (autocompletar datos del receptor por CUIT)
+const PADRON_URL = PROD
+  ? 'https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA5'
+  : 'https://awshomo.afip.gov.ar/sr-padron/webservices/personaServiceA5';
+const PADRON_NS = 'http://a5.soap.ws.server.puc.sr/';
+const PADRON_SERVICE = 'ws_sr_constancia_inscripcion';
 
 // ── Mapeos de comprobante (handoff §B) ──
 const CBTE_TIPO = {
@@ -98,28 +104,28 @@ function collectMsgs(xml, container) {
   return out;
 }
 
-// ── WSAA login (con cache de TA + login serializado) ──
-let _loginInFlight = null;
+// ── WSAA login por servicio (con cache de TA + login serializado por servicio) ──
+const _loginInFlight = {};
 
-function readTACache() {
+function readTACache(service) {
   try {
-    const c = JSON.parse(fs.readFileSync(TA_CACHE, 'utf8'));
+    const c = JSON.parse(fs.readFileSync(taCachePath(service), 'utf8'));
     if (c.exp && new Date(c.exp).getTime() > Date.now() + 5 * 60000) return c;  // margen 5 min
   } catch (_) {}
   return null;
 }
 
-async function wsaaLogin() {
-  const cached = readTACache();
+async function wsaaLogin(service = 'wsfe') {
+  const cached = readTACache(service);
   if (cached) return { token: cached.token, sign: cached.sign };
-  if (_loginInFlight) return _loginInFlight;  // evita logins concurrentes → "ya posee TA válido"
-  _loginInFlight = (async () => {
+  if (_loginInFlight[service]) return _loginInFlight[service];  // evita logins concurrentes → "ya posee TA válido"
+  _loginInFlight[service] = (async () => {
     const uid = Math.floor(Date.now() / 1000);
     const gen = new Date(Date.now() - 600000).toISOString();
     const exp = new Date(Date.now() + 600000).toISOString();
-    const ltr = `<?xml version="1.0" encoding="UTF-8"?>\n<loginTicketRequest version="1.0"><header><uniqueId>${uid}</uniqueId><generationTime>${gen}</generationTime><expirationTime>${exp}</expirationTime></header><service>${SERVICE}</service></loginTicketRequest>`;
-    const ltrFile = path.join(TA_DIR, `_ltr_${uid}.xml`);
-    const cmsFile = path.join(TA_DIR, `_cms_${uid}.der`);
+    const ltr = `<?xml version="1.0" encoding="UTF-8"?>\n<loginTicketRequest version="1.0"><header><uniqueId>${uid}</uniqueId><generationTime>${gen}</generationTime><expirationTime>${exp}</expirationTime></header><service>${service}</service></loginTicketRequest>`;
+    const ltrFile = path.join(TA_DIR, `_ltr_${service}_${uid}.xml`);
+    const cmsFile = path.join(TA_DIR, `_cms_${service}_${uid}.der`);
     let cms;
     try {
       fs.writeFileSync(ltrFile, ltr);
@@ -139,11 +145,11 @@ async function wsaaLogin() {
     const ta = unesc(ret);
     const token = grab(ta, 'token'); const sign = grab(ta, 'sign');
     const taExp = grab(ta, 'expirationTime');
-    try { fs.writeFileSync(TA_CACHE, JSON.stringify({ token, sign, exp: taExp })); } catch (_) {}
+    try { fs.writeFileSync(taCachePath(service), JSON.stringify({ token, sign, exp: taExp })); } catch (_) {}
     return { token, sign };
   })();
-  try { return await _loginInFlight; }
-  finally { _loginInFlight = null; }
+  try { return await _loginInFlight[service]; }
+  finally { _loginInFlight[service] = null; }
 }
 
 function authXml({ token, sign }) {
@@ -299,10 +305,57 @@ async function facturar(p) {
   };
 }
 
+// ── Padrón / Constancia de Inscripción → datos del receptor por CUIT ──
+async function consultarPadron(cuit) {
+  const id = String(cuit || '').replace(/\D/g, '');
+  if (id.length !== 11) throw new Error('El padrón requiere CUIT de 11 dígitos');
+  const { token, sign } = await wsaaLogin(PADRON_SERVICE);
+  const soap = `<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:a5="${PADRON_NS}"><soapenv:Header/><soapenv:Body><a5:getPersona><token>${token}</token><sign>${sign}</sign><cuitRepresentada>${CUIT}</cuitRepresentada><idPersona>${id}</idPersona></a5:getPersona></soapenv:Body></soapenv:Envelope>`;
+  const resp = await post(PADRON_URL, soap, '');
+  const fault = grab(resp, 'faultstring');
+  if (fault) {
+    const f = unesc(fault).trim();
+    if (/no existe persona|sin datos|not found/i.test(f)) return { ok: false, notFound: true, cuit: id };
+    throw new Error('Padrón: ' + f);
+  }
+  // grabber tolerante a prefijo de namespace (ns2:razonSocial, etc.)
+  const g = (tag, xml) => { const m = (xml || resp).match(new RegExp('<(?:\\w+:)?' + tag + '>([\\s\\S]*?)</(?:\\w+:)?' + tag + '>')); return m ? m[1].trim() : null; };
+  const razon = g('razonSocial');
+  const ape = g('apellido'); const nom = g('nombre');
+  const nombre = razon || [ape, nom].filter(Boolean).join(' ') || null;
+  if (!nombre) return { ok: false, notFound: true, cuit: id };
+  // domicilio fiscal
+  let dom = {};
+  const dm = resp.match(/<(?:\w+:)?domicilioFiscal>([\s\S]*?)<\/(?:\w+:)?domicilioFiscal>/);
+  if (dm) {
+    dom = { direccion: g('direccion', dm[1]), localidad: g('localidad', dm[1]), cod_postal: g('codPostal', dm[1]), provincia: g('descripcionProvincia', dm[1]) };
+  }
+  // condición frente al IVA (a partir de impuestos / monotributo)
+  const impuestos = [...resp.matchAll(/<(?:\w+:)?idImpuesto>(\d+)<\/(?:\w+:)?idImpuesto>/g)].map(m => parseInt(m[1], 10));
+  const hasMono = /<(?:\w+:)?datosMonotributo>/.test(resp) || impuestos.includes(20) || impuestos.includes(21);
+  let condId = 5, condLabel = 'Consumidor Final';
+  if (hasMono) { condId = 6; condLabel = 'Responsable Monotributo'; }
+  else if (impuestos.includes(30)) { condId = 1; condLabel = 'IVA Responsable Inscripto'; }
+  else if (impuestos.includes(32)) { condId = 4; condLabel = 'IVA Sujeto Exento'; }
+  const domicilioStr = [dom.direccion, dom.localidad, dom.provincia].filter(Boolean).join(', ');
+  return {
+    ok: true, cuit: id, nombre, razon_social: razon, apellido: ape, nombre_persona: nom,
+    domicilio: domicilioStr || null, domicilio_detalle: dom,
+    cond_iva_id: condId, cond_iva_label: condLabel, impuestos,
+  };
+}
+
 // ═══════════ Handlers Express ═══════════
 async function statusHandler(_req, res) {
   try { res.json({ ok: true, prod: PROD, ...(await feDummy()) }); }
   catch (e) { console.error('[arca/status]', e.message); res.status(502).json({ ok: false, error: e.message }); }
+}
+
+async function padronHandler(req, res) {
+  try {
+    const data = await consultarPadron(req.query.cuit);
+    res.json(data);
+  } catch (e) { console.error('[arca/padron]', e.message); res.status(502).json({ ok: false, error: e.message }); }
 }
 
 async function ultimoHandler(req, res) {
@@ -329,7 +382,7 @@ async function facturarHandler(req, res) {
 }
 
 module.exports = {
-  statusHandler, ultimoHandler, facturarHandler,
+  statusHandler, ultimoHandler, facturarHandler, padronHandler,
   // exportados para testing / reuso:
-  facturar, feDummy, ultimoAutorizado, wsaaLogin, CBTE_TIPO, IVA_ID,
+  facturar, feDummy, ultimoAutorizado, consultarPadron, wsaaLogin, CBTE_TIPO, IVA_ID,
 };

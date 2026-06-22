@@ -7221,6 +7221,36 @@ const FinanzasModule = {
         }
     },
 
+    // Al salir del CUIT: si no es cliente local y son 11 dígitos, consulta el padrón de AFIP.
+    async _cuitBlurLookup() {
+        this._updateCliStatus();
+        const cuitEl = document.getElementById('finWizCuit');
+        const digits = (cuitEl?.value || '').replace(/\D/g, '');
+        if (digits.length !== 11) return;
+        if (this._clientesCuit[digits]) return;   // ya está en clientes → ya autocompletó
+        const statusEl = document.getElementById('finWizCliStatus');
+        const nombreEl = document.getElementById('finWizNombre');
+        const condSel = document.getElementById('finWizCondIva');
+        if (statusEl) statusEl.innerHTML = '<span style="color:#888;">🔎 Buscando en AFIP…</span>';
+        try {
+            const r = await fetch(`${this._VPS_URL}/api/arca/padron?cuit=${digits}`);
+            const j = await r.json().catch(() => ({}));
+            if (j && j.ok && j.nombre) {
+                if (nombreEl) nombreEl.value = j.nombre;
+                if (condSel && j.cond_iva_id) condSel.value = String(j.cond_iva_id);
+                this._factWizardData._padronDomicilio = j.domicilio || null;
+                if (statusEl) {
+                    statusEl.innerHTML = `<span style="color:#00CC88;">✓ AFIP: ${escHtml(j.nombre)}${j.domicilio ? ` · ${escHtml(j.domicilio)}` : ''}</span> <button type="button" class="fin-wizard-btn" id="finWizAddCli" style="padding:4px 9px;font-size:0.72rem;margin-left:6px;">➕ Agregar como cliente</button>`;
+                    document.getElementById('finWizAddCli')?.addEventListener('click', () => this._agregarReceptorComoCliente());
+                }
+            } else {
+                this._updateCliStatus();   // no encontrado → comportamiento manual normal
+            }
+        } catch (e) {
+            this._updateCliStatus();       // sin conexión a AFIP → manual
+        }
+    },
+
     // Crea el receptor actual como cliente (box de confirmación) y sigue en el facturador.
     async _agregarReceptorComoCliente() {
         this._readStep1();
@@ -7442,10 +7472,10 @@ const FinanzasModule = {
         });
 
         if (this._factWizardStep === 1) {
-            // CUIT → autocomplete (busca en clientes) + status
+            // CUIT → autocomplete (clientes locales en vivo; AFIP padrón al salir del campo)
             const cuitEl = document.getElementById('finWizCuit');
             cuitEl?.addEventListener('input', () => this._updateCliStatus());
-            cuitEl?.addEventListener('blur', () => this._updateCliStatus());
+            cuitEl?.addEventListener('blur', () => this._cuitBlurLookup());
             document.getElementById('finWizNombre')?.addEventListener('input', () => this._updateCliStatus());
 
             // Elegir un cliente de la lista → completa CUIT + nombre + condición
