@@ -6600,30 +6600,30 @@ const FinanzasModule = {
             (proys || []).forEach(p => { if (p.cotizacion_id) presupuestoMap[p.id] = cotMap[p.cotizacion_id] || 0; });
         } catch (_) {}
 
-        const rows = [];
-        for (const pid of proyKeys) {
-            let facturado = 0, cobrado = 0, costo = 0;
-            try {
-                const { data } = await supabaseClient.from('comprobantes').select('total').eq('proyecto_id', pid).eq('_deleted', false).eq('estado', 'emitida');
-                facturado = (data || []).reduce((s, r) => s + (Number(r.total) || 0), 0);
-            } catch (_) {}
-            try {
-                let q = supabaseClient.from('ingresos').select('monto').eq('proyecto_id', pid).eq('_deleted', false).eq('estado', 'confirmado');
-                if (canal) q = q.eq('canal', canal);
-                const { data } = await q;
-                cobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-            } catch (_) {}
-            try {
-                let q = supabaseClient.from('egresos').select('monto').eq('proyecto_id', pid).eq('_deleted', false).eq('estado', 'pagado');
-                if (canal) q = q.eq('canal', canal);
-                const { data } = await q;
-                costo = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-            } catch (_) {}
+        // Agregado en 3 queries (no N+1): facturado, cobrado y costo por proyecto.
+        const facMap = {}, cobMap = {}, costoMap = {};
+        try {
+            const { data } = await supabaseClient.from('comprobantes').select('proyecto_id, total').eq('_deleted', false).eq('estado', 'emitida').not('proyecto_id', 'is', null);
+            (data || []).forEach(r => { facMap[r.proyecto_id] = (facMap[r.proyecto_id] || 0) + (Number(r.total) || 0); });
+        } catch (_) {}
+        try {
+            let q = supabaseClient.from('ingresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('proyecto_id', 'is', null);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            (data || []).forEach(r => { cobMap[r.proyecto_id] = (cobMap[r.proyecto_id] || 0) + (Number(r.monto) || 0); });
+        } catch (_) {}
+        try {
+            let q = supabaseClient.from('egresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            (data || []).forEach(r => { costoMap[r.proyecto_id] = (costoMap[r.proyecto_id] || 0) + (Number(r.monto) || 0); });
+        } catch (_) {}
 
+        const rows = proyKeys.map(pid => {
+            const facturado = facMap[pid] || 0, cobrado = cobMap[pid] || 0, costo = costoMap[pid] || 0;
             const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
-            const presupuesto = presupuestoMap[pid] || 0;
-            rows.push({ nombre: this._proyectosMap[pid], presupuesto, facturado, cobrado, costo, rent });
-        }
+            return { nombre: this._proyectosMap[pid], presupuesto: presupuestoMap[pid] || 0, facturado, cobrado, costo, rent };
+        });
 
         rows.sort((a, b) => b.cobrado - a.cobrado);
         this._lastReportData = rows.map(r => ({ proyecto: r.nombre, presupuesto: r.presupuesto, facturado: r.facturado, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent + '%' }));
@@ -6671,18 +6671,20 @@ const FinanzasModule = {
             return;
         }
 
+        // Agregado en 1 query (no N+1): cobrado por cliente.
+        const cobMap = {};
+        try {
+            let q = supabaseClient.from('ingresos').select('cliente_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('cliente_id', 'is', null);
+            if (canal) q = q.eq('canal', canal);
+            const { data } = await q;
+            (data || []).forEach(r => { cobMap[r.cliente_id] = (cobMap[r.cliente_id] || 0) + (Number(r.monto) || 0); });
+        } catch (_) {}
+
         const rows = [];
         for (const cid of cliKeys) {
-            let cobrado = 0, costo = 0;
-            try {
-                let q = supabaseClient.from('ingresos').select('monto').eq('cliente_id', cid).eq('_deleted', false).eq('estado', 'confirmado');
-                if (canal) q = q.eq('canal', canal);
-                const { data } = await q;
-                cobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
-            } catch (_) {}
-
-            if (cobrado === 0) continue; // Skip clients with no revenue
-
+            const cobrado = cobMap[cid] || 0;
+            if (cobrado === 0) continue; // sin ingresos en el período → no se lista
+            const costo = 0;
             const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
             rows.push({ nombre: this._clientesMap[cid], cobrado, costo, rent });
         }
