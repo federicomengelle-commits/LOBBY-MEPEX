@@ -28,10 +28,11 @@
 
 ## B) IDEAS / MEJORAS QUE PIDIÓ FEDE (para encarar)
 
-### 1. Facturación recurrente / carga masiva (alto valor — lo más pedido)
+### 1. Facturación recurrente / carga masiva ✅ CONSTRUIDA (2026-06-21, `finanzas.js?v=41`, commit `090214f`)
 > "Tendríamos que tener una plantilla para cargar facturas de inicio de mes, varias, frecuentes. Hacemos muchos **monotributos a principio de mes**."
-- Opciones a evaluar: **CSV import** · **plantilla de facturas frecuentes** (clientes+conceptos guardados) · **"re-emitir las del mes pasado"** (revisor en vivo del último período, tildás y re-emitís) · **botón de facturación recurrente** dentro de Facturación.
-- Idea concreta: lista de "facturas recurrentes" (cliente, tipo, concepto, monto) → 1 click emite todas para el período actual vía el `/api/arca/facturar` existente (en lote, respetando el correlativo — el backend ya serializa emisiones).
+- **Implementado: Opción A — re-emitir del mes anterior** (sin DDL). Subtab **"Recurrentes"** en Facturación: selector mes origen→destino, tabla revisor (cliente·tipo·concepto·**total editable**), checks **opt-in** (cada emisión = CAE real), "Emitir N" → confirm con total → loop **secuencial** sobre `/api/arca/facturar` (serializa el correlativo), no aborta si una falla (fila ✗ Error + reintento), toast resumen. Fuente+destino = `comprobantes`; filtra facturas A/B/C oficiales del mes origen.
+- **Verificado en preview** (mock + fetch→404 local, 0 emisiones reales). **⏳ falta: pull + 1er lote real de Fede.**
+- **v2 futura (Opción B, si Fede quiere):** "guardar lote como plantilla recurrente" (tabla nueva `comprobantes_recurrentes`) para no depender de que el mes anterior tenga exactamente lo que se repite. **Opción C (CSV)** descartada por ahora (hay que armar el archivo cada mes).
 
 ### 2. Rediseño de la solapa Facturación (repaso de marca)
 > "La solapa con Emitidos/Emitir/Recibidos es medio choto. Funciona, pero me gustaría rediseñarlo, que tenga más onda. Va para el **repaso de marca final** del lobby completo."
