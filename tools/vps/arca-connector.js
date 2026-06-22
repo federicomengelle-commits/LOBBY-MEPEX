@@ -218,14 +218,33 @@ async function facturar(p) {
   const esA = cbteTipo === 1 || cbteTipo === 2 || cbteTipo === 3;
   const condIva = Number(p.cond_iva_receptor) || (esA ? 1 : 5);
 
-  // Bloque IVA: A/B discriminan; C no lleva IVA.
+  // Bloque IVA: A/B discriminan; C no lleva IVA. Soporta IVA MIXTO (varias alícuotas).
   let ivaBlock = '';
   let impIVA = '0.00';
-  if (!esC && iva > 0) {
-    const alic = Number(p.iva_alicuota) || 21;
-    const ivaId = IVA_ID[alic] || 5;
-    impIVA = num2(iva);
-    ivaBlock = `<ar:Iva><ar:AlicIva><ar:Id>${ivaId}</ar:Id><ar:BaseImp>${num2(neto)}</ar:BaseImp><ar:Importe>${impIVA}</ar:Importe></ar:AlicIva></ar:Iva>`;
+  let impNeto = esC ? total : neto;
+  if (!esC) {
+    // Nuevo formato: p.iva_alicuotas = [{ id|alic, base, importe }, …] → N AlicIva (21/10,5/…).
+    const alics = Array.isArray(p.iva_alicuotas)
+      ? p.iva_alicuotas.filter(a => Number(a.base) > 0 || Number(a.importe) > 0)
+      : null;
+    if (alics && alics.length) {
+      let sumBase = 0, sumImp = 0;
+      const blocks = alics.map(a => {
+        const id = Number(a.id) || IVA_ID[Number(a.alic)] || 5;
+        const base = Number(a.base) || 0;
+        const importe = Number(a.importe) || 0;
+        sumBase += base; sumImp += importe;
+        return `<ar:AlicIva><ar:Id>${id}</ar:Id><ar:BaseImp>${num2(base)}</ar:BaseImp><ar:Importe>${num2(importe)}</ar:Importe></ar:AlicIva>`;
+      });
+      impNeto = sumBase; impIVA = num2(sumImp);
+      ivaBlock = `<ar:Iva>${blocks.join('')}</ar:Iva>`;
+    } else if (iva > 0) {
+      // Legacy: una sola alícuota (emisión simple / lote de recurrentes).
+      const alic = Number(p.iva_alicuota) || 21;
+      const ivaId = IVA_ID[alic] || 5;
+      impIVA = num2(iva);
+      ivaBlock = `<ar:Iva><ar:AlicIva><ar:Id>${ivaId}</ar:Id><ar:BaseImp>${num2(neto)}</ar:BaseImp><ar:Importe>${impIVA}</ar:Importe></ar:AlicIva></ar:Iva>`;
+    }
   }
 
   // Concepto 2/3 (servicios) → fechas de servicio + vto de pago obligatorias.
@@ -259,7 +278,7 @@ async function facturar(p) {
     `<ar:CbteFch>${fecha}</ar:CbteFch>` +
     `<ar:ImpTotal>${num2(total)}</ar:ImpTotal>` +
     `<ar:ImpTotConc>0.00</ar:ImpTotConc>` +
-    `<ar:ImpNeto>${num2(esC ? total : neto)}</ar:ImpNeto>` +
+    `<ar:ImpNeto>${num2(impNeto)}</ar:ImpNeto>` +
     `<ar:ImpOpEx>0.00</ar:ImpOpEx>` +
     `<ar:ImpTrib>0.00</ar:ImpTrib>` +
     `<ar:ImpIVA>${impIVA}</ar:ImpIVA>` +

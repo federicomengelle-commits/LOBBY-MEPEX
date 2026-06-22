@@ -7342,69 +7342,119 @@ const FinanzasModule = {
         this._rerenderWizard();   // reconstruye el paso 1 con el cliente ya seleccionado
     },
 
+    // ── Ítems de la factura (grilla con IVA por ítem 21/10,5 = IVA mixto) ──
+    _ivaIdAfip(alic) { return ({ 21: 5, 10.5: 4, 27: 6, 0: 3, 5: 8, 2.5: 9 })[alic] || 5; },
+
+    // Calcula neto/iva/total + el desglose por alícuota (para AFIP) desde las líneas.
+    _calcItems(items, tipo) {
+        const esA = tipo.endsWith('_a');
+        const esC = tipo === 'factura_c';
+        const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+        const byAlic = {};
+        let netoT = 0, ivaT = 0;
+        (items || []).forEach(it => {
+            const imp = (Number(it.cant) || 0) * (Number(it.precio) || 0); // A/C: neto · B: total c/IVA
+            const alic = esC ? 0 : (Number(it.alic) || 21);
+            let neto, iva;
+            if (esC) { neto = imp; iva = 0; }
+            else if (esA) { neto = imp; iva = imp * alic / 100; }
+            else { neto = imp / (1 + alic / 100); iva = imp - neto; }
+            neto = r2(neto); iva = r2(iva);
+            netoT += neto; ivaT += iva;
+            if (!esC && (neto || iva)) { byAlic[alic] = byAlic[alic] || { base: 0, importe: 0 }; byAlic[alic].base += neto; byAlic[alic].importe += iva; }
+        });
+        netoT = r2(netoT); ivaT = r2(ivaT);
+        const iva_alicuotas = Object.entries(byAlic).map(([a, v]) => ({ alic: Number(a), id: this._ivaIdAfip(Number(a)), base: r2(v.base), importe: r2(v.importe) }));
+        return { neto: netoT, iva: ivaT, total: r2(netoT + ivaT), iva_alicuotas };
+    },
+
+    _FRASES_DEFAULT: ['Provisión de infraestructura para Expo ', 'Alquiler de equipamiento para stand', 'Montaje y desarme de stand', 'Servicio integral de stand', 'Producción y armado'],
+    _getFrases() { try { const s = JSON.parse(localStorage.getItem('mepex_frases_factura')); if (Array.isArray(s) && s.length) return s; } catch (_) {} return this._FRASES_DEFAULT.slice(); },
+    _setFrases(arr) { try { localStorage.setItem('mepex_frases_factura', JSON.stringify(arr)); } catch (_) {} },
+
+    _buildFrasesBar() {
+        const chips = this._getFrases().map(f => `<span class="fin-frase-chip" data-frase="${escAttr(f)}">${escHtml(f.trim())}</span>`).join('');
+        return `<div class="fin-frases-bar">${chips}<span class="fin-frase-chip fin-frase-edit" id="finFraseEdit">+ editar frases</span></div>`;
+    },
+
+    _buildItemRow(it, i, tipo) {
+        const esC = tipo === 'factura_c';
+        const sub = (Number(it.cant) || 0) * (Number(it.precio) || 0);
+        const alicCell = esC ? '' : `<td style="text-align:center;"><select class="fin-it-alic" data-i="${i}"><option value="21" ${Number(it.alic) === 21 ? 'selected' : ''}>21%</option><option value="10.5" ${Number(it.alic) === 10.5 ? 'selected' : ''}>10,5%</option></select></td>`;
+        return `<tr>
+            <td><input type="text" class="fin-it-desc" data-i="${i}" value="${escAttr(it.desc || '')}" placeholder="Descripción del ítem"></td>
+            <td><input type="number" class="fin-it-cant" data-i="${i}" value="${it.cant ?? 1}" min="0" step="1"></td>
+            <td><input type="number" class="fin-it-precio" data-i="${i}" value="${it.precio ?? ''}" min="0" step="0.01" placeholder="0.00"></td>
+            ${alicCell}
+            <td style="text-align:right;font-family:var(--font-mono,monospace);color:#ccc;" class="fin-it-sub">${this._formatMoney(sub)}</td>
+            <td style="text-align:center;">${i > 0 ? `<button type="button" class="fin-it-del" data-i="${i}" title="Quitar ítem">×</button>` : ''}</td>
+        </tr>`;
+    },
+
+    _renderItemsArea(items, tipo) {
+        const esC = tipo === 'factura_c';
+        const precioLbl = esC ? 'Precio' : (tipo.endsWith('_a') ? 'P. neto' : 'P. c/IVA');
+        const calc = this._calcItems(items, tipo);
+        const ivaPieces = calc.iva_alicuotas.map(a => `<span class="fin-it-tot-piece">IVA ${String(a.alic).replace('.', ',')}% <b>${this._formatMoney(a.importe)}</b></span>`).join('');
+        return `
+            <table class="fin-items-table">
+                <thead><tr>
+                    <th>Descripción</th>
+                    <th style="width:52px;">Cant</th>
+                    <th style="width:118px;">${precioLbl}</th>
+                    ${esC ? '' : '<th style="width:78px;text-align:center;">IVA</th>'}
+                    <th style="width:110px;text-align:right;">Subtotal</th>
+                    <th style="width:28px;"></th>
+                </tr></thead>
+                <tbody>${items.map((it, i) => this._buildItemRow(it, i, tipo)).join('')}</tbody>
+            </table>
+            <div class="fin-items-add" id="finItemAdd">+ Agregar ítem</div>
+            <div class="fin-items-totals">
+                <span class="fin-it-tot-piece">Neto <b>${this._formatMoney(calc.neto)}</b></span>
+                ${ivaPieces}
+                <span class="fin-it-tot-piece fin-it-tot-total">Total <b style="color:#00CC88;">${this._formatMoney(calc.total)}</b></span>
+            </div>`;
+    },
+
+    _ensureWizardItemsStyles() {
+        if (document.getElementById('fin-wiz-items-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'fin-wiz-items-styles';
+        s.textContent = `
+            .fin-frases-bar { display:flex; flex-wrap:wrap; gap:7px; margin:2px 0 12px; }
+            .fin-frase-chip { background:rgba(0,169,193,.1); border:1px solid #1d4f59; color:#16b9d4; border-radius:20px; padding:4px 11px; font-size:11.5px; cursor:pointer; transition:background .15s; }
+            .fin-frase-chip:hover { background:rgba(0,169,193,.2); }
+            .fin-frase-edit { background:#141414; border-color:#2a2a2a; color:#888; }
+            .fin-items-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+            .fin-items-table thead th { text-align:left; font-size:9.5px; text-transform:uppercase; letter-spacing:.5px; color:#888; font-weight:600; padding:4px 6px; border-bottom:1px solid #2a2a2a; }
+            .fin-items-table tbody td { padding:5px 6px; vertical-align:middle; }
+            .fin-items-table input, .fin-items-table select { width:100%; background:rgba(255,255,255,.04); border:1px solid #2a2a2a; border-radius:4px; color:#e8e8e8; font-size:12.5px; padding:6px 8px; height:34px; box-sizing:border-box; }
+            .fin-items-table .fin-it-cant input, .fin-items-table td input.fin-it-cant, .fin-items-table input.fin-it-cant, .fin-items-table input.fin-it-precio { text-align:right; font-family:var(--font-mono,monospace); }
+            .fin-items-table input:focus, .fin-items-table select:focus { outline:none; border-color:#00A9C1; }
+            .fin-it-del { background:transparent; border:none; color:#ff4444; font-size:18px; line-height:1; cursor:pointer; padding:0 4px; }
+            .fin-items-add { color:#16b9d4; font-size:12.5px; cursor:pointer; margin:8px 2px 0; display:inline-block; }
+            .fin-items-add:hover { text-decoration:underline; }
+            .fin-items-totals { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:18px; margin-top:12px; padding-top:10px; border-top:1px solid #2a2a2a; font-family:var(--font-mono,monospace); font-size:12.5px; }
+            .fin-it-tot-piece { color:#888; } .fin-it-tot-piece b { color:#e8e8e8; font-weight:700; }
+            .fin-it-tot-total b { font-size:14px; }
+        `;
+        document.head.appendChild(s);
+    },
+
     _buildWizardStep2(d) {
         const tipo = d.tipo || 'factura_a';
-        const isA = tipo.endsWith('_a');
-        const isC = tipo === 'factura_c';
         const today = new Date().toISOString().slice(0, 10);
-        const alic = d.iva_alicuota || 21;
-
-        let montoFields;
-        if (isA) {
-            // A: neto → IVA (alícuota elegible) → total
-            const alicOpts = [21, 10.5, 27].map(a => `<option value="${a}" ${alic === a ? 'selected' : ''}>${a}%</option>`).join('');
-            montoFields = `
-                <div class="fin-form-row">
-                    <div class="fin-form-group">
-                        <label class="fin-form-label">Neto gravado *</label>
-                        <input type="number" class="fin-form-input" id="finWizNeto" value="${d.neto || ''}" step="0.01" placeholder="0.00">
-                    </div>
-                    <div class="fin-form-group">
-                        <label class="fin-form-label">Alícuota IVA *</label>
-                        <select class="fin-form-select" id="finWizAlic">${alicOpts}</select>
-                    </div>
-                </div>
-                <div class="fin-iva-calc" id="finWizIvaCalc">
-                    <div class="fin-iva-calc-item">
-                        <div class="fin-iva-calc-label">Neto</div>
-                        <div class="fin-iva-calc-value" id="finWizCalcNeto">$0</div>
-                    </div>
-                    <div class="fin-iva-calc-sep">+</div>
-                    <div class="fin-iva-calc-item">
-                        <div class="fin-iva-calc-label" id="finWizCalcIvaLbl">IVA ${alic}%</div>
-                        <div class="fin-iva-calc-value" id="finWizCalcIva">$0</div>
-                    </div>
-                    <div class="fin-iva-calc-sep">=</div>
-                    <div class="fin-iva-calc-item">
-                        <div class="fin-iva-calc-label">Total</div>
-                        <div class="fin-iva-calc-value" id="finWizCalcTotal" style="color:#00CC88;">$0</div>
-                    </div>
-                </div>
-            `;
-        } else if (isC) {
-            // FC C: total sin IVA
-            montoFields = `
-                <div class="fin-form-group">
-                    <label class="fin-form-label">Total (sin IVA) *</label>
-                    <input type="number" class="fin-form-input" id="finWizTotal" value="${d.total || ''}" step="0.01" placeholder="0.00">
-                </div>
-                <div style="color:#888;font-size:0.78rem;margin-top:4px;">Factura C — sin discriminación de IVA</div>
-            `;
-        } else {
-            // B y notas B: total con IVA incluido (se desglosa al 21% para AFIP)
-            montoFields = `
-                <div class="fin-form-group">
-                    <label class="fin-form-label">Total (IVA incluido) *</label>
-                    <input type="number" class="fin-form-input" id="finWizTotal" value="${d.total || ''}" step="0.01" placeholder="0.00">
-                </div>
-                <div style="color:#888;font-size:0.78rem;margin-top:4px;">El IVA va incluido en el total (no se discrimina en el comprobante B).</div>
-            `;
+        this._ensureWizardItemsStyles();
+        if (!Array.isArray(d.items) || !d.items.length) {
+            d.items = [{ desc: this._servicioLabel[d.servicio] || d.servicio || '', cant: 1, precio: '', alic: 21 }];
         }
-
         return `
             <div class="fin-form-grid">
-                ${montoFields}
-                <div class="fin-form-row" style="margin-top:12px;">
+                <div class="fin-form-section-label" style="font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:#666;margin:0 0 -2px;">Detalle del comprobante</div>
+                ${this._buildFrasesBar()}
+                <div id="finWizItemsArea">${this._renderItemsArea(d.items, tipo)}</div>
+                <div class="fin-form-section-label" style="font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:#666;margin:12px 0 -2px;">Período</div>
+                <div class="fin-form-row">
                     <div class="fin-form-group">
                         <label class="fin-form-label">Período desde</label>
                         <input type="date" class="fin-form-input" id="finWizPeriodoDesde" value="${d.periodo_desde || today}">
@@ -7460,6 +7510,23 @@ const FinanzasModule = {
         const nroTxt = comp && comp.numero ? comp.numero : (proximo ? `<span id="finWizNro" style="color:#999;">consultando ARCA…</span>` : `${pv}-········`);
         const baseImp = isA ? (d.neto || 0) : (d.total || 0);
         const itemDet = `${escHtml(this._servicioLabel[d.servicio] || d.servicio || 'Servicios')}${d.descripcion ? ` — ${escHtml(d.descripcion)}` : ''}`;
+        const items = (d.items && d.items.length) ? d.items : (Array.isArray(r.items) && r.items.length ? r.items : null);
+
+        // Filas: una por ítem si la factura los tiene; si no, el ítem único (comprobantes viejos).
+        let bodyRows;
+        if (items) {
+            bodyRows = items.map(it => {
+                const cant = Number(it.cant) || 0, precio = Number(it.precio) || 0, sub = cant * precio;
+                const cantTxt = (cant % 1 === 0) ? `${cant},00` : String(cant).replace('.', ',');
+                return isA
+                    ? `<tr style="border-bottom:1px solid #eee;"><td style="padding:9px 10px;">${escHtml(it.desc || '')}</td><td style="padding:9px 8px;text-align:right;">${cantTxt}</td><td style="padding:9px 8px;text-align:right;white-space:nowrap;">${m(precio)}</td><td style="padding:9px 8px;text-align:right;">${String(it.alic || 21).replace('.', ',')}%</td><td style="padding:9px 10px;text-align:right;white-space:nowrap;">${m(sub)}</td></tr>`
+                    : `<tr style="border-bottom:1px solid #eee;"><td style="padding:9px 10px;">${escHtml(it.desc || '')}</td><td style="padding:9px 8px;text-align:right;">${cantTxt}</td><td style="padding:9px 8px;text-align:right;white-space:nowrap;">${m(precio)}</td><td style="padding:9px 10px;text-align:right;white-space:nowrap;">${m(sub)}</td></tr>`;
+            }).join('');
+        } else {
+            bodyRows = isA
+                ? `<tr style="border-bottom:1px solid #eee;"><td style="padding:10px;">${itemDet}</td><td style="padding:10px 8px;text-align:right;">1,00</td><td style="padding:10px 8px;text-align:right;white-space:nowrap;">${m(baseImp)}</td><td style="padding:10px 8px;text-align:right;">${d.iva_alicuota || 21}%</td><td style="padding:10px;text-align:right;white-space:nowrap;">${m(baseImp)}</td></tr>`
+                : `<tr style="border-bottom:1px solid #eee;"><td style="padding:10px;">${itemDet}</td><td style="padding:10px 8px;text-align:right;">1,00</td><td style="padding:10px 8px;text-align:right;white-space:nowrap;">${m(baseImp)}</td><td style="padding:10px;text-align:right;white-space:nowrap;">${m(baseImp)}</td></tr>`;
+        }
 
         const itemsTable = isA ? `
             <table style="width:100%;border-collapse:collapse;font-size:0.78rem;margin-top:16px;">
@@ -7470,13 +7537,7 @@ const FinanzasModule = {
                 <th style="text-align:right;padding:4px 8px;width:48px;font-weight:600;">Alíc. IVA</th>
                 <th style="text-align:right;padding:4px 10px;width:96px;font-weight:600;">Subtotal</th>
               </tr></thead>
-              <tbody><tr style="border-bottom:1px solid #eee;">
-                <td style="padding:10px;">${itemDet}</td>
-                <td style="padding:10px 8px;text-align:right;">1,00</td>
-                <td style="padding:10px 8px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
-                <td style="padding:10px 8px;text-align:right;">${d.iva_alicuota || 21}%</td>
-                <td style="padding:10px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
-              </tr></tbody>
+              <tbody>${bodyRows}</tbody>
             </table>` : `
             <table style="width:100%;border-collapse:collapse;font-size:0.78rem;margin-top:16px;">
               <thead><tr style="background:#00A9C1;color:#fff;font-size:0.72rem;">
@@ -7485,20 +7546,22 @@ const FinanzasModule = {
                 <th style="text-align:right;padding:4px 8px;width:110px;font-weight:600;">P. Unitario</th>
                 <th style="text-align:right;padding:4px 10px;width:110px;font-weight:600;">Subtotal</th>
               </tr></thead>
-              <tbody><tr style="border-bottom:1px solid #eee;">
-                <td style="padding:10px;">${itemDet}</td>
-                <td style="padding:10px 8px;text-align:right;">1,00</td>
-                <td style="padding:10px 8px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
-                <td style="padding:10px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
-              </tr></tbody>
+              <tbody>${bodyRows}</tbody>
             </table>`;
 
+        // Totales: desglose de IVA por alícuota si hay varias (IVA mixto).
+        const calcP = items ? this._calcItems(items, tipo) : null;
+        const netoP = calcP ? calcP.neto : (d.neto || 0);
+        const ivaP = calcP ? calcP.iva : (d.iva || 0);
+        const totalP = calcP ? calcP.total : (d.total || 0);
+        const ivaAlicsP = (calcP && calcP.iva_alicuotas.length) ? calcP.iva_alicuotas : [{ alic: d.iva_alicuota || 21, importe: ivaP }];
+        const ivaLines = ivaAlicsP.map(a => `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.82rem;"><span style="color:#666;">IVA ${String(a.alic).replace('.', ',')}%</span><span style="color:#0f6e80;font-weight:600;">${m(a.importe)}</span></div>`).join('');
         const totals = isA ? `
-            <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.82rem;"><span style="color:#666;">Importe Neto Gravado</span><span>${m(d.neto)}</span></div>
-            <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.82rem;"><span style="color:#666;">IVA ${d.iva_alicuota || 21}%</span><span style="color:#0f6e80;font-weight:600;">${m(d.iva)}</span></div>
-            <div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:4px;border-top:2px solid #00A9C1;font-weight:800;font-size:1.05rem;"><span>IMPORTE TOTAL</span><span>${m(d.total)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.82rem;"><span style="color:#666;">Importe Neto Gravado</span><span>${m(netoP)}</span></div>
+            ${ivaLines}
+            <div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:4px;border-top:2px solid #00A9C1;font-weight:800;font-size:1.05rem;"><span>IMPORTE TOTAL</span><span>${m(totalP)}</span></div>
         ` : `
-            <div style="display:flex;justify-content:space-between;padding:9px 0 0;border-top:2px solid #00A9C1;font-weight:800;font-size:1.05rem;"><span>IMPORTE TOTAL</span><span>${m(d.total)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:9px 0 0;border-top:2px solid #00A9C1;font-weight:800;font-size:1.05rem;"><span>IMPORTE TOTAL</span><span>${m(totalP)}</span></div>
             <div style="text-align:right;color:#999;font-size:0.7rem;margin-top:3px;">IVA incluido</div>
         `;
 
@@ -7630,66 +7693,26 @@ const FinanzasModule = {
         }
 
         if (this._factWizardStep === 2) {
-            const tipo = this._factWizardData.tipo || 'factura_a';
-            const isA = tipo.endsWith('_a');
-
-            if (isA) {
-                const netoInput = document.getElementById('finWizNeto');
-                const alicSel = document.getElementById('finWizAlic');
-                const updateCalc = () => {
-                    const neto = parseFloat(netoInput?.value) || 0;
-                    const alic = parseFloat(alicSel?.value) || 21;
-                    const iva = Math.round(neto * (alic / 100) * 100) / 100;
-                    const total = Math.round((neto + iva) * 100) / 100;
-                    const el = (id) => document.getElementById(id);
-                    if (el('finWizCalcNeto')) el('finWizCalcNeto').textContent = this._formatMoney(neto);
-                    if (el('finWizCalcIvaLbl')) el('finWizCalcIvaLbl').textContent = `IVA ${alic}%`;
-                    if (el('finWizCalcIva')) el('finWizCalcIva').textContent = this._formatMoney(iva);
-                    if (el('finWizCalcTotal')) el('finWizCalcTotal').textContent = this._formatMoney(total);
-                };
-                netoInput?.addEventListener('input', updateCalc);
-                alicSel?.addEventListener('change', updateCalc);
-                updateCalc();
-            }
+            this._attachStep2ItemEvents();
 
             document.getElementById('finWizBack2')?.addEventListener('click', () => {
+                this._readStep2();
                 this._factWizardStep = 1;
                 this._rerenderWizard();
             });
 
             document.getElementById('finWizNext2')?.addEventListener('click', () => {
-                const tipo = this._factWizardData.tipo;
-                const isA = tipo.endsWith('_a');
-                const isC = tipo === 'factura_c';
-
-                let neto, iva, total, alic;
-                if (isA) {
-                    neto = parseFloat(document.getElementById('finWizNeto')?.value) || 0;
-                    alic = parseFloat(document.getElementById('finWizAlic')?.value) || 21;
-                    iva = Math.round(neto * (alic / 100) * 100) / 100;
-                    total = Math.round((neto + iva) * 100) / 100;
-                } else if (isC) {
-                    total = parseFloat(document.getElementById('finWizTotal')?.value) || 0;
-                    neto = total; iva = 0; alic = 0;
-                } else {
-                    total = parseFloat(document.getElementById('finWizTotal')?.value) || 0;
-                    neto = Math.round((total / 1.21) * 100) / 100;
-                    iva = Math.round((total - neto) * 100) / 100;
-                    alic = 21;
-                }
-
-                if (!total || total <= 0) {
-                    Toast.warning('Ingresá un monto válido');
-                    return;
-                }
-
-                const periodo_desde = document.getElementById('finWizPeriodoDesde')?.value || null;
-                const periodo_hasta = document.getElementById('finWizPeriodoHasta')?.value || null;
-                const vto_pago = document.getElementById('finWizVtoPago')?.value || null;
-
-                Object.assign(this._factWizardData, {
-                    neto, iva, total, iva_alicuota: alic,
-                    periodo_desde, periodo_hasta, vto_pago,
+                const d = this._factWizardData;
+                this._readStep2();
+                const calc = this._calcItems(d.items || [], d.tipo);
+                if (!calc.total || calc.total <= 0) { Toast.warning('Cargá al menos un ítem con cantidad y precio'); return; }
+                Object.assign(d, {
+                    neto: calc.neto, iva: calc.iva, total: calc.total,
+                    iva_alicuota: (calc.iva_alicuotas[0] || {}).alic || 21,
+                    iva_alicuotas: calc.iva_alicuotas,
+                    periodo_desde: document.getElementById('finWizPeriodoDesde')?.value || null,
+                    periodo_hasta: document.getElementById('finWizPeriodoHasta')?.value || null,
+                    vto_pago: document.getElementById('finWizVtoPago')?.value || null,
                 });
                 this._factWizardStep = 3;
                 this._rerenderWizard();
@@ -7707,6 +7730,95 @@ const FinanzasModule = {
 
             document.getElementById('finWizEmit')?.addEventListener('click', () => this._emitirComprobante());
         }
+    },
+
+    // Lee las líneas de la grilla del paso 2 al estado del wizard.
+    _readStep2() {
+        const rows = document.querySelectorAll('#finWizItemsArea tbody tr');
+        if (!rows.length) return;
+        const items = [];
+        rows.forEach(tr => {
+            items.push({
+                desc: tr.querySelector('.fin-it-desc')?.value || '',
+                cant: parseFloat(tr.querySelector('.fin-it-cant')?.value) || 0,
+                precio: parseFloat(tr.querySelector('.fin-it-precio')?.value) || 0,
+                alic: parseFloat(tr.querySelector('.fin-it-alic')?.value) || 21,
+            });
+        });
+        this._factWizardData.items = items;
+    },
+
+    // Actualiza subtotales por fila + el bloque de totales sin re-renderizar (no pierde foco).
+    _refreshItemsCalc() {
+        const d = this._factWizardData;
+        document.querySelectorAll('#finWizItemsArea tbody tr').forEach((tr, i) => {
+            const it = (d.items || [])[i]; if (!it) return;
+            const sub = (Number(it.cant) || 0) * (Number(it.precio) || 0);
+            const subEl = tr.querySelector('.fin-it-sub'); if (subEl) subEl.textContent = this._formatMoney(sub);
+        });
+        const box = document.querySelector('#finWizItemsArea .fin-items-totals');
+        if (box) {
+            const calc = this._calcItems(d.items || [], d.tipo);
+            const ivaPieces = calc.iva_alicuotas.map(a => `<span class="fin-it-tot-piece">IVA ${String(a.alic).replace('.', ',')}% <b>${this._formatMoney(a.importe)}</b></span>`).join('');
+            box.innerHTML = `<span class="fin-it-tot-piece">Neto <b>${this._formatMoney(calc.neto)}</b></span>${ivaPieces}<span class="fin-it-tot-piece fin-it-tot-total">Total <b style="color:#00CC88;">${this._formatMoney(calc.total)}</b></span>`;
+        }
+    },
+
+    _rerenderItemsArea() {
+        const area = document.getElementById('finWizItemsArea');
+        if (area) area.innerHTML = this._renderItemsArea(this._factWizardData.items, this._factWizardData.tipo);
+    },
+
+    _attachStep2ItemEvents() {
+        const area = document.getElementById('finWizItemsArea');
+        if (area && !area._step2Bound) {
+            area._step2Bound = true;
+            area.addEventListener('input', (e) => { if (e.target.closest('.fin-items-table')) { this._readStep2(); this._refreshItemsCalc(); } });
+            area.addEventListener('change', (e) => { if (e.target.classList.contains('fin-it-alic')) { this._readStep2(); this._refreshItemsCalc(); } });
+            area.addEventListener('click', (e) => {
+                if (e.target.closest('#finItemAdd')) {
+                    this._readStep2();
+                    (this._factWizardData.items = this._factWizardData.items || []).push({ desc: '', cant: 1, precio: '', alic: 21 });
+                    this._rerenderItemsArea();
+                } else if (e.target.classList.contains('fin-it-del')) {
+                    this._readStep2();
+                    this._factWizardData.items.splice(+e.target.dataset.i, 1);
+                    this._rerenderItemsArea();
+                }
+            });
+        }
+        this._attachFrasesChips();
+    },
+
+    _attachFrasesChips() {
+        document.querySelectorAll('.fin-frase-chip[data-frase]').forEach(chip => {
+            if (chip._bound) return; chip._bound = true;
+            chip.addEventListener('click', () => {
+                const frase = chip.dataset.frase;
+                const descs = [...document.querySelectorAll('#finWizItemsArea .fin-it-desc')];
+                const target = descs.find(x => !x.value.trim()) || descs[descs.length - 1];
+                if (target) { target.value = frase; target.focus(); this._readStep2(); this._refreshItemsCalc(); }
+            });
+        });
+        const editBtn = document.getElementById('finFraseEdit');
+        if (editBtn && !editBtn._bound) { editBtn._bound = true; editBtn.addEventListener('click', () => this._openFrasesModal()); }
+    },
+
+    _openFrasesModal() {
+        const inst = Modal.open({
+            title: 'Frases del detalle',
+            size: 'sm',
+            body: `<p style="color:#888;font-size:0.85rem;margin:0 0 8px;">Una frase por línea. Aparecen como chips para cargar la descripción de un ítem.</p><textarea id="finFrasesTA" style="width:100%;min-height:170px;background:var(--bg,#0f0f0f);border:1px solid var(--border,#2a2a2a);border-radius:6px;color:var(--text-primary,#e8e8e8);padding:10px;font-size:13px;line-height:1.6;box-sizing:border-box;">${escHtml(this._getFrases().join('\n'))}</textarea>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="finFrasesSave">Guardar</button>`,
+        });
+        document.getElementById('finFrasesSave')?.addEventListener('click', () => {
+            const arr = (document.getElementById('finFrasesTA')?.value || '').split('\n').map(s => s.trim()).filter(Boolean);
+            this._setFrases(arr);
+            Modal.close(inst.id);
+            const bar = document.querySelector('.fin-frases-bar');
+            if (bar) { bar.outerHTML = this._buildFrasesBar(); this._attachFrasesChips(); }
+            Toast.success('Frases guardadas');
+        });
     },
 
     _arcaCbteTipo(tipo) {
@@ -7761,6 +7873,7 @@ const FinanzasModule = {
             neto: d.neto,
             iva: d.iva,
             iva_alicuota: d.iva_alicuota || 21,
+            iva_alicuotas: d.iva_alicuotas || null,   // IVA mixto: desglose por alícuota (21/10,5)
             total: d.total,
             fecha: today,
             serv_desde: d.periodo_desde || today,
@@ -7784,6 +7897,7 @@ const FinanzasModule = {
             result.receptor_nombre = d.razon_social || (d.cliente_id ? this._clientesMap[d.cliente_id] : null) || null;
             result.receptor_domicilio = d._padronDomicilio || null;
             result.cond_iva_receptor = payload.cond_iva_receptor;
+            result.items = (d.items && d.items.length) ? d.items : null;   // líneas del comprobante (PDF/visor)
 
             // Guardar el comprobante con CAE (mismo armado que usa la emisión en lote)
             const record = this._buildComprobanteRecord(d, result, uid);
@@ -7937,12 +8051,21 @@ const FinanzasModule = {
         // ── Ítems ──
         const detalle = `${this._servicioLabel[comp.servicio] || comp.servicio || 'Servicios'}${comp.descripcion ? ' — ' + comp.descripcion : ''}`;
         const baseImporte = isA ? (comp.neto || 0) : (comp.total || 0);
+        const pdfItems = (Array.isArray(r.items) && r.items.length) ? r.items : null;
         const head = isA
             ? [['Detalle', 'Cant.', 'P. Unitario', 'Alíc. IVA', 'Subtotal']]
             : [['Detalle', 'Cant.', 'P. Unitario', 'Subtotal']];
-        const body = isA
-            ? [[detalle, '1,00', money(baseImporte), `${comp.iva_alicuota || 21}%`, money(baseImporte)]]
-            : [[detalle, '1,00', money(baseImporte), money(baseImporte)]];
+        const body = pdfItems
+            ? pdfItems.map(it => {
+                const cant = Number(it.cant) || 0, precio = Number(it.precio) || 0, sub = cant * precio;
+                const cantTxt = (cant % 1 === 0) ? `${cant},00` : String(cant).replace('.', ',');
+                return isA
+                    ? [it.desc || '', cantTxt, money(precio), `${String(it.alic || 21).replace('.', ',')}%`, money(sub)]
+                    : [it.desc || '', cantTxt, money(precio), money(sub)];
+              })
+            : (isA
+                ? [[detalle, '1,00', money(baseImporte), `${comp.iva_alicuota || 21}%`, money(baseImporte)]]
+                : [[detalle, '1,00', money(baseImporte), money(baseImporte)]]);
         const colStyles = isA
             ? { 1: { halign: 'right', cellWidth: 16 }, 2: { halign: 'right', cellWidth: 30 }, 3: { halign: 'right', cellWidth: 20 }, 4: { halign: 'right', cellWidth: 32 } }
             : { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 36 }, 3: { halign: 'right', cellWidth: 36 } };
@@ -7966,7 +8089,9 @@ const FinanzasModule = {
         };
         if (isA) {
             totLine('Importe Neto Gravado', comp.neto || 0);
-            totLine(`IVA ${comp.iva_alicuota || 21}%`, comp.iva || 0, { color: [15, 110, 128] });
+            const pdfCalc = pdfItems ? this._calcItems(pdfItems, tipo) : null;
+            const alics = (pdfCalc && pdfCalc.iva_alicuotas.length) ? pdfCalc.iva_alicuotas : [{ alic: comp.iva_alicuota || 21, importe: comp.iva || 0 }];
+            alics.forEach(a => totLine(`IVA ${String(a.alic).replace('.', ',')}%`, a.importe, { color: [15, 110, 128] }));
         }
         doc.setDrawColor(...TURQ); doc.setLineWidth(0.6); doc.line(R - 74, ty - 2, R, ty - 2); ty += 5;
         totLine('IMPORTE TOTAL', comp.total || 0, { bold: true, big: true });
