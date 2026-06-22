@@ -180,6 +180,35 @@ const EventosModule = {
                     border: 1px solid color-mix(in srgb, var(--st-color, #888) 35%, transparent); }
                 .ev-proyectos-actions { display:flex; flex-direction:column; gap:4px; margin-top:10px; }
                 .ev-proyectos-actions .btn { font-size:11px; }
+
+                /* ── Lista de eventos: franja KPI + tabla/cards (rediseño 2026-06-22) ── */
+                .ev-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+                .ev-kpi { background:#111; border:1px solid #222; border-radius:8px; padding:10px 12px;
+                    display:flex; flex-direction:column; gap:3px; }
+                .ev-kpi-l { font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:#888; }
+                .ev-kpi-v { font-family:'Space Mono',monospace; font-size:20px; font-weight:700; color:#E8E8E8; }
+                .ev-kpi-v.ev-kpi-date { font-size:16px; margin-top:3px; }
+                @media (max-width:760px){ .ev-kpis { grid-template-columns:repeat(2,1fr); } }
+
+                /* Celda nombre con predio como subtítulo */
+                .ev-name-col { display:inline-flex; flex-direction:column; gap:2px; min-width:0; }
+                .ev-name-sub { font-size:10.5px; color:#777; font-family:'Outfit',sans-serif; }
+                /* Hint de proximidad bajo el badge de estado */
+                .ev-prox-hint { display:block; font-family:'Space Mono',monospace; font-size:10px; margin-top:4px; }
+
+                /* Card: cronograma armado→evento→desarme + footer */
+                .ev-card-timeline { display:flex; align-items:center; margin:10px 0 12px; }
+                .ev-ct-stop { text-align:center; }
+                .ev-ct-l { font-size:8px; color:#666; text-transform:uppercase; letter-spacing:.04em; }
+                .ev-ct-l.is-ev { color:#00A9C1; }
+                .ev-ct-v { font-family:'Space Mono',monospace; font-size:11px; color:#d4d4d4; margin-top:2px; }
+                .ev-ct-v.is-ev { color:#fff; }
+                .ev-ct-seg { flex:1; height:2px; background:#2a2a2a; margin:0 7px; position:relative; top:5px; }
+                .ev-card-footer { display:flex; justify-content:space-between; align-items:center;
+                    border-top:1px solid #1e1e1e; padding-top:9px; }
+                .ev-card-proy { font-size:11px; color:#888; }
+                .ev-card-proy b { font-family:'Space Mono',monospace; color:#00A9C1; }
+                .ev-card-prox { font-family:'Space Mono',monospace; font-size:10.5px; }
             </style>
             <div class="ev-wrapper">
                 <div class="ev-toolbar">
@@ -257,14 +286,21 @@ const EventosModule = {
         }
 
         if (events && events.length > 0) {
-            this._events = events.map((e, i) => ({
-                ...e,
-                color: e.color || this._palette[i % this._palette.length],
-                estado: this._normalizeStatus(e.status || e.estado),
-                notas: e.notas || '',
-                // Extend with localStorage data
-                ...this._getLocalData(e.id),
-            }));
+            this._events = events.map((e, i) => {
+                // Merge localStorage extensions PRIMERO (trae teardownEndDate) para
+                // que el estado derivado pueda usar la fecha real de fin de desarme.
+                const merged = { ...e, ...this._getLocalData(e.id) };
+                const norm = this._normalizeStatus(e.status || e.estado);
+                return {
+                    ...merged,
+                    color: e.color || this._palette[i % this._palette.length],
+                    // Estado AUTO-derivado de las fechas (hoy vs armado/desarme).
+                    // 'rechazado' es decisión manual → se respeta, no se pisa.
+                    estado: norm === 'rechazado' ? 'rechazado' : this._deriveEstado(merged),
+                    estadoManual: norm,
+                    notas: e.notas || '',
+                };
+            });
         } else {
             // Sin eventos → empty-state real (.ev-empty). Antes caía a 7 eventos
             // ficticios servibles en prod (IDs ev-001…) → cualquier click operaba
@@ -478,26 +514,46 @@ const EventosModule = {
         const container = document.getElementById('evMainContent');
         if (!container) return;
 
-        if (this._viewMode === 'cards') {
-            container.innerHTML = this._renderCardsView();
-        } else {
-            container.innerHTML = this._renderTableView();
-        }
+        const kpis = this._renderEventKPIs();
+        const view = this._viewMode === 'cards' ? this._renderCardsView() : this._renderTableView();
+        container.innerHTML = kpis + view;
 
         this._attachContentEvents();
+    },
+
+    // Franja liviana de datos (sobre tabla y cards).
+    _renderEventKPIs() {
+        const evs = this._events || [];
+        if (!evs.length) return '';
+        const prox = evs.filter(e => e.estado === 'proximo').length;
+        const fin = evs.filter(e => e.estado === 'finalizado').length;
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const futuros = evs
+            .filter(e => e.estado === 'proximo' && e.setupDate)
+            .map(e => new Date(String(e.setupDate).slice(0, 10) + 'T00:00:00'))
+            .filter(d => !isNaN(d) && d >= today)
+            .sort((a, b) => a - b);
+        const proxArmado = futuros.length
+            ? futuros[0].toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+            : '—';
+        return `
+            <div class="ev-kpis">
+                <div class="ev-kpi"><span class="ev-kpi-l">Total</span><span class="ev-kpi-v">${evs.length}</span></div>
+                <div class="ev-kpi"><span class="ev-kpi-l">Próximos</span><span class="ev-kpi-v" style="color:#00BCD4">${prox}</span></div>
+                <div class="ev-kpi"><span class="ev-kpi-l">Finalizados</span><span class="ev-kpi-v" style="color:#888">${fin}</span></div>
+                <div class="ev-kpi"><span class="ev-kpi-l">Próx. armado</span><span class="ev-kpi-v ev-kpi-date" style="color:#F28D15">${proxArmado}</span></div>
+            </div>`;
     },
 
     _renderTableView() {
         const events = this._filteredEvents;
 
         const columns = [
-            { id: 'name', label: 'Nombre del evento', sortable: true },
-            { id: 'venue', label: 'Locación / Predio', sortable: true },
-            { id: 'eventStartDate', label: 'Inicio evento', sortable: true },
-            { id: 'eventEndDate', label: 'Fin evento', sortable: true },
+            { id: 'name', label: 'Evento', sortable: true },
             { id: 'setupDate', label: 'Armado', sortable: true },
+            { id: 'eventStartDate', label: 'Evento', sortable: true },
             { id: 'teardownDate', label: 'Desarme', sortable: true },
-            { id: 'proyectos', label: 'Proyectos', sortable: false },
+            { id: 'proyectos', label: 'Proy.', sortable: false },
             { id: 'estado', label: 'Estado', sortable: true },
         ];
 
@@ -543,23 +599,26 @@ const EventosModule = {
         const statusColor = this._getStatusColor(ev.estado);
         const statusLabel = this._getStatusLabel(ev.estado);
         const proyCount = this._proyectoCounts[ev.id] || 0;
+        const hint = this._proximityHint(ev);
 
         return `
             <tr class="ev-row ev-row--${ev.estado}" data-event-id="${ev.id}" style="--row-color: ${ev.color || statusColor}">
                 <td class="ev-td ev-td-name">
                     <span class="ev-color-dot" style="background: ${ev.color || statusColor}"></span>
-                    <span class="ev-name-text">${ev.name || 'Sin nombre'}</span>
+                    <span class="ev-name-col">
+                        <span class="ev-name-text">${this._esc(ev.name) || 'Sin nombre'}</span>
+                        ${ev.venue ? `<span class="ev-name-sub">${this._esc(ev.venue)}</span>` : ''}
+                    </span>
                 </td>
-                <td class="ev-td">${ev.venue || '—'}</td>
-                <td class="ev-td">${this._fmtDate(ev.eventStartDate)}</td>
-                <td class="ev-td">${this._fmtDate(ev.eventEndDate)}</td>
                 <td class="ev-td">${this._fmtDate(ev.setupDate)}</td>
+                <td class="ev-td">${this._fmtRangeCompact(ev.eventStartDate, ev.eventEndDate)}</td>
                 <td class="ev-td">${this._fmtDate(ev.teardownDate)}</td>
                 <td class="ev-td">
                     ${proyCount > 0 ? `<span class="ev-badge-count">${proyCount}</span>` : '<span class="ev-td-muted">—</span>'}
                 </td>
                 <td class="ev-td">
                     <span class="ev-status-badge" style="--status-color: ${statusColor}">${statusLabel}</span>
+                    ${hint ? `<span class="ev-prox-hint" style="color:${hint.color}">${hint.text}</span>` : ''}
                 </td>
             </tr>
         `;
@@ -582,24 +641,40 @@ const EventosModule = {
                 ${events.map(ev => {
                     const statusColor = this._getStatusColor(ev.estado);
                     const statusLabel = this._getStatusLabel(ev.estado);
+                    const proyCount = this._proyectoCounts[ev.id] || 0;
+                    const hint = this._proximityHint(ev);
 
                     return `
                         <div class="ev-card" data-event-id="${ev.id}" style="--card-color: ${ev.color || statusColor}">
                             <div class="ev-card-color-bar"></div>
                             <div class="ev-card-header">
-                                <h3 class="ev-card-name">${ev.name || 'Sin nombre'}</h3>
+                                <h3 class="ev-card-name">${this._esc(ev.name) || 'Sin nombre'}</h3>
                                 <span class="ev-status-badge" style="--status-color: ${statusColor}">${statusLabel}</span>
                             </div>
-                            <div class="ev-card-venue">${ev.venue || '—'}</div>
-                            <div class="ev-card-dates">
-                                ${ev.eventStartDate ? `<span class="ev-card-date">📅 ${this._fmtDate(ev.eventStartDate)}${ev.eventEndDate ? ` — ${this._fmtDate(ev.eventEndDate)}` : ''}</span>` : ''}
-                                ${ev.setupDate ? `<span class="ev-card-date">🔧 Armado: ${this._fmtDate(ev.setupDate)}</span>` : ''}
+                            <div class="ev-card-venue">${this._esc(ev.venue) || '—'}</div>
+                            ${this._renderCardTimeline(ev)}
+                            <div class="ev-card-footer">
+                                <span class="ev-card-proy">Proyectos <b>${proyCount}</b></span>
+                                ${hint ? `<span class="ev-card-prox" style="color:${hint.color}">${hint.text}</span>` : '<span></span>'}
                             </div>
                         </div>
                     `;
                 }).join('')}
             </div>
             <div class="ev-record-count">${events.length} evento${events.length !== 1 ? 's' : ''}</div>
+        `;
+    },
+
+    // Mini-cronograma armado → evento → desarme (vista cards).
+    _renderCardTimeline(ev) {
+        return `
+            <div class="ev-card-timeline">
+                <div class="ev-ct-stop"><div class="ev-ct-l">Armado</div><div class="ev-ct-v">${this._fmtDate(ev.setupDate)}</div></div>
+                <div class="ev-ct-seg"></div>
+                <div class="ev-ct-stop"><div class="ev-ct-l is-ev">Evento</div><div class="ev-ct-v is-ev">${this._fmtRangeCompact(ev.eventStartDate, ev.eventEndDate)}</div></div>
+                <div class="ev-ct-seg"></div>
+                <div class="ev-ct-stop"><div class="ev-ct-l">Desarme</div><div class="ev-ct-v">${this._fmtDate(ev.teardownDate)}</div></div>
+            </div>
         `;
     },
 
@@ -2918,6 +2993,68 @@ const EventosModule = {
         if (!start && !end) return '—';
         if (start && end) return `${this._fmtDate(start)} — ${this._fmtDate(end)}`;
         return this._fmtDate(start || end);
+    },
+
+    // Rango compacto para celdas de tabla/cards: "16–17 may" (mismo mes),
+    // "30-may – 2-jun" (cruza mes), o fecha sola si no hay rango.
+    _fmtRangeCompact(start, end) {
+        if (!start && !end) return '—';
+        if (!end || start === end) return this._fmtDate(start || end);
+        try {
+            const s = new Date(String(start).slice(0, 10) + 'T00:00:00');
+            const e = new Date(String(end).slice(0, 10) + 'T00:00:00');
+            if (isNaN(s) || isNaN(e)) return this._fmtDate(start);
+            if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+                const mes = e.toLocaleDateString('es-AR', { month: 'short' });
+                return `${s.getDate()}–${e.getDate()} ${mes}`;
+            }
+            return `${this._fmtDate(start)} – ${this._fmtDate(end)}`;
+        } catch { return this._fmtDate(start); }
+    },
+
+    _parseEvDate(d) {
+        if (!d) return null;
+        const x = new Date(String(d).slice(0, 10) + 'T00:00:00');
+        return isNaN(x) ? null : x;
+    },
+
+    // Estado AUTO según fechas: hoy < armado → próximo; entre armado y desarme
+    // → en curso; pasado el desarme → finalizado. Sin fechas → cae al manual.
+    _deriveEstado(e) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const start = this._parseEvDate(e.setupDate) || this._parseEvDate(e.eventStartDate);
+        const end = this._parseEvDate(e.teardownDate) || this._parseEvDate(e.teardownEndDate)
+            || this._parseEvDate(e.eventEndDate) || this._parseEvDate(e.setupDate) || start;
+        if (!start && !end) return this._normalizeStatus(e.status || e.estado);
+        if (start && today < start) return 'proximo';
+        if (end && today > end) return 'finalizado';
+        return 'en_curso';
+    },
+
+    // Texto de proximidad: "faltan 20 d" (naranja si ≤7), "en curso", "hace 8 d".
+    _proximityHint(ev) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        if (ev.estado === 'proximo') {
+            const armado = this._parseEvDate(ev.setupDate) || this._parseEvDate(ev.eventStartDate);
+            if (!armado) return null;
+            const d = Math.round((armado - today) / 86400000);
+            if (d <= 0) return { text: 'arma hoy', color: '#F28D15' };
+            if (d === 1) return { text: 'falta 1 d', color: '#F28D15' };
+            if (d <= 7) return { text: `faltan ${d} d`, color: '#F28D15' };
+            return { text: `faltan ${d} d`, color: '#00A9C1' };
+        }
+        if (ev.estado === 'en_curso') return { text: 'en curso', color: '#00CC88' };
+        if (ev.estado === 'finalizado') {
+            const desarme = this._parseEvDate(ev.teardownDate) || this._parseEvDate(ev.teardownEndDate)
+                || this._parseEvDate(ev.eventEndDate);
+            if (!desarme) return null;
+            const d = Math.round((today - desarme) / 86400000);
+            if (d <= 0) return null;
+            if (d < 14) return { text: `hace ${d} d`, color: '#666' };
+            if (d < 60) return { text: `hace ${Math.round(d / 7)} sem`, color: '#666' };
+            return { text: `hace ${Math.round(d / 30)} m`, color: '#666' };
+        }
+        return null;
     },
 
     _fmtTimeRange(open, close) {
