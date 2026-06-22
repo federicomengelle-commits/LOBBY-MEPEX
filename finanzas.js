@@ -82,7 +82,7 @@ const FinanzasModule = {
     _planes: [],
 
     // Facturación state
-    _factSubtab: 'emitidos', // 'emitir' | 'emitidos' | 'recibidos'
+    _factSubtab: 'emitidos', // 'emitir' | 'emitidos' | 'lote' | 'recibidos'
     _factWizardStep: 1,
     _factWizardData: {},
     _factEmitidos: [],
@@ -101,6 +101,12 @@ const FinanzasModule = {
     _factRecibidosCatFilter: '',
     _factRecibidosDebounce: null,
     _VPS_URL: '',  // same-origin (:80); nginx rutea /api/ → 127.0.0.1:3000 (el :3000 directo está firewalleado)
+
+    // Facturación en lote (recurrentes) — re-emitir los comprobantes de un mes en otro mes
+    _loteOrigenMes: null,   // 'YYYY-MM' (default: mes anterior)
+    _loteDestinoMes: null,  // 'YYYY-MM' (default: mes actual)
+    _loteRows: [],          // [{ src, total, checked, status:'idle'|'emitting'|'ok'|'error', comp, error }]
+    _loteEmitting: false,
 
     // Calendario state
     _calSubtab: 'calendario', // 'calendario' | 'plantillas'
@@ -1919,6 +1925,12 @@ const FinanzasModule = {
                     await this._loadFactEmitidos();   // para el selector de comprobante asociado (NC/ND)
                     container.innerHTML = this._buildFactEmitirHTML();
                     this._attachFactEmitirEvents();
+                } else if (this._factSubtab === 'lote') {
+                    this._initLoteDefaults();
+                    await this._loadFactEmitidos();   // fuente del lote (comprobantes del mes origen)
+                    this._buildLoteRows();
+                    container.innerHTML = this._buildFactLoteHTML();
+                    this._attachFactLoteEvents();
                 } else if (this._factSubtab === 'recibidos') {
                     container.innerHTML = this._buildFactRecibidosHTML();
                     await this._loadFactRecibidos();
@@ -7018,6 +7030,7 @@ const FinanzasModule = {
             <div class="fin-subtabs">
                 <button class="fin-subtab ${this._factSubtab === 'emitidos' ? 'active' : ''}" data-facttab="emitidos">Emitidos</button>
                 <button class="fin-subtab ${this._factSubtab === 'emitir' ? 'active' : ''}" data-facttab="emitir">Emitir</button>
+                <button class="fin-subtab ${this._factSubtab === 'lote' ? 'active' : ''}" data-facttab="lote">Recurrentes</button>
                 <button class="fin-subtab ${this._factSubtab === 'recibidos' ? 'active' : ''}" data-facttab="recibidos">Recibidos</button>
             </div>
         `;
@@ -7712,29 +7725,8 @@ const FinanzasModule = {
             result.receptor_domicilio = d._padronDomicilio || null;
             result.cond_iva_receptor = payload.cond_iva_receptor;
 
-            // Guardar el comprobante con CAE
-            const record = {
-                fecha: result.fecha || today,
-                tipo: d.tipo,
-                punto_venta: result.punto_venta || d.punto_venta || 5,
-                numero: result.numero_completo || null,
-                cliente_id: d.cliente_id || null,
-                cuit_dni: d.cuit_dni,
-                servicio: d.servicio,
-                descripcion: d.descripcion || null,
-                neto: esC ? 0 : d.neto,
-                iva_alicuota: d.iva_alicuota || 21,
-                iva: esC ? 0 : d.iva,
-                total: d.total,
-                cae: result.cae || null,
-                cae_vencimiento: result.cae_vencimiento || null,
-                estado: 'emitida',
-                pdf_url: null,
-                proyecto_id: d.proyecto_id || null,
-                lapyme_response: result,   // greenfield: reusamos la columna JSONB para la respuesta ARCA
-                canal: 'oficial',
-                created_by: uid,
-            };
+            // Guardar el comprobante con CAE (mismo armado que usa la emisión en lote)
+            const record = this._buildComprobanteRecord(d, result, uid);
 
             const { data: inserted, error } = await supabaseClient.from('comprobantes').insert([record]).select().single();
             if (error) { console.warn('[Finanzas] Error guardando comprobante:', error); }
@@ -7982,6 +7974,374 @@ const FinanzasModule = {
         } finally {
             document.body.removeChild(div);
         }
+    },
+
+    // Armado del registro que se guarda en `comprobantes` tras emitir en ARCA.
+    // Único punto de verdad: lo usan tanto la emisión individual (_emitirComprobante)
+    // como la emisión en lote (_arcaEmitirUno). `result` = respuesta de /api/arca/facturar.
+    _buildComprobanteRecord(d, result, uid) {
+        const today = new Date().toISOString().slice(0, 10);
+        const esC = d.tipo === 'factura_c';
+        return {
+            fecha: result.fecha || today,
+            tipo: d.tipo,
+            punto_venta: result.punto_venta || d.punto_venta || 5,
+            numero: result.numero_completo || null,
+            cliente_id: d.cliente_id || null,
+            cuit_dni: d.cuit_dni,
+            servicio: d.servicio,
+            descripcion: d.descripcion || null,
+            neto: esC ? 0 : d.neto,
+            iva_alicuota: d.iva_alicuota || 21,
+            iva: esC ? 0 : d.iva,
+            total: d.total,
+            cae: result.cae || null,
+            cae_vencimiento: result.cae_vencimiento || null,
+            estado: 'emitida',
+            pdf_url: null,
+            proyecto_id: d.proyecto_id || null,
+            lapyme_response: result,   // greenfield: reusamos la columna JSONB para la respuesta ARCA
+            canal: 'oficial',
+            created_by: uid,
+        };
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: FACTURACIÓN — RECURRENTES (EMISIÓN EN LOTE)
+    //  Re-emite las facturas de un mes en otro mes. Sin DDL: la fuente y el
+    //  destino son la tabla `comprobantes`. Reusa /api/arca/facturar (serializa).
+    // ═══════════════════════════════════════════
+
+    _initLoteDefaults() {
+        if (this._loteOrigenMes && this._loteDestinoMes) return;
+        const now = new Date();
+        const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const p = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const prev = `${p.getFullYear()}-${String(p.getMonth() + 1).padStart(2, '0')}`;
+        this._loteOrigenMes = this._loteOrigenMes || prev;
+        this._loteDestinoMes = this._loteDestinoMes || cur;
+    },
+
+    _mesLabel(mes) {
+        if (!mes) return '';
+        const [y, m] = mes.split('-').map(Number);
+        const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        return `${meses[m - 1] || ''} ${y}`;
+    },
+
+    _mesRange(mes) {
+        const [y, m] = mes.split('-').map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        return { desde: `${mes}-01`, hasta: `${mes}-${String(lastDay).padStart(2, '0')}` };
+    },
+
+    // Facturas emitidas OK del mes origen (solo facturas A/B/C oficiales — NC/ND no son recurrentes).
+    _loteSourceRows() {
+        const mes = this._loteOrigenMes;
+        const facturas = ['factura_a', 'factura_b', 'factura_c'];
+        return (this._factEmitidos || []).filter(c =>
+            c.estado === 'emitida' &&
+            (c.canal || 'oficial') === 'oficial' &&
+            facturas.includes(c.tipo) &&
+            String(c.fecha || '').slice(0, 7) === mes
+        ).sort((a, b) => {
+            const na = normStr(this._clientesMap[a.cliente_id] || (a.lapyme_response || {}).receptor_nombre || a.cuit_dni || '');
+            const nb = normStr(this._clientesMap[b.cliente_id] || (b.lapyme_response || {}).receptor_nombre || b.cuit_dni || '');
+            return na.localeCompare(nb);
+        });
+    },
+
+    _buildLoteRows() {
+        this._loteRows = this._loteSourceRows().map(src => ({
+            src, total: Number(src.total) || 0, checked: false, status: 'idle', comp: null, error: null,
+        }));
+    },
+
+    // Reconstruye el "wizard data" de un comprobante origen, con el total editado y el período destino.
+    _loteBuildD(src, total, range) {
+        const lr = src.lapyme_response || {};
+        const alic = Number(src.iva_alicuota) || 21;
+        const esC = src.tipo === 'factura_c';
+        let neto = 0, iva = 0;
+        if (!esC) {
+            neto = Math.round((total / (1 + alic / 100)) * 100) / 100;
+            iva = Math.round((total - neto) * 100) / 100;
+        }
+        return {
+            tipo: src.tipo,
+            punto_venta: src.punto_venta || 5,
+            concepto: 2,  // servicios (recurrentes mensuales) → habilita período
+            cuit_dni: src.cuit_dni,
+            cond_iva_receptor: lr.cond_iva_receptor || (src.tipo.endsWith('_a') ? 1 : 5),
+            cliente_id: src.cliente_id || null,
+            razon_social: lr.receptor_nombre || this._clientesMap[src.cliente_id] || null,
+            _padronDomicilio: lr.receptor_domicilio || null,
+            servicio: src.servicio || null,
+            descripcion: src.descripcion || null,
+            proyecto_id: src.proyecto_id || null,
+            neto, iva, total, iva_alicuota: alic,
+            periodo_desde: range.desde,
+            periodo_hasta: range.hasta,
+            vto_pago: new Date().toISOString().slice(0, 10),
+        };
+    },
+
+    // Emite UN comprobante en ARCA y lo guarda. Sin PDF ni pantalla de éxito (eso lo maneja el lote).
+    async _arcaEmitirUno(d) {
+        const uid = Auth.getUser()?.uid || null;
+        const today = new Date().toISOString().slice(0, 10);
+        const payload = {
+            tipo: d.tipo,
+            punto_venta: d.punto_venta || 5,
+            concepto: d.concepto || 2,
+            cuit_dni: d.cuit_dni,
+            cond_iva_receptor: d.cond_iva_receptor || (d.tipo.endsWith('_a') ? 1 : 5),
+            neto: d.neto, iva: d.iva, iva_alicuota: d.iva_alicuota || 21, total: d.total,
+            fecha: today,
+            serv_desde: d.periodo_desde || today,
+            serv_hasta: d.periodo_hasta || today,
+            vto_pago: d.vto_pago || today,
+            cbtes_asoc: d.cbte_asoc || null,
+        };
+        const response = await fetch(`${this._VPS_URL}/api/arca/facturar`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+        result.receptor_nombre = d.razon_social || (d.cliente_id ? this._clientesMap[d.cliente_id] : null) || null;
+        result.receptor_domicilio = d._padronDomicilio || null;
+        result.cond_iva_receptor = payload.cond_iva_receptor;
+        const record = this._buildComprobanteRecord(d, result, uid);
+        const { data: inserted, error } = await supabaseClient.from('comprobantes').insert([record]).select().single();
+        if (error) console.warn('[Lote] guardar comprobante:', error);
+        return inserted || { ...record, id: null };
+    },
+
+    _ensureLoteStyles() {
+        if (document.getElementById('fin-lote-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'fin-lote-styles';
+        s.textContent = `
+            .fin-lote { padding: 4px 2px; }
+            .fin-lote-intro { color: var(--text-muted,#888); font-size: .85rem; line-height:1.5; margin: 4px 0 16px; max-width: 780px; }
+            .fin-lote-controls { display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:16px; padding:14px 16px; background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-radius:8px; }
+            .fin-lote-ctl { display:flex; flex-direction:column; gap:5px; font-size:.7rem; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted,#888); }
+            .fin-lote-ctl input { font-family:var(--font-mono,monospace); padding:7px 10px; background:var(--bg,#050505); border:1px solid var(--border,#2a2a2a); border-radius:5px; color:var(--text-primary,#e8e8e8); font-size:.9rem; }
+            .fin-lote-ctl input:focus { outline:none; border-color:var(--primary,#00A9C1); }
+            .fin-lote-arrow { color:var(--primary,#00A9C1); font-size:1.3rem; padding-bottom:6px; }
+            .fin-lote-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+            .fin-lote-table thead th { text-align:left; font-size:.68rem; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted,#888); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border,#2a2a2a); }
+            .fin-lote-table tbody td { padding:8px 10px; border-bottom:1px solid rgba(42,42,42,.5); color:var(--text-primary,#e8e8e8); vertical-align:middle; }
+            .fin-lote-table tbody tr.lote-row-on { background:rgba(0,169,193,.06); }
+            .fin-lote-table tbody tr.lote-row-ok { background:rgba(0,204,136,.07); }
+            .fin-lote-table input[type=checkbox] { width:16px; height:16px; accent-color:var(--primary,#00A9C1); cursor:pointer; }
+            .fin-lote-footer { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:14px; padding:14px 16px; background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-radius:8px; position:sticky; bottom:0; }
+            .fin-lote-summary { color:var(--text-primary,#e8e8e8); font-size:.9rem; }
+            .fin-lote-summary strong { color:var(--primary,#00A9C1); }
+        `;
+        document.head.appendChild(s);
+    },
+
+    _buildFactLoteHTML() {
+        this._ensureLoteStyles();
+        return `
+            ${this._buildFactSubtabs()}
+            <div class="fin-lote">
+                <div class="fin-lote-intro">
+                    Re-emití de una vez las facturas que se repiten todos los meses (monotributos, alquileres, servicios fijos).
+                    Elegí el mes a copiar, tildá las que van este mes, ajustá el monto si cambió y emitilas en ARCA en bloque.
+                </div>
+                <div class="fin-lote-controls">
+                    <label class="fin-lote-ctl">
+                        <span>Copiar facturas de</span>
+                        <input type="month" id="finLoteOrigen" value="${this._loteOrigenMes}">
+                    </label>
+                    <span class="fin-lote-arrow">→</span>
+                    <label class="fin-lote-ctl">
+                        <span>Emitir en el período</span>
+                        <input type="month" id="finLoteDestino" value="${this._loteDestinoMes}">
+                    </label>
+                </div>
+                <div id="finLoteWrap">${this._loteWrapHTML()}</div>
+            </div>
+        `;
+    },
+
+    _loteWrapHTML() {
+        return `<div id="finLoteTableBox">${this._loteTableHTML()}</div>
+                <div id="finLoteFooter" class="fin-lote-footer">${this._loteFooterInnerHTML()}</div>`;
+    },
+
+    _loteTableHTML() {
+        const rows = this._loteRows;
+        if (!rows.length) {
+            return `
+                <div class="fin-empty" style="padding:36px 16px;">
+                    <div class="fin-empty-icon">📭</div>
+                    <div class="fin-empty-text">No hay facturas emitidas en ${this._mesLabel(this._loteOrigenMes)}.<br>Probá con otro mes de origen.</div>
+                </div>`;
+        }
+        const allOn = rows.length > 0 && rows.every(r => r.checked || r.status === 'ok');
+        const dis = this._loteEmitting ? 'disabled' : '';
+        return `
+            <table class="fin-lote-table">
+                <thead>
+                    <tr>
+                        <th style="width:34px;text-align:center;"><input type="checkbox" class="lote-check-all" ${allOn ? 'checked' : ''} ${dis}></th>
+                        <th>Cliente</th>
+                        <th style="width:64px;">Tipo</th>
+                        <th>Concepto</th>
+                        <th style="width:150px;text-align:right;">Total</th>
+                        <th style="width:130px;">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map((r, i) => this._loteRowHTML(r, i, dis)).join('')}
+                </tbody>
+            </table>`;
+    },
+
+    _loteRowHTML(r, i, dis) {
+        const src = r.src;
+        const cli = this._clientesMap[src.cliente_id] || (src.lapyme_response || {}).receptor_nombre || src.cuit_dni || '—';
+        const concepto = this._servicioLabel[src.servicio] || src.descripcion || src.servicio || '—';
+        const isOk = r.status === 'ok';
+        const rowDis = (dis || isOk) ? 'disabled' : '';
+        let estado = '<span style="color:#888;">—</span>';
+        if (r.status === 'emitting') estado = '<span class="fin-wizard-spinner"></span> <span style="color:#F28D15;">Emitiendo…</span>';
+        else if (r.status === 'ok') estado = `<span style="color:#00CC88;font-weight:700;">✓ ${escHtml(r.comp?.numero || 'CAE')}</span>`;
+        else if (r.status === 'error') estado = `<span style="color:#ff4444;font-weight:700;cursor:help;" title="${escAttr(r.error || '')}">✗ Error</span>`;
+        return `
+            <tr class="${r.checked ? 'lote-row-on' : ''} ${isOk ? 'lote-row-ok' : ''}">
+                <td style="text-align:center;"><input type="checkbox" class="lote-check" data-idx="${i}" ${r.checked ? 'checked' : ''} ${rowDis}></td>
+                <td>${escHtml(cli)}</td>
+                <td>${this._tipoBadgeComp(src.tipo)}</td>
+                <td>${escHtml(concepto)}</td>
+                <td style="text-align:right;">
+                    <input type="number" class="lote-total" data-idx="${i}" value="${r.total}" min="0" step="0.01" ${rowDis}
+                        style="width:130px;text-align:right;font-family:var(--font-mono,monospace);padding:5px 8px;background:var(--bg,#050505);border:1px solid var(--border,#2a2a2a);border-radius:4px;color:var(--text-primary,#e8e8e8);">
+                </td>
+                <td>${estado}</td>
+            </tr>`;
+    },
+
+    _loteFooterInnerHTML() {
+        const sel = this._loteRows.filter(r => r.checked && r.status !== 'ok');
+        const total = sel.reduce((s, r) => s + (Number(r.total) || 0), 0);
+        const n = sel.length;
+        const dis = (this._loteEmitting || n === 0) ? 'disabled' : '';
+        return `
+            <div class="fin-lote-summary">
+                <strong>${n}</strong> seleccionada(s) · Total <strong>${this._formatMoney(total)}</strong>
+                · período <strong>${this._mesLabel(this._loteDestinoMes)}</strong>
+            </div>
+            <button class="fin-wizard-btn fin-wizard-btn-primary" id="finLoteEmit" ${dis}>
+                ${this._loteEmitting ? '<span class="fin-wizard-spinner"></span> Emitiendo lote…' : `🧾 Emitir ${n} en ARCA`}
+            </button>`;
+    },
+
+    _renderLoteTable() {
+        const wrap = document.getElementById('finLoteWrap');
+        if (wrap) wrap.innerHTML = this._loteWrapHTML();
+    },
+
+    _renderLoteFooter() {
+        const f = document.getElementById('finLoteFooter');
+        if (f) f.innerHTML = this._loteFooterInnerHTML();
+    },
+
+    _syncLoteRowHighlight(idx) {
+        const cb = document.querySelector(`.lote-check[data-idx="${idx}"]`);
+        const tr = cb?.closest('tr');
+        if (tr) tr.classList.toggle('lote-row-on', !!this._loteRows[idx]?.checked);
+    },
+
+    _attachFactLoteEvents() {
+        // Subtabs
+        document.querySelectorAll('.fin-subtab[data-facttab]').forEach(btn => {
+            btn.addEventListener('click', () => { this._factSubtab = btn.dataset.facttab; this._renderTabContent(); });
+        });
+        // Mes origen / destino
+        const origen = document.getElementById('finLoteOrigen');
+        const destino = document.getElementById('finLoteDestino');
+        origen?.addEventListener('change', () => {
+            if (this._loteEmitting) { origen.value = this._loteOrigenMes; return; }
+            this._loteOrigenMes = origen.value || this._loteOrigenMes;
+            this._buildLoteRows();
+            this._renderLoteTable();
+        });
+        destino?.addEventListener('change', () => {
+            this._loteDestinoMes = destino.value || this._loteDestinoMes;
+            this._renderLoteFooter();
+        });
+        // Delegación en el wrap (persiste aunque se re-renderee su contenido)
+        const wrap = document.getElementById('finLoteWrap');
+        if (wrap && !wrap._loteBound) {
+            wrap._loteBound = true;
+            wrap.addEventListener('change', (e) => {
+                const t = e.target;
+                if (t.classList.contains('lote-check-all')) {
+                    const on = t.checked;
+                    this._loteRows.forEach(r => { if (r.status !== 'ok') r.checked = on; });
+                    this._renderLoteTable();
+                } else if (t.classList.contains('lote-check')) {
+                    const idx = +t.dataset.idx;
+                    if (this._loteRows[idx]) this._loteRows[idx].checked = t.checked;
+                    this._syncLoteRowHighlight(idx);
+                    this._renderLoteFooter();
+                }
+            });
+            wrap.addEventListener('input', (e) => {
+                const t = e.target;
+                if (t.classList.contains('lote-total')) {
+                    const idx = +t.dataset.idx;
+                    if (this._loteRows[idx]) this._loteRows[idx].total = parseFloat(t.value) || 0;
+                    this._renderLoteFooter();
+                }
+            });
+            wrap.addEventListener('click', (e) => {
+                if (e.target.closest('#finLoteEmit')) this._loteEmitir();
+            });
+        }
+    },
+
+    async _loteEmitir() {
+        if (this._loteEmitting) return;
+        const sel = this._loteRows.filter(r => r.checked && r.status !== 'ok');
+        if (!sel.length) { Toast.warning('No hay comprobantes seleccionados para emitir'); return; }
+        const invalid = sel.filter(r => !(Number(r.total) > 0));
+        if (invalid.length) { Toast.warning('Hay montos en cero o inválidos — revisalos antes de emitir'); return; }
+        const totalMonto = sel.reduce((s, r) => s + Number(r.total), 0);
+        const ok = await Modal.confirm({
+            title: 'Emitir comprobantes en ARCA',
+            message: `Vas a emitir <strong>${sel.length}</strong> comprobante(s) <strong>REAL(es)</strong> en ARCA, período <strong>${this._mesLabel(this._loteDestinoMes)}</strong>, por un total de <strong>${this._formatMoney(totalMonto)}</strong>.<br><br>Cada uno genera un CAE oficial ante AFIP y <strong>no se puede deshacer</strong>.`,
+            confirmText: `Emitir ${sel.length}`,
+            danger: true,
+        });
+        if (!ok) return;
+
+        this._loteEmitting = true;
+        this._renderLoteTable();
+        const range = this._mesRange(this._loteDestinoMes);
+        let done = 0, fail = 0;
+        for (const r of sel) {
+            r.status = 'emitting';
+            this._renderLoteTable();
+            try {
+                const d = this._loteBuildD(r.src, Number(r.total), range);
+                r.comp = await this._arcaEmitirUno(d);
+                r.status = 'ok'; r.checked = false; done++;
+            } catch (e) {
+                r.status = 'error'; r.error = e.message || String(e); fail++;
+                console.error('[Lote] error emitiendo', r.src.cuit_dni, e);
+            }
+            this._renderLoteTable();
+        }
+        this._loteEmitting = false;
+        await this._loadFactEmitidos();   // refresca la fuente: los nuevos ya están en Emitidos
+        this._renderLoteTable();
+        if (fail === 0) Toast.success(`✓ ${done} comprobante(s) emitido(s) en ARCA`);
+        else Toast.warning(`${done} emitido(s), ${fail} con error — revisá las filas en rojo`);
     },
 
     // ═══════════════════════════════════════════
