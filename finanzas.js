@@ -8391,8 +8391,10 @@ const FinanzasModule = {
     // ═══════════════════════════════════════════
 
     _buildFactEmitidosHTML() {
+        this._ensureFactKpiStyles();
         return `
             ${this._buildFactSubtabs()}
+            <div id="finFactKPIs" class="fin-fact-kpis"></div>
             <div class="fin-cuentas-toolbar">
                 <div class="fin-search-box">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -8440,6 +8442,75 @@ const FinanzasModule = {
         }
         this._applyFactEmitidosFilter();
         this._renderFactEmitidosTable();
+        this._renderFactKPIs();
+    },
+
+    // Barra de KPIs de Facturación (livianos, sobre lo emitido — sin montos abultados).
+    _renderFactKPIs() {
+        const box = document.getElementById('finFactKPIs');
+        if (!box) return;
+        const now = new Date();
+        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const year = String(now.getFullYear());
+        const facturas = ['factura_a', 'factura_b', 'factura_c'];
+        const all = (this._factEmitidos || []).filter(c => c.estado === 'emitida');
+        const mes = all.filter(c => String(c.fecha || '').slice(0, 7) === ym);
+        const mesFC = mes.filter(c => facturas.includes(c.tipo)).length;
+        const mesNC = mes.filter(c => (c.tipo || '').startsWith('nota_')).length;
+        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0), 0);
+        const ticket = mes.length ? Math.round(totalMes / mes.length) : 0;
+        const anioCount = all.filter(c => String(c.fecha || '').slice(0, 4) === year).length;
+        const byCli = {};
+        mes.forEach(c => { const k = this._clientesMap[c.cliente_id] || c.cuit_dni || '—'; byCli[k] = (byCli[k] || 0) + (Number(c.total) || 0); });
+        let topCli = '—', topMonto = 0;
+        Object.entries(byCli).forEach(([k, v]) => { if (v > topMonto) { topMonto = v; topCli = k; } });
+        box.innerHTML = `
+            <div class="fin-fact-kpi" style="border-left-color:#4A90D9;">
+                <div class="k-label">Comprobantes · mes</div>
+                <div class="k-val">${mes.length}</div>
+                <div class="k-sub">${mesFC} FC · ${mesNC} NC</div>
+            </div>
+            <div class="fin-fact-kpi" style="border-left-color:#00CC88;">
+                <div class="k-label">Facturas · ${year}</div>
+                <div class="k-val">${anioCount}</div>
+                <div class="k-sub">emitidas en el año</div>
+            </div>
+            <div class="fin-fact-kpi" style="border-left-color:#9B7DFF;">
+                <div class="k-label">Ticket promedio</div>
+                <div class="k-val">${this._formatMoney(ticket)}</div>
+                <div class="k-sub">por comprobante</div>
+            </div>
+            <div class="fin-fact-kpi" style="border-left-color:#00A9C1;">
+                <div class="k-label">Cliente top · mes</div>
+                <div class="k-val name" title="${escAttr(topCli)}">${escHtml(topCli)}</div>
+                <div class="k-sub">${topMonto > 0 ? 'el que más facturó' : 'sin facturación'}</div>
+            </div>
+        `;
+    },
+
+    _estadoDotComp(estado) {
+        const m = { emitida: ['#00CC88', 'Emitida'], pendiente: ['#F28D15', 'Pendiente'], error: ['#ff4444', 'Error'], anulada: ['#888', 'Anulada'] };
+        const [color, label] = m[estado] || ['#888', estado];
+        return `<span style="display:inline-flex;align-items:center;gap:6px;color:${color};font-size:0.8rem;"><span style="width:7px;height:7px;border-radius:50%;background:${color};flex:none;"></span>${label}</span>`;
+    },
+
+    _ensureFactKpiStyles() {
+        if (document.getElementById('fin-fact-kpi-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'fin-fact-kpi-styles';
+        s.textContent = `
+            .fin-fact-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:4px 0 16px; }
+            .fin-fact-kpis:empty { display:none; }
+            .fin-fact-kpi { background:#111; border:1px solid #2a2a2a; border-radius:10px; padding:13px 15px; border-left:3px solid #00A9C1; }
+            .fin-fact-kpi .k-label { font-size:10px; letter-spacing:.8px; text-transform:uppercase; color:#888; margin-bottom:7px; }
+            .fin-fact-kpi .k-val { font-family:var(--font-mono,'Space Mono',monospace); font-size:1.4rem; font-weight:700; color:#e8e8e8; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+            .fin-fact-kpi .k-val.name { font-family:var(--font-main,'Outfit',sans-serif); font-size:1.1rem; }
+            .fin-fact-kpi .k-sub { font-size:10.5px; color:#888; margin-top:4px; }
+            .fin-row-dl { background:transparent; border:none; color:#00A9C1; cursor:pointer; padding:4px; border-radius:4px; display:inline-flex; transition:background .15s; }
+            .fin-row-dl:hover { background:rgba(0,169,193,.14); }
+            @media (max-width:900px){ .fin-fact-kpis { grid-template-columns:repeat(2,1fr); } }
+        `;
+        document.head.appendChild(s);
     },
 
     _applyFactEmitidosFilter() {
@@ -8504,12 +8575,9 @@ const FinanzasModule = {
                             <th class="fin-th">Tipo</th>
                             <th class="fin-th sortable" data-sort="numero">Número ${sortIcon('numero')}</th>
                             <th class="fin-th">Cliente</th>
-                            <th class="fin-th">Servicio</th>
-                            <th class="fin-th" style="text-align:right;">Neto</th>
-                            <th class="fin-th" style="text-align:right;">IVA</th>
                             <th class="fin-th sortable" data-sort="total" style="text-align:right;">Total ${sortIcon('total')}</th>
-                            <th class="fin-th">CAE</th>
                             <th class="fin-th">Estado</th>
+                            <th class="fin-th" style="width:36px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -8518,16 +8586,13 @@ const FinanzasModule = {
                             const srvShort = this._servicioLabel[c.servicio] || c.servicio;
                             return `
                             <tr class="fin-row ${this._activePanel === c.id ? 'active' : ''}" data-id="${c.id}">
-                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(c.fecha)}</td>
+                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;color:#aaa;">${this._formatDate(c.fecha)}</td>
                                 <td class="fin-td">${this._tipoBadgeComp(c.tipo)}</td>
-                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${c.numero || '—'}</td>
-                                <td class="fin-td fin-td-name">${cliName}</td>
-                                <td class="fin-td" style="font-size:0.78rem;">${srvShort}</td>
-                                <td class="fin-td fin-td-money">${this._formatMoney(c.neto)}</td>
-                                <td class="fin-td fin-td-money" style="color:#888;">${this._formatMoney(c.iva)}</td>
+                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;color:#bbb;">${c.numero || '—'}</td>
+                                <td class="fin-td fin-td-name">${escHtml(cliName)}</td>
                                 <td class="fin-td fin-td-money">${this._formatMoney(c.total)}</td>
-                                <td class="fin-td"><span class="fin-cae-text" title="${c.cae || ''}">${c.cae || '—'}</span></td>
-                                <td class="fin-td">${this._estadoBadgeComp(c.estado)}</td>
+                                <td class="fin-td">${this._estadoDotComp(c.estado)}</td>
+                                <td class="fin-td" style="text-align:center;">${c.cae ? `<button class="fin-row-dl" data-dl="${c.id}" title="Descargar PDF" aria-label="Descargar PDF"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>` : ''}</td>
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -8538,6 +8603,15 @@ const FinanzasModule = {
                 — Total: <strong style="color:#00CC88;">${this._formatMoney(total)}</strong>
             </div>
         `;
+
+        // Descargar PDF por fila (sin abrir el panel)
+        main.querySelectorAll('.fin-row-dl').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const c = this._factEmitidos.find(x => String(x.id) === btn.dataset.dl);
+                if (c) this._generarFacturaPDF(c);
+            });
+        });
 
         // Sort headers
         main.querySelectorAll('.fin-th.sortable').forEach(th => {
