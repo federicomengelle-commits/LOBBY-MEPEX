@@ -8765,8 +8765,10 @@ const FinanzasModule = {
     },
 
     _buildFactRecibidosHTML() {
+        this._ensureFactKpiStyles();
         return `
             ${this._buildFactSubtabs()}
+            <div id="finFactRecKPIs" class="fin-fact-kpis"></div>
             <div class="fin-cuentas-toolbar">
                 <div class="fin-search-box">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -8818,6 +8820,51 @@ const FinanzasModule = {
         }
         this._applyFactRecibidosFilter();
         this._renderFactRecibidosTable();
+        this._renderFactRecKPIs();
+    },
+
+    // KPIs de Recibidos (lado gastos, livianos).
+    _renderFactRecKPIs() {
+        const box = document.getElementById('finFactRecKPIs');
+        if (!box) return;
+        const now = new Date();
+        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const year = String(now.getFullYear());
+        const all = this._factRecibidos || [];
+        const mes = all.filter(c => String(c.fecha || '').slice(0, 7) === ym);
+        const mesFact = mes.filter(c => String(c.tipo || '').startsWith('factura')).length;
+        const mesRec = mes.filter(c => c.tipo === 'recibo').length;
+        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0), 0);
+        const ticket = mes.length ? Math.round(totalMes / mes.length) : 0;
+        const anioCount = all.filter(c => String(c.fecha || '').slice(0, 4) === year).length;
+        const sinPagar = mes.filter(c => !c.egreso_id).length;
+        box.innerHTML = `
+            <div class="fin-fact-kpi" style="border-left-color:#4A90D9;">
+                <div class="k-label">Comprobantes · mes</div>
+                <div class="k-val">${mes.length}</div>
+                <div class="k-sub">${mesFact} fact · ${mesRec} rec</div>
+            </div>
+            <div class="fin-fact-kpi" style="border-left-color:#00CC88;">
+                <div class="k-label">Recibidos · ${year}</div>
+                <div class="k-val">${anioCount}</div>
+                <div class="k-sub">cargados en el año</div>
+            </div>
+            <div class="fin-fact-kpi" style="border-left-color:#9B7DFF;">
+                <div class="k-label">Gasto promedio</div>
+                <div class="k-val">${this._formatMoney(ticket)}</div>
+                <div class="k-sub">por comprobante</div>
+            </div>
+            <div class="fin-fact-kpi" style="border-left-color:#F28D15;">
+                <div class="k-label">Sin pagar</div>
+                <div class="k-val" style="color:${sinPagar > 0 ? '#F28D15' : '#e8e8e8'};">${sinPagar}</div>
+                <div class="k-sub">de ${mes.length} del mes</div>
+            </div>
+        `;
+    },
+
+    _pagoDotRec(egresoId) {
+        const [color, label] = egresoId ? ['#00CC88', 'Pagado'] : ['#F28D15', 'Sin pago'];
+        return `<span style="display:inline-flex;align-items:center;gap:6px;color:${color};font-size:0.8rem;"><span style="width:7px;height:7px;border-radius:50%;background:${color};flex:none;"></span>${label}</span>`;
     },
 
     _applyFactRecibidosFilter() {
@@ -8886,15 +8933,11 @@ const FinanzasModule = {
                         <tr>
                             <th class="fin-th sortable" data-sort="fecha">Fecha ${sortIcon('fecha')}</th>
                             <th class="fin-th">Tipo</th>
-                            <th class="fin-th">Número</th>
                             <th class="fin-th sortable" data-sort="proveedor_nombre">Proveedor ${sortIcon('proveedor_nombre')}</th>
-                            <th class="fin-th">Concepto</th>
-                            <th class="fin-th" style="text-align:right;">Neto</th>
-                            <th class="fin-th" style="text-align:right;">IVA</th>
-                            <th class="fin-th sortable" data-sort="total" style="text-align:right;">Total ${sortIcon('total')}</th>
                             <th class="fin-th">Categoría</th>
+                            <th class="fin-th sortable" data-sort="total" style="text-align:right;">Total ${sortIcon('total')}</th>
                             <th class="fin-th">Pago</th>
-                            <th class="fin-th">Archivo</th>
+                            <th class="fin-th" style="width:36px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -8902,18 +8945,14 @@ const FinanzasModule = {
                             const catInfo = this._catRecibido[c.categoria] || { label: c.categoria, color: '#888' };
                             const tipoInfo = this._tipoCompRecibed[c.tipo] || { label: c.tipo, color: '#888' };
                             return `
-                            <tr class="fin-row ${this._activePanel === c.id ? 'active' : ''}" data-id="${c.id}">
-                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(c.fecha)}</td>
+                            <tr class="fin-row ${this._activePanel === c.id ? 'active' : ''}" data-id="${c.id}"${!c.egreso_id ? ' style="background:rgba(242,141,21,.045);"' : ''}>
+                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;color:#aaa;">${this._formatDate(c.fecha)}</td>
                                 <td class="fin-td"><span class="fin-comp-badge" style="background:${tipoInfo.color}22;color:${tipoInfo.color};">${tipoInfo.label}</span></td>
-                                <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${c.numero || '—'}</td>
-                                <td class="fin-td fin-td-name">${c.proveedor_nombre || '—'}</td>
-                                <td class="fin-td" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.concepto}</td>
-                                <td class="fin-td fin-td-money">${c.neto ? this._formatMoney(c.neto) : '—'}</td>
-                                <td class="fin-td fin-td-money" style="color:#888;">${c.iva ? this._formatMoney(c.iva) : '—'}</td>
-                                <td class="fin-td fin-td-money">${this._formatMoney(c.total)}</td>
+                                <td class="fin-td fin-td-name">${escHtml(c.proveedor_nombre || '—')}</td>
                                 <td class="fin-td"><span class="fin-cat-badge-rec" style="background:${catInfo.color}18;color:${catInfo.color};">${catInfo.label}</span></td>
-                                <td class="fin-td">${c.egreso_id ? '<span style="color:#00CC88;font-size:0.78rem;">✓ pagado</span>' : '<span style="color:var(--accent,#F28D15);font-size:0.7rem;font-weight:600;background:rgba(242,141,21,.12);padding:1px 7px;border-radius:4px;">sin pago</span>'}</td>
-                                <td class="fin-td">${c.archivo_url ? `<a href="${c.archivo_url}" target="_blank" class="fin-file-link">📎</a>` : '<span class="fin-td-muted">—</span>'}</td>
+                                <td class="fin-td fin-td-money">${this._formatMoney(c.total)}</td>
+                                <td class="fin-td">${this._pagoDotRec(c.egreso_id)}</td>
+                                <td class="fin-td" style="text-align:center;">${c.archivo_url ? `<a href="${escAttr(c.archivo_url)}" target="_blank" rel="noopener" class="fin-row-dl fin-rec-clip" title="Ver adjunto" aria-label="Ver adjunto"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></a>` : ''}</td>
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -8944,6 +8983,8 @@ const FinanzasModule = {
         main.querySelectorAll('.fin-row').forEach(row => {
             row.addEventListener('click', () => this._openRecibidoPanel(row.dataset.id));
         });
+        // El clip del adjunto abre el archivo sin disparar el panel
+        main.querySelectorAll('.fin-rec-clip').forEach(a => a.addEventListener('click', (e) => e.stopPropagation()));
     },
 
     _openRecibidoPanel(id) {
