@@ -48,8 +48,10 @@ Hoy encapsulamos un método de **pulido de UI en vivo** como skill: `.claude/ski
 
 - **Emitidos** ✅ — barra de 4 KPIs livianos (Comprobantes·mes [FC/NC] · Facturas·año · Ticket promedio · Cliente top·mes) + tabla 10→6 col (Fecha·Tipo·Número·Cliente·Total·Estado-dot + botón descargar PDF por fila; el resto va al panel).
 - **Recibidos** ✅ — 4 KPIs (Comprobantes·mes · Recibidos·año · Gasto promedio · **Sin pagar**) + tabla 11→7 col (Fecha·Tipo·Proveedor·Categoría·Total·Pago-dot + clip del adjunto; filas sin-pago resaltadas).
-- **Emitir** (wizard 3 pasos) ⏳ — flujo ya con estilo (stepper + preview del comprobante). Pulido fino pendiente: refrescar el stepper con acento turquesa, repasar el layout de los inputs del paso 1/2, consistencia de spacing. **No es una tabla → no lleva KPIs.**
+- **Emitir** (wizard 3 pasos) 🔵 **stepper ✅ rediseñado** (`v=47`, commit `01aeea1`): círculos rellenos (activo turquesa con glow / done verde / inactivo gris) + línea conectora + label debajo (chau subrayado azul plano); form centrado (max 600px). **Pendiente = el bloque grande de §F (ítems múltiples + IVA mixto + frases hechas).**
 - **Recurrentes** (lote) ⏳ — construido hoy con `_ensureLoteStyles`. Pulido fino pendiente: darle a la tabla del revisor el mismo lenguaje que Emitidos (badges de tipo por color), repasar el footer/CTA.
+
+**Revisión de requisitos AFIP (hecha) — todos los obligatorios YA están** (el wizard emite con CAE real): tipo · PV · concepto · doc receptor · **CondicionIVAReceptorId** (RG 5616) · neto/IVA/alícuota/total · fecha · período+vto (servicios) · CbtesAsoc (NC/ND). El connector (`tools/vps/arca-connector.js`) los manda en el orden XSD estricto. **Detalles opcionales detectados (no obligatorios):** condición de venta hardcodeada "Contado" en el PDF · fecha = hoy (no editable) · una sola alícuota de IVA (ver §F).
 
 **Helpers reusables ya creados** (para replicar el estilo en otros módulos): `_renderFactKPIs`/`_renderFactRecKPIs` · `_estadoDotComp`/`_pagoDotRec` · `_ensureFactKpiStyles` (clases `.fin-fact-kpi*`, `.fin-row-dl`).
 
@@ -70,3 +72,33 @@ Hoy encapsulamos un método de **pulido de UI en vivo** como skill: `.claude/ski
 4. Ir tildando el catálogo en la skill. Afinar el proceso a medida.
 
 **Archivos clave:** `finanzas.js` (Facturación) · `.claude/skills/pulir-pantallas/SKILL.md` (el método) · `PROGRESO.md`/`PLAN-MAESTRO`/`CLAUDE.md §10` (estado). Memorias: `project_arca_facturador_handoff`, `feedback_ui_separar_info_acciones`.
+
+---
+
+## F) ✅ IMPLEMENTADO — Ítems múltiples + IVA mixto + frases hechas (2026-06-22, `finanzas.js?v=48`, commit `08ddcdf`)
+
+> **✅ HECHO Y VERIFICADO EN PREVIEW** (cálculo A mixto/B/C correcto, grilla editable en vivo con IVA desglosado, agregar/borrar/chips, 0 errores). **SIN DDL** (los ítems van en `lapyme_response.items`). **⏳ Falta SOLO el deploy del connector de Fede** + emitir 1 factura real con 2 alícuotas (21+10,5) para validar end-to-end.
+>
+> **Deploy del connector (Fede):** copiar `tools/vps/arca-connector.js` a `/home/mepex/api/` en el VPS + `pm2 restart mepex-api`. El cambio: el bloque `<ar:Iva>` ahora acepta varias `<ar:AlicIva>` (IVA mixto). **Compat:** si el front manda el formato viejo (1 alícuota, lote de recurrentes / emisión simple) sigue andando igual. Sin el deploy, las facturas de 1 sola alícuota funcionan; las de IVA mixto necesitan el connector nuevo.
+
+**(Diseño original, ya implementado:)**
+
+**1. Frontend — wizard paso 2 (`finanzas.js`):**
+- Grilla de ítems. Cada línea: **descripción** (con frases) + **cantidad** + **precio unitario** + **alícuota IVA (21/10,5)**. Subtotal de línea = cant × precio (neto de la línea). "+ Agregar ítem" / borrar línea.
+- Cálculo: agrupar por alícuota → `{neto, iva}` por cada alícuota presente (Id AFIP **5=21% · 4=10,5%**). Total = Σ neto + Σ IVA.
+- Por tipo: **A** discrimina IVA por alícuota · **B** IVA incluido (back-calc por alícuota) · **C** sin IVA.
+- `_factWizardData` pasa a llevar `items:[{desc,cant,precio,alic}]`. `_readStep2` lee la grilla. El preview/confirm (paso 3) usa la suma.
+
+**2. Backend — `tools/vps/arca-connector.js` (Fede DEPLOYA):**
+- El POST `/api/arca/facturar` acepta `iva_alicuotas:[{id,base,importe},…]` (del agrupado por alícuota).
+- Arma el bloque `<ar:Iva>` con **N `<ar:AlicIva>`** (uno por alícuota; hoy manda 1, línea ~228), c/u con `Id`/`BaseImp`/`Importe`. `ImpNeto`=Σbase, `ImpIVA`=Σimporte.
+- **Compat:** seguir aceptando el payload viejo (1 alícuota: `neto`+`iva`+`iva_alicuota`) para el **lote de recurrentes** y la emisión simple — o migrarlos. Decidir al arrancar.
+
+**3. Guardado + PDF (`finanzas.js` + 1 SQL aditivo):**
+- **SQL-first:** `ALTER TABLE comprobantes ADD COLUMN items JSONB;` (aditivo, seguro). Guarda `[{desc,cant,precio,alic,subtotal}]`.
+- `_buildComprobanteRecord` agrega `items`. `_generarFacturaPDF` + `_buildComprobantePreview` renderizan **N filas** (hoy 1) + desglose de IVA por alícuota en A.
+- **Compat:** comprobante viejo sin `items` → fallback al ítem único de hoy (servicio+descripción).
+
+**Frases hechas (✅ van, editables inline):** set inicial = *Provisión de infraestructura para Expo [evento]* · *Alquiler de equipamiento para stand* · *Montaje y desarme de stand* · *Servicio integral de stand* · *Producción y armado*. Chips que rellenan la descripción (editable); **"+ editar frases"** = mini-gestión inline (agregar/editar/borrar). **Persistencia:** `parametros_globales` clave `frases_factura` (JSON array) — sin tabla nueva.
+
+**Orden sugerido:** 1) SQL `items` (Fede) → 2) frontend grilla + IVA mixto + frases → 3) PDF/preview N líneas → 4) connector N `AlicIva` (Fede deploya) → 5) emisión real controlada (A con 21+10,5). **Verificar** la partida doble del asiento auto con IVA mixto (split de `1.1.09`).
