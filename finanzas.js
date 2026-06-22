@@ -170,6 +170,17 @@ const FinanzasModule = {
         const content = document.getElementById('mainContent');
         if (!content) return;
 
+        // Cerrar el visor central al clickear el fondo (una sola vez)
+        if (!this._overlayClickBound) {
+            document.addEventListener('click', (ev) => {
+                const t = ev.target;
+                if (t && t.classList && t.classList.contains('fin-side-panel') && t.classList.contains('open')) {
+                    this._closePanel();
+                }
+            });
+            this._overlayClickBound = true;
+        }
+
         content.innerHTML = this._buildShell();
         this._attachEvents();
         await this._renderTabContent();
@@ -734,26 +745,39 @@ const FinanzasModule = {
                     color: #555;
                 }
 
-                /* ─── Side Panel ─── */
+                /* ─── Visor central (modal overlay) ─── */
                 .fin-side-panel {
-                    position: absolute;
-                    top: 0;
-                    right: 0;
-                    bottom: 0;
-                    width: 420px;
-                    max-width: 90vw;
-                    background: #0a0a0a;
-                    border-left: 1px solid rgba(255,255,255,0.06);
-                    transform: translateX(100%);
-                    transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-                    z-index: 100;
+                    position: fixed;
+                    inset: 0;
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: center;
+                    padding: 28px 16px 48px;
+                    background: rgba(0,0,0,0.62);
+                    -webkit-backdrop-filter: blur(2px);
+                    backdrop-filter: blur(2px);
+                    opacity: 0;
+                    visibility: hidden;
+                    transition: opacity 0.2s ease;
+                    z-index: 300;
                     overflow-y: auto;
-                    overflow-x: hidden;
                 }
-                .fin-side-panel.open { transform: translateX(0); }
-                .fin-side-panel::-webkit-scrollbar { width: 4px; }
-                .fin-side-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-                .fin-panel-inner { padding-bottom: 40px; }
+                .fin-side-panel.open { opacity: 1; visibility: visible; }
+                .fin-side-panel::-webkit-scrollbar { width: 8px; }
+                .fin-side-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+                .fin-panel-inner {
+                    width: 100%;
+                    max-width: 760px;
+                    margin: auto;
+                    background: #0d0d0d;
+                    border: 1px solid rgba(0,169,193,0.18);
+                    border-radius: 10px;
+                    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+                    padding-bottom: 24px;
+                    overflow: hidden;
+                    animation: finPanelIn 0.22s ease;
+                }
+                @keyframes finPanelIn { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
                 .fin-panel-header {
                     position: relative;
                     padding: 20px 20px 16px;
@@ -2624,15 +2648,8 @@ const FinanzasModule = {
             (data || []).forEach(p => { this._proyectosMap[p.id] = p.nombre; });
         } catch (e) { /* table may not exist */ }
 
-        // Clientes (graceful)
-        try {
-            const { data } = await supabaseClient
-                .from('clientes')
-                .select('id, nombre_empresa')
-                .eq('_deleted', false)
-                .order('nombre_empresa');
-            (data || []).forEach(c => { this._clientesMap[c.id] = c.nombre_empresa; });
-        } catch (e) { /* table may not exist */ }
+        // Clientes (graceful) — incluye cuit para el autocomplete del facturador
+        await this._loadClientesLookup();
 
         // Eventos (graceful) — Fase 3d.2: imputación de comprobantes a evento
         this._eventosMap = this._eventosMap || {};
@@ -2646,6 +2663,24 @@ const FinanzasModule = {
         } catch (e) { /* table may not exist */ }
 
         this._lookupsLoaded = true;
+    },
+
+    // Carga (o recarga) clientes incluyendo cuit → índice para autocomplete del facturador.
+    async _loadClientesLookup() {
+        this._clientesMap = this._clientesMap || {};
+        this._clientesCuit = {};   // cuitNormalizado → { id, nombre, razon_social, cuit }
+        try {
+            const { data } = await supabaseClient
+                .from('clientes')
+                .select('id, nombre_empresa, razon_social, cuit')
+                .eq('_deleted', false)
+                .order('nombre_empresa');
+            (data || []).forEach(c => {
+                this._clientesMap[c.id] = c.nombre_empresa;
+                const cuit = String(c.cuit || '').replace(/\D/g, '');
+                if (cuit) this._clientesCuit[cuit] = { id: c.id, nombre: c.nombre_empresa, razon_social: c.razon_social, cuit };
+            });
+        } catch (e) { /* table may not exist */ }
     },
 
     // ═══════════════════════════════════════════
@@ -2810,36 +2845,11 @@ const FinanzasModule = {
             .fin-row:hover .fin-actions-cell { opacity: 1; }
             .fin-inline-input { width:100%; background:#0a0a0a; border:1px solid #00A9C1; color:#E8E8E8; padding:4px 6px; border-radius:3px; font-size:0.85rem; font-family:inherit; }
 
-            /* Side panel arreglado: position fixed al derecho con altura full y scroll interno.
-               Override del CSS legacy que lo colapsaba a la altura de la fila clickeada. */
-            .fin-side-panel.open {
-                position: fixed !important;
-                top: 80px !important;
-                right: 16px !important;
-                width: 420px !important;
-                max-width: calc(100vw - 220px) !important;
-                height: auto !important;
-                max-height: calc(100vh - 100px) !important;
-                overflow-y: auto !important;
-                z-index: 50 !important;
-                box-shadow: -8px 0 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,169,193,0.15) !important;
-                background: #0d0d0d !important;
-                border-radius: 8px !important;
-                border-left: 2px solid #00A9C1 !important;
-            }
-            @media (max-width: 900px) {
-                .fin-side-panel.open {
-                    top: auto !important;
-                    bottom: 0 !important;
-                    right: 0 !important;
-                    left: 0 !important;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    max-height: 75vh !important;
-                    border-radius: 12px 12px 0 0 !important;
-                    border-left: 0 !important;
-                    border-top: 2px solid #00A9C1 !important;
-                }
+            /* Visor central: el panel es un modal overlay (definido en el bloque base).
+               En pantallas chicas, la card ocupa todo el ancho. */
+            @media (max-width: 800px) {
+                .fin-side-panel { padding: 12px 8px 32px !important; }
+                .fin-panel-inner { max-width: 100% !important; }
             }
         `;
         document.head.appendChild(s);
@@ -6956,6 +6966,36 @@ const FinanzasModule = {
         inicio_actividades: '01/01/2007',
     },
 
+    // ── Logos MEPEX (vectoriales, #00abc8). Inner paths; el SVG se arma con _logoSvg/_isoSvg. ──
+    _LOGO_VB: '0 0 13238.69 5669.29',
+    _LOGO_PATHS: '<path d="m3527.62,3608.94v-1394.88h1284.48v257.68h-1026.81v309.96h1026.81v259.63h-1026.81v309.98h1026.81v257.63h-1284.48Z"/><path d="m6138.26,3608.94v-1392.94h1123.62c74.96,0,138.89,26.85,191.81,80.42,52.97,53.63,79.5,116.55,79.5,188.85v375.86c0,73.63-26.53,136.93-79.5,189.86-52.91,52.96-116.85,79.46-191.81,79.46l-867.9,1.94v476.54h-255.71Zm323.54-736.17h745.88c34.87,0,54.89-1.96,60.02-5.86,5.2-3.84,7.79-23.82,7.79-60.05v-267.32c0-36.14-2.59-56.49-7.79-61.02-5.13-4.48-25.15-6.78-60.02-6.78h-745.88c-36.2,0-56.51,2.3-61.06,6.78-4.52,4.53-6.76,24.88-6.76,61.02v267.32c0,36.22,2.25,56.21,6.76,60.05,4.55,3.9,24.86,5.86,61.06,5.86Z"/><path d="m8772.35,3608.94v-1394.88h1284.4v257.68h-1026.74v309.96h1026.74v259.63h-1026.74v309.98h1026.74v257.63h-1284.4Z"/><polygon points="2274.91 2214.05 2023.1 2214.05 2021.15 2214.05 1488.6 3349.14 957.58 2214.05 703.79 2214.05 703.79 3608.94 957.58 3608.94 957.58 2756.59 1356.31 3608.94 1366.69 3608.94 1610.16 3608.94 1620.5 3608.94 2023.1 2750.75 2023.1 3608.94 2276.92 3608.94 2276.92 2214.05 2274.91 2214.05"/><polygon points="12120.25 2568.97 12326.13 2740.09 12870.01 2286.51 12870.01 1943.86 12120.25 2568.97"/><polygon points="11255.94 2533.32 11709.53 2911.5 11255.94 3289.63 11255.94 3632.34 11914.98 3082.78 12870.01 3879.12 12870.01 3536.38 11255.94 2190.63 11255.94 2533.32"/>',
+    _ISO_VB: '0 0 9024.99 9024.99',
+    _ISO_PATHS: '<polygon points="4602.93 3267.07 5351.47 3889.2 7328.81 2240.09 7328.81 994.34 4602.93 3267.07"/><polygon points="1460.52 3137.38 3109.7 4512.49 1460.52 5887.36 1460.52 7133.35 3856.65 5135.28 7328.81 8030.66 7328.81 6784.47 1460.52 1891.47 1460.52 3137.38"/>',
+
+    // SVG inline (para el preview/visor HTML)
+    _logoSvg(heightPx, color) {
+        const c = color || '#00abc8';
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${this._LOGO_VB}" style="height:${heightPx}px;width:auto;display:block;" fill="${c}">${this._LOGO_PATHS}</svg>`;
+    },
+    _isoSvg(heightPx, color) {
+        const c = color || '#00abc8';
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${this._ISO_VB}" style="height:${heightPx}px;width:auto;display:block;" fill="${c}">${this._ISO_PATHS}</svg>`;
+    },
+    // SVG → PNG dataURL (para el PDF, jsPDF no embebe SVG nativo)
+    async _svgToPng(kind, wPx, hPx, color) {
+        const c = color || '#00abc8';
+        const vb = kind === 'iso' ? this._ISO_VB : this._LOGO_VB;
+        const paths = kind === 'iso' ? this._ISO_PATHS : this._LOGO_PATHS;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="${vb}" fill="${c}">${paths}</svg>`;
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        try {
+            const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+            const cv = document.createElement('canvas'); cv.width = wPx; cv.height = hPx;
+            cv.getContext('2d').drawImage(img, 0, 0, wPx, hPx);
+            return cv.toDataURL('image/png');
+        } finally { URL.revokeObjectURL(url); }
+    },
+
     _tipoBadgeComp(tipo) {
         const t = this._tipoComprobante[tipo] || { short: tipo, color: '#888' };
         return `<span class="fin-comp-badge" style="background:${t.color}22;color:${t.color};">${t.short}</span>`;
@@ -7080,32 +7120,32 @@ const FinanzasModule = {
                     </div>
                 </div>
                 ${asocBlock}
-                <div class="fin-form-row">
-                    <div class="fin-form-group">
-                        <label class="fin-form-label">Cliente *</label>
-                        <select class="fin-form-select" id="finWizCliente">
-                            <option value="">— Seleccionar —</option>
-                            ${cliOpts}
-                        </select>
-                    </div>
-                    <div class="fin-form-group">
-                        <label class="fin-form-label">Proyecto</label>
-                        <select class="fin-form-select" id="finWizProyecto">
-                            <option value="">— Sin proyecto —</option>
-                            ${proyOpts}
-                        </select>
-                    </div>
-                </div>
+
+                <div class="fin-form-section-label" style="font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:#666;margin:4px 0 -2px;">Receptor</div>
                 <div class="fin-form-row">
                     <div class="fin-form-group">
                         <label class="fin-form-label">CUIT / DNI *</label>
-                        <input type="text" class="fin-form-input" id="finWizCuit" value="${d.cuit_dni || ''}" placeholder="30-12345678-9">
+                        <input type="text" class="fin-form-input" id="finWizCuit" value="${escAttr(d.cuit_dni || '')}" placeholder="30-12345678-9" autocomplete="off">
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Condición IVA receptor *</label>
                         <select class="fin-form-select" id="finWizCondIva">${condOpts}</select>
                     </div>
                 </div>
+                <div class="fin-form-group">
+                    <label class="fin-form-label">Nombre / Razón social *</label>
+                    <input type="text" class="fin-form-input" id="finWizNombre" value="${escAttr(d.razon_social || '')}" placeholder="Razón social o nombre del receptor" autocomplete="off">
+                    <div id="finWizCliStatus" style="margin-top:6px;font-size:0.78rem;min-height:18px;"></div>
+                </div>
+                <div class="fin-form-group">
+                    <label class="fin-form-label">Cliente existente <span style="color:#888;font-weight:400;">(opcional — autocompleta CUIT y nombre)</span></label>
+                    <select class="fin-form-select" id="finWizCliente">
+                        <option value="">— Nuevo / no listado —</option>
+                        ${cliOpts}
+                    </select>
+                </div>
+
+                <div class="fin-form-section-label" style="font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:#666;margin:8px 0 -2px;">Comprobante</div>
                 <div class="fin-form-row">
                     <div class="fin-form-group">
                         <label class="fin-form-label">Concepto *</label>
@@ -7116,9 +7156,18 @@ const FinanzasModule = {
                         <select class="fin-form-select" id="finWizServicio">${srvOpts}</select>
                     </div>
                 </div>
-                <div class="fin-form-group">
-                    <label class="fin-form-label">Descripción adicional</label>
-                    <input type="text" class="fin-form-input" id="finWizDesc" value="${d.descripcion || ''}" placeholder="Detalle del servicio…">
+                <div class="fin-form-row">
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Proyecto</label>
+                        <select class="fin-form-select" id="finWizProyecto">
+                            <option value="">— Sin proyecto —</option>
+                            ${proyOpts}
+                        </select>
+                    </div>
+                    <div class="fin-form-group">
+                        <label class="fin-form-label">Descripción adicional</label>
+                        <input type="text" class="fin-form-input" id="finWizDesc" value="${escAttr(d.descripcion || '')}" placeholder="Detalle del servicio…">
+                    </div>
                 </div>
             </div>
             <div class="fin-wizard-nav">
@@ -7126,6 +7175,67 @@ const FinanzasModule = {
                 <button class="fin-wizard-btn fin-wizard-btn-primary" id="finWizNext1">Siguiente →</button>
             </div>
         `;
+    },
+
+    // Lee los campos del paso 1 al estado del wizard (reusable: next + agregar cliente).
+    _readStep1() {
+        const g = (id) => document.getElementById(id);
+        Object.assign(this._factWizardData, {
+            tipo: g('finWizTipo')?.value || 'factura_a',
+            punto_venta: parseInt(g('finWizPV')?.value) || 5,
+            cuit_dni: (g('finWizCuit')?.value || '').trim(),
+            cond_iva_receptor: parseInt(g('finWizCondIva')?.value) || null,
+            razon_social: (g('finWizNombre')?.value || '').trim(),
+            cliente_id: g('finWizCliente')?.value || null,
+            concepto: parseInt(g('finWizConcepto')?.value) || 2,
+            servicio: g('finWizServicio')?.value || null,
+            proyecto_id: g('finWizProyecto')?.value || null,
+            descripcion: (g('finWizDesc')?.value || '').trim(),
+            cbte_asoc_id: g('finWizAsoc')?.value || null,
+        });
+    },
+
+    // Actualiza el status del receptor (✓ en clientes / botón agregar) según CUIT + nombre.
+    _updateCliStatus() {
+        const cuitEl = document.getElementById('finWizCuit');
+        const statusEl = document.getElementById('finWizCliStatus');
+        const cliSel = document.getElementById('finWizCliente');
+        const nombreEl = document.getElementById('finWizNombre');
+        if (!cuitEl || !statusEl) return;
+        const digits = (cuitEl.value || '').replace(/\D/g, '');
+        const match = this._clientesCuit[digits];
+        if (match) {
+            if (cliSel) cliSel.value = match.id;
+            if (nombreEl && !nombreEl.value.trim()) nombreEl.value = match.nombre || '';
+            statusEl.innerHTML = `<span style="color:#00CC88;">✓ En clientes: ${escHtml(match.nombre || '')}</span>`;
+        } else if (cliSel && cliSel.value) {
+            statusEl.innerHTML = `<span style="color:#00CC88;">✓ Cliente seleccionado</span>`;
+        } else {
+            const nombre = (nombreEl?.value || '').trim();
+            if (digits.length >= 7 && nombre) {
+                statusEl.innerHTML = `<button type="button" class="fin-wizard-btn" id="finWizAddCli" style="padding:5px 10px;font-size:0.75rem;">➕ Agregar como cliente</button>`;
+                document.getElementById('finWizAddCli')?.addEventListener('click', () => this._agregarReceptorComoCliente());
+            } else {
+                statusEl.innerHTML = `<span style="color:#888;">No está en clientes. Cargá CUIT + nombre para poder agregarlo.</span>`;
+            }
+        }
+    },
+
+    // Crea el receptor actual como cliente (box de confirmación) y sigue en el facturador.
+    async _agregarReceptorComoCliente() {
+        this._readStep1();
+        const cuit = this._factWizardData.cuit_dni || '';
+        const nombre = this._factWizardData.razon_social || '';
+        if (!nombre) { Toast.warning('Cargá el nombre / razón social'); return; }
+        const ok = await Confirm.action('Agregar como cliente', `¿Guardar en clientes?\n\n${nombre}\nCUIT/DNI: ${cuit || '—'}`);
+        if (!ok) return;
+        const res = await API.createClient({ name: nombre, razonSocial: nombre, cuit });
+        if (!res) { Toast.error('No se pudo crear el cliente'); return; }
+        await this._loadClientesLookup();
+        const digits = cuit.replace(/\D/g, '');
+        if (this._clientesCuit[digits]) this._factWizardData.cliente_id = this._clientesCuit[digits].id;
+        Toast.success(`Cliente agregado: ${nombre}`);
+        this._rerenderWizard();   // reconstruye el paso 1 con el cliente ya seleccionado
     },
 
     _buildWizardStep2(d) {
@@ -7232,7 +7342,7 @@ const FinanzasModule = {
         const tipoInfo = this._tipoComprobante[tipo] || { label: tipo };
         const letra = tipo.endsWith('_a') ? 'A' : (tipo.endsWith('_b') ? 'B' : 'C');
         const codAfip = { factura_a: '01', factura_b: '06', nota_debito_a: '02', nota_debito_b: '07', nota_credito_a: '03', nota_credito_b: '08' }[tipo] || '';
-        const cliName = d.cliente_id ? (this._clientesMap[d.cliente_id] || '—') : (escHtml(d.razon_social || '') || '—');
+        const cliName = d.cliente_id ? (this._clientesMap[d.cliente_id] || '—') : (d.razon_social || '—');
         const srvLabel = this._servicioLabel[d.servicio] || d.servicio || 'Servicios';
         const concLabel = this._conceptoAfip[d.concepto || 2] || 'Servicios';
         const condRec = this._condIvaReceptor[d.cond_iva_receptor || (letra === 'A' ? 1 : 5)] || '';
@@ -7273,7 +7383,7 @@ const FinanzasModule = {
             <div class="fin-comprobante-paper" style="background:#fff;color:#1a1a1a;border-radius:6px;padding:0;max-width:620px;margin:0 auto;box-shadow:0 4px 24px rgba(0,0,0,0.35);font-family:'Outfit',Arial,sans-serif;overflow:hidden;">
                 <div style="display:flex;border-bottom:2px solid #1a1a1a;position:relative;">
                     <div style="flex:1;padding:14px 16px;">
-                        <div style="font-size:1.15rem;font-weight:800;color:#00A9C1;letter-spacing:1px;">MEPEX</div>
+                        <div style="margin-bottom:6px;">${this._logoSvg(26)}</div>
                         <div style="font-size:0.82rem;font-weight:700;margin-top:2px;">${escHtml(e.razon_social)}</div>
                         <div style="font-size:0.72rem;color:#555;margin-top:3px;line-height:1.5;">
                             CUIT: ${e.cuit}<br>
@@ -7332,34 +7442,45 @@ const FinanzasModule = {
         });
 
         if (this._factWizardStep === 1) {
-            const readStep1 = () => {
-                Object.assign(this._factWizardData, {
-                    tipo: document.getElementById('finWizTipo')?.value || 'factura_a',
-                    servicio: document.getElementById('finWizServicio')?.value || null,
-                    cliente_id: document.getElementById('finWizCliente')?.value || null,
-                    cuit_dni: document.getElementById('finWizCuit')?.value.trim() || '',
-                    cond_iva_receptor: parseInt(document.getElementById('finWizCondIva')?.value) || null,
-                    concepto: parseInt(document.getElementById('finWizConcepto')?.value) || 2,
-                    punto_venta: parseInt(document.getElementById('finWizPV')?.value) || 5,
-                    proyecto_id: document.getElementById('finWizProyecto')?.value || null,
-                    descripcion: document.getElementById('finWizDesc')?.value.trim() || '',
-                    cbte_asoc_id: document.getElementById('finWizAsoc')?.value || null,
-                });
-            };
+            // CUIT → autocomplete (busca en clientes) + status
+            const cuitEl = document.getElementById('finWizCuit');
+            cuitEl?.addEventListener('input', () => this._updateCliStatus());
+            cuitEl?.addEventListener('blur', () => this._updateCliStatus());
+            document.getElementById('finWizNombre')?.addEventListener('input', () => this._updateCliStatus());
+
+            // Elegir un cliente de la lista → completa CUIT + nombre + condición
+            document.getElementById('finWizCliente')?.addEventListener('change', (ev) => {
+                const id = ev.target.value;
+                const nombreEl = document.getElementById('finWizNombre');
+                const cuitInput = document.getElementById('finWizCuit');
+                if (id) {
+                    const entry = Object.values(this._clientesCuit).find(c => c.id === id);
+                    if (nombreEl) nombreEl.value = this._clientesMap[id] || (entry && entry.nombre) || nombreEl.value;
+                    if (entry && cuitInput && !cuitInput.value.trim()) cuitInput.value = entry.cuit;
+                }
+                this._updateCliStatus();
+            });
+
+            // Estado inicial del receptor
+            this._updateCliStatus();
 
             // Cambiar el tipo re-renderiza (muestra/oculta asociado + ajusta default cond IVA)
             document.getElementById('finWizTipo')?.addEventListener('change', (ev) => {
-                readStep1();
+                this._readStep1();
                 this._factWizardData.tipo = ev.target.value;
                 this._factWizardData.cond_iva_receptor = null;  // recalcula default por tipo
                 this._rerenderWizard();
             });
 
             document.getElementById('finWizNext1')?.addEventListener('click', () => {
-                readStep1();
+                this._readStep1();
                 const d = this._factWizardData;
                 if (!d.tipo || !d.servicio || !d.cuit_dni) {
                     Toast.warning('Tipo, servicio y CUIT/DNI son obligatorios');
+                    return;
+                }
+                if (!d.razon_social && !d.cliente_id) {
+                    Toast.warning('Cargá el nombre / razón social del receptor');
                     return;
                 }
                 if (d.tipo.endsWith('_a') && d.cuit_dni.replace(/\D/g, '').length !== 11) {
@@ -7533,6 +7654,9 @@ const FinanzasModule = {
             if (!response.ok || !result.ok) {
                 throw new Error(result.error || `HTTP ${response.status}`);
             }
+            // Guardamos el nombre del receptor en la respuesta (para el PDF/visor si no es un cliente listado)
+            result.receptor_nombre = d.razon_social || (d.cliente_id ? this._clientesMap[d.cliente_id] : null) || null;
+            result.cond_iva_receptor = payload.cond_iva_receptor;
 
             // Guardar el comprobante con CAE
             const record = {
@@ -7640,74 +7764,114 @@ const FinanzasModule = {
         const tipo = comp.tipo;
         const letra = tipo.endsWith('_a') ? 'A' : (tipo.endsWith('_b') ? 'B' : 'C');
         const codAfip = { factura_a: '01', factura_b: '06', nota_debito_a: '02', nota_debito_b: '07', nota_credito_a: '03', nota_credito_b: '08' }[tipo] || '';
-        const cliName = this._clientesMap[comp.cliente_id] || comp.cuit_dni || '—';
+        const cliName = this._clientesMap[comp.cliente_id] || (r.receptor_nombre) || '—';
         const isA = letra === 'A';
-        const W = 210;
+        const L = 14, R = 196, W = 210, CX = W / 2;
+        const DARK = [26, 26, 26], GRAY = [90, 90, 90], TURQ = [0, 171, 200];
+        const money = (n) => this._formatMoney(n || 0);
 
-        // Header
-        doc.setTextColor(0, 169, 193); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
-        doc.text('MEPEX', 16, 20);
-        doc.setTextColor(20, 20, 20); doc.setFontSize(10);
-        doc.text(e.razon_social, 16, 27);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(80, 80, 80);
-        doc.text([`CUIT: ${e.cuit}`, e.condicion_iva, e.domicilio].concat(e.iibb ? [`IIBB: ${e.iibb}`] : []).concat(e.inicio_actividades ? [`Inicio act.: ${e.inicio_actividades}`] : []), 16, 33);
+        // ── ORIGINAL ──
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...GRAY);
+        doc.text('ORIGINAL', CX, 9, { align: 'center' });
 
-        // Letra box (centro)
-        doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.5); doc.rect(W / 2 - 8, 12, 16, 16);
-        doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
-        doc.text(letra, W / 2, 22, { align: 'center' });
-        doc.setFontSize(6); doc.setFont('helvetica', 'normal');
-        doc.text(`COD ${codAfip}`, W / 2, 26, { align: 'center' });
+        // ── Marco header + caja de letra (estilo AFIP) ──
+        doc.setDrawColor(...DARK); doc.setLineWidth(0.4);
+        doc.rect(L, 11, R - L, 32);                 // marco header
+        doc.rect(CX - 9, 11, 18, 18);               // caja letra
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...DARK);
+        doc.text(letra, CX, 23, { align: 'center' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+        doc.text(`COD. ${codAfip}`, CX, 27, { align: 'center' });
 
-        // Datos comprobante (derecha)
-        doc.setTextColor(20, 20, 20); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
-        doc.text((this._tipoComprobante[tipo] || {}).label || tipo, W - 16, 18, { align: 'right' });
+        // ── Header izquierda: logo + razón social + domicilio + condición ──
+        try {
+            const logoPng = await this._svgToPng('logo', 460, 197);
+            doc.addImage(logoPng, 'PNG', L + 3, 14, 34, 14.6);
+        } catch (le) { doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...TURQ); doc.text('MEPEX', L + 3, 22); }
+        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+        doc.text(e.razon_social, L + 3, 33);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+        doc.text(doc.splitTextToSize(`Domicilio: ${e.domicilio}`, CX - L - 8), L + 3, 37.5);
+        doc.text(e.condicion_iva, L + 3, 41.5);
+
+        // ── Header derecha: tipo + Nº + fecha + datos fiscales emisor ──
+        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+        doc.text(`FACTURA ${letra}`, R - 3, 16, { align: 'right' });
         doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-        doc.text(`Nº ${comp.numero || ''}`, W - 16, 24, { align: 'right' });
-        doc.setFontSize(8); doc.setTextColor(80, 80, 80);
-        doc.text(`Fecha: ${this._formatDate(comp.fecha)}`, W - 16, 29, { align: 'right' });
-        doc.text(`Pto. Venta: ${String(comp.punto_venta || 5).padStart(4, '0')}`, W - 16, 33, { align: 'right' });
+        doc.text(`Nº ${comp.numero || ''}`, R - 3, 21.5, { align: 'right' });
+        doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+        doc.text(`Fecha de Emisión: ${this._formatDate(comp.fecha)}`, R - 3, 26, { align: 'right' });
+        doc.text(`Punto de Venta: ${String(comp.punto_venta || 5).padStart(5, '0')}`, R - 3, 30, { align: 'right' });
+        doc.text(`CUIT: ${e.cuit}`, R - 3, 34, { align: 'right' });
+        doc.text(`Ingresos Brutos: ${e.iibb}`, R - 3, 37.5, { align: 'right' });
+        doc.text(`Inicio de Actividades: ${e.inicio_actividades}`, R - 3, 41, { align: 'right' });
 
-        doc.setDrawColor(20, 20, 20); doc.line(16, 40, W - 16, 40);
+        // ── Período + vto pago ──
+        let y = 49;
+        doc.setTextColor(...DARK); doc.setFontSize(8);
+        const pd = r.serv_desde ? this._formatDate(r.serv_desde) : this._formatDate(comp.fecha);
+        const ph = r.serv_hasta ? this._formatDate(r.serv_hasta) : this._formatDate(comp.fecha);
+        doc.text(`Período Facturado: ${pd} al ${ph}`, L, y);
+        doc.text(`Vto. para el pago: ${r.vto_pago ? this._formatDate(r.vto_pago) : this._formatDate(comp.fecha)}`, R, y, { align: 'right' });
+        doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2); doc.line(L, y + 3, R, y + 3);
 
-        // Receptor
-        doc.setTextColor(20, 20, 20); doc.setFontSize(9);
-        doc.text(`Cliente: ${cliName}`, 16, 47);
-        doc.text(`CUIT/DNI: ${comp.cuit_dni || '—'}`, W - 16, 47, { align: 'right' });
+        // ── Receptor ──
+        y += 9;
         const condRec = this._condIvaReceptor[r.cond_iva_receptor || (isA ? 1 : 5)] || '';
-        doc.setTextColor(80, 80, 80); doc.setFontSize(8);
-        doc.text(`Condición IVA: ${condRec}`, 16, 52);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
+        doc.text(`CUIT/DNI: ${comp.cuit_dni || '—'}`, L, y);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRAY);
+        doc.text(`Condición de venta: Contado`, R, y, { align: 'right' });
+        y += 5;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
+        doc.text(doc.splitTextToSize(`Sr(es): ${cliName}`, R - L), L, y);
+        y += 5;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRAY);
+        doc.text(`Condición frente al IVA: ${condRec}`, L, y);
 
-        // Items + totales (autotable)
+        // ── Ítems ──
         const detalle = `${this._servicioLabel[comp.servicio] || comp.servicio || 'Servicios'}${comp.descripcion ? ' — ' + comp.descripcion : ''}`;
-        const body = [[detalle, this._formatMoney(isA ? (comp.neto || 0) : (comp.total || 0))]];
-        const foot = isA
-            ? [['Neto gravado', this._formatMoney(comp.neto || 0)], [`IVA ${comp.iva_alicuota || 21}%`, this._formatMoney(comp.iva || 0)], ['TOTAL', this._formatMoney(comp.total || 0)]]
-            : [['TOTAL', this._formatMoney(comp.total || 0)]];
+        const baseImporte = isA ? (comp.neto || 0) : (comp.total || 0);
         doc.autoTable({
-            startY: 58, head: [['Detalle', 'Importe']], body, foot,
-            theme: 'grid', headStyles: { fillColor: [0, 169, 193], textColor: 255, fontStyle: 'bold' },
-            footStyles: { fillColor: [245, 245, 245], textColor: 20, fontStyle: 'bold' },
-            columnStyles: { 1: { halign: 'right', cellWidth: 50 } },
-            margin: { left: 16, right: 16 },
+            startY: y + 4,
+            head: [['Producto / Servicio', 'Cant.', 'P. Unitario', 'Subtotal']],
+            body: [[detalle, '1,00', money(baseImporte), money(baseImporte)]],
+            theme: 'grid',
+            styles: { fontSize: 8, cellPadding: 2.5, textColor: DARK },
+            headStyles: { fillColor: TURQ, textColor: 255, fontStyle: 'bold' },
+            columnStyles: { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'right', cellWidth: 36 } },
+            margin: { left: L, right: 14 },
         });
 
-        // CAE + QR
-        let y = (doc.lastAutoTable?.finalY || 100) + 12;
-        doc.setTextColor(20, 20, 20); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-        doc.text(`CAE: ${comp.cae || '—'}`, 16, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Vto. CAE: ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}`, 16, y + 5);
+        // ── Totales (derecha) ──
+        let ty = (doc.lastAutoTable?.finalY || 100) + 7;
+        const totLine = (label, val, bold, big) => {
+            doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(big ? 11 : 8.5);
+            doc.setTextColor(...DARK);
+            doc.text(label, R - 52, ty, { align: 'right' });
+            doc.text(money(val), R, ty, { align: 'right' });
+            ty += big ? 7 : 5;
+        };
+        if (isA) {
+            totLine('Importe Neto Gravado:', comp.neto || 0, false);
+            totLine(`IVA ${comp.iva_alicuota || 21}%:`, comp.iva || 0, false);
+        }
+        doc.setDrawColor(...TURQ); doc.setLineWidth(0.5); doc.line(R - 70, ty - 2, R, ty - 2);
+        totLine('IMPORTE TOTAL:', comp.total || 0, true, true);
 
-        // QR AFIP
+        // ── CAE + QR + leyenda ──
+        let fy = Math.max(ty + 6, (doc.lastAutoTable?.finalY || 100) + 14);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...DARK);
+        doc.text(`CAE Nº: ${comp.cae || '—'}`, L, fy);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Fecha de Vto. de CAE: ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}`, L, fy + 5);
         try {
             const qrUrl = this._buildAfipQR(comp, r);
             const dataUrl = qrUrl ? await this._qrDataUrl(qrUrl) : null;
-            if (dataUrl) doc.addImage(dataUrl, 'PNG', W - 16 - 30, y - 6, 30, 30);
+            if (dataUrl) doc.addImage(dataUrl, 'PNG', L, fy + 9, 28, 28);
         } catch (qe) { console.warn('[Finanzas] QR:', qe.message); }
-
-        doc.setFontSize(7); doc.setTextColor(120, 120, 120);
-        doc.text('Comprobante autorizado por ARCA (AFIP). Verificable con el QR.', 16, y + 14);
+        doc.setFontSize(7); doc.setTextColor(...GRAY);
+        doc.text('Comprobante Autorizado por ARCA (AFIP) — "MONTAJE Y EQUIPAMIENTO PARA EXPOSICIONES"', CX, fy + 42, { align: 'center' });
 
         const fname = `MEPEX_${(this._tipoComprobante[tipo] || {}).short || tipo}_${(comp.numero || '').replace(/[^\d-]/g, '') || 's-n'}.pdf`;
         doc.save(fname);
@@ -7938,115 +8102,46 @@ const FinanzasModule = {
         if (!panel) return;
 
         const tipoInfo = this._tipoComprobante[comp.tipo] || { label: comp.tipo };
-        const cliName = this._clientesMap[comp.cliente_id] || '—';
-        const proyName = this._proyectosMap[comp.proyecto_id] || '—';
-        const srvLabel = this._servicioLabel[comp.servicio] || comp.servicio;
         const jsonStr = comp.lapyme_response ? JSON.stringify(comp.lapyme_response, null, 2) : null;
+        const compPreview = this._buildComprobantePreview({
+            tipo: comp.tipo, cliente_id: comp.cliente_id, cuit_dni: comp.cuit_dni,
+            servicio: comp.servicio, descripcion: comp.descripcion, concepto: 2,
+            cond_iva_receptor: (comp.lapyme_response || {}).cond_iva_receptor,
+            neto: comp.neto, iva: comp.iva, iva_alicuota: comp.iva_alicuota, total: comp.total,
+        }, { comp });
 
         panel.innerHTML = `
             <div class="fin-panel-inner">
-                <div class="fin-panel-header">
+                <div class="fin-panel-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                     <div class="fin-panel-color-bar" style="background:${(this._tipoComprobante[comp.tipo] || {}).color || '#4A90D9'}"></div>
-                    <button class="fin-panel-close" id="finPanelClose">&times;</button>
-                    <div class="fin-panel-name">${tipoInfo.label} ${comp.numero ? `#${comp.numero}` : ''}</div>
-                    <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
-                        ${this._tipoBadgeComp(comp.tipo)}
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <span class="fin-panel-name" style="margin:0;">${tipoInfo.label} ${comp.numero ? `· ${comp.numero}` : ''}</span>
                         ${this._estadoBadgeComp(comp.estado)}
                     </div>
+                    <button class="fin-panel-close" id="finPanelClose" style="position:static;">&times;</button>
                 </div>
 
-                <div class="fin-panel-section">
-                    <div class="fin-section-title">Datos</div>
-                    <div class="fin-info-grid">
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Fecha</span>
-                            <span class="fin-info-value">${this._formatDate(comp.fecha)}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Cliente</span>
-                            <span class="fin-info-value">${cliName}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">CUIT/DNI</span>
-                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${comp.cuit_dni}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Servicio</span>
-                            <span class="fin-info-value">${srvLabel}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Proyecto</span>
-                            <span class="fin-info-value">${proyName}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Punto de venta</span>
-                            <span class="fin-info-value">${comp.punto_venta}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fin-panel-section">
-                    <div class="fin-section-title">Montos</div>
-                    <div class="fin-info-grid">
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Neto</span>
-                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);">${this._formatMoney(comp.neto)}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">IVA (${comp.iva_alicuota}%)</span>
-                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);">${this._formatMoney(comp.iva)}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Total</span>
-                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);color:#00CC88;font-weight:700;">${this._formatMoney(comp.total)}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fin-panel-section">
-                    <div class="fin-section-title">AFIP</div>
-                    <div class="fin-info-grid">
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">CAE</span>
-                            <span class="fin-info-value" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${comp.cae || '—'}</span>
-                        </div>
-                        <div class="fin-info-row">
-                            <span class="fin-info-label">Vto. CAE</span>
-                            <span class="fin-info-value">${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}</span>
-                        </div>
-                        ${comp.pdf_url ? `<div class="fin-info-row">
-                            <span class="fin-info-label">PDF</span>
-                            <span class="fin-info-value"><a href="${comp.pdf_url}" target="_blank" class="fin-file-link">📄 Descargar</a></span>
-                        </div>` : ''}
-                    </div>
+                <div class="fin-panel-section" style="background:#0d0d0d;">
+                    ${compPreview}
                 </div>
 
                 ${comp.error_detalle ? `
                 <div class="fin-panel-section">
                     <div class="fin-section-title" style="color:#ff4444;">Error</div>
-                    <div style="color:#ff4444;font-size:0.82rem;background:rgba(255,68,68,0.06);padding:8px 10px;border-radius:4px;">${comp.error_detalle}</div>
-                </div>
-                ` : ''}
+                    <div style="color:#ff4444;font-size:0.82rem;background:rgba(255,68,68,0.06);padding:8px 10px;border-radius:4px;">${escHtml(comp.error_detalle)}</div>
+                </div>` : ''}
 
                 ${jsonStr ? `
                 <div class="fin-panel-section">
                     <button class="fin-json-toggle" id="finJsonToggle">▸ Respuesta ARCA (JSON)</button>
                     <div class="fin-json-block" id="finJsonBlock">${jsonStr}</div>
-                </div>
-                ` : ''}
+                </div>` : ''}
 
-                ${comp.descripcion ? `
-                <div class="fin-panel-section">
-                    <div class="fin-section-title">Descripción</div>
-                    <div style="color:#aaa;font-size:0.85rem;">${comp.descripcion}</div>
-                </div>
-                ` : ''}
-
-                <div class="fin-panel-section">
-                    ${comp.cae ? `<button class="fin-panel-btn" id="finEmiPanelPDF" style="margin-bottom:8px;">📄 Descargar / imprimir PDF</button>` : ''}
+                <div class="fin-panel-actions" style="justify-content:center;">
+                    ${comp.cae ? `<button class="fin-panel-btn" id="finEmiPanelPDF">📄 Descargar / imprimir</button>` : ''}
                     ${comp.ingreso_id
-                        ? `<div style="color:var(--color-success,#00CC88);font-size:0.82rem;">✓ Cobro vinculado a este comprobante.</div>`
-                        : `<button class="fin-panel-btn fin-panel-btn-primary" id="finEmiPanelCobrar">⎘ Generar cobro</button>`}
+                        ? `<span style="color:var(--color-success,#00CC88);font-size:0.82rem;align-self:center;">✓ Cobro vinculado</span>`
+                        : `<button class="fin-panel-btn fin-panel-btn-primary" id="finEmiPanelCobrar">⎘ Gestionar cobro</button>`}
                 </div>
             </div>
         `;
