@@ -740,7 +740,7 @@ const RendimientoModule = {
         document.querySelectorAll('[data-catdel]').forEach(b => b.addEventListener('click', async () => {
             const ok = await Confirm.delete('este ítem del catálogo');
             if (!ok) return;
-            try { await API.deleteCatalogoItem(b.dataset.catdel); Toast.success('Eliminado'); Modal.closeAll(); this._openCatalogoModal(); }
+            try { await API.deleteRendimientoCatalogoItem(b.dataset.catdel); Toast.success('Eliminado'); Modal.closeAll(); this._openCatalogoModal(); }
             catch (err) { Toast.error('Error: ' + (err.message || err)); }
         }));
     },
@@ -786,8 +786,8 @@ const RendimientoModule = {
                 activo: document.getElementById('rendCatActivo')?.checked !== false,
             };
             try {
-                if (isEdit) await API.updateCatalogoItem(item.id, payload);
-                else await API.createCatalogoItem(payload);
+                if (isEdit) await API.updateRendimientoCatalogoItem(item.id, payload);
+                else await API.createRendimientoCatalogoItem(payload);
                 Toast.success('Guardado');
                 Modal.closeAll();
                 this._openCatalogoModal();

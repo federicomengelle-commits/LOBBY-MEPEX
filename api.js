@@ -5713,17 +5713,17 @@ const API = {
             }));
         } catch (e) { console.warn('[API] getRendimientoCatalogo:', e.message); return []; }
     },
-    async createCatalogoItem(payload) {
+    async createRendimientoCatalogoItem(payload) {
         const row = { ...payload, created_by: this._uid() };
         const { data, error } = await supabaseClient.from('evento_costo_catalogo').insert(row).select('id').single();
         if (error) throw error;
         return data.id;
     },
-    async updateCatalogoItem(id, patch) {
+    async updateRendimientoCatalogoItem(id, patch) {
         const { error } = await supabaseClient.from('evento_costo_catalogo').update(patch).eq('id', id);
         if (error) throw error;
     },
-    async deleteCatalogoItem(id) {
+    async deleteRendimientoCatalogoItem(id) {
         const { error } = await supabaseClient.from('evento_costo_catalogo').update({ _deleted: true }).eq('id', id);
         if (error) throw error;
     },
