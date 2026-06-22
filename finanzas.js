@@ -7449,7 +7449,8 @@ const FinanzasModule = {
                         <div>${this._logoSvg(60)}</div>
                         <div style="margin-top:auto;padding-top:14px;">
                             <div style="font-weight:700;font-size:0.82rem;">${escHtml(e.razon_social)}</div>
-                            <div style="font-size:0.72rem;color:#555;margin-top:3px;">${escHtml(e.domicilio)} · ${e.condicion_iva}</div>
+                            <div style="font-size:0.72rem;color:#555;margin-top:3px;">${escHtml(e.domicilio)}</div>
+                            <div style="font-size:0.72rem;color:#555;">${e.condicion_iva}</div>
                         </div>
                     </div>
                     <div style="position:absolute;left:50%;top:0;transform:translateX(-50%);width:54px;height:54px;border:1.5px solid #1a1a1a;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;">
@@ -7854,11 +7855,12 @@ const FinanzasModule = {
         doc.text(`Ingresos Brutos: ${e.iibb}`, R, 41, { align: 'right' });
         doc.text(`Inicio de actividades: ${e.inicio_actividades}`, R, 45, { align: 'right' });
 
-        // ── Emisor (debajo del logo, alineado al pie de los datos de la derecha) ──
+        // ── Emisor (debajo del logo) — domicilio y condición en renglones separados ──
         doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-        doc.text(e.razon_social, L, 40.5);
+        doc.text(e.razon_social, L, 40);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-        doc.text(`${e.domicilio} · ${e.condicion_iva}`, L, 45);
+        doc.text(e.domicilio, L, 44.5);
+        doc.text(e.condicion_iva, L, 48.5);
 
         // ── Receptor (card gris) ──
         let cy = 55;
@@ -7915,8 +7917,8 @@ const FinanzasModule = {
         totLine('IMPORTE TOTAL', comp.total || 0, { bold: true, big: true });
         if (!isA) { doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...GRAY); doc.text('IVA incluido', R, ty - 3, { align: 'right' }); }
 
-        // ── Pie: CAE + QR (izq) · iso (der) ──
-        let fy = Math.max(ty + 8, (doc.lastAutoTable?.finalY || 110) + 16);
+        // ── Pie anclado al fondo de la hoja A4 (estilo AFIP): CAE + QR (izq) · iso (der) ──
+        let fy = Math.max(ty + 10, 262);
         doc.setDrawColor(230, 230, 230); doc.setLineWidth(0.3); doc.line(L, fy - 5, R, fy - 5);
         try {
             const qrUrl = this._buildAfipQR(comp, r);
