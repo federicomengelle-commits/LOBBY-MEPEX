@@ -209,6 +209,26 @@ const EventosModule = {
                 .ev-card-proy { font-size:11px; color:#888; }
                 .ev-card-proy b { font-family:'Space Mono',monospace; color:#00A9C1; }
                 .ev-card-prox { font-family:'Space Mono',monospace; font-size:10.5px; }
+
+                /* ── Ficha: fechas en el header ── */
+                .ev-panel-dates { display:flex; gap:7px; margin-top:13px; }
+                .ev-pd { flex:1; background:#141414; border:1px solid #232323; border-radius:7px;
+                    padding:7px 8px; text-align:center; }
+                .ev-pd-l { display:block; font-size:8px; letter-spacing:.05em; text-transform:uppercase; color:#666; }
+                .ev-pd-v { display:block; font-family:'Space Mono',monospace; font-size:11.5px; color:#d4d4d4; margin-top:3px; }
+                .ev-pd.is-ev { border-color:#00A9C140; }
+                .ev-pd.is-ev .ev-pd-l { color:#00A9C1; }
+                .ev-pd.is-ev .ev-pd-v { color:#fff; }
+
+                /* ── Ficha: secciones colapsables ── */
+                .ev-side-panel .ev-section-title { margin-right:auto; }
+                .ev-side-panel .ev-section-toggle { cursor:pointer; user-select:none; }
+                .ev-sec-chevron { order:99; color:#666; display:inline-flex; margin-left:8px;
+                    transition:transform .2s ease; flex-shrink:0; }
+                .ev-section-toggle:hover .ev-sec-chevron { color:#aaa; }
+                .ev-panel-section.ev-collapsed .ev-sec-chevron { transform:rotate(-90deg); }
+                .ev-panel-section.ev-collapsed > *:not(.ev-section-header) { display:none; }
+                .ev-panel-section.ev-collapsed .ev-section-header { margin-bottom:0; }
             </style>
             <div class="ev-wrapper">
                 <div class="ev-toolbar">
@@ -697,6 +717,8 @@ const EventosModule = {
         panel.classList.add('open');
 
         this._attachPanelEvents(ev);
+        this._setupPanelCollapsibles();
+        this._observePanelSections();
 
         // Cargar secciones async después de renderizar el shell
         this._loadTransporteSection(eventId);
@@ -710,11 +732,44 @@ const EventosModule = {
         this._activePanel = null;
         this._activePanelData = null;
         this._editingSections = new Set();
+        if (this._panelObserver) { this._panelObserver.disconnect(); this._panelObserver = null; }
         const panel = document.getElementById('evSidePanel');
         if (panel) {
             panel.classList.remove('open');
             setTimeout(() => { panel.innerHTML = ''; }, 250);
         }
+    },
+
+    // Convierte cada sección de la ficha en colapsable (chevron + contador ya
+    // presente en el título). Idempotente: marca el header con data-collReady.
+    // Jornadas / Proyectos / Conflictos arrancan abiertas; el resto cerradas.
+    _setupPanelCollapsibles() {
+        const panel = document.getElementById('evSidePanel');
+        if (!panel) return;
+        panel.querySelectorAll('.ev-panel-section').forEach(sec => {
+            const header = sec.querySelector('.ev-section-header');
+            if (!header || header.dataset.collReady) return;
+            // La sección de acciones (eliminar) no tiene título → no se colapsa.
+            if (!header.querySelector('.ev-section-title')) return;
+            header.dataset.collReady = '1';
+            header.classList.add('ev-section-toggle');
+            const chev = document.createElement('span');
+            chev.className = 'ev-sec-chevron';
+            chev.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
+            header.appendChild(chev);
+            const title = (header.querySelector('.ev-section-title')?.textContent || '').toLowerCase();
+            const openByDefault = title.includes('jornada') || title.includes('proyecto') || title.includes('conflicto');
+            if (!openByDefault) sec.classList.add('ev-collapsed');
+        });
+    },
+
+    // Reaplica el setup cuando las secciones async reemplazan su contenido.
+    _observePanelSections() {
+        const panel = document.getElementById('evSidePanel');
+        if (!panel) return;
+        if (this._panelObserver) this._panelObserver.disconnect();
+        this._panelObserver = new MutationObserver(() => this._setupPanelCollapsibles());
+        this._panelObserver.observe(panel, { childList: true, subtree: true });
     },
 
     _renderPanel(ev) {
@@ -733,6 +788,11 @@ const EventosModule = {
                     <div class="ev-panel-status-row">
                         <span class="ev-status-badge" style="--status-color: ${statusColor}">${this._getStatusLabel(ev.estado)}</span>
                         <span class="ev-panel-color-swatch" style="background: ${ev.color || statusColor}" title="Color del evento"></span>
+                    </div>
+                    <div class="ev-panel-dates">
+                        <div class="ev-pd"><span class="ev-pd-l">Armado</span><span class="ev-pd-v">${this._fmtDate(ev.setupDate)}</span></div>
+                        <div class="ev-pd is-ev"><span class="ev-pd-l">Evento</span><span class="ev-pd-v">${this._fmtRangeCompact(ev.eventStartDate, ev.eventEndDate)}</span></div>
+                        <div class="ev-pd"><span class="ev-pd-l">Desarme</span><span class="ev-pd-v">${this._fmtDate(ev.teardownDate)}</span></div>
                     </div>
                 </div>
 
@@ -2336,6 +2396,20 @@ const EventosModule = {
     _attachPanelEvents(ev) {
         // Close panel
         document.getElementById('evPanelClose')?.addEventListener('click', () => this._closePanel());
+
+        // Colapsar/expandir secciones (handler delegado, 1 sola vez por panel).
+        const panel = document.getElementById('evSidePanel');
+        if (panel && !panel.dataset.collDelegated) {
+            panel.dataset.collDelegated = '1';
+            panel.addEventListener('click', (e) => {
+                const header = e.target.closest('.ev-section-toggle');
+                if (!header) return;
+                // No togglear cuando se clickea un control de la cabecera (editar, +).
+                if (e.target.closest('button, a, input, select, textarea')) return;
+                const sec = header.closest('.ev-panel-section');
+                if (sec) sec.classList.toggle('ev-collapsed');
+            });
+        }
 
         // Hide all edit/delete buttons when read-only
         if (this._isRO) {
