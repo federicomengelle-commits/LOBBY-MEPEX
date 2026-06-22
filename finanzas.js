@@ -973,43 +973,62 @@ const FinanzasModule = {
                 .fin-wizard { max-width: 700px; }
                 .fin-wizard-steps {
                     display: flex;
-                    gap: 0;
-                    margin-bottom: 24px;
-                    border-bottom: 1px solid #2a2a2a;
-                    padding-bottom: 0;
+                    justify-content: space-between;
+                    position: relative;
+                    max-width: 440px;
+                    margin: 4px auto 28px;
+                    padding: 0 22px;
+                }
+                .fin-wizard-steps::before {
+                    content: '';
+                    position: absolute;
+                    top: 17px;
+                    left: 52px;
+                    right: 52px;
+                    height: 2px;
+                    background: #2a2a2a;
+                    z-index: 0;
                 }
                 .fin-wizard-step {
-                    flex: 1;
-                    text-align: center;
-                    padding: 10px 8px 12px;
-                    font-size: 0.8rem;
-                    color: #555;
-                    border-bottom: 2px solid transparent;
-                    font-family: var(--font-mono, 'Space Mono', monospace);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 8px;
+                    position: relative;
+                    z-index: 1;
+                    font-family: var(--font-main, 'Outfit', sans-serif);
+                    font-size: 0.75rem;
+                    color: #666;
                     cursor: default;
-                    transition: color 200ms, border-color 200ms;
                 }
-                .fin-wizard-step.active {
-                    color: #4A90D9;
-                    border-bottom-color: #4A90D9;
-                }
-                .fin-wizard-step.done {
-                    color: #00CC88;
-                    border-bottom-color: #00CC88;
-                }
+                .fin-wizard-step.active { color: #00A9C1; font-weight: 600; }
+                .fin-wizard-step.done { color: #00CC88; }
                 .fin-wizard-step-num {
-                    display: inline-block;
-                    width: 22px;
-                    height: 22px;
+                    width: 34px;
+                    height: 34px;
                     border-radius: 50%;
-                    border: 1.5px solid currentColor;
-                    line-height: 20px;
-                    font-size: 0.7rem;
-                    margin-right: 6px;
-                    vertical-align: middle;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: 700;
+                    font-size: 0.9rem;
+                    background: #0f0f0f;
+                    border: 2px solid #2a2a2a;
+                    color: #666;
+                    transition: all 200ms;
                 }
-                .fin-wizard-step.done .fin-wizard-step-num { border-color: #00CC88; }
-                .fin-wizard-body { min-height: 200px; }
+                .fin-wizard-step.active .fin-wizard-step-num {
+                    background: #00A9C1;
+                    border-color: #00A9C1;
+                    color: #05201f;
+                    box-shadow: 0 0 0 4px rgba(0,169,193,0.15);
+                }
+                .fin-wizard-step.done .fin-wizard-step-num {
+                    background: #00CC88;
+                    border-color: #00CC88;
+                    color: #05201f;
+                }
+                .fin-wizard-body { min-height: 200px; max-width: 600px; margin: 0 auto; }
                 .fin-wizard-nav {
                     display: flex;
                     justify-content: space-between;
@@ -7086,13 +7105,13 @@ const FinanzasModule = {
             <div class="fin-wizard">
                 <div class="fin-wizard-steps">
                     <div class="fin-wizard-step ${this._factWizardStep === 1 ? 'active' : (this._factWizardStep > 1 ? 'done' : '')}">
-                        <span class="fin-wizard-step-num">${this._factWizardStep > 1 ? '✓' : '1'}</span> Datos
+                        <span class="fin-wizard-step-num">${this._factWizardStep > 1 ? '✓' : '1'}</span><span class="fin-wizard-step-lbl">Datos</span>
                     </div>
                     <div class="fin-wizard-step ${this._factWizardStep === 2 ? 'active' : (this._factWizardStep > 2 ? 'done' : '')}">
-                        <span class="fin-wizard-step-num">${this._factWizardStep > 2 ? '✓' : '2'}</span> Montos
+                        <span class="fin-wizard-step-num">${this._factWizardStep > 2 ? '✓' : '2'}</span><span class="fin-wizard-step-lbl">Montos</span>
                     </div>
                     <div class="fin-wizard-step ${this._factWizardStep === 3 ? 'active' : ''}">
-                        <span class="fin-wizard-step-num">3</span> Confirmar
+                        <span class="fin-wizard-step-num">3</span><span class="fin-wizard-step-lbl">Confirmar</span>
                     </div>
                 </div>
                 <div class="fin-wizard-body" id="finWizardBody">
