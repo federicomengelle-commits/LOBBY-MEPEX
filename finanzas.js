@@ -7124,7 +7124,7 @@ const FinanzasModule = {
                 <div class="fin-form-section-label" style="font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:#666;margin:4px 0 -2px;">Receptor</div>
                 <div class="fin-form-row">
                     <div class="fin-form-group">
-                        <label class="fin-form-label">CUIT / DNI *</label>
+                        <label class="fin-form-label">CUIT *</label>
                         <input type="text" class="fin-form-input" id="finWizCuit" value="${escAttr(d.cuit_dni || '')}" placeholder="30-12345678-9" autocomplete="off">
                     </div>
                     <div class="fin-form-group">
@@ -7257,7 +7257,7 @@ const FinanzasModule = {
         const cuit = this._factWizardData.cuit_dni || '';
         const nombre = this._factWizardData.razon_social || '';
         if (!nombre) { Toast.warning('Cargá el nombre / razón social'); return; }
-        const ok = await Confirm.action('Agregar como cliente', `¿Guardar en clientes?\n\n${nombre}\nCUIT/DNI: ${cuit || '—'}`);
+        const ok = await Confirm.action('Agregar como cliente', `¿Guardar en clientes?\n\n${nombre}\nCUIT: ${cuit || '—'}`);
         if (!ok) return;
         const res = await API.createClient({ name: nombre, razonSocial: nombre, cuit });
         if (!res) { Toast.error('No se pudo crear el cliente'); return; }
@@ -7436,7 +7436,7 @@ const FinanzasModule = {
                 <div style="padding:10px 16px;border-bottom:1px solid #eee;font-size:0.76rem;color:#333;">
                     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
                         <span><b>Cliente:</b> ${escHtml(cliName)}</span>
-                        <span><b>CUIT/DNI:</b> ${escHtml(d.cuit_dni || (comp && comp.cuit_dni) || '—')}</span>
+                        <span><b>CUIT:</b> ${escHtml(d.cuit_dni || (comp && comp.cuit_dni) || '—')}</span>
                     </div>
                     <div style="margin-top:3px;"><b>Condición IVA:</b> ${condRec} &nbsp;·&nbsp; <b>Concepto:</b> ${concLabel}</div>
                 </div>
@@ -7506,7 +7506,7 @@ const FinanzasModule = {
                 this._readStep1();
                 const d = this._factWizardData;
                 if (!d.tipo || !d.servicio || !d.cuit_dni) {
-                    Toast.warning('Tipo, servicio y CUIT/DNI son obligatorios');
+                    Toast.warning('Tipo, servicio y CUIT son obligatorios');
                     return;
                 }
                 if (!d.razon_social && !d.cliente_id) {
@@ -7849,7 +7849,7 @@ const FinanzasModule = {
         y += 9;
         const condRec = this._condIvaReceptor[r.cond_iva_receptor || (isA ? 1 : 5)] || '';
         doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
-        doc.text(`CUIT/DNI: ${comp.cuit_dni || '—'}`, L, y);
+        doc.text(`CUIT: ${comp.cuit_dni || '—'}`, L, y);
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRAY);
         doc.text(`Condición de venta: Contado`, R, y, { align: 'right' });
         y += 5;
