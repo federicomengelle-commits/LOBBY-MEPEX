@@ -7006,9 +7006,9 @@ const FinanzasModule = {
         return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${this._ISO_VB}" style="height:${heightPx}px;width:auto;display:block;" fill="${c}">${this._ISO_PATHS}</svg>`;
     },
     // SVG → PNG dataURL (para el PDF, jsPDF no embebe SVG nativo)
-    async _svgToPng(kind, wPx, hPx, color) {
+    async _svgToPng(kind, wPx, hPx, color, vbOverride) {
         const c = color || '#00abc8';
-        const vb = kind === 'iso' ? this._ISO_VB : this._LOGO_VB;
+        const vb = vbOverride || (kind === 'iso' ? this._ISO_VB : this._LOGO_VB);
         const paths = kind === 'iso' ? this._ISO_PATHS : this._LOGO_PATHS;
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="${vb}" fill="${c}">${paths}</svg>`;
         const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
@@ -7029,6 +7029,15 @@ const FinanzasModule = {
         const cls = `fin-comp-${estado}`;
         const labels = { emitida: 'Emitida', error: 'Error', pendiente: 'Pendiente', anulada: 'Anulada' };
         return `<span class="fin-comp-badge ${cls}">${labels[estado] || estado}</span>`;
+    },
+
+    // Nombre completo del comprobante para el TÍTULO del visor/PDF (no el label abreviado de la tabla).
+    _tipoComprobanteNombre(tipo) {
+        const letra = tipo.endsWith('_a') ? 'A' : (tipo.endsWith('_b') ? 'B' : (tipo.endsWith('_c') ? 'C' : ''));
+        if (tipo.startsWith('nota_credito')) return `NOTA DE CRÉDITO ${letra}`;
+        if (tipo.startsWith('nota_debito')) return `NOTA DE DÉBITO ${letra}`;
+        if (tipo === 'recibo') return 'RECIBO';
+        return letra ? `FACTURA ${letra}` : 'COMPROBANTE';
     },
 
     // ═══════════════════════════════════════════
@@ -7403,6 +7412,7 @@ const FinanzasModule = {
     _buildComprobantePreview(d, { proximo = false, comp = null } = {}) {
         const tipo = d.tipo || 'factura_a';
         const tipoInfo = this._tipoComprobante[tipo] || { label: tipo };
+        const nombreComp = this._tipoComprobanteNombre(tipo);
         const letra = tipo.endsWith('_a') ? 'A' : (tipo.endsWith('_b') ? 'B' : 'C');
         const codAfip = { factura_a: '01', factura_b: '06', nota_debito_a: '02', nota_debito_b: '07', nota_credito_a: '03', nota_credito_b: '08' }[tipo] || '';
         const isA = letra === 'A';
@@ -7479,7 +7489,7 @@ const FinanzasModule = {
                 <div style="text-align:center;font-size:0.6rem;letter-spacing:2px;color:#aaa;margin-bottom:12px;">ORIGINAL</div>
                 <div style="position:relative;display:flex;align-items:stretch;justify-content:space-between;gap:16px;">
                     <div style="flex:1;display:flex;flex-direction:column;">
-                        <div>${this._logoSvg(60)}</div>
+                        <div style="margin-top:-10px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="640 0 12598.69 5669.29" style="height:74px;width:auto;display:block;margin-left:-16px;" fill="#00abc8">${this._LOGO_PATHS}</svg></div>
                         <div style="margin-top:auto;padding-top:14px;">
                             <div style="font-weight:700;font-size:0.82rem;">${escHtml(e.razon_social)}</div>
                             <div style="font-size:0.72rem;color:#555;margin-top:3px;">${escHtml(e.domicilio)}</div>
@@ -7491,7 +7501,7 @@ const FinanzasModule = {
                         <span style="font-size:0.5rem;color:#666;">COD ${codAfip}</span>
                     </div>
                     <div style="flex:1;text-align:right;">
-                        <div style="font-size:1.1rem;font-weight:800;">${tipoInfo.label}</div>
+                        <div style="font-size:${nombreComp.length > 11 ? '1rem' : '1.1rem'};font-weight:800;">${nombreComp}</div>
                         <div style="font-size:0.72rem;color:#555;margin-top:6px;line-height:1.75;">
                           N° ${nroTxt}<br>Fecha de emisión: ${fecha}<br>Punto de venta: ${pv}<br>CUIT: ${e.cuit}<br>Ingresos Brutos: ${e.iibb}<br>Inicio de actividades: ${e.inicio_actividades}
                         </div>
@@ -7843,8 +7853,8 @@ const FinanzasModule = {
 
         // ── Logo grande (izquierda) ──
         try {
-            const logoPng = await this._svgToPng('logo', 620, 266);
-            doc.addImage(logoPng, 'PNG', L, 15, 52, 22.3);
+            const logoPng = await this._svgToPng('logo', 620, 279, null, '640 0 12598.69 5669.29');
+            doc.addImage(logoPng, 'PNG', 11, 8.6, 64, 28.8);
         } catch (le) { doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...TURQ); doc.text('MEPEX', L, 28); }
 
         // ── Caja de letra (centrada) ──
@@ -7856,8 +7866,9 @@ const FinanzasModule = {
         doc.text(`COD. ${codAfip}`, CX, 30, { align: 'center' });
 
         // ── Datos del comprobante (derecha) ──
-        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
-        doc.text(`FACTURA ${letra}`, R, 18, { align: 'right' });
+        const nombreComp = this._tipoComprobanteNombre(tipo);
+        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(nombreComp.length > 11 ? 11 : 13);
+        doc.text(nombreComp, R, 18, { align: 'right' });
         doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
         doc.text(`N° ${comp.numero || ''}`, R, 24, { align: 'right' });
         doc.setFontSize(7.5); doc.setTextColor(...GRAY);
@@ -7925,7 +7936,7 @@ const FinanzasModule = {
             totLine('Importe Neto Gravado', comp.neto || 0);
             totLine(`IVA ${comp.iva_alicuota || 21}%`, comp.iva || 0, { color: [15, 110, 128] });
         }
-        doc.setDrawColor(...TURQ); doc.setLineWidth(0.6); doc.line(R - 74, ty - 2, R, ty - 2); ty += 1;
+        doc.setDrawColor(...TURQ); doc.setLineWidth(0.6); doc.line(R - 74, ty - 2, R, ty - 2); ty += 5;
         totLine('IMPORTE TOTAL', comp.total || 0, { bold: true, big: true });
         if (!isA) { doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...GRAY); doc.text('IVA incluido', R, ty - 3, { align: 'right' }); }
 
