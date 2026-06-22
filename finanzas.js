@@ -604,6 +604,16 @@ const FinanzasModule = {
                     background: rgba(74, 144, 217, 0.12);
                     color: #4A90D9;
                 }
+                /* Facturación: separar info (izq) de acciones (der, acento turquesa) */
+                .fin-fact-subtabs { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+                .fin-fact-subtabs .fin-subtabs { margin-bottom: 0; }
+                .fin-fact-sep { color: #333; font-size: 14px; user-select: none; }
+                .fin-fact-actions { border-color: #1d4f59; }
+                .fin-fact-actions .fin-subtab { color: #3a8d9b; }
+                .fin-fact-actions .fin-subtab:not(:last-child) { border-right-color: #1d4f59; }
+                .fin-fact-actions .fin-subtab:hover { color: #16b9d4; background: rgba(0, 169, 193, 0.07); }
+                .fin-fact-actions .fin-subtab.active { background: rgba(0, 169, 193, 0.15); color: #16b9d4; }
+                .fin-fact-ico { margin-right: 6px; font-weight: 700; opacity: 0.9; }
 
                 /* ─── Plan de cobro ─── */
                 .fin-plan-card {
@@ -7026,12 +7036,20 @@ const FinanzasModule = {
     // ═══════════════════════════════════════════
 
     _buildFactSubtabs() {
+        const act = (k) => this._factSubtab === k ? 'active' : '';
+        // Patrón macro: INFORMACIÓN (consultar listados) a la izquierda, ACCIONES (crear) a la
+        // derecha con acento turquesa. Ver memoria feedback_ui_separar_info_acciones.
         return `
-            <div class="fin-subtabs">
-                <button class="fin-subtab ${this._factSubtab === 'emitidos' ? 'active' : ''}" data-facttab="emitidos">Emitidos</button>
-                <button class="fin-subtab ${this._factSubtab === 'emitir' ? 'active' : ''}" data-facttab="emitir">Emitir</button>
-                <button class="fin-subtab ${this._factSubtab === 'lote' ? 'active' : ''}" data-facttab="lote">Recurrentes</button>
-                <button class="fin-subtab ${this._factSubtab === 'recibidos' ? 'active' : ''}" data-facttab="recibidos">Recibidos</button>
+            <div class="fin-fact-subtabs">
+                <div class="fin-subtabs">
+                    <button class="fin-subtab ${act('emitidos')}" data-facttab="emitidos">Emitidos</button>
+                    <button class="fin-subtab ${act('recibidos')}" data-facttab="recibidos">Recibidos</button>
+                </div>
+                <span class="fin-fact-sep" aria-hidden="true">│</span>
+                <div class="fin-subtabs fin-fact-actions">
+                    <button class="fin-subtab ${act('emitir')}" data-facttab="emitir"><span class="fin-fact-ico" aria-hidden="true">+</span>Emitir</button>
+                    <button class="fin-subtab ${act('lote')}" data-facttab="lote"><span class="fin-fact-ico" aria-hidden="true">↻</span>Recurrentes</button>
+                </div>
             </div>
         `;
     },
