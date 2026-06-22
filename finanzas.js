@@ -6625,17 +6625,17 @@ const FinanzasModule = {
         // Agregado en 3 queries (no N+1): facturado, cobrado y costo por proyecto.
         const facMap = {}, cobMap = {}, costoMap = {};
         try {
-            const { data } = await supabaseClient.from('comprobantes').select('proyecto_id, total').eq('_deleted', false).eq('estado', 'emitida').not('proyecto_id', 'is', null);
+            const { data } = await supabaseClient.from('comprobantes').select('proyecto_id, total').eq('_deleted', false).eq('estado', 'emitida').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             (data || []).forEach(r => { facMap[r.proyecto_id] = (facMap[r.proyecto_id] || 0) + (Number(r.total) || 0); });
         } catch (_) {}
         try {
-            let q = supabaseClient.from('ingresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('proyecto_id', 'is', null);
+            let q = supabaseClient.from('ingresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
             (data || []).forEach(r => { cobMap[r.proyecto_id] = (cobMap[r.proyecto_id] || 0) + (Number(r.monto) || 0); });
         } catch (_) {}
         try {
-            let q = supabaseClient.from('egresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null);
+            let q = supabaseClient.from('egresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
             (data || []).forEach(r => { costoMap[r.proyecto_id] = (costoMap[r.proyecto_id] || 0) + (Number(r.monto) || 0); });
@@ -6696,17 +6696,28 @@ const FinanzasModule = {
         // Agregado en 1 query (no N+1): cobrado por cliente.
         const cobMap = {};
         try {
-            let q = supabaseClient.from('ingresos').select('cliente_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('cliente_id', 'is', null);
+            let q = supabaseClient.from('ingresos').select('cliente_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('cliente_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
             (data || []).forEach(r => { cobMap[r.cliente_id] = (cobMap[r.cliente_id] || 0) + (Number(r.monto) || 0); });
         } catch (_) {}
 
+        // Costo por cliente = Σ egresos pagados (período) imputados a los proyectos del cliente.
+        const costoMap = {};
+        try {
+            const { data: proys } = await supabaseClient.from('proyectos').select('id, cliente_id').not('cliente_id', 'is', null);
+            const proyCli = {}; (proys || []).forEach(p => { proyCli[p.id] = p.cliente_id; });
+            let qe = supabaseClient.from('egresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
+            if (canal) qe = qe.eq('canal', canal);
+            const { data: egs } = await qe;
+            (egs || []).forEach(r => { const cid = proyCli[r.proyecto_id]; if (cid) costoMap[cid] = (costoMap[cid] || 0) + (Number(r.monto) || 0); });
+        } catch (_) {}
+
         const rows = [];
         for (const cid of cliKeys) {
             const cobrado = cobMap[cid] || 0;
-            if (cobrado === 0) continue; // sin ingresos en el período → no se lista
-            const costo = 0;
+            if (cobrado === 0) continue; // sin cobros en el período → no se lista
+            const costo = costoMap[cid] || 0;
             const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
             rows.push({ nombre: this._clientesMap[cid], cobrado, costo, rent });
         }
@@ -6726,6 +6737,7 @@ const FinanzasModule = {
                         <th class="fin-th">#</th>
                         <th class="fin-th">Cliente</th>
                         <th class="fin-th" style="text-align:right;">Cobrado</th>
+                        <th class="fin-th" style="text-align:right;" title="Σ egresos pagados imputados a los proyectos del cliente, en el período">Costo</th>
                         <th class="fin-th" style="text-align:right;">Rentab. %</th>
                     </tr></thead>
                     <tbody>
@@ -6734,6 +6746,7 @@ const FinanzasModule = {
                                 <td class="fin-td" style="color:#555;">${i + 1}</td>
                                 <td class="fin-td fin-td-name">${r.nombre}</td>
                                 <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
+                                <td class="fin-td fin-td-money" style="color:#E84855;">${r.costo > 0 ? this._formatMoney(r.costo) : '<span style="color:var(--text-dim)">—</span>'}</td>
                                 <td class="fin-td fin-td-money" style="color:${r.rent > 0 ? '#00CC88' : '#E84855'};">${r.rent}%</td>
                             </tr>
                         `).join('')}
