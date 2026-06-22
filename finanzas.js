@@ -7372,91 +7372,111 @@ const FinanzasModule = {
         const tipoInfo = this._tipoComprobante[tipo] || { label: tipo };
         const letra = tipo.endsWith('_a') ? 'A' : (tipo.endsWith('_b') ? 'B' : 'C');
         const codAfip = { factura_a: '01', factura_b: '06', nota_debito_a: '02', nota_debito_b: '07', nota_credito_a: '03', nota_credito_b: '08' }[tipo] || '';
-        const cliName = d.cliente_id ? (this._clientesMap[d.cliente_id] || '—') : (d.razon_social || '—');
-        const srvLabel = this._servicioLabel[d.servicio] || d.servicio || 'Servicios';
-        const concLabel = this._conceptoAfip[d.concepto || 2] || 'Servicios';
-        const condRec = this._condIvaReceptor[d.cond_iva_receptor || (letra === 'A' ? 1 : 5)] || '';
-        const e = this._EMISOR;
-        const hoy = this._formatDate(new Date().toISOString().slice(0, 10));
         const isA = letra === 'A';
+        const e = this._EMISOR;
+        const r = (comp && comp.lapyme_response) || {};
+        const m = (n) => this._formatMoney(n || 0);
+        const cliName = d.cliente_id ? (this._clientesMap[d.cliente_id] || '—') : (d.razon_social || r.receptor_nombre || '—');
+        const cuit = d.cuit_dni || (comp && comp.cuit_dni) || '—';
+        const cliDom = d._padronDomicilio || r.receptor_domicilio || '';
+        const condRec = this._condIvaReceptor[d.cond_iva_receptor || r.cond_iva_receptor || (isA ? 1 : 5)] || '';
+        const pv = String((comp ? comp.punto_venta : d.punto_venta) || 5).padStart(5, '0');
+        const fecha = comp ? this._formatDate(comp.fecha) : this._formatDate(new Date().toISOString().slice(0, 10));
+        const nroTxt = comp && comp.numero ? comp.numero : (proximo ? `<span id="finWizNro" style="color:#999;">consultando ARCA…</span>` : `${pv}-········`);
+        const baseImp = isA ? (d.neto || 0) : (d.total || 0);
+        const itemDet = `${escHtml(this._servicioLabel[d.servicio] || d.servicio || 'Servicios')}${d.descripcion ? ` — ${escHtml(d.descripcion)}` : ''}`;
 
-        const nroTxt = comp && comp.numero
-            ? comp.numero
-            : (proximo ? `<span id="finWizNro" style="color:#888;">consultando ARCA…</span>` : `${String(d.punto_venta || 5).padStart(5, '0')}-········`);
+        const itemsTable = isA ? `
+            <table style="width:100%;border-collapse:collapse;font-size:0.78rem;margin-top:16px;">
+              <thead><tr style="background:#00A9C1;color:#fff;font-size:0.72rem;">
+                <th style="text-align:left;padding:4px 10px;font-weight:600;">Detalle</th>
+                <th style="text-align:right;padding:4px 8px;width:42px;font-weight:600;">Cant.</th>
+                <th style="text-align:right;padding:4px 8px;width:90px;font-weight:600;">P. Unitario</th>
+                <th style="text-align:right;padding:4px 8px;width:48px;font-weight:600;">Alíc. IVA</th>
+                <th style="text-align:right;padding:4px 10px;width:96px;font-weight:600;">Subtotal</th>
+              </tr></thead>
+              <tbody><tr style="border-bottom:1px solid #eee;">
+                <td style="padding:10px;">${itemDet}</td>
+                <td style="padding:10px 8px;text-align:right;">1,00</td>
+                <td style="padding:10px 8px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
+                <td style="padding:10px 8px;text-align:right;">${d.iva_alicuota || 21}%</td>
+                <td style="padding:10px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
+              </tr></tbody>
+            </table>` : `
+            <table style="width:100%;border-collapse:collapse;font-size:0.78rem;margin-top:16px;">
+              <thead><tr style="background:#00A9C1;color:#fff;font-size:0.72rem;">
+                <th style="text-align:left;padding:4px 10px;font-weight:600;">Detalle</th>
+                <th style="text-align:right;padding:4px 8px;width:42px;font-weight:600;">Cant.</th>
+                <th style="text-align:right;padding:4px 8px;width:110px;font-weight:600;">P. Unitario</th>
+                <th style="text-align:right;padding:4px 10px;width:110px;font-weight:600;">Subtotal</th>
+              </tr></thead>
+              <tbody><tr style="border-bottom:1px solid #eee;">
+                <td style="padding:10px;">${itemDet}</td>
+                <td style="padding:10px 8px;text-align:right;">1,00</td>
+                <td style="padding:10px 8px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
+                <td style="padding:10px;text-align:right;white-space:nowrap;">${m(baseImp)}</td>
+              </tr></tbody>
+            </table>`;
 
-        const itemRow = `
-            <tr>
-                <td style="padding:7px 8px;border-bottom:1px solid #eee;">${escHtml(srvLabel)}${d.descripcion ? ` — ${escHtml(d.descripcion)}` : ''}</td>
-                <td style="padding:7px 8px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap;">${this._formatMoney(isA ? (d.neto || 0) : (d.total || 0))}</td>
-            </tr>`;
-
-        const totalsBlock = isA ? `
-            <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>Neto gravado</span><span>${this._formatMoney(d.neto || 0)}</span></div>
-            <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>IVA ${d.iva_alicuota || 21}%</span><span>${this._formatMoney(d.iva || 0)}</span></div>
-            <div style="display:flex;justify-content:space-between;padding:6px 0 0;border-top:2px solid #00A9C1;margin-top:4px;font-weight:700;font-size:1.05rem;"><span>TOTAL</span><span>${this._formatMoney(d.total || 0)}</span></div>
+        const totals = isA ? `
+            <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.82rem;"><span style="color:#666;">Importe Neto Gravado</span><span>${m(d.neto)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.82rem;"><span style="color:#666;">IVA ${d.iva_alicuota || 21}%</span><span style="color:#0f6e80;font-weight:600;">${m(d.iva)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:4px;border-top:2px solid #00A9C1;font-weight:800;font-size:1.05rem;"><span>IMPORTE TOTAL</span><span>${m(d.total)}</span></div>
         ` : `
-            <div style="display:flex;justify-content:space-between;padding:6px 0 0;border-top:2px solid #00A9C1;margin-top:4px;font-weight:700;font-size:1.05rem;"><span>TOTAL</span><span>${this._formatMoney(d.total || 0)}</span></div>
+            <div style="display:flex;justify-content:space-between;padding:9px 0 0;border-top:2px solid #00A9C1;font-weight:800;font-size:1.05rem;"><span>IMPORTE TOTAL</span><span>${m(d.total)}</span></div>
+            <div style="text-align:right;color:#999;font-size:0.7rem;margin-top:3px;">IVA incluido</div>
         `;
 
-        const caeBlock = comp && comp.cae ? `
-            <div style="font-size:0.8rem;color:#333;">
-                <div><b>CAE:</b> <span style="font-family:monospace;">${comp.cae}</span></div>
-                <div><b>Vto CAE:</b> ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}</div>
+        const caeLeft = comp && comp.cae ? `
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:70px;height:70px;border:1px solid #ddd;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:0.62rem;">QR</div>
+              <div style="font-size:0.78rem;"><div style="font-weight:700;">CAE N°: ${comp.cae}</div><div style="color:#666;">Vto. CAE: ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}</div><div style="color:#888;margin-top:5px;font-size:0.7rem;">Comprobante autorizado por ARCA (AFIP)</div></div>
             </div>
-            <div style="width:96px;height:96px;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.7rem;" id="finPreviewQR">QR</div>
         ` : `
-            <div style="font-size:0.85rem;color:#F28D15;font-weight:600;">CAE: pendiente de emisión</div>
-            <div style="width:96px;height:96px;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:0.7rem;text-align:center;">QR AFIP<br>al emitir</div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div style="width:70px;height:70px;border:1px dashed #ccc;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:0.6rem;text-align:center;">QR AFIP<br>al emitir</div>
+              <div style="font-size:0.85rem;color:#F28D15;font-weight:600;">CAE: pendiente de emisión</div>
+            </div>
         `;
+
+        const domRow = cliDom ? `<div style="grid-column:1/3;"><span style="color:#666;">Domicilio:</span> ${escHtml(cliDom)}</div>` : '';
 
         return `
-            <div class="fin-comprobante-paper" style="background:#fff;color:#1a1a1a;border-radius:6px;padding:0;max-width:620px;margin:0 auto;box-shadow:0 4px 24px rgba(0,0,0,0.35);font-family:'Outfit',Arial,sans-serif;overflow:hidden;">
-                <div style="display:flex;border-bottom:2px solid #1a1a1a;position:relative;">
-                    <div style="flex:1;padding:14px 16px;">
-                        <div style="margin-bottom:6px;">${this._logoSvg(26)}</div>
-                        <div style="font-size:0.82rem;font-weight:700;margin-top:2px;">${escHtml(e.razon_social)}</div>
-                        <div style="font-size:0.72rem;color:#555;margin-top:3px;line-height:1.5;">
-                            CUIT: ${e.cuit}<br>
-                            ${e.condicion_iva}<br>
-                            ${escHtml(e.domicilio)}${e.iibb ? `<br>IIBB: ${escHtml(e.iibb)}` : ''}${e.inicio_actividades ? `<br>Inicio act.: ${escHtml(e.inicio_actividades)}` : ''}
+            <div class="fin-comprobante-paper" style="background:#fff;color:#1a1a1a;border-radius:6px;max-width:620px;margin:0 auto;box-shadow:0 4px 24px rgba(0,0,0,0.35);font-family:'Outfit',Arial,sans-serif;padding:22px 24px 24px;">
+                <div style="text-align:center;font-size:0.6rem;letter-spacing:2px;color:#aaa;margin-bottom:12px;">ORIGINAL</div>
+                <div style="position:relative;display:flex;align-items:stretch;justify-content:space-between;gap:16px;">
+                    <div style="flex:1;display:flex;flex-direction:column;">
+                        <div>${this._logoSvg(60)}</div>
+                        <div style="margin-top:auto;padding-top:14px;">
+                            <div style="font-weight:700;font-size:0.82rem;">${escHtml(e.razon_social)}</div>
+                            <div style="font-size:0.72rem;color:#555;margin-top:3px;">${escHtml(e.domicilio)} · ${e.condicion_iva}</div>
                         </div>
                     </div>
-                    <div style="position:absolute;left:50%;top:8px;transform:translateX(-50%);width:50px;height:50px;border:2px solid #1a1a1a;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;">
-                        <span style="font-size:1.8rem;font-weight:800;line-height:1;">${letra}</span>
-                        <span style="font-size:0.55rem;color:#555;">COD ${codAfip}</span>
+                    <div style="position:absolute;left:50%;top:0;transform:translateX(-50%);width:54px;height:54px;border:1.5px solid #1a1a1a;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;">
+                        <span style="font-size:1.7rem;font-weight:800;line-height:1;">${letra}</span>
+                        <span style="font-size:0.5rem;color:#666;">COD ${codAfip}</span>
                     </div>
-                    <div style="flex:1;padding:14px 16px;text-align:right;">
-                        <div style="font-size:1.05rem;font-weight:800;">${tipoInfo.label}</div>
-                        <div style="font-size:0.78rem;margin-top:4px;">Nº ${nroTxt}</div>
-                        <div style="font-size:0.72rem;color:#555;margin-top:3px;">Fecha: ${comp ? this._formatDate(comp.fecha) : hoy}</div>
-                        <div style="font-size:0.72rem;color:#555;">Pto. Venta: ${String((comp ? comp.punto_venta : d.punto_venta) || 5).padStart(4, '0')}</div>
+                    <div style="flex:1;text-align:right;">
+                        <div style="font-size:1.1rem;font-weight:800;">${tipoInfo.label}</div>
+                        <div style="font-size:0.72rem;color:#555;margin-top:6px;line-height:1.75;">
+                          N° ${nroTxt}<br>Fecha de emisión: ${fecha}<br>Punto de venta: ${pv}<br>CUIT: ${e.cuit}<br>Ingresos Brutos: ${e.iibb}<br>Inicio de actividades: ${e.inicio_actividades}
+                        </div>
                     </div>
                 </div>
-
-                <div style="padding:10px 16px;border-bottom:1px solid #eee;font-size:0.76rem;color:#333;">
-                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
-                        <span><b>Cliente:</b> ${escHtml(cliName)}</span>
-                        <span><b>CUIT:</b> ${escHtml(d.cuit_dni || (comp && comp.cuit_dni) || '—')}</span>
-                    </div>
-                    <div style="margin-top:3px;"><b>Condición IVA:</b> ${condRec} &nbsp;·&nbsp; <b>Concepto:</b> ${concLabel}</div>
+                <div style="background:#f5f8f9;border-radius:6px;padding:12px 14px;margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;font-size:0.78rem;">
+                    <div><span style="color:#666;">CUIT:</span> ${escHtml(cuit)}</div>
+                    <div style="text-align:right;"><span style="color:#666;">Condición de venta:</span> Contado</div>
+                    <div style="grid-column:1/3;"><span style="color:#666;">Sr(es):</span> <b>${escHtml(cliName)}</b></div>
+                    ${domRow}
+                    <div style="grid-column:1/3;"><span style="color:#666;">Condición frente al IVA:</span> ${condRec}</div>
                 </div>
-
-                <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
-                    <thead>
-                        <tr style="background:#f5f5f5;">
-                            <th style="padding:7px 8px;text-align:left;border-bottom:1px solid #ddd;">Detalle</th>
-                            <th style="padding:7px 8px;text-align:right;border-bottom:1px solid #ddd;width:140px;">Importe</th>
-                        </tr>
-                    </thead>
-                    <tbody>${itemRow}</tbody>
-                </table>
-
-                <div style="display:flex;justify-content:flex-end;padding:10px 16px;">
-                    <div style="min-width:240px;font-size:0.82rem;">${totalsBlock}</div>
+                ${itemsTable}
+                <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+                    <div style="min-width:250px;">${totals}</div>
                 </div>
-
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid #eee;background:#fafafa;gap:12px;">
-                    ${caeBlock}
+                <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #eee;margin-top:18px;padding-top:14px;gap:12px;">
+                    ${caeLeft}
+                    <div>${this._isoSvg(46)}</div>
                 </div>
             </div>
         `;
@@ -7684,8 +7704,9 @@ const FinanzasModule = {
             if (!response.ok || !result.ok) {
                 throw new Error(result.error || `HTTP ${response.status}`);
             }
-            // Guardamos el nombre del receptor en la respuesta (para el PDF/visor si no es un cliente listado)
+            // Guardamos nombre + domicilio del receptor en la respuesta (para el PDF/visor si no es un cliente listado)
             result.receptor_nombre = d.razon_social || (d.cliente_id ? this._clientesMap[d.cliente_id] : null) || null;
+            result.receptor_domicilio = d._padronDomicilio || null;
             result.cond_iva_receptor = payload.cond_iva_receptor;
 
             // Guardar el comprobante con CAE
@@ -7800,108 +7821,118 @@ const FinanzasModule = {
         const DARK = [26, 26, 26], GRAY = [90, 90, 90], TURQ = [0, 171, 200];
         const money = (n) => this._formatMoney(n || 0);
 
+        const condRec = this._condIvaReceptor[r.cond_iva_receptor || (isA ? 1 : 5)] || '';
+        const recDom = r.receptor_domicilio || '';
+
         // ── ORIGINAL ──
         doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...GRAY);
-        doc.text('ORIGINAL', CX, 9, { align: 'center' });
+        doc.text('ORIGINAL', CX, 11, { align: 'center' });
 
-        // ── Marco header + caja de letra (estilo AFIP) ──
-        doc.setDrawColor(...DARK); doc.setLineWidth(0.4);
-        doc.rect(L, 11, R - L, 32);                 // marco header
-        doc.rect(CX - 9, 11, 18, 18);               // caja letra
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...DARK);
-        doc.text(letra, CX, 23, { align: 'center' });
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
-        doc.text(`COD. ${codAfip}`, CX, 27, { align: 'center' });
-
-        // ── Header izquierda: logo + razón social + domicilio + condición ──
+        // ── Logo grande (izquierda) ──
         try {
-            const logoPng = await this._svgToPng('logo', 460, 197);
-            doc.addImage(logoPng, 'PNG', L + 3, 14, 34, 14.6);
-        } catch (le) { doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...TURQ); doc.text('MEPEX', L + 3, 22); }
-        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-        doc.text(e.razon_social, L + 3, 33);
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-        doc.text(doc.splitTextToSize(`Domicilio: ${e.domicilio}`, CX - L - 8), L + 3, 37.5);
-        doc.text(e.condicion_iva, L + 3, 41.5);
+            const logoPng = await this._svgToPng('logo', 620, 266);
+            doc.addImage(logoPng, 'PNG', L, 15, 52, 22.3);
+        } catch (le) { doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...TURQ); doc.text('MEPEX', L, 28); }
 
-        // ── Header derecha: tipo + Nº + fecha + datos fiscales emisor ──
-        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
-        doc.text(`FACTURA ${letra}`, R - 3, 16, { align: 'right' });
+        // ── Caja de letra (centrada) ──
+        doc.setDrawColor(...DARK); doc.setLineWidth(0.4);
+        doc.rect(CX - 9, 14, 18, 18);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...DARK);
+        doc.text(letra, CX, 26, { align: 'center' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+        doc.text(`COD. ${codAfip}`, CX, 30, { align: 'center' });
+
+        // ── Datos del comprobante (derecha) ──
+        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+        doc.text(`FACTURA ${letra}`, R, 18, { align: 'right' });
         doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-        doc.text(`Nº ${comp.numero || ''}`, R - 3, 21.5, { align: 'right' });
+        doc.text(`N° ${comp.numero || ''}`, R, 24, { align: 'right' });
         doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-        doc.text(`Fecha de Emisión: ${this._formatDate(comp.fecha)}`, R - 3, 26, { align: 'right' });
-        doc.text(`Punto de Venta: ${String(comp.punto_venta || 5).padStart(5, '0')}`, R - 3, 30, { align: 'right' });
-        doc.text(`CUIT: ${e.cuit}`, R - 3, 34, { align: 'right' });
-        doc.text(`Ingresos Brutos: ${e.iibb}`, R - 3, 37.5, { align: 'right' });
-        doc.text(`Inicio de Actividades: ${e.inicio_actividades}`, R - 3, 41, { align: 'right' });
+        doc.text(`Fecha de emisión: ${this._formatDate(comp.fecha)}`, R, 29, { align: 'right' });
+        doc.text(`Punto de venta: ${String(comp.punto_venta || 5).padStart(5, '0')}`, R, 33, { align: 'right' });
+        doc.text(`CUIT: ${e.cuit}`, R, 37, { align: 'right' });
+        doc.text(`Ingresos Brutos: ${e.iibb}`, R, 41, { align: 'right' });
+        doc.text(`Inicio de actividades: ${e.inicio_actividades}`, R, 45, { align: 'right' });
 
-        // ── Período + vto pago ──
-        let y = 49;
-        doc.setTextColor(...DARK); doc.setFontSize(8);
-        const pd = r.serv_desde ? this._formatDate(r.serv_desde) : this._formatDate(comp.fecha);
-        const ph = r.serv_hasta ? this._formatDate(r.serv_hasta) : this._formatDate(comp.fecha);
-        doc.text(`Período Facturado: ${pd} al ${ph}`, L, y);
-        doc.text(`Vto. para el pago: ${r.vto_pago ? this._formatDate(r.vto_pago) : this._formatDate(comp.fecha)}`, R, y, { align: 'right' });
-        doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2); doc.line(L, y + 3, R, y + 3);
+        // ── Emisor (debajo del logo, alineado al pie de los datos de la derecha) ──
+        doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+        doc.text(e.razon_social, L, 40.5);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+        doc.text(`${e.domicilio} · ${e.condicion_iva}`, L, 45);
 
-        // ── Receptor ──
-        y += 9;
-        const condRec = this._condIvaReceptor[r.cond_iva_receptor || (isA ? 1 : 5)] || '';
+        // ── Receptor (card gris) ──
+        let cy = 55;
+        const recH = recDom ? 27 : 22;
+        doc.setFillColor(245, 248, 249); doc.roundedRect(L, cy, R - L, recH, 2, 2, 'F');
+        let ry = cy + 6;
+        doc.setFontSize(8.5); doc.setTextColor(...DARK);
+        doc.text(`CUIT: ${comp.cuit_dni || '—'}`, L + 4, ry);
+        doc.setTextColor(...GRAY); doc.setFontSize(8);
+        doc.text('Condición de venta: Contado', R - 4, ry, { align: 'right' });
+        ry += 5.5;
         doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
-        doc.text(`CUIT: ${comp.cuit_dni || '—'}`, L, y);
+        doc.text(doc.splitTextToSize(`Sr(es): ${cliName}`, R - L - 8), L + 4, ry);
+        ry += 5.5;
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRAY);
-        doc.text(`Condición de venta: Contado`, R, y, { align: 'right' });
-        y += 5;
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
-        doc.text(doc.splitTextToSize(`Sr(es): ${cliName}`, R - L), L, y);
-        y += 5;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRAY);
-        doc.text(`Condición frente al IVA: ${condRec}`, L, y);
+        if (recDom) { doc.text(doc.splitTextToSize(`Domicilio: ${recDom}`, R - L - 8), L + 4, ry); ry += 5.5; }
+        doc.text(`Condición frente al IVA: ${condRec}`, L + 4, ry);
 
         // ── Ítems ──
         const detalle = `${this._servicioLabel[comp.servicio] || comp.servicio || 'Servicios'}${comp.descripcion ? ' — ' + comp.descripcion : ''}`;
         const baseImporte = isA ? (comp.neto || 0) : (comp.total || 0);
+        const head = isA
+            ? [['Detalle', 'Cant.', 'P. Unitario', 'Alíc. IVA', 'Subtotal']]
+            : [['Detalle', 'Cant.', 'P. Unitario', 'Subtotal']];
+        const body = isA
+            ? [[detalle, '1,00', money(baseImporte), `${comp.iva_alicuota || 21}%`, money(baseImporte)]]
+            : [[detalle, '1,00', money(baseImporte), money(baseImporte)]];
+        const colStyles = isA
+            ? { 1: { halign: 'right', cellWidth: 16 }, 2: { halign: 'right', cellWidth: 30 }, 3: { halign: 'right', cellWidth: 20 }, 4: { halign: 'right', cellWidth: 32 } }
+            : { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 36 }, 3: { halign: 'right', cellWidth: 36 } };
         doc.autoTable({
-            startY: y + 4,
-            head: [['Producto / Servicio', 'Cant.', 'P. Unitario', 'Subtotal']],
-            body: [[detalle, '1,00', money(baseImporte), money(baseImporte)]],
+            startY: cy + recH + 6, head, body,
             theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 2.5, textColor: DARK },
-            headStyles: { fillColor: TURQ, textColor: 255, fontStyle: 'bold' },
-            columnStyles: { 1: { halign: 'right', cellWidth: 18 }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'right', cellWidth: 36 } },
+            styles: { fontSize: 8, cellPadding: 2.6, textColor: DARK, lineColor: [230, 230, 230] },
+            headStyles: { fillColor: TURQ, textColor: 255, fontStyle: 'bold', fontSize: 7.5, cellPadding: { top: 1.6, bottom: 1.6, left: 2.6, right: 2.6 } },
+            columnStyles: colStyles,
             margin: { left: L, right: 14 },
         });
 
         // ── Totales (derecha) ──
-        let ty = (doc.lastAutoTable?.finalY || 100) + 7;
-        const totLine = (label, val, bold, big) => {
-            doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(big ? 11 : 8.5);
-            doc.setTextColor(...DARK);
+        let ty = (doc.lastAutoTable?.finalY || 110) + 8;
+        const totLine = (label, val, opts = {}) => {
+            doc.setFont('helvetica', opts.bold ? 'bold' : 'normal'); doc.setFontSize(opts.big ? 12 : 8.5);
+            doc.setTextColor(...(opts.color || DARK));
             doc.text(label, R - 52, ty, { align: 'right' });
             doc.text(money(val), R, ty, { align: 'right' });
-            ty += big ? 7 : 5;
+            ty += opts.big ? 8 : 5.5;
         };
         if (isA) {
-            totLine('Importe Neto Gravado:', comp.neto || 0, false);
-            totLine(`IVA ${comp.iva_alicuota || 21}%:`, comp.iva || 0, false);
+            totLine('Importe Neto Gravado', comp.neto || 0);
+            totLine(`IVA ${comp.iva_alicuota || 21}%`, comp.iva || 0, { color: [15, 110, 128] });
         }
-        doc.setDrawColor(...TURQ); doc.setLineWidth(0.5); doc.line(R - 70, ty - 2, R, ty - 2);
-        totLine('IMPORTE TOTAL:', comp.total || 0, true, true);
+        doc.setDrawColor(...TURQ); doc.setLineWidth(0.6); doc.line(R - 74, ty - 2, R, ty - 2); ty += 1;
+        totLine('IMPORTE TOTAL', comp.total || 0, { bold: true, big: true });
+        if (!isA) { doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...GRAY); doc.text('IVA incluido', R, ty - 3, { align: 'right' }); }
 
-        // ── CAE + QR + leyenda ──
-        let fy = Math.max(ty + 6, (doc.lastAutoTable?.finalY || 100) + 14);
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...DARK);
-        doc.text(`CAE Nº: ${comp.cae || '—'}`, L, fy);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Fecha de Vto. de CAE: ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}`, L, fy + 5);
+        // ── Pie: CAE + QR (izq) · iso (der) ──
+        let fy = Math.max(ty + 8, (doc.lastAutoTable?.finalY || 110) + 16);
+        doc.setDrawColor(230, 230, 230); doc.setLineWidth(0.3); doc.line(L, fy - 5, R, fy - 5);
         try {
             const qrUrl = this._buildAfipQR(comp, r);
             const dataUrl = qrUrl ? await this._qrDataUrl(qrUrl) : null;
-            if (dataUrl) doc.addImage(dataUrl, 'PNG', L, fy + 9, 28, 28);
+            if (dataUrl) doc.addImage(dataUrl, 'PNG', L, fy, 26, 26);
         } catch (qe) { console.warn('[Finanzas] QR:', qe.message); }
-        doc.setFontSize(7); doc.setTextColor(...GRAY);
-        doc.text('Comprobante Autorizado por ARCA (AFIP) — "MONTAJE Y EQUIPAMIENTO PARA EXPOSICIONES"', CX, fy + 42, { align: 'center' });
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...DARK);
+        doc.text(`CAE N°: ${comp.cae || '—'}`, L + 30, fy + 6);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRAY);
+        doc.text(`Fecha de Vto. de CAE: ${comp.cae_vencimiento ? this._formatDate(comp.cae_vencimiento) : '—'}`, L + 30, fy + 11);
+        doc.setFontSize(7);
+        doc.text('Comprobante autorizado por ARCA (AFIP)', L + 30, fy + 16);
+        try {
+            const isoPng = await this._svgToPng('iso', 240, 240);
+            doc.addImage(isoPng, 'PNG', R - 18, fy + 4, 18, 18);
+        } catch (ie) { /* ignore */ }
 
         const fname = `MEPEX_${(this._tipoComprobante[tipo] || {}).short || tipo}_${(comp.numero || '').replace(/[^\d-]/g, '') || 's-n'}.pdf`;
         doc.save(fname);
