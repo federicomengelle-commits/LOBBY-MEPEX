@@ -9,10 +9,11 @@
       emisión. Para probar SIN emitir: /status (FEDummy) y /ultimo
       (FECompUltimoAutorizado).
 
-   Endpoints (montar en /home/mepex/api/server.js):
+   Endpoints (montar las 4 en /home/mepex/api/server.js — el front usa padron+ultimo+facturar):
      const arca = require('./arca-connector');
-     app.get ('/api/arca/status',   arca.statusHandler);                          // FEDummy
+     app.get ('/api/arca/status',   arca.statusHandler);                          // FEDummy (health)
      app.get ('/api/arca/ultimo',   arca.ultimoHandler);                          // ?pv=5&tipo=1
+     app.get ('/api/arca/padron',   arca.padronHandler);                          // ?cuit=30xxxxxxxx9 (Constancia de Inscripción → autocompletar receptor)
      app.post('/api/arca/facturar', express.json({ limit: '1mb' }), arca.facturarHandler);
 
    nginx ya rutea /api/ → 127.0.0.1:3000 (same-origin), así que el front llama
