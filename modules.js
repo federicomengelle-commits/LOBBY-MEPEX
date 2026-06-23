@@ -1903,34 +1903,6 @@ const Modules = {
                 .ficha-tl-select { flex: 1; min-width: 100px; }
                 .cot-kpi-bar { grid-template-columns: repeat(2, 1fr); }
             }
-            /* ── V4: PyME Integration ── */
-            .pk-column-readonly { opacity: 0.85; }
-            .pk-column-readonly .pk-column-header { border-bottom: 2px solid #8B5CF6; }
-            .pk-card-readonly { cursor: default !important; opacity: 0.9; border-left: 3px solid #8B5CF6; }
-            .pk-card-readonly:hover { transform: none !important; }
-            .pyme-sync-btn {
-                font-size: 11px; padding: 4px 10px; border: 1px solid rgba(139,92,246,0.4);
-                color: #8B5CF6; border-radius: 6px; cursor: pointer; background: transparent;
-                transition: all 0.2s ease; white-space: nowrap;
-            }
-            .pyme-sync-btn:hover { background: rgba(139,92,246,0.12); border-color: #8B5CF6; }
-            .pyme-sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-            .pyme-sync-status { font-size: 10px; color: #666; margin-left: 6px; white-space: nowrap; }
-            .pyme-factura-badge {
-                font-size: 11px; padding: 2px 8px; background: rgba(139,92,246,0.12);
-                color: #8B5CF6; border-radius: 4px; white-space: nowrap;
-            }
-            .pyme-cobro-badge {
-                font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; white-space: nowrap;
-            }
-            .pyme-cobro-green { background: rgba(34,197,94,0.15); color: #22c55e; }
-            .pyme-cobro-yellow { background: rgba(234,179,8,0.15); color: #eab308; }
-            .pyme-cobro-red { background: rgba(239,68,68,0.15); color: #ef4444; }
-            .pyme-ficha-section {
-                border: 1px solid rgba(139,92,246,0.25); border-radius: 8px;
-                padding: 12px; margin-top: 8px; background: rgba(139,92,246,0.04);
-            }
-            .pyme-ficha-section .ficha-section-title { color: #8B5CF6; }
         `;
         document.head.appendChild(style);
     },
@@ -3144,15 +3116,6 @@ const Modules = {
                                 </div>
                             ` : ''}
                         </div>
-                        ${item.pymeVentaId ? `<div class="ficha-section pyme-ficha-section">
-                            <div class="ficha-section-title">🧾 Facturación (La PyME)</div>
-                            <div class="ficha-row"><span class="ficha-row-label">N° Factura</span><span class="ficha-row-value">${item.pymeFacturaNumero || '—'}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Fecha</span><span class="ficha-row-value">${item.pymeFacturaFecha ? new Date(item.pymeFacturaFecha + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Total factura</span><span class="ficha-row-value" style="color:#8B5CF6; font-weight:600">${fmt(item.pymeTotal)}</span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Estado cobro</span><span class="ficha-row-value"><span class="pyme-cobro-badge ${item.pymeEstadoCobro === 'cobrada' ? 'pyme-cobro-green' : item.pymeEstadoCobro === 'parcial' ? 'pyme-cobro-yellow' : 'pyme-cobro-red'}">${(item.pymeEstadoCobro || 'pendiente').charAt(0).toUpperCase() + (item.pymeEstadoCobro || 'pendiente').slice(1)}</span></span></div>
-                            <div class="ficha-row"><span class="ficha-row-label">Balance</span><span class="ficha-row-value">${fmt(item.pymeBalance)}</span></div>
-                            ${item.pymeLastSync ? `<div class="ficha-row"><span class="ficha-row-label">Último sync</span><span class="ficha-row-value" style="font-size:0.7rem; color:#888">${new Date(item.pymeLastSync).toLocaleString('es-AR')}</span></div>` : ''}
-                        </div>` : ''}
                         <div class="ficha-section">
                             <div class="ficha-section-title">Notas internas</div>
                             <p style="font-size:0.82rem; color:${item.notasInternas ? 'var(--text-primary)' : 'var(--text-dim)'}; margin:0;">${item.notasInternas || 'Sin notas'}</p>

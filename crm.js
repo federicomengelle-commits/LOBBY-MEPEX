@@ -1411,11 +1411,6 @@ const CRM = {
                     <input type="number" class="crm-filter-input" id="pipMontoMax" placeholder="Monto m\u00E1x" value="${this._pipelineMontoMax !== null ? this._pipelineMontoMax : ''}" />
                 </div>
                 <div class="pip-toolbar-right">
-                    ${typeof API.syncPymeToLobby === 'function' ? `
-                    <button class="btn btn-ghost pip-btn-sync" id="pipSyncPyme" title="Sincronizar con La PyME">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                        Sync PyME
-                    </button>` : ''}
                     <div class="pip-view-toggle">
                         <button class="pip-view-btn ${this._pipelineView === 'kanban' ? 'active' : ''}" data-view="kanban" title="Kanban">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="6" height="14" x="3" y="5" rx="1"/><rect width="6" height="8" x="15" y="5" rx="1"/><rect width="6" height="18" x="9" y="3" rx="1"/></svg>
@@ -1663,26 +1658,6 @@ const CRM = {
                 this._rerenderPipelineContent();
             });
         });
-
-        // Sync PyME button
-        const syncBtn = document.getElementById('pipSyncPyme');
-        if (syncBtn) {
-            syncBtn.addEventListener('click', async () => {
-                syncBtn.disabled = true;
-                syncBtn.textContent = 'Sincronizando...';
-                try {
-                    if (typeof API.syncPymeToLobby === 'function') {
-                        await API.syncPymeToLobby();
-                        Toast.success('Sincronizaci\u00F3n con La PyME completada');
-                        await this._loadData();
-                    }
-                } catch (e) {
-                    Toast.error('Error al sincronizar: ' + e.message);
-                }
-                syncBtn.disabled = false;
-                syncBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Sync PyME';
-            });
-        }
 
         // Attach view-specific listeners
         this._attachPipelineViewListeners();
@@ -6722,8 +6697,7 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
     //  TAB ANALÍTICA — Charts + Analytics
     //  Migrado desde modules.js Dashboard V3 (eliminado).
     //  Pipeline post-rename: 5 estados (aprobada absorbe cerrada_ganada,
-    //  rechazada reemplaza cerrada_perdida, facturada se infiere de
-    //  pyme_venta_id y no es estado del pipeline).
+    //  rechazada reemplaza cerrada_perdida). Facturada no es estado del pipeline.
     // ═══════════════════════════════════════════
 
     _anaPeriod: 'all',
@@ -6833,11 +6807,6 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
         const totalPipeline = activas.reduce((s, c) => s + (c.montoTotal || 0), 0);
         const totalAprobadas = aprobadas.reduce((s, c) => s + (c.montoTotal || 0), 0);
         const ticketProm = aprobadas.length ? Math.round(totalAprobadas / aprobadas.length) : 0;
-        const now = new Date();
-        const mesActual = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-        const facturaMes = aprobadas
-            .filter(c => c.pymeVentaId && c.updatedAt && c.updatedAt.substring(0, 7) === mesActual)
-            .reduce((s, c) => s + (c.montoTotal || 0), 0);
         const convRate = cerradas.length ? Math.round((aprobadas.length / cerradas.length) * 100) : 0;
         let avgCierre = 0;
         if (aprobadas.length) {
@@ -6847,7 +6816,6 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
             { value: API.formatCurrency(totalPipeline), label: 'Total pipeline', color: '#00d4aa' },
             { value: API.formatCurrency(totalAprobadas), label: 'Aprobadas', color: '#10B981' },
             { value: API.formatCurrency(ticketProm), label: 'Ticket promedio', color: '#3B82F6' },
-            { value: API.formatCurrency(facturaMes), label: 'Facturado mes', color: '#F59E0B' },
             { value: convRate + '%', label: 'Tasa conversión', color: '#8B5CF6' },
             { value: avgCierre + 'd', label: 'Prom. cierre', color: '#00ACC9' },
         ];

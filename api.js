@@ -1773,6 +1773,407 @@ const API = {
         }
     },
 
+    // ═══════════════════════════════════════════════════════════════
+    //  CATÁLOGO SHOWROOM — fotos múltiples + campos ricos (F1)
+    //  Nombres canónicos del spec §00. Orden de fotos: es_principal DESC,
+    //  orden ASC, id ASC. NO toca precio/receta/snapshots/esCotizable
+    //  (contrato con Costos + cotizador externo). SQL: catalogo_showroom_f1.sql.
+    // ═══════════════════════════════════════════════════════════════
+
+    _mapCatalogoFoto(r) {
+        return {
+            id: r.id,
+            itemId: r.item_id,
+            url: r.url || '',
+            storagePath: r.storage_path || null,
+            orden: r.orden != null ? parseInt(r.orden, 10) : 0,
+            esPrincipal: r.es_principal === true,
+            alt: r.alt || '',
+            createdAt: r.created_at || null,
+        };
+    },
+
+    // Fotos vivas de un item, orden canónico. Sin cache (la galería refleja ediciones).
+    async getCatalogoFotos(itemId) {
+        if (itemId == null) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .select('*')
+                .eq('item_id', itemId)
+                .eq('_deleted', false)
+                .order('es_principal', { ascending: false })
+                .order('orden', { ascending: true })
+                .order('id', { ascending: true });
+            if (error) throw error;
+            return (data || []).map(r => this._mapCatalogoFoto(r));
+        } catch (e) {
+            console.warn('[API] Error getCatalogoFotos:', e.message);
+            return [];
+        }
+    },
+
+    // Portada por item para la grilla del showroom (1 query). Devuelve { itemId: url }.
+    async getCatalogoPortadas(itemIds) {
+        if (!Array.isArray(itemIds) || itemIds.length === 0) return {};
+        try {
+            const { data, error } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .select('item_id, url, es_principal, orden, id')
+                .in('item_id', itemIds)
+                .eq('_deleted', false)
+                .order('es_principal', { ascending: false })
+                .order('orden', { ascending: true })
+                .order('id', { ascending: true });
+            if (error) throw error;
+            const map = {};
+            for (const r of (data || [])) {
+                if (!map[r.item_id] && r.url) map[r.item_id] = r.url; // primera por item = portada
+            }
+            return map;
+        } catch (e) {
+            console.warn('[API] Error getCatalogoPortadas:', e.message);
+            return {};
+        }
+    },
+
+    // Item completo + fotos + ficha_tecnica/colores parseados. Read-only en precio. Para ficha (F2) + PDF (F4).
+    async getCatalogoItemFull(id) {
+        if (id == null) return null;
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('catalogo_items')
+                .select('*')
+                .eq('id', id)
+                .eq('_deleted', false)
+                .maybeSingle();
+            if (error) throw error;
+            if (!row) return null;
+
+            let fichaTecnica = [];
+            const ft = row.ficha_tecnica;
+            if (Array.isArray(ft)) {
+                fichaTecnica = ft;
+            } else if (typeof ft === 'string' && ft.trim()) {
+                try { const p = JSON.parse(ft); if (Array.isArray(p)) fichaTecnica = p; } catch (_) {}
+            }
+            fichaTecnica = fichaTecnica
+                .filter(x => x && typeof x === 'object' && x.label != null)
+                .map(x => ({ label: String(x.label), valor: x.valor != null ? String(x.valor) : '' }));
+
+            let colores = [];
+            const col = row.colores;
+            if (Array.isArray(col)) {
+                colores = col.filter(c => c != null && String(c).trim()).map(c => String(c).trim());
+            } else if (typeof col === 'string' && col.trim()) {
+                colores = col.split(',').map(c => c.trim()).filter(Boolean);
+            }
+
+            const fotos = await this.getCatalogoFotos(id);
+
+            return {
+                id: row.id,
+                nombre: row.nombre || '',
+                codigo: row.codigo || '',
+                rubro: row.rubro || '',
+                categoria: row.categoria || '',
+                descripcion: row.descripcion || '',
+                origen: row.origen || '',
+                unidad: row.unidad || 'Unidad',
+                tipoReceta: row.tipo_receta || 'propio',
+                precioAlquiler: parseFloat(row.precio_alquiler) || 0,   // READ-ONLY (RPC Costos)
+                costoPorUso: parseFloat(row.costo_por_uso) || 0,        // READ-ONLY
+                esCotizable: row.es_cotizable === true,                 // READ-ONLY para el showroom
+                disponiblePublico: row.disponible_publico === true,
+                descripcionLarga: row.descripcion_larga || '',
+                colores,
+                fichaTecnica,
+                frenteCm: row.frente_cm != null ? parseFloat(row.frente_cm) : null,
+                profundidadCm: row.profundidad_cm != null ? parseFloat(row.profundidad_cm) : null,
+                altoCm: row.alto_cm != null ? parseFloat(row.alto_cm) : null,
+                fotos,
+                fotoPrincipal: fotos.find(f => f.esPrincipal) || fotos[0] || null,
+            };
+        } catch (e) {
+            console.warn('[API] Error getCatalogoItemFull:', e.message);
+            return null;
+        }
+    },
+
+    // Actualiza SOLO los campos ricos del showroom (reversible con undo). NO toca precio/receta/snapshots.
+    async updateCatalogoItemRich(id, fields) {
+        if (id == null) return null;
+        try {
+            const f = fields || {};
+            const payload = {};
+
+            if (f.descripcionLarga !== undefined) {
+                payload.descripcion_larga = (f.descripcionLarga || '').trim() || null;
+            }
+            if (f.colores !== undefined) {
+                payload.colores = Array.isArray(f.colores)
+                    ? f.colores.map(c => String(c).trim()).filter(Boolean)
+                    : [];
+            }
+            if (f.fichaTecnica !== undefined) {
+                const arr = Array.isArray(f.fichaTecnica) ? f.fichaTecnica : [];
+                payload.ficha_tecnica = arr
+                    .filter(x => x && typeof x === 'object' && String(x.label || '').trim())
+                    .map(x => ({ label: String(x.label).trim(), valor: x.valor != null ? String(x.valor).trim() : '' }));
+            }
+            const numField = (key, col) => {
+                if (f[key] === undefined) return;
+                const raw = f[key];
+                if (raw === '' || raw === null) { payload[col] = null; return; }
+                const v = parseFloat(raw);
+                payload[col] = Number.isNaN(v) ? null : v;
+            };
+            numField('frenteCm', 'frente_cm');
+            numField('profundidadCm', 'profundidad_cm');
+            numField('altoCm', 'alto_cm');
+
+            // disponible_publico: toggle "mostrar en showroom" (bool simple, no rico pero es del showroom)
+            if (f.disponiblePublico !== undefined) {
+                payload.disponible_publico = f.disponiblePublico === true;
+            }
+
+            if (Object.keys(payload).length === 0) return true;
+
+            await UndoHelpers.updateRecord('catalogo_items', id, payload, 'Edito ficha de showroom');
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updateCatalogoItemRich:', e.message);
+            Toast.error('No se pudo guardar la ficha: ' + (e.message || 'error'));
+            return null;
+        }
+    },
+
+    // Compresor canvas reutilizable. Devuelve { blob, dataUrl, w, h } o null.
+    async _compressImageToJpeg(file, maxDim = 1600, quality = 0.85) {
+        if (!file) return null;
+        let objUrl = null;
+        try {
+            objUrl = URL.createObjectURL(file);
+            const img = await new Promise((resolve, reject) => {
+                const i = new Image();
+                i.onload = () => resolve(i);
+                i.onerror = () => reject(new Error('No se pudo decodificar la imagen'));
+                i.src = objUrl;
+            });
+            const ow = img.naturalWidth, oh = img.naturalHeight;
+            if (!ow || !oh) throw new Error('Imagen inválida');
+
+            const scale = Math.min(1, maxDim / Math.max(ow, oh));
+            const w = Math.round(ow * scale);
+            const h = Math.round(oh * scale);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+            if (!blob) throw new Error('No se pudo comprimir la imagen');
+            return { blob, dataUrl: canvas.toDataURL('image/jpeg', quality), w, h };
+        } catch (e) {
+            console.warn('[API] _compressImageToJpeg:', e.message);
+            return null;
+        } finally {
+            if (objUrl) URL.revokeObjectURL(objUrl);
+        }
+    },
+
+    _genUuid() {
+        return (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : ('xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0;
+                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+              }));
+    },
+
+    // Comprime → sube al bucket público 'catalogo' → getPublicUrl → inserta fila. Rollback del objeto si falla.
+    async uploadCatalogoFoto(itemId, file) {
+        if (itemId == null) { Toast.error('Falta el item'); return null; }
+        if (!file) { Toast.error('No hay archivo'); return null; }
+        if (file.type && !file.type.startsWith('image/')) {
+            Toast.warning('El archivo no es una imagen');
+            return null;
+        }
+        try {
+            const compressed = await this._compressImageToJpeg(file, 1600, 0.85);
+            if (!compressed || !compressed.blob) { Toast.error('No se pudo procesar la imagen (formato no soportado)'); return null; }
+
+            const storagePath = `${itemId}/${this._genUuid()}.jpg`;
+
+            const { error: upErr } = await supabaseClient.storage
+                .from('catalogo')
+                .upload(storagePath, compressed.blob, { contentType: 'image/jpeg', upsert: false, cacheControl: '3600' });
+            if (upErr) throw upErr;
+
+            const { data: pub } = supabaseClient.storage.from('catalogo').getPublicUrl(storagePath);
+            const url = pub?.publicUrl || null;
+            if (!url) {
+                await supabaseClient.storage.from('catalogo').remove([storagePath]).catch(() => {});
+                throw new Error('No se pudo obtener la URL pública');
+            }
+
+            const existentes = await this.getCatalogoFotos(itemId);
+            const maxOrden = existentes.reduce((m, f) => Math.max(m, f.orden || 0), -1);
+            const esPrimera = existentes.length === 0;
+
+            const { data: ins, error: insErr } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .insert({ item_id: itemId, url, storage_path: storagePath, orden: maxOrden + 1, es_principal: esPrimera, alt: '', _deleted: false })
+                .select()
+                .single();
+            if (insErr) {
+                await supabaseClient.storage.from('catalogo').remove([storagePath]).catch(() => {});
+                throw insErr;
+            }
+
+            this.clearCache();
+            return this._mapCatalogoFoto(ins);
+        } catch (e) {
+            console.warn('[API] Error uploadCatalogoFoto:', e.message);
+            Toast.error('No se pudo subir la foto: ' + (e.message || 'error'));
+            return null;
+        }
+    },
+
+    // Inserta una fila de foto desde una URL YA hosteada (usado por el farmeo Drive→Supabase). Sin compresión/subida.
+    async addCatalogoFoto(itemId, foto) {
+        if (itemId == null || !foto || !foto.url) return null;
+        try {
+            const existentes = await this.getCatalogoFotos(itemId);
+            const maxOrden = existentes.reduce((m, f) => Math.max(m, f.orden || 0), -1);
+            const esPrimera = existentes.length === 0;
+            const { data: ins, error } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .insert({
+                    item_id: itemId,
+                    url: foto.url,
+                    storage_path: foto.storagePath || foto.storage_path || null,
+                    orden: foto.orden != null ? foto.orden : maxOrden + 1,
+                    es_principal: foto.esPrincipal != null ? foto.esPrincipal : esPrimera,
+                    alt: foto.alt || '',
+                    _deleted: false,
+                })
+                .select()
+                .single();
+            if (error) throw error;
+            this.clearCache();
+            return this._mapCatalogoFoto(ins);
+        } catch (e) {
+            console.warn('[API] Error addCatalogoFoto:', e.message);
+            return null;
+        }
+    },
+
+    // Persiste el orden de la galería (drag&drop F3): orden = índice.
+    async reorderCatalogoFotos(itemId, orderedIds) {
+        if (itemId == null || !Array.isArray(orderedIds) || orderedIds.length === 0) return false;
+        try {
+            const updates = orderedIds.map((fotoId, idx) =>
+                supabaseClient.from('catalogo_item_fotos').update({ orden: idx }).eq('id', fotoId).eq('item_id', itemId));
+            const results = await Promise.all(updates);
+            const firstErr = results.find(r => r && r.error);
+            if (firstErr) throw firstErr.error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error reorderCatalogoFotos:', e.message);
+            Toast.error('No se pudo reordenar: ' + (e.message || 'error'));
+            return false;
+        }
+    },
+
+    // Marca portada: desmarca todas las del item, luego marca la elegida (invariante ≤1 principal).
+    async setCatalogoFotoPrincipal(itemId, fotoId) {
+        if (itemId == null || fotoId == null) return false;
+        try {
+            const { error: clearErr } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .update({ es_principal: false })
+                .eq('item_id', itemId)
+                .eq('_deleted', false);
+            if (clearErr) throw clearErr;
+
+            const { error: setErr } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .update({ es_principal: true })
+                .eq('id', fotoId)
+                .eq('item_id', itemId);
+            if (setErr) throw setErr;
+
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error setCatalogoFotoPrincipal:', e.message);
+            Toast.error('No se pudo marcar la portada: ' + (e.message || 'error'));
+            return false;
+        }
+    },
+
+    // Soft-delete + remove best-effort del objeto. Si era portada, promueve la siguiente viva.
+    async deleteCatalogoFoto(fotoId) {
+        if (fotoId == null) return false;
+        try {
+            const { data: row, error: getErr } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .select('id, item_id, storage_path, es_principal')
+                .eq('id', fotoId)
+                .maybeSingle();
+            if (getErr) throw getErr;
+            if (!row) return false;
+
+            const { error: delErr } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .update({ _deleted: true, es_principal: false })
+                .eq('id', fotoId);
+            if (delErr) throw delErr;
+
+            if (row.storage_path) {
+                await supabaseClient.storage.from('catalogo').remove([row.storage_path]).catch(() => {});
+            }
+
+            if (row.es_principal) {
+                const restantes = await this.getCatalogoFotos(row.item_id);
+                if (restantes.length > 0) {
+                    await supabaseClient.from('catalogo_item_fotos').update({ es_principal: true }).eq('id', restantes[0].id).catch(() => {});
+                }
+            }
+
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error deleteCatalogoFoto:', e.message);
+            Toast.error('No se pudo eliminar la foto: ' + (e.message || 'error'));
+            return false;
+        }
+    },
+
+    async updateCatalogoFotoAlt(fotoId, alt) {
+        if (fotoId == null) return false;
+        try {
+            const { error } = await supabaseClient
+                .from('catalogo_item_fotos')
+                .update({ alt: (alt || '').trim() || null })
+                .eq('id', fotoId);
+            if (error) throw error;
+            this.clearCache();
+            return true;
+        } catch (e) {
+            console.warn('[API] Error updateCatalogoFotoAlt:', e.message);
+            Toast.error('No se pudo guardar el texto: ' + (e.message || 'error'));
+            return false;
+        }
+    },
+
     // ─── Receta Componentes CRUD ────────────────
     async getRecetaComponentes(itemId) {
         if (!itemId) return [];
@@ -2086,14 +2487,6 @@ const API = {
                     // CRM Pipeline
                     temperatura: c.temperatura || '',
                     casoId: c.caso_id || null,
-                    // Campos La PyME
-                    pymeVentaId: c.pyme_venta_id || null,
-                    pymeFacturaNumero: c.pyme_factura_numero || '',
-                    pymeFacturaFecha: c.pyme_factura_fecha || null,
-                    pymeTotal: parseFloat(c.pyme_total) || 0,
-                    pymeBalance: parseFloat(c.pyme_balance) || 0,
-                    pymeEstadoCobro: c.pyme_estado_cobro || null,
-                    pymeLastSync: c.pyme_last_sync || null,
                 };
             });
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -2325,171 +2718,6 @@ const API = {
             console.warn('[API] Error deleting email template:', e.message);
             return null;
         }
-    },
-
-    // ─── La PyME API Integration ───
-    _pymeBaseUrl: 'https://api.lapyme.com.ar',
-    _pymeApiKey: 'lpk_live_bc727a724666293a7916d01b5eaf77598ec31cc296fde067f7e17d1026a8cb9e',
-
-    async _pymeFetch(path, params = {}) {
-        const url = new URL(this._pymeBaseUrl + path);
-        Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v); });
-        try {
-            const res = await fetch(url.toString(), {
-                headers: { 'Authorization': `Bearer ${this._pymeApiKey}`, 'Content-Type': 'application/json' },
-            });
-            if (!res.ok) throw new Error(`PyME API ${res.status}: ${res.statusText}`);
-            const json = await res.json();
-            return json.success ? json : null;
-        } catch (e) {
-            console.warn('[PyME API] Error:', path, e.message);
-            return null;
-        }
-    },
-
-    async getPyMESales(search, dateFrom, dateTo, page = 1, limit = 100) {
-        return this._pymeFetch('/sales', { search, dateFrom, dateTo, page, limit });
-    },
-
-    async getPyMESaleById(id) {
-        const result = await this._pymeFetch(`/sales/${id}`);
-        return result?.data || null;
-    },
-
-    async getPyMECustomers(search, page = 1, limit = 100) {
-        return this._pymeFetch('/customers', { search, page, limit });
-    },
-
-    async syncFromPyME(cotizaciones) {
-        const syncStart = Date.now();
-        let synced = 0;
-        const errores = [];
-
-        try {
-            if (!cotizaciones || !cotizaciones.length) return { synced: 0, total: 0, errores: [] };
-
-            // Fetch all PyME sales (paginated)
-            let allSales = [];
-            let page = 1;
-            let hasMore = true;
-            while (hasMore) {
-                const result = await this.getPyMESales(null, null, null, page, 100);
-                if (!result?.data?.length) break;
-                allSales = allSales.concat(result.data);
-                hasMore = result.pagination && page < result.pagination.totalPages;
-                page++;
-                if (page > 10) break; // safety cap
-            }
-
-            if (!allSales.length) {
-                console.log('[PyME Sync] No sales found in La PyME');
-                return { synced: 0, total: allSales.length, errores: [] };
-            }
-
-            // Build name → sales map (lowercase for matching)
-            const salesByClient = {};
-            allSales.forEach(sale => {
-                const name = (sale.customer?.name || '').toLowerCase().trim();
-                if (!name) return;
-                if (!salesByClient[name]) salesByClient[name] = [];
-                salesByClient[name].push(sale);
-            });
-
-            // Match cotizaciones with PyME sales
-            for (const cot of cotizaciones) {
-                if (!cot.clienteNombre) continue;
-                const clientKey = cot.clienteNombre.toLowerCase().trim();
-                const clientSales = salesByClient[clientKey];
-                if (!clientSales?.length) continue;
-
-                // Find best match: closest amount or most recent
-                let bestSale = null;
-                if (cot.montoTotal > 0) {
-                    // Match by closest total amount
-                    bestSale = clientSales.reduce((best, sale) => {
-                        const diff = Math.abs(sale.total - cot.montoTotal);
-                        const bestDiff = best ? Math.abs(best.total - cot.montoTotal) : Infinity;
-                        return diff < bestDiff ? sale : best;
-                    }, null);
-                } else {
-                    // Just take most recent
-                    bestSale = clientSales.sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate))[0];
-                }
-
-                if (!bestSale) continue;
-
-                // Determine cobro status from balance
-                let estadoCobro = 'pendiente';
-                if (bestSale.balance === 0 || bestSale.balance === null) estadoCobro = 'cobrada';
-                else if (bestSale.balance > 0 && bestSale.balance < bestSale.total) estadoCobro = 'parcial';
-
-                // Check if anything changed
-                const changed = cot.pymeVentaId !== bestSale.id ||
-                    cot.pymeEstadoCobro !== estadoCobro ||
-                    cot.pymeBalance !== (bestSale.balance || 0);
-
-                if (!changed && cot.pymeVentaId) { synced++; continue; } // already synced, no changes
-
-                // Update in Supabase
-                try {
-                    const updatePayload = {
-                        pyme_venta_id: bestSale.id,
-                        pyme_factura_numero: bestSale.formattedInvoiceNumber || String(bestSale.invoiceNumber || ''),
-                        pyme_factura_fecha: bestSale.invoiceDate,
-                        pyme_total: bestSale.total,
-                        pyme_balance: bestSale.balance || 0,
-                        pyme_estado_cobro: estadoCobro,
-                        pyme_last_sync: new Date().toISOString(),
-                    };
-
-                    // La facturación se infiere de pyme_venta_id IS NOT NULL.
-                    // No mutar el estado del pipeline cuando se factura — la cotización
-                    // queda en 'aprobada' y el flag de facturada se deriva del pyme_venta_id.
-                    // (Bloque eliminado intencionalmente en migración a pipeline de 5 estados)
-
-                    const { error } = await supabaseClient
-                        .from('cotizaciones').update(updatePayload).eq('id', cot.id);
-                    if (error) throw error;
-
-                    // Add timeline entry if first sync or status changed
-                    if (!cot.pymeVentaId || cot.pymeEstadoCobro !== estadoCobro) {
-                        const desc = !cot.pymeVentaId
-                            ? `Factura ${updatePayload.pyme_factura_numero} vinculada desde La PyME — ${API.formatCurrency(bestSale.total)}`
-                            : `Estado cobro actualizado: ${estadoCobro} (balance: ${API.formatCurrency(bestSale.balance || 0)})`;
-                        await this.addCotizacionTimeline(cot.id, !cot.pymeVentaId ? 'facturacion' : 'cobro', desc, {
-                            source: 'pyme', pyme_venta_id: bestSale.id,
-                            factura: updatePayload.pyme_factura_numero, monto: bestSale.total, balance: bestSale.balance,
-                        });
-                    }
-                    synced++;
-                } catch (e) {
-                    errores.push({ cotId: cot.id, error: e.message });
-                }
-            }
-
-            // Log sync
-            await supabaseClient.from('pyme_sync_log').insert({
-                tipo: 'manual', ventas_synced: synced, ventas_total: allSales.length, errores,
-            });
-
-            // Clear cache
-            this.clearCache();
-
-            console.log(`[PyME Sync] Done: ${synced} synced from ${allSales.length} PyME sales in ${Date.now() - syncStart}ms`);
-            return { synced, total: allSales.length, errores };
-        } catch (e) {
-            console.warn('[PyME Sync] Fatal error:', e.message);
-            return { synced, total: 0, errores: [{ error: e.message }] };
-        }
-    },
-
-    async getLastPyMESync() {
-        try {
-            const { data, error } = await supabaseClient
-                .from('pyme_sync_log').select('*').order('created_at', { ascending: false }).limit(1);
-            if (error) throw error;
-            return data?.[0] || null;
-        } catch (e) { return null; }
     },
 
     // ─── Categorías Config (margen default por categoría) ──
@@ -6126,7 +6354,7 @@ const API = {
     },
 
     // ── Generar el cobro/ingreso de un comprobante EMITIDO (factura de venta). Fase 3d.2. ──
-    //  Espejo de generarEgresoDeComprobante: el comprobante existe (lo emitió ARCA/La PyME),
+    //  Espejo de generarEgresoDeComprobante: el comprobante existe (lo emitió ARCA),
     //  falta su ingreso. Crea el ingreso linkeado (comprobante_id → el trigger clasifica por
     //  servicio + IVA débito) + el link bidireccional comprobantes.ingreso_id.
     async generarIngresoDeComprobante(comprobanteId, { cuenta_id = null, medio = 'transferencia', estado = 'confirmado', fecha = null } = {}) {
