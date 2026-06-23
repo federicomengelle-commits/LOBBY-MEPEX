@@ -8316,14 +8316,36 @@ const FinanzasModule = {
             .fin-lote-ctl input:focus { outline:none; border-color:var(--primary,#00A9C1); }
             .fin-lote-arrow { color:var(--primary,#00A9C1); font-size:1.3rem; padding-bottom:6px; }
             .fin-lote-table { width:100%; border-collapse:collapse; font-size:.85rem; }
-            .fin-lote-table thead th { text-align:left; font-size:.68rem; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted,#888); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border,#2a2a2a); }
-            .fin-lote-table tbody td { padding:8px 10px; border-bottom:1px solid rgba(42,42,42,.5); color:var(--text-primary,#e8e8e8); vertical-align:middle; }
+            .fin-lote-table thead th { text-align:left; font-size:.66rem; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted,#888); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border,#2a2a2a); }
+            .fin-lote-table tbody td { padding:9px 10px; border-bottom:1px solid rgba(42,42,42,.5); color:var(--text-primary,#e8e8e8); vertical-align:middle; }
             .fin-lote-table tbody tr.lote-row-on { background:rgba(0,169,193,.06); }
             .fin-lote-table tbody tr.lote-row-ok { background:rgba(0,204,136,.07); }
             .fin-lote-table input[type=checkbox] { width:16px; height:16px; accent-color:var(--primary,#00A9C1); cursor:pointer; }
-            .fin-lote-footer { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:14px; padding:14px 16px; background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-radius:8px; position:sticky; bottom:0; }
-            .fin-lote-summary { color:var(--text-primary,#e8e8e8); font-size:.9rem; }
-            .fin-lote-summary strong { color:var(--primary,#00A9C1); }
+            .fin-lote-cli { font-weight:500; color:#f0f0f0; }
+            .fin-lote-concepto { color:#999; }
+            .fin-lote-total-cell { text-align:right; white-space:nowrap; }
+            .fin-lote-total-wrap { display:inline-flex; align-items:center; justify-content:flex-end; gap:3px; width:130px; padding:5px 9px; background:#0f0f0f; border:1px solid var(--border,#2a2a2a); border-radius:5px; }
+            .fin-lote-total-wrap:focus-within { border-color:var(--primary,#00A9C1); }
+            .fin-lote-total-wrap.edited { border-color:#3a5566; }
+            .fin-lote-cur { color:#666; font-size:.78rem; }
+            .fin-lote-total-wrap input.lote-total { width:100%; min-width:0; text-align:right; font-family:var(--font-mono,monospace); background:transparent; border:none; outline:none; color:var(--text-primary,#e8e8e8); font-size:.82rem; padding:0; }
+            .fin-lote-orig { display:block; text-align:right; font-family:var(--font-mono,monospace); font-size:.62rem; color:#666; text-decoration:line-through; margin-top:2px; padding-right:4px; }
+            .fin-lote-orig[hidden] { display:none; }
+            .fin-lote-est { display:inline-flex; align-items:center; gap:6px; font-size:.8rem; }
+            .fin-lote-estdot { width:7px; height:7px; border-radius:50%; flex:none; display:inline-block; }
+            .fin-lote-estdot.pulse { animation:finLotePulse 1.1s infinite; }
+            @keyframes finLotePulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+            .fin-lote-legend { display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:.66rem; color:#666; margin:10px 2px 0; }
+            .fin-lote-legend > span { display:inline-flex; align-items:center; gap:5px; color:#888; }
+            .fin-lote-footer { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:16px; padding:14px 16px; background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-radius:10px; position:sticky; bottom:0; }
+            .fin-lote-foot-left { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+            .fin-lote-chip { display:inline-flex; align-items:center; gap:7px; background:rgba(0,169,193,.09); border:1px solid rgba(0,169,193,.28); color:var(--primary,#00A9C1); font-weight:700; font-size:.8rem; padding:6px 12px; border-radius:20px; }
+            .fin-lote-foot-total { display:flex; flex-direction:column; gap:1px; }
+            .fin-lote-foot-total .lbl { font-size:.62rem; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted,#888); }
+            .fin-lote-foot-total .val { font-family:var(--font-mono,monospace); font-size:1.05rem; font-weight:700; color:var(--text-primary,#e8e8e8); }
+            .fin-lote-foot-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+            .fin-lote-emit-btn { display:inline-flex; align-items:center; gap:8px; }
+            .fin-lote-warn { display:inline-flex; align-items:center; gap:5px; font-size:.62rem; color:#7a6a3a; }
         `;
         document.head.appendChild(s);
     },
@@ -8384,7 +8406,12 @@ const FinanzasModule = {
                 <tbody>
                     ${rows.map((r, i) => this._loteRowHTML(r, i, dis)).join('')}
                 </tbody>
-            </table>`;
+            </table>
+            <div class="fin-lote-legend">Durante la emisión:
+                <span><span class="fin-lote-estdot" style="background:#F28D15;"></span>Emitiendo</span>
+                <span><span class="fin-lote-estdot" style="background:#00CC88;"></span>Hecha (CAE)</span>
+                <span><span class="fin-lote-estdot" style="background:#ff4444;"></span>Error (reintentable)</span>
+            </div>`;
     },
 
     _loteRowHTML(r, i, dis) {
@@ -8393,22 +8420,31 @@ const FinanzasModule = {
         const concepto = this._servicioLabel[src.servicio] || src.descripcion || src.servicio || '—';
         const isOk = r.status === 'ok';
         const rowDis = (dis || isOk) ? 'disabled' : '';
-        let estado = '<span style="color:#888;">—</span>';
-        if (r.status === 'emitting') estado = '<span class="fin-wizard-spinner"></span> <span style="color:#F28D15;">Emitiendo…</span>';
-        else if (r.status === 'ok') estado = `<span style="color:#00CC88;font-weight:700;">✓ ${escHtml(r.comp?.numero || 'CAE')}</span>`;
-        else if (r.status === 'error') estado = `<span style="color:#ff4444;font-weight:700;cursor:help;" title="${escAttr(r.error || '')}">✗ Error</span>`;
+        const orig = Number(src.total) || 0;
+        const edited = (Number(r.total) || 0) !== orig;
         return `
             <tr class="${r.checked ? 'lote-row-on' : ''} ${isOk ? 'lote-row-ok' : ''}">
                 <td style="text-align:center;"><input type="checkbox" class="lote-check" data-idx="${i}" ${r.checked ? 'checked' : ''} ${rowDis}></td>
-                <td>${escHtml(cli)}</td>
+                <td class="fin-lote-cli">${escHtml(cli)}</td>
                 <td>${this._tipoBadgeComp(src.tipo)}</td>
-                <td>${escHtml(concepto)}</td>
-                <td style="text-align:right;">
-                    <input type="number" class="lote-total" data-idx="${i}" value="${r.total}" min="0" step="0.01" ${rowDis}
-                        style="width:130px;text-align:right;font-family:var(--font-mono,monospace);padding:5px 8px;background:var(--bg,#050505);border:1px solid var(--border,#2a2a2a);border-radius:4px;color:var(--text-primary,#e8e8e8);">
+                <td class="fin-lote-concepto">${escHtml(concepto)}</td>
+                <td class="fin-lote-total-cell">
+                    <div class="fin-lote-total-wrap ${edited ? 'edited' : ''}" data-idx="${i}">
+                        <span class="fin-lote-cur">$</span>
+                        <input type="number" class="lote-total" data-idx="${i}" value="${r.total}" min="0" step="0.01" ${rowDis}>
+                    </div>
+                    <span class="fin-lote-orig" data-idx="${i}" ${edited ? '' : 'hidden'}>${this._formatMoney(orig)}</span>
                 </td>
-                <td>${estado}</td>
+                <td>${this._loteEstadoHTML(r)}</td>
             </tr>`;
+    },
+
+    // Estado de la fila del lote, con dot de color (mismo lenguaje que _estadoDotComp de Emitidos).
+    _loteEstadoHTML(r) {
+        if (r.status === 'emitting') return '<span class="fin-lote-est" style="color:#F28D15;"><span class="fin-lote-estdot pulse" style="background:#F28D15;"></span>Emitiendo…</span>';
+        if (r.status === 'ok') return `<span class="fin-lote-est" style="color:#00CC88;font-weight:700;"><span class="fin-lote-estdot" style="background:#00CC88;"></span>✓ ${escHtml(r.comp?.numero || 'CAE')}</span>`;
+        if (r.status === 'error') return `<span class="fin-lote-est" style="color:#ff4444;font-weight:700;cursor:help;" title="${escAttr(r.error || '')}"><span class="fin-lote-estdot" style="background:#ff4444;"></span>Error</span>`;
+        return '<span class="fin-lote-est" style="color:#888;"><span class="fin-lote-estdot" style="background:#888;"></span>Lista</span>';
     },
 
     _loteFooterInnerHTML() {
@@ -8416,14 +8452,27 @@ const FinanzasModule = {
         const total = sel.reduce((s, r) => s + (Number(r.total) || 0), 0);
         const n = sel.length;
         const dis = (this._loteEmitting || n === 0) ? 'disabled' : '';
+        const emitIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>';
         return `
-            <div class="fin-lote-summary">
-                <strong>${n}</strong> seleccionada(s) · Total <strong>${this._formatMoney(total)}</strong>
-                · período <strong>${this._mesLabel(this._loteDestinoMes)}</strong>
+            <div class="fin-lote-foot-left">
+                <span class="fin-lote-chip">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    ${n} seleccionada${n === 1 ? '' : 's'}
+                </span>
+                <div class="fin-lote-foot-total">
+                    <span class="lbl">Total a emitir · ${this._mesLabel(this._loteDestinoMes)}</span>
+                    <span class="val">${this._formatMoney(total)}</span>
+                </div>
             </div>
-            <button class="fin-wizard-btn fin-wizard-btn-primary" id="finLoteEmit" ${dis}>
-                ${this._loteEmitting ? '<span class="fin-wizard-spinner"></span> Emitiendo lote…' : `🧾 Emitir ${n} en ARCA`}
-            </button>`;
+            <div class="fin-lote-foot-right">
+                <button class="fin-wizard-btn fin-wizard-btn-primary fin-lote-emit-btn" id="finLoteEmit" ${dis}>
+                    ${this._loteEmitting ? '<span class="fin-wizard-spinner"></span> Emitiendo lote…' : `${emitIcon} Emitir ${n} en ARCA`}
+                </button>
+                <span class="fin-lote-warn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    cada emisión genera un CAE real ante AFIP
+                </span>
+            </div>`;
     },
 
     _renderLoteTable() {
@@ -8481,7 +8530,15 @@ const FinanzasModule = {
                 const t = e.target;
                 if (t.classList.contains('lote-total')) {
                     const idx = +t.dataset.idx;
-                    if (this._loteRows[idx]) this._loteRows[idx].total = parseFloat(t.value) || 0;
+                    const row = this._loteRows[idx];
+                    if (row) {
+                        row.total = parseFloat(t.value) || 0;
+                        const orig = Number(row.src.total) || 0;
+                        const edited = (Number(row.total) || 0) !== orig;
+                        const hint = wrap.querySelector(`.fin-lote-orig[data-idx="${idx}"]`);
+                        if (hint) hint.hidden = !edited;
+                        t.closest('.fin-lote-total-wrap')?.classList.toggle('edited', edited);
+                    }
                     this._renderLoteFooter();
                 }
             });
