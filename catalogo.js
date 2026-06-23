@@ -425,23 +425,10 @@ const CatalogoModule = {
                 </div>
             </div>
 
-            <!-- Foto -->
-            <div class="cat-panel-section">
-                <div class="cat-section-header">
-                    <h3 class="cat-section-title">Imagen</h3>
-                    ${!isReadOnly ? `<button class="cat-edit-btn" id="catBtnEditFoto" title="Cambiar imagen">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>` : ''}
-                </div>
-                <div class="cat-panel-foto" id="catPanelFoto">
-                    ${item.foto
-                        ? `<img src="${item.foto}" class="cat-panel-foto-img" alt="${item.nombre}">`
-                        : `<div class="cat-panel-foto-empty">
-                            <span>📷</span>
-                            <span>Sin imagen</span>
-                          </div>`
-                    }
-                </div>
+            <!-- Fotos (showroom F1) -->
+            <div class="cat-panel-section" id="catFotosSection">
+                <div class="cat-section-header"><h3 class="cat-section-title">Fotos</h3></div>
+                <div class="cat-panel-foto-empty"><span>⏳</span><span>Cargando…</span></div>
             </div>
 
             <!-- Información -->
@@ -462,6 +449,9 @@ const CatalogoModule = {
                     <div class="cat-info-row"><span class="cat-info-label">Unidad</span><span class="cat-info-value">${v(item.unidad)}</span></div>
                 </div>
             </div>
+
+            <!-- Ficha del showroom (F1) -->
+            <div class="cat-panel-section" id="catRichSection"></div>
 
             ${!isReadOnly ? `
             <!-- Actions -->
@@ -488,9 +478,6 @@ const CatalogoModule = {
         const editInfoBtn = document.getElementById('catBtnEditInfo');
         if (editInfoBtn) editInfoBtn.addEventListener('click', () => this._openEditModal(item));
 
-        const editFotoBtn = document.getElementById('catBtnEditFoto');
-        if (editFotoBtn) editFotoBtn.addEventListener('click', () => this._editFoto(item));
-
         const deleteBtn = document.getElementById('catBtnDelete');
         if (deleteBtn) deleteBtn.addEventListener('click', () => this._deleteItem(item));
 
@@ -499,6 +486,9 @@ const CatalogoModule = {
             if (e.key === 'Escape') this._closePanel();
         };
         document.addEventListener('keydown', this._panelEscHandler);
+
+        // Showroom F1: cargar fotos + ficha rica (async, no bloquea el render del panel)
+        this._loadPanelExtras(item);
     },
 
     _closePanel() {
@@ -681,10 +671,218 @@ const CatalogoModule = {
     },
 
     // ═══════════════════════════════════════════
-    //  FOTO EDIT (placeholder — Supabase Storage)
+    //  SHOWROOM F1 — fotos + ficha rica (panel)
     // ═══════════════════════════════════════════
 
-    _editFoto(item) {
-        Toast.info('Subida de fotos — próximamente');
+    _ensureShowroomStyles() {
+        if (this._showroomStylesInjected) return;
+        this._showroomStylesInjected = true;
+        const s = document.createElement('style');
+        s.id = 'cat-showroom-styles';
+        s.textContent = `
+            .cat-fotos-grid { display:flex; flex-wrap:wrap; gap:8px; }
+            .cat-foto-thumb { position:relative; width:84px; height:84px; border-radius:6px; overflow:hidden; border:1px solid #2a2a2a; background:#1a1a1a; }
+            .cat-foto-thumb.is-portada { border-color:#00A9C1; box-shadow:0 0 0 1px #00A9C1; }
+            .cat-foto-thumb img { width:100%; height:100%; object-fit:cover; cursor:pointer; display:block; }
+            .cat-foto-badge { position:absolute; bottom:0; left:0; right:0; font:700 9px/1.5 'Space Mono',monospace; text-align:center; background:rgba(0,169,193,.88); color:#fff; text-transform:uppercase; letter-spacing:.5px; }
+            .cat-foto-actions { position:absolute; top:3px; right:3px; display:flex; gap:3px; opacity:0; transition:opacity .15s; }
+            .cat-foto-thumb:hover .cat-foto-actions { opacity:1; }
+            .cat-foto-act { width:20px; height:20px; border:none; border-radius:4px; background:rgba(0,0,0,.72); color:#fff; cursor:pointer; font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center; }
+            .cat-foto-act:hover { background:#00A9C1; }
+            .cat-foto-del:hover { background:#ff4444; }
+            .cat-foto-up-label { cursor:pointer; }
+            .cat-foto-progress { font:12px 'Space Mono',monospace; color:#00A9C1; margin-top:8px; }
+            .cat-color-chip { display:inline-block; padding:2px 9px; margin:0 4px 4px 0; border-radius:11px; background:#1a1a1a; border:1px solid #2a2a2a; font-size:12px; color:#E8E8E8; }
+            .cat-ficha-row { display:flex; gap:6px; margin-bottom:6px; }
+        `;
+        document.head.appendChild(s);
+    },
+
+    // Carga async las fotos + campos ricos del item y los pinta en el panel.
+    async _loadPanelExtras(item) {
+        this._ensureShowroomStyles();
+        const full = await API.getCatalogoItemFull(item.id);
+        if (!full || this._activePanel !== item.id) return; // el usuario cerró o cambió de item
+        this._panelFull = full;
+        this._renderFotosSection(full);
+        this._renderRichSection(full);
+    },
+
+    _isRO() {
+        const user = Auth.getUser();
+        return user ? Data.isReadOnly(user.role, 'catalogo') : true;
+    },
+
+    _renderFotosSection(full) {
+        const box = document.getElementById('catFotosSection');
+        if (!box) return;
+        const isReadOnly = this._isRO();
+        const fotos = full.fotos || [];
+        const thumbs = fotos.length
+            ? fotos.map(f => `
+                <div class="cat-foto-thumb ${f.esPrincipal ? 'is-portada' : ''}" data-foto="${f.id}">
+                    <img src="${escAttr(f.url)}" alt="${escAttr(f.alt || full.nombre)}" loading="lazy" data-zoom="${escAttr(f.url)}">
+                    ${f.esPrincipal ? '<span class="cat-foto-badge">Portada</span>' : ''}
+                    ${!isReadOnly ? `<div class="cat-foto-actions">
+                        ${!f.esPrincipal ? `<button class="cat-foto-act" data-portada="${f.id}" title="Marcar portada">★</button>` : ''}
+                        <button class="cat-foto-act cat-foto-del" data-delfoto="${f.id}" title="Eliminar">×</button>
+                    </div>` : ''}
+                </div>`).join('')
+            : '<div class="cat-panel-foto-empty"><span>📷</span><span>Sin fotos</span></div>';
+        box.innerHTML = `
+            <div class="cat-section-header">
+                <h3 class="cat-section-title">Fotos (${fotos.length})</h3>
+                ${!isReadOnly ? `<label class="cat-edit-btn cat-foto-up-label" title="Subir fotos">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <input type="file" id="catFotoInput" accept="image/*" multiple style="display:none">
+                </label>` : ''}
+            </div>
+            <div class="cat-fotos-grid">${thumbs}</div>
+            <div class="cat-foto-progress" id="catFotoProgress" style="display:none"></div>`;
+
+        const input = document.getElementById('catFotoInput');
+        if (input) input.addEventListener('change', (e) => this._handleFotoUpload(full.id, e.target.files));
+        box.querySelectorAll('[data-portada]').forEach(b => b.addEventListener('click', () => this._setPortada(full.id, b.dataset.portada)));
+        box.querySelectorAll('[data-delfoto]').forEach(b => b.addEventListener('click', () => this._deleteFotoConfirm(full.id, b.dataset.delfoto)));
+        box.querySelectorAll('img[data-zoom]').forEach(img => img.addEventListener('click', () => this._lightbox(img.dataset.zoom)));
+    },
+
+    async _refreshFotos(itemId) {
+        const full = await API.getCatalogoItemFull(itemId);
+        if (full && this._activePanel === itemId) { this._panelFull = full; this._renderFotosSection(full); }
+    },
+
+    async _handleFotoUpload(itemId, fileList) {
+        const files = Array.from(fileList || []).filter(f => f.type && f.type.startsWith('image/'));
+        if (!files.length) { Toast.warning('No hay imágenes para subir'); return; }
+        const prog = document.getElementById('catFotoProgress');
+        if (prog) prog.style.display = '';
+        let ok = 0;
+        for (let i = 0; i < files.length; i++) {            // secuencial: el orden/portada queda consistente
+            if (prog) prog.textContent = `Subiendo ${i + 1}/${files.length}…`;
+            const r = await API.uploadCatalogoFoto(itemId, files[i]);
+            if (r) ok++;
+        }
+        if (prog) prog.style.display = 'none';
+        if (ok) Toast.success(`${ok} foto${ok > 1 ? 's' : ''} subida${ok > 1 ? 's' : ''}`);
+        await this._refreshFotos(itemId);
+    },
+
+    async _setPortada(itemId, fotoId) {
+        const ok = await API.setCatalogoFotoPrincipal(itemId, fotoId);
+        if (ok) await this._refreshFotos(itemId);
+    },
+
+    async _deleteFotoConfirm(itemId, fotoId) {
+        const c = await Modal.confirm({ title: 'Eliminar foto', message: '¿Eliminar esta foto del item?', danger: true });
+        if (!c) return;
+        const ok = await API.deleteCatalogoFoto(fotoId);
+        if (ok) { Toast.success('Foto eliminada'); await this._refreshFotos(itemId); }
+    },
+
+    _lightbox(url) {
+        Modal.open({
+            title: '',
+            size: 'lg',
+            body: `<div style="text-align:center"><img src="${escAttr(url)}" style="max-width:100%;max-height:74vh;border-radius:6px"></div>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cerrar</button>`,
+        });
+    },
+
+    _renderRichSection(full) {
+        const box = document.getElementById('catRichSection');
+        if (!box) return;
+        const isReadOnly = this._isRO();
+        const dash = '<span style="color:#444">—</span>';
+        const medidas = [
+            full.frenteCm != null ? `${full.frenteCm}` : null,
+            full.profundidadCm != null ? `${full.profundidadCm}` : null,
+            full.altoCm != null ? `${full.altoCm}` : null,
+        ].some(x => x != null)
+            ? `${full.frenteCm ?? '—'} × ${full.profundidadCm ?? '—'} × ${full.altoCm ?? '—'} cm <span style="color:#666;font-size:11px">(F×P×A)</span>`
+            : dash;
+        const colores = (full.colores || []).length
+            ? full.colores.map(c => `<span class="cat-color-chip">${escHtml(c)}</span>`).join('')
+            : dash;
+        const ficha = (full.fichaTecnica || []).length
+            ? full.fichaTecnica.map(r => `<div class="cat-info-row"><span class="cat-info-label">${escHtml(r.label)}</span><span class="cat-info-value">${escHtml(r.valor) || dash}</span></div>`).join('')
+            : `<div class="cat-info-row"><span class="cat-info-value" style="color:#444">Sin ficha técnica</span></div>`;
+        box.innerHTML = `
+            <div class="cat-section-header">
+                <h3 class="cat-section-title">Ficha del showroom</h3>
+                ${!isReadOnly ? `<button class="cat-edit-btn" id="catBtnEditRich" title="Editar ficha del showroom">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>` : ''}
+            </div>
+            <div class="cat-panel-info-grid">
+                <div class="cat-info-row"><span class="cat-info-label">Descripción</span><span class="cat-info-value">${escHtml(full.descripcionLarga) || dash}</span></div>
+                <div class="cat-info-row"><span class="cat-info-label">Medidas</span><span class="cat-info-value">${medidas}</span></div>
+                <div class="cat-info-row"><span class="cat-info-label">Colores</span><span class="cat-info-value">${colores}</span></div>
+                <div class="cat-info-row"><span class="cat-info-label">Precio alquiler</span><span class="cat-info-value">${full.precioAlquiler ? '$' + full.precioAlquiler.toLocaleString('es-AR') : dash} <span style="color:#666;font-size:11px">(Costos)</span></span></div>
+            </div>
+            ${(full.fichaTecnica || []).length ? `<div class="cat-rich-ficha" style="margin-top:8px">${ficha}</div>` : ''}`;
+        const btn = document.getElementById('catBtnEditRich');
+        if (btn) btn.addEventListener('click', () => this._openRichEditModal(full));
+    },
+
+    _fichaRowHtml(label, valor) {
+        return `<div class="cat-ficha-row">
+            <input type="text" class="form-input" name="fl" placeholder="Etiqueta (ej: Material)" value="${escAttr(label)}" style="flex:1">
+            <input type="text" class="form-input" name="fv" placeholder="Valor (ej: Aluminio)" value="${escAttr(valor)}" style="flex:1">
+            <button type="button" class="btn btn-ghost btn-sm" data-fichadel title="Quitar">×</button>
+        </div>`;
+    },
+
+    _openRichEditModal(full) {
+        const fichaRows = (full.fichaTecnica || []).map(r => this._fichaRowHtml(r.label, r.valor)).join('');
+        Modal.open({
+            title: `Ficha del showroom: ${escHtml(full.nombre)}`,
+            size: 'md',
+            body: `<form id="catRichForm" class="modal-form">
+                <div class="form-group"><label class="form-label">Descripción (showroom)</label><textarea class="form-input" name="descripcionLarga" rows="4" placeholder="Descripción rica para la propuesta / cliente">${escHtml(full.descripcionLarga)}</textarea></div>
+                <div style="display:flex;gap:8px">
+                    <div class="form-group" style="flex:1"><label class="form-label">Frente (cm)</label><input type="number" step="0.1" class="form-input" name="frenteCm" value="${full.frenteCm ?? ''}"></div>
+                    <div class="form-group" style="flex:1"><label class="form-label">Prof. (cm)</label><input type="number" step="0.1" class="form-input" name="profundidadCm" value="${full.profundidadCm ?? ''}"></div>
+                    <div class="form-group" style="flex:1"><label class="form-label">Alto (cm)</label><input type="number" step="0.1" class="form-input" name="altoCm" value="${full.altoCm ?? ''}"></div>
+                </div>
+                <div class="form-group"><label class="form-label">Colores disponibles (separados por coma)</label><input type="text" class="form-input" name="colores" value="${escAttr((full.colores || []).join(', '))}" placeholder="Blanco, Negro, Madera natural"></div>
+                <div class="form-group"><label class="form-label">Ficha técnica</label><div id="catFichaRows">${fichaRows}</div><button type="button" class="btn btn-ghost btn-sm" id="catFichaAdd" style="margin-top:6px">+ Agregar fila</button></div>
+            </form>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="catRichSave">Guardar ficha</button>`,
+        });
+
+        const rowsBox = document.getElementById('catFichaRows');
+        const wireDel = () => rowsBox && rowsBox.querySelectorAll('[data-fichadel]').forEach(b => { b.onclick = () => b.closest('.cat-ficha-row').remove(); });
+        wireDel();
+        const addBtn = document.getElementById('catFichaAdd');
+        if (addBtn && rowsBox) addBtn.addEventListener('click', () => { rowsBox.insertAdjacentHTML('beforeend', this._fichaRowHtml('', '')); wireDel(); });
+
+        const saveBtn = document.getElementById('catRichSave');
+        if (saveBtn) saveBtn.addEventListener('click', async () => {
+            const form = document.getElementById('catRichForm');
+            if (!form) return;
+            const fichaTecnica = Array.from(form.querySelectorAll('.cat-ficha-row')).map(r => ({
+                label: (r.querySelector('[name="fl"]')?.value || '').trim(),
+                valor: (r.querySelector('[name="fv"]')?.value || '').trim(),
+            })).filter(x => x.label);
+            const fields = {
+                descripcionLarga: form.querySelector('[name="descripcionLarga"]')?.value || '',
+                frenteCm: form.querySelector('[name="frenteCm"]')?.value || '',
+                profundidadCm: form.querySelector('[name="profundidadCm"]')?.value || '',
+                altoCm: form.querySelector('[name="altoCm"]')?.value || '',
+                colores: (form.querySelector('[name="colores"]')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
+                fichaTecnica,
+            };
+            saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
+            const ok = await API.updateCatalogoItemRich(full.id, fields);
+            if (ok) {
+                Toast.success('Ficha guardada');
+                Modal.closeAll();
+                const fresh = await API.getCatalogoItemFull(full.id);
+                if (fresh && this._activePanel === full.id) { this._panelFull = fresh; this._renderRichSection(fresh); }
+            } else {
+                saveBtn.disabled = false; saveBtn.textContent = 'Guardar ficha';
+            }
+        });
     },
 };
