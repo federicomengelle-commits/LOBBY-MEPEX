@@ -22,6 +22,7 @@ const CatalogoModule = {
 
     // ─── F2: galería + ficha full-screen ───
     _viewMode: 'galeria',     // 'galeria' | 'tabla' — persiste en localStorage
+    _soloCotizables: true,    // showroom = lista de precios (es_cotizable). Toggle "Todos" para admin.
     _portadas: {},            // { item_id: url } — cache de portadas
     _fichaItemId: null,       // id del item en ficha full-screen (null = cerrada)
     _fichaFotos: [],          // fotos cargadas del item en ficha
@@ -127,17 +128,20 @@ const CatalogoModule = {
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                             </button>
                         </div>
-                        ${!isReadOnly ? `
-                        <button class="btn btn-primary cat-btn-new" id="catBtnNew">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            Nuevo item
-                        </button>
-                        ` : ''}
+                        <!-- Sin "Nuevo item": el alta de ítems vive en Costos (recetas). El catálogo solo viste + muestra. -->
+                        ${''}
                     </div>
                 </div>
 
                 <!-- Filters -->
                 <div class="cat-filters" id="catFilters">
+                    <div class="cat-filter-group">
+                        <span class="cat-filter-label">Mostrar</span>
+                        <div class="cat-chips-filter">
+                            <button class="cat-filter-chip ${this._soloCotizables ? 'active' : ''}" id="catFiltCotiz" type="button">Cotizables</button>
+                            <button class="cat-filter-chip ${!this._soloCotizables ? 'active' : ''}" id="catFiltTodos" type="button">Todos</button>
+                        </div>
+                    </div>
                     <div class="cat-filter-group">
                         <span class="cat-filter-label">Rubro</span>
                         <div class="cat-chips-filter" id="catRubroChips">
@@ -214,6 +218,11 @@ const CatalogoModule = {
 
     _applyFilters() {
         let data = [...this._items];
+
+        // Showroom = lista de precios: por default solo cotizables (toggle "Todos" para admin/enriquecer).
+        if (this._soloCotizables) {
+            data = data.filter(i => i.esCotizable);
+        }
 
         if (this._searchQuery) {
             const q = normStr(this._searchQuery);
@@ -540,9 +549,19 @@ const CatalogoModule = {
             this._applyFilters();
         });
 
-        // New item button
-        const btnNew = document.getElementById('catBtnNew');
-        if (btnNew) btnNew.addEventListener('click', () => this._openCreateModal());
+        // Filtro cotizables / todos (showroom = lista de precios; "Todos" para admin/enriquecer)
+        document.getElementById('catFiltCotiz')?.addEventListener('click', () => {
+            this._soloCotizables = true;
+            document.getElementById('catFiltCotiz')?.classList.add('active');
+            document.getElementById('catFiltTodos')?.classList.remove('active');
+            this._applyFilters();
+        });
+        document.getElementById('catFiltTodos')?.addEventListener('click', () => {
+            this._soloCotizables = false;
+            document.getElementById('catFiltTodos')?.classList.add('active');
+            document.getElementById('catFiltCotiz')?.classList.remove('active');
+            this._applyFilters();
+        });
 
         // F4: toggle selección
         document.getElementById('catToggleSelect')?.addEventListener('click', () => {
@@ -1661,6 +1680,10 @@ const CatalogoModule = {
         const s = document.createElement('style');
         s.id = 'cat-f2-styles';
         s.textContent = `
+        /* ── Layout: aire en los costados ── */
+        .cat-wrapper { padding: 2px 30px 36px; }
+        @media (max-width: 760px) { .cat-wrapper { padding: 2px 14px 28px; } }
+
         /* ── Toolbar ── */
         .cat-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 0 12px; flex-wrap:wrap; }
         .cat-toolbar-left { display:flex; flex-direction:column; gap:4px; }
