@@ -3,13 +3,22 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- Companion: docs/capa-operativa-blueprint.md §3.F / §4 (Fase A).
 --
--- QUÉ HACE: el rol `taller` pasa a ver Proyectos (read-only, SOLO los que están
--- en producción: estado='en_taller') y pierde los módulos taller/logistica (que
--- se disuelven). El rol `pm` pierde taller/logistica. Oficina (todo el resto)
--- queda EXACTAMENTE como hoy.
+-- QUÉ HACE (ADITIVO PURO — riesgo cero, seguro de correr cuando quieras):
+-- el rol `taller` GANA Proyectos (read-only, SOLO los que están en producción:
+-- estado='en_taller'). NO se le quita nada: conserva su módulo Taller actual
+-- (que filtra por el MISMO estado='en_taller', taller.js:134 → no se rompe) y
+-- logistica. Oficina (todo el resto) queda EXACTAMENTE como hoy.
 --
 -- ⚠ REVIERTE sql/taller_rol_sin_proyectos.sql (SB4) — decisión Fede 2026-06-24 (Q1.bis):
 --   antes el taller NO entraba a Proyectos; ahora SÍ, filtrado a "en_taller".
+--
+-- LO QUE NO HACE ACÁ (diferido para no romper nada VIVO):
+--   · Quitarle a taller el módulo Taller + sacarlo del sidebar → Fase C (cuando la
+--     vista de Proyectos read-only para taller esté lista y se borre taller.js).
+--     Hasta entonces taller ve AMBOS (Taller dashboard + Proyectos) — sano.
+--   · pm pierde taller/logistica + sacar logistica + redirects #taller/#logistica
+--     → Fase C/D (logistica.js SIGUE VIVO sirviendo deep-links de cargas/alertas
+--     —api.js, eventos.js, calendario-operativo.js—; redirigirlo ahora los rompería).
 --
 -- ⚠ DESVIACIONES DELIBERADAS del borrador del blueprint (todas MÁS seguras):
 --   1) Las policies de OFICINA NO usan fn_role_can('proyectos',...) sino "no soy
@@ -43,23 +52,14 @@
 BEGIN;
 
 -- ===== A.1 · RBAC (tabla `roles` = fuente de verdad de Capa 2 en runtime) =====
--- taller: pierde taller/logistica, gana proyectos (read). (Revierte SB4.)
+-- taller GANA proyectos:read. ADITIVO (revierte SB4 sin tocar el resto de sus
+-- permisos; conserva taller/logistica hasta Fase C/D). idempotente (|| pisa la
+-- misma clave si ya estuviera).
 UPDATE public.roles
-   SET permissions = (permissions - 'taller' - 'logistica')
-                     || jsonb_build_object('proyectos', 'read'),
+   SET permissions = permissions || jsonb_build_object('proyectos', 'read'),
        updated_at  = now()
  WHERE id = 'taller';
-
--- pm: pierde taller/logistica (módulos disueltos). Conserva el resto.
-UPDATE public.roles
-   SET permissions = (permissions - 'taller' - 'logistica'),
-       updated_at  = now()
- WHERE id = 'pm';
-
--- admin/superadmin: se dejan INTACTOS (si tienen 'taller'/'logistica' queda inerte
--- al desaparecer el módulo). Descomentar SOLO si querés limpiarlos:
--- UPDATE public.roles SET permissions = permissions - 'taller' - 'logistica', updated_at = now()
---   WHERE id = 'admin' AND (permissions ? 'taller' OR permissions ? 'logistica');
+-- (La baja de taller/logistica a taller/pm + sidebar + redirects se hace en Fase C/D.)
 
 -- ===== A.2 · RLS de proyectos: oficina = como hoy · taller = solo 'en_taller' =====
 ALTER TABLE public.proyectos ENABLE ROW LEVEL SECURITY;
@@ -128,5 +128,5 @@ COMMIT;
 --   CREATE POLICY proyectos_auth_insert ON public.proyectos FOR INSERT TO authenticated WITH CHECK (true);
 --   CREATE POLICY proyectos_auth_update ON public.proyectos FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 --   CREATE POLICY proyectos_auth_delete ON public.proyectos FOR DELETE TO authenticated USING (true);
--- Y para revertir el RBAC: re-correr sql/taller_rol_sin_proyectos.sql + sacar pm.
+-- Y para revertir el RBAC: re-correr sql/taller_rol_sin_proyectos.sql (saca proyectos a taller).
 -- ───────────────────────────────────────────────────────────────────
