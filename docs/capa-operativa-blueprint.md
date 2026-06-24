@@ -10,6 +10,13 @@
 > Consolidadas y deduplicadas de las 6 áreas, priorizadas. Cada una con opciones + recomendación. Las marcadas **🔴 BLOQUEANTE** definen DDL — sin respuesta no se corre el SQL.
 > **NOTA — 4 preguntas del draft original quedaron CERRADAS por el código (no se preguntan):** la forma de `roles.permissions` (es objeto `{modulo:"read"|"write"}`, `rls_capa2_motor.sql:12`), la firma de la función RLS (`fn_role_can(p_module,p_need)→bool`, `rls_capa2_motor.sql:41`), si proyectos/locaciones tienen RLS (sí: policy blanket `*_rls_auth FOR ALL authenticated USING(true)`, `rls_capa2_operativo.sql:42-95`), y la existencia de `locaciones.tipo` (existe, `text NOT NULL`, `schema-prod.md:107`).
 
+### ✅ RESUELTAS por Fede (2026-06-24)
+- **Q1 ✅** → gate de visibilidad taller = `proyectos.estado='en_taller'` (sin DDL; el filtro RLS y el `.eq()` del frontend usan el mismo valor).
+- **Q1.bis ✅** → **el rediseño REEMPLAZA `taller_rol_sin_proyectos.sql` (SB4)**: el rol taller vuelve a ver Proyectos (read-only, filtrado al gate de Q1). Decisión delegada por Fede ("manejálo"). Fase A documenta que revierte SB4.
+- **Q2 → DIFERIDA a Fase E (NO bloquea).** Claude verifica los valores reales de `locaciones.tipo` en prod al construir Locaciones y mapea el filtro taller (`tipo IN (...)`) a esos valores; si hay locaciones sin tipo clasificable, warning en la UI admin. Fede no hace nada.
+- **Q3 ✅** → `rutinas.activo_id` = `text` (FK lógica polimórfica: cubre el bigint de locaciones/insumos + el uuid de vehiculos/equipos).
+- **Decisiones ⚖️ globales (Q4 `equipos` · Q5 `evento_transporte` · Q6 motor único `rutinas` · Q8 no toca `vencimientos_recurrentes` · Q9 ad-hoc por ambas vías · resto) → RATIFICADAS por Fede** ("el resto lo veo todo bien").
+
 ### Bloqueantes de schema/seguridad
 
 **Q1 — 🔴 Gate de visibilidad taller: ¿qué columna discrimina "proyecto en producción"?** Hay TRES columnas en juego y el código actual las mezcla:
