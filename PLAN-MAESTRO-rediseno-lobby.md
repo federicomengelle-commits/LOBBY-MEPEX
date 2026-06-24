@@ -1,6 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 20%
+# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 22%
 
-> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈80%). No repetir acá lo que está en PROGRESO.
+> **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈78%). No repetir acá lo que está en PROGRESO.
+> *(Rebalanceo 2026-06-23b — **Sesión de diseño: REORGANIZACIÓN de la capa operativa física** (solo diseño, cero código). Cerrado con Fede: **Taller y Logística se disuelven** como módulos (→ vistas filtradas) · **Equipos operativos** = tipo de Inventario con **contenedores numerados** (canastos) · **Locaciones** = activo "espacios físicos" con vistas por rol + rutinas · **Centro de Tareas v2** = motor de **recurrentes** (rutinas por activo) · **catálogo base de rutinas** · CRM: eliminar **Score**, **Analítica** admin+super, **Bandeja** rework visual. El universo creció → PLAN 20→22, PROGRESO 80→78. Modelo entero en §REORGANIZACIÓN DE LA CAPA OPERATIVA FÍSICA.)*
 > *(Rebalanceo 2026-06-23 — **Pulido de pantallas arrancó (skill `pulir-pantallas`)**: módulo **Eventos** tabla+cards+ficha rediseñadas + fix de cierre de la ficha (Escape/click-afuera) — 3 commits pusheados+verificados → a PROGRESO. **Sigue Proyectos** (análisis hecho: dos estados conviven confusos, "barra de pendiente"=badge Ciclo del Taller, Actividad a rediseñar, quizá sobra una de las 5 pestañas) + resto del catálogo de pantallas + Fede sumó más para pulir. PLAN 21→20, PROGRESO 79→80.)*
 > *(Rebalanceo 2026-06-21c — **Barrido integral del lobby** ("lobby con esteroides", pedido Fede): health audit completo (0 errores de consola en 21 rutas · 0 wiring roto/handlers colgados · 25 selects de schema vs prod = todos OK) + **1 bug fixeado** (fuente del Centro de Tareas `tipo`→`tipo_doc`, `tareas.js?v=6`). + idea **Tareas v2** (hub transversal del back-office: operación/admin/mantenimiento/IT, hermanado con eventos/proyectos) anotada en §Fase 11 → universo creció un toque. Sin cambio neto: PLAN 22, PROGRESO 78.)*
 > *(Rebalanceo 2026-06-22 — **Facturación recurrente v1** (subtab "Recurrentes", re-emitir mes anterior en lote, sin DDL) + **subtabs Facturación info/acción** (patrón macro de UI) + **auditoría transaccional del circuito cobro/pago = 100% sano** (cierra el pedido (c) de integridad; cobro→#33 Anticipos, pago→#34 IVA crédito, cleanup restaura exacto). PLAN 22→21, PROGRESO 78→79.)*
@@ -123,14 +124,51 @@
 ```
 PRINCIPAL          Lobby (home por rol)
 COMERCIAL          CRM (Clientes = vista interna · sin Marketing) · Cotizador · Catálogo (showcase visual — a definir, Fase 3)
-OPERACIONES        Calendario (SOLO vista) · Eventos · Proyectos · Taller · Logística
-ACTIVOS            Inventario · Locaciones · Flota
+OPERACIONES        Calendario (SOLO vista) · Eventos · Proyectos (con vista taller read-only filtrada)
+                   ⚠ Taller y Logística se DISUELVEN como módulos → ver §REORGANIZACIÓN DE LA CAPA OPERATIVA
+ACTIVOS            Inventario (+ sub-vista Equipos operativos) · Flota · Locaciones (espacios físicos · vistas por rol)
 ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 (GLOBAL no es categoría de sidebar: Panel SuperAdmin = dropdown del nombre · Centro de notificaciones = campana del header. Retirada de Data.categories en `3a25d86`.)
 ```
 - ✅ Hecho (Fase 1): RECURSOS→ACTIVOS, reubicación, SidebarEditor eliminado. Ver PROGRESO.
 - **Catálogo = uno solo** (Fede 2026-06-07): el maestro completo de items vive en las **recetas** (Costos: `catalogo_items` + `insumos_base`), con filtros para todo — NO hay un "catálogo OCTEXA de piezas" aparte. La **Lista de Precios** (Costos) = el subconjunto `cotizable` que el **cotizador** levanta desde la app (los items OCTEXA en general no son cotizables). El **Catálogo comercial** (`catalogo.js`) se reconvierte en un **showcase visual** de todo lo que hace MEPEX — enfoque a definir por Fede.
 - GLOBAL NO es categoría de sidebar (Panel = dropdown del nombre; Notif = campana). Se creó en Fase 9 (`fb3e755`) y se retiró del sidebar en Fase 9.bis Capa 1 (`3a25d86`) por redundante.
+
+---
+
+## 🆕 REORGANIZACIÓN DE LA CAPA OPERATIVA FÍSICA *(decisión de diseño 2026-06-23 — Fede + Claude · solo DISEÑO, NO construida)*
+
+> **Qué es:** rediseño integral de la capa física/operativa (Taller · Logística · Inventario · Locaciones · Flota) + el Centro de Tareas como sistema nervioso. Visión unificada cerrada con Fede en sesión de pensamiento. **Precisa/reemplaza** lo que decían las Fases 3, 4 y 11 sobre estos módulos — cuando haya conflicto, **manda este bloque**. Toca varios módulos → se diseñó entero primero, se fasa después.
+
+**Modelo: dos mundos + un sistema nervioso.**
+- **ACTIVOS (lo que MEPEX *tiene*, permanente, cruza todos los eventos):** Inventario · Flota · Locaciones. Cada activo = dato maestro + cara **$$/admin** + **rutinas** (mantenimiento recurrente).
+- **OPERACIONES (lo que MEPEX *hace*, temporal, por evento):** Evento → Proyecto/stand → producción → remito.
+- **CENTRO DE TAREAS (sistema nervioso):** caen TODAS las tareas — **derivadas** (operativas) + **recurrentes** (rutinas de activos) — ruteadas por rol/perfil. **Cada activo/módulo = una fuente.**
+- **Principio rector:** *un módulo que en el fondo es "una vista filtrada de otra cosa para un rol" no debe ser un módulo: es esa vista filtrada* (el "dato único + vistas por rol" de Fase 3, aplicado a la **navegación** → menos lugares, cada dato en UN lado).
+
+**Decisiones (cerradas con Fede):**
+1. **Taller (módulo) → SE DISUELVE.** Pasa a ser **Proyectos read-only FILTRADO** a los pasados a taller (gateado por `estado_taller`; la compuerta = el botón "Pasar a Taller" que ya existe). El **checklist de armado** vive dentro del proyecto (tildar = tareas del rol taller en el Centro). El **"Hoy"** = Centro de Tareas filtrado a `taller`. El **mantenimiento de equipos/herramientas/matafuegos** sale de `taller.js` → Inventario/Equipos + rutinas. *(Evoluciona la decisión 2026-06-07 "taller NO ve proyectos": ahora SÍ los ve, pero solo los confirmados a taller, en modo lectura.)*
+2. **Logística (módulo) → SE DISUELVE.** El transporte vive en la **ficha del Evento** (sección **Transporte**): vehículos del evento (**Flota** propios + **ajenos ad-hoc** = alta rápida nombre/patente/chofer) + qué lleva cada uno (stands/proyectos + equipos operativos) → **remito por vehículo Y por evento (a elección)**, firma foto + PDF (reusa `remito-pdf.js` despegado de cargas). La vista *"qué sale hoy del depósito"* → Calendario operativo o tab de **Flota**. **NO es la vieja "carga" (retirada por tediosa): SIN workflow de aprobación, SIN responsable/ayudantes/borrador→aprobada — es DATO (qué va en qué camión) + botón remito.**
+3. **Equipos operativos → tipo dentro de INVENTARIO** (sub-vista "Equipos"): carros, escaleras, canastos, vidrieros, herramientas, matafuegos, máquinas = activos **reutilizables** (viven en un galpón, se cargan a vehículos, aparecen en remitos, tienen rutinas). **Canasto/contenedor = numerado con su CONTENIDO (manifiesto)** → al cargarlo a un camión, el remito lista el canasto y/o su contenido. Doble premio: remito + **auditoría** de qué hay en cada uno. Resuelve el "los tenemos numerados pero no les damos bola".
+4. **Locaciones → activo "espacios físicos"** (NO se fusiona con Inventario — el cruce es por stock-por-lugar, no un merge). **Dos caras por rol:** **Admin** (contratos/alquiler/datos del lugar/docs con vencimiento) + **Operativa** (taller ve **talleres + depósitos** y sus tareas de mantenimiento edilicio; **NO la oficina**; venta no, por ahora).
+5. **Centro de Tareas v2** (concreta la "idea Tareas v2" de §Fase 11): además de las **derivadas**, sumar **motor de RECURRENTES** (tareas programadas que se auto-generan desde cada activo). **Cada módulo/activo = un agregador** de tareas. Por rol/perfil. Sigue siendo **una fuente más** del motor `Alertas` + notificaciones (no un sistema paralelo).
+6. **Rutinas — catálogo base por activo** (a tachar/sumar con Fede; **armar sobre el proceso real con la gente, no inventado** — mismo criterio que los pasos de taller):
+   - **Flota:** VTV · seguro · patente · service (km/tiempo) · matafuego del vehículo · limpieza.
+   - **Locaciones:** alquiler (pago mensual) · habilitación municipal/bomberos · matafuegos del lugar (recarga anual) · techo/aberturas/baños/pintura · eléctrico/tablero · control de plagas · limpieza periódica.
+   - **Equipos/máquinas:** matafuegos · estado de herramientas · service + acondicionamiento de máquinas · inspección de escaleras · conteo/auditoría de canastos.
+   - **Inventario:** inventario físico periódico · reposición de mínimos · vencimiento de consumibles (pinturas/adhesivos).
+   - **Admin (transversal):** cierres contables mensuales · renovación de certificados (ARCA) · vencimientos impositivos · backups.
+
+**Navegación resultante:**
+- **OPERACIONES:** Calendario (vista) · Eventos · Proyectos (con vista taller read-only filtrada). *(Taller y Logística salen como módulos.)*
+- **ACTIVOS:** Inventario (+ sub-vista Equipos operativos) · Flota · Locaciones (espacios físicos · vistas por rol).
+- **PRINCIPAL:** Lobby · Centro de Tareas (con recurrentes).
+
+**Mapa de impacto (módulos tocados):** `taller.js` (se retira; checklist→proyecto, mantenimiento→activos) · `logistica.js` (se retira; transporte→`eventos.js` + remito) · `eventos.js` (sección Transporte: vehículos + carga + remito) · `inventario.js` (tipo Equipos + contenedores con contenido) · `locaciones.js` (vistas por rol + rutinas) · `flota.js` (ad-hoc ajenos + tab "qué sale hoy") · `tareas.js` (motor recurrentes + fuentes por activo) · `remito-pdf.js` (por vehículo/evento, despegado de cargas) · `data.js` + `router.js` (nav + permisos: taller gana Proyectos-filtrado + Locaciones-operativa, pierde Taller/Logística) · **RLS Capa 2** (scoping de taller a proyectos en estado taller).
+
+**Orden de fasado sugerido (a confirmar con Fede):** (1) **Equipos operativos en Inventario** (+ contenedores numerados) — fundacional, habilita el remito. (2) **Locaciones** vistas por rol + rutinas. (3) **Centro de Tareas v2** motor de recurrentes + fuentes por activo. (4) **Transporte en Evento + remito** (reusa equipos). (5) **Disolver Taller** → Proyectos filtrado (estado_taller + RLS). (6) **Retirar Logística** + legacy. **Las partes destructivas (5-6) se confirman con Fede ANTES de ripear.**
+
+**Pendiente NO operativo capturado en esta sesión (CRM):** eliminar **Score** · **Analítica** solo admin+superadmin · **Bandeja** = rework visual. Detalle en §Fase 7.
 
 ---
 
@@ -152,6 +190,7 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 - **No cambia:** asignar gente sigue en Eventos por jornada; Logística/Calendario intactos; notifs de convocatoria se reusan.
 
 ### Fase 3 — Capa de Activos (datos maestros) *(≈15% · FUNDACIONAL, SQL pesado)*
+> **🆕 2026-06-23 — AMPLIADA por §REORGANIZACIÓN DE LA CAPA OPERATIVA:** sumar **Equipos operativos** como tipo de Inventario (carros/canastos/escaleras/vidrieros/herramientas/matafuegos/máquinas, con **contenedores numerados** que listan su contenido) + **Locaciones con vistas por rol** (admin: contratos/datos · taller: talleres+depósitos + mantenimiento) **+ rutinas** colgadas de cada activo (→ Centro de Tareas).
 - Vistas maestras: **Inventario/Catálogo (= las recetas), Flota, Locaciones.** Dato único + vistas por rol (Operaciones = uso; Finanzas = plata: VTV/seguro/patente/amortización).
 - **Flota:** ✅ HECHO (`flota.js`, commit `6a2d0a0`) — sección ACTIVOS, `vehiculos` extendido (uso + plata) + mantenimiento (motor único). Falta repuntar `badges.js`/`eventos.js` a `vehiculos` y retirar `logistica_vehiculos` → **diferido a Fase 4** (con el repensado de Logística).
 - **Mantenimiento** = cola colgada del activo (vehículo/máquina), motor único.
@@ -161,6 +200,7 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 - **Test:** cada maestro accesible; vistas por rol correctas.
 
 ### Fase 4 — Operaciones: Eventos + Taller + Logística + Subalquileres *(≈15%)*
+> **🆕 2026-06-23 — REDEFINIDA en parte por §REORGANIZACIÓN DE LA CAPA OPERATIVA:** **Taller se disuelve** (→ Proyectos read-only filtrado por `estado_taller`) y **Logística se disuelve** (→ sección **Transporte** en la ficha del Evento + **remito por vehículo/evento**, con **Equipos operativos** como ítems cargables). Lo de abajo (Taller v2 catálogo de pasos · cargas · remito por proyecto) queda como **contexto histórico**; cuando haya conflicto, **manda el bloque de Reorganización**. Sigue vigente de acá: la reformulación de Eventos (jornadas ✅) y los **subalquileres por proveedor**.
 - **⭐⭐ Reformulación de EVENTOS (núcleo de esta fase — spec detallada en PROGRESO):**
   - **Constructor de fechas tipo TABLA con jornadas:** ✅ HECHO (4.1, commit `2ef6566`) — tabla `evento_jornadas` + trigger que deriva `fecha_*/hora_*` para compat + UI constructor en la ficha. Trigger verificado.
   - **Asignación de gente POR DÍA** ✅ HECHO (4.2) — `asignaciones_evento.jornada_id`; cada jornada con su gente + rol editable, reemplaza Equipo. *(Falta: agrupar visualmente por rol desplegable si hace falta.)*
@@ -250,6 +290,7 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
   - **Fases:** **R1** ✅ (tabs 5 planas + pipeline casos con DnD + jubiladas Casos/Interacciones + backfill corrido) · **R2** ✅ (clientes full-screen, chau panel lateral) · **R3** ✅ v1 (caso Ganado→"Convertir a proyecto") · **R4** ⏳ Clientes con acciones + listas de difusión (prep E3). *(Agente asistente = hooks sembrados, etapa aparte futura.)*
   - **IA del digest:** ✅ DEPLOYADA + **andando en el browser** (`/api/crm/digest`, `gemini-2.5-flash-lite`). El blocker del `:3000` (firewall, no CORS) se resolvió ruteando `/api/` por **nginx** same-origin + URLs relativas (`api.js?v=40`, commit `de87b8c`, 2026-06-17). **E1 cerrado.**
   - **FALTA en Fase 7:** **polish v3** (lote 1 ✅ `e59bc31`: modal nuevo caso + quitar Vendedor + pipeline drop + badge analítica · lote 2 `sql/crm_polish_v3.sql`: temperatura auto+override + bandeja leído/no-leído + lightbox capturas + composer + fix fecha digest) · R4 listas de difusión (listmonk ya en VPS) · link reverso cotización→caso · plan de cobro auto al convertir · **E2 Gmail + E4 WhatsApp (prioridad Fede)** · E3/E5.
+- **🆕 Pulido CRM (Fede 2026-06-23):** eliminar el **Score** (lead/case score, Fede no lo quiere) · **Analítica** visible solo a **admin + superadmin** (hoy = solo superadmin → **ampliar a admin**; verificar gate) · **Bandeja** = **rework SOLO visual** (no cambia qué muestra: rediseñar para que se lea sola + **arreglar los colores de temperatura** que no renderizan) con la skill `pulir-pantallas`.
 - **📘 SPEC: `docs/crm-casos-blueprint.md`** (§1-13 v1 + **§14 refactor v2**). **📗 RUNBOOK manual/externo: `docs/crm-casos-runbook.md`** (Gemini key, Gmail API+delegation, DNS/mailing, Meta/WhatsApp). **Implementación GUIADA** paso a paso.
 - ✅ Ya hecho (ver PROGRESO): Marketing eliminado; Analítica solo superadmin; migración `interacciones`→`crm_mensajes` 1:1.
 - **Ingesta + IA:** endpoint `/api/crm/digest` en el proxy del VPS con **driver intercambiable** — arranca **Gemini API free tier** (decidido; cambiar a pago/Claude = 1 env var). E1: WhatsApp pegado crudo → estructurado/resumido/archivado. E2: email automático vía **Gmail API** (domain-wide delegation desde admin@; ya incluida en Workspace) + bandeja "sin asignar" + digest diario → notificaciones. La IA sugiere, el humano confirma.
@@ -349,6 +390,8 @@ ADMIN Y FINANZAS   RRHH · Compras · Finanzas · Contabilidad · Costos
 
 > **Futuros menores (lo único que queda de la v4):** posponer/snooze · recordatorios programados · más afinado de fechas por fuente · (opcional) un trigger SQL si se quiere que las derivadas existan sin abrir la app. La spec/diseño completo quedó abajo como referencia histórica.
 
+> **🆕 2026-06-23 — PARTE CONCRETADA en la sesión de diseño de la capa operativa (ver §REORGANIZACIÓN DE LA CAPA OPERATIVA):** quedaron DECIDIDOS el **motor de recurrentes** (rutinas de cada activo que se auto-generan) + **cada módulo/activo = un agregador** de tareas + el **catálogo base de rutinas por activo** (Flota/Locaciones/Equipos/Inventario/Admin). Lo de abajo sigue como la visión ampliada del hub (taxonomía de áreas, hermanamiento bidireccional, dependencias).
+>
 > **💡 Tareas v2 — el hub transversal de TODO el back-office (idea / refactor futuro, pedido Fede 2026-06-21).** La v4 ya consolida 7 fuentes, pero Fede lo quiere como el **sistema nervioso de toda la operación**: las tareas deben **hermanarse de raíz** con eventos, proyectos y la administración completa (back-office), no solo derivar puntualmente de ellos. Hay tareas de TODO — **operativas** (taller/logística), **administrativas** (finanzas/compras/RRHH), del **propio lobby** (config/usuarios/sidebar), de **mantenimiento** (flota/equipos/matafuegos), y hasta de **IT** (deploys, pull al VPS, backups, integraciones, certificados como el de ARCA). Líneas de refactor a pensar cuando toque: **(a) taxonomía de áreas/tipos** de tarea (operación · admin · mantenimiento · IT · comercial · dirección) que clasifique y enrute por rol/perfil; **(b) hermanamiento bidireccional** evento↔proyecto↔tarea (la tarea conoce su evento/proyecto/paso y, al revés, la ficha del evento/proyecto muestra sus tareas abiertas con semáforo); **(c) tareas recurrentes/programadas** que se auto-generan (mantenimiento periódico, renovaciones, **cierres contables mensuales**); **(d) dependencias** entre tareas (una desbloquea a otra) para pasos secuenciales de un proyecto; **(e)** Tareas = **una fuente más** del motor `Alertas` (no un sistema paralelo) + notificaciones. Es la evolución natural una vez que Finanzas/RRHH/operación estén sólidos; **se acomoda cuando toque — queda anotado para no perderlo.**
 
 > **Estado: diseño abierto.** Pedido por Fede (2026-06-13): "tareas de TODO el back office (compras, administración, etc.), POR ROL y POR PERFIL, según los proyectos ASIGNADOS y los PASOS de esos proyectos. Es compleja, veremos cómo integrarla, pero es importantísima". Lo que sigue es un primer aterrizaje para debatir, NO una spec cerrada.
