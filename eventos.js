@@ -719,6 +719,7 @@ const EventosModule = {
         this._attachPanelEvents(ev);
         this._setupPanelCollapsibles();
         this._observePanelSections();
+        this._attachPanelDismiss();
 
         // Cargar secciones async después de renderizar el shell
         this._loadTransporteSection(eventId);
@@ -733,6 +734,7 @@ const EventosModule = {
         this._activePanelData = null;
         this._editingSections = new Set();
         if (this._panelObserver) { this._panelObserver.disconnect(); this._panelObserver = null; }
+        this._detachPanelDismiss();
         const panel = document.getElementById('evSidePanel');
         if (panel) {
             panel.classList.remove('open');
@@ -761,6 +763,34 @@ const EventosModule = {
             const openByDefault = title.includes('jornada') || title.includes('proyecto') || title.includes('conflicto');
             if (!openByDefault) sec.classList.add('ev-collapsed');
         });
+    },
+
+    // Cierre de la ficha por Escape y por click afuera. No actúa si hay un modal
+    // abierto encima (el modal maneja su propio Escape/backdrop). add/remove para
+    // no stackear listeners globales entre aperturas de panel.
+    _attachPanelDismiss() {
+        this._detachPanelDismiss();
+        this._panelKeyHandler = (e) => {
+            if (e.key !== 'Escape') return;
+            if (document.querySelector('.modal-overlay')) return;
+            if (this._activePanel) { e.stopPropagation(); this._closePanel(); }
+        };
+        this._panelOutsideClick = (e) => {
+            if (!this._activePanel) return;
+            if (document.querySelector('.modal-overlay')) return;
+            const panel = document.getElementById('evSidePanel');
+            if (!panel || panel.contains(e.target)) return;
+            if (e.target.closest('.ev-row, .ev-card')) return; // abre otra ficha
+            this._closePanel();
+        };
+        document.addEventListener('keydown', this._panelKeyHandler);
+        // Diferido para que el click que abre el panel no lo cierre en el acto.
+        setTimeout(() => { if (this._panelOutsideClick) document.addEventListener('click', this._panelOutsideClick); }, 0);
+    },
+
+    _detachPanelDismiss() {
+        if (this._panelKeyHandler) { document.removeEventListener('keydown', this._panelKeyHandler); this._panelKeyHandler = null; }
+        if (this._panelOutsideClick) { document.removeEventListener('click', this._panelOutsideClick); this._panelOutsideClick = null; }
     },
 
     // Reaplica el setup cuando las secciones async reemplazan su contenido.
