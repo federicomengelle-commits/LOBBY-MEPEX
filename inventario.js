@@ -17,6 +17,7 @@ const InventarioModule = {
         { key: 'dashboard',   label: 'Dashboard',          icon: '📊' },
         { key: 'piezas',      label: 'Stock Piezas',       icon: '🧩' },
         { key: 'materiales',  label: 'Stock Materiales',   icon: '🪵' },
+        { key: 'equipos',     label: 'Equipos',            icon: '🛠️' },
         { key: 'movimientos', label: 'Movimientos',        icon: '🔄' },
         { key: 'fisico',      label: 'Inventario Físico',  icon: '📋' },
     ],
@@ -58,6 +59,15 @@ const InventarioModule = {
     _materialesSearch: '',
     _materialesClasFilter: null,
     _materialesClasOptions: ['Materiales', 'Insumo', 'Consumibles', 'Sub alquiler'],
+
+    // Equipos state
+    _equipos: [],
+    _equiposFiltered: [],
+    _equiposSearch: '',
+    _equiposTipoFilter: null,
+    _equiposDebounce: null,
+    _equiposTipoOptions: ['carro', 'escalera', 'contenedor', 'vidriero', 'herramienta', 'matafuego', 'maquina', 'otro'],
+    _equiposProveedoresList: [],
 
     // Panel state
     _activePanel: null,
@@ -977,6 +987,11 @@ const InventarioModule = {
                 await this._loadMateriales();
                 this._attachMaterialesEvents();
                 break;
+            case 'equipos':
+                container.innerHTML = this._buildEquiposHTML();
+                await this._loadEquipos();
+                this._attachEquiposEvents();
+                break;
             case 'movimientos':
                 container.innerHTML = this._buildMovimientosHTML();
                 await this._loadMovimientos();
@@ -1343,6 +1358,704 @@ const InventarioModule = {
                 this._applyMaterialesFilters();
             });
         });
+    },
+
+    // ═══════════════════════════════════════════
+    //  EQUIPOS (equipos + equipo_contenido)
+    // ═══════════════════════════════════════════
+
+    _equipoTipoLabel(t) {
+        const map = {
+            carro: 'Carro', escalera: 'Escalera', contenedor: 'Contenedor',
+            vidriero: 'Vidriero', herramienta: 'Herramienta', matafuego: 'Matafuego',
+            maquina: 'Máquina', otro: 'Otro',
+        };
+        return map[t] || (t || 'Otro');
+    },
+
+    _equipoEstadoMeta(e) {
+        const map = {
+            operativo:          { label: 'Operativo',          color: '#00CC88' },
+            en_reparacion:      { label: 'En reparación',      color: '#F28D15' },
+            fuera_de_servicio:  { label: 'Fuera de servicio',  color: '#E74C3C' },
+            baja:               { label: 'Baja',               color: '#666' },
+        };
+        return map[e] || { label: e || '—', color: '#666' };
+    },
+
+    _buildEquiposHTML() {
+        return `
+            <div class="inv-equipos-kpis">
+                <div class="inv-dash-stat" style="--stat-accent: #9B7DFF">
+                    <div class="inv-dash-stat-top">
+                        <span class="inv-dash-stat-label">Total equipos</span>
+                        <span class="inv-dash-stat-icon">🛠️</span>
+                    </div>
+                    <div class="inv-dash-stat-value" style="color: #9B7DFF" id="invEqKpiTotal">—</div>
+                </div>
+                <div class="inv-dash-stat" style="--stat-accent: #00A9C1">
+                    <div class="inv-dash-stat-top">
+                        <span class="inv-dash-stat-label">Contenedores</span>
+                        <span class="inv-dash-stat-icon">📦</span>
+                    </div>
+                    <div class="inv-dash-stat-value" style="color: #00A9C1" id="invEqKpiCont">—</div>
+                </div>
+            </div>
+            <div class="inv-filters">
+                <div class="inv-filter-group">
+                    <span class="inv-filter-label">Tipo</span>
+                    <select class="inv-select" id="invEqTipoFilter">
+                        <option value="">Todos</option>
+                        ${this._equiposTipoOptions.map(t => `
+                            <option value="${escAttr(t)}" ${this._equiposTipoFilter === t ? 'selected' : ''}>${escHtml(this._equipoTipoLabel(t))}</option>
+                        `).join('')}
+                    </select>
+                </div>
+                <div class="inv-search-box">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" class="inv-search-input" id="invEqSearch" placeholder="Buscar equipo…" autocomplete="off" value="${escAttr(this._equiposSearch)}">
+                </div>
+                ${!this._isRO ? `
+                <button class="inv-mov-btn" id="invEqNuevo" style="background:#9B7DFF; margin-left:auto">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Nuevo equipo
+                </button>` : ''}
+            </div>
+            <div class="inv-body">
+                <div class="inv-main" id="invEqMain">
+                    <div class="inv-loading"><div class="spinner"></div> Cargando equipos…</div>
+                </div>
+                <div class="inv-side-panel" id="invEqPanel">
+                    <div class="inv-panel-inner" id="invEqPanelInner"></div>
+                </div>
+            </div>
+            <div class="inv-record-count" id="invEqCount"></div>
+        `;
+    },
+
+    async _loadEquipos() {
+        try {
+            this._equipos = await API.getEquipos() || [];
+        } catch (e) {
+            console.warn('[Inventario] Error loading equipos:', e.message);
+            this._equipos = [];
+        }
+        // KPIs
+        const totalEl = document.getElementById('invEqKpiTotal');
+        const contEl = document.getElementById('invEqKpiCont');
+        if (totalEl) totalEl.textContent = this._equipos.length;
+        if (contEl) contEl.textContent = this._equipos.filter(e => e.es_contenedor).length;
+        this._applyEquiposFilters();
+    },
+
+    _applyEquiposFilters() {
+        let data = [...this._equipos];
+        if (this._equiposSearch) {
+            const q = normStr(this._equiposSearch);
+            data = data.filter(e =>
+                normStr(e.nombre).includes(q) ||
+                normStr(e.codigo).includes(q) ||
+                normStr(e.ubicacion_nombre).includes(q) ||
+                normStr(this._equipoTipoLabel(e.tipo_equipo)).includes(q)
+            );
+        }
+        if (this._equiposTipoFilter) {
+            data = data.filter(e => (e.tipo_equipo || 'otro') === this._equiposTipoFilter);
+        }
+        data.sort((a, b) => (a.nombre || '').toLowerCase().localeCompare((b.nombre || '').toLowerCase()));
+        this._equiposFiltered = data;
+        this._renderEquiposTable();
+    },
+
+    _renderEquiposTable() {
+        const container = document.getElementById('invEqMain');
+        const countEl = document.getElementById('invEqCount');
+        if (!container) return;
+        const data = this._equiposFiltered;
+
+        if (countEl) countEl.textContent = `${data.length} equipo${data.length !== 1 ? 's' : ''}`;
+
+        if (data.length === 0) {
+            container.innerHTML = `
+                <div class="inv-empty">
+                    <div class="inv-empty-icon">🛠️</div>
+                    <p>No se encontraron equipos</p>
+                    <p style="color:#444; font-size:13px;">Probá ajustar los filtros o cargá un equipo nuevo</p>
+                </div>`;
+            return;
+        }
+
+        const rows = data.map(item => {
+            const est = this._equipoEstadoMeta(item.estado);
+            const contCell = item.es_contenedor
+                ? `<span class="inv-td-code">📦 ${item.manifiesto_count || 0}</span>`
+                : '<span class="inv-td-muted">—</span>';
+            return `
+                <tr class="inv-row" data-id="${escAttr(item.id)}" data-type="equipo">
+                    <td class="inv-td"><span class="inv-td-code">${escHtml(item.codigo) || '—'}</span></td>
+                    <td class="inv-td inv-td-name">${escHtml(item.nombre) || '—'}</td>
+                    <td class="inv-td"><span class="inv-rubro-badge" style="--rubro-color: #9B7DFF">${escHtml(this._equipoTipoLabel(item.tipo_equipo))}</span></td>
+                    <td class="inv-td">${escHtml(item.ubicacion_nombre) || '<span class="inv-td-muted">—</span>'}</td>
+                    <td class="inv-td"><span class="inv-eq-dot" style="background:${est.color}"></span>${escHtml(est.label)}</td>
+                    <td class="inv-td">${contCell}</td>
+                </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="inv-table-wrapper">
+                <table class="inv-table">
+                    <thead>
+                        <tr>
+                            <th class="inv-th">CÓDIGO</th>
+                            <th class="inv-th">NOMBRE</th>
+                            <th class="inv-th">TIPO</th>
+                            <th class="inv-th">UBICACIÓN</th>
+                            <th class="inv-th">ESTADO</th>
+                            <th class="inv-th">CONTENEDOR</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+
+        container.querySelectorAll('.inv-row[data-type="equipo"]').forEach(row => {
+            row.addEventListener('click', () => {
+                const id = row.dataset.id;
+                const item = this._equiposFiltered.find(e => String(e.id) === id);
+                if (item) this._openEquipoPanel(item);
+            });
+        });
+
+        // Inject equipos-specific styles once
+        this._ensureEquiposStyles();
+    },
+
+    _ensureEquiposStyles() {
+        if (document.getElementById('inv-equipos-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'inv-equipos-styles';
+        style.textContent = `
+            .inv-equipos-kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+            .inv-equipos-kpis .inv-dash-stat { flex: 1; min-width: 160px; }
+            .inv-eq-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+            .inv-eq-manifiesto-row {
+                display: flex; align-items: center; gap: 8px; padding: 6px 0;
+                border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.82rem;
+            }
+            .inv-eq-manifiesto-name { flex: 1; color: #E8E8E8; }
+            .inv-eq-manifiesto-qty {
+                font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.75rem; color: #9B7DFF;
+            }
+            .inv-eq-manifiesto-actions { display: flex; gap: 4px; }
+            .inv-eq-mini-btn {
+                width: 24px; height: 24px; border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 4px; background: rgba(255,255,255,0.04); color: #888;
+                cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; justify-content: center;
+            }
+            .inv-eq-mini-btn:hover { color: #E8E8E8; background: rgba(255,255,255,0.08); }
+            .inv-eq-mini-btn.danger:hover { color: #E74C3C; border-color: #E74C3C; }
+            .inv-eq-toggle-row { display: flex; gap: 8px; margin-bottom: 10px; }
+            .inv-eq-toggle-btn {
+                flex: 1; padding: 7px; border-radius: 4px; border: 1px solid #2a2a2a;
+                background: rgba(255,255,255,0.02); color: #888; cursor: pointer;
+                font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.72rem; font-weight: 700;
+            }
+            .inv-eq-toggle-btn.active { border-color: #9B7DFF; color: #9B7DFF; background: rgba(155,125,255,0.08); }
+            .inv-panel-btn.danger { border-color: #E74C3C; background: rgba(231,76,60,0.08); color: #E74C3C; }
+            .inv-panel-btn.danger:hover { background: rgba(231,76,60,0.18); box-shadow: 0 0 12px rgba(231,76,60,0.15); }
+            .inv-panel-btn.ghost { border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); color: #aaa; }
+            .inv-panel-btn.ghost:hover { background: rgba(255,255,255,0.07); box-shadow: none; }
+        `;
+        document.head.appendChild(style);
+    },
+
+    _attachEquiposEvents() {
+        const searchInput = document.getElementById('invEqSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                clearTimeout(this._equiposDebounce);
+                this._equiposDebounce = setTimeout(() => {
+                    this._equiposSearch = searchInput.value.trim();
+                    this._applyEquiposFilters();
+                }, 300);
+            });
+        }
+        const tipoFilter = document.getElementById('invEqTipoFilter');
+        if (tipoFilter) {
+            tipoFilter.addEventListener('change', () => {
+                this._equiposTipoFilter = tipoFilter.value || null;
+                this._applyEquiposFilters();
+            });
+        }
+        const nuevoBtn = document.getElementById('invEqNuevo');
+        if (nuevoBtn) {
+            nuevoBtn.addEventListener('click', () => this._openModalEquipo(null));
+        }
+    },
+
+    // ── Panel lateral del equipo ──
+
+    async _openEquipoPanel(item) {
+        this._activePanel = item.id;
+        this._activePanelData = item;
+        this._activePanelType = 'equipo';
+
+        const panel = document.getElementById('invEqPanel');
+        const inner = document.getElementById('invEqPanelInner');
+        if (!panel || !inner) return;
+
+        const color = '#9B7DFF';
+        const est = this._equipoEstadoMeta(item.estado);
+
+        const infoRows = [];
+        infoRows.push({ label: 'Tipo', value: `<span class="inv-rubro-badge" style="--rubro-color: #9B7DFF">${escHtml(this._equipoTipoLabel(item.tipo_equipo))}</span>` });
+        if (item.cantidad != null) infoRows.push({ label: 'Cantidad', value: `<span class="inv-td-code">${escHtml(String(item.cantidad))}</span>` });
+        if (item.valor_compra != null) infoRows.push({ label: 'Valor compra', value: '$ ' + escHtml(String(item.valor_compra)) });
+        if (item.fecha_compra) infoRows.push({ label: 'Fecha compra', value: escHtml(item.fecha_compra) });
+
+        const canWrite = !this._isRO;
+
+        inner.innerHTML = `
+            <div class="inv-panel-header">
+                <div class="inv-panel-color-bar" style="background: ${color}"></div>
+                <button class="inv-panel-close">&times;</button>
+                <div class="inv-panel-name" style="color: ${color}">${escHtml(item.nombre) || 'Sin nombre'}</div>
+                <div class="inv-panel-subtitle">
+                    ${item.codigo ? `<span class="inv-panel-code">${escHtml(item.codigo)}</span>` : ''}
+                    <span class="inv-rubro-badge" style="--rubro-color: ${est.color}">${escHtml(est.label)}</span>
+                </div>
+            </div>
+
+            <div class="inv-panel-section">
+                <h3 class="inv-section-title">Información</h3>
+                <div class="inv-info-grid">
+                    ${infoRows.map(r => `
+                        <div class="inv-info-row"><span class="inv-info-label">${r.label}</span><span class="inv-info-value">${r.value}</span></div>
+                    `).join('')}
+                </div>
+                ${canWrite ? `<button class="inv-panel-btn ghost" id="invEqEditBtn">Editar</button>` : ''}
+            </div>
+
+            <div class="inv-panel-section">
+                <h3 class="inv-section-title">Ubicación</h3>
+                <div class="inv-info-grid">
+                    <div class="inv-info-row"><span class="inv-info-label">Locación</span><span class="inv-info-value">${escHtml(item.ubicacion_nombre) || '<span style="color:#444">Sin asignar</span>'}</span></div>
+                </div>
+                ${canWrite ? `<button class="inv-panel-btn ghost" id="invEqMoverBtn">Mover</button>` : ''}
+            </div>
+
+            ${item.es_contenedor ? `
+            <div class="inv-panel-section" id="invEqManifiestoSection">
+                <h3 class="inv-section-title">Manifiesto</h3>
+                <div id="invEqManifiestoList"><div class="inv-panel-empty">Cargando…</div></div>
+                ${canWrite ? `<button class="inv-panel-btn" id="invEqAddLineaBtn">+ Agregar línea</button>` : ''}
+            </div>` : ''}
+
+            ${item.notas ? `
+            <div class="inv-panel-section">
+                <h3 class="inv-section-title">Notas</h3>
+                <div style="color:#bbb; font-size:0.85rem; white-space:pre-wrap">${escHtml(item.notas)}</div>
+            </div>` : ''}
+
+            ${canWrite ? `
+            <div class="inv-panel-section">
+                <button class="inv-panel-btn danger" id="invEqDeleteBtn">Eliminar equipo</button>
+            </div>` : ''}
+        `;
+
+        panel.classList.add('open');
+
+        document.querySelectorAll('.inv-row').forEach(r => r.classList.remove('active'));
+        const activeRow = document.querySelector(`.inv-row[data-id="${item.id}"][data-type="equipo"]`);
+        if (activeRow) activeRow.classList.add('active');
+
+        const closeBtn = panel.querySelector('.inv-panel-close');
+        if (closeBtn) closeBtn.addEventListener('click', () => this._closePanel());
+
+        const editBtn = inner.querySelector('#invEqEditBtn');
+        if (editBtn) editBtn.addEventListener('click', () => this._openModalEquipo(item));
+
+        const moverBtn = inner.querySelector('#invEqMoverBtn');
+        if (moverBtn) moverBtn.addEventListener('click', () => this._moverEquipo(item.id));
+
+        const addLineaBtn = inner.querySelector('#invEqAddLineaBtn');
+        if (addLineaBtn) addLineaBtn.addEventListener('click', () => this._openModalManifiestoLinea(item.id, null));
+
+        const delBtn = inner.querySelector('#invEqDeleteBtn');
+        if (delBtn) delBtn.addEventListener('click', () => this._deleteEquipo(item));
+
+        // ESC to close
+        if (this._panelEscHandler) document.removeEventListener('keydown', this._panelEscHandler);
+        this._panelEscHandler = (e) => { if (e.key === 'Escape') this._closePanel(); };
+        document.addEventListener('keydown', this._panelEscHandler);
+
+        if (item.es_contenedor) await this._renderManifiesto(item.id);
+    },
+
+    async _renderManifiesto(contenedorId) {
+        const list = document.getElementById('invEqManifiestoList');
+        if (!list) return;
+        const lineas = await API.getManifiesto(contenedorId) || [];
+        if (lineas.length === 0) {
+            list.innerHTML = '<div class="inv-panel-empty">Sin contenido cargado</div>';
+            return;
+        }
+        const canWrite = !this._isRO;
+        list.innerHTML = lineas.map(l => {
+            const nombre = l.contenido_equipo_id
+                ? (l.contenido_nombre || 'Equipo')
+                : (l.contenido_texto || '—');
+            const qty = `${l.cantidad != null ? l.cantidad : 1}${l.unidad ? ' ' + escHtml(l.unidad) : ''}`;
+            return `
+                <div class="inv-eq-manifiesto-row" data-linea="${escAttr(l.id)}">
+                    <span class="inv-eq-manifiesto-name">${l.contenido_equipo_id ? '🛠️ ' : ''}${escHtml(nombre)}</span>
+                    <span class="inv-eq-manifiesto-qty">${qty}</span>
+                    ${canWrite ? `
+                    <div class="inv-eq-manifiesto-actions">
+                        <button class="inv-eq-mini-btn" data-edit-linea="${escAttr(l.id)}" title="Editar">✎</button>
+                        <button class="inv-eq-mini-btn danger" data-del-linea="${escAttr(l.id)}" title="Quitar">×</button>
+                    </div>` : ''}
+                </div>`;
+        }).join('');
+
+        if (canWrite) {
+            list.querySelectorAll('[data-edit-linea]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const linea = lineas.find(x => String(x.id) === btn.dataset.editLinea);
+                    if (linea) this._openModalManifiestoLinea(contenedorId, linea);
+                });
+            });
+            list.querySelectorAll('[data-del-linea]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const ok = await Confirm.delete('esta línea del manifiesto');
+                    if (!ok) return;
+                    const res = await API.deleteManifiestoLinea(btn.dataset.delLinea);
+                    if (res) {
+                        Toast.success('Línea eliminada');
+                        await this._renderManifiesto(contenedorId);
+                        await this._loadEquipos();
+                    } else {
+                        Toast.error('No se pudo eliminar la línea');
+                    }
+                });
+            });
+        }
+    },
+
+    // ── Modal: crear/editar equipo ──
+
+    async _openModalEquipo(equipo) {
+        const isEdit = !!equipo;
+        // Cargar listas para selects
+        if (this._locacionesList.length === 0) {
+            try {
+                const { data } = await supabaseClient.from('locaciones').select('id, nombre').eq('_deleted', false).order('nombre', { ascending: true });
+                this._locacionesList = data || [];
+            } catch (e) { this._locacionesList = []; }
+        }
+        if (this._equiposProveedoresList.length === 0) {
+            try { this._equiposProveedoresList = await API.getProveedores() || []; } catch (e) { this._equiposProveedoresList = []; }
+        }
+
+        const e = equipo || {};
+        const tipoOpts = this._equiposTipoOptions.map(t =>
+            `<option value="${escAttr(t)}" ${(e.tipo_equipo || 'otro') === t ? 'selected' : ''}>${escHtml(this._equipoTipoLabel(t))}</option>`).join('');
+        const estadoOpts = [
+            ['operativo', 'Operativo'], ['en_reparacion', 'En reparación'],
+            ['fuera_de_servicio', 'Fuera de servicio'], ['baja', 'Baja'],
+        ].map(([v, l]) => `<option value="${v}" ${(e.estado || 'operativo') === v ? 'selected' : ''}>${l}</option>`).join('');
+        const locOpts = `<option value="">— Sin locación —</option>` +
+            this._locacionesList.map(l => `<option value="${escAttr(l.id)}" ${String(e.ubicacion_id) === String(l.id) ? 'selected' : ''}>${escHtml(l.nombre)}</option>`).join('');
+        const provOpts = `<option value="">— Sin proveedor —</option>` +
+            this._equiposProveedoresList.map(p => `<option value="${escAttr(p.id)}" ${String(e.proveedor_id) === String(p.id) ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('');
+
+        const body = `
+            <form id="invEqForm" class="modal-form">
+                <div class="form-group">
+                    <label class="form-label">Nombre *</label>
+                    <input class="form-input" name="nombre" required value="${escAttr(e.nombre || '')}" placeholder="Ej: Carro de placas Nº 3">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Código</label>
+                    <input class="form-input" name="codigo" value="${escAttr(e.codigo || '')}" placeholder="Opcional">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tipo</label>
+                    <select class="form-input" name="tipo_equipo">${tipoOpts}</select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display:flex; align-items:center; gap:8px; cursor:pointer">
+                        <input type="checkbox" name="es_contenedor" ${e.es_contenedor ? 'checked' : ''} style="width:auto">
+                        Es contenedor (tiene manifiesto de contenido)
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ubicación</label>
+                    <select class="form-input" name="ubicacion_id">${locOpts}</select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Estado</label>
+                    <select class="form-input" name="estado">${estadoOpts}</select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cantidad</label>
+                    <input class="form-input" name="cantidad" type="number" min="1" value="${escAttr(String(e.cantidad != null ? e.cantidad : 1))}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Proveedor</label>
+                    <select class="form-input" name="proveedor_id">${provOpts}</select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Valor de compra</label>
+                    <input class="form-input" name="valor_compra" type="number" step="0.01" min="0" value="${escAttr(e.valor_compra != null ? String(e.valor_compra) : '')}" placeholder="Opcional">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fecha de compra</label>
+                    <input class="form-input" name="fecha_compra" type="date" value="${escAttr(e.fecha_compra || '')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" name="notas" rows="2" placeholder="Observaciones…">${escHtml(e.notas || '')}</textarea>
+                </div>
+            </form>
+        `;
+
+        Modal.open({
+            title: isEdit ? '🛠️ Editar equipo' : '🛠️ Nuevo equipo',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="invEqSave" style="background:#9B7DFF; border-color:#9B7DFF">${isEdit ? 'Guardar' : 'Crear equipo'}</button>
+            `,
+        });
+
+        const saveBtn = document.getElementById('invEqSave');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const form = document.getElementById('invEqForm');
+                if (!form) return;
+                const get = (n) => form.querySelector(`[name="${n}"]`);
+                const nombre = get('nombre').value.trim();
+                if (!nombre) { Toast.error('El nombre es obligatorio'); return; }
+                const payload = {
+                    nombre,
+                    codigo: get('codigo').value.trim(),
+                    tipo_equipo: get('tipo_equipo').value,
+                    es_contenedor: get('es_contenedor').checked,
+                    ubicacion_id: get('ubicacion_id').value || null,
+                    estado: get('estado').value,
+                    cantidad: parseInt(get('cantidad').value, 10) || 1,
+                    proveedor_id: get('proveedor_id').value || null,
+                    valor_compra: get('valor_compra').value !== '' ? parseFloat(get('valor_compra').value) : '',
+                    fecha_compra: get('fecha_compra').value || null,
+                    notas: get('notas').value.trim(),
+                };
+                saveBtn.disabled = true;
+                saveBtn.textContent = isEdit ? 'Guardando…' : 'Creando…';
+                try {
+                    const res = isEdit
+                        ? await API.updateEquipo(equipo.id, payload)
+                        : await API.createEquipo(payload);
+                    if (!res) throw new Error('La operación no devolvió resultado');
+                    Toast.success(isEdit ? 'Equipo actualizado' : 'Equipo creado');
+                    Modal.close();
+                    await this._loadEquipos();
+                    if (isEdit && this._activePanel === equipo.id) {
+                        const fresh = await API.getEquipoById(equipo.id);
+                        if (fresh) this._openEquipoPanel(fresh);
+                    }
+                } catch (err) {
+                    console.error('[Inventario] Error guardar equipo:', err);
+                    Toast.error('Error al guardar: ' + (err.message || err));
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = isEdit ? 'Guardar' : 'Crear equipo';
+                }
+            });
+        }
+    },
+
+    // ── Modal: línea de manifiesto ──
+
+    async _openModalManifiestoLinea(contenedorId, linea) {
+        const isEdit = !!linea;
+        const l = linea || {};
+        const esEquipoInicial = isEdit ? !!l.contenido_equipo_id : false;
+
+        // Equipos disponibles para anidar (excluye el propio contenedor)
+        const equiposDisp = (this._equipos || []).filter(eq => eq.id !== contenedorId);
+        const equipoOpts = `<option value="">— Elegí un equipo —</option>` +
+            equiposDisp.map(eq => `<option value="${escAttr(eq.id)}" ${String(l.contenido_equipo_id) === String(eq.id) ? 'selected' : ''}>${escHtml(eq.nombre)}${eq.codigo ? ' (' + escHtml(eq.codigo) + ')' : ''}</option>`).join('');
+
+        const body = `
+            <form id="invEqLineaForm" class="modal-form">
+                <div class="form-group">
+                    <label class="form-label">Tipo de contenido</label>
+                    <div class="inv-eq-toggle-row">
+                        <button type="button" class="inv-eq-toggle-btn ${esEquipoInicial ? 'active' : ''}" data-mode="equipo">Equipo del sistema</button>
+                        <button type="button" class="inv-eq-toggle-btn ${!esEquipoInicial ? 'active' : ''}" data-mode="texto">Texto libre</button>
+                    </div>
+                </div>
+                <div class="form-group" id="invEqLineaEquipoGroup" style="display:${esEquipoInicial ? '' : 'none'}">
+                    <label class="form-label">Equipo anidado</label>
+                    <select class="form-input" name="contenido_equipo_id">${equipoOpts}</select>
+                </div>
+                <div class="form-group" id="invEqLineaTextoGroup" style="display:${esEquipoInicial ? 'none' : ''}">
+                    <label class="form-label">Descripción</label>
+                    <input class="form-input" name="contenido_texto" value="${escAttr(l.contenido_texto || '')}" placeholder="Ej: 4 grampas reforzadas">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Cantidad</label>
+                    <input class="form-input" name="cantidad" type="number" step="0.01" min="0" value="${escAttr(String(l.cantidad != null ? l.cantidad : 1))}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Unidad</label>
+                    <input class="form-input" name="unidad" value="${escAttr(l.unidad || '')}" placeholder="Ej: u, m, kg">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notas</label>
+                    <textarea class="form-input" name="notas" rows="2">${escHtml(l.notas || '')}</textarea>
+                </div>
+            </form>
+        `;
+
+        Modal.open({
+            title: isEdit ? '📦 Editar línea' : '📦 Agregar al manifiesto',
+            body,
+            size: 'sm',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="invEqLineaSave" style="background:#9B7DFF; border-color:#9B7DFF">${isEdit ? 'Guardar' : 'Agregar'}</button>
+            `,
+        });
+
+        // Modo (XOR) toggle
+        let modo = esEquipoInicial ? 'equipo' : 'texto';
+        const eqGroup = document.getElementById('invEqLineaEquipoGroup');
+        const txtGroup = document.getElementById('invEqLineaTextoGroup');
+        document.querySelectorAll('.inv-eq-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modo = btn.dataset.mode;
+                document.querySelectorAll('.inv-eq-toggle-btn').forEach(b => b.classList.toggle('active', b === btn));
+                if (eqGroup) eqGroup.style.display = modo === 'equipo' ? '' : 'none';
+                if (txtGroup) txtGroup.style.display = modo === 'texto' ? '' : 'none';
+            });
+        });
+
+        const saveBtn = document.getElementById('invEqLineaSave');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const form = document.getElementById('invEqLineaForm');
+                if (!form) return;
+                const get = (n) => form.querySelector(`[name="${n}"]`);
+                const data = {
+                    cantidad: get('cantidad').value !== '' ? parseFloat(get('cantidad').value) : 1,
+                    unidad: get('unidad').value.trim(),
+                    notas: get('notas').value.trim(),
+                };
+                // XOR: exactamente uno
+                if (modo === 'equipo') {
+                    const eqId = get('contenido_equipo_id').value;
+                    if (!eqId) { Toast.error('Elegí un equipo para anidar'); return; }
+                    data.contenido_equipo_id = eqId;
+                    data.contenido_texto = null;
+                } else {
+                    const txt = get('contenido_texto').value.trim();
+                    if (!txt) { Toast.error('Escribí una descripción'); return; }
+                    data.contenido_texto = txt;
+                    data.contenido_equipo_id = null;
+                }
+                saveBtn.disabled = true;
+                saveBtn.textContent = isEdit ? 'Guardando…' : 'Agregando…';
+                try {
+                    const res = isEdit
+                        ? await API.updateManifiestoLinea(linea.id, data)
+                        : await API.addManifiestoLinea(contenedorId, data);
+                    if (!res) throw new Error('La operación no devolvió resultado');
+                    Toast.success(isEdit ? 'Línea actualizada' : 'Línea agregada');
+                    Modal.close();
+                    await this._renderManifiesto(contenedorId);
+                    await this._loadEquipos();
+                } catch (err) {
+                    console.error('[Inventario] Error línea manifiesto:', err);
+                    Toast.error('Error al guardar: ' + (err.message || err));
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = isEdit ? 'Guardar' : 'Agregar';
+                }
+            });
+        }
+    },
+
+    // ── Modal: mover equipo (solo ubicación) ──
+
+    async _moverEquipo(id) {
+        if (this._locacionesList.length === 0) {
+            try {
+                const { data } = await supabaseClient.from('locaciones').select('id, nombre').eq('_deleted', false).order('nombre', { ascending: true });
+                this._locacionesList = data || [];
+            } catch (e) { this._locacionesList = []; }
+        }
+        const actual = this._equipos.find(e => String(e.id) === String(id));
+        const locOpts = `<option value="">— Sin locación —</option>` +
+            this._locacionesList.map(l => `<option value="${escAttr(l.id)}" ${actual && String(actual.ubicacion_id) === String(l.id) ? 'selected' : ''}>${escHtml(l.nombre)}</option>`).join('');
+
+        const body = `
+            <form id="invEqMoverForm" class="modal-form">
+                <div class="form-group">
+                    <label class="form-label">Nueva ubicación</label>
+                    <select class="form-input" name="ubicacion_id">${locOpts}</select>
+                </div>
+            </form>
+        `;
+
+        Modal.open({
+            title: '📍 Mover equipo',
+            body,
+            size: 'sm',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-primary" id="invEqMoverSave" style="background:#9B7DFF; border-color:#9B7DFF">Mover</button>
+            `,
+        });
+
+        const saveBtn = document.getElementById('invEqMoverSave');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                const form = document.getElementById('invEqMoverForm');
+                const ubicacion_id = form.querySelector('[name="ubicacion_id"]').value || null;
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Moviendo…';
+                try {
+                    const res = await API.updateEquipo(id, { ubicacion_id });
+                    if (!res) throw new Error('No se pudo mover');
+                    Toast.success('Equipo movido');
+                    Modal.close();
+                    await this._loadEquipos();
+                    if (this._activePanel === id) {
+                        const fresh = await API.getEquipoById(id);
+                        if (fresh) this._openEquipoPanel(fresh);
+                    }
+                } catch (err) {
+                    Toast.error('Error al mover: ' + (err.message || err));
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Mover';
+                }
+            });
+        }
+    },
+
+    async _deleteEquipo(item) {
+        const ok = await Confirm.delete(item.nombre || 'este equipo');
+        if (!ok) return;
+        const res = await API.deleteEquipo(item.id);
+        if (res === true) {
+            Toast.success('Equipo eliminado');
+            this._closePanel();
+            await this._loadEquipos();
+        } else {
+            // La API devuelve un string con el motivo (guard de manifiesto, etc.)
+            Toast.error(typeof res === 'string' ? res : 'No se pudo eliminar el equipo');
+        }
     },
 
     // ═══════════════════════════════════════════

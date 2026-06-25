@@ -6555,4 +6555,274 @@ const API = {
             }));
         } catch (e) { console.warn('[API] getJornalesByPersona:', e.message); return []; }
     },
+
+    // ═══════════════════════════════════════════
+    //  EQUIPOS (Inventario — tab Equipos)
+    //  Tablas: equipos (UUID), equipo_contenido (manifiesto)
+    // ═══════════════════════════════════════════
+
+    // Lista de equipos no borrados, con nombre de locación + conteo de
+    // manifiesto si es contenedor.
+    async getEquipos() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('equipos')
+                .select('*')
+                .eq('_deleted', false)
+                .order('nombre', { ascending: true });
+            if (error) throw error;
+
+            const rows = data || [];
+
+            // Nombre de locación (ubicacion_id es FK lógica bigint → locaciones.id,
+            // sin constraint real → resolvemos con una query aparte).
+            const locMap = await this._equiposLocMap(rows.map(r => r.ubicacion_id));
+
+            // Conteo de líneas de manifiesto para los contenedores
+            const contIds = rows.filter(r => r.es_contenedor).map(r => r.id);
+            const conteo = {};
+            if (contIds.length > 0) {
+                const { data: lineas } = await supabaseClient
+                    .from('equipo_contenido')
+                    .select('contenedor_id')
+                    .in('contenedor_id', contIds)
+                    .eq('_deleted', false);
+                (lineas || []).forEach(l => {
+                    conteo[l.contenedor_id] = (conteo[l.contenedor_id] || 0) + 1;
+                });
+            }
+
+            return rows.map(r => ({
+                ...r,
+                ubicacion_nombre: r.ubicacion_id ? (locMap[r.ubicacion_id] || null) : null,
+                manifiesto_count: r.es_contenedor ? (conteo[r.id] || 0) : 0,
+            }));
+        } catch (e) {
+            console.warn('[API] getEquipos:', e.message);
+            return [];
+        }
+    },
+
+    // Helper: mapa { locacion_id: nombre } para una lista de ids.
+    async _equiposLocMap(ids) {
+        const map = {};
+        try {
+            const uniq = [...new Set((ids || []).filter(Boolean))];
+            if (uniq.length === 0) return map;
+            const { data } = await supabaseClient
+                .from('locaciones')
+                .select('id, nombre')
+                .in('id', uniq);
+            (data || []).forEach(l => { map[l.id] = l.nombre; });
+        } catch (e) { /* silencioso, queda sin nombre */ }
+        return map;
+    },
+
+    // Un equipo + su manifiesto (líneas resolviendo el nombre del equipo anidado).
+    async getEquipoById(id) {
+        try {
+            const { data: equipo, error } = await supabaseClient
+                .from('equipos')
+                .select('*')
+                .eq('id', id)
+                .eq('_deleted', false)
+                .single();
+            if (error) throw error;
+
+            const manifiesto = equipo.es_contenedor ? await this.getManifiesto(id) : [];
+            const locMap = equipo.ubicacion_id ? await this._equiposLocMap([equipo.ubicacion_id]) : {};
+
+            return {
+                ...equipo,
+                ubicacion_nombre: equipo.ubicacion_id ? (locMap[equipo.ubicacion_id] || null) : null,
+                manifiesto,
+            };
+        } catch (e) {
+            console.warn('[API] getEquipoById:', e.message);
+            return null;
+        }
+    },
+
+    async createEquipo(data) {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            const payload = {
+                codigo: data.codigo || null,
+                nombre: data.nombre || '',
+                tipo_equipo: data.tipo_equipo || 'otro',
+                es_contenedor: !!data.es_contenedor,
+                ubicacion_id: data.ubicacion_id || null,
+                estado: data.estado || 'operativo',
+                cantidad: data.cantidad != null ? data.cantidad : 1,
+                proveedor_id: data.proveedor_id || null,
+                valor_compra: data.valor_compra != null && data.valor_compra !== '' ? data.valor_compra : null,
+                fecha_compra: data.fecha_compra || null,
+                foto_url: data.foto_url || null,
+                notas: data.notas || null,
+                created_by: uid,
+            };
+            const { data: row, error } = await supabaseClient
+                .from('equipos').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) {
+            console.warn('[API] createEquipo:', e.message);
+            return null;
+        }
+    },
+
+    async updateEquipo(id, data) {
+        try {
+            const payload = {};
+            if (data.codigo !== undefined) payload.codigo = data.codigo || null;
+            if (data.nombre !== undefined) payload.nombre = data.nombre;
+            if (data.tipo_equipo !== undefined) payload.tipo_equipo = data.tipo_equipo;
+            if (data.es_contenedor !== undefined) payload.es_contenedor = !!data.es_contenedor;
+            if (data.ubicacion_id !== undefined) payload.ubicacion_id = data.ubicacion_id || null;
+            if (data.estado !== undefined) payload.estado = data.estado;
+            if (data.cantidad !== undefined) payload.cantidad = data.cantidad;
+            if (data.proveedor_id !== undefined) payload.proveedor_id = data.proveedor_id || null;
+            if (data.valor_compra !== undefined) payload.valor_compra = data.valor_compra !== '' ? data.valor_compra : null;
+            if (data.fecha_compra !== undefined) payload.fecha_compra = data.fecha_compra || null;
+            if (data.foto_url !== undefined) payload.foto_url = data.foto_url || null;
+            if (data.notas !== undefined) payload.notas = data.notas || null;
+            payload.updated_at = new Date().toISOString();
+            const { error } = await supabaseClient
+                .from('equipos').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] updateEquipo:', e.message);
+            return null;
+        }
+    },
+
+    // SOFT delete con guard: no borrar un equipo que está anidado dentro de un
+    // contenedor (línea de manifiesto viva con contenido_equipo_id = id).
+    async deleteEquipo(id) {
+        try {
+            const { data: refs, error: refErr } = await supabaseClient
+                .from('equipo_contenido')
+                .select('id, contenedor_id')
+                .eq('contenido_equipo_id', id)
+                .eq('_deleted', false)
+                .limit(1);
+            if (refErr) throw refErr;
+            if (refs && refs.length > 0) {
+                return 'No se puede eliminar: el equipo está dentro de un contenedor. Quitalo del manifiesto primero.';
+            }
+            const { error } = await supabaseClient
+                .from('equipos').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] deleteEquipo:', e.message);
+            return 'Error al eliminar el equipo: ' + (e.message || e);
+        }
+    },
+
+    // ── Manifiesto (equipo_contenido) ──
+
+    async getManifiesto(contenedorId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('equipo_contenido')
+                .select('*')
+                .eq('contenedor_id', contenedorId)
+                .eq('_deleted', false)
+                .order('orden', { ascending: true });
+            if (error) throw error;
+            const lineas = data || [];
+
+            // Resolver el nombre de los equipos anidados (segunda query, evita
+            // depender del nombre del FK constraint en el embed).
+            const equipoIds = [...new Set(lineas.filter(l => l.contenido_equipo_id).map(l => l.contenido_equipo_id))];
+            const nombreMap = {};
+            if (equipoIds.length > 0) {
+                const { data: eqs } = await supabaseClient
+                    .from('equipos')
+                    .select('id, nombre, codigo')
+                    .in('id', equipoIds);
+                (eqs || []).forEach(e => { nombreMap[e.id] = e; });
+            }
+
+            return lineas.map(l => ({
+                ...l,
+                contenido_nombre: l.contenido_equipo_id ? (nombreMap[l.contenido_equipo_id]?.nombre || null) : null,
+                contenido_codigo: l.contenido_equipo_id ? (nombreMap[l.contenido_equipo_id]?.codigo || null) : null,
+            }));
+        } catch (e) {
+            console.warn('[API] getManifiesto:', e.message);
+            return [];
+        }
+    },
+
+    // Respeta el XOR: exactamente uno de contenido_equipo_id / contenido_texto.
+    async addManifiestoLinea(contenedorId, linea) {
+        try {
+            const esEquipo = !!linea.contenido_equipo_id;
+            const payload = {
+                contenedor_id: contenedorId,
+                contenido_equipo_id: esEquipo ? linea.contenido_equipo_id : null,
+                contenido_texto: esEquipo ? null : (linea.contenido_texto || ''),
+                cantidad: linea.cantidad != null ? linea.cantidad : 1,
+                unidad: linea.unidad || null,
+                notas: linea.notas || null,
+                orden: linea.orden != null ? linea.orden : 0,
+            };
+            const { data: row, error } = await supabaseClient
+                .from('equipo_contenido').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) {
+            console.warn('[API] addManifiestoLinea:', e.message);
+            return null;
+        }
+    },
+
+    async updateManifiestoLinea(id, data) {
+        try {
+            const payload = {};
+            if (data.contenido_equipo_id !== undefined || data.contenido_texto !== undefined) {
+                const esEquipo = !!data.contenido_equipo_id;
+                payload.contenido_equipo_id = esEquipo ? data.contenido_equipo_id : null;
+                payload.contenido_texto = esEquipo ? null : (data.contenido_texto || '');
+            }
+            if (data.cantidad !== undefined) payload.cantidad = data.cantidad;
+            if (data.unidad !== undefined) payload.unidad = data.unidad || null;
+            if (data.notas !== undefined) payload.notas = data.notas || null;
+            if (data.orden !== undefined) payload.orden = data.orden;
+            const { error } = await supabaseClient
+                .from('equipo_contenido').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] updateManifiestoLinea:', e.message);
+            return null;
+        }
+    },
+
+    async deleteManifiestoLinea(id) {
+        try {
+            const { error } = await supabaseClient
+                .from('equipo_contenido').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] deleteManifiestoLinea:', e.message);
+            return null;
+        }
+    },
+
+    // Equipos operativos para armar remitos (Fase D).
+    async getEquiposParaRemito() {
+        try {
+            const equipos = await this.getEquipos();
+            return (equipos || []).filter(e => e.estado === 'operativo');
+        } catch (e) {
+            console.warn('[API] getEquiposParaRemito:', e.message);
+            return [];
+        }
+    },
 };
