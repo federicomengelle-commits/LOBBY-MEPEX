@@ -16,7 +16,10 @@ const FlotaModule = {
     _mantSel: [],          // mantenimiento del vehículo seleccionado
     _selId: null,
     _filterEstado: '',
+    _filterPropio: null,   // null = todos · true = MEPEX · false = Tercero
     _search: '',
+    _salidas: [],          // salidas de hoy / en tránsito (read-only)
+    _salidasOpen: true,
 
     _ESTADOS: [
         { v: 'disponible', label: 'Disponible', cls: 'ok' },
@@ -70,14 +73,16 @@ const FlotaModule = {
 
     async _loadData() {
         try {
-            const [veh, chof, mant] = await Promise.all([
+            const [veh, chof, mant, salidas] = await Promise.all([
                 API.getVehiculos({ soloActivos: false }),
                 API.getPersonas ? API.getPersonas() : Promise.resolve([]),
                 API.getMantenimiento({ soloActivos: false, soloFlota: true }),
+                API.getSalidasHoy ? API.getSalidasHoy() : Promise.resolve([]),
             ]);
             this._vehiculos = veh || [];
             this._choferes = chof || [];
             this._mantAll = mant || [];
+            this._salidas = salidas || [];
         } catch (e) {
             console.error('[Flota] load error:', e);
         }
@@ -87,7 +92,9 @@ const FlotaModule = {
     _renderBody() {
         const c = document.getElementById('flotaContent');
         if (!c) return;
+        const propioSel = this._filterPropio === null ? '' : (this._filterPropio ? 'mepex' : 'tercero');
         c.innerHTML = `
+            ${this._renderSalidas()}
             <div class="flota-toolbar">
                 <div class="flota-toolbar-left">
                     <input type="text" id="flotaSearch" class="flota-input" placeholder="Buscar vehículo, patente…" value="${this._escAttr(this._search)}">
@@ -95,8 +102,16 @@ const FlotaModule = {
                         <option value="">Todos los estados</option>
                         ${this._ESTADOS.map(e => `<option value="${e.v}" ${this._filterEstado === e.v ? 'selected' : ''}>${e.label}</option>`).join('')}
                     </select>
+                    <select id="flotaFiltroPropio" class="flota-input">
+                        <option value="" ${propioSel === '' ? 'selected' : ''}>Todo origen</option>
+                        <option value="mepex" ${propioSel === 'mepex' ? 'selected' : ''}>MEPEX</option>
+                        <option value="tercero" ${propioSel === 'tercero' ? 'selected' : ''}>Tercero</option>
+                    </select>
                 </div>
-                <button class="btn-primary" id="flotaNuevo">＋ Nuevo vehículo</button>
+                <div class="flota-toolbar-right">
+                    <button class="btn-secondary" id="flotaAjeno">＋ Ajeno rápido</button>
+                    <button class="btn-primary" id="flotaNuevo">＋ Nuevo vehículo</button>
+                </div>
             </div>
             <div class="flota-layout">
                 <div class="flota-list" id="flotaList">${this._renderTable()}</div>
@@ -105,14 +120,33 @@ const FlotaModule = {
         `;
         document.getElementById('flotaSearch')?.addEventListener('input', (e) => { this._search = e.target.value; this._refreshTable(); });
         document.getElementById('flotaFiltroEstado')?.addEventListener('change', (e) => { this._filterEstado = e.target.value; this._refreshTable(); });
+        document.getElementById('flotaFiltroPropio')?.addEventListener('change', (e) => {
+            const val = e.target.value;
+            this._filterPropio = val === '' ? null : (val === 'mepex');
+            this._refreshTable();
+        });
         document.getElementById('flotaNuevo')?.addEventListener('click', () => this._openVehiculoModal(null));
+        document.getElementById('flotaAjeno')?.addEventListener('click', () => this._openAjenoRapidoModal());
+        document.getElementById('flotaSalidasToggle')?.addEventListener('click', () => {
+            this._salidasOpen = !this._salidasOpen;
+            const sec = document.getElementById('flotaSalidas');
+            if (sec) { sec.innerHTML = this._renderSalidasInner(); }
+        });
         this._attachTableEvents();
+    },
+
+    // es_propio efectivo: usa la columna si está; fallback a propietario.
+    _esPropio(v) {
+        if (v.es_propio === true) return true;
+        if (v.es_propio === false) return false;
+        return (v.propietario || 'mepex') === 'mepex';
     },
 
     _filtered() {
         const q = this._norm(this._search);
         return this._vehiculos.filter(v => {
             if (this._filterEstado && (v.estado || 'disponible') !== this._filterEstado) return false;
+            if (this._filterPropio !== null && this._esPropio(v) !== this._filterPropio) return false;
             if (!q) return true;
             return this._norm(`${v.descripcion} ${v.patente || ''} ${v.tipo || ''}`).includes(q);
         });
@@ -127,7 +161,7 @@ const FlotaModule = {
             <table class="flota-table">
                 <thead>
                     <tr>
-                        <th>Vehículo</th><th>Patente</th><th>Tipo</th><th>Estado</th><th>Próx. venc.</th>
+                        <th>Vehículo</th><th>Patente</th><th>Tipo</th><th>Origen</th><th>Estado</th><th>Próx. venc.</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -138,10 +172,11 @@ const FlotaModule = {
                             <tr class="flota-row ${this._selId === v.id ? 'active' : ''}" data-id="${v.id}">
                                 <td>
                                     <div class="flota-veh-name">${this._esc(v.descripcion)}</div>
-                                    <div class="flota-veh-sub">${v.propietario === 'tercero' ? 'Tercero' : 'MEPEX'}${v.capacidad_descriptiva ? ` · ${this._esc(v.capacidad_descriptiva)}` : ''}</div>
+                                    <div class="flota-veh-sub">${v.capacidad_descriptiva ? this._esc(v.capacidad_descriptiva) : '—'}</div>
                                 </td>
                                 <td>${this._esc(v.patente || '—')}</td>
                                 <td>${this._esc(v.tipo || '—')}</td>
+                                <td>${this._origenChip(v)}</td>
                                 <td><span class="flota-badge ${est.cls}">${est.label}</span></td>
                                 <td>${venc ? `<span class="flota-venc ${venc.cls}">${venc.label}</span>` : '<span class="flota-dim">—</span>'}</td>
                             </tr>
@@ -187,7 +222,7 @@ const FlotaModule = {
                     <div class="flota-panel-title">${this._esc(v.descripcion)}</div>
                     <div class="flota-panel-sub">
                         <span class="flota-badge ${est.cls}">${est.label}</span>
-                        <span class="flota-tag">${v.propietario === 'tercero' ? 'Tercero' : 'MEPEX'}</span>
+                        ${this._origenChip(v)}
                         ${v.patente ? `<span class="flota-tag">${this._esc(v.patente)}</span>` : ''}
                     </div>
                 </div>
@@ -206,7 +241,7 @@ const FlotaModule = {
                 ${v.notas ? this._row('Notas', this._esc(v.notas)) : ''}
             </div>
 
-            ${admin ? `
+            ${admin && this._esPropio(v) ? `
             <div class="flota-sec">
                 <div class="flota-sec-title">Plata</div>
                 ${this._row('Titular', v.titular || '—')}
@@ -396,6 +431,111 @@ const FlotaModule = {
         await this._selectVehiculo(this._selId);
     },
 
+    // ─── Salidas de hoy (read-only) ───
+    _renderSalidas() {
+        return `<div class="flota-salidas" id="flotaSalidas">${this._renderSalidasInner()}</div>`;
+    },
+
+    _renderSalidasInner() {
+        const list = this._salidas || [];
+        const open = this._salidasOpen;
+        const head = `
+            <div class="flota-salidas-head" id="flotaSalidasToggle">
+                <div class="flota-salidas-title">
+                    <span>🚚 Qué sale hoy del depósito</span>
+                    <span class="flota-salidas-count">${list.length}</span>
+                </div>
+                <span class="flota-salidas-chev">${open ? '▾' : '▸'}</span>
+            </div>`;
+        if (!open) return head;
+        if (list.length === 0) {
+            return head + `<div class="flota-salidas-empty">Sin salidas hoy.</div>`;
+        }
+        const FASE = { armado: { l: 'Armado', c: 'ok' }, intermedio: { l: 'Intermedio', c: 'use' }, desarme: { l: 'Desarme', c: 'warn' } };
+        const cards = list.map(t => {
+            const fase = FASE[t.fase] || { l: t.fase || '—', c: 'off' };
+            const firmado = !!t.remito_firmado_url;
+            const cuando = `${this._fmtDate(t.fecha)}${t.hora_salida ? ' · ' + this._esc(String(t.hora_salida).slice(0, 5)) : ''}`;
+            const conteo = [];
+            if (t.num_proyectos) conteo.push(`${t.num_proyectos} stand${t.num_proyectos !== 1 ? 's' : ''}`);
+            if (t.num_equipos) conteo.push(`${t.num_equipos} equipo${t.num_equipos !== 1 ? 's' : ''}`);
+            if (t.num_manuales) conteo.push(`${t.num_manuales} manual${t.num_manuales !== 1 ? 'es' : ''}`);
+            return `
+                <div class="flota-salida-card">
+                    <div class="flota-salida-top">
+                        <div class="flota-salida-veh">${this._esc(t.vehiculo_label || 'Sin vehículo')}</div>
+                        ${this._origenChipBool(t.es_propio)}
+                    </div>
+                    <div class="flota-salida-evento">${this._esc(t.evento_nombre || 'Evento')}</div>
+                    <div class="flota-salida-meta">
+                        <span class="flota-badge ${fase.c}">${fase.l}</span>
+                        <span class="flota-salida-cuando">${cuando}</span>
+                    </div>
+                    <div class="flota-salida-foot">
+                        <span class="flota-salida-conteo">${conteo.length ? conteo.join(' · ') : 'Sin carga detallada'}</span>
+                        <span class="flota-salida-remito ${firmado ? 'ok' : 'pend'}">${firmado ? '✓ Remito firmado' : 'Remito pendiente'}</span>
+                    </div>
+                </div>`;
+        }).join('');
+        return head + `<div class="flota-salidas-grid">${cards}</div>`;
+    },
+
+    _origenChip(v) {
+        return this._origenChipBool(this._esPropio(v));
+    },
+
+    _origenChipBool(esPropio) {
+        return esPropio
+            ? `<span class="flota-chip-origen mepex">MEPEX</span>`
+            : `<span class="flota-chip-origen tercero">Tercero</span>`;
+    },
+
+    // ─── Alta "Ajeno rápido" (vehículo tercero, es_propio=false) ───
+    _openAjenoRapidoModal() {
+        const body = `
+            <div class="flota-form">
+                <p class="flota-ajeno-hint">Alta express de un vehículo de tercero. Queda en la flota como <b>Tercero</b>.</p>
+                <div class="flota-form-row"><label>Descripción *</label><input type="text" id="faDesc" placeholder="Ej: Fletero Juan / Camión rojo"></div>
+                <div class="flota-form-2">
+                    <div><label>Patente</label><input type="text" id="faPat"></div>
+                    <div><label>Tipo</label><input type="text" id="faTipo" placeholder="camión / utilitario"></div>
+                </div>
+                <div class="flota-form-2">
+                    <div><label>Contacto</label><input type="text" id="faContN" placeholder="Nombre del propietario"></div>
+                    <div><label>Teléfono</label><input type="text" id="faContT"></div>
+                </div>
+                <div class="flota-form-row"><label>Notas</label><textarea id="faNotas" rows="2"></textarea></div>
+            </div>
+        `;
+        const modalId = Modal.open({
+            title: '＋ Ajeno rápido',
+            body, size: 'sm',
+            footer: `<button class="btn-secondary" data-modal-close>Cancelar</button><button class="btn-primary" id="faSave">Crear</button>`,
+        });
+        document.getElementById('faSave')?.addEventListener('click', async () => {
+            const desc = document.getElementById('faDesc')?.value.trim();
+            if (!desc) { Toast.warning('La descripción es obligatoria.'); return; }
+            const payload = {
+                descripcion: desc,
+                patente: document.getElementById('faPat')?.value.trim() || null,
+                tipo: document.getElementById('faTipo')?.value.trim() || null,
+                propietario: 'tercero',
+                es_propio: false,
+                contactoNombre: document.getElementById('faContN')?.value.trim() || null,
+                contactoTelefono: document.getElementById('faContT')?.value.trim() || null,
+                notas: document.getElementById('faNotas')?.value.trim() || null,
+            };
+            try {
+                const row = await API.createVehiculo(payload);
+                if (row) this._selId = row.id;
+                Toast.success('Vehículo ajeno creado.');
+                Modal.close(modalId);
+                await this._loadData();
+                if (this._selId) await this._selectVehiculo(this._selId);
+            } catch (e) { console.error('[Flota] ajeno rápido:', e); Toast.error('Error al crear.'); }
+        });
+    },
+
     // ─── Helpers ───
     _proxVencDe(vehId) {
         const items = this._mantAll.filter(m => m.vehiculo_id === vehId && m.fecha_proximo_vencimiento);
@@ -488,6 +628,32 @@ const FlotaModule = {
             .flota-form input,.flota-form select,.flota-form textarea{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-main);font-size:0.85rem;outline:none;}
             .flota-form input:focus,.flota-form select:focus,.flota-form textarea:focus{border-color:var(--primary);}
             .flota-form-sep{font-family:var(--font-mono);font-size:0.68rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--accent);border-top:1px solid var(--border);padding-top:10px;margin-top:2px;}
+            .flota-toolbar-right{display:flex;gap:8px;flex-wrap:wrap;}
+            /* Origen chips */
+            .flota-chip-origen{display:inline-block;padding:1px 8px;border-radius:10px;font-size:0.66rem;font-weight:700;font-family:var(--font-mono);letter-spacing:0.03em;}
+            .flota-chip-origen.mepex{background:rgba(0,169,193,0.15);color:#00A9C1;}
+            .flota-chip-origen.tercero{background:rgba(242,141,21,0.15);color:#F28D15;}
+            /* Salidas de hoy */
+            .flota-salidas{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;margin-top:16px;overflow:hidden;}
+            .flota-salidas-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;user-select:none;}
+            .flota-salidas-head:hover{background:rgba(0,169,193,0.04);}
+            .flota-salidas-title{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--text-primary);font-size:0.92rem;}
+            .flota-salidas-count{font-family:var(--font-mono);font-size:0.72rem;background:rgba(0,169,193,0.15);color:#00A9C1;padding:1px 9px;border-radius:10px;}
+            .flota-salidas-chev{color:var(--text-muted);font-size:0.85rem;}
+            .flota-salidas-empty{color:var(--text-muted);padding:0 16px 16px;font-size:0.85rem;}
+            .flota-salidas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding:0 16px 16px;}
+            .flota-salida-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px 13px;display:flex;flex-direction:column;gap:6px;}
+            .flota-salida-top{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+            .flota-salida-veh{font-weight:600;font-size:0.86rem;color:var(--text-primary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+            .flota-salida-evento{font-size:0.78rem;color:var(--text-muted);}
+            .flota-salida-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+            .flota-salida-cuando{font-family:var(--font-mono);font-size:0.72rem;color:var(--text-muted);}
+            .flota-salida-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:6px;margin-top:1px;}
+            .flota-salida-conteo{font-size:0.72rem;color:var(--text-dim);}
+            .flota-salida-remito{font-size:0.68rem;font-family:var(--font-mono);font-weight:600;}
+            .flota-salida-remito.ok{color:#00CC88;}
+            .flota-salida-remito.pend{color:#F28D15;}
+            .flota-ajeno-hint{font-size:0.8rem;color:var(--text-muted);margin:0 0 4px;}
         `;
         document.head.appendChild(s);
     },

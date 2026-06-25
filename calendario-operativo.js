@@ -223,12 +223,12 @@ const CalendarioOperativo = {
             // Docs siguen en localStorage hasta Fase 6 (evento_documentos tiene schema
             // desalineado, su API está deshabilitada en api.js).
             const ids = valid.map(e => e.id);
-            let proyMap = {}, asigMap = {}, cargaMap = {};
+            let proyMap = {}, asigMap = {}, transpMap = {};
             try {
-                [proyMap, asigMap, cargaMap] = await Promise.all([
+                [proyMap, asigMap, transpMap] = await Promise.all([
                     API.getProyectosByEventos(ids),
                     API.getAsignacionesByEventos(ids),
-                    API.getCargasByEventos(ids),
+                    API.getTransporteByEventos(ids),   // Fase D.2: transporte nuevo (evento_transporte), reemplaza getCargasByEventos legacy
                 ]);
             } catch { /* enrich best-effort: si falla, queda vacío */ }
 
@@ -239,8 +239,8 @@ const CalendarioOperativo = {
 
                 // Equipo + transporte (real) — alimenta detección de conflictos
                 const asigs = asigMap[e.id] || [];
-                const cargas = cargaMap[e.id] || [];
-                const firstCarga = cargas[0] || null;
+                const transp = transpMap[e.id] || [];
+                const firstT = transp[0] || null;
                 e.logistics = {
                     team: asigs
                         .map(a => ({
@@ -248,12 +248,10 @@ const CalendarioOperativo = {
                             role: a.rol || '',
                         }))
                         .filter(t => t.name),
-                    truck: firstCarga?.vehiculo?.patente || firstCarga?.vehiculo?.descripcion || null,
-                    driver: firstCarga?.chofer
-                        ? `${firstCarga.chofer.nombre || ''} ${firstCarga.chofer.apellido || ''}`.trim()
-                        : null,
-                    loadDate: firstCarga?.fecha || null,
-                    departureDate: firstCarga?.fecha || null,
+                    truck: firstT?.vehiculo_patente || firstT?.vehiculo_label || null,
+                    driver: firstT?.chofer_nombre_resuelto || firstT?.chofer_nombre || null,
+                    loadDate: firstT?.fecha || null,
+                    departureDate: firstT?.fecha || null,
                     returnDate: null,
                     notes: e.notasOperativas || '',
                 };
@@ -1011,20 +1009,22 @@ const CalendarioOperativo = {
             // El legacy (rrhh_asignaciones / logistica_movimientos) se eliminó
             // del side panel; la única fuente de verdad para personas es la
             // ficha del evento (eventos.js).
-            const [cargasNew, asignacionesNew, historial, documentos, jornadas] = await Promise.all([
-                API.getCargas({ eventoId: event.id }).catch(() => []),
-                API.getAsignacionesByEvento(event.id).catch(() => []),
-                API.getEventHistorial(event.id).catch(() => []),
-                API.getEventDocumentos(event.id).catch(() => []),
-                API.getJornadas(event.id).catch(() => []),
-            ]);
-            event._cargasNew = (cargasNew || []).filter(c => c.estado !== 'cancelada');
+            // Transporte = modelo nuevo (evento_transporte), reemplaza al legacy `cargas`
+            // en el panel del evento. Read-only acá (el ABM vive en la ficha del Evento).
+            const [transporteNew, asignacionesNew, historial, documentos, jornadas] = await Promise.allSettled([
+                API.getTransporteByEvento(event.id),
+                API.getAsignacionesByEvento(event.id),
+                API.getEventHistorial(event.id),
+                API.getEventDocumentos(event.id),
+                API.getJornadas(event.id),
+            ]).then(rs => rs.map(r => r.status === 'fulfilled' ? (r.value || []) : []));
+            event._transporteNew = transporteNew || [];
             event._asignacionesNew = (asignacionesNew || []).filter(a => a.estado !== 'cancelada');
             event._documentos = documentos || [];
             event._historial = historial || [];
             event._jornadas = jornadas || [];
         } catch {
-            event._cargasNew = [];
+            event._transporteNew = [];
             event._asignacionesNew = [];
             event._documentos = [];
             event._historial = [];
@@ -1046,14 +1046,6 @@ const CalendarioOperativo = {
             case 'logistica': container.innerHTML = this._renderLogisticaTab(event); break;
             case 'historial': container.innerHTML = this._renderHistorialTab(event); break;
         }
-
-        // Tanda 3.D: wire click en cargas para navegar a logística.
-        // (innerHTML no ejecuta los <script> inline, así que enganchamos acá.)
-        container.querySelectorAll('.co-sp-carga-item[data-carga-id]').forEach(el => {
-            el.addEventListener('click', () => {
-                window.location.hash = 'logistica?tab=cargas&id=' + el.dataset.cargaId;
-            });
-        });
     },
 
     _renderInfoTab(event) {
@@ -1216,40 +1208,51 @@ const CalendarioOperativo = {
 
     // Tanda 3.D — sección "Cargas" del schema nuevo, agrupadas por fase.
     // Click en una carga navega al módulo Logística con esa carga seleccionada.
+    // Transporte del evento (modelo nuevo evento_transporte). Read-only en el panel.
+    // El ABM vive en la ficha del Evento (eventos.js).
     _renderCargasNewSection(event) {
-        const cargas = event._cargasNew || [];
-        if (cargas.length === 0) {
-            return ''; // nada que mostrar
+        const esc = (window.escHtml) ? window.escHtml : (s => (s ?? '').toString().replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
+        const transportes = event._transporteNew || [];
+        if (transportes.length === 0) {
+            return `
+                <div class="co-sp-section">
+                    <h3 class="co-sp-section-title">Transporte</h3>
+                    <div class="co-sp-transp-empty">Sin transporte cargado para este evento.</div>
+                </div>
+            `;
         }
 
         // Agrupar por fase
-        const byFase = { armado: [], desarme: [], intermedio: [] };
-        cargas.forEach(c => {
-            const fase = c.fase || 'intermedio';
-            if (byFase[fase]) byFase[fase].push(c);
+        const byFase = { armado: [], intermedio: [], desarme: [] };
+        transportes.forEach(t => {
+            const fase = t.fase || 'intermedio';
+            if (byFase[fase]) byFase[fase].push(t);
         });
 
-        const renderCarga = (c) => {
-            const veh = c.vehiculo?.descripcion || 'Sin vehículo';
-            const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : 'Sin chofer';
-            const encargado = c.encargado ? `${c.encargado.nombre}${c.encargado.apellido ? ' ' + c.encargado.apellido : ''}` : '';
-            const fechaHora = `${c.fecha || ''}${c.hora_carga ? ' ' + c.hora_carga.slice(0, 5) : ''}`.trim() || '—';
-            const numStands = (c.carga_proyectos || []).length;
-            const estadoColor = {
-                borrador: '#888', aprobada: '#00A9C1', en_curso: '#F28D15',
-                completada: '#00CC88', cancelada: '#ff4444'
-            }[c.estado] || '#888';
+        const renderTransp = (t) => {
+            const veh = esc(t.vehiculo_label || 'Sin vehículo');
+            const origenChip = t.es_propio
+                ? `<span class="co-sp-transp-origen mepex">MEPEX</span>`
+                : `<span class="co-sp-transp-origen tercero">Tercero</span>`;
+            const chofer = t.chofer_nombre_resuelto ? esc(t.chofer_nombre_resuelto) : 'Sin chofer';
+            const fechaHora = `${t.fecha || ''}${t.hora_salida ? ' ' + String(t.hora_salida).slice(0, 5) : ''}`.trim() || '—';
+            const conteo = [];
+            if (t.num_proyectos) conteo.push(`📦 ${t.num_proyectos} stand${t.num_proyectos === 1 ? '' : 's'}`);
+            if (t.num_equipos) conteo.push(`🧰 ${t.num_equipos} equipo${t.num_equipos === 1 ? '' : 's'}`);
+            if (t.num_manuales) conteo.push(`📝 ${t.num_manuales}`);
+            const firmado = !!t.remito_firmado_url;
             return `
-                <div class="co-sp-carga-item" data-carga-id="${c.id}" style="border-left-color: ${estadoColor};">
+                <div class="co-sp-carga-item">
                     <div class="co-sp-carga-head">
                         <span class="co-sp-carga-veh">🚚 ${veh}</span>
-                        <span class="co-sp-carga-estado" style="color:${estadoColor};">${c.estado}</span>
+                        ${origenChip}
                     </div>
                     <div class="co-sp-carga-meta">
                         <span>🧑‍✈️ ${chofer}</span>
-                        ${encargado ? `<span>⭐ ${encargado}</span>` : ''}
-                        <span>📅 ${fechaHora}</span>
-                        <span>📦 ${numStands} stand${numStands === 1 ? '' : 's'}</span>
+                        <span>📅 ${esc(fechaHora)}</span>
+                        ${t.destino ? `<span>📍 ${esc(t.destino)}</span>` : ''}
+                        ${conteo.length ? `<span>${conteo.join(' · ')}</span>` : ''}
+                        <span class="co-sp-transp-remito ${firmado ? 'ok' : 'pend'}">${firmado ? '✓ Remito firmado' : 'Remito pendiente'}</span>
                     </div>
                 </div>
             `;
@@ -1261,33 +1264,33 @@ const CalendarioOperativo = {
             return `
                 <div class="co-sp-fase-block">
                     <div class="co-sp-fase-label" style="color: ${color};">${label} (${list.length})</div>
-                    ${list.map(renderCarga).join('')}
+                    ${list.map(renderTransp).join('')}
                 </div>
             `;
         };
 
-        // Vehículos distintos que participan (resumen arriba de las cargas)
+        // Vehículos distintos que participan (resumen arriba)
         const vehMap = {};
-        cargas.forEach(c => {
-            if (!c.vehiculo) return;
-            const k = c.vehiculo.id || c.vehiculo.patente || c.vehiculo.descripcion || '?';
-            if (!vehMap[k]) vehMap[k] = { v: c.vehiculo, n: 0 };
+        transportes.forEach(t => {
+            const k = t.vehiculo_id || t.vehiculo_patente || t.vehiculo_label || '?';
+            if (!vehMap[k]) vehMap[k] = { label: t.vehiculo_label || 'Vehículo', n: 0 };
             vehMap[k].n++;
         });
         const vehChips = Object.values(vehMap).map(x =>
-            `<span class="co-sp-veh-chip">🚚 ${x.v.descripcion || 'Vehículo'}${x.v.patente ? ` · ${x.v.patente}` : ''}${x.n > 1 ? ` ×${x.n}` : ''}</span>`
+            `<span class="co-sp-veh-chip">🚚 ${esc(x.label)}${x.n > 1 ? ` ×${x.n}` : ''}</span>`
         ).join('');
 
         return `
             <div class="co-sp-section">
                 <h3 class="co-sp-section-title">
-                    Cargas
-                    <span style="color:#00A9C1;font-size:11px;font-family:'Space Mono',monospace;">(${cargas.length})</span>
+                    Transporte
+                    <span style="color:#00A9C1;font-size:11px;font-family:'Space Mono',monospace;">(${transportes.length})</span>
                 </h3>
                 ${vehChips ? `<div class="co-sp-veh-chips">${vehChips}</div>` : ''}
                 <style>
                     .co-sp-veh-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
                     .co-sp-veh-chip { font-family:'Space Mono',monospace; font-size:11px; color:#E8E8E8; background:#0d0d0d; border:1px solid #2a2a2a; border-radius:12px; padding:3px 9px; }
+                    .co-sp-transp-empty { font-family:'Space Mono',monospace; font-size:11px; color:#888; padding:4px 0; }
                     .co-sp-fase-block { margin-bottom: 10px; }
                     .co-sp-fase-label {
                         font-family: 'Space Mono', monospace; font-size: 10px;
@@ -1299,9 +1302,8 @@ const CalendarioOperativo = {
                         border-left: 3px solid #00A9C1;
                         border-radius: 6px;
                         padding: 8px 10px; margin-bottom: 6px;
-                        cursor: pointer; transition: all 150ms ease;
+                        transition: all 150ms ease;
                     }
-                    .co-sp-carga-item:hover { background: #222; border-color: #00A9C1; }
                     .co-sp-carga-head {
                         display: flex; justify-content: space-between;
                         align-items: center; gap: 8px; margin-bottom: 4px;
@@ -1310,15 +1312,19 @@ const CalendarioOperativo = {
                         font-family: 'Outfit', sans-serif; font-size: 13px;
                         font-weight: 600; color: #E8E8E8;
                     }
-                    .co-sp-carga-estado {
-                        font-family: 'Space Mono', monospace; font-size: 10px;
-                        text-transform: uppercase; font-weight: 700;
+                    .co-sp-transp-origen {
+                        font-family:'Space Mono',monospace; font-size:9px; font-weight:700;
+                        letter-spacing:0.03em; padding:1px 7px; border-radius:10px;
                     }
+                    .co-sp-transp-origen.mepex { background:rgba(0,169,193,0.15); color:#00A9C1; }
+                    .co-sp-transp-origen.tercero { background:rgba(242,141,21,0.15); color:#F28D15; }
                     .co-sp-carga-meta {
                         display: flex; flex-wrap: wrap; gap: 10px;
                         font-family: 'Space Mono', monospace; font-size: 11px;
                         color: #aaa;
                     }
+                    .co-sp-transp-remito.ok { color:#00CC88; }
+                    .co-sp-transp-remito.pend { color:#F28D15; }
                 </style>
                 ${sectionForFase('armado', 'Armado', '#00CC88')}
                 ${sectionForFase('intermedio', 'Intermedio', '#9B7DFF')}

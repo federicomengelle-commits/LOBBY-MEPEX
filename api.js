@@ -6901,8 +6901,13 @@ const API = {
             ? `${veh.descripcion || ''}${veh.patente ? ' · ' + veh.patente : ''}`.trim() || 's/descripción'
             : (t.vehiculo_adhoc_descripcion || 'Sin vehículo');
         const vehiculo_patente = veh ? (veh.patente || null) : (t.vehiculo_adhoc_patente || null);
-        // es_propio: si está en flota usa la columna; si es adhoc "solo este viaje" → tercero.
-        const es_propio = veh ? (veh.es_propio === true || (veh.es_propio == null && veh.propietario === 'mepex')) : false;
+        // es_propio: si está en flota usa la columna es_propio; si esa columna no está
+        // cargada (null), caemos al propietario, tratando ausencia/desconocido como 'tercero'
+        // (default conservador: solo es propio si el dato dice explícitamente 'mepex').
+        // Si es adhoc ("solo este viaje") → siempre tercero.
+        const es_propio = veh
+            ? (veh.es_propio === true || (veh.es_propio == null && (veh.propietario || 'tercero') === 'mepex'))
+            : false;
 
         // Chofer: de personas (chofer_persona_id) o texto suelto.
         let choferNombre = t.chofer_nombre || null;
@@ -6954,6 +6959,85 @@ const API = {
             return await Promise.all(rows.map(t => this._enrichTransporte(t)));
         } catch (e) {
             console.warn('[API] getTransporteByEvento:', e.message);
+            return [];
+        }
+    },
+
+    // Bulk: transportes de varios eventos → mapa { evento_id: [transportes enriquecidos] }.
+    // Usado por el Calendario operativo para hidratar el panel de varios eventos.
+    async getTransporteByEventos(eventoIds = []) {
+        const ids = [...new Set((eventoIds || []).filter(Boolean))];
+        if (!ids.length) return {};
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_transporte')
+                .select('*')
+                .in('evento_id', ids)
+                .eq('_deleted', false)
+                .order('fecha', { ascending: true })
+                .order('fase', { ascending: true });
+            if (error) throw error;
+            const rows = data || [];
+            const enriched = await Promise.allSettled(rows.map(t => this._enrichTransporte(t)));
+            const map = {};
+            ids.forEach(id => { map[id] = []; });
+            enriched.forEach(r => {
+                if (r.status === 'fulfilled' && r.value) {
+                    const ev = r.value.evento_id;
+                    (map[ev] = map[ev] || []).push(r.value);
+                }
+            });
+            return map;
+        } catch (e) {
+            console.warn('[API] getTransporteByEventos:', e.message);
+            return {};
+        }
+    },
+
+    // "Qué sale hoy del depósito": transportes de HOY o en tránsito (fecha pasada sin
+    // remito firmado). Enriquecidos + con nombre del evento. Ordenados por fecha/hora.
+    async getSalidasHoy() {
+        const hoy = new Date().toISOString().slice(0, 10);
+        try {
+            // Traemos todas las salidas con fecha <= hoy y filtramos en JS:
+            // se muestran las de HOY (cualquiera) + las pasadas en tránsito (sin remito firmado).
+            // Evitamos el and() anidado dentro de .or() (sintaxis frágil en PostgREST).
+            const { data, error } = await supabaseClient
+                .from('evento_transporte')
+                .select('*')
+                .eq('_deleted', false)
+                .lte('fecha', hoy)
+                .order('fecha', { ascending: true })
+                .order('hora_salida', { ascending: true });
+            if (error) throw error;
+            const rows = (data || []).filter(t =>
+                t.fecha === hoy || !t.remito_firmado_url
+            );
+            const enriched = await Promise.allSettled(rows.map(t => this._enrichTransporte(t)));
+            const list = enriched
+                .filter(r => r.status === 'fulfilled' && r.value)
+                .map(r => r.value);
+            // Nombre del evento (bulk)
+            const eventoIds = [...new Set(list.map(t => t.evento_id).filter(Boolean))];
+            const evMap = {};
+            if (eventoIds.length) {
+                try {
+                    const { data: evs } = await supabaseClient
+                        .from('eventos').select('id, nombre').in('id', eventoIds);
+                    (evs || []).forEach(e => { evMap[e.id] = e.nombre; });
+                } catch { /* silencioso */ }
+            }
+            list.forEach(t => { t.evento_nombre = evMap[t.evento_id] || null; });
+            // Orden final: fecha asc, luego hora (nulls al final)
+            list.sort((a, b) => {
+                const fa = a.fecha || '', fb = b.fecha || '';
+                if (fa !== fb) return fa < fb ? -1 : 1;
+                const ha = a.hora_salida || '~', hb = b.hora_salida || '~';
+                return ha < hb ? -1 : ha > hb ? 1 : 0;
+            });
+            return list;
+        } catch (e) {
+            console.warn('[API] getSalidasHoy:', e.message);
             return [];
         }
     },
