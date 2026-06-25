@@ -26,6 +26,8 @@ const ProyectosModule = {
     _typeFilter: null,
     _viewMode: 'table', // 'table' | 'cards' | 'calendar'
     _isRO: false,
+    _userRole: null,
+    _checklistsBulk: {}, // { proyecto_id: [{id,label,checked,orden}] } — solo vista galpón (taller)
 
     // ─── Options (alineadas a CHECK constraints de DB) ───
     _statusOptions: [
@@ -56,6 +58,7 @@ const ProyectosModule = {
         if (!user) return Router.navigate('login');
 
         this._isRO = Data.isReadOnly(user.role, 'proyectos');
+        this._userRole = user.role;
 
         const content = document.getElementById('mainContent');
         if (!content) return;
@@ -301,7 +304,7 @@ const ProyectosModule = {
                     .select(`
                         *,
                         cliente:clientes(id, nombre_empresa),
-                        evento:eventos(id, nombre, fecha_evento_inicio),
+                        evento:eventos(id, nombre, fecha_evento_inicio, predio),
                         responsables:proyecto_responsables(
                             profile_id, es_principal,
                             profile:profiles(id, name, initials)
@@ -329,9 +332,37 @@ const ProyectosModule = {
             this._clients = [];
         }
 
+        // Vista galpón (rol taller): traemos los checklists de los proyectos
+        // visibles para mostrar el progreso de producción en cada card.
+        if (this._userRole === 'taller') {
+            await this._loadChecklistsGalpon();
+        }
+
         this._populateFilters();
         this._applyFilters();
         this._renderContent();
+    },
+
+    // Carga bulk de los checklists de los proyectos visibles (vista galpón).
+    // Siembra la plantilla en los que no tengan checks vivos. No rompe si falla.
+    async _loadChecklistsGalpon() {
+        try {
+            const ids = this._projects.map(p => p.id);
+            if (!ids.length) { this._checklistsBulk = {}; return; }
+            let map = await API.getChecklistsBulk(ids);
+            // Sembrar plantilla en proyectos sin checks (igual que taller.js).
+            const faltantes = this._projects.filter(p => !(map[p.id] && map[p.id].length));
+            if (faltantes.length) {
+                await Promise.all(faltantes.map(p =>
+                    API.seedChecklistTemplate(p.id).catch(() => null)
+                ));
+                map = await API.getChecklistsBulk(ids);
+            }
+            this._checklistsBulk = map || {};
+        } catch (e) {
+            console.warn('[Proyectos] Error cargando checklists galpón:', e.message);
+            this._checklistsBulk = {};
+        }
     },
 
     // ═══════════════════════════════════════════
@@ -414,12 +445,169 @@ const ProyectosModule = {
         const container = document.getElementById('pjMainContent');
         if (!container) return;
 
+        // Bifurcación por rol: el taller ve una grilla de cards "galpón"
+        // (estilo taller.js) en lugar de la tabla. La oficina NO cambia.
+        if (this._userRole === 'taller') {
+            container.innerHTML = this._renderGalponView();
+            this._attachGalponEvents();
+            return;
+        }
+
         if (this._viewMode === 'cards' || this._viewMode === 'calendar') {
             container.innerHTML = this._renderPlaceholder(this._viewMode);
             return;
         }
         container.innerHTML = this._renderTableView();
         this._attachContentEvents();
+    },
+
+    // ═══════════════════════════════════════════
+    //  VISTA GALPÓN (rol taller)
+    // ═══════════════════════════════════════════
+
+    _estadoTallerLabel(estado) {
+        const map = {
+            pendiente: 'Pendiente', en_armado: 'En armado', listo: 'Listo',
+            despachado: 'Despachado', cerrado: 'Cerrado',
+        };
+        return map[estado] || 'Pendiente';
+    },
+
+    _renderGalponView() {
+        const projects = this._filteredProjects;
+
+        if (projects.length === 0) {
+            const filtered = this._searchQuery || this._statusFilter || this._eventFilter || this._responsibleFilter || this._typeFilter;
+            return `
+                <div class="pjt-galpon">
+                    ${this._galponStyles()}
+                    <div class="pjt-empty">
+                        <div class="pjt-empty-icon">🏗️</div>
+                        <p>No hay stands en taller${filtered ? ' con estos filtros' : ''}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="pjt-galpon">
+                ${this._galponStyles()}
+                <div class="pjt-grid">
+                    ${projects.map(p => this._renderGalponCard(p)).join('')}
+                </div>
+                <div class="pjt-record-count">${projects.length} stand${projects.length !== 1 ? 's' : ''} en taller</div>
+            </div>
+        `;
+    },
+
+    _renderGalponCard(p) {
+        const cliente = p.cliente?.nombre_empresa || '—';
+        const evNombre = p.evento?.nombre || '—';
+        const venue = p.evento?.predio || '';
+        const nombre = p.nombre || 'Stand';
+        const estado = p.estado_taller || 'pendiente';
+
+        const checks = this._checklistsBulk[p.id] || [];
+        const total = checks.length;
+        const done = checks.reduce((a, c) => a + (c.checked ? 1 : 0), 0);
+        const progressPct = total ? Math.round((done / total) * 100) : 0;
+        const allChecked = total > 0 && done === total;
+
+        return `
+            <article class="pjt-card" data-project-id="${p.id}">
+                <div class="pjt-card-head">
+                    <span class="pjt-card-kind">STAND</span>
+                    <span class="pjt-estado-badge pjt-estado-${estado}">${this._escAttr(this._estadoTallerLabel(estado))}</span>
+                </div>
+                <div class="pjt-card-body">
+                    <div class="pjt-card-title">${this._escAttr(nombre)}</div>
+                    <div class="pjt-card-meta">
+                        <div class="pjt-meta-row"><span class="pjt-meta-key">Cliente</span><span>${this._escAttr(cliente)}</span></div>
+                        <div class="pjt-meta-row"><span class="pjt-meta-key">Evento</span><span>${this._escAttr(evNombre)}</span></div>
+                        ${venue ? `<div class="pjt-meta-row"><span class="pjt-meta-key">Predio</span><span>${this._escAttr(venue)}</span></div>` : ''}
+                    </div>
+                    <div class="pjt-checks-head">
+                        <span class="pjt-checks-title">Producción <span class="pjt-checks-count ${allChecked ? 'done' : ''}">${done}/${total}</span></span>
+                    </div>
+                    <div class="pjt-progress-bar">
+                        <div class="pjt-progress-fill ${allChecked ? 'done' : ''}" style="width:${progressPct}%"></div>
+                    </div>
+                </div>
+                <div class="pjt-card-actions">
+                    ${this._galponEstadoBtn(p, allChecked, done, total)}
+                    <button class="pjt-card-btn ghost" data-action="open-detail" data-id="${p.id}">→ Ver ficha</button>
+                </div>
+            </article>
+        `;
+    },
+
+    _galponEstadoBtn(p, allChecked, done, total) {
+        const estado = p.estado_taller || 'pendiente';
+        if (estado === 'pendiente') {
+            return `<button class="pjt-card-btn primary" data-action="set-en_armado" data-id="${p.id}">🔨 Empezar armado</button>`;
+        }
+        if (estado === 'en_armado') {
+            const falta = total - done;
+            return `<button class="pjt-card-btn success ${allChecked ? '' : 'disabled-soft'}" data-action="set-listo" data-id="${p.id}">${allChecked ? '✅ Marcar listo' : `Faltan ${falta} paso${falta === 1 ? '' : 's'}`}</button>`;
+        }
+        if (estado === 'listo') {
+            return `<button class="pjt-card-btn secondary" data-action="set-despachado" data-id="${p.id}">🚚 Despachar</button>`;
+        }
+        return `<div class="pjt-card-state-done">${this._escAttr(this._estadoTallerLabel(estado))}</div>`;
+    },
+
+    _attachGalponEvents() {
+        const container = document.getElementById('pjMainContent');
+        if (!container) return;
+
+        container.addEventListener('click', async (e) => {
+            // Botones de avance de estado_taller (las 2 acciones que la RLS permite al taller).
+            const stBtn = e.target.closest('[data-action^="set-"]');
+            if (stBtn) {
+                e.stopPropagation();
+                if (stBtn.classList.contains('disabled-soft')) {
+                    Toast.info('Completá los pasos de producción antes de marcar listo.');
+                    return;
+                }
+                const id = stBtn.dataset.id;
+                const nuevo = stBtn.dataset.action.replace('set-', '');
+                await this._setEstadoTallerGalpon(id, nuevo, stBtn);
+                return;
+            }
+
+            // Ver ficha
+            const detBtn = e.target.closest('[data-action="open-detail"]');
+            if (detBtn) {
+                e.stopPropagation();
+                const id = detBtn.dataset.id;
+                if (id) Router.navigate('proyectos/' + id);
+                return;
+            }
+
+            // Click en la card → ficha
+            const card = e.target.closest('.pjt-card');
+            if (card) {
+                const id = card.dataset.projectId;
+                if (id) Router.navigate('proyectos/' + id);
+            }
+        });
+    },
+
+    async _setEstadoTallerGalpon(proyectoId, nuevoEstado, btnEl) {
+        const p = this._projects.find(x => String(x.id) === String(proyectoId));
+        if (!p) return;
+        if (btnEl) btnEl.disabled = true;
+        const prev = p.estado_taller;
+        p.estado_taller = nuevoEstado;
+        const ok = await API.setEstadoTaller(proyectoId, nuevoEstado).catch(() => null);
+        if (!ok) {
+            p.estado_taller = prev;
+            if (btnEl) btnEl.disabled = false;
+            Toast.error('No se pudo actualizar el estado.');
+            return;
+        }
+        Toast.success('Estado actualizado: ' + this._estadoTallerLabel(nuevoEstado));
+        this._renderContent();
     },
 
     _renderPlaceholder(mode) {
@@ -1024,6 +1212,114 @@ const ProyectosModule = {
     // ═══════════════════════════════════════════
     //  HELPERS
     // ═══════════════════════════════════════════
+
+    // CSS scopeado de la vista galpón (rol taller). Reusa los tokens visuales
+    // de taller.js (turquesa #00A9C1, violeta #9B7DFF del ciclo cerrado).
+    _galponStyles() {
+        return `
+            <style>
+            .pjt-galpon { padding: 4px 0 24px; }
+            .pjt-grid {
+                display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                gap: 16px;
+            }
+            .pjt-empty {
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                gap: 8px; padding: 60px 20px; color: #555;
+                font-family: var(--font-main); font-size: 0.95rem;
+            }
+            .pjt-empty-icon { font-size: 2.4rem; opacity: 0.5; }
+            .pjt-record-count {
+                margin-top: 14px; font-family: var(--font-mono); font-size: 0.72rem;
+                color: #666; text-align: right; letter-spacing: 0.04em;
+            }
+            .pjt-card {
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 10px;
+                overflow: hidden; display: flex; flex-direction: column; cursor: pointer;
+                transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+            }
+            .pjt-card:hover {
+                border-color: rgba(0, 169, 193, 0.3);
+                box-shadow: 0 4px 12px rgba(0, 169, 193, 0.05);
+            }
+            .pjt-card-head {
+                display: flex; justify-content: space-between; align-items: center;
+                padding: 10px 14px; background: #111; border-bottom: 1px solid #1a1a1a;
+            }
+            .pjt-card-kind {
+                font-family: var(--font-mono); font-size: 0.7rem;
+                color: #00A9C1; letter-spacing: 0.1em; font-weight: 700;
+            }
+            .pjt-estado-badge {
+                font-family: var(--font-mono); font-size: 0.68rem; font-weight: 600;
+                padding: 2px 8px; border-radius: 4px;
+                text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .pjt-estado-pendiente { background: #1a1a1a; color: #888; }
+            .pjt-estado-en_armado { background: rgba(242, 141, 21, 0.15); color: #F28D15; }
+            .pjt-estado-listo { background: rgba(0, 204, 136, 0.15); color: #00CC88; }
+            .pjt-estado-despachado { background: rgba(0, 169, 193, 0.15); color: #00A9C1; }
+            .pjt-estado-cerrado { background: rgba(155, 125, 255, 0.15); color: #9B7DFF; }
+            .pjt-card-body { padding: 12px 14px; flex: 1; }
+            .pjt-card-title {
+                font-family: var(--font-main); font-size: 1.05rem; font-weight: 600;
+                color: #E8E8E8; margin-bottom: 10px; word-wrap: break-word;
+            }
+            .pjt-card-meta { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+            .pjt-meta-row {
+                display: flex; justify-content: space-between; align-items: baseline;
+                gap: 8px; font-family: var(--font-main); font-size: 0.85rem; color: #ccc;
+            }
+            .pjt-meta-key {
+                color: #777; font-family: var(--font-mono); font-size: 0.7rem;
+                text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .pjt-checks-head {
+                display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;
+            }
+            .pjt-checks-title {
+                font-family: var(--font-mono); font-size: 0.7rem; color: #888;
+                text-transform: uppercase; letter-spacing: 0.05em;
+            }
+            .pjt-checks-count { color: #E8E8E8; font-weight: 700; }
+            .pjt-checks-count.done { color: #00CC88; }
+            .pjt-progress-bar {
+                height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden;
+            }
+            .pjt-progress-fill {
+                height: 100%; background: linear-gradient(90deg, #00A9C1, #00CCFF);
+                transition: width 250ms ease;
+            }
+            .pjt-progress-fill.done { background: linear-gradient(90deg, #00CC88, #00FF9F); }
+            .pjt-card-actions {
+                display: flex; flex-direction: column; gap: 8px;
+                padding: 12px 14px; border-top: 1px solid #1a1a1a; background: #0a0a0a;
+            }
+            .pjt-card-btn {
+                width: 100%; padding: 11px 14px;
+                font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700;
+                border-radius: 6px; border: 1px solid transparent;
+                cursor: pointer; transition: all 200ms ease;
+                text-align: center; min-height: 44px;
+            }
+            .pjt-card-btn.primary { background: #00A9C1; color: #050505; }
+            .pjt-card-btn.primary:hover { background: #00C2DC; box-shadow: 0 0 12px rgba(0, 169, 193, 0.4); }
+            .pjt-card-btn.success { background: #00CC88; color: #050505; }
+            .pjt-card-btn.success:hover { background: #00E89C; box-shadow: 0 0 12px rgba(0, 204, 136, 0.4); }
+            .pjt-card-btn.success.disabled-soft { background: rgba(0, 204, 136, 0.30); color: #050505; cursor: default; }
+            .pjt-card-btn.secondary { background: #1a1a1a; color: #E8E8E8; border-color: #2a2a2a; }
+            .pjt-card-btn.secondary:hover { background: #222; border-color: #00A9C1; }
+            .pjt-card-btn.ghost { background: transparent; color: #888; border-color: #2a2a2a; }
+            .pjt-card-btn.ghost:hover { color: #00A9C1; border-color: #00A9C1; background: rgba(0, 169, 193, 0.05); }
+            .pjt-card-state-done {
+                padding: 10px 14px; text-align: center;
+                font-family: var(--font-mono); font-size: 0.85rem;
+                background: rgba(155, 125, 255, 0.10); color: #9B7DFF;
+                border: 1px solid rgba(155, 125, 255, 0.2); border-radius: 6px;
+            }
+            </style>
+        `;
+    },
 
     _escAttr(str) {
         return String(str ?? '')

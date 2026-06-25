@@ -21,9 +21,11 @@ const ProyectoDetalle = {
     _isSuperAdmin: false,
     _userRole: null,
     _novedades: [],
+    _checklist: [], // items de taller_proyecto_checklist (tab Producción)
 
     _tabs: [
         { key: 'resumen',     label: 'Resumen',           icon: '📋' },
+        { key: 'produccion',  label: 'Producción',        icon: '🔨' },
         { key: 'archivos',    label: 'Archivos Drive',    icon: '📁' },
         { key: 'novedades',   label: 'Novedades',         icon: '📢' },
         { key: 'cotizacion',  label: 'Cotización origen', icon: '🔗' },
@@ -279,6 +281,11 @@ const ProyectoDetalle = {
         const container = document.getElementById('pjdContent');
         if (!container) return;
         switch (this._activeTab) {
+            case 'produccion':
+                container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando producción…</span></div>';
+                container.innerHTML = await this._renderProduccionTab();
+                this._attachProduccionEvents();
+                return;
             case 'archivos':
                 container.innerHTML = this._renderArchivosTab();
                 this._attachArchivosEvents();
@@ -495,6 +502,122 @@ const ProyectoDetalle = {
         } catch (e) {
             console.warn('[ProyectoDetalle] Error guardando notas:', e.message);
             Toast.error('Error al guardar notas');
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: PRODUCCIÓN (checklist de taller)
+    // ═══════════════════════════════════════════
+
+    async _renderProduccionTab() {
+        const p = this._project;
+        const enTaller = p.estado === 'en_taller';
+
+        // Empty-state si el proyecto todavía no pasó a taller.
+        if (!enTaller) {
+            return `
+                <div class="pjd-tab-pad">
+                    <div class="pjd-section-empty pjd-prod-empty">
+                        <div class="pjd-prod-empty-icon">🔨</div>
+                        <p>Este proyecto aún no pasó a taller.</p>
+                        <p class="pjd-muted">El checklist de producción aparece cuando el estado del proyecto es <strong>En taller</strong>.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Cargar checklist (sembrar plantilla si está vacío).
+        try {
+            let checks = await API.getChecklistByProyecto(this._projectId);
+            if (!checks.length) {
+                checks = await API.seedChecklistTemplate(this._projectId);
+            }
+            this._checklist = checks || [];
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error cargando checklist:', e.message);
+            this._checklist = [];
+        }
+
+        return this._renderProduccionContent();
+    },
+
+    _renderProduccionContent() {
+        const checks = this._checklist || [];
+        const total = checks.length;
+        const done = checks.reduce((a, c) => a + (c.checked ? 1 : 0), 0);
+        const pct = total ? Math.round((done / total) * 100) : 0;
+        const allDone = total > 0 && done === total;
+        // El taller puede tildar; oficina también salvo que sea read-only.
+        const canEdit = !this._isRO;
+
+        const estadoTaller = this._project.estado_taller || 'pendiente';
+        const cfg = this._cicloEstados[estadoTaller] || this._cicloEstados.pendiente;
+
+        const items = checks.map(c => `
+            <label class="pjd-prod-item ${c.checked ? 'checked' : ''}" data-id="${c.id}">
+                <input type="checkbox" ${c.checked ? 'checked' : ''} ${canEdit ? '' : 'disabled'} data-check-id="${c.id}">
+                <span class="pjd-prod-box">${c.checked ? '✓' : ''}</span>
+                <span class="pjd-prod-label">${this._esc(c.label || '')}</span>
+            </label>
+        `).join('');
+
+        return `
+            <div class="pjd-tab-pad">
+                <div class="pjd-prod-head">
+                    <div class="pjd-prod-head-left">
+                        <span class="pjd-prod-h-title">Checklist de armado</span>
+                        <span class="pjd-prod-ciclo" style="--ciclo-color:${cfg.color}">
+                            <span class="pjd-ciclo-dot" style="background:${cfg.color}"></span>${this._esc(cfg.label)}
+                        </span>
+                    </div>
+                    <span class="pjd-prod-count ${allDone ? 'done' : ''}">${done}/${total} · ${pct}%</span>
+                </div>
+                <div class="pjd-prod-progress-bar">
+                    <div class="pjd-prod-progress-fill ${allDone ? 'done' : ''}" style="width:${pct}%"></div>
+                </div>
+                ${total === 0
+                    ? '<p class="pjd-section-empty">No hay pasos de producción cargados.</p>'
+                    : `<div class="pjd-prod-grid">${items}</div>`}
+                ${canEdit ? '' : '<p class="pjd-muted pjd-prod-ro">Solo lectura.</p>'}
+            </div>
+        `;
+    },
+
+    _attachProduccionEvents() {
+        const container = document.getElementById('pjdContent');
+        if (!container) return;
+        if (this._isRO) return;
+        container.querySelectorAll('input[data-check-id]').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const id = e.target.dataset.checkId;
+                this._toggleChecklistItem(id, e.target.checked);
+            });
+        });
+    },
+
+    async _toggleChecklistItem(itemId, willCheck) {
+        const it = (this._checklist || []).find(c => String(c.id) === String(itemId));
+        if (!it) return;
+        const prev = it.checked;
+        it.checked = willCheck;
+        // Auto-estado: primer check → en_armado (igual que taller.js).
+        const p = this._project;
+        if (willCheck && (!p.estado_taller || p.estado_taller === 'pendiente')) {
+            const prevEstado = p.estado_taller;
+            p.estado_taller = 'en_armado';
+            const okEstado = await API.setEstadoTaller(this._projectId, 'en_armado').catch(() => null);
+            if (!okEstado) p.estado_taller = prevEstado;
+        }
+        const r = await API.setChecklistItemChecked(itemId, willCheck);
+        if (!r) {
+            it.checked = prev;
+            Toast.error('No se pudo guardar.');
+        }
+        // Re-render del contenido del tab para reflejar progreso/estilos.
+        const container = document.getElementById('pjdContent');
+        if (container) {
+            container.innerHTML = this._renderProduccionContent();
+            this._attachProduccionEvents();
         }
     },
 
@@ -2044,6 +2167,70 @@ const ProyectoDetalle = {
                 transition: border-color 200ms ease;
             }
             .pjd-link-btn:hover { border-bottom-color: #00A9C1; }
+
+            /* Tab Producción (checklist de taller) */
+            .pjd-prod-empty {
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                gap: 8px; text-align: center; padding: 48px 20px;
+            }
+            .pjd-prod-empty-icon { font-size: 2.6rem; opacity: 0.5; }
+            .pjd-prod-head {
+                display: flex; justify-content: space-between; align-items: center;
+                gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+            }
+            .pjd-prod-head-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+            .pjd-prod-h-title {
+                font-family: var(--font-main); font-size: 1.05rem; font-weight: 700; color: #E8E8E8;
+            }
+            .pjd-prod-ciclo {
+                display: inline-flex; align-items: center; gap: 6px;
+                font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+                text-transform: uppercase; letter-spacing: 0.05em;
+                color: var(--ciclo-color, #888);
+                background: color-mix(in srgb, var(--ciclo-color, #888) 12%, transparent);
+                padding: 3px 9px; border-radius: 4px;
+            }
+            .pjd-prod-ciclo .pjd-ciclo-dot {
+                width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+            }
+            .pjd-prod-count {
+                font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; color: #E8E8E8;
+            }
+            .pjd-prod-count.done { color: #00CC88; }
+            .pjd-prod-progress-bar {
+                height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden; margin-bottom: 18px;
+            }
+            .pjd-prod-progress-fill {
+                height: 100%; background: linear-gradient(90deg, #00A9C1, #00CCFF);
+                transition: width 250ms ease;
+            }
+            .pjd-prod-progress-fill.done { background: linear-gradient(90deg, #00CC88, #00FF9F); }
+            .pjd-prod-grid {
+                display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;
+            }
+            .pjd-prod-item {
+                display: flex; align-items: center; gap: 10px;
+                padding: 11px 13px; min-height: 44px;
+                background: #111; border: 1px solid #2a2a2a; border-radius: 6px;
+                cursor: pointer; transition: all 180ms ease;
+                font-family: var(--font-main); font-size: 0.9rem; color: #ccc;
+            }
+            .pjd-prod-item:hover { border-color: #00A9C1; background: #161616; }
+            .pjd-prod-item.checked {
+                background: rgba(0, 204, 136, 0.08); border-color: rgba(0, 204, 136, 0.4); color: #00CC88;
+            }
+            .pjd-prod-item input[type="checkbox"] { position: absolute; opacity: 0; pointer-events: none; }
+            .pjd-prod-box {
+                width: 22px; height: 22px; flex-shrink: 0;
+                background: #0a0a0a; border: 2px solid #2a2a2a; border-radius: 4px;
+                display: flex; align-items: center; justify-content: center;
+                color: transparent; font-weight: 700; transition: all 180ms ease;
+            }
+            .pjd-prod-item.checked .pjd-prod-box {
+                background: #00CC88; border-color: #00CC88; color: #050505;
+            }
+            .pjd-prod-label { flex: 1; line-height: 1.3; }
+            .pjd-prod-ro { margin-top: 14px; font-family: var(--font-mono); font-size: 0.72rem; }
         `;
     },
 };
