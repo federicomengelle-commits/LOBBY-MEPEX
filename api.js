@@ -4587,6 +4587,10 @@ const API = {
             costo_referencial: data.costoReferencial ?? data.costo_referencial ?? null,
             activo: data.activo !== false,
             notas: data.notas || null,
+            // Fase D: MEPEX propio (true) vs Tercero (false). Si no viene, se deriva del propietario.
+            es_propio: (data.esPropio ?? data.es_propio) !== undefined
+                ? !!(data.esPropio ?? data.es_propio)
+                : ((data.propietario || 'mepex') === 'mepex'),
             // Fase 3 Flota: uso + plata
             tipo: data.tipo || null,
             estado: data.estado || 'disponible',
@@ -4639,6 +4643,8 @@ const API = {
         if (data.costo_referencial !== undefined) payload.costo_referencial = data.costo_referencial;
         if (data.activo !== undefined) payload.activo = !!data.activo;
         if (data.notas !== undefined) payload.notas = data.notas || null;
+        if (data.esPropio !== undefined) payload.es_propio = !!data.esPropio;
+        if (data.es_propio !== undefined) payload.es_propio = !!data.es_propio;
         if (data.tipo !== undefined) payload.tipo = data.tipo || null;
         if (data.estado !== undefined) payload.estado = data.estado;
         if (data.choferHabitualId !== undefined) payload.chofer_habitual_id = data.choferHabitualId || null;
@@ -6823,6 +6829,331 @@ const API = {
         } catch (e) {
             console.warn('[API] getEquiposParaRemito:', e.message);
             return [];
+        }
+    },
+
+    // ═════════════════════════════════════════════════════════════
+    //  TRANSPORTE EVENTO (Fase D — evento_transporte / _items)
+    // ═════════════════════════════════════════════════════════════
+    // Modelo nuevo de transporte que vive en la ficha del Evento (NO confundir
+    // con las tablas legacy `cargas` / `logistica_*`, que quedan inertes).
+    // Cada fila = un vehículo afectado al evento en una fase, con sus ítems
+    // (proyectos / equipos / manuales). Remitos van al bucket 'remitos'.
+    // ═════════════════════════════════════════════════════════════
+
+    // Resuelve los ítems de un transporte: nombre de proyecto / equipo / texto.
+    async _resolveTransporteItems(transporteId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_transporte_items')
+                .select('*')
+                .eq('transporte_id', transporteId)
+                .eq('_deleted', false)
+                .order('created_at', { ascending: true });
+            if (error) throw error;
+            const items = data || [];
+
+            const proyectoIds = [...new Set(items.filter(i => i.proyecto_id).map(i => i.proyecto_id))];
+            const equipoIds = [...new Set(items.filter(i => i.equipo_id).map(i => i.equipo_id))];
+            const pMap = {}, eMap = {};
+            if (proyectoIds.length) {
+                const { data: ps } = await supabaseClient
+                    .from('proyectos').select('id, nombre').in('id', proyectoIds);
+                (ps || []).forEach(p => { pMap[p.id] = p.nombre; });
+            }
+            if (equipoIds.length) {
+                const { data: es } = await supabaseClient
+                    .from('equipos').select('id, nombre, es_contenedor').in('id', equipoIds);
+                (es || []).forEach(e => { eMap[e.id] = e; });
+            }
+            return items.map(i => ({
+                ...i,
+                proyecto_nombre: i.proyecto_id ? (pMap[i.proyecto_id] || null) : null,
+                equipo_nombre: i.equipo_id ? (eMap[i.equipo_id]?.nombre || null) : null,
+                equipo_es_contenedor: i.equipo_id ? !!eMap[i.equipo_id]?.es_contenedor : false,
+                // Etiqueta lista para mostrar
+                _label: i.item_type === 'proyecto' ? (pMap[i.proyecto_id] || 'Proyecto')
+                      : i.item_type === 'equipo' ? (eMap[i.equipo_id]?.nombre || 'Equipo')
+                      : (i.descripcion_manual || 'Ítem'),
+            }));
+        } catch (e) {
+            console.warn('[API] _resolveTransporteItems:', e.message);
+            return [];
+        }
+    },
+
+    // Enriquecе una fila de transporte: items resueltos + vehículo + chofer.
+    async _enrichTransporte(t) {
+        if (!t) return null;
+        const items = await this._resolveTransporteItems(t.id);
+        // Vehículo: de flota (vehiculo_id) o adhoc (campos sueltos).
+        let veh = null;
+        if (t.vehiculo_id) {
+            try {
+                const { data } = await supabaseClient
+                    .from('vehiculos')
+                    .select('id, descripcion, patente, propietario, es_propio, contacto_nombre, contacto_telefono')
+                    .eq('id', t.vehiculo_id).maybeSingle();
+                veh = data || null;
+            } catch { /* silencioso */ }
+        }
+        const vehiculo_label = veh
+            ? `${veh.descripcion || ''}${veh.patente ? ' · ' + veh.patente : ''}`.trim() || 's/descripción'
+            : (t.vehiculo_adhoc_descripcion || 'Sin vehículo');
+        const vehiculo_patente = veh ? (veh.patente || null) : (t.vehiculo_adhoc_patente || null);
+        // es_propio: si está en flota usa la columna; si es adhoc "solo este viaje" → tercero.
+        const es_propio = veh ? (veh.es_propio === true || (veh.es_propio == null && veh.propietario === 'mepex')) : false;
+
+        // Chofer: de personas (chofer_persona_id) o texto suelto.
+        let choferNombre = t.chofer_nombre || null;
+        let choferTelefono = t.chofer_telefono || null;
+        if (t.chofer_persona_id) {
+            try {
+                const { data } = await supabaseClient
+                    .from('personas')
+                    .select('id, nombre, apellido, telefono')
+                    .eq('id', t.chofer_persona_id).maybeSingle();
+                if (data) {
+                    choferNombre = `${data.nombre || ''}${data.apellido ? ' ' + data.apellido : ''}`.trim() || choferNombre;
+                    choferTelefono = data.telefono || choferTelefono;
+                }
+            } catch { /* silencioso */ }
+        }
+
+        const numProyectos = items.filter(i => i.item_type === 'proyecto').length;
+        const numEquipos = items.filter(i => i.item_type === 'equipo').length;
+        const numManuales = items.filter(i => i.item_type === 'manual').length;
+
+        return {
+            ...t,
+            items,
+            vehiculo: veh,
+            vehiculo_label,
+            vehiculo_patente,
+            es_propio,
+            chofer_nombre_resuelto: choferNombre,
+            chofer_telefono_resuelto: choferTelefono,
+            num_proyectos: numProyectos,
+            num_equipos: numEquipos,
+            num_manuales: numManuales,
+        };
+    },
+
+    async getTransporteByEvento(eventoId) {
+        if (!eventoId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_transporte')
+                .select('*')
+                .eq('evento_id', eventoId)
+                .eq('_deleted', false)
+                .order('fecha', { ascending: true })
+                .order('fase', { ascending: true });
+            if (error) throw error;
+            const rows = data || [];
+            return await Promise.all(rows.map(t => this._enrichTransporte(t)));
+        } catch (e) {
+            console.warn('[API] getTransporteByEvento:', e.message);
+            return [];
+        }
+    },
+
+    async getTransporteById(id) {
+        if (!id) return null;
+        try {
+            const { data, error } = await supabaseClient
+                .from('evento_transporte')
+                .select('*')
+                .eq('id', id)
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) return null;
+            return await this._enrichTransporte(data);
+        } catch (e) {
+            console.warn('[API] getTransporteById:', e.message);
+            return null;
+        }
+    },
+
+    async createTransporte(data) {
+        const user = Auth.getUser?.();
+        const payload = {
+            evento_id: data.eventoId || data.evento_id,
+            vehiculo_id: data.vehiculoId || data.vehiculo_id || null,
+            vehiculo_adhoc_descripcion: data.vehiculoAdhocDescripcion || data.vehiculo_adhoc_descripcion || null,
+            vehiculo_adhoc_patente: data.vehiculoAdhocPatente || data.vehiculo_adhoc_patente || null,
+            vehiculo_adhoc_propietario: data.vehiculoAdhocPropietario || data.vehiculo_adhoc_propietario || null,
+            chofer_persona_id: data.choferPersonaId || data.chofer_persona_id || null,
+            chofer_nombre: data.choferNombre || data.chofer_nombre || null,
+            chofer_telefono: data.choferTelefono || data.chofer_telefono || null,
+            fase: data.fase || 'armado',
+            fecha: data.fecha || null,
+            hora_salida: data.horaSalida || data.hora_salida || null,
+            destino: data.destino || null,
+            notas: data.notas || null,
+            created_by: user?.uid || user?.id || null,
+        };
+        if (!payload.evento_id) {
+            console.warn('[API] createTransporte: evento_id obligatorio');
+            return null;
+        }
+        try {
+            const { data: row, error } = await supabaseClient
+                .from('evento_transporte').insert(payload).select().single();
+            if (error) throw error;
+            return row;
+        } catch (e) {
+            console.warn('[API] createTransporte:', e.message);
+            return null;
+        }
+    },
+
+    async updateTransporte(id, data) {
+        const payload = {};
+        if (data.vehiculoId !== undefined) payload.vehiculo_id = data.vehiculoId || null;
+        if (data.vehiculo_id !== undefined) payload.vehiculo_id = data.vehiculo_id || null;
+        if (data.vehiculoAdhocDescripcion !== undefined) payload.vehiculo_adhoc_descripcion = data.vehiculoAdhocDescripcion || null;
+        if (data.vehiculo_adhoc_descripcion !== undefined) payload.vehiculo_adhoc_descripcion = data.vehiculo_adhoc_descripcion || null;
+        if (data.vehiculoAdhocPatente !== undefined) payload.vehiculo_adhoc_patente = data.vehiculoAdhocPatente || null;
+        if (data.vehiculo_adhoc_patente !== undefined) payload.vehiculo_adhoc_patente = data.vehiculo_adhoc_patente || null;
+        if (data.vehiculoAdhocPropietario !== undefined) payload.vehiculo_adhoc_propietario = data.vehiculoAdhocPropietario || null;
+        if (data.vehiculo_adhoc_propietario !== undefined) payload.vehiculo_adhoc_propietario = data.vehiculo_adhoc_propietario || null;
+        if (data.choferPersonaId !== undefined) payload.chofer_persona_id = data.choferPersonaId || null;
+        if (data.chofer_persona_id !== undefined) payload.chofer_persona_id = data.chofer_persona_id || null;
+        if (data.choferNombre !== undefined) payload.chofer_nombre = data.choferNombre || null;
+        if (data.chofer_nombre !== undefined) payload.chofer_nombre = data.chofer_nombre || null;
+        if (data.choferTelefono !== undefined) payload.chofer_telefono = data.choferTelefono || null;
+        if (data.chofer_telefono !== undefined) payload.chofer_telefono = data.chofer_telefono || null;
+        if (data.fase !== undefined) payload.fase = data.fase;
+        if (data.fecha !== undefined) payload.fecha = data.fecha || null;
+        if (data.horaSalida !== undefined) payload.hora_salida = data.horaSalida || null;
+        if (data.hora_salida !== undefined) payload.hora_salida = data.hora_salida || null;
+        if (data.destino !== undefined) payload.destino = data.destino || null;
+        if (data.notas !== undefined) payload.notas = data.notas || null;
+        try {
+            const { error } = await supabaseClient
+                .from('evento_transporte').update(payload).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] updateTransporte:', e.message);
+            return null;
+        }
+    },
+
+    // Reemplaza el set de ítems del transporte (soft-delete los viejos + insert).
+    async setTransporteItems(transporteId, items = []) {
+        if (!transporteId) return null;
+        try {
+            // Soft-delete los actuales
+            await supabaseClient
+                .from('evento_transporte_items')
+                .update({ _deleted: true })
+                .eq('transporte_id', transporteId)
+                .eq('_deleted', false);
+            // Insertar los nuevos
+            const rows = (items || []).map(i => ({
+                transporte_id: transporteId,
+                item_type: i.itemType || i.item_type || 'manual',
+                proyecto_id: i.proyectoId || i.proyecto_id || null,
+                equipo_id: i.equipoId || i.equipo_id || null,
+                descripcion_manual: i.descripcionManual || i.descripcion_manual || null,
+                cantidad: i.cantidad != null ? i.cantidad : 1,
+                detallar_contenido: !!(i.detallarContenido ?? i.detallar_contenido),
+                notas: i.notas || null,
+            }));
+            if (rows.length) {
+                const { error } = await supabaseClient
+                    .from('evento_transporte_items').insert(rows);
+                if (error) throw error;
+            }
+            return true;
+        } catch (e) {
+            console.warn('[API] setTransporteItems:', e.message);
+            return null;
+        }
+    },
+
+    async deleteTransporte(id) {
+        if (!id) return null;
+        try {
+            const { error } = await supabaseClient
+                .from('evento_transporte').update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            await supabaseClient
+                .from('evento_transporte_items')
+                .update({ _deleted: true })
+                .eq('transporte_id', id)
+                .eq('_deleted', false);
+            return true;
+        } catch (e) {
+            console.warn('[API] deleteTransporte:', e.message);
+            return null;
+        }
+    },
+
+    // Crea un vehículo ajeno y lo guarda en Flota (es_propio=false). Reusa createVehiculo.
+    async crearVehiculoAdhoc(data) {
+        return this.createVehiculo({
+            descripcion: data.descripcion || data.vehiculoAdhocDescripcion || '',
+            patente: data.patente || data.vehiculoAdhocPatente || null,
+            propietario: 'tercero',
+            es_propio: false,
+            contacto_nombre: data.propietario || data.contactoNombre || data.contacto_nombre || null,
+            contacto_telefono: data.contactoTelefono || data.contacto_telefono || null,
+            notas: data.notas || null,
+        });
+    },
+
+    // ── Storage de remitos de transporte (bucket 'remitos', clona el patrón de cargas) ──
+    async uploadTransporteRemitoPDF(transporteId, blob) {
+        const path = `transporte/${transporteId}/remito.pdf`;
+        try {
+            const { error } = await supabaseClient.storage
+                .from('remitos')
+                .upload(path, blob, { contentType: 'application/pdf', upsert: true, cacheControl: '60' });
+            if (error) throw error;
+            return path;
+        } catch (e) {
+            console.warn('[API] uploadTransporteRemitoPDF:', e.message);
+            return null;
+        }
+    },
+
+    async setTransporteRemitoPDF(id, url) {
+        try {
+            const { error } = await supabaseClient
+                .from('evento_transporte').update({ remito_pdf_url: url }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] setTransporteRemitoPDF:', e.message);
+            return null;
+        }
+    },
+
+    async uploadTransporteRemitoFirmado(id, file) {
+        const ext = (() => {
+            if (!file) return 'jpg';
+            const fromType = (file.type || '').split('/')[1];
+            if (fromType && ['jpeg', 'png', 'webp'].includes(fromType)) return fromType === 'jpeg' ? 'jpg' : fromType;
+            const fromName = (file.name || '').split('.').pop()?.toLowerCase();
+            if (fromName && ['jpg', 'jpeg', 'png', 'webp'].includes(fromName)) return fromName === 'jpeg' ? 'jpg' : fromName;
+            return 'jpg';
+        })();
+        const path = `transporte/${id}/firmado.${ext}`;
+        try {
+            const { error } = await supabaseClient.storage
+                .from('remitos')
+                .upload(path, file, { contentType: file?.type || 'image/jpeg', upsert: true, cacheControl: '60' });
+            if (error) throw error;
+            // Persistir el path en la fila
+            await supabaseClient
+                .from('evento_transporte').update({ remito_firmado_url: path }).eq('id', id);
+            return path;
+        } catch (e) {
+            console.warn('[API] uploadTransporteRemitoFirmado:', e.message);
+            return null;
         }
     },
 };

@@ -1806,362 +1806,474 @@ const EventosModule = {
         });
     },
 
+    // ─────────────────────────────────────────────────────────────
+    //  TRANSPORTE EVENTO (Fase D — evento_transporte / _items)
+    //  Cards por vehículo en la ficha del Evento. La capa legacy
+    //  (cargas / logistica_movimientos) quedó retirada de ESTA sección.
+    // ─────────────────────────────────────────────────────────────
     async _loadTransporteSection(eventoId) {
         const container = document.getElementById('evTransporteContent');
         if (!container) return;
         try {
-            // Cargas nuevas (schema UUID) en paralelo con transporte legacy.
-            const [cargasNew, movimientos] = await Promise.all([
-                API.getCargas({ eventoId }).then(rs => (rs || []).filter(c => c.estado !== 'cancelada')),
-                API.getEventoTransporte(eventoId),
-            ]);
-            this._transporteCache[eventoId] = movimientos;
-
-            // Si hay cargas nuevas, mostramos esa sección (más completa). El
-            // transporte legacy queda como fallback solo cuando no hay cargas
-            // nuevas, para no duplicar visualmente.
-            if (cargasNew.length > 0) {
-                container.innerHTML = this._renderPanelCargasNew(eventoId, cargasNew);
-                this._attachCargasNewEvents();
-            } else {
-                container.innerHTML = this._renderPanelTransporte(eventoId, movimientos);
-                this._attachTransporteEvents(eventoId, movimientos);
-            }
+            const transportes = await API.getTransporteByEvento(eventoId);
+            this._transporteCache[eventoId] = transportes;
+            container.innerHTML = this._renderPanelTransporte(eventoId, transportes);
+            this._attachTransporteEvents(eventoId);
         } catch (e) {
             container.innerHTML = `<div class="ev-panel-section"><p class="ev-section-empty" style="color:#F28D15">Error cargando transporte</p></div>`;
         }
     },
 
-    // Render compacto de cargas nuevas (schema UUID) en el side panel del evento.
-    // La vista completa con CRUD está en el módulo Logística. Acá solo info y deep-link.
-    _renderPanelCargasNew(eventoId, cargas) {
-        const byFase = { armado: [], desarme: [], intermedio: [] };
-        cargas.forEach(c => { (byFase[c.fase || 'armado'] || byFase.armado).push(c); });
+    _renderPanelTransporte(eventoId, transportes) {
         const faseColor = { armado: '#00CC88', desarme: '#F28D15', intermedio: '#9B7DFF' };
         const faseLabel = { armado: 'Armado', desarme: 'Desarme', intermedio: 'Intermedio' };
-        const estadoColor = {
-            borrador: '#888', aprobada: '#00A9C1', en_curso: '#F28D15',
-            completada: '#00CC88', cancelada: '#ff4444'
-        };
 
-        const renderCarga = (c) => {
-            const veh = c.vehiculo?.descripcion || 'Sin vehículo';
-            const chofer = c.chofer ? `${c.chofer.nombre}${c.chofer.apellido ? ' ' + c.chofer.apellido : ''}` : 'Sin chofer';
-            const fechaHora = c.fecha
-                ? `${this._fmtDate(c.fecha)}${c.hora_carga ? ' ' + c.hora_carga.slice(0,5) : ''}`
+        const cardHTML = (t) => {
+            const propio = t.es_propio === true;
+            const propChip = `<span class="ev-trans-chip ${propio ? 'mepex' : 'tercero'}">${propio ? 'MEPEX' : 'Tercero'}</span>`;
+            const patente = t.vehiculo_patente ? this._escAttr(t.vehiculo_patente) : 's/patente';
+            const fechaHora = t.fecha
+                ? `${this._fmtDate(t.fecha)}${t.hora_salida ? ' ' + String(t.hora_salida).slice(0, 5) : ''}`
                 : '—';
-            const numStands = (c.carga_proyectos || []).length;
+            const fase = faseLabel[t.fase] || t.fase || '—';
+            const tel = t.chofer_telefono_resuelto;
+            const choferTxt = t.chofer_nombre_resuelto ? this._escAttr(t.chofer_nombre_resuelto) : 'Sin chofer';
+            const choferHTML = tel
+                ? `<a href="https://wa.me/${this._waNumber(tel)}" target="_blank" rel="noopener" class="ev-trans-chofer-link">👤 ${choferTxt}</a>`
+                : `<span>👤 ${choferTxt}</span>`;
+
+            const cnt = [];
+            if (t.num_proyectos) cnt.push(`${t.num_proyectos} stand${t.num_proyectos === 1 ? '' : 's'}`);
+            if (t.num_equipos) cnt.push(`${t.num_equipos} equipo${t.num_equipos === 1 ? '' : 's'}`);
+            if (t.num_manuales) cnt.push(`${t.num_manuales} ítem${t.num_manuales === 1 ? '' : 's'}`);
+            const cntTxt = cnt.length ? cnt.join(' · ') : 'Sin ítems';
+
+            const itemsDetail = (t.items || []).map(i => {
+                const ico = i.item_type === 'proyecto' ? '🏗️' : i.item_type === 'equipo' ? '📦' : '•';
+                const det = (i.item_type === 'equipo' && i.detallar_contenido) ? ' <span class="ev-trans-detail-flag">(desglosar)</span>' : '';
+                const cant = (i.cantidad && i.cantidad != 1) ? ` ×${i.cantidad}` : '';
+                return `<li>${ico} ${this._escAttr(i._label)}${cant}${det}</li>`;
+            }).join('');
+
+            const remitoTxt = t.remito_firmado_url
+                ? '<span class="ev-trans-remito ok">✓ Remito firmado</span>'
+                : (t.remito_pdf_url ? '<span class="ev-trans-remito gen">Remito generado</span>' : '<span class="ev-trans-remito none">Sin remito</span>');
+
             return `
-                <div class="ev-cargaN-item" data-carga-id="${c.id}" style="border-left-color:${estadoColor[c.estado] || '#888'};">
-                    <div class="ev-cargaN-head">
-                        <span class="ev-cargaN-veh">🚚 ${this._escAttr(veh)}</span>
-                        <span class="ev-cargaN-estado" style="color:${estadoColor[c.estado] || '#888'};">${c.estado}</span>
+                <div class="ev-trans-card" data-trans-id="${this._escAttr(t.id)}" style="border-left-color:${faseColor[t.fase] || '#888'};">
+                    <div class="ev-trans-head">
+                        <span class="ev-trans-veh">🚚 ${this._escAttr(t.vehiculo_label)}</span>
+                        ${propChip}
                     </div>
-                    <div class="ev-cargaN-meta">
-                        <span>👤 ${this._escAttr(chofer)}</span>
+                    <div class="ev-trans-meta">
+                        <span>🔖 ${patente}</span>
+                        <span class="ev-trans-fase" style="color:${faseColor[t.fase] || '#888'};">${fase}</span>
                         <span>📅 ${fechaHora}</span>
-                        <span>📦 ${numStands} stand${numStands === 1 ? '' : 's'}</span>
+                    </div>
+                    <div class="ev-trans-meta">
+                        ${choferHTML}
+                    </div>
+                    <button class="ev-trans-items-toggle" data-trans-toggle="${this._escAttr(t.id)}">📦 ${cntTxt} ▾</button>
+                    <ul class="ev-trans-items" id="evTransItems-${this._escAttr(t.id)}" style="display:none;">
+                        ${itemsDetail || '<li class="ev-section-empty">Sin ítems cargados</li>'}
+                    </ul>
+                    <div class="ev-trans-foot">
+                        ${remitoTxt}
+                        ${!this._isRO ? `
+                        <div class="ev-trans-actions">
+                            <button class="ev-icon-btn" data-trans-edit="${this._escAttr(t.id)}" title="Editar">✏️</button>
+                            <button class="ev-icon-btn" data-trans-remito="${this._escAttr(t.id)}" title="Generar remito">📄</button>
+                            <button class="ev-icon-btn" data-trans-firmado="${this._escAttr(t.id)}" title="Subir foto firmada">📷</button>
+                            <button class="ev-icon-btn ev-remove-persona-btn" data-trans-del="${this._escAttr(t.id)}" title="Eliminar">&times;</button>
+                        </div>` : ''}
                     </div>
                 </div>
             `;
         };
-
-        const faseBlock = (key) => {
-            const list = byFase[key];
-            if (!list || list.length === 0) return '';
-            return `
-                <div class="ev-cargaN-fase">
-                    <div class="ev-cargaN-fase-label" style="color:${faseColor[key]};">${faseLabel[key]} (${list.length})</div>
-                    ${list.map(renderCarga).join('')}
-                </div>
-            `;
-        };
-
-        // Vehículos distintos que van al evento (agregados de las cargas)
-        const vehMap = {};
-        cargas.forEach(c => { const v = c.vehiculo; if (v && v.id) { if (!vehMap[v.id]) vehMap[v.id] = { ...v, count: 0 }; vehMap[v.id].count++; } });
-        const vehs = Object.values(vehMap);
-        const vehSummary = vehs.length ? `
-            <div class="ev-cargaN-vehs">
-                ${vehs.map(v => `<span class="ev-cargaN-vchip">🚚 ${this._escAttr(v.descripcion)}${v.patente ? ' · ' + this._escAttr(v.patente) : ''}${v.count > 1 ? ` <b>×${v.count}</b>` : ''}</span>`).join('')}
-            </div>` : '';
 
         return `
             <style>
-                .ev-cargaN-item {
-                    background:#1a1a1a; border:1px solid #2a2a2a;
-                    border-left:3px solid #888; border-radius:6px;
-                    padding:8px 10px; margin-bottom:6px; cursor:pointer;
-                    transition: all 150ms ease;
-                }
-                .ev-cargaN-item:hover { background:#222; border-color:#00A9C1; }
-                .ev-cargaN-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:4px; }
-                .ev-cargaN-veh { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
-                .ev-cargaN-estado { font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; font-weight:700; }
-                .ev-cargaN-meta { display:flex; flex-wrap:wrap; gap:10px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; }
-                .ev-cargaN-fase { margin-bottom: 8px; }
-                .ev-cargaN-fase-label { font-family:'Space Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px; font-weight:700; }
-                .ev-cargaN-vehs { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-                .ev-cargaN-vchip { background:#00A9C115; border:1px solid #00A9C140; border-radius:14px; padding:3px 10px; font-family:'Space Mono',monospace; font-size:11px; color:#E8E8E8; }
-                .ev-cargaN-vchip b { color:#00A9C1; }
+                .ev-trans-card { background:#1a1a1a; border:1px solid #2a2a2a; border-left:3px solid #888; border-radius:6px; padding:10px 12px; margin-bottom:8px; }
+                .ev-trans-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
+                .ev-trans-veh { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
+                .ev-trans-chip { font-family:'Space Mono',monospace; font-size:9px; text-transform:uppercase; font-weight:700; border-radius:10px; padding:2px 8px; }
+                .ev-trans-chip.mepex { background:#00A9C115; border:1px solid #00A9C140; color:#00A9C1; }
+                .ev-trans-chip.tercero { background:#F28D1515; border:1px solid #F28D1540; color:#F28D15; }
+                .ev-trans-meta { display:flex; flex-wrap:wrap; gap:10px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; margin-bottom:4px; }
+                .ev-trans-fase { text-transform:uppercase; font-weight:700; font-size:10px; }
+                .ev-trans-chofer-link { color:#00A9C1; text-decoration:none; }
+                .ev-trans-chofer-link:hover { text-decoration:underline; }
+                .ev-trans-items-toggle { background:transparent; border:none; color:#00A9C1; font-family:'Space Mono',monospace; font-size:11px; cursor:pointer; padding:4px 0; text-align:left; }
+                .ev-trans-items { list-style:none; margin:4px 0 6px; padding:0 0 0 4px; display:flex; flex-direction:column; gap:3px; font-size:12px; color:#ccc; }
+                .ev-trans-items li { font-family:'Outfit',sans-serif; }
+                .ev-trans-detail-flag { color:#9B7DFF; font-size:10px; }
+                .ev-trans-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
+                .ev-trans-remito { font-family:'Space Mono',monospace; font-size:10px; }
+                .ev-trans-remito.ok { color:#00CC88; }
+                .ev-trans-remito.gen { color:#00A9C1; }
+                .ev-trans-remito.none { color:#666; }
+                .ev-trans-actions { display:flex; gap:4px; }
             </style>
             <div class="ev-panel-section" id="evSecTransporte">
                 <div class="ev-section-header">
-                    <h3 class="ev-section-title">Vehículos y cargas
-                        <span class="ev-equipo-count">${cargas.length}</span>
-                    </h3>
-                    <a href="#logistica?tab=cargas" class="ev-add-persona-btn" style="text-decoration:none;">→ Ver / crear en Logística</a>
-                </div>
-                ${vehSummary}
-                ${faseBlock('armado')}
-                ${faseBlock('intermedio')}
-                ${faseBlock('desarme')}
-            </div>
-        `;
-    },
-
-    _attachCargasNewEvents() {
-        document.querySelectorAll('.ev-cargaN-item[data-carga-id]').forEach(el => {
-            el.addEventListener('click', () => {
-                window.location.hash = `logistica?tab=cargas&id=${el.dataset.cargaId}`;
-            });
-        });
-    },
-
-    _renderPanelTransporte(eventoId, movimientos) {
-        const checkLabel = (m) => {
-            if (m.checkRetorno) return { label: 'Volvió', color: '#00CC88' };
-            if (m.checkDescarga) return { label: 'Descargado', color: '#00A9C1' };
-            if (m.checkLlegada) return { label: 'Llegó', color: '#9B7DFF' };
-            if (m.checkSalida) return { label: 'En viaje', color: '#F28D15' };
-            return { label: 'Pendiente', color: '#666' };
-        };
-        return `
-            <div class="ev-panel-section" id="evSecTransporte">
-                <div class="ev-section-header">
                     <h3 class="ev-section-title">Transporte
-                        <span class="ev-equipo-count">${movimientos.length > 0 ? movimientos.length : ''}</span>
+                        <span class="ev-equipo-count">${transportes.length > 0 ? transportes.length : ''}</span>
                     </h3>
                     ${!this._isRO ? `
-                        <button class="ev-add-persona-btn" data-add-movimiento="${eventoId}" title="Agregar movimiento">
-                            + Agregar
+                        <button class="ev-add-persona-btn" data-trans-add="${this._escAttr(eventoId)}" title="Agregar vehículo">
+                            + Agregar vehículo
                         </button>
                     ` : ''}
                 </div>
-                ${movimientos.length > 0 ? `
-                    <div class="ev-equipo-list">
-                        ${movimientos.map(m => {
-                            const st = checkLabel(m);
-                            return `
-                            <div class="ev-mov-item" data-mov-id="${m.id}">
-                                <div class="ev-mov-route">
-                                    <span class="ev-mov-origen">${this._escAttr(m.origen)}</span>
-                                    <span class="ev-mov-arrow">→</span>
-                                    <span class="ev-mov-destino">${this._escAttr(m.destino)}</span>
-                                </div>
-                                <div class="ev-mov-meta">
-                                    <span class="ev-mov-vehiculo">🚚 ${this._escAttr(m.vehiculoNombre)}${m.vehiculoPatente ? ` · ${this._escAttr(m.vehiculoPatente)}` : ''}</span>
-                                    <span class="ev-mov-chofer">👤 ${this._escAttr(m.choferNombre)}</span>
-                                </div>
-                                <div class="ev-mov-meta">
-                                    <span class="ev-mov-fecha">${this._fmtDate(m.fecha)}${m.horaProgramada ? ' ' + m.horaProgramada : ''}</span>
-                                    <span class="ev-mov-status" style="color:${st.color};border-color:${st.color}40;background:${st.color}15;">${st.label}</span>
-                                </div>
-                                ${!this._isRO ? `
-                                <div class="ev-equipo-item-actions">
-                                    <button class="ev-icon-btn ev-mov-open-btn" data-open-mov="${m.id}" title="Abrir en Logística">↗</button>
-                                    <button class="ev-icon-btn ev-remove-persona-btn" data-remove-mov="${m.id}" title="Quitar movimiento">&times;</button>
-                                </div>
-                                ` : ''}
-                            </div>
-                            `;
-                        }).join('')}
-                    </div>
-                ` : `
-                    <p class="ev-section-empty">Sin movimientos de transporte</p>
-                `}
+                ${transportes.length > 0
+                    ? transportes.map(cardHTML).join('')
+                    : `<p class="ev-section-empty">Sin transporte cargado</p>`}
+                ${!this._isRO && transportes.length > 0 ? `
+                    <button class="ev-add-persona-btn" data-trans-remito-evento="${this._escAttr(eventoId)}" style="margin-top:8px;display:inline-block;">📄 Generar remito del evento</button>
+                ` : ''}
             </div>
         `;
     },
 
-    _attachTransporteEvents(eventoId, movimientos) {
-        // Botón Agregar movimiento
-        document.querySelector(`[data-add-movimiento="${eventoId}"]`)
-            ?.addEventListener('click', () => this._openAddMovimientoModal(eventoId));
+    // Normaliza un teléfono a formato wa.me (asume AR si no trae código de país).
+    _waNumber(tel) {
+        let n = String(tel || '').replace(/[^\d]/g, '');
+        if (!n) return '';
+        if (!n.startsWith('54')) n = '54' + n;
+        return n;
+    },
 
-        // Abrir movimiento en módulo Logística (deep link)
-        document.querySelectorAll('[data-open-mov]').forEach(btn => {
+    _attachTransporteEvents(eventoId) {
+        document.querySelector(`[data-trans-add="${eventoId}"]`)
+            ?.addEventListener('click', () => this._openTransporteModal(eventoId, null));
+
+        document.querySelectorAll('[data-trans-toggle]').forEach(btn => {
             btn.addEventListener('click', () => {
-                const movId = btn.dataset.openMov;
-                window.location.hash = `#logistica?tab=movimientos&id=${movId}`;
+                const ul = document.getElementById(`evTransItems-${btn.dataset.transToggle}`);
+                if (ul) ul.style.display = ul.style.display === 'none' ? 'flex' : 'none';
             });
         });
 
-        // Quitar movimiento
-        document.querySelectorAll('[data-remove-mov]').forEach(btn => {
+        document.querySelectorAll('[data-trans-edit]').forEach(btn => {
+            btn.addEventListener('click', () => this._openTransporteModal(eventoId, btn.dataset.transEdit));
+        });
+
+        document.querySelectorAll('[data-trans-del]').forEach(btn => {
             btn.addEventListener('click', async () => {
-                const movId = btn.dataset.removeMov;
                 const ok = await Modal.confirm({
-                    title: 'Quitar movimiento',
-                    message: `¿Quitar este movimiento del evento? El registro se marca como eliminado.`,
-                    confirmText: 'Quitar',
-                    cancelText: 'Cancelar',
+                    title: 'Eliminar vehículo del transporte',
+                    message: '¿Quitar este vehículo del transporte del evento? Se marca como eliminado.',
+                    confirmText: 'Eliminar', cancelText: 'Cancelar', danger: true,
                 });
                 if (!ok) return;
-                const result = await API.removeEventoMovimiento(movId);
-                if (result) {
-                    Toast.success('Movimiento quitado');
+                const res = await API.deleteTransporte(btn.dataset.transDel);
+                if (res) {
+                    Toast.success('Vehículo quitado');
                     delete this._transporteCache[eventoId];
                     await this._loadTransporteSection(eventoId);
                 } else {
-                    Toast.error('Error al quitar movimiento');
+                    Toast.error('Error al quitar');
                 }
             });
         });
+
+        document.querySelectorAll('[data-trans-remito]').forEach(btn => {
+            btn.addEventListener('click', () => this._generarRemitoTransporte(btn.dataset.transRemito, eventoId));
+        });
+
+        document.querySelectorAll('[data-trans-firmado]').forEach(btn => {
+            btn.addEventListener('click', () => this._subirRemitoFirmado(btn.dataset.transFirmado, eventoId));
+        });
+
+        document.querySelector(`[data-trans-remito-evento="${eventoId}"]`)
+            ?.addEventListener('click', () => this._generarRemitoEvento(eventoId));
     },
 
-    async _openAddMovimientoModal(eventoId) {
-        // Cargar vehículos si no están en memoria
-        if (!this._vehiculosLoaded) {
-            try {
-                const { data, error } = await supabaseClient
-                    .from('logistica_vehiculos')
-                    .select('id, nombre, tipo, patente, chofer_habitual_id, contacto, estado')
-                    .eq('_deleted', false)
-                    .order('nombre', { ascending: true });
-                if (error) throw error;
-                this._vehiculosList = data || [];
-                this._vehiculosLoaded = true;
-            } catch (e) {
-                Toast.error('Error al cargar vehículos');
-                return;
+    async _generarRemitoTransporte(transId, eventoId) {
+        if (typeof RemitoPDF === 'undefined') { Toast.error('Generador de PDF no disponible'); return; }
+        Toast.info('Generando remito…');
+        const blob = await RemitoPDF.generate(transId);
+        if (!blob) { Toast.error('No se pudo generar el remito'); return; }
+        const path = await API.uploadTransporteRemitoPDF(transId, blob);
+        if (path) await API.setTransporteRemitoPDF(transId, path);
+        // Abrir / descargar
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        Toast.success('Remito generado');
+        delete this._transporteCache[eventoId];
+        await this._loadTransporteSection(eventoId);
+    },
+
+    async _generarRemitoEvento(eventoId) {
+        if (typeof RemitoPDF === 'undefined') { Toast.error('Generador de PDF no disponible'); return; }
+        Toast.info('Generando remito del evento…');
+        const blob = await RemitoPDF.generateEvento(eventoId);
+        if (!blob) { Toast.error('No se pudo generar el remito del evento'); return; }
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        Toast.success('Remito del evento generado');
+    },
+
+    _subirRemitoFirmado(transId, eventoId) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment';
+        input.addEventListener('change', async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            Toast.info('Subiendo foto…');
+            const path = await API.uploadTransporteRemitoFirmado(transId, file);
+            if (path) {
+                Toast.success('Remito firmado subido');
+                delete this._transporteCache[eventoId];
+                await this._loadTransporteSection(eventoId);
+            } else {
+                Toast.error('Error al subir la foto');
             }
-        }
-        // Cargar personal si no está cargado (reusa Fase 3)
-        if (!this._personalLoaded) {
-            try {
-                const { data } = await supabaseClient
-                    .from('rrhh_personal')
-                    .select('id, nombre, rol, tipo, telefono, estado')
-                    .eq('_deleted', false)
-                    .eq('estado', 'activo')
-                    .order('nombre', { ascending: true });
-                this._personalList = data || [];
-                this._personalLoaded = true;
-            } catch { /* continue */ }
-        }
+        });
+        input.click();
+    },
 
-        // Sugerencias de origen/destino: depósitos genéricos + venue del evento actual
+    // Editor inline (modal) de un vehículo del transporte.
+    async _openTransporteModal(eventoId, transId) {
         const ev = this._events.find(e => e.id === eventoId);
-        const lugaresSug = ['Depósito', 'Taller', 'Oficina'];
-        if (ev?.venue && !lugaresSug.includes(ev.venue)) lugaresSug.push(ev.venue);
+        // Cargar en paralelo flota propia, equipos operativos, proyectos del evento.
+        const [vehiculos, equipos, proyectos, existing] = await Promise.all([
+            API.getVehiculos({ soloActivos: true }),
+            API.getEquipos(),
+            this._loadProyectosVinculados(eventoId),
+            transId ? API.getTransporteById(transId) : Promise.resolve(null),
+        ]);
+        const equiposOp = (equipos || []).filter(e => e.estado === 'operativo' || e.estado == null);
 
-        // Solo choferes activos (filtrar por rol "Chofer" pero permitir todos por si acaso)
-        const choferesPriority = this._personalList.filter(p => (p.rol || '').toLowerCase() === 'chofer');
-        const otrosPersonal = this._personalList.filter(p => (p.rol || '').toLowerCase() !== 'chofer');
+        // Estado de ítems en edición (clonado de existing o vacío)
+        const itemsState = existing
+            ? (existing.items || []).map(i => ({
+                item_type: i.item_type,
+                proyecto_id: i.proyecto_id || null,
+                equipo_id: i.equipo_id || null,
+                descripcion_manual: i.descripcion_manual || null,
+                cantidad: i.cantidad != null ? i.cantidad : 1,
+                detallar_contenido: !!i.detallar_contenido,
+                label: i._label,
+                es_contenedor: i.equipo_es_contenedor,
+            }))
+            : [];
+
+        const faseOpts = ['armado', 'intermedio', 'desarme'];
+        const defaultDestino = existing?.destino || ev?.venue || '';
+
+        const vehOpts = (vehiculos || []).map(v =>
+            `<option value="${this._escAttr(v.id)}" ${existing?.vehiculo_id === v.id ? 'selected' : ''}>${this._escAttr(v.descripcion)}${v.patente ? ' · ' + this._escAttr(v.patente) : ''} (${v.es_propio === false ? 'Tercero' : 'MEPEX'})</option>`
+        ).join('');
+
+        const isAdhoc = !!existing && !existing.vehiculo_id && !!existing.vehiculo_adhoc_descripcion;
 
         const body = `
             <div class="ev-modal-mov" style="display:flex;flex-direction:column;gap:14px;">
-                <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:end;">
-                    <div>
-                        <label class="ev-form-label">Origen</label>
-                        <input type="text" id="evMovOrigen" class="ev-form-input" list="evMovLugares" placeholder="Depósito">
-                    </div>
-                    <span style="color:#666;font-size:1.3rem;padding-bottom:8px;">→</span>
-                    <div>
-                        <label class="ev-form-label">Destino</label>
-                        <input type="text" id="evMovDestino" class="ev-form-input" list="evMovLugares" placeholder="${this._escAttr(ev?.venue || 'Predio')}" value="${this._escAttr(ev?.venue || '')}">
-                    </div>
-                    <datalist id="evMovLugares">
-                        ${lugaresSug.map(l => `<option value="${this._escAttr(l)}">`).join('')}
-                    </datalist>
-                </div>
                 <div>
                     <label class="ev-form-label">Vehículo</label>
-                    <select id="evMovVehiculo" class="ev-form-input">
-                        <option value="">— Seleccionar —</option>
-                        ${this._vehiculosList.map(v => `<option value="${v.id}" data-chofer-habitual="${v.chofer_habitual_id || ''}">${this._escAttr(v.nombre)}${v.patente ? ` · ${this._escAttr(v.patente)}` : ''} (${v.tipo === 'propio' ? 'Propio' : 'Tercero'})</option>`).join('')}
+                    <select id="evTransVeh" class="ev-form-input">
+                        <option value="">— De Flota —</option>
+                        ${vehOpts}
+                        <option value="__adhoc__" ${isAdhoc ? 'selected' : ''}>➕ Ajeno ad-hoc</option>
                     </select>
+                </div>
+                <div id="evTransAdhocBox" style="display:${isAdhoc ? 'block' : 'none'};border:1px dashed #2a2a2a;border-radius:6px;padding:10px;">
+                    <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:#aaa;">
+                        <input type="checkbox" id="evTransAdhocGuardar"> Guardar en Flota
+                        <span style="color:#666;">(si no, queda solo para este viaje)</span>
+                    </label>
+                    <input type="text" id="evTransAdhocDesc" class="ev-form-input ev-input-sm" placeholder="Descripción (ej: Camión Iveco tercero)" value="${this._escAttr(existing?.vehiculo_adhoc_descripcion || '')}" style="margin-bottom:6px;">
+                    <input type="text" id="evTransAdhocPat" class="ev-form-input ev-input-sm" placeholder="Patente (opcional)" value="${this._escAttr(existing?.vehiculo_adhoc_patente || '')}" style="margin-bottom:6px;">
+                    <input type="text" id="evTransAdhocProp" class="ev-form-input ev-input-sm" placeholder="Propietario / contacto (opcional)" value="${this._escAttr(existing?.vehiculo_adhoc_propietario || '')}">
                 </div>
                 <div>
                     <label class="ev-form-label">Chofer</label>
-                    <select id="evMovChofer" class="ev-form-input">
-                        <option value="">— Sin chofer asignado —</option>
-                        ${choferesPriority.length > 0 ? `<optgroup label="Choferes">${choferesPriority.map(p => `<option value="${p.id}">${this._escAttr(p.nombre)}${p.telefono ? ' · ' + this._escAttr(p.telefono) : ''}</option>`).join('')}</optgroup>` : ''}
-                        ${otrosPersonal.length > 0 ? `<optgroup label="Otros">${otrosPersonal.map(p => `<option value="${p.id}">${this._escAttr(p.nombre)} (${this._escAttr(p.rol || '')})</option>`).join('')}</optgroup>` : ''}
-                    </select>
-                    <small style="color:#666;font-size:11px;display:block;margin-top:4px;">Si el chofer no está en la lista (terceros), dejá vacío y completá abajo:</small>
-                    <input type="text" id="evMovChoferLibre" class="ev-form-input ev-input-sm" placeholder="Nombre del chofer (terceros)" style="margin-top:4px;">
+                    <input type="text" id="evTransChofer" class="ev-form-input ev-input-sm" placeholder="Nombre del chofer" value="${this._escAttr(existing?.chofer_nombre || existing?.chofer_nombre_resuelto || '')}" style="margin-bottom:6px;">
+                    <input type="text" id="evTransChoferTel" class="ev-form-input ev-input-sm" placeholder="Teléfono (WhatsApp)" value="${this._escAttr(existing?.chofer_telefono || existing?.chofer_telefono_resuelto || '')}">
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
                     <div>
-                        <label class="ev-form-label">Fecha</label>
-                        <input type="date" id="evMovFecha" class="ev-form-input">
+                        <label class="ev-form-label">Fase</label>
+                        <select id="evTransFase" class="ev-form-input">
+                            ${faseOpts.map(f => `<option value="${f}" ${(existing?.fase || 'armado') === f ? 'selected' : ''}>${f.charAt(0).toUpperCase() + f.slice(1)}</option>`).join('')}
+                        </select>
                     </div>
                     <div>
-                        <label class="ev-form-label">Hora programada</label>
-                        <input type="time" id="evMovHora" class="ev-form-input">
+                        <label class="ev-form-label">Fecha</label>
+                        <input type="date" id="evTransFecha" class="ev-form-input" value="${this._escAttr(existing?.fecha || '')}">
+                    </div>
+                    <div>
+                        <label class="ev-form-label">Hora salida</label>
+                        <input type="time" id="evTransHora" class="ev-form-input" value="${this._escAttr(existing?.hora_salida ? String(existing.hora_salida).slice(0,5) : '')}">
                     </div>
                 </div>
                 <div>
+                    <label class="ev-form-label">Destino</label>
+                    <input type="text" id="evTransDestino" class="ev-form-input" placeholder="${this._escAttr(ev?.venue || 'Predio')}" value="${this._escAttr(defaultDestino)}">
+                </div>
+                <div>
+                    <label class="ev-form-label">Qué lleva</label>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+                        <select id="evTransAddProy" class="ev-form-input ev-input-sm" style="flex:1;min-width:130px;">
+                            <option value="">+ Stand del evento…</option>
+                            ${(proyectos || []).map(p => `<option value="${this._escAttr(p.id)}">${this._escAttr(p.nombre || 'Sin nombre')}</option>`).join('')}
+                        </select>
+                        <select id="evTransAddEquipo" class="ev-form-input ev-input-sm" style="flex:1;min-width:130px;">
+                            <option value="">+ Equipo…</option>
+                            ${equiposOp.map(e => `<option value="${this._escAttr(e.id)}" data-cont="${e.es_contenedor ? '1' : '0'}" data-nombre="${this._escAttr(e.nombre)}">${this._escAttr(e.nombre)}${e.es_contenedor ? ' (canasto)' : ''}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-bottom:8px;">
+                        <input type="text" id="evTransManualTxt" class="ev-form-input ev-input-sm" placeholder="Ítem manual…" style="flex:2;">
+                        <input type="number" id="evTransManualCant" class="ev-form-input ev-input-sm" placeholder="Cant" min="1" value="1" style="flex:1;max-width:70px;">
+                        <button class="btn btn-ghost" id="evTransAddManual" style="white-space:nowrap;">+ Agregar</button>
+                    </div>
+                    <ul id="evTransItemsList" class="ev-trans-items" style="display:flex;"></ul>
+                </div>
+                <div>
                     <label class="ev-form-label">Notas</label>
-                    <textarea id="evMovNotas" class="ev-form-input" rows="2" placeholder="Opcional"></textarea>
+                    <textarea id="evTransNotas" class="ev-form-input" rows="2" placeholder="Opcional">${this._esc(existing?.notas || '')}</textarea>
                 </div>
             </div>
         `;
 
         Modal.open({
-            title: '🚚 Agregar movimiento de transporte',
-            body,
-            size: 'md',
+            title: transId ? '🚚 Editar vehículo' : '🚚 Agregar vehículo al transporte',
+            body, size: 'md',
             footer: `
                 <button class="btn btn-ghost" data-modal-close>Cancelar</button>
-                <button class="btn btn-primary" id="evMovSaveBtn">Agregar movimiento</button>
+                <button class="btn btn-primary" id="evTransSaveBtn">${transId ? 'Guardar' : 'Agregar'}</button>
             `,
         });
 
-        // Auto-completar chofer al seleccionar vehículo (si tiene chofer_habitual_id)
-        const vehSelect = document.getElementById('evMovVehiculo');
-        const choferSelect = document.getElementById('evMovChofer');
-        vehSelect?.addEventListener('change', (e) => {
-            const opt = e.target.selectedOptions[0];
-            const choferHab = opt?.dataset?.choferHabitual;
-            if (choferHab && choferSelect && !choferSelect.value) {
-                choferSelect.value = choferHab;
+        // ── Render dinámico de la lista de ítems ──
+        const renderItems = () => {
+            const ul = document.getElementById('evTransItemsList');
+            if (!ul) return;
+            if (!itemsState.length) {
+                ul.innerHTML = '<li class="ev-section-empty">Sin ítems</li>';
+                return;
             }
+            ul.innerHTML = itemsState.map((it, idx) => {
+                const ico = it.item_type === 'proyecto' ? '🏗️' : it.item_type === 'equipo' ? '📦' : '•';
+                const cant = (it.cantidad && it.cantidad != 1) ? ` ×${it.cantidad}` : '';
+                const detChk = (it.item_type === 'equipo' && it.es_contenedor)
+                    ? `<label style="font-size:10px;color:#9B7DFF;margin-left:6px;"><input type="checkbox" data-det-idx="${idx}" ${it.detallar_contenido ? 'checked' : ''}> desglosar</label>`
+                    : '';
+                return `<li style="display:flex;align-items:center;gap:6px;">
+                    <span style="flex:1;">${ico} ${this._escAttr(it.label || '')}${cant}</span>
+                    ${detChk}
+                    <button class="ev-icon-btn ev-remove-persona-btn" data-rm-idx="${idx}" title="Quitar">&times;</button>
+                </li>`;
+            }).join('');
+            ul.querySelectorAll('[data-rm-idx]').forEach(b => {
+                b.addEventListener('click', () => { itemsState.splice(Number(b.dataset.rmIdx), 1); renderItems(); });
+            });
+            ul.querySelectorAll('[data-det-idx]').forEach(c => {
+                c.addEventListener('change', () => { itemsState[Number(c.dataset.detIdx)].detallar_contenido = c.checked; });
+            });
+        };
+        renderItems();
+
+        // Toggle adhoc box
+        document.getElementById('evTransVeh')?.addEventListener('change', (e) => {
+            const box = document.getElementById('evTransAdhocBox');
+            if (box) box.style.display = e.target.value === '__adhoc__' ? 'block' : 'none';
         });
 
-        document.getElementById('evMovSaveBtn')?.addEventListener('click', async () => {
-            const origen = document.getElementById('evMovOrigen')?.value.trim();
-            const destino = document.getElementById('evMovDestino')?.value.trim();
-            if (!origen || !destino) { Toast.warning('Ingresá origen y destino'); return; }
+        // Add proyecto
+        document.getElementById('evTransAddProy')?.addEventListener('change', (e) => {
+            const opt = e.target.selectedOptions[0];
+            if (!opt || !opt.value) return;
+            itemsState.push({ item_type: 'proyecto', proyecto_id: opt.value, label: opt.textContent, cantidad: 1, detallar_contenido: false });
+            e.target.value = '';
+            renderItems();
+        });
 
-            const choferId = document.getElementById('evMovChofer')?.value || null;
-            const choferLibre = document.getElementById('evMovChoferLibre')?.value.trim() || null;
+        // Add equipo
+        document.getElementById('evTransAddEquipo')?.addEventListener('change', (e) => {
+            const opt = e.target.selectedOptions[0];
+            if (!opt || !opt.value) return;
+            const esCont = opt.dataset.cont === '1';
+            itemsState.push({ item_type: 'equipo', equipo_id: opt.value, label: opt.dataset.nombre, cantidad: 1, detallar_contenido: false, es_contenedor: esCont });
+            e.target.value = '';
+            renderItems();
+        });
+
+        // Add manual
+        document.getElementById('evTransAddManual')?.addEventListener('click', () => {
+            const txt = document.getElementById('evTransManualTxt');
+            const cantEl = document.getElementById('evTransManualCant');
+            const v = (txt?.value || '').trim();
+            if (!v) { Toast.warning('Escribí la descripción del ítem'); return; }
+            const cant = Number(cantEl?.value) || 1;
+            itemsState.push({ item_type: 'manual', descripcion_manual: v, label: v, cantidad: cant, detallar_contenido: false });
+            if (txt) txt.value = '';
+            if (cantEl) cantEl.value = '1';
+            renderItems();
+        });
+
+        // Guardar
+        document.getElementById('evTransSaveBtn')?.addEventListener('click', async () => {
+            const vehVal = document.getElementById('evTransVeh')?.value || '';
+            const fase = document.getElementById('evTransFase')?.value || 'armado';
+            const fecha = document.getElementById('evTransFecha')?.value || null;
+            const hora = document.getElementById('evTransHora')?.value || null;
+            const destino = document.getElementById('evTransDestino')?.value.trim() || null;
+            const choferNombre = document.getElementById('evTransChofer')?.value.trim() || null;
+            const choferTel = document.getElementById('evTransChoferTel')?.value.trim() || null;
+            const notas = document.getElementById('evTransNotas')?.value.trim() || null;
 
             const payload = {
-                origen,
-                destino,
-                vehiculoId: document.getElementById('evMovVehiculo')?.value || null,
-                choferId,
-                choferNombreLibre: choferId ? null : choferLibre,  // si hay chofer del staff, no usar texto libre
-                fecha: document.getElementById('evMovFecha')?.value || null,
-                horaProgramada: document.getElementById('evMovHora')?.value || null,
-                notas: document.getElementById('evMovNotas')?.value.trim() || null,
+                eventoId, fase, fecha, horaSalida: hora, destino, notas,
+                choferNombre, choferTelefono: choferTel,
+                vehiculoId: null,
+                vehiculoAdhocDescripcion: null, vehiculoAdhocPatente: null, vehiculoAdhocPropietario: null,
             };
 
-            const btn = document.getElementById('evMovSaveBtn');
+            if (vehVal === '__adhoc__') {
+                const desc = document.getElementById('evTransAdhocDesc')?.value.trim() || '';
+                if (!desc) { Toast.warning('La descripción del vehículo ajeno es obligatoria'); return; }
+                const pat = document.getElementById('evTransAdhocPat')?.value.trim() || null;
+                const prop = document.getElementById('evTransAdhocProp')?.value.trim() || null;
+                const guardar = document.getElementById('evTransAdhocGuardar')?.checked;
+                if (guardar) {
+                    const veh = await API.crearVehiculoAdhoc({ descripcion: desc, patente: pat, propietario: prop });
+                    if (veh) payload.vehiculoId = veh.id;
+                    else { payload.vehiculoAdhocDescripcion = desc; payload.vehiculoAdhocPatente = pat; payload.vehiculoAdhocPropietario = prop; }
+                } else {
+                    payload.vehiculoAdhocDescripcion = desc;
+                    payload.vehiculoAdhocPatente = pat;
+                    payload.vehiculoAdhocPropietario = prop;
+                }
+            } else if (vehVal) {
+                payload.vehiculoId = vehVal;
+            }
+
+            const btn = document.getElementById('evTransSaveBtn');
             if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
 
-            const result = await API.addEventoMovimiento(eventoId, payload);
-            if (result) {
-                Toast.success('Movimiento agregado');
+            let tid = transId;
+            if (transId) {
+                const ok = await API.updateTransporte(transId, payload);
+                if (!ok) tid = null;
+            } else {
+                const row = await API.createTransporte(payload);
+                tid = row?.id || null;
+            }
+
+            if (tid) {
+                await API.setTransporteItems(tid, itemsState);
+                Toast.success(transId ? 'Transporte actualizado' : 'Vehículo agregado');
                 Modal.close();
                 delete this._transporteCache[eventoId];
                 await this._loadTransporteSection(eventoId);
             } else {
-                Toast.error('Error al agregar movimiento');
-                if (btn) { btn.disabled = false; btn.textContent = 'Agregar movimiento'; }
+                Toast.error('Error al guardar el transporte');
+                if (btn) { btn.disabled = false; btn.textContent = transId ? 'Guardar' : 'Agregar'; }
             }
         });
     },
