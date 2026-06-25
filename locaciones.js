@@ -2,13 +2,17 @@
    MEPEX Lobby — Módulo Locaciones
    =============================================
    Categoría: ACTIVOS. Lugares físicos de la empresa.
-   3 tabs: Lugares, Documentación, Stock por Locación
-   Solo superadmin y admin.
+   Admin/superadmin: 3 tabs (Lugares, Documentación, Stock) + bloque Alquiler/Contrato.
+   Taller (reorg_e): cara OPERATIVA read-only — cards simples de taller/deposito
+   con documentos por vencer. Sin contratos, sin alquiler, sin $$, sin stock.
+   (Rutinas edilicias = Fase F, NO acá.)
    ============================================= */
 
 const LocacionesModule = {
 
     // ─── State ───
+    _isRO: false,
+    _userRole: null,
     _activeTab: 'lugares',
     _lugares: [],
     _documentos: [],
@@ -60,8 +64,21 @@ const LocacionesModule = {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
+        this._userRole = user.role;
+        this._isRO = (typeof Data?.isReadOnly === 'function')
+            ? Data.isReadOnly(user.role, 'locaciones')
+            : (Data?.readOnlyPermissions?.[user.role] || []).includes('locaciones');
+
+        this._ensureStyles();
+
         const content = document.getElementById('mainContent');
         if (!content) return;
+
+        // Bifurcación por rol: taller ve la cara operativa simple (read-only).
+        if (this._userRole === 'taller') {
+            await this._renderOperativa(content);
+            return;
+        }
 
         content.innerHTML = this._buildShell();
         this._attachTabEvents();
@@ -139,6 +156,169 @@ const LocacionesModule = {
     },
 
 
+    // Inyecta los estilos nuevos de Fase E (1 sola vez). El resto de
+    // clases .loc-* ya viven en style.css y se reusan tal cual.
+    _ensureStyles() {
+        if (document.getElementById('loc-fase-e-styles')) return;
+        const css = `
+            .loc-warning-banner {
+                display: flex; align-items: center; gap: 10px;
+                margin: 0 0 16px 0; padding: 12px 16px;
+                background: #F28D1510; border: 1px solid #F28D1540;
+                border-radius: 8px; color: var(--text-primary);
+                font-size: 0.85rem;
+            }
+            .loc-warning-banner .loc-warning-icon { font-size: 1.05rem; }
+            .loc-form-section-title, .loc-ficha-section-title {
+                font-family: var(--font-mono); font-size: 0.72rem;
+                letter-spacing: 0.06em; text-transform: uppercase;
+                color: var(--primary); font-weight: 700;
+                margin: 18px 0 4px 0; padding-top: 14px;
+                border-top: 1px solid var(--border);
+            }
+            .loc-card-op .loc-op-docs {
+                margin-top: 10px; padding-top: 10px;
+                border-top: 1px solid var(--border);
+                display: flex; flex-direction: column; gap: 6px;
+            }
+            .loc-op-docs-title {
+                font-size: 0.72rem; font-weight: 600; color: #F28D15;
+            }
+            .loc-op-doc-row {
+                display: flex; align-items: center; gap: 8px;
+                font-size: 0.78rem; color: var(--text-primary);
+            }
+            .loc-op-doc-dot {
+                width: 8px; height: 8px; border-radius: 50%;
+                flex-shrink: 0; background: #888;
+            }
+            .loc-op-doc-dot.loc-vencido { background: #ff4444; }
+            .loc-op-doc-dot.loc-proximo { background: #F28D15; }
+            .loc-op-doc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        `;
+        const style = document.createElement('style');
+        style.id = 'loc-fase-e-styles';
+        style.textContent = css;
+        document.head.appendChild(style);
+    },
+
+
+    // ════════════════════════════════════════════════════
+    //  CARA OPERATIVA (rol taller) — read-only, simple
+    //  Solo taller/deposito (belt-and-suspenders + RLS).
+    //  Sin contratos, sin alquiler, sin $$, sin stock.
+    // ════════════════════════════════════════════════════
+
+    async _renderOperativa(content) {
+        content.innerHTML = `
+            <div class="module-view loc-module">
+                <div class="module-subheader">
+                    <div class="module-subheader-bottom">
+                        <div class="module-header-title">
+                            <span class="module-header-icon">🏭</span>
+                            <h2 class="title-2">Lugares</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="module-content" id="locContent">
+                    <div style="display:flex;align-items:center;justify-content:center;min-height:300px;">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        let lugares = [];
+        let documentos = [];
+        try {
+            const { data: lData, error: lErr } = await supabaseClient
+                .from('locaciones')
+                .select('*')
+                .eq('_deleted', false)
+                .in('tipo', ['taller', 'deposito'])
+                .order('nombre', { ascending: true });
+            if (lErr) throw lErr;
+            lugares = lData || [];
+
+            const ids = lugares.map(l => l.id).filter(id => id !== null && id !== undefined);
+            if (ids.length > 0) {
+                const { data: dData } = await supabaseClient
+                    .from('locaciones_documentos')
+                    .select('*')
+                    .eq('_deleted', false)
+                    .in('locacion_id', ids)
+                    .order('fecha_vencimiento', { ascending: true });
+                documentos = dData || [];
+            }
+        } catch (e) {
+            console.warn('[Locaciones] Error loading cara operativa:', e);
+        }
+
+        const cc = document.getElementById('locContent');
+        if (!cc) return;
+
+        if (lugares.length === 0) {
+            cc.innerHTML = `
+                <div class="loc-empty">
+                    <div class="loc-empty-icon">🏭</div>
+                    <h3>Sin lugares cargados</h3>
+                    <p>Todavía no hay talleres ni depósitos para mostrar</p>
+                </div>
+            `;
+            return;
+        }
+
+        const docsByLoc = {};
+        documentos.forEach(d => {
+            const k = String(d.locacion_id);
+            (docsByLoc[k] = docsByLoc[k] || []).push(d);
+        });
+
+        cc.innerHTML = `
+            <div class="loc-cards-grid">
+                ${lugares.map(l => {
+                    const estadoColor = this._getEstadoColor(l.estado);
+                    // Documentos por vencer (vencidos o ≤30 días) de esta locación.
+                    const porVencer = (docsByLoc[String(l.id)] || [])
+                        .map(d => ({ d, venc: this._getVencimientoInfo(d.fecha_vencimiento) }))
+                        .filter(x => x.venc.class);
+                    return `
+                        <div class="loc-card loc-card-op">
+                            ${l.foto_url ? `
+                                <div class="loc-card-img" style="background-image:url('${this._escAttr(l.foto_url)}')"></div>
+                            ` : `
+                                <div class="loc-card-img loc-card-img-placeholder"><span>🏭</span></div>
+                            `}
+                            <div class="loc-card-body">
+                                <div class="loc-card-header">
+                                    <h4 class="loc-card-name">${this._esc(l.nombre || '—')}</h4>
+                                    <span class="loc-badge" style="background:${estadoColor}20;color:${estadoColor};border:1px solid ${estadoColor}40">${this._getEstadoLabel(l.estado)}</span>
+                                </div>
+                                <div class="loc-card-meta">
+                                    <span class="loc-card-tipo">${this._getTipoLabel(l.tipo)}</span>
+                                </div>
+                                ${l.direccion ? `<p class="loc-card-dir">${this._esc(l.direccion)}</p>` : ''}
+                                ${porVencer.length > 0 ? `
+                                    <div class="loc-op-docs">
+                                        <span class="loc-op-docs-title">⚠️ Documentos por vencer</span>
+                                        ${porVencer.map(x => `
+                                            <div class="loc-op-doc-row">
+                                                <span class="loc-op-doc-dot ${x.venc.class}"></span>
+                                                <span class="loc-op-doc-name">${this._esc(x.d.nombre || this._getTipoDocLabel(x.d.tipo_doc))}</span>
+                                                <span class="loc-venc-badge ${x.venc.class}">${x.venc.label}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    },
+
+
     // ════════════════════════════════════════════════════
     //  HELPERS
     // ════════════════════════════════════════════════════
@@ -147,6 +327,17 @@ const LocacionesModule = {
         if (!d) return '—';
         return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
     },
+
+    _formatMonto(monto, moneda) {
+        if (monto === null || monto === undefined || monto === '') return '—';
+        const n = Number(monto);
+        if (!Number.isFinite(n)) return '—';
+        const sym = moneda === 'USD' ? 'US$' : (moneda === 'EUR' ? '€' : '$');
+        return sym + n.toLocaleString('es-AR', { maximumFractionDigits: 0 });
+    },
+
+    // Tipos clasificables canónicos. Cualquier otro → warning.
+    _tiposClasificables: ['taller', 'deposito', 'oficina'],
 
     _getTipoLabel(tipo) {
         const t = this._tiposLugar.find(x => x.value === tipo);
@@ -231,11 +422,20 @@ const LocacionesModule = {
         if (this._filterTipo) filtered = filtered.filter(l => l.tipo === this._filterTipo);
         if (this._filterEstado) filtered = filtered.filter(l => l.estado === this._filterEstado);
 
+        // Warning: locaciones con tipo NO clasificable (taller/deposito/oficina).
+        const sinTipo = this._lugares.filter(l => !this._tiposClasificables.includes(l.tipo));
+
         cc.innerHTML = `
             <div class="loc-toolbar">
                 <h3 class="loc-toolbar-title">Lugares</h3>
                 <button class="loc-btn-add" id="locAddLugar">+ Nuevo Lugar</button>
             </div>
+            ${sinTipo.length > 0 ? `
+                <div class="loc-warning-banner">
+                    <span class="loc-warning-icon">⚠️</span>
+                    <span>${sinTipo.length} ${sinTipo.length === 1 ? 'locación sin tipo clasificable' : 'locaciones sin tipo clasificable'} (debe ser Taller, Depósito u Oficina). Editalas para asignar un tipo válido.</span>
+                </div>
+            ` : ''}
             <div class="loc-filters">
                 <select class="loc-filter-select" id="locFilterTipo">
                     <option value="">Todos los tipos</option>
@@ -350,10 +550,38 @@ const LocacionesModule = {
                                 <span class="loc-field-value">${this._formatDate(lugar.created_at)}</span>
                             </div>
                         </div>
+
+                        <div class="loc-ficha-section-title">Alquiler / Contrato</div>
+                        <div class="loc-ficha-grid">
+                            <div class="loc-ficha-field">
+                                <span class="loc-field-label">Monto alquiler</span>
+                                <span class="loc-field-value loc-mono">${this._formatMonto(lugar.alquiler_monto, lugar.alquiler_moneda)}</span>
+                            </div>
+                            <div class="loc-ficha-field">
+                                <span class="loc-field-label">Moneda</span>
+                                <span class="loc-field-value">${this._esc(lugar.alquiler_moneda || 'ARS')}</span>
+                            </div>
+                            <div class="loc-ficha-field">
+                                <span class="loc-field-label">Día de pago</span>
+                                <span class="loc-field-value">${lugar.alquiler_dia_pago ? 'Día ' + lugar.alquiler_dia_pago : '—'}</span>
+                            </div>
+                            <div class="loc-ficha-field">
+                                <span class="loc-field-label">Vence contrato</span>
+                                <span class="loc-field-value loc-mono">${this._formatDate(lugar.contrato_vence)}</span>
+                            </div>
+                            <div class="loc-ficha-field">
+                                <span class="loc-field-label">Propietario</span>
+                                <span class="loc-field-value">${this._esc(lugar.propietario || '—')}</span>
+                            </div>
+                            <div class="loc-ficha-field">
+                                <span class="loc-field-label">Contacto propietario</span>
+                                <span class="loc-field-value">${this._esc(lugar.propietario_contacto || '—')}</span>
+                            </div>
+                        </div>
                         ${lugar.notas ? `
                             <div class="loc-ficha-notas">
                                 <span class="loc-field-label">Notas</span>
-                                <p>${lugar.notas}</p>
+                                <p>${this._esc(lugar.notas)}</p>
                             </div>
                         ` : ''}
                     </div>
@@ -377,7 +605,7 @@ const LocacionesModule = {
             <form id="locFormLugar" class="loc-form">
                 <div class="loc-form-group">
                     <label>Nombre *</label>
-                    <input type="text" name="nombre" value="${existing?.nombre || ''}" required class="loc-input" />
+                    <input type="text" name="nombre" value="${this._escAttr(existing?.nombre || '')}" required class="loc-input" />
                 </div>
                 <div class="loc-form-row">
                     <div class="loc-form-group">
@@ -396,21 +624,54 @@ const LocacionesModule = {
                 </div>
                 <div class="loc-form-group">
                     <label>Dirección</label>
-                    <input type="text" name="direccion" value="${existing?.direccion || ''}" class="loc-input" />
+                    <input type="text" name="direccion" value="${this._escAttr(existing?.direccion || '')}" class="loc-input" />
                 </div>
                 <div class="loc-form-row">
                     <div class="loc-form-group">
                         <label>Superficie (m²)</label>
-                        <input type="number" name="superficie" value="${existing?.superficie || ''}" class="loc-input" min="0" step="0.01" />
+                        <input type="number" name="superficie" value="${this._escAttr(existing?.superficie || '')}" class="loc-input" min="0" step="0.01" />
                     </div>
                     <div class="loc-form-group">
                         <label>URL de foto</label>
-                        <input type="text" name="foto_url" value="${existing?.foto_url || ''}" class="loc-input" placeholder="https://..." />
+                        <input type="text" name="foto_url" value="${this._escAttr(existing?.foto_url || '')}" class="loc-input" placeholder="https://..." />
+                    </div>
+                </div>
+
+                <div class="loc-form-section-title">Alquiler / Contrato</div>
+                <div class="loc-form-row">
+                    <div class="loc-form-group">
+                        <label>Monto alquiler</label>
+                        <input type="number" name="alquiler_monto" value="${this._escAttr(existing?.alquiler_monto ?? '')}" class="loc-input" min="0" step="0.01" placeholder="0" />
+                    </div>
+                    <div class="loc-form-group">
+                        <label>Moneda</label>
+                        <select name="alquiler_moneda" class="loc-input">
+                            ${['ARS', 'USD', 'EUR'].map(m => `<option value="${m}" ${(existing?.alquiler_moneda || 'ARS') === m ? 'selected' : ''}>${m}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="loc-form-group">
+                        <label>Día de pago</label>
+                        <input type="number" name="alquiler_dia_pago" value="${this._escAttr(existing?.alquiler_dia_pago ?? '')}" class="loc-input" min="1" max="31" placeholder="1-31" />
                     </div>
                 </div>
                 <div class="loc-form-group">
+                    <label>Vencimiento del contrato</label>
+                    <input type="date" name="contrato_vence" value="${this._escAttr(existing?.contrato_vence || '')}" class="loc-input" />
+                </div>
+                <div class="loc-form-row">
+                    <div class="loc-form-group">
+                        <label>Propietario</label>
+                        <input type="text" name="propietario" value="${this._escAttr(existing?.propietario || '')}" class="loc-input" />
+                    </div>
+                    <div class="loc-form-group">
+                        <label>Contacto del propietario</label>
+                        <input type="text" name="propietario_contacto" value="${this._escAttr(existing?.propietario_contacto || '')}" class="loc-input" placeholder="Tel / email" />
+                    </div>
+                </div>
+
+                <div class="loc-form-group">
                     <label>Notas</label>
-                    <textarea name="notas" class="loc-input loc-textarea" rows="3">${existing?.notas || ''}</textarea>
+                    <textarea name="notas" class="loc-input loc-textarea" rows="3">${this._esc(existing?.notas || '')}</textarea>
                 </div>
             </form>
         `;
@@ -429,6 +690,7 @@ const LocacionesModule = {
             const tipo = form.tipo.value;
             if (!nombre || !tipo) { Toast.warning('Nombre y tipo son obligatorios'); return; }
 
+            const diaPago = parseInt(form.alquiler_dia_pago.value, 10);
             const row = {
                 nombre,
                 tipo,
@@ -437,6 +699,13 @@ const LocacionesModule = {
                 superficie: form.superficie.value ? parseFloat(form.superficie.value) : null,
                 foto_url: form.foto_url.value.trim() || null,
                 notas: form.notas.value.trim() || null,
+                // Alquiler / Contrato (reorg_e)
+                alquiler_monto: form.alquiler_monto.value ? parseFloat(form.alquiler_monto.value) : null,
+                alquiler_moneda: form.alquiler_moneda.value || 'ARS',
+                alquiler_dia_pago: Number.isFinite(diaPago) ? diaPago : null,
+                contrato_vence: form.contrato_vence.value || null,
+                propietario: form.propietario.value.trim() || null,
+                propietario_contacto: form.propietario_contacto.value.trim() || null,
             };
 
             try {
@@ -518,7 +787,7 @@ const LocacionesModule = {
             <div class="loc-filters">
                 <select class="loc-filter-select" id="locFilterDocLoc">
                     <option value="">Todas las locaciones</option>
-                    ${this._lugares.map(l => `<option value="${l.id}" ${String(this._selectedDocLocacionId) === String(l.id) ? 'selected' : ''}>${l.nombre}</option>`).join('')}
+                    ${this._lugares.map(l => `<option value="${l.id}" ${String(this._selectedDocLocacionId) === String(l.id) ? 'selected' : ''}>${this._esc(l.nombre)}</option>`).join('')}
                 </select>
                 <select class="loc-filter-select" id="locFilterTipoDoc">
                     <option value="">Todos los tipos</option>
@@ -614,12 +883,12 @@ const LocacionesModule = {
                     <label>Locación *</label>
                     <select name="locacion_id" required class="loc-input">
                         <option value="">Seleccionar...</option>
-                        ${this._lugares.map(l => `<option value="${l.id}" ${existing?.locacion_id == l.id ? 'selected' : ''}>${l.nombre}</option>`).join('')}
+                        ${this._lugares.map(l => `<option value="${l.id}" ${existing?.locacion_id == l.id ? 'selected' : ''}>${this._esc(l.nombre)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="loc-form-group">
                     <label>Nombre del documento *</label>
-                    <input type="text" name="nombre" value="${existing?.nombre || ''}" required class="loc-input" placeholder="Ej: Contrato depósito 2026" />
+                    <input type="text" name="nombre" value="${this._escAttr(existing?.nombre || '')}" required class="loc-input" placeholder="Ej: Contrato depósito 2026" />
                 </div>
                 <div class="loc-form-row">
                     <div class="loc-form-group">
@@ -636,11 +905,11 @@ const LocacionesModule = {
                 </div>
                 <div class="loc-form-group">
                     <label>URL del archivo</label>
-                    <input type="text" name="archivo_url" value="${existing?.archivo_url || ''}" class="loc-input" placeholder="https://... (Supabase Storage u otro)" />
+                    <input type="text" name="archivo_url" value="${this._escAttr(existing?.archivo_url || '')}" class="loc-input" placeholder="https://... (Supabase Storage u otro)" />
                 </div>
                 <div class="loc-form-group">
                     <label>Notas</label>
-                    <textarea name="notas" class="loc-input loc-textarea" rows="2">${existing?.notas || ''}</textarea>
+                    <textarea name="notas" class="loc-input loc-textarea" rows="2">${this._esc(existing?.notas || '')}</textarea>
                 </div>
             </form>
         `;
@@ -756,12 +1025,11 @@ const LocacionesModule = {
         cc.innerHTML = `
             <div class="loc-toolbar">
                 <h3 class="loc-toolbar-title">Stock por Locación</h3>
-                <button class="loc-btn-add" id="locAddStock">+ Asignar Stock</button>
             </div>
             <div class="loc-filters">
                 <select class="loc-filter-select" id="locFilterStockLoc">
                     <option value="">Todas las locaciones</option>
-                    ${this._lugares.map(l => `<option value="${l.id}" ${String(this._stockLocacionId) === String(l.id) ? 'selected' : ''}>${l.nombre}</option>`).join('')}
+                    ${this._lugares.map(l => `<option value="${l.id}" ${String(this._stockLocacionId) === String(l.id) ? 'selected' : ''}>${this._esc(l.nombre)}</option>`).join('')}
                 </select>
                 <select class="loc-filter-select" id="locFilterStockCat">
                     <option value="">Todas las categorías</option>
@@ -781,7 +1049,7 @@ const LocacionesModule = {
                     ${this._lugares.length > 0 ? `
                         <div class="loc-stock-quick-btns">
                             ${this._lugares.map(l => `
-                                <button class="loc-stock-quick-btn" data-loc-id="${l.id}">${l.nombre}</button>
+                                <button class="loc-stock-quick-btn" data-loc-id="${l.id}">${this._esc(l.nombre)}</button>
                             `).join('')}
                         </div>
                     ` : ''}
@@ -790,7 +1058,7 @@ const LocacionesModule = {
                 <div class="loc-empty">
                     <div class="loc-empty-icon">📦</div>
                     <h3>Sin stock en esta locación</h3>
-                    <p>Asigná items del inventario a ${this._getLugarName(this._stockLocacionId)}</p>
+                    <p>No hay items de inventario asignados a ${this._getLugarName(this._stockLocacionId)}</p>
                 </div>
             ` : `
                 <div class="loc-stock-summary">
@@ -806,7 +1074,6 @@ const LocacionesModule = {
                                 <th>Cantidad</th>
                                 <th>Estado</th>
                                 <th>Notas</th>
-                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -819,10 +1086,6 @@ const LocacionesModule = {
                                         <td class="loc-mono">${s.cantidad || 0}</td>
                                         <td><span class="loc-badge" style="background:${estColor}20;color:${estColor};border:1px solid ${estColor}40">${this._getEstadoStockLabel(s.estado)}</span></td>
                                         <td class="loc-cell-notas">${this._esc(s.notas || '—')}</td>
-                                        <td class="loc-cell-actions">
-                                            <button class="loc-btn-icon loc-edit-stock" data-id="${s.id}" title="Editar">✏️</button>
-                                            <button class="loc-btn-icon loc-del-stock" data-id="${s.id}" title="Eliminar">🗑️</button>
-                                        </td>
                                     </tr>
                                 `;
                             }).join('')}
@@ -832,8 +1095,7 @@ const LocacionesModule = {
             `}
         `;
 
-        // Events
-        document.getElementById('locAddStock')?.addEventListener('click', () => this._showFormStock());
+        // Events (Stock por Locación = READ-ONLY: sin alta/edición/eliminación)
         document.getElementById('locFilterStockLoc')?.addEventListener('change', (e) => {
             this._stockLocacionId = e.target.value || null;
             this._renderStock();
@@ -852,120 +1114,8 @@ const LocacionesModule = {
                 this._renderStock();
             });
         });
-        document.querySelectorAll('.loc-edit-stock').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const item = this._stock.find(s => String(s.id) === btn.dataset.id);
-                if (item) this._showFormStock(item);
-            });
-        });
-        document.querySelectorAll('.loc-del-stock').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this._deleteStock(btn.dataset.id);
-            });
-        });
     },
 
-    async _showFormStock(existing = null) {
-        const isEdit = !!existing;
-        const title = isEdit ? 'Editar Asignación de Stock' : 'Asignar Stock a Locación';
-
-        if (this._lugares.length === 0) {
-            Toast.warning('Primero creá al menos una locación');
-            return;
-        }
-
-        const body = `
-            <form id="locFormStock" class="loc-form">
-                <div class="loc-form-row">
-                    <div class="loc-form-group">
-                        <label>Locación *</label>
-                        <select name="locacion_id" required class="loc-input">
-                            <option value="">Seleccionar...</option>
-                            ${this._lugares.map(l => `<option value="${l.id}" ${(existing?.locacion_id == l.id || this._stockLocacionId == l.id) ? 'selected' : ''}>${l.nombre}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="loc-form-group">
-                        <label>Item (insumo) *</label>
-                        <select name="insumo_id" required class="loc-input">
-                            <option value="">Seleccionar...</option>
-                            ${this._insumos.map(i => `<option value="${i.id}" ${existing?.insumo_id == i.id ? 'selected' : ''}>${i.nombre}${i.categoria ? ' (' + i.categoria + ')' : ''}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-                <div class="loc-form-row">
-                    <div class="loc-form-group">
-                        <label>Cantidad *</label>
-                        <input type="number" name="cantidad" value="${existing?.cantidad || 1}" required class="loc-input" min="0" />
-                    </div>
-                    <div class="loc-form-group">
-                        <label>Estado</label>
-                        <select name="estado" class="loc-input">
-                            ${this._estadosStock.map(e => `<option value="${e.value}" ${(existing?.estado || 'disponible') === e.value ? 'selected' : ''}>${e.label}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-                <div class="loc-form-group">
-                    <label>Notas</label>
-                    <textarea name="notas" class="loc-input loc-textarea" rows="2">${existing?.notas || ''}</textarea>
-                </div>
-            </form>
-        `;
-
-        const footer = `
-            <button class="btn-ghost" data-modal-close>Cancelar</button>
-            <button class="btn-primary" id="locSaveStock">${isEdit ? 'Guardar' : 'Asignar'}</button>
-        `;
-
-        Modal.open({ title, body, footer, size: 'md' });
-
-        document.getElementById('locSaveStock')?.addEventListener('click', async () => {
-            const form = document.getElementById('locFormStock');
-            if (!form) return;
-            const locacion_id = form.locacion_id.value;
-            const insumo_id = form.insumo_id.value;
-            const cantidad = form.cantidad.value;
-            if (!locacion_id || !insumo_id || !cantidad) { Toast.warning('Locación, item y cantidad son obligatorios'); return; }
-
-            const row = {
-                locacion_id: parseInt(locacion_id),
-                insumo_id: parseInt(insumo_id),
-                cantidad: parseInt(cantidad),
-                estado: form.estado.value || 'disponible',
-                notas: form.notas.value.trim() || null,
-            };
-
-            try {
-                if (isEdit) {
-                    const { error } = await supabaseClient.from('locaciones_stock').update(row).eq('id', existing.id);
-                    if (error) throw error;
-                    Toast.success('Stock actualizado');
-                } else {
-                    row._deleted = false;
-                    const { error } = await supabaseClient.from('locaciones_stock').insert([row]);
-                    if (error) throw error;
-                    Toast.success('Stock asignado');
-                }
-                Modal.close();
-                await this._loadStock();
-            } catch (e) {
-                console.error('[Locaciones] Error saving stock:', e);
-                Toast.error('Error al guardar: ' + (e.message || e));
-            }
-        });
-    },
-
-    async _deleteStock(id) {
-        const ok = await Modal.confirm({ title: 'Eliminar asignación', message: '¿Eliminar esta asignación de stock?', danger: true });
-        if (!ok) return;
-        try {
-            const { error } = await supabaseClient.from('locaciones_stock').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
-            Toast.success('Asignación eliminada');
-            await this._loadStock();
-        } catch (e) {
-            Toast.error('Error al eliminar');
-        }
-    },
+    // Stock por Locación = READ-ONLY por lugar (NO tocar su lógica).
+    // El alta/edición/eliminación del stock se gestiona desde Inventario, no acá.
 };

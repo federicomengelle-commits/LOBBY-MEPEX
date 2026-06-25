@@ -23,7 +23,7 @@ const Data = {
         admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
         pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'flota'],
-        taller:     ['eventos', 'proyectos', 'taller', 'logistica', 'inventario', 'flota'], // reorg: +proyectos (read-only, ver readOnlyPermissions). taller/logistica salen en Fase C/D.
+        taller:     ['eventos', 'proyectos', 'taller', 'logistica', 'inventario', 'locaciones', 'flota'], // reorg: +proyectos (read-only, ver readOnlyPermissions). reorg_e: +locaciones (read-only, RLS filtra a taller/deposito). taller/logistica salen en Fase C/D.
     },
 
     // ─── PERMISOS DE SOLO LECTURA (FALLBACK OFFLINE) ───
@@ -34,7 +34,7 @@ const Data = {
         admin:      [],
         venta:      ['catalogo'],
         pm:         ['crm', 'catalogo', 'inventario', 'flota'],
-        taller:     ['eventos', 'proyectos', 'inventario', 'flota'], // reorg: proyectos read-only (taller ve sus stands en producción, sin editar)
+        taller:     ['eventos', 'proyectos', 'inventario', 'locaciones', 'flota'], // reorg: proyectos read-only (taller ve sus stands en producción, sin editar). reorg_e: locaciones read-only (cara operativa, solo taller/deposito vía RLS)
         // Note: 'taller' in readOnly refers to the role, not the module
     },
 
