@@ -723,6 +723,7 @@ const EventosModule = {
 
         // Cargar secciones async después de renderizar el shell
         this._loadTransporteSection(eventId);
+        this._loadSubalquileresSection(eventId);
         this._loadProyectosSection(eventId);
         this._loadJornadasSection(eventId);
         this._loadDocumentosSection(eventId);
@@ -844,6 +845,16 @@ const EventosModule = {
                     <div class="ev-panel-section">
                         <div class="ev-section-header">
                             <h3 class="ev-section-title">Transporte</h3>
+                        </div>
+                        <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
+                    </div>
+                </div>
+
+                <!-- Subalquileres / Pedido a proveedores (async, agrupado por proveedor) -->
+                <div id="evSubalqContent">
+                    <div class="ev-panel-section">
+                        <div class="ev-section-header">
+                            <h3 class="ev-section-title">Subalquileres</h3>
                         </div>
                         <p class="ev-section-empty" style="opacity:0.5">Cargando…</p>
                     </div>
@@ -2033,6 +2044,147 @@ const EventosModule = {
             }
         });
         input.click();
+    },
+
+    // ═══════════════════════════════════════════
+    //  SUBALQUILERES / PEDIDO A PROVEEDORES (Fase 4 · B1)
+    //  Recorre los stands del evento, extrae los ítems subalquilados de sus
+    //  cotizaciones y los agrupa por proveedor → arma el pedido (PDF) por proveedor.
+    //  Backbone: API.getSubalquileresByEvento(eventoId).
+    // ═══════════════════════════════════════════
+    async _loadSubalquileresSection(eventoId) {
+        const container = document.getElementById('evSubalqContent');
+        if (!container) return;
+        try {
+            const data = await API.getSubalquileresByEvento(eventoId);
+            this._subalqCache = this._subalqCache || {};
+            this._subalqCache[eventoId] = data;
+            container.innerHTML = this._renderPanelSubalquileres(eventoId, data);
+            this._attachSubalquileresEvents(eventoId);
+        } catch (e) {
+            container.innerHTML = `<div class="ev-panel-section"><div class="ev-section-header"><h3 class="ev-section-title">Subalquileres</h3></div><p class="ev-section-empty" style="color:#F28D15">Error cargando subalquileres</p></div>`;
+        }
+    },
+
+    _renderPanelSubalquileres(eventoId, data) {
+        const d = data || { proveedores: [], sinProveedor: [], totalItems: 0, totalUnidades: 0 };
+        const provs = d.proveedores || [];
+        const sin = d.sinProveedor || [];
+        const hasAny = provs.length > 0 || sin.length > 0;
+
+        const itemsList = (items) => (items || []).map(it => `
+            <li class="ev-subalq-li">
+                <span class="ev-subalq-qty">${this._esc(String(it.cantidad ?? ''))}×</span>
+                <span class="ev-subalq-name">${this._esc(it.nombre || '—')}</span>
+                ${it.proyecto ? `<span class="ev-subalq-stand">${this._esc(it.proyecto)}</span>` : ''}
+            </li>`).join('');
+
+        const provCard = (p) => {
+            const tel = p.telefono ? this._waNumber(p.telefono) : '';
+            const contact = [
+                tel ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener" class="ev-subalq-contact">📱 ${this._esc(p.telefono)}</a>` : '',
+                p.email ? `<a href="mailto:${this._escAttr(p.email)}" class="ev-subalq-contact">✉️ ${this._esc(p.email)}</a>` : '',
+            ].filter(Boolean).join('');
+            const units = (p.items || []).reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
+            return `
+                <div class="ev-subalq-card">
+                    <div class="ev-subalq-head">
+                        <span class="ev-subalq-prov">📦 ${this._esc(p.proveedor || 'Proveedor')}</span>
+                        <button class="ev-subalq-pdf-btn" data-subalq-pdf="${this._escAttr(p.proveedor_id)}" title="Generar PDF del pedido">📄 PDF de pedido</button>
+                    </div>
+                    ${contact ? `<div class="ev-subalq-contacts">${contact}</div>` : ''}
+                    <ul class="ev-subalq-items">${itemsList(p.items)}</ul>
+                    <div class="ev-subalq-foot">${(p.items || []).length} ítem${(p.items || []).length === 1 ? '' : 's'} · ${units} unidad${units === 1 ? '' : 'es'}</div>
+                </div>`;
+        };
+
+        const sinBlock = sin.length ? `
+            <div class="ev-subalq-card ev-subalq-sin">
+                <div class="ev-subalq-head">
+                    <span class="ev-subalq-prov" style="color:#F28D15;">⚠️ Sin proveedor asignado</span>
+                </div>
+                <ul class="ev-subalq-items">${itemsList(sin)}</ul>
+                <div class="ev-subalq-note">Clasificá el proveedor de estos ítems en <strong>Costos → Recetas</strong> (subalquilado) para que entren al pedido.</div>
+            </div>` : '';
+
+        const body = hasAny
+            ? `
+                <div class="ev-subalq-kpis">
+                    <span><strong>${provs.length}</strong> proveedor${provs.length === 1 ? '' : 'es'}</span>
+                    <span><strong>${d.totalItems || 0}</strong> ítem${(d.totalItems || 0) === 1 ? '' : 's'}</span>
+                    <span><strong>${d.totalUnidades || 0}</strong> unidad${(d.totalUnidades || 0) === 1 ? '' : 'es'}</span>
+                </div>
+                ${provs.map(provCard).join('')}
+                ${sinBlock}`
+            : `<p class="ev-section-empty">Este evento no tiene ítems subalquilados.<br><span style="font-size:11px;opacity:0.7;">Requiere que la cotización del stand tenga ítems cargados (Importar ítems en CRM → Cotizaciones).</span></p>`;
+
+        return `
+            <style>
+                .ev-subalq-kpis { display:flex; flex-wrap:wrap; gap:14px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; margin-bottom:10px; }
+                .ev-subalq-kpis strong { color:#00A9C1; font-size:13px; }
+                .ev-subalq-card { background:#1a1a1a; border:1px solid #2a2a2a; border-left:3px solid #9B7DFF; border-radius:6px; padding:10px 12px; margin-bottom:8px; }
+                .ev-subalq-card.ev-subalq-sin { border-left-color:#F28D15; }
+                .ev-subalq-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
+                .ev-subalq-prov { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
+                .ev-subalq-pdf-btn { background:#00A9C115; border:1px solid #00A9C140; color:#00A9C1; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; border-radius:4px; padding:4px 9px; cursor:pointer; white-space:nowrap; transition:background 200ms ease; }
+                .ev-subalq-pdf-btn:hover { background:#00A9C130; }
+                .ev-subalq-contacts { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:6px; }
+                .ev-subalq-contact { font-family:'Space Mono',monospace; font-size:11px; color:#00A9C1; text-decoration:none; }
+                .ev-subalq-contact:hover { text-decoration:underline; }
+                .ev-subalq-items { list-style:none; margin:4px 0 6px; padding:0; display:flex; flex-direction:column; gap:4px; }
+                .ev-subalq-li { display:flex; align-items:baseline; gap:8px; font-size:12px; color:#ccc; font-family:'Outfit',sans-serif; }
+                .ev-subalq-qty { font-family:'Space Mono',monospace; font-size:12px; font-weight:700; color:#00A9C1; min-width:28px; }
+                .ev-subalq-name { flex:1; }
+                .ev-subalq-stand { font-size:10px; color:#888; font-family:'Space Mono',monospace; background:#222; border-radius:8px; padding:1px 7px; white-space:nowrap; }
+                .ev-subalq-foot { font-family:'Space Mono',monospace; font-size:10px; color:#777; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
+                .ev-subalq-note { font-size:11px; color:#aaa; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
+                .ev-subalq-note strong { color:#F28D15; }
+            </style>
+            <div class="ev-panel-section" id="evSecSubalq">
+                <div class="ev-section-header">
+                    <h3 class="ev-section-title">Subalquileres
+                        <span class="ev-equipo-count">${provs.length > 0 ? provs.length : ''}</span>
+                    </h3>
+                </div>
+                ${body}
+            </div>
+        `;
+    },
+
+    _attachSubalquileresEvents(eventoId) {
+        document.querySelectorAll('[data-subalq-pdf]').forEach(btn => {
+            btn.addEventListener('click', () => this._generarPedidoProveedor(eventoId, btn.dataset.subalqPdf));
+        });
+    },
+
+    async _generarPedidoProveedor(eventoId, proveedorId) {
+        if (typeof PedidoPDF === 'undefined') { Toast.error('Generador de PDF no disponible'); return; }
+        const data = (this._subalqCache && this._subalqCache[eventoId]) || null;
+        const prov = data && (data.proveedores || []).find(p => String(p.proveedor_id) === String(proveedorId));
+        if (!prov) { Toast.error('No se encontró el proveedor'); return; }
+        const ev = this._events.find(e => e.id === eventoId) || this._activePanelData || {};
+
+        Toast.info('Generando pedido…');
+        const blob = await PedidoPDF.generate({
+            evento: {
+                nombre: ev.name, predio: ev.venue,
+                setupDate: ev.setupDate, eventStartDate: ev.eventStartDate,
+                eventEndDate: ev.eventEndDate, teardownDate: ev.teardownDate,
+            },
+            proveedor: prov,
+        });
+        if (!blob) { Toast.error('No se pudo generar el pedido'); return; }
+
+        const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x';
+        const fecha = new Date().toISOString().split('T')[0];
+        const filename = `MEPEX_PEDIDO_${slug(prov.proveedor)}_${slug(ev.name)}_${fecha}.pdf`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        Toast.success('Pedido generado');
     },
 
     // Editor inline (modal) de un vehículo del transporte.
