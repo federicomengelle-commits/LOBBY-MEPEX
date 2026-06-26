@@ -7308,4 +7308,62 @@ const API = {
             return { ok: false, error: e.message };
         }
     },
+
+    // ═════════════════════════════════════════════════════════════
+    //  SUBALQUILERES POR PROVEEDOR (Fase 4 — pedido por proveedor por evento)
+    //  Cadena: evento → proyectos(evento_id) → cotizaciones(project_id) →
+    //  cotizacion_items → catalogo_items(tipo_receta='subalquilado' + proveedor_id_directo) → proveedor.
+    //  Devuelve los ítems subalquilados agrupados por proveedor, para armar el
+    //  pedido (lista/PDF) por proveedor. Los subalq sin proveedor van a `sinProveedor`.
+    // ═════════════════════════════════════════════════════════════
+    async getSubalquileresByEvento(eventoId) {
+        const empty = { proveedores: [], sinProveedor: [], totalItems: 0, totalUnidades: 0 };
+        try {
+            if (!eventoId) return empty;
+            const { data: proys } = await supabaseClient.from('proyectos')
+                .select('id, nombre').eq('evento_id', eventoId).eq('_deleted', false);
+            if (!proys || !proys.length) return empty;
+            const proyById = {}; proys.forEach(p => proyById[p.id] = p);
+
+            const { data: cots } = await supabaseClient.from('cotizaciones')
+                .select('id, numero, project_id').in('project_id', proys.map(p => p.id)).eq('_deleted', false);
+            if (!cots || !cots.length) return empty;
+            const cotById = {}; cots.forEach(c => cotById[c.id] = c);
+
+            const { data: items } = await supabaseClient.from('cotizacion_items')
+                .select('id, cotizacion_id, catalogo_item_id, nombre, cantidad').in('cotizacion_id', cots.map(c => c.id));
+            if (!items || !items.length) return empty;
+
+            const catIds = [...new Set(items.map(i => i.catalogo_item_id).filter(Boolean))];
+            const { data: cats } = catIds.length
+                ? await supabaseClient.from('catalogo_items').select('id, tipo_receta, proveedor_id_directo').in('id', catIds)
+                : { data: [] };
+            const catById = {}; (cats || []).forEach(c => catById[c.id] = c);
+
+            const provIds = [...new Set((cats || []).map(c => c.proveedor_id_directo).filter(Boolean))];
+            const { data: provs } = provIds.length
+                ? await supabaseClient.from('proveedor').select('id, nombre, telefono, email').in('id', provIds)
+                : { data: [] };
+            const provById = {}; (provs || []).forEach(p => provById[p.id] = p);
+
+            const grupos = {}; const sinProveedor = []; let totalItems = 0, totalUnidades = 0;
+            items.forEach(it => {
+                const cat = it.catalogo_item_id ? catById[it.catalogo_item_id] : null;
+                if (!cat || cat.tipo_receta !== 'subalquilado') return;
+                totalItems++; totalUnidades += Number(it.cantidad) || 0;
+                const cot = cotById[it.cotizacion_id] || {};
+                const proy = cot.project_id ? proyById[cot.project_id] : null;
+                const linea = { nombre: it.nombre || '', cantidad: Number(it.cantidad) || 0, proyecto: proy ? proy.nombre : '', cotizacion: cot.numero || '' };
+                const provId = cat.proveedor_id_directo;
+                if (provId && provById[provId]) {
+                    if (!grupos[provId]) grupos[provId] = { proveedor_id: provId, proveedor: provById[provId].nombre, telefono: provById[provId].telefono || null, email: provById[provId].email || null, items: [] };
+                    grupos[provId].items.push(linea);
+                } else {
+                    sinProveedor.push(linea);
+                }
+            });
+            const proveedores = Object.values(grupos).sort((a, b) => a.proveedor.localeCompare(b.proveedor, 'es'));
+            return { proveedores, sinProveedor, totalItems, totalUnidades };
+        } catch (e) { console.warn('[API] getSubalquileresByEvento:', e.message); return empty; }
+    },
 };
