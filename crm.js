@@ -2,9 +2,8 @@
    MEPEX Lobby — CRM Module
    =============================================
    Fusión Clientes + Ventas. Módulo independiente.
-   Tabs: Clientes, Pipeline, Cotizaciones,
-   Interacciones, Analítica (superadmin). (Marketing eliminado 2026-06-07.)
-   Paso 4a: Estructura base + tab Clientes.
+   Tabs (refactor v2): Bandeja · Pipeline · Clientes · Cotizaciones · Analítica (admin+superadmin).
+   (Marketing eliminado 2026-06-07. Score eliminado 2026-06-26.)
    ============================================= */
 
 const CRM = {
@@ -419,7 +418,6 @@ const CRM = {
                 case 'email':    va = a.email || ''; vb = b.email || ''; break;
                 case 'telefono': va = a.phone || ''; vb = b.phone || ''; break;
                 case 'estado':   va = a.estado || ''; vb = b.estado || ''; break;
-                case 'score':    va = a.score || 0; vb = b.score || 0; break;
                 case 'proyectos': va = a._projectCount || 0; vb = b._projectCount || 0; break;
                 default:         va = a.name || ''; vb = b.name || '';
             }
@@ -439,8 +437,8 @@ const CRM = {
     // ═══════════════════════════════════════════
 
     _visibleTabs() {
-        const isSuper = Auth.isSuperAdmin?.() || false;
-        return this._tabs.filter(t => t.id !== 'analitica' || isSuper);
+        const isAdminLevel = Auth.isAdminLevel?.() || false;   // Analítica: admin + superadmin (antes solo super)
+        return this._tabs.filter(t => t.id !== 'analitica' || isAdminLevel);
     },
 
     _switchTab(tab) {
@@ -590,7 +588,6 @@ const CRM = {
             { id: 'email',     header: 'Email' },
             { id: 'telefono',  header: 'Tel\u00E9fono' },
             { id: 'estado',    header: 'Estado' },
-            { id: 'score',     header: 'Score' },
             { id: 'proyectos', header: 'Proyectos' },
         ];
 
@@ -626,16 +623,6 @@ const CRM = {
         const estadoLabel = estadoConfig ? estadoConfig.label : 'Activo';
         const estadoBadge = `<span class="crm-badge-estado" style="color:${estadoColor}"><span class="crm-dot" style="background:${estadoColor}"></span>${estadoLabel}</span>`;
 
-        // Score bar
-        const score = c.score || 0;
-        const scoreColor = score >= 80 ? '#00CC88' : score >= 50 ? '#F28D15' : '#EF5350';
-        const scoreBar = `
-            <div class="crm-score">
-                <div class="crm-score-bar"><div class="crm-score-fill" style="width:${score}%; background:${scoreColor}"></div></div>
-                <span class="crm-score-val" style="color:${scoreColor}">${score}</span>
-            </div>
-        `;
-
         // Projects count
         const projCount = c._projectCount || 0;
         const projBadge = projCount > 0
@@ -662,7 +649,6 @@ const CRM = {
                 <td class="crm-td-email" data-label="Email">${c.email || '\u2014'}</td>
                 <td class="crm-td-phone" data-label="Tel\u00e9fono">${c.phone || '\u2014'}</td>
                 <td data-label="Estado">${estadoBadge}</td>
-                <td data-label="Score">${scoreBar}</td>
                 <td class="crm-td-center" data-label="Proyectos">${projBadge}</td>
             </tr>
         `;
@@ -807,8 +793,6 @@ const CRM = {
     _buildPanelContent(c) {
         const typeConfig = this._clientTypes.find(t => t.value === c.tipo);
         const estadoConfig = this._clientStates.find(s => s.value === (c.estado || 'activo'));
-        const score = c.score || 0;
-        const scoreColor = score >= 80 ? '#00CC88' : score >= 50 ? '#F28D15' : '#EF5350';
 
         // Client projects
         const clientProjects = this._projects.filter(p =>
@@ -864,15 +848,6 @@ const CRM = {
                     </div>
                 </div>
 
-                <!-- Score -->
-                <div class="crm-panel-score">
-                    <div class="crm-panel-score-header">
-                        <span class="crm-panel-label">Score</span>
-                        <span class="crm-panel-score-val" style="color:${scoreColor}">${score}/100</span>
-                    </div>
-                    <div class="crm-score-bar crm-score-bar-lg"><div class="crm-score-fill" style="width:${score}%; background:${scoreColor}"></div></div>
-                </div>
-
                 <!-- Counters -->
                 <div class="crm-panel-counters">
                     <div class="crm-counter">
@@ -882,10 +857,6 @@ const CRM = {
                     <div class="crm-counter">
                         <span class="crm-counter-val">${clientCots.length}</span>
                         <span class="crm-counter-label">Cotizaciones</span>
-                    </div>
-                    <div class="crm-counter">
-                        <span class="crm-counter-val" style="color:${scoreColor}">${score}</span>
-                        <span class="crm-counter-label">Score</span>
                     </div>
                 </div>
 
@@ -1206,10 +1177,6 @@ const CRM = {
                         <input type="text" class="crm-form-input" name="rubro" value="${this._escHtml(values.rubro || '')}" placeholder="Ej: Alimentos, Tecnolog\u00EDa..." />
                     </div>
                     <div class="crm-form-group">
-                        <label class="crm-form-label">Score (0-100)</label>
-                        <input type="number" class="crm-form-input" name="score" min="0" max="100" value="${values.score || 0}" placeholder="0" />
-                    </div>
-                    <div class="crm-form-group">
                         <label class="crm-form-label">Contacto principal</label>
                         <input type="text" class="crm-form-input" name="contactName" value="${this._escHtml(values.contactName || '')}" placeholder="Nombre y apellido" />
                     </div>
@@ -1246,7 +1213,6 @@ const CRM = {
             tipo: form.querySelector('[name="tipo"]').value,
             estado: form.querySelector('[name="estado"]').value,
             rubro: form.querySelector('[name="rubro"]').value.trim(),
-            score: parseInt(form.querySelector('[name="score"]').value) || 0,
             contactName: form.querySelector('[name="contactName"]').value.trim(),
             contactRole: form.querySelector('[name="contactRole"]').value.trim(),
             email: form.querySelector('[name="email"]').value.trim(),
@@ -4798,37 +4764,6 @@ const CRM = {
     margin: 0 2px;
 }
 
-/* ─── Score ─── */
-.crm-score {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 90px;
-}
-.crm-score-bar {
-    flex: 1;
-    height: 5px;
-    background: rgba(255,255,255,0.06);
-    border-radius: 3px;
-    overflow: hidden;
-}
-.crm-score-bar-lg {
-    height: 8px;
-    border-radius: 4px;
-}
-.crm-score-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.crm-score-val {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 700;
-    min-width: 20px;
-    text-align: right;
-}
-
 /* ─── Project Count ─── */
 .crm-proj-count {
     display: inline-flex;
@@ -5037,30 +4972,6 @@ const CRM = {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-}
-
-/* Panel Score */
-.crm-panel-score {
-    padding: 14px 20px;
-    border-bottom: 1px solid rgba(var(--primary-rgb), 0.06);
-}
-.crm-panel-score-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-}
-.crm-panel-label {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
-}
-.crm-panel-score-val {
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    font-weight: 700;
 }
 
 /* Panel Counters */
