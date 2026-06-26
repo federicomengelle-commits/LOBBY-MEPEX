@@ -2067,18 +2067,67 @@ const EventosModule = {
     },
 
     _renderPanelSubalquileres(eventoId, data) {
+        const provs = (data && data.proveedores) || [];
+        return `
+            <style>
+                .ev-subalq-kpis { display:flex; flex-wrap:wrap; gap:14px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; margin-bottom:10px; }
+                .ev-subalq-kpis strong { color:#00A9C1; font-size:13px; }
+                .ev-subalq-controls { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+                .ev-subalq-toggle { display:inline-flex; border:1px solid #2a2a2a; border-radius:6px; overflow:hidden; }
+                .ev-subalq-toggle button { background:transparent; border:none; color:#888; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; padding:5px 11px; cursor:pointer; transition:all 200ms ease; }
+                .ev-subalq-toggle button.active { background:#00A9C115; color:#00A9C1; }
+                .ev-subalq-toggle button:not(.active):hover { color:#ccc; }
+                .ev-subalq-all-btn { background:#9B7DFF15; border:1px solid #9B7DFF40; color:#9B7DFF; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; border-radius:4px; padding:5px 10px; cursor:pointer; white-space:nowrap; transition:background 200ms ease; }
+                .ev-subalq-all-btn:hover { background:#9B7DFF30; }
+                .ev-subalq-card { background:#1a1a1a; border:1px solid #2a2a2a; border-left:3px solid #9B7DFF; border-radius:6px; padding:10px 12px; margin-bottom:8px; }
+                .ev-subalq-card.ev-subalq-sin { border-left-color:#F28D15; }
+                .ev-subalq-card.ev-subalq-standcard { border-left-color:#00A9C1; }
+                .ev-subalq-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
+                .ev-subalq-prov { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
+                .ev-subalq-pdf-btn { background:#00A9C115; border:1px solid #00A9C140; color:#00A9C1; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; border-radius:4px; padding:4px 9px; cursor:pointer; white-space:nowrap; transition:background 200ms ease; }
+                .ev-subalq-pdf-btn:hover { background:#00A9C130; }
+                .ev-subalq-contacts { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:6px; }
+                .ev-subalq-contact { font-family:'Space Mono',monospace; font-size:11px; color:#00A9C1; text-decoration:none; }
+                .ev-subalq-contact:hover { text-decoration:underline; }
+                .ev-subalq-items { list-style:none; margin:4px 0 6px; padding:0; display:flex; flex-direction:column; gap:4px; }
+                .ev-subalq-li { display:flex; align-items:baseline; gap:8px; font-size:12px; color:#ccc; font-family:'Outfit',sans-serif; }
+                .ev-subalq-qty { font-family:'Space Mono',monospace; font-size:12px; font-weight:700; color:#00A9C1; min-width:28px; }
+                .ev-subalq-name { flex:1; }
+                .ev-subalq-stand { font-size:10px; color:#888; font-family:'Space Mono',monospace; background:#222; border-radius:8px; padding:1px 7px; white-space:nowrap; }
+                .ev-subalq-stand.warn { color:#F28D15; background:#F28D1515; }
+                .ev-subalq-foot { font-family:'Space Mono',monospace; font-size:10px; color:#777; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
+                .ev-subalq-note { font-size:11px; color:#aaa; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
+                .ev-subalq-note strong { color:#F28D15; }
+            </style>
+            <div class="ev-panel-section" id="evSecSubalq">
+                <div class="ev-section-header">
+                    <h3 class="ev-section-title">Subalquileres
+                        <span class="ev-equipo-count">${provs.length > 0 ? provs.length : ''}</span>
+                    </h3>
+                </div>
+                <div id="evSubalqBody">${this._renderSubalqBody(eventoId, data)}</div>
+            </div>
+        `;
+    },
+
+    // Cuerpo de la sección (KPIs + toggle + cards). Separado del wrapper para que el
+    // toggle por-proveedor/por-stand re-renderice SOLO esto, sin re-disparar el colapsable.
+    _renderSubalqBody(eventoId, data) {
         const d = data || { proveedores: [], sinProveedor: [], totalItems: 0, totalUnidades: 0 };
         const provs = d.proveedores || [];
         const sin = d.sinProveedor || [];
         const hasAny = provs.length > 0 || sin.length > 0;
+        const view = this._subalqView === 'stand' ? 'stand' : 'proveedor';
 
-        const itemsList = (items) => (items || []).map(it => `
+        // <li> de un ítem. secondary = etiqueta del chip secundario (stand o proveedor según vista).
+        const itemLi = (it, secondary, isWarn) => `
             <li class="ev-subalq-li">
                 <span class="ev-subalq-qty">${this._esc(String(it.cantidad ?? ''))}×</span>
                 <span class="ev-subalq-name">${this._esc(it.nombre || '—')}</span>
-                ${it.proyecto ? `<span class="ev-subalq-stand">${this._esc(it.proyecto)}</span>` : ''}
-            </li>`).join('');
+                ${secondary ? `<span class="ev-subalq-stand${isWarn ? ' warn' : ''}">${this._esc(secondary)}</span>` : ''}
+            </li>`;
 
+        // ── Vista POR PROVEEDOR ──
         const provCard = (p) => {
             const tel = p.telefono ? this._waNumber(p.telefono) : '';
             const contact = [
@@ -2093,7 +2142,7 @@ const EventosModule = {
                         <button class="ev-subalq-pdf-btn" data-subalq-pdf="${this._escAttr(p.proveedor_id)}" title="Generar PDF del pedido">📄 PDF de pedido</button>
                     </div>
                     ${contact ? `<div class="ev-subalq-contacts">${contact}</div>` : ''}
-                    <ul class="ev-subalq-items">${itemsList(p.items)}</ul>
+                    <ul class="ev-subalq-items">${(p.items || []).map(it => itemLi(it, it.proyecto, false)).join('')}</ul>
                     <div class="ev-subalq-foot">${(p.items || []).length} ítem${(p.items || []).length === 1 ? '' : 's'} · ${units} unidad${units === 1 ? '' : 'es'}</div>
                 </div>`;
         };
@@ -2103,9 +2152,40 @@ const EventosModule = {
                 <div class="ev-subalq-head">
                     <span class="ev-subalq-prov" style="color:#F28D15;">⚠️ Sin proveedor asignado</span>
                 </div>
-                <ul class="ev-subalq-items">${itemsList(sin)}</ul>
+                <ul class="ev-subalq-items">${sin.map(it => itemLi(it, it.proyecto, false)).join('')}</ul>
                 <div class="ev-subalq-note">Clasificá el proveedor de estos ítems en <strong>Costos → Recetas</strong> (subalquilado) para que entren al pedido.</div>
             </div>` : '';
+
+        // ── Vista POR STAND (reagrupa la misma data por proyecto; el chip secundario pasa a ser el proveedor) ──
+        const standView = () => {
+            const flat = [];
+            provs.forEach(p => (p.items || []).forEach(it => flat.push({ ...it, _prov: p.proveedor })));
+            sin.forEach(it => flat.push({ ...it, _prov: null }));
+            const byStand = {};
+            flat.forEach(it => { const k = it.proyecto || 'Sin stand'; (byStand[k] = byStand[k] || []).push(it); });
+            const standNames = Object.keys(byStand).sort((a, b) => a.localeCompare(b, 'es'));
+            return standNames.map(stand => {
+                const items = byStand[stand];
+                const units = items.reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
+                return `
+                    <div class="ev-subalq-card ev-subalq-standcard">
+                        <div class="ev-subalq-head">
+                            <span class="ev-subalq-prov">🏗️ ${this._esc(stand)}</span>
+                        </div>
+                        <ul class="ev-subalq-items">${items.map(it => itemLi(it, it._prov || 'sin proveedor', !it._prov)).join('')}</ul>
+                        <div class="ev-subalq-foot">${items.length} ítem${items.length === 1 ? '' : 's'} · ${units} unidad${units === 1 ? '' : 'es'}</div>
+                    </div>`;
+            }).join('');
+        };
+
+        const controls = `
+            <div class="ev-subalq-controls">
+                <div class="ev-subalq-toggle">
+                    <button data-subalq-view="proveedor" class="${view === 'proveedor' ? 'active' : ''}">Por proveedor</button>
+                    <button data-subalq-view="stand" class="${view === 'stand' ? 'active' : ''}">Por stand</button>
+                </div>
+                ${provs.length >= 1 ? `<button class="ev-subalq-all-btn" data-subalq-all="1" title="Un PDF con el pedido de cada proveedor">📄 Generar todos</button>` : ''}
+            </div>`;
 
         const body = hasAny
             ? `
@@ -2114,47 +2194,50 @@ const EventosModule = {
                     <span><strong>${d.totalItems || 0}</strong> ítem${(d.totalItems || 0) === 1 ? '' : 's'}</span>
                     <span><strong>${d.totalUnidades || 0}</strong> unidad${(d.totalUnidades || 0) === 1 ? '' : 'es'}</span>
                 </div>
-                ${provs.map(provCard).join('')}
-                ${sinBlock}`
+                ${controls}
+                ${view === 'proveedor' ? (provs.map(provCard).join('') + sinBlock) : standView()}`
             : `<p class="ev-section-empty">Este evento no tiene ítems subalquilados.<br><span style="font-size:11px;opacity:0.7;">Requiere que la cotización del stand tenga ítems cargados (Importar ítems en CRM → Cotizaciones).</span></p>`;
 
-        return `
-            <style>
-                .ev-subalq-kpis { display:flex; flex-wrap:wrap; gap:14px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; margin-bottom:10px; }
-                .ev-subalq-kpis strong { color:#00A9C1; font-size:13px; }
-                .ev-subalq-card { background:#1a1a1a; border:1px solid #2a2a2a; border-left:3px solid #9B7DFF; border-radius:6px; padding:10px 12px; margin-bottom:8px; }
-                .ev-subalq-card.ev-subalq-sin { border-left-color:#F28D15; }
-                .ev-subalq-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
-                .ev-subalq-prov { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
-                .ev-subalq-pdf-btn { background:#00A9C115; border:1px solid #00A9C140; color:#00A9C1; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; border-radius:4px; padding:4px 9px; cursor:pointer; white-space:nowrap; transition:background 200ms ease; }
-                .ev-subalq-pdf-btn:hover { background:#00A9C130; }
-                .ev-subalq-contacts { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:6px; }
-                .ev-subalq-contact { font-family:'Space Mono',monospace; font-size:11px; color:#00A9C1; text-decoration:none; }
-                .ev-subalq-contact:hover { text-decoration:underline; }
-                .ev-subalq-items { list-style:none; margin:4px 0 6px; padding:0; display:flex; flex-direction:column; gap:4px; }
-                .ev-subalq-li { display:flex; align-items:baseline; gap:8px; font-size:12px; color:#ccc; font-family:'Outfit',sans-serif; }
-                .ev-subalq-qty { font-family:'Space Mono',monospace; font-size:12px; font-weight:700; color:#00A9C1; min-width:28px; }
-                .ev-subalq-name { flex:1; }
-                .ev-subalq-stand { font-size:10px; color:#888; font-family:'Space Mono',monospace; background:#222; border-radius:8px; padding:1px 7px; white-space:nowrap; }
-                .ev-subalq-foot { font-family:'Space Mono',monospace; font-size:10px; color:#777; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
-                .ev-subalq-note { font-size:11px; color:#aaa; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
-                .ev-subalq-note strong { color:#F28D15; }
-            </style>
-            <div class="ev-panel-section" id="evSecSubalq">
-                <div class="ev-section-header">
-                    <h3 class="ev-section-title">Subalquileres
-                        <span class="ev-equipo-count">${provs.length > 0 ? provs.length : ''}</span>
-                    </h3>
-                </div>
-                ${body}
-            </div>
-        `;
+        return body;
     },
 
     _attachSubalquileresEvents(eventoId) {
         document.querySelectorAll('[data-subalq-pdf]').forEach(btn => {
             btn.addEventListener('click', () => this._generarPedidoProveedor(eventoId, btn.dataset.subalqPdf));
         });
+        document.querySelectorAll('[data-subalq-view]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._subalqView = btn.dataset.subalqView;
+                const bodyEl = document.getElementById('evSubalqBody');
+                if (bodyEl && this._subalqCache && this._subalqCache[eventoId]) {
+                    bodyEl.innerHTML = this._renderSubalqBody(eventoId, this._subalqCache[eventoId]);
+                    this._attachSubalquileresEvents(eventoId);
+                }
+            });
+        });
+        document.querySelector('[data-subalq-all]')
+            ?.addEventListener('click', () => this._generarTodosPedidos(eventoId));
+    },
+
+    // Mapea el evento activo al payload que consume PedidoPDF.
+    _evToPdfEvento(ev) {
+        return {
+            nombre: ev.name, predio: ev.venue,
+            setupDate: ev.setupDate, eventStartDate: ev.eventStartDate,
+            eventEndDate: ev.eventEndDate, teardownDate: ev.teardownDate,
+        };
+    },
+
+    _subalqSlug(s) {
+        return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x';
+    },
+
+    _downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
     },
 
     async _generarPedidoProveedor(eventoId, proveedorId) {
@@ -2165,26 +2248,28 @@ const EventosModule = {
         const ev = this._events.find(e => e.id === eventoId) || this._activePanelData || {};
 
         Toast.info('Generando pedido…');
-        const blob = await PedidoPDF.generate({
-            evento: {
-                nombre: ev.name, predio: ev.venue,
-                setupDate: ev.setupDate, eventStartDate: ev.eventStartDate,
-                eventEndDate: ev.eventEndDate, teardownDate: ev.teardownDate,
-            },
-            proveedor: prov,
-        });
+        const blob = await PedidoPDF.generate({ evento: this._evToPdfEvento(ev), proveedor: prov });
         if (!blob) { Toast.error('No se pudo generar el pedido'); return; }
 
-        const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x';
         const fecha = new Date().toISOString().split('T')[0];
-        const filename = `MEPEX_PEDIDO_${slug(prov.proveedor)}_${slug(ev.name)}_${fecha}.pdf`;
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        this._downloadBlob(blob, `MEPEX_PEDIDO_${this._subalqSlug(prov.proveedor)}_${this._subalqSlug(ev.name)}_${fecha}.pdf`);
         Toast.success('Pedido generado');
+    },
+
+    async _generarTodosPedidos(eventoId) {
+        if (typeof PedidoPDF === 'undefined') { Toast.error('Generador de PDF no disponible'); return; }
+        const data = (this._subalqCache && this._subalqCache[eventoId]) || null;
+        const provs = (data && data.proveedores) || [];
+        if (!provs.length) { Toast.error('No hay proveedores para generar'); return; }
+        const ev = this._events.find(e => e.id === eventoId) || this._activePanelData || {};
+
+        Toast.info(`Generando ${provs.length} pedido${provs.length === 1 ? '' : 's'}…`);
+        const blob = await PedidoPDF.generateBatch({ evento: this._evToPdfEvento(ev), proveedores: provs });
+        if (!blob) { Toast.error('No se pudieron generar los pedidos'); return; }
+
+        const fecha = new Date().toISOString().split('T')[0];
+        this._downloadBlob(blob, `MEPEX_PEDIDOS_${this._subalqSlug(ev.name)}_${fecha}.pdf`);
+        Toast.success(`${provs.length} pedido${provs.length === 1 ? '' : 's'} generado${provs.length === 1 ? '' : 's'}`);
     },
 
     // Editor inline (modal) de un vehículo del transporte.

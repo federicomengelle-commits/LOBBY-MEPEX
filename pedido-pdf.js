@@ -68,6 +68,22 @@ const PedidoPDF = {
         catch (e) { console.warn('[PedidoPDF] output blob error:', e.message); return null; }
     },
 
+    // Un solo PDF con el pedido de cada proveedor (una página por proveedor).
+    async generateBatch(opts) {
+        if (typeof window.jspdf === 'undefined') { console.warn('[PedidoPDF] jsPDF no está cargado'); return null; }
+        const { evento = {}, proveedores = [] } = opts || {};
+        if (!proveedores.length) { console.warn('[PedidoPDF] sin proveedores'); return null; }
+        await this._loadLogo();
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+        proveedores.forEach((prov, idx) => {
+            if (idx > 0) doc.addPage();
+            this._render(doc, evento, prov);
+        });
+        try { return doc.output('blob'); }
+        catch (e) { console.warn('[PedidoPDF] output blob error:', e.message); return null; }
+    },
+
     _render(doc, evento, proveedor) {
         const PAGE_W = this._PAGE_W, PAGE_H = this._PAGE_H, MARGIN = this._MARGIN;
         const TURQUESA = this._TURQUESA, TEXTO = this._TEXTO, MUTED = this._MUTED;
