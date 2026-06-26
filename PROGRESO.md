@@ -35,6 +35,10 @@
 ---
 
 ## Estado general — AVANCE ≈ 86%
+- **🆕 SESIÓN 2026-06-26b (Handoff progreso→plan + CRM polish v3) — PUSHEADO:**
+  - **Handoff polenta** `docs/handoff-progreso-a-plan.md`: mapa único progreso(86%)→plan(14%), rankeado en 🟢 construible-ya / 🟡 semi-bloqueado (subalquileres/remito → importador) / 🔴 bloqueado-infra (Gmail iPlan, WhatsApp celu) / ⏸ al-final. Recomendación de orden.
+  - **CRM polish v3 (parte concreta) ✅** (`crm.js?v=21`, commit `4917da9`, −94 líneas): **Score eliminado** (columna Clientes + panel + form + sort + CSS muerto; el `_score` interno de la bandeja se conserva — es peso de prioridad, otra cosa) · **Analítica → admin+superadmin** (`Auth.isAdminLevel`, antes solo super; gate verificado en prod). node --check OK. ⏳ Fede: pull (prod sirve v=20) → ver Clientes sin Score + admins viendo Analítica.
+  - **⏳ Pendiente CRM (interactivo, sesión `pulir-pantallas`):** rework visual de la Bandeja + **aplicar colores de temperatura** (`temp.color` definido en `_tempConfig` pero el chip solo muestra el emoji, sin color).
 - **🆕 SESIÓN 2026-06-26 (Reorg — VERIFICACIÓN EN PROD + limpieza final) — VERDE:**
   - Fede corrió `reorg_f_rutinas.sql` + pulleó. **Verifiqué la reorg entera en prod via Chrome** (con cleanup): módulos Taller/Logística disueltos (globals undefined, redirects `#taller→#tareas`/`#logistica→#eventos`/`#produccion→#tareas` OK); **rol taller ve** lobby·tareas·eventos·proyectos·**inventario·locaciones·flota** y NO Taller/Logística (respondió la duda de Fede); pestaña Rutinas (admin) renderiza; **engine end-to-end** (rutina due-hoy → card+chip 🔁 → Hecha → `proxima_fecha` avanza + `ultima_ejecucion` + claim auto-limpiado → cleanup, vuelve a 10); botones "Programar rutina" en Flota/Locaciones/Inventario abren modal **precargado**; **0 errores de consola**.
   - **Sembré las 8 rutinas reales vía la app** (VTV/service/seguros flota, matafuegos, herramientas, limpieza galpón, mant. edilicio, habilitaciones) → **10 rutinas en prod**. `reorg_f_seed_rutinas.sql` queda como fuente reproducible (no hace falta correrlo).
