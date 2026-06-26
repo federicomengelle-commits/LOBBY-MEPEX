@@ -1204,7 +1204,7 @@ const ProyectoDetalle = {
                 target_role: 'taller',
                 entidad_tipo: 'proyecto',
                 entidad_id: this._projectId,
-                link: `#taller`,
+                link: `#proyectos/${this._projectId}`,
                 prioridad: 'normal',
             });
             if (typeof API?.clearCache === 'function') API.clearCache();

@@ -18,7 +18,9 @@ const Router = {
         'ventas':          'crm',
         'clientes':        'crm',
         'proveedores':     'compras',
-        'produccion':      'taller',
+        'produccion':      'tareas',    // reorg C: el viejo 'produccion' iba a 'taller' (disuelto) → directo a tareas (R1)
+        'taller':          'tareas',    // reorg C: módulo Taller disuelto → Centro de Tareas (galpón en #proyectos)
+        'logistica':       'eventos',   // reorg D: módulo Logística disuelto → transporte en la ficha del Evento
         'admin-usuarios':  'admin-panel',
     },
 
@@ -87,8 +89,7 @@ const Router = {
             'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },
             'proyectos/:id':    { render: (params) => ProyectoDetalle.render(params.id), requiresAuth: true, module: 'proyectos', obj: typeof ProyectoDetalle !== 'undefined' ? ProyectoDetalle : null },
             'eventos':          { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos' },
-            'taller':           { render: () => TallerModule.render(), requiresAuth: true, module: 'taller' },
-            'logistica':        { render: () => LogisticaModule.render(), requiresAuth: true, module: 'logistica' },
+            // 'taller' y 'logistica' DISUELTOS (reorg C/D) → ver _redirects (#taller→#tareas, #logistica→#eventos).
 
             // ── Recursos ──
             'rrhh':             { render: () => RRHHModule.render(), requiresAuth: true, module: 'rrhh' },

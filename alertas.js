@@ -229,7 +229,7 @@ const Alertas = {
                 moduleId: 'taller', tipo: 'taller_incompleto', key: 'taller_checklist',
                 severidad: 'danger', icon: '🔧',
                 titulo: `${n} ${Alertas._plural(n, 'stand')} sin terminar`,
-                detalle: 'Armado en ≤3 días, checklist incompleto', link: '#taller', count: n,
+                detalle: 'Armado en ≤3 días, checklist incompleto', link: '#proyectos', count: n,
             }];
         },
 

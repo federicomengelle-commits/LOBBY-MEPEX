@@ -1633,7 +1633,8 @@ const InventarioModule = {
                         <div class="inv-info-row"><span class="inv-info-label">${r.label}</span><span class="inv-info-value">${r.value}</span></div>
                     `).join('')}
                 </div>
-                ${canWrite ? `<button class="inv-panel-btn ghost" id="invEqEditBtn">Editar</button>` : ''}
+                ${canWrite ? `<button class="inv-panel-btn ghost" id="invEqEditBtn">Editar</button>
+                <button class="inv-panel-btn ghost" id="invEqRutinaBtn">🔁 Programar rutina</button>` : ''}
             </div>
 
             <div class="inv-panel-section">
@@ -1674,6 +1675,11 @@ const InventarioModule = {
 
         const editBtn = inner.querySelector('#invEqEditBtn');
         if (editBtn) editBtn.addEventListener('click', () => this._openModalEquipo(item));
+
+        const rutinaBtn = inner.querySelector('#invEqRutinaBtn');
+        if (rutinaBtn) rutinaBtn.addEventListener('click', () => {
+            if (typeof Tareas !== 'undefined' && Tareas.openProgramarRutina) Tareas.openProgramarRutina({ activo_tipo: 'equipo', activo_id: item.id, activo_label: item.nombre, modulo: 'inventario', target_role: 'taller' });
+        });
 
         const moverBtn = inner.querySelector('#invEqMoverBtn');
         if (moverBtn) moverBtn.addEventListener('click', () => this._moverEquipo(item.id));

@@ -228,6 +228,7 @@ const FlotaModule = {
                 </div>
                 <div class="flota-panel-actions">
                     <button class="flota-mini" data-act="edit-veh">✎ Editar</button>
+                    ${admin ? `<button class="flota-mini" data-act="prog-rutina">🔁 Rutina</button>` : ''}
                     ${admin ? `<button class="flota-mini danger" data-act="del-veh">🗑</button>` : ''}
                 </div>
             </div>
@@ -287,6 +288,10 @@ const FlotaModule = {
         const p = document.getElementById('flotaPanel');
         if (!p) return;
         p.querySelector('[data-act="edit-veh"]')?.addEventListener('click', () => this._openVehiculoModal(this._selId));
+        p.querySelector('[data-act="prog-rutina"]')?.addEventListener('click', () => {
+            const v = this._vehiculos.find(x => x.id === this._selId);
+            if (v && typeof Tareas !== 'undefined' && Tareas.openProgramarRutina) Tareas.openProgramarRutina({ activo_tipo: 'flota', activo_id: v.id, activo_label: v.descripcion, modulo: 'flota', target_role: 'taller' });
+        });
         p.querySelector('[data-act="del-veh"]')?.addEventListener('click', () => this._deleteVehiculo(this._selId));
         p.querySelector('[data-act="add-mant"]')?.addEventListener('click', () => this._openMantModal(null));
         p.querySelectorAll('[data-act="edit-mant"]').forEach(b => b.addEventListener('click', () => this._openMantModal(b.dataset.mid)));

@@ -19,11 +19,11 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
         venta:      ['crm', 'cotizador', 'catalogo', 'proyectos', 'eventos'],
-        pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'taller', 'logistica', 'inventario', 'flota'],
-        taller:     ['eventos', 'proyectos', 'taller', 'logistica', 'inventario', 'locaciones', 'flota'], // reorg: +proyectos (read-only, ver readOnlyPermissions). reorg_e: +locaciones (read-only, RLS filtra a taller/deposito). taller/logistica salen en Fase C/D.
+        pm:         ['crm', 'catalogo', 'proyectos', 'eventos', 'inventario', 'flota'],
+        taller:     ['eventos', 'proyectos', 'inventario', 'locaciones', 'flota'], // reorg C/D 2026-06-25: módulos Taller y Logística DISUELTOS → el rol taller usa Proyectos (galpón, read-only) + Tareas; transporte vive en la ficha del Evento. +locaciones read-only (RLS taller/deposito).
     },
 
     // ─── PERMISOS DE SOLO LECTURA (FALLBACK OFFLINE) ───
@@ -75,7 +75,7 @@ const Data = {
             name: 'OPERACIONES',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
             color: '#00CC88',
-            moduleIds: ['calendario', 'eventos', 'proyectos', 'taller', 'logistica'],
+            moduleIds: ['calendario', 'eventos', 'proyectos'],
         },
         {
             id: 'activos',
@@ -120,7 +120,7 @@ const Data = {
             { id: 'pedir-compra', icon: '🛒', label: 'Pedir compra', action: 'pedir-compra' },
         ],
         taller: [
-            { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'navigate', route: 'taller' },
+            { id: 'mis-tareas', icon: '✅', label: 'Mis tareas', action: 'navigate', route: 'tareas' },
             { id: 'pedir-compra', icon: '🛒', label: 'Pedir compra', action: 'pedir-compra' },
             { id: 'ver-inventario', icon: '📦', label: 'Inventario', action: 'navigate', route: 'inventario' },
         ],
@@ -219,8 +219,6 @@ const Data = {
             connections: [
                 { to: 'crm', label: 'Ver CRM', context: 'Cliente y cotización del proyecto' },
                 { to: 'eventos', label: 'Ver Evento', context: 'Evento al que pertenece' },
-                { to: 'taller', label: 'Ver Taller', context: 'Estado de preparación' },
-                { to: 'logistica', label: 'Ver Logística', context: 'Transporte y montaje' },
                 { to: 'inventario', label: 'Ver Materiales', context: 'Materiales reservados' },
                 { to: 'finanzas', label: 'Ver Finanzas', context: 'Movimientos del proyecto' },
             ],
@@ -242,51 +240,13 @@ const Data = {
             connections: [
                 { to: 'proyectos', label: 'Ver Proyectos', context: 'Proyectos dentro de este evento' },
                 { to: 'crm', label: 'Ver Cliente', context: 'Cliente organizador' },
-                { to: 'logistica', label: 'Ver Logística', context: 'Transporte y montaje del evento' },
             ],
         },
 
-        taller: {
-            id: 'taller',
-            name: 'Taller',
-            shortName: 'Taller',
-            icon: '🔨',
-            description: 'Proyectos en preparación, checklist de producción y mantenimiento de equipos.',
-            status: 'active',
-            color: '#00CC88',
-            order: 6,
-            sections: [
-                { id: 'proyectos-taller', name: 'Proyectos en Taller', icon: '🏗️', description: 'Proyectos en proceso con checklist de preparación', fields: [] },
-                { id: 'mantenimiento', name: 'Mantenimiento', icon: '🔧', description: 'Herramientas, matafuegos, equipos, alertas vencimiento', fields: [] },
-            ],
-            connections: [
-                { to: 'proyectos', label: 'Ver Proyecto', context: 'Ficha completa del proyecto' },
-                { to: 'inventario', label: 'Ver Stock', context: 'Materiales necesarios' },
-                { to: 'logistica', label: 'Ver Logística', context: 'Montaje/desmontaje' },
-            ],
-        },
-
-        logistica: {
-            id: 'logistica',
-            name: 'Logística',
-            shortName: 'Logística',
-            icon: '🚛',
-            description: 'Vehículos, transporte, montaje/desmontaje, entrega con OK.',
-            status: 'development',
-            color: '#00CC88',
-            order: 7,
-            sections: [
-                { id: 'vehiculos', name: 'Vehículos', icon: '🚛', description: 'Flota propia: datos, estado, VTV, service, seguro, disponibilidad', fields: [] },
-                { id: 'transporte', name: 'Transporte', icon: '📦', description: 'Cronograma salidas/retornos por evento, vehículo, conductor', fields: [] },
-                { id: 'montaje', name: 'Montaje / Desmontaje', icon: '🏗️', description: 'Checklist de lo que sale del depósito, verificación al volver', fields: [] },
-                { id: 'entrega', name: 'Entrega con OK', icon: '📸', description: 'Fotos del stand terminado, firma/confirmación del cliente', fields: [] },
-            ],
-            connections: [
-                { to: 'eventos', label: 'Ver Evento', context: 'Evento del transporte' },
-                { to: 'taller', label: 'Ver Taller', context: 'Lo que sale de taller' },
-                { to: 'rrhh', label: 'Ver Equipo', context: 'Personal asignado al montaje' },
-            ],
-        },
+        // Módulos Taller y Logística DISUELTOS (reorg Fase C/D 2026-06-25):
+        //  · Taller → Proyectos (vista galpón read-only para el rol taller) + Centro de Tareas.
+        //  · Logística → sección Transporte en la ficha del Evento + remito.
+        // Quedan como redirects en router.js (#taller→#tareas, #logistica→#eventos).
 
         // ════════════════════════════════════════════
         //  ACTIVOS / RRHH  (RRHH → Admin & Finanzas; Compras/Inventario/Locaciones → Activos)
@@ -308,7 +268,6 @@ const Data = {
             ],
             connections: [
                 { to: 'eventos', label: 'Ver Eventos', context: 'Asignaciones de personal' },
-                { to: 'taller', label: 'Ver Taller', context: 'Disponibilidad para taller' },
                 { to: 'finanzas', label: 'Ver Pagos', context: 'Jornales y pagos' },
             ],
         },
@@ -352,7 +311,6 @@ const Data = {
                 ] },
             ],
             connections: [
-                { to: 'taller', label: 'Ver Taller', context: 'Consumo de materiales' },
                 { to: 'compras', label: 'Ver Compras', context: 'Órdenes de compra de insumos' },
                 { to: 'locaciones', label: 'Ver Locaciones', context: 'Stock por locación' },
             ],
@@ -391,7 +349,7 @@ const Data = {
                 { id: 'mantenimiento', name: 'Mantenimiento', icon: '🔧', description: 'VTV, seguro, service con vencimientos y alertas', fields: [] },
             ],
             connections: [
-                { to: 'logistica', label: 'Ver Logística', context: 'Cargas y transporte' },
+                { to: 'eventos', label: 'Ver Eventos', context: 'Transporte y cargas (en la ficha del evento)' },
                 { to: 'finanzas', label: 'Ver Finanzas', context: 'Amortización y costos de flota' },
             ],
         },

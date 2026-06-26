@@ -168,7 +168,7 @@ const Tareas = {
                     titulo: `${it.label || it.item_key || 'Paso'} — ${p.nombre || 'stand'}`,
                     descripcion: 'Paso de armado pendiente', origen: 'paso_proyecto', modulo: 'taller',
                     proyecto_id: it.proyecto_id, proyecto_nombre: p.nombre || '', prioridad: prio,
-                    fecha_limite: fl, estado: 'pendiente', target_role: 'taller', link: '#taller',
+                    fecha_limite: fl, estado: 'pendiente', target_role: 'taller', link: `#proyectos/${it.proyecto_id}`,
                 };
             });
         },

@@ -516,6 +516,7 @@ const LocacionesModule = {
                     <button class="loc-btn-back" id="locBack">← Volver a Lugares</button>
                     <div class="loc-ficha-actions">
                         <button class="loc-btn-edit" id="locEditLugar">Editar</button>
+                        <button class="loc-btn-edit" id="locProgRutina">🔁 Programar rutina</button>
                         <button class="loc-btn-delete" id="locDeleteLugar">Eliminar</button>
                     </div>
                 </div>
@@ -594,6 +595,9 @@ const LocacionesModule = {
             this._renderLugares();
         });
         document.getElementById('locEditLugar')?.addEventListener('click', () => this._showFormLugar(lugar));
+        document.getElementById('locProgRutina')?.addEventListener('click', () => {
+            if (typeof Tareas !== 'undefined' && Tareas.openProgramarRutina) Tareas.openProgramarRutina({ activo_tipo: 'locacion', activo_id: String(lugar.id), activo_label: lugar.nombre, modulo: 'locaciones', target_role: 'admin' });
+        });
         document.getElementById('locDeleteLugar')?.addEventListener('click', () => this._deleteLugar(lugar.id));
     },
 

@@ -4617,7 +4617,7 @@ const API = {
                     target_role: 'admin',
                     entidad_tipo: 'vehiculo',
                     entidad_id: row.id,
-                    link: '#logistica?tab=vehiculos',
+                    link: '#flota',
                     prioridad: 'normal',
                 });
             }
