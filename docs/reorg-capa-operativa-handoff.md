@@ -27,13 +27,14 @@ Rediseño integral de la capa física/operativa decidido con Fede: **Taller y Lo
 
 > **La REORG DE LA CAPA OPERATIVA (A→F + corte destructivo) está 100% construida y pusheada.** Solo restan pulidos OPCIONALES (no funcionales) + la verificación en prod de Fede tras el pull.
 
-### Pulidos opcionales (no funcionales — la app anda sin esto)
-- **Borrar `logistica.js` del disco** (hoy queda inerte, sin `<script>` ni ruta; se dejó por simetría con la transición). Trivial.
-- **Limpiar el DB `roles.permissions`** de los módulos `taller`/`logistica` inertes en cada rol (Fase A no los sacó del DB; quedan sin efecto porque no hay ruta ni item de sidebar). Un `UPDATE roles SET permissions = permissions - 'taller' - 'logistica'`.
-- **Botones "Programar rutina"** ✅ ya hechos (Flota/Locaciones/Inventario).
+### Pulidos — estado
+- **`logistica.js` borrado del disco** ✅ (commit `cbc208d`).
+- **`eventos.js` comentarios stale** ✅ (`logistica_movimientos`→`evento_transporte`).
+- **Botones "Programar rutina"** ✅ (Flota/Locaciones/Inventario).
+- **Limpiar el DB `roles.permissions`** (módulos `taller`/`logistica` inertes) → **SQL listo**: `sql/reorg_cleanup.sql` PARTE 1 (segura/idempotente; Fede la corre cuando quiera — es solo prolijidad, todo anda sin esto).
+- **DROP de tablas legacy** `cargas`/`carga_*`/`logistica_*`/`remitos` + `taller_checklist`/`taller_notas`/`taller_materiales` + `inventory_items`/`locations` → `sql/reorg_cleanup.sql` PARTE 2 (**comentada**; DESTRUCTIVO de datos → correr la query de conteo que está ahí + backup + OK de Fede). **OJO:** NO confundir con las tablas NUEVAS `taller_proyecto_checklist` / `evento_transporte` (esas se quedan).
 - `api.js setTransporteItems`: validar `item_type` en la app antes del insert (el CHECK del DDL ya lo cubre).
-- `eventos.js`: comentarios viejos que mencionan `logistica_movimientos` (el código ya usa `evento_transporte`).
-- Eventual **DROP** de tablas legacy `cargas`/`carga_*`/`logistica_*`/`remitos` (DESTRUCTIVO de datos → solo con OK de Fede + backup; ver §4 del blueprint).
+- `admin-panel.js _getModuleColor`: se DEJA `taller`/`logistica` a propósito (colorea entradas históricas del `audit_log`).
 
 ## Cómo se viene trabajando (para la nueva sesión)
 - **Ultracode ON** → cada fase = un workflow (recon paralelo → build → verify adversarial con `node --check` + review → fix auto). Verificación: estructural en preview + **data-layer contra prod via Chrome (con cleanup)**.
