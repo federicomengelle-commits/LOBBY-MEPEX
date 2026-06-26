@@ -40,6 +40,7 @@ const Alertas = {
         inventario: ['superadmin', 'admin'],
         locaciones: ['superadmin', 'admin'],
         'calendario-adm': ['superadmin', 'admin'],
+        tareas:     ['superadmin', 'admin', 'pm', 'taller', 'venta'],
     },
 
     // ─── Lifecycle ───
@@ -362,6 +363,33 @@ const Alertas = {
                 severidad: 'warning', icon: '📄',
                 titulo: `${count} ${Alertas._plural(count, 'documento')} por vencer`,
                 detalle: 'Vence en ≤30 días', link: '#locaciones', count,
+            }];
+        },
+
+        // Tareas: rutinas de mantenimiento VENCIDAS (Fase F) → badge en Centro de Tareas.
+        // Ruteo igual al generador de tareas.js: admin-level ve todas; el resto sólo
+        // las de su rol/responsable (sin rol/responsable → admin). Tolera tabla ausente.
+        async tareas(user) {
+            const { data, error } = await supabaseClient
+                .from('rutinas').select('id, target_role, responsable_id, proxima_fecha')
+                .eq('_deleted', false).eq('activa', true)
+                .lt('proxima_fecha', Alertas._dateOffset(0));
+            if (error || !data || !data.length) return [];
+            const role = user?.role;
+            const uid = user?.uid || user?.id;
+            const adminLevel = ['superadmin', 'admin'].includes(role);
+            const mine = data.filter(r => {
+                if (adminLevel) return true;
+                if (r.responsable_id && r.responsable_id === uid) return true;
+                const tr = r.target_role || (r.responsable_id ? null : 'admin');
+                return !!tr && tr === role;
+            });
+            if (!mine.length) return [];
+            return [{
+                moduleId: 'tareas', tipo: 'rutina_vencida', key: 'tareas_rutinas_vencidas',
+                severidad: 'danger', icon: '🔁',
+                titulo: `${mine.length} ${Alertas._plural(mine.length, 'rutina')} ${Alertas._plural(mine.length, 'vencida', 'vencidas')}`,
+                detalle: 'Mantenimiento recurrente atrasado', link: '#tareas', count: mine.length,
             }];
         },
     },

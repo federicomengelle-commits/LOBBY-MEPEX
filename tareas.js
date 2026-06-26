@@ -22,6 +22,8 @@ const Tareas = {
     _estado: 'abiertas',  // 'abiertas' | 'hechas' | 'todas'
     _fModulo: '',
     _q: '',
+    _section: 'tareas',   // 'tareas' | 'rutinas' (Rutinas = admin-level, Fase F reorg)
+    _rutinas: [],         // cache de plantillas de rutinas (pestaña admin)
     _tableReady: true,
 
     _MODULOS: [
@@ -57,14 +59,29 @@ const Tareas = {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
         this._canManage = ['superadmin', 'admin', 'pm'].includes(user.role);
+        this._adminLevel = ['superadmin', 'admin'].includes(user.role);
         this._loadPrefs(user);
         if (this._view === 'equipo' && !this._canManage) this._view = 'mias';
+        if (this._section === 'rutinas' && !this._adminLevel) this._section = 'tareas';
         const content = document.getElementById('mainContent');
         if (!content) return;
         content.innerHTML = this._shell(user);
         await this._load(user);
-        this._renderList(user);
+        this._renderActive(user);
         this._attach(user);
+    },
+
+    // Despacha la sección activa (Tareas vs Rutinas) y togglea stats/filtros/"+ Nueva tarea".
+    _renderActive(user) {
+        const isRut = this._section === 'rutinas' && this._adminLevel;
+        const stats = document.getElementById('tareasStats');
+        const filters = document.getElementById('tareasFilters');
+        const nb = document.getElementById('tareasNueva');
+        if (stats) stats.style.display = isRut ? 'none' : 'flex';
+        if (filters) filters.style.display = isRut ? 'none' : 'flex';
+        if (nb) nb.style.display = isRut ? 'none' : '';
+        if (isRut) this._renderRutinas(user);
+        else this._renderList(user);
     },
 
     async _load(user) {
@@ -287,6 +304,40 @@ const Tareas = {
                 estado: 'pendiente', target_role: 'admin', link: '#finanzas',
             }));
         },
+        // RUTINAS recurrentes (Fase F): materializa las plantillas `rutinas` que ya
+        // entran en su ventana (lead_days) o están vencidas, como tareas claimeables
+        // (origen='rutina'). Ruteo: admin-level ve todas; el resto sólo las de su
+        // rol/responsable (Q25: sin rol/responsable → admin). Marcar Hecha avanza
+        // la rutina vía RPC (ver _action). No rompe si la tabla aún no existe.
+        async rutinas(user) {
+            if (typeof API === 'undefined' || !API.getRutinasDue) return [];
+            const due = await API.getRutinasDue();
+            if (!due || !due.length) return [];
+            const role = user.role;
+            const uid = user.uid || user.id;
+            const adminLevel = ['superadmin', 'admin'].includes(role);
+            const hoy = new Date().toISOString().split('T')[0];
+            return due.filter(r => {
+                if (adminLevel) return true;
+                if (r.responsable_id && r.responsable_id === uid) return true;
+                const tr = r.target_role || (r.responsable_id ? null : 'admin');
+                return !!tr && tr === role;
+            }).map(r => {
+                const fl = r.proxima_fecha || null;
+                const prio = (fl && fl < hoy) ? 'critica' : (r.prioridad || 'normal');
+                const mod = (r.modulo && r.modulo !== 'general') ? r.modulo : null;
+                return {
+                    id: `rutina:${r.id}:${r.proxima_fecha}`, dedupe_key: `rutina:${r.id}:${r.proxima_fecha}`,
+                    es_derivada: true, titulo: r.titulo || 'Rutina',
+                    descripcion: r.descripcion || 'Rutina de mantenimiento',
+                    origen: 'rutina', modulo: r.modulo || 'general', proyecto_id: null,
+                    prioridad: prio, fecha_limite: fl, estado: 'pendiente',
+                    target_role: r.target_role || (r.responsable_id ? null : 'admin'),
+                    responsable_id: r.responsable_id || null,
+                    link: mod ? '#' + mod : '#tareas', _rutina_label: r.activo_label || r.titulo || '',
+                };
+            });
+        },
     },
 
     // ─── Merge derivadas + manuales (claim por dedupe_key) ───
@@ -347,8 +398,11 @@ const Tareas = {
             </div>
           </div>
           <div class="module-content" style="padding:16px 24px;">
-            <div id="tareasStats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+            ${this._adminLevel ? `<div id="tareasSections" style="display:flex;gap:8px;margin-bottom:16px;">
+              ${this._sectionBtn('tareas', '📋 Tareas')}${this._sectionBtn('rutinas', '🔁 Rutinas')}
+            </div>` : ''}
+            <div id="tareasStats" style="display:${this._section === 'rutinas' ? 'none' : 'flex'};gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
+            <div id="tareasFilters" style="display:${this._section === 'rutinas' ? 'none' : 'flex'};gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
               <div class="tareas-toggle" style="display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
                 <button class="tareas-tab" data-view="mias" style="padding:6px 14px;background:${this._view === 'mias' ? 'var(--primary)' : 'transparent'};color:${this._view === 'mias' ? '#000' : 'var(--text-muted)'};border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">MIS TAREAS</button>
                 ${canEquipo ? `<button class="tareas-tab" data-view="equipo" style="padding:6px 14px;background:${this._view === 'equipo' ? 'var(--primary)' : 'transparent'};color:${this._view === 'equipo' ? '#000' : 'var(--text-muted)'};border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">DEL EQUIPO</button>` : ''}
@@ -374,6 +428,11 @@ const Tareas = {
           <span style="font-family:var(--font-mono);font-size:1.1rem;font-weight:700;color:${color};">${n}</span>
           <span style="font-family:var(--font-mono);font-size:.65rem;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);">${label}</span>
         </div>`;
+    },
+
+    _sectionBtn(section, label) {
+        const on = this._section === section;
+        return `<button class="tareas-section" data-section="${section}" style="padding:7px 16px;border-radius:6px;border:1px solid ${on ? 'var(--primary)' : 'var(--border)'};background:${on ? 'var(--primary)' : 'transparent'};color:${on ? '#000' : 'var(--text-muted)'};font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">${label}</button>`;
     },
 
     _renderList(user) {
@@ -439,6 +498,7 @@ const Tareas = {
         const enCurso = t.estado === 'en_curso';
         const hecha = t.estado === 'hecha';
         const ctxChip = t.proyecto_nombre ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);">▣ ${this._esc(t.proyecto_nombre)}</span>` : '';
+        const rutinaChip = (t.origen === 'rutina') ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:#9B7DFF;">🔁 ${this._esc(t._rutina_label || 'Rutina')}</span>` : '';
         const respChip = (this._view === 'equipo' && t.responsable_id)
             ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:var(--primary);">👤 ${this._esc(this._profiles[t.responsable_id] || '—')}</span>` : '';
         return `
@@ -447,7 +507,7 @@ const Tareas = {
             <div style="font-family:var(--font-main);font-size:.9rem;color:var(--text-primary);${hecha ? 'text-decoration:line-through;opacity:.7;' : ''}">${this._esc(t.titulo)}</div>
             <div style="display:flex;gap:10px;align-items:center;margin-top:4px;flex-wrap:wrap;">
               <span class="badge badge-ghost" style="font-size:.6rem;">${this._esc(t.origen)}</span>
-              ${ctxChip}${respChip}
+              ${ctxChip}${rutinaChip}${respChip}
               ${t.fecha_limite ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);">📅 ${t.fecha_limite}</span>` : ''}
               ${enCurso ? `<span style="font-family:var(--font-mono);font-size:.6rem;color:var(--primary);">EN CURSO</span>` : ''}
               ${hecha && t.completada_at ? `<span style="font-family:var(--font-mono);font-size:.6rem;color:#00CC88;">✓ ${String(t.completada_at).split('T')[0]}</span>` : ''}
@@ -473,6 +533,17 @@ const Tareas = {
             this._renderList(user);
         };
         document.querySelectorAll('.tareas-tab').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+        document.querySelectorAll('.tareas-section').forEach(b => b.addEventListener('click', () => {
+            if (this._section === b.dataset.section) return;
+            this._section = b.dataset.section;
+            document.querySelectorAll('.tareas-section').forEach(x => {
+                const on = x.dataset.section === this._section;
+                x.style.background = on ? 'var(--primary)' : 'transparent';
+                x.style.color = on ? '#000' : 'var(--text-muted)';
+                x.style.borderColor = on ? 'var(--primary)' : 'var(--border)';
+            });
+            this._renderActive(user);
+        }));
         const fe = document.getElementById('tareasFEstado');
         if (fe) fe.addEventListener('change', () => { this._estado = fe.value; this._savePrefs(user); this._renderList(user); });
         const fm = document.getElementById('tareasFModulo');
@@ -503,6 +574,21 @@ const Tareas = {
                 if (typeof t.dedupe_key === 'string' && t.dedupe_key.startsWith('taller_check:')) {
                     const chkId = t.dedupe_key.split(':')[1];
                     try { await supabaseClient.from('taller_proyecto_checklist').update({ checked: true, checked_by: uid, checked_at: new Date().toISOString() }).eq('id', chkId); } catch (e) { /* no rompe la tarea */ }
+                }
+                // sync rutina: avanzar proxima_fecha + ultima_ejecucion + sellar activo (RPC SECURITY DEFINER)
+                if (typeof t.dedupe_key === 'string' && t.dedupe_key.startsWith('rutina:')) {
+                    const rid = t.dedupe_key.split(':')[1];
+                    if (typeof API !== 'undefined' && API.avanzarRutina) {
+                        const res = await API.avanzarRutina(rid, this._today());
+                        if (res && res.ok) {
+                            // La rutina avanzó (su cumplimiento queda en rutinas.ultima_ejecucion);
+                            // este claim ya no tiene derivada que lo respalde (dedupe_key con la fecha
+                            // vieja) → limpiamos la fila muerta para que `tareas` no acumule por ciclo.
+                            try { await supabaseClient.from('tareas').update({ _deleted: true }).eq('dedupe_key', t.dedupe_key).eq('es_derivada', true); } catch (e) { /* no rompe */ }
+                        } else if (typeof Toast !== 'undefined') {
+                            Toast.warning('Tarea cerrada, pero la rutina no se pudo reprogramar');
+                        }
+                    }
                 }
             }
             else if (act === 'reabrir') await this._upsertClaim(t, { estado: 'pendiente', completada_at: null, completada_por: null });
@@ -619,5 +705,154 @@ const Tareas = {
                 await this._load(user); this._renderList(user);
             } catch (e) { if (typeof Toast !== 'undefined') Toast.error('No se pudo: ' + e.message); }
         });
+    },
+
+    // ═══ RUTINAS (pestaña admin-level · Fase F reorg) ═══
+    _freqLabel(r) {
+        const map = { mensual: 'Mensual', trimestral: 'Trimestral', semestral: 'Semestral', anual: 'Anual', dias: `Cada ${r.intervalo_dias || '?'} días` };
+        return map[r.frecuencia] || r.frecuencia || '—';
+    },
+
+    _rutinaRow(r, hoy) {
+        const venc = r.proxima_fecha && r.proxima_fecha < hoy;
+        const fColor = !r.activa ? 'var(--text-dim)' : (venc ? '#ff4444' : 'var(--text-muted)');
+        const estadoChip = r.activa
+            ? `<span class="badge badge-ghost" style="font-size:.6rem;color:#00CC88;border-color:#00CC88;">ACTIVA</span>`
+            : `<span class="badge badge-ghost" style="font-size:.6rem;color:var(--text-dim);">PAUSADA</span>`;
+        const tipoChip = `<span style="font-family:var(--font-mono);font-size:.62rem;color:#9B7DFF;">${this._esc(r.activo_tipo || 'general')}${r.activo_label ? ' · ' + this._esc(r.activo_label) : ''}</span>`;
+        return `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #9B7DFF;border-radius:6px;margin-bottom:8px;${r.activa ? '' : 'opacity:.6;'}">
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:var(--font-main);font-size:.9rem;color:var(--text-primary);">🔁 ${this._esc(r.titulo)}</div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:4px;flex-wrap:wrap;">
+              ${tipoChip}
+              <span style="font-family:var(--font-mono);font-size:.62rem;color:var(--text-dim);">${this._freqLabel(r)}</span>
+              ${r.target_role ? `<span style="font-family:var(--font-mono);font-size:.62rem;color:var(--text-dim);">→ ${this._esc(r.target_role)}</span>` : ''}
+              <span style="font-family:var(--font-mono);font-size:.62rem;color:${fColor};">📅 ${r.proxima_fecha || '—'}${venc ? ' (vencida)' : ''}</span>
+              ${estadoChip}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="btn btn-ghost btn-sm" data-rut-act="${r.activa ? 'pausar' : 'reanudar'}" data-rut-id="${this._esc(r.id)}">${r.activa ? 'Pausar' : 'Reanudar'}</button>
+            <button class="btn btn-ghost btn-sm" data-rut-act="editar" data-rut-id="${this._esc(r.id)}" title="Editar">✎</button>
+            <button class="btn btn-ghost btn-sm" data-rut-act="eliminar" data-rut-id="${this._esc(r.id)}" title="Eliminar" style="color:var(--color-error);">✕</button>
+          </div>
+        </div>`;
+    },
+
+    async _renderRutinas(user) {
+        const cont = document.getElementById('tareasGroups');
+        if (!cont) return;
+        cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando rutinas…</div>`;
+        this._rutinas = (typeof API !== 'undefined' && API.getRutinas) ? await API.getRutinas() : [];
+        const hoy = this._today();
+        const rows = this._rutinas;
+        const header = `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+            <span style="font-family:var(--font-mono);font-size:.72rem;color:var(--text-muted);">${rows.length} ${rows.length === 1 ? 'rutina' : 'rutinas'}</span>
+            <span style="flex:1"></span>
+            <button class="btn btn-primary btn-sm" id="rutNueva">+ Nueva rutina</button>
+          </div>`;
+        const body = rows.length
+            ? rows.map(r => this._rutinaRow(r, hoy)).join('')
+            : `<div style="text-align:center;padding:48px;color:var(--text-muted);">Sin rutinas cargadas.<br><span style="font-size:.8rem;color:var(--text-dim);">Creá una con “+ Nueva rutina” o corré sql/reorg_f_rutinas.sql.</span></div>`;
+        cont.innerHTML = header + body;
+        const nb = document.getElementById('rutNueva');
+        if (nb) nb.addEventListener('click', () => this._rutinaModal(user, null));
+        cont.querySelectorAll('[data-rut-act]').forEach(b => b.addEventListener('click', () => this._rutinaAction(user, b.dataset.rutAct, b.dataset.rutId)));
+    },
+
+    async _rutinaAction(user, act, id) {
+        const r = this._rutinas.find(x => x.id === id);
+        if (!r) return;
+        try {
+            if (act === 'editar') return this._rutinaModal(user, r);
+            if (act === 'pausar') await API.updateRutina(id, { activa: false });
+            else if (act === 'reanudar') await API.updateRutina(id, { activa: true });
+            else if (act === 'eliminar') {
+                if (typeof Confirm !== 'undefined' && !(await Confirm.delete('esta rutina'))) return;
+                await API.deleteRutina(id);
+            }
+            if (typeof Toast !== 'undefined' && act !== 'editar') Toast.success('Listo');
+            await this._renderRutinas(user);
+        } catch (e) { if (typeof Toast !== 'undefined') Toast.error('No se pudo: ' + e.message); }
+    },
+
+    _rutinaModal(user, existing, prefill) {
+        if (!['superadmin', 'admin'].includes(user.role)) { if (typeof Toast !== 'undefined') Toast.warning('Solo admin puede programar rutinas'); return; }
+        const ed = existing || null;
+        const pf = prefill || {};
+        const g = (k, d) => ed ? (ed[k] != null ? ed[k] : d) : (pf[k] != null ? pf[k] : d);
+        const tipos = [['general', 'General'], ['flota', 'Flota'], ['locacion', 'Locación'], ['equipo', 'Equipo'], ['inventario', 'Inventario'], ['admin', 'Admin']];
+        const roles = [['', '— a rol admin (default) —'], ['admin', 'Admin'], ['taller', 'Taller'], ['pm', 'PM'], ['venta', 'Venta']];
+        const frec = [['mensual', 'Mensual'], ['trimestral', 'Trimestral'], ['semestral', 'Semestral'], ['anual', 'Anual'], ['dias', 'Cada N días']];
+        const reprog = [['completada', 'Desde el día que se completa'], ['programada', 'Desde la fecha programada (cadencia fija)']];
+        const selOf = (arr, cur) => arr.map(([v, l]) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${l}</option>`).join('');
+        const curPrio = g('prioridad', 'normal');
+        const body = `
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <label class="adm-form-label">Título *<input class="input" id="ruTitulo" placeholder="Ej. VTV Camión Iveco" value="${this._esc(g('titulo', ''))}"></label>
+            <label class="adm-form-label">Descripción<textarea class="input" id="ruDesc" rows="2">${this._esc(g('descripcion', '') || '')}</textarea></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Tipo de activo<select class="input" id="ruTipo">${selOf(tipos, g('activo_tipo', 'general'))}</select></label>
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Activo (etiqueta)<input class="input" id="ruLabel" placeholder="Ej. Galpón / Iveco" value="${this._esc(g('activo_label', '') || '')}"></label>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Módulo<select class="input" id="ruModulo">${this._MODULOS.map(([v, l]) => `<option value="${v}" ${g('modulo', 'general') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Asignar a rol<select class="input" id="ruRole">${selOf(roles, g('target_role', ''))}</select></label>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <label class="adm-form-label" style="flex:1;min-width:120px;">Frecuencia<select class="input" id="ruFrec">${selOf(frec, g('frecuencia', 'mensual'))}</select></label>
+              <label class="adm-form-label" style="flex:1;min-width:90px;">Cada N días<input type="number" min="1" class="input" id="ruDias" value="${g('intervalo_dias', '') || ''}" placeholder="30"></label>
+              <label class="adm-form-label" style="flex:1;min-width:90px;">Lead (días)<input type="number" min="0" class="input" id="ruLead" value="${g('lead_days', 7)}"></label>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Próxima fecha *<input type="date" class="input" id="ruFecha" value="${g('proxima_fecha', '') || ''}"></label>
+              <label class="adm-form-label" style="flex:1;min-width:130px;">Prioridad<select class="input" id="ruPrio"><option value="normal" ${curPrio === 'normal' ? 'selected' : ''}>Normal</option><option value="alta" ${curPrio === 'alta' ? 'selected' : ''}>Alta</option><option value="critica" ${curPrio === 'critica' ? 'selected' : ''}>Crítica</option></select></label>
+            </div>
+            <label class="adm-form-label">Reprogramar<select class="input" id="ruReprog">${selOf(reprog, g('reprog_desde', 'completada'))}</select></label>
+          </div>`;
+        const footer = `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="ruGuardar">${ed ? 'Guardar' : 'Crear rutina'}</button>`;
+        const m = Modal.open({ title: ed ? 'Editar rutina' : 'Nueva rutina', body, footer, size: 'md' });
+        const btn = document.getElementById('ruGuardar');
+        if (btn) btn.addEventListener('click', async () => {
+            const titulo = document.getElementById('ruTitulo')?.value.trim();
+            const proxima = document.getElementById('ruFecha')?.value;
+            if (!titulo) { if (typeof Toast !== 'undefined') Toast.error('Poné un título'); return; }
+            if (!proxima) { if (typeof Toast !== 'undefined') Toast.error('Poné la próxima fecha'); return; }
+            const frecVal = document.getElementById('ruFrec')?.value || 'mensual';
+            const diasRaw = document.getElementById('ruDias')?.value;
+            const leadRaw = document.getElementById('ruLead')?.value;
+            const roleVal = document.getElementById('ruRole')?.value;
+            const patch = {
+                titulo, descripcion: document.getElementById('ruDesc')?.value.trim() || null,
+                activo_tipo: document.getElementById('ruTipo')?.value || 'general',
+                activo_id: (ed && ed.activo_id) || pf.activo_id || null,
+                activo_label: document.getElementById('ruLabel')?.value.trim() || null,
+                modulo: document.getElementById('ruModulo')?.value || 'general',
+                target_role: roleVal || null,
+                prioridad: document.getElementById('ruPrio')?.value || 'normal',
+                frecuencia: frecVal,
+                intervalo_dias: frecVal === 'dias' ? (parseInt(diasRaw, 10) || 30) : null,
+                lead_days: (leadRaw === '' || leadRaw == null) ? 7 : (parseInt(leadRaw, 10) || 0),
+                proxima_fecha: proxima,
+                reprog_desde: document.getElementById('ruReprog')?.value || 'completada',
+            };
+            try {
+                if (ed) await API.updateRutina(ed.id, patch);
+                else await API.createRutina(patch);
+                Modal.close(m.id);
+                if (typeof Toast !== 'undefined') Toast.success(ed ? 'Rutina actualizada' : 'Rutina creada');
+                await this._renderRutinas(user);
+            } catch (e) { if (typeof Toast !== 'undefined') Toast.error('No se pudo guardar: ' + e.message); }
+        });
+    },
+
+    // Entry point reusable para "Programar rutina" desde Flota/Locaciones/Inventario (2ª pasada).
+    openProgramarRutina(opts = {}) {
+        const user = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null;
+        if (!user) return;
+        if (!['superadmin', 'admin'].includes(user.role)) { if (typeof Toast !== 'undefined') Toast.warning('Solo admin puede programar rutinas'); return; }
+        this._rutinaModal(user, null, opts);
     },
 };

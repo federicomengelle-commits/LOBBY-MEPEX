@@ -7240,4 +7240,72 @@ const API = {
             return null;
         }
     },
+
+    // ═════════════════════════════════════════════════════════════
+    //  RUTINAS (Centro de Tareas v2 — motor de recurrentes · Fase F reorg)
+    //  Plantillas de mantenimiento recurrente (VTV/service, limpieza de
+    //  galpón, conteo de inventario, matafuegos...). Sus instancias se
+    //  materializan como claims en `tareas` (origen='rutina'). Ver tareas.js.
+    //  RLS: lectura authenticated; escritura admin/superadmin. El avance usa
+    //  el RPC SECURITY DEFINER fn_avanzar_rutina (taller cierra su rutina).
+    // ═════════════════════════════════════════════════════════════
+    async getRutinas() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('rutinas').select('*').eq('_deleted', false)
+                .order('proxima_fecha', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getRutinas:', e.message); return []; }
+    },
+
+    // Rutinas activas que ya entran en su ventana (proxima_fecha <= hoy + lead_days)
+    // o están vencidas. El filtro por lead_days es per-row → se resuelve en JS.
+    async getRutinasDue() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('rutinas').select('*').eq('_deleted', false).eq('activa', true);
+            if (error) throw error;
+            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+            return (data || []).filter(r => {
+                if (!r.proxima_fecha) return false;
+                const lead = Number.isFinite(r.lead_days) ? r.lead_days : 7;
+                const due = new Date(r.proxima_fecha + 'T00:00:00');
+                const limit = new Date(hoy.getTime() + lead * 864e5);
+                return due <= limit;
+            });
+        } catch (e) { console.warn('[API] getRutinasDue:', e.message); return []; }
+    },
+
+    async createRutina(payload) {
+        const row = { ...payload, created_by: this._uid() };
+        const { data, error } = await supabaseClient
+            .from('rutinas').insert(row).select('id').single();
+        if (error) throw error;
+        return data.id;
+    },
+
+    async updateRutina(id, patch) {
+        const { error } = await supabaseClient.from('rutinas').update(patch).eq('id', id);
+        if (error) throw error;
+    },
+
+    async deleteRutina(id) {
+        const { error } = await supabaseClient.from('rutinas').update({ _deleted: true }).eq('id', id);
+        if (error) throw error;
+    },
+
+    // Marca la rutina como hecha y reprograma proxima_fecha (RPC SECURITY DEFINER).
+    async avanzarRutina(rutinaId, fecha) {
+        try {
+            const f = fecha || new Date().toISOString().split('T')[0];
+            const { error } = await supabaseClient
+                .rpc('fn_avanzar_rutina', { p_rutina_id: rutinaId, p_fecha: f });
+            if (error) throw error;
+            return { ok: true };
+        } catch (e) {
+            console.warn('[API] avanzarRutina:', e.message);
+            return { ok: false, error: e.message };
+        }
+    },
 };
