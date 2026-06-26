@@ -44,6 +44,11 @@
 
 ---
 
+## 🚀 Charlas dedicadas listas para lanzar (2026-06-26)
+Los **dos más importantes** tienen handoff propio, prompt-ready, autocontenido (Fede los lanza de a poco / juntos):
+- **B1 — Subalquileres por proveedor:** `docs/handoff-B1-subalquileres-pedido-proveedor.md` (backbone ✅ hecho; falta UI + PDF de pedido por proveedor por evento).
+- **CRM — completar al 100%:** `docs/handoff-CRM-completar-todo.md` (polish Bandeja + R4 + link reverso + plan-cobro-auto + auditoría; E2/E4 bloqueados por infra).
+
 ## 3. Recomendación de orden (mientras Gmail/WhatsApp siguen frenados)
 1. **A1 CRM polish v3** — pedido, limpio, no-blocker. *(Arrancando ahora.)*
 2. **B1 Subalquileres + remito** vía el importador — el de **mayor valor de negocio**; primero verificar el importador (pull + RLS) y que puedas pegar una cotización real.
