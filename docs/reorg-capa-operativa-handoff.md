@@ -1,7 +1,14 @@
 # HANDOFF — Reorganización de la capa operativa física (LOBBY-MEPEX)
 
-> Para arrancar la próxima sesión. Estado al **2026-06-25** (reorg **CERRADA** — A→F + corte destructivo). Branch `rediseno` == `origin/main` @ `dbffc0d`.
-> **Spec completa:** `docs/capa-operativa-blueprint.md`. **Tracking:** PROGRESO.md §sesiones 2026-06-24/25/25b + PLAN-MAESTRO §REORGANIZACIÓN DE LA CAPA OPERATIVA FÍSICA.
+> Para arrancar la próxima sesión. Estado al **2026-06-26** (reorg **CERRADA + VERIFICADA EN PROD**). Branch `rediseno` == `origin/main` @ `104df77`.
+> **Spec completa:** `docs/capa-operativa-blueprint.md`. **Tracking:** PROGRESO.md §sesiones 2026-06-24/25/25b/26 + PLAN-MAESTRO §REORGANIZACIÓN DE LA CAPA OPERATIVA FÍSICA.
+
+## ✅ VERIFICADO EN PROD (2026-06-26, via Chrome, con cleanup)
+Fede corrió `reorg_f_rutinas.sql` + pulleó. Verificado en vivo en `http://195.200.1.250`:
+- **Reorg estructural:** módulos Taller/Logística disueltos (globals undefined, sin module-def, fuera del sidebar); redirects `#taller→#tareas`, `#logistica→#eventos`, `#produccion→#tareas` disparan OK; **el rol taller ve** `lobby·tareas · eventos·proyectos · inventario·locaciones·flota` y NO ve Taller/Logística. **0 errores de consola.**
+- **Rutinas end-to-end:** sembré las 8 rutinas reales **vía la app** (total 10). Engine probado con una rutina temporal due-hoy → aparece en "Hoy" con chip 🔁 → "Hecha" → `proxima_fecha` avanzó + `ultima_ejecucion` sellada + claim auto-limpiado (sin bloat) → cleanup OK (volvió a 10). Pestaña Rutinas (admin) renderiza las 10 y el toggle anda.
+- **Botones "Programar rutina":** presentes en Flota / Locaciones / Inventario-Equipos; el modal abre **precargado** (tipo/label/rol/módulo).
+- **🐞 1 bug cazado y arreglado:** `'flota'` faltaba en `_MODULOS` (tareas.js) → el modal de rutina guardaba módulo `'taller'` en vez de `'flota'`. Fix en `tareas.js?v=9` (commit `104df77`). **⏳ Falta SOLO re-pullear** para tomarlo.
 
 ## Qué es esto
 Rediseño integral de la capa física/operativa decidido con Fede: **Taller y Logística se disuelven como módulos** (→ vistas filtradas), **Equipos operativos** entran a Inventario (con contenedores/canastos), **Locaciones** pasa a "espacios físicos" con vistas por rol, y el **Centro de Tareas** se vuelve el sistema nervioso (rutinas recurrentes). Se construyó en fases A→F con **workflows ultracode** (recon → build → verify adversarial → fix), SQL-first, todo **additivo/no-destructivo**, verificado en prod via Chrome con cleanup.
@@ -16,13 +23,12 @@ Rediseño integral de la capa física/operativa decidido con Fede: **Taller y Lo
 - **Cierre (destructivo) — módulo Taller DISUELTO + Logística DESCONECTADA + botones "Programar rutina"** (commit `dbffc0d`, OK de Fede "hasta el final"). **Rol `taller` intacto.** `taller.js` **borrado** + `logistica.js` **desconectado** (inerte en disco); rutas fuera del router; redirects **`#taller→#tareas`**, **`#logistica→#eventos`**, fix **`#produccion→#tareas`**; `data.js` limpio (categories/rolePermissions/module-defs/connections); deep-links vivos re-apuntados (paso-armado→`#proyectos/<id>`, alertas→`#proyectos`, notif pasó-a-taller→`#proyectos/<id>`, createVehiculo→`#flota`). Botones 🔁 en Flota/Locaciones/Inventario. **Boot-verificado en preview** (0 errores; globals OK; redirects disparan). Tablas legacy `cargas`/`logistica_*` **NO dropeadas**. *(Sin SQL.)*
 
 ## ⚡ LO ÚNICO PENDIENTE DE FEDE (para que TODO ande)
-1. **Correr `sql/reorg_f_rutinas.sql`** en Supabase (estructura `rutinas` + RPC + CHECK `tareas.origen` + 2 rutinas base) **y después `sql/reorg_f_seed_rutinas.sql`** (8 rutinas reales de MEPEX: VTV/service/seguros flota, matafuegos, herramientas, limpieza galpón, mantenimiento edilicio, habilitaciones). Ambos idempotentes. (Verificá: `SELECT titulo, activo_tipo, target_role, frecuencia, proxima_fecha FROM rutinas ORDER BY proxima_fecha;` → 10 rutinas. Son genéricas; ajustá fechas/roles y atá las por-activo con el botón 🔁.)
-   - *(Opcional, prolijidad — `sql/reorg_cleanup.sql` PARTE 1: saca los módulos `taller`/`logistica` inertes de `roles.permissions`. El DROP de tablas legacy (PARTE 2) queda **comentado a propósito** — decisión de Fede 2026-06-25: "evitar romper", se dejan inertes hasta verificar conteos.)*
-2. **`~/pull-lobby.sh`** en el VPS — trae Fase F **+ el cierre**: `data.js?v=22 · router.js?v=15 · api.js?v=60 · alertas.js?v=6 · tareas.js?v=8 · proyecto-detalle.js?v=8 · inventario.js?v=10 · locaciones.js?v=7 · flota.js?v=5` (+ `taller.js`/`logistica.js` ya no se cargan).
-3. **Probar en la UI:**
-   - **(Fase F)** como admin: **Centro de Tareas → "🔁 Rutinas" → "+ Nueva rutina"** con `proxima_fecha = hoy` → "📋 Tareas" → aparece en "Hoy" con chip 🔁 → **Hecha** → avanza + no duplica al reentrar.
-   - **(Cierre)** el sidebar **ya no muestra Taller ni Logística**; `#taller`/`#logistica` redirigen sin 404. Botón **🔁 Programar rutina** aparece en la ficha de un vehículo (Flota), un lugar (Locaciones) y un equipo (Inventario).
-   - **(Como taller, Diego):** ve **Proyectos (galpón)** + **Tareas** + Locaciones operativa; **NO** ve Taller/Logística; puede cerrar su rutina de inventario físico (vía RPC).
+1. **Re-pullear** (`~/pull-lobby.sh`) para tomar **`tareas.js?v=9`** (el fix de `'flota'` en `_MODULOS`). Es lo único que falta del lado código. *(El resto ya está pulleado y verificado; `reorg_f_rutinas.sql` ya corrido.)*
+2. **`sql/reorg_f_seed_rutinas.sql` → NO hace falta correrlo** (las 8 rutinas reales ya las sembré vía la app). El archivo queda como fuente reproducible (idempotente: si lo corrés, no duplica).
+3. **Opcionales (prolijidad, no funcionales):**
+   - `sql/reorg_cleanup.sql` **PARTE 1**: saca `taller`/`logistica` inertes de `roles.permissions` (hoy `Data.rolePermissions.taller` los muestra porque el DB los tiene; son inertes — sin sidebar ni ruta).
+   - `sql/reorg_cleanup.sql` **PARTE 2** (DROP legacy): **comentado a propósito** — decisión Fede "evitar romper"; correr la query de conteo + backup antes, si algún día.
+4. **Probar como `taller` (Diego)** en prod: ve Proyectos (galpón) + Tareas + Inventario/Locaciones/Flota; **NO** ve Taller/Logística; cierra una rutina suya (inventario físico). *(El flujo de admin ya quedó verificado por Chrome.)*
 
 ## ⏭️ LO QUE SIGUE (próxima sesión)
 
