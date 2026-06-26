@@ -28,8 +28,8 @@ const EventosModule = {
     _personalList: [],       // lista completa de rrhh_personal (para el modal Agregar persona)
     _personalLoaded: false,  // flag para no recargar innecesariamente
 
-    // Transporte (Fase 4 — vía logistica_movimientos)
-    _transporteCache: {},    // { [eventoId]: [...movimientos] }
+    // Transporte (reorg D — vía evento_transporte)
+    _transporteCache: {},    // { [eventoId]: [...transportes] }
     _vehiculosList: [],      // caché de vehículos para el modal Agregar movimiento
     _vehiculosLoaded: false,
 
@@ -839,7 +839,7 @@ const EventosModule = {
                     </div>
                 </div>
 
-                <!-- Transporte (cargado async desde logistica_movimientos) -->
+                <!-- Transporte (cargado async desde evento_transporte) -->
                 <div id="evTransporteContent">
                     <div class="ev-panel-section">
                         <div class="ev-section-header">
@@ -2427,7 +2427,7 @@ const EventosModule = {
         // cargado. Para alcance global se necesita una pre-carga de todos los
         // equipos (queda para una fase de polish).
         // El conflict-check de transporte/camión se sacó en Fase 4 — el modelo nuevo
-        // (logistica_movimientos con FK a vehiculo_id) requiere data async para
+        // (evento_transporte con FK a vehiculo_id) requiere data async para
         // detectar overlaps cross-evento, lo cual rompe el patrón síncrono actual.
         // TODO Fase futura: re-implementar con pre-carga de _transporteCache global.
         const equipo = this._equipoCache[ev.id] || [];
