@@ -29,7 +29,7 @@ const Tareas = {
     _MODULOS: [
         ['taller', 'Taller'], ['compras', 'Compras'], ['rrhh', 'RRHH'],
         ['crm', 'CRM'], ['eventos', 'Eventos'], ['proyectos', 'Proyectos'],
-        ['inventario', 'Inventario'], ['locaciones', 'Locaciones'],
+        ['inventario', 'Inventario'], ['locaciones', 'Locaciones'], ['flota', 'Flota'],
         ['finanzas', 'Finanzas'], ['general', 'General'],
     ],
 
