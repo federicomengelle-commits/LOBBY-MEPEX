@@ -7366,4 +7366,58 @@ const API = {
             return { proveedores, sinProveedor, totalItems, totalUnidades };
         } catch (e) { console.warn('[API] getSubalquileresByEvento:', e.message); return empty; }
     },
+
+    // ═════════════════════════════════════════════════════════════
+    //  CONFORMES DE RECEPCIÓN DEL STAND (acta de entrega con firma digital)
+    //  Tabla: proyecto_conformes (sql/proyecto_conformes.sql).
+    // ═════════════════════════════════════════════════════════════
+
+    // Ítems que componen el stand → prellenan el checklist de entrega.
+    // Fuente: cotizacion_items de las cotizaciones del proyecto (ambos enlaces:
+    // cotizaciones.project_id y proyectos.cotizacion_id). Deduplicado por cotización.
+    async getItemsEntregaByProyecto(proyectoId) {
+        try {
+            if (!proyectoId) return [];
+            const cotIds = new Set();
+            const { data: cots } = await supabaseClient.from('cotizaciones')
+                .select('id').eq('project_id', proyectoId).eq('_deleted', false);
+            (cots || []).forEach(c => cotIds.add(c.id));
+            const { data: proy } = await supabaseClient.from('proyectos')
+                .select('cotizacion_id').eq('id', proyectoId).maybeSingle();
+            if (proy && proy.cotizacion_id) cotIds.add(proy.cotizacion_id);
+            if (!cotIds.size) return [];
+            const { data: items } = await supabaseClient.from('cotizacion_items')
+                .select('nombre, cantidad').in('cotizacion_id', [...cotIds]);
+            return (items || []).map(i => ({ nombre: i.nombre || '', cantidad: Number(i.cantidad) || 1, ok: true }));
+        } catch (e) { console.warn('[API] getItemsEntregaByProyecto:', e.message); return []; }
+    },
+
+    async getConformesByProyecto(proyectoId) {
+        try {
+            if (!proyectoId) return [];
+            const { data, error } = await supabaseClient.from('proyecto_conformes')
+                .select('*').eq('proyecto_id', proyectoId).eq('_deleted', false)
+                .order('firmado_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getConformesByProyecto:', e.message); return []; }
+    },
+
+    async createConforme(payload) {
+        try {
+            const { data, error } = await supabaseClient.from('proyecto_conformes')
+                .insert(payload).select().single();
+            if (error) throw error;
+            return data;
+        } catch (e) { console.warn('[API] createConforme:', e.message); return null; }
+    },
+
+    async deleteConforme(id) {
+        try {
+            const { error } = await supabaseClient.from('proyecto_conformes')
+                .update({ _deleted: true }).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) { console.warn('[API] deleteConforme:', e.message); return false; }
+    },
 };

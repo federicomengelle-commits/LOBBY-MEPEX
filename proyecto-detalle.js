@@ -28,6 +28,7 @@ const ProyectoDetalle = {
         { key: 'produccion',  label: 'Producción',        icon: '🔨' },
         { key: 'archivos',    label: 'Archivos Drive',    icon: '📁' },
         { key: 'novedades',   label: 'Novedades',         icon: '📢' },
+        { key: 'entrega',     label: 'Entrega',           icon: '✍️' },
         { key: 'cotizacion',  label: 'Cotización origen', icon: '🔗' },
         { key: 'actividad',   label: 'Actividad',         icon: '🕐' },
     ],
@@ -294,6 +295,11 @@ const ProyectoDetalle = {
                 container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando novedades…</span></div>';
                 container.innerHTML = await this._renderNovedadesTab();
                 this._attachNovedadesEvents();
+                return;
+            case 'entrega':
+                container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando entrega…</span></div>';
+                container.innerHTML = await this._renderEntregaTab();
+                this._attachEntregaEvents();
                 return;
             case 'cotizacion':
                 container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando cotización…</span></div>';
@@ -923,6 +929,260 @@ const ProyectoDetalle = {
             console.warn('[ProyectoDetalle] Error eliminando novedad:', e.message);
             Toast.error('Error al eliminar la novedad');
         }
+    },
+
+    // ═══════════════════════════════════════════
+    //  TAB: ENTREGA (conforme de recepción del stand con firma digital)
+    //  El encargado abre el stand en su terminal, repasa el checklist de lo que
+    //  entrega, y el responsable que recibe FIRMA digitalmente (canvas) el conforme.
+    //  Genera el acta PDF (ConformePDF). Tabla: proyecto_conformes.
+    // ═══════════════════════════════════════════
+
+    _ensureConfStyles() {
+        if (document.getElementById('pjdConfStyles')) return;
+        const s = document.createElement('style');
+        s.id = 'pjdConfStyles';
+        s.textContent = `
+            .pjd-conf-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+            .pjd-conf-item { display:flex; justify-content:space-between; align-items:center; gap:10px; background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-left:3px solid #00A9C1; border-radius:6px; padding:10px 12px; }
+            .pjd-conf-item-main { display:flex; flex-wrap:wrap; align-items:center; gap:10px; min-width:0; }
+            .pjd-conf-badge { font-family:'Space Mono',monospace; font-size:9px; font-weight:700; text-transform:uppercase; border-radius:10px; padding:2px 8px; }
+            .pjd-conf-badge.rec { background:#00A9C115; border:1px solid #00A9C140; color:#00A9C1; }
+            .pjd-conf-badge.dev { background:#9B7DFF15; border:1px solid #9B7DFF40; color:#9B7DFF; }
+            .pjd-conf-receptor { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:var(--text-primary,#E8E8E8); }
+            .pjd-conf-meta { font-family:'Space Mono',monospace; font-size:10px; color:var(--text-muted,#888); }
+            .pjd-conf-actions { display:flex; gap:6px; flex-shrink:0; }
+            .pjd-conf-modal { display:flex; flex-direction:column; gap:14px; }
+            .pjd-conf-block-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-family:'Space Mono',monospace; font-size:11px; text-transform:uppercase; color:var(--text-muted,#888); }
+            .pjd-conf-erows { display:flex; flex-direction:column; gap:6px; max-height:34vh; overflow-y:auto; }
+            .pjd-conf-erow { display:flex; align-items:center; gap:8px; }
+            .pjd-conf-erow input[type="number"] { width:58px; flex-shrink:0; }
+            .pjd-conf-erow input[type="text"] { flex:1; min-width:0; }
+            .pjd-conf-erow input[type="checkbox"] { width:18px; height:18px; flex-shrink:0; accent-color:#00A9C1; }
+            .pjd-conf-rm { background:transparent; border:none; color:#ff4444; font-size:18px; line-height:1; cursor:pointer; padding:0 4px; flex-shrink:0; }
+            .pjd-conf-compromiso { font-size:11.5px; color:var(--text-muted,#aaa); font-style:italic; background:#1a1a1a; border-left:2px solid #00A9C1; border-radius:4px; padding:8px 10px; margin:0; }
+            .pjd-conf-firma-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-family:'Space Mono',monospace; font-size:11px; text-transform:uppercase; color:var(--text-muted,#888); }
+            #pjdConfCanvas { width:100%; height:180px; background:#fff; border:1px dashed #555; border-radius:6px; cursor:crosshair; touch-action:none; display:block; }
+        `;
+        document.head.appendChild(s);
+    },
+
+    async _renderEntregaTab() {
+        this._ensureConfStyles();
+        let conformes = [];
+        try { conformes = await API.getConformesByProyecto(this._projectId); }
+        catch (e) { console.warn('[ProyectoDetalle] Error cargando conformes:', e.message); }
+        this._conformes = conformes;
+
+        const tipoLabel = { recepcion: 'Recepción', devolucion: 'Devolución' };
+        const rows = conformes.map(c => {
+            const nItems = Array.isArray(c.items_snapshot) ? c.items_snapshot.length : 0;
+            return `
+                <li class="pjd-conf-item">
+                    <div class="pjd-conf-item-main">
+                        <span class="pjd-conf-badge ${c.tipo === 'devolucion' ? 'dev' : 'rec'}">${tipoLabel[c.tipo] || 'Recepción'}</span>
+                        <span class="pjd-conf-receptor">${this._esc(c.receptor_nombre || '—')}</span>
+                        <span class="pjd-conf-meta">${nItems} ítem${nItems === 1 ? '' : 's'} · ${this._fmtDate(c.firmado_at)}</span>
+                    </div>
+                    <div class="pjd-conf-actions">
+                        <button class="pjd-btn-mini" data-conf-pdf="${c.id}">📄 Acta</button>
+                        ${this._isAdminLevel ? `<button class="pjd-btn-mini danger" data-conf-del="${c.id}">Eliminar</button>` : ''}
+                    </div>
+                </li>`;
+        }).join('');
+
+        return `
+            <div class="pjd-tab-pad">
+                <div class="pjd-novedades-header">
+                    <div>
+                        <h3 class="pjd-section-title" style="margin:0;">Conformes de recepción</h3>
+                        <p class="pjd-section-helper" style="margin:2px 0 0;">El responsable que recibe firma digitalmente la entrega del stand.</p>
+                    </div>
+                    <button class="btn btn-primary" id="pjdConfNuevo">+ Nuevo conforme</button>
+                </div>
+                ${conformes.length === 0
+                    ? `<div class="pjd-empty-state"><div class="pjd-empty-icon">✍️</div><h3 class="pjd-section-title">Sin conformes</h3><p class="pjd-section-empty">Generá el conforme de recepción al entregar el stand: el que recibe firma en la terminal y se compromete a devolver todo en orden.</p></div>`
+                    : `<ul class="pjd-conf-list">${rows}</ul>`}
+            </div>
+        `;
+    },
+
+    _attachEntregaEvents() {
+        document.getElementById('pjdConfNuevo')?.addEventListener('click', () => this._openNuevoConformeModal());
+        document.querySelectorAll('[data-conf-pdf]').forEach(b => b.addEventListener('click', () => this._descargarConforme(b.dataset.confPdf)));
+        document.querySelectorAll('[data-conf-del]').forEach(b => b.addEventListener('click', () => this._eliminarConforme(b.dataset.confDel)));
+    },
+
+    async _openNuevoConformeModal() {
+        this._ensureConfStyles();
+        let items = [];
+        try { items = await API.getItemsEntregaByProyecto(this._projectId); }
+        catch (e) { console.warn('[ProyectoDetalle] Error cargando ítems de entrega:', e.message); }
+
+        const rowHTML = (it) => `
+            <div class="pjd-conf-erow" data-erow>
+                <input type="checkbox" data-ok ${it.ok === false ? '' : 'checked'} title="Entregado">
+                <input type="number" class="form-input" data-qty value="${it.cantidad ?? 1}" min="0" step="1">
+                <input type="text" class="form-input" data-nombre value="${this._escAttr(it.nombre || '')}" placeholder="Descripción del elemento">
+                <button type="button" class="pjd-conf-rm" data-remove title="Quitar">×</button>
+            </div>`;
+
+        const body = `
+            <div class="pjd-conf-modal">
+                <div class="pjd-conf-block">
+                    <div class="pjd-conf-block-head">
+                        <span>Elementos a entregar</span>
+                        <button type="button" class="pjd-btn-mini" id="pjdConfAddItem">+ Agregar ítem</button>
+                    </div>
+                    <div class="pjd-conf-erows" id="pjdConfItems">${items.map(rowHTML).join('')}</div>
+                    ${items.length ? '' : '<p class="pjd-form-helper" style="margin-top:4px;">No se encontraron ítems de la cotización. Agregá los elementos manualmente.</p>'}
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Recibido por <span class="form-required">*</span></label>
+                    <input class="form-input" id="pjdConfReceptor" placeholder="Nombre del responsable que recibe">
+                </div>
+                <div class="form-field">
+                    <label class="form-label">DNI / Cargo</label>
+                    <input class="form-input" id="pjdConfDoc" placeholder="Opcional">
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Observaciones</label>
+                    <textarea class="form-input" id="pjdConfObs" rows="2" placeholder="Estado, faltantes, aclaraciones (opcional)"></textarea>
+                </div>
+                <p class="pjd-conf-compromiso">Al firmar, el receptor declara haber recibido los elementos en conformidad y se compromete a devolverlos en orden al cierre del evento.</p>
+                <div class="pjd-conf-firma">
+                    <div class="pjd-conf-firma-head"><span>Firma del receptor *</span><button type="button" class="pjd-btn-mini" id="pjdConfClear">Limpiar</button></div>
+                    <canvas id="pjdConfCanvas" width="600" height="200"></canvas>
+                </div>
+            </div>`;
+
+        const instance = Modal.open({
+            title: 'Conforme de recepción',
+            body,
+            size: 'lg',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="pjdConfSave">Guardar y firmar</button>`,
+        });
+        const ov = instance.overlay;
+
+        const wireRemove = (btn) => btn.addEventListener('click', () => btn.closest('[data-erow]')?.remove());
+        ov.querySelectorAll('[data-remove]').forEach(wireRemove);
+        ov.querySelector('#pjdConfAddItem')?.addEventListener('click', () => {
+            const wrap = ov.querySelector('#pjdConfItems');
+            const tmp = document.createElement('div');
+            tmp.innerHTML = rowHTML({ nombre: '', cantidad: 1, ok: true });
+            const row = tmp.firstElementChild;
+            wrap.appendChild(row);
+            wireRemove(row.querySelector('[data-remove]'));
+            row.querySelector('[data-nombre]').focus();
+        });
+
+        const canvas = ov.querySelector('#pjdConfCanvas');
+        const pad = this._initSignaturePad(canvas);
+        ov.querySelector('#pjdConfClear')?.addEventListener('click', () => pad.clear());
+
+        ov.querySelector('#pjdConfSave')?.addEventListener('click', async () => {
+            const receptor = ov.querySelector('#pjdConfReceptor').value.trim();
+            if (!receptor) { Toast.warning('Ingresá quién recibe'); return; }
+            if (!pad.hasInk()) { Toast.warning('Falta la firma del receptor'); return; }
+            const itemsSnap = [...ov.querySelectorAll('[data-erow]')].map(r => ({
+                nombre: r.querySelector('[data-nombre]').value.trim(),
+                cantidad: Number(r.querySelector('[data-qty]').value) || 0,
+                ok: r.querySelector('[data-ok]').checked,
+            })).filter(it => it.nombre);
+
+            const payload = {
+                proyecto_id: this._projectId,
+                tipo: 'recepcion',
+                receptor_nombre: receptor,
+                receptor_doc: ov.querySelector('#pjdConfDoc').value.trim() || null,
+                items_snapshot: itemsSnap,
+                observaciones: ov.querySelector('#pjdConfObs').value.trim() || null,
+                firma_data: pad.toDataURL(),
+                firmado_by: Auth.getUser()?.id || Auth.getUser()?.uid || null,
+            };
+            const saveBtn = ov.querySelector('#pjdConfSave');
+            saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
+            try {
+                const row = await API.createConforme(payload);
+                if (!row) throw new Error('createConforme devolvió null');
+                Toast.success('Conforme firmado');
+                Modal.close(instance.id);
+                await this._descargarConformeData(row);
+                await this._renderTabContent();
+            } catch (e) {
+                console.warn('[ProyectoDetalle] Error creando conforme:', e.message);
+                Toast.error('Error al guardar el conforme');
+                saveBtn.disabled = false; saveBtn.textContent = 'Guardar y firmar';
+            }
+        });
+    },
+
+    // Pad de firma sobre <canvas> con pointer events (mouse + touch + pen).
+    _initSignaturePad(canvas) {
+        const ctx = canvas.getContext('2d');
+        const fillWhite = () => { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); };
+        fillWhite();
+        ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+        let drawing = false, hasInk = false;
+        const pos = (e) => {
+            const r = canvas.getBoundingClientRect();
+            return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) };
+        };
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); drawing = true;
+            const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+            try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+        canvas.addEventListener('pointermove', (e) => {
+            if (!drawing) return; e.preventDefault();
+            const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); hasInk = true;
+        });
+        const stop = () => { drawing = false; };
+        canvas.addEventListener('pointerup', stop);
+        canvas.addEventListener('pointercancel', stop);
+        canvas.addEventListener('pointerleave', stop);
+        return {
+            hasInk: () => hasInk,
+            clear: () => { fillWhite(); ctx.strokeStyle = '#111'; hasInk = false; },
+            toDataURL: () => canvas.toDataURL('image/png'),
+        };
+    },
+
+    async _descargarConforme(id) {
+        const c = (this._conformes || []).find(x => String(x.id) === String(id));
+        if (!c) { Toast.error('No se encontró el conforme'); return; }
+        await this._descargarConformeData(c);
+    },
+
+    async _descargarConformeData(c) {
+        if (typeof ConformePDF === 'undefined') { Toast.error('Generador de PDF no disponible'); return; }
+        Toast.info('Generando acta…');
+        const p = this._project || {};
+        const blob = await ConformePDF.generate({
+            proyecto: { nombre: p.nombre, cliente: p.cliente?.nombre_empresa, evento: p.evento?.nombre },
+            conforme: c,
+        });
+        if (!blob) { Toast.error('No se pudo generar el acta'); return; }
+        const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x';
+        const fecha = (c.firmado_at ? new Date(c.firmado_at) : new Date()).toISOString().split('T')[0];
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `MEPEX_CONFORME_${slug(p.nombre)}_${fecha}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        Toast.success('Acta generada');
+    },
+
+    async _eliminarConforme(id) {
+        const ok = await Modal.confirm({
+            title: 'Eliminar conforme',
+            message: '¿Eliminar este conforme firmado? Queda marcado como eliminado.',
+            confirmText: 'Eliminar', danger: true,
+        });
+        if (!ok) return;
+        const r = await API.deleteConforme(id);
+        if (r) { Toast.success('Conforme eliminado'); await this._renderTabContent(); }
+        else Toast.error('Error al eliminar');
     },
 
     // ═══════════════════════════════════════════
