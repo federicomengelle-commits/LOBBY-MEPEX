@@ -53,6 +53,7 @@ const CompositorModule = {
     },
     _catalogo: [], _host: null, _container: null,
     _selUid: null, _drag: null, _paletteQ: '', _stylesInjected: false, _uidSeq: 1,
+    _undoStack: [], _redoStack: [], _keyHandler: null,
 
     // ═══ ENTRADA ═══
     renderInto(container, host) {
@@ -89,6 +90,9 @@ const CompositorModule = {
                 <div class="cmp-main">
                     <div class="cmp-canvas-col">
                         <div class="cmp-canvas-tools">
+                            <button class="cmp-btn-ghost cmp-btn-xs" id="cmpUndo" title="Deshacer (Ctrl+Z)" disabled>↶</button>
+                            <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRedo" title="Rehacer (Ctrl+Y)" disabled>↷</button>
+                            <span class="cmp-tool-sep"></span>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotStand">⟳ Girar todo 90°</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpVaciar">Vaciar</button>
@@ -147,6 +151,19 @@ const CompositorModule = {
         document.getElementById('cmpRotStand')?.addEventListener('click', () => this._rotateStand());
         document.getElementById('cmpEspejar')?.addEventListener('click', () => this._mirror());
         document.getElementById('cmpVaciar')?.addEventListener('click', () => this._clearAll());
+        document.getElementById('cmpUndo')?.addEventListener('click', () => this._undo());
+        document.getElementById('cmpRedo')?.addEventListener('click', () => this._redo());
+        this._updateUndoButtons();
+        // teclado Ctrl+Z / Ctrl+Y (una sola vez; no-op si el compositor no está visible)
+        if (!this._keyHandler) {
+            this._keyHandler = (e) => {
+                if (!document.getElementById('cmpSvg')) return;
+                const ctrl = e.ctrlKey || e.metaKey;
+                if (ctrl && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); e.shiftKey ? this._redo() : this._undo(); }
+                else if (ctrl && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); this._redo(); }
+            };
+            document.addEventListener('keydown', this._keyHandler);
+        }
         document.getElementById('cmpPlano')?.addEventListener('click', () => this._exportPlano());
         document.getElementById('cmpGuardar')?.addEventListener('click', () => this._guardarPrediseno());
         document.getElementById('cmpCotizar')?.addEventListener('click', () => this._cotizar());
@@ -272,6 +289,7 @@ const CompositorModule = {
             g.addEventListener('pointermove', (e) => {
                 if (!this._drag || this._drag.uid !== parseInt(g.dataset.uid, 10)) return;
                 const p = this._state.placed.find(x => x.uid === this._drag.uid); if (!p) return;
+                if (!this._drag.moved) { this._pushHist(); this._drag.moved = true; }
                 const loc = toLocal(e);
                 p.x = Math.max(0, Math.min(this._wmm() - p.w, this._snap(loc.x - this._drag.dx)));
                 p.y = Math.max(0, Math.min(this._dmm() - p.d, this._snap(loc.y - this._drag.dy)));
@@ -287,7 +305,7 @@ const CompositorModule = {
             h.addEventListener('pointerdown', (e) => {
                 e.preventDefault(); e.stopPropagation();
                 const uid = parseInt(h.dataset.uid, 10);
-                if (this._state.placed.find(x => x.uid === uid)) { this._resize = { uid }; h.setPointerCapture(e.pointerId); }
+                if (this._state.placed.find(x => x.uid === uid)) { this._pushHist(); this._resize = { uid }; h.setPointerCapture(e.pointerId); }
             });
             h.addEventListener('pointermove', (e) => {
                 if (!this._resize || this._resize.uid !== parseInt(h.dataset.uid, 10)) return;
@@ -296,12 +314,11 @@ const CompositorModule = {
                 p.w = Math.max(200, Math.min(this._wmm() - p.x, this._snap(loc.x - p.x)));
                 p.d = Math.max(200, Math.min(this._dmm() - p.y, this._snap(loc.y - p.y)));
                 const g = h.parentNode;
-                g.querySelector('.cmp-comp-rect').setAttribute('width', p.w);
-                g.querySelector('.cmp-comp-rect').setAttribute('height', p.d);
-                const lbl = g.querySelector('.cmp-comp-label'); lbl.setAttribute('x', p.w / 2); lbl.setAttribute('y', p.d / 2);
+                const rect = g.querySelector('.cmp-comp-rect'); if (rect) { rect.setAttribute('width', p.w); rect.setAttribute('height', p.d); }
+                const lbl = g.querySelector('.cmp-comp-label'); if (lbl) { lbl.setAttribute('x', p.w / 2); lbl.setAttribute('y', p.d / 2); }
                 h.setAttribute('x', p.w - 150); h.setAttribute('y', p.d - 150);
             });
-            const endR = (e) => { if (this._resize) { try { h.releasePointerCapture(e.pointerId); } catch (_) {} this._resize = null; this._renderSelStrip(); } };
+            const endR = (e) => { if (this._resize) { try { h.releasePointerCapture(e.pointerId); } catch (_) {} this._resize = null; this._renderPlanta(); this._renderSelStrip(); } };
             h.addEventListener('pointerup', endR);
             h.addEventListener('pointercancel', endR);
         });
@@ -324,12 +341,15 @@ const CompositorModule = {
                 <button class="cmp-mini" data-a="dup" title="Duplicar">⧉ Duplicar</button>
                 <button class="cmp-mini" data-a="row" title="Duplicar al lado (fila)">⊞ Fila</button>
                 <button class="cmp-mini" data-a="rot" title="Girar 45°">↻ 45°</button>
+                <button class="cmp-mini" data-a="center" title="Centrar en el stand">⊹ Centrar</button>
                 <button class="cmp-mini" data-a="front" title="Traer al frente">⤒</button>
                 <button class="cmp-mini" data-a="back" title="Enviar al fondo">⤓</button>
                 <button class="cmp-mini" data-a="lock" title="${p.locked ? 'Desbloquear' : 'Bloquear'}">${p.locked ? '🔓' : '🔒'}</button>
                 <button class="cmp-mini cmp-mini-del" data-a="del" title="Quitar">✕</button>
             </span>`;
+        let pushedSize = false;
         const upd = () => {
+            if (!pushedSize) { this._pushHist(); pushedSize = true; }
             const w = parseFloat(document.getElementById('cmpSelW')?.value) || 10;
             const d = parseFloat(document.getElementById('cmpSelD')?.value) || 10;
             p.w = Math.max(100, w * 10); p.d = Math.max(100, d * 10);
@@ -342,6 +362,7 @@ const CompositorModule = {
             if (a === 'dup') this._duplicate();
             else if (a === 'row') this._duplicateRow();
             else if (a === 'rot') this._rotatePiece();
+            else if (a === 'center') this._center();
             else if (a === 'front') this._bringFront();
             else if (a === 'back') this._sendBack();
             else if (a === 'lock') this._toggleLock();
@@ -361,15 +382,57 @@ const CompositorModule = {
         this._state.placed.push(c); this._selUid = c.uid;
         return c;
     },
-    _duplicate() { if (this._cloneSel(this._snapStep() * 2, this._snapStep() * 2)) this._afterChange(true); },
-    _duplicateRow() { const p = this._sel(); if (p && this._cloneSel(p.w + (this._isArea() ? 200 : 0), 0)) this._afterChange(true); },
-    _bringFront() { const p = this._sel(); if (!p) return; this._state.placed = this._state.placed.filter(x => x !== p); this._state.placed.push(p); this._afterChange(false); },
-    _sendBack() { const p = this._sel(); if (!p) return; this._state.placed = this._state.placed.filter(x => x !== p); this._state.placed.unshift(p); this._afterChange(false); },
-    _toggleLock() { const p = this._sel(); if (!p) return; p.locked = !p.locked; this._afterChange(false); },
+    _duplicate() { if (!this._sel()) return; this._pushHist(); if (this._cloneSel(this._snapStep() * 2, this._snapStep() * 2)) this._afterChange(true); },
+    _bringFront() { const p = this._sel(); if (!p) return; this._pushHist(); this._state.placed = this._state.placed.filter(x => x !== p); this._state.placed.push(p); this._afterChange(false); },
+    _sendBack() { const p = this._sel(); if (!p) return; this._pushHist(); this._state.placed = this._state.placed.filter(x => x !== p); this._state.placed.unshift(p); this._afterChange(false); },
+    _toggleLock() { const p = this._sel(); if (!p) return; this._pushHist(); p.locked = !p.locked; this._afterChange(false); },
+    _center() { const p = this._sel(); if (!p) return; this._pushHist(); p.x = this._snap((this._wmm() - p.w) / 2); p.y = this._snap((this._dmm() - p.d) / 2); this._clampAll(); this._afterChange(false); },
     _mirror() {
+        if (!this._state.placed.length) return;
+        this._pushHist();
         const W = this._wmm();
         this._state.placed.forEach(p => { p.x = Math.max(0, Math.min(W - p.w, W - p.x - p.w)); p.rot = (360 - (p.rot || 0)) % 360; });
         this._afterChange(false);
+    },
+
+    // Duplicar ×N en fila (modal de cantidad)
+    _duplicateRow() {
+        const base = this._sel(); if (!base) return;
+        const body = `<div class="cmp-modal"><label class="cmp-m-label">¿Cuántas en total (en fila)?</label><input type="number" id="cmpRowN" class="cmp-m-input" value="3" min="2" max="20"></div>`;
+        const inst = Modal.open({ title: 'Duplicar en fila', body, size: 'sm', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="cmpRowGo">Crear</button>` });
+        document.getElementById('cmpRowGo')?.addEventListener('click', () => {
+            const n = Math.max(2, Math.min(20, parseInt(document.getElementById('cmpRowN')?.value, 10) || 2));
+            Modal.close(inst.id);
+            const b = this._sel(); if (!b) return;
+            this._pushHist();
+            const gap = this._isArea() ? 200 : 0;
+            for (let i = 1; i < n; i++) {
+                const c = Object.assign({}, b); c.uid = this._uidSeq++; c.locked = false;
+                c.x = Math.max(0, Math.min(this._wmm() - c.w, this._snap(b.x + i * (b.w + gap))));
+                c.y = b.y;
+                this._state.placed.push(c);
+            }
+            this._selUid = b.uid; this._afterChange(true);
+        });
+    },
+
+    // ─── Deshacer / Rehacer ───
+    _capture() {
+        const s = this._state;
+        return JSON.stringify({ modo: s.modo, tipo: s.tipo, frente: s.frente, fondo: s.fondo, areaW: s.areaW, areaD: s.areaD, altura: s.altura, piso: s.piso, standRot: s.standRot, placed: s.placed });
+    },
+    _pushHist() {
+        this._undoStack.push(this._capture());
+        if (this._undoStack.length > 60) this._undoStack.shift();
+        this._redoStack = [];
+        this._updateUndoButtons();
+    },
+    _applyHist(json) { Object.assign(this._state, JSON.parse(json)); this._selUid = null; this._rebuild(); },
+    _undo() { if (!this._undoStack.length) return; this._redoStack.push(this._capture()); this._applyHist(this._undoStack.pop()); this._updateUndoButtons(); },
+    _redo() { if (!this._redoStack.length) return; this._undoStack.push(this._capture()); this._applyHist(this._redoStack.pop()); this._updateUndoButtons(); },
+    _updateUndoButtons() {
+        const u = document.getElementById('cmpUndo'); if (u) u.disabled = !this._undoStack.length;
+        const r = document.getElementById('cmpRedo'); if (r) r.disabled = !this._redoStack.length;
     },
 
     // ═══ PALETA + COLOCAR ═══
@@ -407,6 +470,7 @@ const CompositorModule = {
     _placePieza(key) {
         const def = (typeof CompositorPiezas !== 'undefined') ? CompositorPiezas.get(key) : null;
         if (!def) return;
+        this._pushHist();
         const w = Math.min(def.w, this._wmm()), d = Math.min(def.d, this._dmm());
         const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
@@ -426,6 +490,7 @@ const CompositorModule = {
 
     _placeItem(catId) {
         const ci = this._catalogo.find(c => String(c.id) === String(catId)); if (!ci) return;
+        this._pushHist();
         const w = this._isArea() ? 800 : this.OCTEXA.ejeMM;
         const d = this._isArea() ? 800 : this.OCTEXA.profEstandarMM;
         const { x, y } = this._spawnXY(w, d);
@@ -437,6 +502,7 @@ const CompositorModule = {
 
     _placeZona(key) {
         const z = this._ZONAS.find(x => x.key === key); if (!z) return;
+        this._pushHist();
         const base = this._isArea() ? 2000 : this.OCTEXA.ejeMM * 2;
         const w = Math.min(base, this._wmm()), d = Math.min(base, this._dmm());
         const { x, y } = this._spawnXY(w, d);
@@ -449,12 +515,13 @@ const CompositorModule = {
     _rotatePiece() {
         const p = this._selUid != null ? this._state.placed.find(x => x.uid === this._selUid) : null;
         if (!p) return;
+        this._pushHist();
         p.rot = ((p.rot || 0) + 45) % 360;
         this._renderPlanta(); this._renderSelStrip();
     },
 
     _rotateStand() {
-        if (!this._state.placed.length && this._wM() === this._dM()) { /* nada que rotar visiblemente, igual seguimos */ }
+        this._pushHist();
         const D = this._dmm();
         this._state.placed.forEach(p => {
             const cx = p.x + p.w / 2, cy = p.y + p.d / 2;
@@ -472,12 +539,14 @@ const CompositorModule = {
 
     _removeSelected() {
         if (this._selUid == null) return;
+        this._pushHist();
         this._state.placed = this._state.placed.filter(p => p.uid !== this._selUid);
         this._selUid = null;
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
     },
     _clearAll() {
         if (!this._state.placed.length) return;
+        this._pushHist();
         this._state.placed = []; this._selUid = null;
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
     },
@@ -690,6 +759,7 @@ const CompositorModule = {
             .cmp-mini{background:#1A1A1A;border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:5px 9px;font-size:.74rem;cursor:pointer;transition:all 150ms}
             .cmp-mini:hover{border-color:var(--primary);color:var(--primary)}
             .cmp-mini-del:hover{border-color:var(--color-error);color:var(--color-error)}
+            .cmp-tool-sep{width:1px;height:16px;background:var(--border);display:inline-block;margin:0 3px}
             .cmp-sel-rot{font-size:.72rem;color:var(--text-muted);font-family:var(--font-mono)}
             .cmp-planta{background:#0a0a0a;border:1px solid var(--border);border-radius:10px;padding:10px;min-height:320px}
             .cmp-svg{width:100%;height:auto;max-height:460px;display:block;touch-action:none}
