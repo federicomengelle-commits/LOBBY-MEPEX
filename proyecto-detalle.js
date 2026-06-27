@@ -264,6 +264,10 @@ const ProyectoDetalle = {
                                 </button>
                             ` : ''}
                             ${!this._isRO ? `
+                                <button class="btn btn-ghost pjd-btn-dup" id="pjdBtnDuplicar" title="Duplicar este proyecto">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    Duplicar
+                                </button>
                                 <button class="btn btn-primary pjd-btn-edit" id="pjdBtnEdit">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                                     Editar
@@ -1403,6 +1407,7 @@ const ProyectoDetalle = {
 
         // Edit
         document.getElementById('pjdBtnEdit')?.addEventListener('click', () => this._openEditModal());
+        document.getElementById('pjdBtnDuplicar')?.addEventListener('click', () => this._openDuplicarModal());
 
         // Delete (superadmin only)
         document.getElementById('pjdBtnDelete')?.addEventListener('click', () => this._deleteProject());
@@ -1541,6 +1546,167 @@ const ProyectoDetalle = {
     // ═══════════════════════════════════════════
     //  EDIT MODAL
     // ═══════════════════════════════════════════
+
+    // ═══════════════════════════════════════════
+    //  DUPLICAR — wizard de 2 pasos. Copia tipos/equipo/notas/BOM,
+    //  pide sólo lo que cambia (nombre/cliente/evento/fechas/responsable).
+    // ═══════════════════════════════════════════
+
+    async _openDuplicarModal() {
+        await this._loadOptionsForEdit();
+        const p = this._project;
+        const clientSel = this._clients.map(c =>
+            `<option value="${c.id}" ${String(c.id) === String(p.cliente_id || '') ? 'selected' : ''}>${this._esc(c.name)}</option>`).join('');
+        const eventSel = this._events.map(e =>
+            `<option value="${e.id}">${this._esc(e.name)}</option>`).join('');
+        const principalId = (p.responsables || []).find(r => r.es_principal)?.profile_id
+            || (p.responsables || [])[0]?.profile_id || '';
+        const userSel = this._users.map(u =>
+            `<option value="${u.uid}" ${String(u.uid) === String(principalId) ? 'selected' : ''}>${this._esc(u.name)}</option>`).join('');
+
+        const body = `
+            <div class="pjd-dup">
+                <div class="pjd-dup-steps">
+                    <div class="pjd-dup-step active" data-dot="1"><span class="pjd-dup-num">1</span><span>Datos</span></div>
+                    <div class="pjd-dup-line"></div>
+                    <div class="pjd-dup-step" data-dot="2"><span class="pjd-dup-num">2</span><span>Fechas y equipo</span></div>
+                </div>
+
+                <div class="pjd-dup-page" data-page="1">
+                    <div class="form-field">
+                        <label class="form-label">Nombre del proyecto <span class="form-required">*</span></label>
+                        <input class="form-input" id="pjdDupNombre" type="text" value="${this._escAttr('Copia de ' + (p.nombre || ''))}" required>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Cliente</label>
+                        <select class="form-input form-select" id="pjdDupCliente"><option value="">— Sin cliente —</option>${clientSel}</select>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Evento</label>
+                        <select class="form-input form-select" id="pjdDupEvento"><option value="">— Elegir evento —</option>${eventSel}</select>
+                    </div>
+                </div>
+
+                <div class="pjd-dup-page" data-page="2" style="display:none;">
+                    <div class="pjd-form-grid">
+                        <div class="form-field">
+                            <label class="form-label">Fecha de inicio</label>
+                            <input class="form-input" id="pjdDupFInicio" type="date">
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Fecha de entrega</label>
+                            <input class="form-input" id="pjdDupFEntrega" type="date">
+                        </div>
+                        <div class="form-field form-field-full">
+                            <label class="form-label">Responsable principal</label>
+                            <select class="form-input form-select" id="pjdDupResp"><option value="">— Sin asignar —</option>${userSel}</select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pjd-dup-note">
+                    <span class="pjd-dup-note-ic">↻</span>
+                    <span>Se copian solos: <strong>tipos de servicio, equipo, notas y la receta de armado</strong>. Arranca en <span style="color:#F28D15">Por iniciar</span>, con historial, novedades y entregas en blanco.</span>
+                </div>
+            </div>
+        `;
+
+        const instance = Modal.open({
+            title: 'Duplicar proyecto',
+            body,
+            size: 'md',
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-ghost" id="pjdDupBack" style="display:none;">← Atrás</button>
+                <button class="btn btn-primary" id="pjdDupNext">Siguiente →</button>
+            `,
+        });
+
+        this._dupStep = 1;
+        const ov = instance.overlay;
+        const setStep = (s) => {
+            this._dupStep = s;
+            ov.querySelector('[data-page="1"]').style.display = s === 1 ? '' : 'none';
+            ov.querySelector('[data-page="2"]').style.display = s === 2 ? '' : 'none';
+            ov.querySelector('[data-dot="2"]').classList.toggle('active', s === 2);
+            ov.querySelector('#pjdDupBack').style.display = s === 2 ? '' : 'none';
+            ov.querySelector('#pjdDupNext').textContent = s === 2 ? 'Crear duplicado' : 'Siguiente →';
+        };
+        ov.querySelector('#pjdDupBack')?.addEventListener('click', () => setStep(1));
+        ov.querySelector('#pjdDupNext')?.addEventListener('click', async () => {
+            if (this._dupStep === 1) {
+                const nombre = ov.querySelector('#pjdDupNombre').value.trim();
+                if (!nombre) { Toast.warning('Poné un nombre'); return; }
+                setStep(2);
+            } else {
+                await this._submitDuplicar(instance);
+            }
+        });
+    },
+
+    async _submitDuplicar(instance) {
+        const ov = instance.overlay;
+        const nombre = ov.querySelector('#pjdDupNombre').value.trim();
+        if (!nombre) { Toast.warning('Poné un nombre'); this._dupStep = 1; return; }
+        const cliente_id = ov.querySelector('#pjdDupCliente').value || null;
+        const evento_id = ov.querySelector('#pjdDupEvento').value || null;
+        const fecha_inicio = ov.querySelector('#pjdDupFInicio').value || null;
+        const fecha_entrega = ov.querySelector('#pjdDupFEntrega').value || null;
+        const responsableId = ov.querySelector('#pjdDupResp').value || null;
+
+        const btn = ov.querySelector('#pjdDupNext');
+        btn.disabled = true; btn.textContent = 'Creando…';
+
+        try {
+            const src = this._project;
+            // 1) crear el proyecto nuevo (manual, arranca por_iniciar, sin cotización)
+            const created = await API.createProject({
+                nombre, cliente_id, evento_id,
+                estado: 'por_iniciar',
+                fecha_inicio, fecha_entrega,
+                notas: src.notas || null,
+                created_from: 'manual',
+            });
+            const newId = created?.id || created?.[0]?.id;
+            if (!newId) throw new Error('createProject no devolvió id');
+
+            // 2) copiar tipos de servicio
+            const tipos = (src.tipos || []).map(t => ({ proyecto_id: newId, tipo: t.tipo }));
+            if (tipos.length) await supabaseClient.from('proyecto_tipos').insert(tipos);
+
+            // 3) copiar equipo (el responsable elegido queda como principal)
+            const resp = (src.responsables || []).map(r => ({
+                proyecto_id: newId,
+                profile_id: r.profile_id,
+                es_principal: responsableId ? String(r.profile_id) === String(responsableId) : !!r.es_principal,
+            }));
+            if (responsableId && !resp.some(r => String(r.profile_id) === String(responsableId))) {
+                resp.forEach(r => r.es_principal = false);
+                resp.push({ proyecto_id: newId, profile_id: responsableId, es_principal: true });
+            }
+            if (resp.length) await supabaseClient.from('proyecto_responsables').insert(resp);
+
+            // 4) copiar receta de armado (BOM) — best-effort (la tabla puede no existir aún)
+            try {
+                const { data: comps } = await supabaseClient
+                    .from('proyecto_componentes').select('catalogo_item_id, cantidad, nota')
+                    .eq('proyecto_id', src.id).eq('_deleted', false);
+                if (comps && comps.length) {
+                    await supabaseClient.from('proyecto_componentes')
+                        .insert(comps.map(c => ({ proyecto_id: newId, catalogo_item_id: c.catalogo_item_id, cantidad: c.cantidad, nota: c.nota })));
+                }
+            } catch { /* la tabla BOM puede no estar creada todavía */ }
+
+            if (typeof API?.clearCache === 'function') API.clearCache();
+            Toast.success('Proyecto duplicado');
+            Modal.close(instance.id);
+            window.location.hash = '#proyectos/' + newId;
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error duplicando:', e.message);
+            Toast.error('Error al duplicar el proyecto');
+            btn.disabled = false; btn.textContent = 'Crear duplicado';
+        }
+    },
 
     async _openEditModal() {
         await this._loadOptionsForEdit();
@@ -2634,6 +2800,31 @@ const ProyectoDetalle = {
             .pjd-hist-desc { flex: 1; font-family: var(--font-main); font-size: 0.84rem; color: #E8E8E8; }
             .pjd-hist-sub { font-family: var(--font-mono); font-size: 0.7rem; color: #555; }
             .pjd-hist-meta { font-family: var(--font-mono); font-size: 0.68rem; color: #555; white-space: nowrap; }
+
+            /* Duplicar — wizard 2 pasos */
+            .pjd-dup-steps { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; }
+            .pjd-dup-step { display: flex; align-items: center; gap: 8px; opacity: 0.5; transition: opacity 200ms ease; }
+            .pjd-dup-step.active { opacity: 1; }
+            .pjd-dup-num {
+                width: 26px; height: 26px; border-radius: 50%;
+                background: #1a1a1a; border: 1px solid #2a2a2a; color: #888;
+                font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700;
+                display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+            }
+            .pjd-dup-step.active .pjd-dup-num {
+                background: #00A9C1; border-color: #00A9C1; color: #0a0a0a;
+                box-shadow: 0 0 10px rgba(0,169,193,.4);
+            }
+            .pjd-dup-step span:last-child { font-family: var(--font-main); font-size: 0.82rem; color: #E8E8E8; }
+            .pjd-dup-line { flex: 1; height: 1px; background: #2a2a2a; }
+            .pjd-dup-note {
+                display: flex; gap: 9px; align-items: flex-start; margin-top: 16px;
+                padding: 10px 12px; border-radius: 6px;
+                background: rgba(0,169,193,.05); border: 1px solid rgba(0,169,193,.18);
+                font-family: var(--font-main); font-size: 0.78rem; color: #9aa; line-height: 1.5;
+            }
+            .pjd-dup-note strong { color: #cdd; font-weight: 700; }
+            .pjd-dup-note-ic { color: #00A9C1; font-size: 0.9rem; }
         `;
     },
 };
