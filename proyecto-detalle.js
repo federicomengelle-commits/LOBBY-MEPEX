@@ -19,7 +19,9 @@ const ProyectoDetalle = {
     _isRO: false,
     _isAdminLevel: false,
     _isSuperAdmin: false,
+    _isTaller: false,
     _userRole: null,
+    _cotNumero: null,
     _novedades: [],
     _checklist: [], // items de taller_proyecto_checklist (tab Producción)
 
@@ -29,8 +31,6 @@ const ProyectoDetalle = {
         { key: 'archivos',    label: 'Archivos Drive',    icon: '📁' },
         { key: 'novedades',   label: 'Novedades',         icon: '📢' },
         { key: 'entrega',     label: 'Entrega',           icon: '✍️' },
-        { key: 'cotizacion',  label: 'Cotización origen', icon: '🔗' },
-        { key: 'actividad',   label: 'Actividad',         icon: '🕐' },
     ],
 
     _statusOptions: [
@@ -86,6 +86,7 @@ const ProyectoDetalle = {
         this._isRO = Data.isReadOnly(user.role, 'proyectos');
         this._isAdminLevel = Auth.isAdminLevel?.() || false;
         this._isSuperAdmin = Auth.isSuperAdmin?.() || false;
+        this._isTaller = (user.role === 'taller');
         this._projectId = id;
         // Soporta deep-link tipo #proyectos/<id>?tab=novedades
         this._activeTab = this._readInitialTab() || 'resumen';
@@ -128,6 +129,17 @@ const ProyectoDetalle = {
             if (error) throw error;
             if (!data) return false;
             this._project = data;
+
+            // Resolver el número de cotización de origen (para el pill del header
+            // y la fila Origen). Gateado luego para que taller NO lo vea.
+            this._cotNumero = null;
+            if (data.created_from === 'crm' && data.cotizacion_id) {
+                try {
+                    const { data: cot } = await supabaseClient
+                        .from('cotizaciones').select('numero').eq('id', data.cotizacion_id).maybeSingle();
+                    this._cotNumero = cot?.numero || null;
+                } catch { /* noop */ }
+            }
             return true;
         } catch (e) {
             console.warn('[ProyectoDetalle] Error cargando proyecto:', e.message);
@@ -206,9 +218,13 @@ const ProyectoDetalle = {
                         <div class="pjd-header-left">
                             <h1 class="pjd-title">${this._esc(p.nombre || 'Sin nombre')}</h1>
                             <div class="pjd-header-badges">
-                                <span class="pjd-origin-badge ${isCRM ? 'crm' : 'manual'}" title="Origen del proyecto">
-                                    ${isCRM ? '⚡ CRM' : '✋ Manual'}
-                                </span>
+                                ${(isCRM && !this._isTaller && this._cotNumero) ? `
+                                    <a href="#crm" class="pjd-cot-pill" title="Ver cotización en CRM">⚡ ${this._esc(this._cotNumero)}</a>
+                                ` : `
+                                    <span class="pjd-origin-badge ${isCRM ? 'crm' : 'manual'}" title="Origen del proyecto">
+                                        ${isCRM ? '⚡ CRM' : '✋ Manual'}
+                                    </span>
+                                `}
                                 ${evento ? `<a href="#eventos" class="pjd-event-pill" title="Ver evento">📅 ${this._esc(evento.nombre || '')}</a>` : ''}
                             </div>
                         </div>
@@ -307,19 +323,14 @@ const ProyectoDetalle = {
                 container.innerHTML = await this._renderEntregaTab();
                 this._attachEntregaEvents();
                 return;
-            case 'cotizacion':
-                container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando cotización…</span></div>';
-                container.innerHTML = await this._renderCotizacionTab();
-                return;
-            case 'actividad':
-                container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando actividad…</span></div>';
-                container.innerHTML = await this._renderActividadTab();
-                return;
             case 'resumen':
-            default:
-                container.innerHTML = this._renderResumenTab();
+            default: {
+                container.innerHTML = '<div class="pjd-loading"><div class="spinner"></div><span>Cargando…</span></div>';
+                const extras = await this._loadResumenExtras();
+                container.innerHTML = this._renderResumenTab(extras);
                 this._attachResumenEvents();
                 return;
+            }
         }
     },
 
@@ -341,7 +352,7 @@ const ProyectoDetalle = {
     //  TAB: RESUMEN
     // ═══════════════════════════════════════════
 
-    _renderResumenTab() {
+    _renderResumenTab(extras) {
         const p = this._project;
         const statusOpt = this._getStatusOption(p.estado);
         const isCRM = p.created_from === 'crm';
@@ -349,8 +360,10 @@ const ProyectoDetalle = {
         const evento = p.evento;
         const responsables = (p.responsables || []).slice().sort((a, b) => (b.es_principal ? 1 : 0) - (a.es_principal ? 1 : 0));
         const tipos = p.tipos || [];
+        const ex = extras || { actividad: [], novedades: [] };
 
         return `
+            ${this._renderReadinessChip(ex.novedades)}
             <div class="pjd-resumen-grid">
                 <div class="pjd-col">
                     <div class="pjd-section">
@@ -375,7 +388,12 @@ const ProyectoDetalle = {
                             <div class="pjd-info-row">
                                 <span class="pjd-info-label">Origen</span>
                                 <span class="pjd-info-value">
-                                    <span class="pjd-origin-badge ${isCRM ? 'crm' : 'manual'}">${isCRM ? '⚡ CRM (cotización)' : '✋ Manual'}</span>
+                                    ${(isCRM && !this._isTaller && this._cotNumero) ? `
+                                        <span class="pjd-mono" style="color:#00A9C1;font-weight:700">⚡ ${this._esc(this._cotNumero)}</span>
+                                        <a href="#crm" class="pjd-cot-link">ver en CRM ↗</a>
+                                    ` : `
+                                        <span class="pjd-origin-badge ${isCRM ? 'crm' : 'manual'}">${isCRM ? '⚡ CRM' : '✋ Manual'}</span>
+                                    `}
                                 </span>
                             </div>
                             <div class="pjd-info-row">
@@ -464,6 +482,8 @@ const ProyectoDetalle = {
                     </div>
                 </div>
             </div>
+
+            ${this._renderHistorialSection(ex.actividad)}
         `;
     },
 
@@ -489,6 +509,14 @@ const ProyectoDetalle = {
         // Add equipo / tipos → abren modal de edición completa
         document.getElementById('pjdAddEquipo')?.addEventListener('click', () => this._openEditModal());
         document.getElementById('pjdAddTipos')?.addEventListener('click', () => this._openEditModal());
+
+        // Historial colapsable
+        const histToggle = document.getElementById('pjdHistToggle');
+        if (histToggle) histToggle.addEventListener('click', () => {
+            const body = document.getElementById('pjdHistBody');
+            const open = histToggle.classList.toggle('open');
+            if (body) body.style.display = open ? 'block' : 'none';
+        });
     },
 
     _cancelNotasEdit() {
@@ -520,6 +548,140 @@ const ProyectoDetalle = {
     // ═══════════════════════════════════════════
     //  TAB: PRODUCCIÓN (checklist de taller)
     // ═══════════════════════════════════════════
+
+    // ── Resumen: extras (actividad + novedades) cargados al entrar a Resumen ──
+    async _loadResumenExtras() {
+        const out = { actividad: [], novedades: [] };
+        try {
+            const [acts, novs] = await Promise.all([
+                supabaseClient.from('proyecto_actividad').select('*').eq('proyecto_id', this._projectId).order('created_at', { ascending: false }),
+                API.getNovedades(this._projectId).catch(() => []),
+            ]);
+            out.actividad = acts?.data || [];
+            out.novedades = Array.isArray(novs) ? novs : [];
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error cargando extras de resumen:', e.message);
+        }
+        return out;
+    },
+
+    // ── Chip "listo para salir" — 100% auto-derivado, cero carga manual.
+    //    Faltantes de material salen de novedades tipo falta_material sin resolver.
+    //    (A futuro esta misma franja se alimenta del inventario en vivo / BOM vs stock.)
+    _renderReadinessChip(novedades) {
+        const p = this._project;
+        const novs = novedades || [];
+        const faltantes = novs.filter(n => n.tipo === 'falta_material' && !n.resuelta);
+        const okEvento = !!(p.evento || p.evento_id);
+        const okFechas = !!(p.fecha_inicio && p.fecha_entrega);
+        const okEquipo = (p.responsables || []).length > 0;
+        const okDrive = !!p.drive_folder_url;
+        const okMat = faltantes.length === 0;
+        const ready = okEvento && okFechas && okEquipo && okDrive && okMat;
+        const missing = [];
+        if (!okEvento) missing.push('evento');
+        if (!okFechas) missing.push('fechas');
+        if (!okEquipo) missing.push('equipo');
+        if (!okDrive) missing.push('Drive');
+        if (!okMat) missing.push('material');
+        const ck = (ok, label, danger) => `<span class="pjd-rck ${ok ? 'on' : (danger ? 'bad' : 'off')}"><span class="pjd-rck-dot"></span>${label}</span>`;
+        const nombres = faltantes.slice(0, 3).map(f => (f.mensaje || '').trim()).filter(Boolean).join(' · ');
+        const banner = faltantes.length ? `
+            <div class="pjd-falt-banner">
+                <span class="pjd-falt-txt">⚠ ${faltantes.length} faltante${faltantes.length === 1 ? '' : 's'} de material${nombres ? `<span class="pjd-falt-names"> — ${this._esc(nombres)}</span>` : ''}</span>
+                ${!this._isRO ? `<a href="#compras?tab=pedidos&nuevo=1&proyecto=${p.id}" class="pjd-falt-btn">🛒 Pedir compra →</a>` : ''}
+            </div>
+        ` : '';
+        return `
+            <div class="pjd-ready-chip ${ready ? 'ready' : 'warn'}">
+                <div class="pjd-ready-verdict">
+                    <span class="pjd-ready-ic">${ready ? '✓' : '!'}</span>
+                    <span class="pjd-ready-title">${ready ? 'Listo para salir' : 'Faltan: ' + this._esc(missing.join(', '))}</span>
+                </div>
+                <div class="pjd-ready-checks">
+                    ${ck(okEvento, 'Evento')}
+                    ${ck(okFechas, 'Fechas')}
+                    ${ck(okEquipo, 'Equipo')}
+                    ${ck(okDrive, 'Drive')}
+                    ${ck(okMat, 'Materiales', true)}
+                </div>
+            </div>
+            ${banner}
+        `;
+    },
+
+    // ── Historial colapsable (reemplaza la ex-pestaña Actividad), agrupado por día ──
+    _renderHistorialSection(actividad) {
+        const items = actividad || [];
+        const count = items.length;
+        let body;
+        if (!count) {
+            body = '<p class="pjd-section-empty" style="margin:8px 0 0">Sin movimientos registrados todavía.</p>';
+        } else {
+            const groups = [];
+            const idx = {};
+            items.forEach(a => {
+                const key = (a.created_at || '').slice(0, 10);
+                if (!(key in idx)) { idx[key] = groups.length; groups.push({ key, items: [] }); }
+                groups[idx[key]].items.push(a);
+            });
+            body = groups.map(g => `
+                <div class="pjd-hist-day">${this._esc(this._fmtDate(g.key))}</div>
+                <div class="pjd-hist-rail">
+                    ${g.items.map(a => this._renderHistItem(a)).join('')}
+                </div>
+            `).join('');
+        }
+        return `
+            <div class="pjd-hist-section">
+                <button class="pjd-hist-toggle" id="pjdHistToggle" type="button">
+                    <span class="pjd-hist-tl">🕐 Historial <span class="pjd-hist-count">${count}</span></span>
+                    <span class="pjd-hist-chev">▾</span>
+                </button>
+                <div class="pjd-hist-body" id="pjdHistBody" style="display:none;">
+                    ${body}
+                </div>
+            </div>
+        `;
+    },
+
+    _renderHistItem(a) {
+        const colors = { creado: '#00CC88', estado_cambiado: '#00A9C1', drive_vinculado: '#00A9C1', editado: '#888', eliminado: '#ff4444' };
+        const color = colors[a.tipo] || '#888';
+        const desc = this._histDesc(a);
+        const user = a.user_name || a.usuario || '';
+        const time = this._fmtTime(a.created_at);
+        return `
+            <div class="pjd-hist-row">
+                <span class="pjd-hist-dot" style="background:${color}"></span>
+                <span class="pjd-hist-desc">${desc}</span>
+                <span class="pjd-hist-meta">${this._esc(user)}${time ? ' · ' + time : ''}</span>
+            </div>
+        `;
+    },
+
+    // Humaniza la descripción del movimiento (sin gritar "ESTADO_CAMBIADO").
+    _histDesc(a) {
+        const raw = a.descripcion || a.tipo || '';
+        const m = raw.match(/^Estado:\s*(\S+)\s*→\s*(\S+)/);
+        if (m) {
+            const lab = (v) => (this._statusOptions.find(s => s.value === v)?.label) || v.replace(/_/g, ' ');
+            const col = (v) => (this._statusOptions.find(s => s.value === v)?.color) || '#888';
+            return `Estado <span style="color:#666">${this._esc(lab(m[1]))}</span> → <span style="color:${col(m[2])}">${this._esc(lab(m[2]))}</span>`;
+        }
+        if (a.tipo === 'creado') {
+            const origen = (raw.replace(/^Proyecto creado desde\s*/i, '').trim()) || 'manual';
+            return `Proyecto creado <span class="pjd-hist-sub">(${this._esc(origen)})</span>`;
+        }
+        if (a.tipo === 'drive_vinculado') return `Carpeta Drive vinculada`;
+        return this._esc(raw.replace(/_/g, ' '));
+    },
+
+    _fmtTime(iso) {
+        if (!iso) return '';
+        try { return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+        catch { return ''; }
+    },
 
     async _renderProduccionTab() {
         const p = this._project;
@@ -1191,182 +1353,6 @@ const ProyectoDetalle = {
         else Toast.error('Error al eliminar');
     },
 
-    // ═══════════════════════════════════════════
-    //  TAB: COTIZACIÓN ORIGEN (sin info económica)
-    // ═══════════════════════════════════════════
-
-    async _renderCotizacionTab() {
-        const p = this._project;
-
-        if (p.created_from !== 'crm' || !p.cotizacion_id) {
-            return `
-                <div class="pjd-tab-pad">
-                    <div class="pjd-empty-state">
-                        <div class="pjd-empty-icon">✋</div>
-                        <h3 class="pjd-section-title">Proyecto creado manualmente</h3>
-                        <p class="pjd-section-empty">Este proyecto fue creado manualmente. No tiene cotización asociada.</p>
-                        ${!this._isRO ? '<button class="btn btn-ghost" disabled title="Próximamente">Vincular a cotización existente</button>' : ''}
-                    </div>
-                </div>
-            `;
-        }
-
-        // Sólo metadatos. NO traer monto_total, subtotal, iva ni campos pyme_*.
-        let cot = null;
-        try {
-            const { data, error } = await supabaseClient
-                .from('cotizaciones')
-                .select('id, numero, cliente_id, fecha_emision, estado, nombre_evento, tipo_evento, vendedor_id')
-                .eq('id', p.cotizacion_id)
-                .maybeSingle();
-            if (error) throw error;
-            cot = data;
-        } catch (e) {
-            console.warn('[ProyectoDetalle] Error cargando cotización:', e.message);
-        }
-
-        if (!cot) {
-            return `
-                <div class="pjd-tab-pad">
-                    <div class="pjd-empty-state">
-                        <div class="pjd-empty-icon">⚠️</div>
-                        <h3 class="pjd-section-title">Cotización no disponible</h3>
-                        <p class="pjd-section-empty">No se pudo cargar la cotización vinculada (id: ${this._esc(p.cotizacion_id)}).</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Resolver nombres por separado (cliente y vendedor)
-        let clienteNombre = '';
-        let vendedorNombre = '';
-        try {
-            const queries = [];
-            if (cot.cliente_id) {
-                queries.push(supabaseClient.from('clientes').select('id, nombre_empresa').eq('id', cot.cliente_id).maybeSingle());
-            }
-            if (cot.vendedor_id) {
-                queries.push(supabaseClient.from('profiles').select('id, name').eq('id', cot.vendedor_id).maybeSingle());
-            }
-            const results = await Promise.all(queries);
-            let idx = 0;
-            if (cot.cliente_id) { clienteNombre = results[idx++]?.data?.nombre_empresa || ''; }
-            if (cot.vendedor_id) { vendedorNombre = results[idx++]?.data?.name || ''; }
-        } catch (e) {
-            console.warn('[ProyectoDetalle] Error resolviendo refs cotización:', e.message);
-        }
-
-        return `
-            <div class="pjd-tab-pad">
-                <div class="pjd-section">
-                    <div class="pjd-section-header">
-                        <h3 class="pjd-section-title">Cotización vinculada</h3>
-                        <span class="pjd-cot-badge">${this._esc(cot.estado || '—')}</span>
-                    </div>
-                    <div class="pjd-info-grid">
-                        <div class="pjd-info-row">
-                            <span class="pjd-info-label">Número</span>
-                            <span class="pjd-info-value pjd-mono">${this._esc(cot.numero || '—')}</span>
-                        </div>
-                        <div class="pjd-info-row">
-                            <span class="pjd-info-label">Cliente</span>
-                            <span class="pjd-info-value">${clienteNombre ? this._esc(clienteNombre) : '<span class="pjd-muted">—</span>'}</span>
-                        </div>
-                        <div class="pjd-info-row">
-                            <span class="pjd-info-label">Fecha emisión</span>
-                            <span class="pjd-info-value">${cot.fecha_emision ? this._fmtDate(cot.fecha_emision) : '<span class="pjd-muted">—</span>'}</span>
-                        </div>
-                        <div class="pjd-info-row">
-                            <span class="pjd-info-label">Estado</span>
-                            <span class="pjd-info-value">${this._esc(cot.estado || '—')}</span>
-                        </div>
-                        <div class="pjd-info-row">
-                            <span class="pjd-info-label">Nombre del evento</span>
-                            <span class="pjd-info-value">${cot.nombre_evento ? this._esc(cot.nombre_evento) : '<span class="pjd-muted">—</span>'}</span>
-                        </div>
-                        <div class="pjd-info-row">
-                            <span class="pjd-info-label">Tipo de evento</span>
-                            <span class="pjd-info-value">${cot.tipo_evento ? this._esc(cot.tipo_evento) : '<span class="pjd-muted">—</span>'}</span>
-                        </div>
-                        <div class="pjd-info-row">
-                            <span class="pjd-info-label">Vendedor</span>
-                            <span class="pjd-info-value">${vendedorNombre ? this._esc(vendedorNombre) : '<span class="pjd-muted">—</span>'}</span>
-                        </div>
-                    </div>
-                    <div class="pjd-cot-footer">
-                        <p class="pjd-section-helper">La información económica (montos, totales, balance) se gestiona desde el módulo CRM y no se muestra acá.</p>
-                    </div>
-                </div>
-            </div>
-        `;
-    },
-
-    // ═══════════════════════════════════════════
-    //  TAB: ACTIVIDAD (timeline)
-    // ═══════════════════════════════════════════
-
-    async _renderActividadTab() {
-        let items = [];
-        try {
-            const { data, error } = await supabaseClient
-                .from('proyecto_actividad')
-                .select('*')
-                .eq('proyecto_id', this._projectId)
-                .order('created_at', { ascending: false });
-            if (error) throw error;
-            items = data || [];
-        } catch (e) {
-            console.warn('[ProyectoDetalle] Error cargando actividad:', e.message);
-            return `
-                <div class="pjd-tab-pad">
-                    <div class="pjd-empty-state">
-                        <div class="pjd-empty-icon">⚠️</div>
-                        <p class="pjd-section-empty">Error cargando la actividad: ${this._esc(e.message)}</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        if (!items.length) {
-            return `
-                <div class="pjd-tab-pad">
-                    <div class="pjd-empty-state">
-                        <div class="pjd-empty-icon">🕐</div>
-                        <h3 class="pjd-section-title">Sin actividad registrada</h3>
-                        <p class="pjd-section-empty">Los cambios sobre este proyecto van a aparecer acá.</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        return `
-            <div class="pjd-tab-pad">
-                <ul class="pjd-timeline">
-                    ${items.map((a, i) => this._renderActivityItem(a, i === items.length - 1)).join('')}
-                </ul>
-            </div>
-        `;
-    },
-
-    _renderActivityItem(a, isLast) {
-        const icon = this._activityIcons[a.tipo] || '•';
-        const userName = a.user_name || a.usuario || '—';
-        const desc = a.descripcion || a.tipo || '';
-        const fecha = this._fmtRelative(a.created_at);
-        return `
-            <li class="pjd-timeline-item ${isLast ? 'last' : ''}">
-                <div class="pjd-timeline-dot">${icon}</div>
-                <div class="pjd-timeline-card">
-                    <div class="pjd-timeline-head">
-                        <span class="pjd-timeline-tipo">${this._esc(a.tipo || 'evento')}</span>
-                        <span class="pjd-timeline-date" title="${this._esc(a.created_at || '')}">${this._esc(fecha)}</span>
-                    </div>
-                    <div class="pjd-timeline-desc">${this._esc(desc)}</div>
-                    <div class="pjd-timeline-user">${this._esc(userName)}</div>
-                </div>
-            </li>
-        `;
-    },
 
     // ═══════════════════════════════════════════
     //  HEADER ACTIONS — STATUS / EDIT / DELETE / DRIVE
@@ -2560,6 +2546,94 @@ const ProyectoDetalle = {
             }
             .pjd-prod-label { flex: 1; line-height: 1.3; }
             .pjd-prod-ro { margin-top: 14px; font-family: var(--font-mono); font-size: 0.72rem; }
+
+            /* ── Pulido 2026-06-27: cotización pill · chip listo-para-salir · historial ── */
+            .pjd-cot-pill {
+                display: inline-flex; align-items: center; gap: 4px;
+                font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+                color: #00A9C1; text-decoration: none;
+                background: rgba(0,169,193,.1); border: 1px solid rgba(0,169,193,.35);
+                padding: 3px 9px; border-radius: 5px; transition: all 200ms ease;
+            }
+            .pjd-cot-pill:hover { background: rgba(0,169,193,.18); box-shadow: 0 0 10px rgba(0,169,193,.2); }
+            .pjd-cot-link {
+                margin-left: 8px; font-family: var(--font-mono); font-size: 0.68rem;
+                color: #555; text-decoration: none;
+            }
+            .pjd-cot-link:hover { color: #00A9C1; }
+
+            .pjd-ready-chip {
+                display: flex; align-items: center; justify-content: space-between;
+                gap: 16px; flex-wrap: wrap;
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                padding: 11px 14px; margin-bottom: 4px;
+            }
+            .pjd-ready-chip.ready { border-left: 3px solid #00CC88; }
+            .pjd-ready-chip.warn  { border-left: 3px solid #F28D15; }
+            .pjd-ready-verdict { display: flex; align-items: center; gap: 9px; }
+            .pjd-ready-ic {
+                width: 22px; height: 22px; border-radius: 50%;
+                display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; flex-shrink: 0;
+            }
+            .pjd-ready-chip.ready .pjd-ready-ic { background: rgba(0,204,136,.15); color: #00CC88; }
+            .pjd-ready-chip.warn  .pjd-ready-ic { background: rgba(242,141,21,.15); color: #F28D15; }
+            .pjd-ready-title { font-family: var(--font-main); font-size: 0.9rem; font-weight: 700; }
+            .pjd-ready-chip.ready .pjd-ready-title { color: #00CC88; }
+            .pjd-ready-chip.warn  .pjd-ready-title { color: #F28D15; }
+            .pjd-ready-checks { display: flex; gap: 14px; flex-wrap: wrap; }
+            .pjd-rck {
+                font-family: var(--font-mono); font-size: 0.66rem;
+                display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; color: #bbb;
+            }
+            .pjd-rck-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+            .pjd-rck.on  .pjd-rck-dot { background: #00CC88; }
+            .pjd-rck.off { color: #666; }
+            .pjd-rck.off .pjd-rck-dot { background: #2a1f10; box-shadow: 0 0 0 1px #F28D15; }
+            .pjd-rck.bad { color: #666; }
+            .pjd-rck.bad .pjd-rck-dot { background: #2a1010; box-shadow: 0 0 0 1px #ff4444; }
+
+            .pjd-falt-banner {
+                display: flex; align-items: center; justify-content: space-between;
+                gap: 12px; flex-wrap: wrap;
+                background: rgba(255,68,68,.05); border: 1px solid rgba(255,68,68,.2);
+                border-radius: 6px; padding: 9px 13px; margin-bottom: 4px;
+            }
+            .pjd-falt-txt { font-family: var(--font-main); font-size: 0.82rem; color: #e0a0a0; }
+            .pjd-falt-names { color: #888; font-size: 0.76rem; }
+            .pjd-falt-btn {
+                font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+                color: #0a0a0a; background: #F28D15; text-decoration: none;
+                padding: 6px 12px; border-radius: 5px; white-space: nowrap;
+            }
+            .pjd-falt-btn:hover { background: #ff9f2e; }
+
+            .pjd-hist-section {
+                background: #0e0e0e; border: 1px solid #2a2a2a; border-radius: 8px;
+                margin-top: 16px; overflow: hidden;
+            }
+            .pjd-hist-toggle {
+                width: 100%; display: flex; align-items: center; justify-content: space-between;
+                background: transparent; border: none; cursor: pointer;
+                padding: 14px 16px; color: #E8E8E8;
+            }
+            .pjd-hist-tl { font-family: var(--font-main); font-size: 0.95rem; font-weight: 700; display: flex; align-items: center; gap: 9px; }
+            .pjd-hist-count {
+                font-family: var(--font-mono); font-size: 0.7rem; color: #888;
+                background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 1px 8px;
+            }
+            .pjd-hist-chev { color: #555; transition: transform 200ms ease; }
+            .pjd-hist-toggle.open .pjd-hist-chev { transform: rotate(180deg); }
+            .pjd-hist-body { padding: 0 16px 14px; }
+            .pjd-hist-day {
+                font-family: var(--font-mono); font-size: 0.66rem; color: #555;
+                text-transform: uppercase; letter-spacing: 0.5px; margin: 10px 0 6px 2px;
+            }
+            .pjd-hist-rail { border-left: 1px solid #2a2a2a; margin-left: 5px; padding-left: 16px; display: flex; flex-direction: column; gap: 9px; }
+            .pjd-hist-row { display: flex; align-items: center; gap: 10px; position: relative; }
+            .pjd-hist-dot { position: absolute; left: -21px; width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 3px #0e0e0e; }
+            .pjd-hist-desc { flex: 1; font-family: var(--font-main); font-size: 0.84rem; color: #E8E8E8; }
+            .pjd-hist-sub { font-family: var(--font-mono); font-size: 0.7rem; color: #555; }
+            .pjd-hist-meta { font-family: var(--font-mono); font-size: 0.68rem; color: #555; white-space: nowrap; }
         `;
     },
 };
