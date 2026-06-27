@@ -3,8 +3,14 @@
 > **Arranque (pegar tal cual en la sesión nueva):**
 > *"Leé `docs/handoff-proxima-sesion-remate.md` y arranquemos el remate con el método **prediseño → mostrar → validar → aplicar** (skill `pulir-pantallas`). Antes de codear: traés el render REAL, me mostrás un mockup con `show_widget`, yo valido, y recién ahí aplicás. Empecemos por **\<módulo\>**."*
 >
-> **Foto:** 2026-06-26. Branch `rediseno` == `origin/main` @ **`afb02fb`**. **PROGRESO ≈88% · PLAN ≈12%.**
+> **Foto:** 2026-06-26. Branch `rediseno` == `origin/main`. **PROGRESO ≈88% · PLAN ≈12%.**
 > **Lo que queda ya casi no es lógica — es REMATE visual + un puñado de features chicas.** El objetivo de Fede: *"dejarlo prácticamente listo."*
+>
+> ### 🥇 ORDEN VIGENTE (Fede 2026-06-26): **CRM PRIMERO**
+> 1. **Sprint CRM-rediseño** (Bandeja nueva + estado rápido + presupuesto linkeado · link reverso · auditoría) → CRM "usable bien ya". **Diseño YA CERRADO** → ejecutar con `docs/handoff-CRM-rediseno-bandeja.md`.
+> 2. Recién después: **refactor visual de Proyectos / Eventos**.
+> 3. Resto del remate (Finanzas Dashboard/etc., Contabilidad, Costos…) + features sueltas + cierres contables.
+> 4. Gmail/WhatsApp al destrabarse la infra.
 
 ---
 
@@ -61,10 +67,10 @@ Recorrer por módulo, **subtab por subtab**, con el loop §0. Catálogo (✅ = y
 | **Finanzas** › resto | ⏳ | Dashboard · Ingresos · Egresos · Cuentas · Valores · Conciliación · Calendario · Reportes. |
 | **Eventos** | ✅ tabla/cards/ficha | Pendiente: **modales** (crear/editar evento, asignar gente) + filas finas en Transporte/Docs. *(La sección Subalquileres nueva ya está en estilo MEPEX.)* |
 | **Proyectos** | ⏳ **(siguiente sugerido)** | `proyectos.js` (lista) + `proyecto-detalle.js` (tabs: Resumen·Producción·Archivos·Novedades·**Entrega**[nuevo]·Cotización·Actividad). Análisis previo (en PLAN): dos estados conviven confusos, "barra de pendiente" = badge Ciclo del Taller, Actividad a rediseñar, quizá sobra una pestaña. |
-| **CRM** › Bandeja | ⏳ | Rework SOLO visual ("que se lea sola") + **bug: colores de temperatura** (ver Track B 1a). |
+| **CRM** › Bandeja | 🥇 **PRIMERO — diseño cerrado** | Rediseño completo: barra por etapa (sale la temperatura) + chips de urgencia + presupuesto linkeado + estado rápido (badge ▾) + estado semi-auto. **Spec ejecutable: `docs/handoff-CRM-rediseno-bandeja.md`.** |
 | **Contabilidad** · **Costos** · **Calendario op.** · **Inventario/Catálogo** · **Compras** · **RRHH** · **Rendimiento** · **Lobby/Home** · **Admin/Settings** | ⏳ | Recorrer con el loop. |
 
-**Orden sugerido:** Proyectos (ya tiene análisis hecho + tab nuevo) → CRM Bandeja → Finanzas (Dashboard/Ingresos/Egresos) → el resto. *(Fede manda el orden; este es el default.)*
+**Orden sugerido:** **1) Sprint CRM-rediseño** (ver `docs/handoff-CRM-rediseno-bandeja.md`) → 2) Proyectos / Eventos → 3) Finanzas (Dashboard/Ingresos/Egresos) → resto. *(Confirmado por Fede 2026-06-26: CRM primero.)*
 
 ### 🅱️ TRACK B — FEATURES construibles ya (no son visual; se pueden intercalar)
 
