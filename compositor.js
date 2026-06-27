@@ -57,7 +57,7 @@ const CompositorModule = {
         placed: [],               // {uid,catId,nombre,precio,x,y,w,d,rot}
     },
     _catalogo: [], _host: null, _container: null,
-    _selUid: null, _selSet: [], _drag: null, _paletteQ: '', _stylesInjected: false, _uidSeq: 1,
+    _selUid: null, _selSet: [], _drag: null, _paletteQ: '', _palTab: 'catalogo', _stylesInjected: false, _uidSeq: 1,
     _undoStack: [], _redoStack: [], _keyHandler: null,
 
     // ═══ ENTRADA ═══
@@ -114,8 +114,9 @@ const CompositorModule = {
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpTexto" title="Agregar etiqueta de texto">＋ Texto</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotStand">⟳ Girar todo 90°</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
-                            <button class="cmp-btn-ghost cmp-btn-xs" id="cmpVaciar">Vaciar</button>
-                            <span class="cmp-hint">Clic para seleccionar · Shift/Ctrl-clic para varias · arrastrá para mover (snap)</span>
+                            <span class="cmp-tool-sep"></span>
+                            <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-danger" id="cmpVaciar">Vaciar</button>
+                            <span class="cmp-hint">Shift-clic para varias · arrastrá para mover</span>
                         </div>
                         <div id="cmpSelStrip" class="cmp-sel-strip"></div>
                         <div id="cmpPlanta" class="cmp-planta"></div>
@@ -123,7 +124,12 @@ const CompositorModule = {
                     </div>
                     <div class="cmp-side">
                         <div class="cmp-palette">
-                            <div class="cmp-side-head">Paleta ${this._isArea() ? '(mobiliario)' : '(componentes)'} <span class="cmp-side-sub">precio de Costos</span></div>
+                            <div class="cmp-side-head">Agregar <span class="cmp-side-sub">precio de Costos</span></div>
+                            <div class="cmp-pal-tabs">
+                                <button class="cmp-pal-tab" data-pt="catalogo">Catálogo</button>
+                                <button class="cmp-pal-tab" data-pt="piezas">Piezas</button>
+                                <button class="cmp-pal-tab" data-pt="zonas">Zonas</button>
+                            </div>
                             <input type="text" id="cmpPalQ" class="cmp-pal-search" placeholder="buscar ítem…" value="${escAttr(this._paletteQ)}">
                             <div id="cmpPalList" class="cmp-pal-list"></div>
                         </div>
@@ -175,6 +181,7 @@ const CompositorModule = {
         ['cmpTipo', 'cmpAltura', 'cmpPiso'].forEach(id => document.getElementById(id)?.addEventListener('change', reConfig));
         ['cmpFrente', 'cmpFondo', 'cmpAreaW', 'cmpAreaD'].forEach(id => document.getElementById(id)?.addEventListener('input', reConfig));
         document.getElementById('cmpPalQ')?.addEventListener('input', (e) => { this._paletteQ = e.target.value; this._renderPalette(); });
+        document.querySelectorAll('.cmp-pal-tab').forEach(b => b.addEventListener('click', () => { this._palTab = b.dataset.pt; this._renderPalette(); }));
         document.getElementById('cmpTexto')?.addEventListener('click', () => this._placeTexto());
         document.getElementById('cmpRotStand')?.addEventListener('click', () => this._rotateStand());
         document.getElementById('cmpEspejar')?.addEventListener('click', () => this._mirror());
@@ -723,30 +730,28 @@ const CompositorModule = {
     // ═══ PALETA + COLOCAR ═══
     _renderPalette() {
         const cont = document.getElementById('cmpPalList'); if (!cont) return;
-        const zonasHTML = `
-            <div class="cmp-pal-sub">Zonas (distribuir espacio)</div>
-            <div class="cmp-zona-chips">
-                ${this._ZONAS.map(z => `<button class="cmp-zona-chip" data-zona="${z.key}" style="--zc:${z.color}">${escHtml(z.label)}</button>`).join('')}
-            </div>`;
-        const piezasHTML = (typeof CompositorPiezas !== 'undefined') ? CompositorPiezas.RUBROS.map(rb => {
-            const items = CompositorPiezas.LIB.filter(p => p.rubro === rb);
-            if (!items.length) return '';
-            return `<div class="cmp-pal-sub">${escHtml(rb)}</div>
-                <div class="cmp-pieza-chips">${items.map(p => `<button class="cmp-pieza-chip" data-pieza="${escAttr(p.key)}" title="${escAttr(p.label)}">${escHtml(p.label)}</button>`).join('')}</div>`;
-        }).join('') : '';
-        const q = this._norm(this._paletteQ);
-        let list = this._catalogo.slice();
-        if (q) list = list.filter(c => this._norm(c.nombre).includes(q) || this._norm(c.codigo || '').includes(q) || this._norm(c.rubro || '').includes(q));
-        list = list.slice(0, 200);
-        let itemsHTML;
-        if (!this._catalogo.length) itemsHTML = `<div class="cmp-empty">No se pudo cargar el catálogo.</div>`;
-        else if (!list.length) itemsHTML = `<div class="cmp-empty">Sin ítems para "${escHtml(this._paletteQ)}".</div>`;
-        else itemsHTML = list.map(c => `
-            <button class="cmp-pal-item" data-id="${escAttr(c.id)}">
-                <span class="cmp-pal-name">${escHtml(c.nombre)}${c.tipoReceta === 'subalquilado' ? ' <span class="cmp-chip cmp-chip-sub">subalq</span>' : ''}</span>
-                <span class="cmp-pal-price">$${this._fmt(c.precioAlquiler)}</span>
-            </button>`).join('');
-        cont.innerHTML = zonasHTML + piezasHTML + `<div class="cmp-pal-sub">Catálogo (Costos)</div>` + itemsHTML;
+        const tab = this._palTab || 'catalogo';
+        document.querySelectorAll('.cmp-pal-tab').forEach(b => b.classList.toggle('active', b.dataset.pt === tab));
+        const search = document.getElementById('cmpPalQ'); if (search) search.style.display = (tab === 'catalogo') ? '' : 'none';
+        let html = '';
+        if (tab === 'zonas') {
+            html = `<div class="cmp-pal-note">Bloques de espacio (no facturan)</div><div class="cmp-zona-chips">${this._ZONAS.map(z => `<button class="cmp-zona-chip" data-zona="${z.key}" style="--zc:${z.color}">${escHtml(z.label)}</button>`).join('')}</div>`;
+        } else if (tab === 'piezas') {
+            html = (typeof CompositorPiezas !== 'undefined') ? CompositorPiezas.RUBROS.map(rb => {
+                const items = CompositorPiezas.LIB.filter(p => p.rubro === rb);
+                if (!items.length) return '';
+                return `<div class="cmp-pal-sub">${escHtml(rb)}</div><div class="cmp-pieza-chips">${items.map(p => `<button class="cmp-pieza-chip" data-pieza="${escAttr(p.key)}" title="${escAttr(p.label)}">${escHtml(p.label)}</button>`).join('')}</div>`;
+            }).join('') : '<div class="cmp-empty">Sin piezas.</div>';
+        } else {
+            const q = this._norm(this._paletteQ);
+            let list = this._catalogo.slice();
+            if (q) list = list.filter(c => this._norm(c.nombre).includes(q) || this._norm(c.codigo || '').includes(q) || this._norm(c.rubro || '').includes(q));
+            list = list.slice(0, 200);
+            if (!this._catalogo.length) html = `<div class="cmp-empty">No se pudo cargar el catálogo.</div>`;
+            else if (!list.length) html = `<div class="cmp-empty">Sin ítems para "${escHtml(this._paletteQ)}".</div>`;
+            else html = list.map(c => `<button class="cmp-pal-item" data-id="${escAttr(c.id)}"><span class="cmp-pal-name">${escHtml(c.nombre)}${c.tipoReceta === 'subalquilado' ? ' <span class="cmp-chip cmp-chip-sub">subalq</span>' : ''}</span><span class="cmp-pal-price">$${this._fmt(c.precioAlquiler)}</span></button>`).join('');
+        }
+        cont.innerHTML = html;
         cont.querySelectorAll('.cmp-zona-chip').forEach(b => b.addEventListener('click', () => this._placeZona(b.dataset.zona)));
         cont.querySelectorAll('.cmp-pieza-chip').forEach(b => b.addEventListener('click', () => this._placePieza(b.dataset.pieza)));
         cont.querySelectorAll('.cmp-pal-item').forEach(b => b.addEventListener('click', () => this._placeItem(b.dataset.id)));
@@ -1086,11 +1091,11 @@ const CompositorModule = {
             .cmp-dims{margin-left:auto;text-align:right;display:flex;flex-direction:column;gap:2px}
             .cmp-dim-m2{font-family:var(--font-mono);color:var(--primary);font-size:1.2rem;font-weight:700}
             .cmp-dim-sub{color:var(--text-muted);font-size:.74rem}
-            .cmp-main{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px;align-items:start}
+            .cmp-main{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,340px);gap:18px;align-items:start}
             @media(max-width:980px){.cmp-main{grid-template-columns:1fr}}
             .cmp-canvas-col{display:flex;flex-direction:column;gap:10px}
             .cmp-canvas-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-            .cmp-hint{color:var(--text-dim);font-size:.72rem;flex:1;min-width:140px}
+            .cmp-hint{color:var(--text-dim);font-size:.7rem;flex:1;min-width:120px;text-align:right}
             .cmp-sel-strip{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;height:48px;box-sizing:border-box;padding:6px 12px;border:1px solid transparent;border-radius:8px}
             .cmp-sel-strip::-webkit-scrollbar{height:4px}
             .cmp-sel-strip.on{background:rgba(242,141,21,.08);border-color:rgba(242,141,21,.3)}
@@ -1110,8 +1115,8 @@ const CompositorModule = {
             .cmp-vista-seg:hover{color:var(--text-primary)}
             .cmp-vista-seg.active{background:rgba(0,169,193,.12);color:var(--primary)}
             .cmp-sel-rot{font-size:.72rem;color:var(--text-muted);font-family:var(--font-mono)}
-            .cmp-planta{background:#0a0a0a;border:1px solid var(--border);border-radius:10px;padding:10px;min-height:320px}
-            .cmp-svg{width:100%;height:auto;max-height:460px;display:block;touch-action:none}
+            .cmp-planta{background:#0a0a0a;border:1px solid var(--border);border-radius:10px;padding:10px;min-height:380px}
+            .cmp-svg{width:100%;height:auto;max-height:600px;display:block;touch-action:none}
             .cmp-foot{fill:rgba(0,169,193,.04);stroke:none}
             .cmp-area-edge{fill:rgba(155,125,255,.05);stroke:#9B7DFF;stroke-width:30;stroke-dasharray:0}
             .cmp-contorno{fill:none;stroke:rgba(0,169,193,.55);stroke-width:28}
@@ -1144,9 +1149,14 @@ const CompositorModule = {
             .cmp-side-head{font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--primary);font-weight:700;margin-bottom:8px}
             .cmp-side-sub{color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0;font-size:.7rem}
             .cmp-palette,.cmp-bom{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+            .cmp-pal-tabs{display:flex;gap:4px;margin-bottom:8px;background:#151515;border:1px solid var(--border);border-radius:8px;padding:3px}
+            .cmp-pal-tab{flex:1;background:none;border:none;color:var(--text-muted);font-size:.76rem;padding:6px 4px;border-radius:6px;cursor:pointer;transition:all 150ms}
+            .cmp-pal-tab:hover{color:var(--text-primary)}
+            .cmp-pal-tab.active{background:rgba(0,169,193,.14);color:var(--primary);font-weight:600}
+            .cmp-pal-note{font-size:.7rem;color:var(--text-dim);margin-bottom:6px}
             .cmp-pal-search{width:100%;box-sizing:border-box;background:#1A1A1A;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);padding:8px 10px;font-size:.82rem;margin-bottom:8px}
             .cmp-pal-search:focus{outline:none;border-color:var(--primary)}
-            .cmp-pal-list{max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+            .cmp-pal-list{max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:4px}
             .cmp-pal-sub{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim);margin:8px 0 5px}
             .cmp-zona-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
             .cmp-zona-chip{font-size:.72rem;padding:5px 10px;border-radius:14px;cursor:pointer;background:color-mix(in srgb, var(--zc) 16%, transparent);border:1px solid var(--zc);color:var(--zc);transition:all 150ms}
@@ -1185,6 +1195,7 @@ const CompositorModule = {
             .cmp-btn-pdf:hover{box-shadow:0 0 12px rgba(242,141,21,.4)}
             .cmp-btn-ghost{background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:9px 12px;font-size:.8rem;cursor:pointer;transition:all 200ms}
             .cmp-btn-ghost:hover{border-color:var(--primary);color:var(--primary)}
+            .cmp-btn-danger:hover{border-color:var(--color-error);color:var(--color-error)}
             .cmp-btn-ghost:disabled{opacity:.4;cursor:default}
             .cmp-btn-xs{padding:5px 11px;font-size:.74rem;flex:0 0 auto}
             .cmp-modal{display:flex;flex-direction:column;gap:10px}
