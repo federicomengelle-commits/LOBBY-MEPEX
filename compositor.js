@@ -209,8 +209,8 @@ const CompositorModule = {
             const closed = this._closedSides();
             const edge = (side, x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="${closed.includes(side) ? 'cmp-wall' : 'cmp-open'}"/>`;
             bordes = edge('back', 0, 0, Wmm, 0) + edge('front', 0, Dmm, Wmm, Dmm) + edge('left', 0, 0, 0, Dmm) + edge('right', Wmm, 0, Wmm, Dmm);
-            for (let i = 0; i <= this._state.frente; i++) for (let j = 0; j <= this._state.fondo; j++)
-                cols += `<circle cx="${i * O.ejeMM}" cy="${j * O.ejeMM}" r="${O.columnaDiamMM * 2.4}" class="cmp-col"/>`;
+            // columnas SOLO donde hay material (paredes/laterales), en las uniones de módulo
+            cols = this._columnsXY().map(c => `<circle cx="${c.x}" cy="${c.y}" r="${O.columnaDiamMM * 2.4}" class="cmp-col"/>`).join('');
         }
 
         const comps = this._state.placed.map(p => {
@@ -372,7 +372,7 @@ const CompositorModule = {
             return;
         }
         const F = this._state.frente, D = this._state.fondo;
-        const columnas = (F + 1) * (D + 1);
+        const columnas = this._columnsXY().length;
         const wallModules = { isla: 0, peninsula: F, esquina: F + D, lineal: F + 2 * D }[this._state.tipo];
         el.innerHTML = `
             <div class="cmp-estr-head">Estructura OCTEXA <span class="cmp-estr-tag">estimación v1</span></div>
@@ -418,7 +418,7 @@ const CompositorModule = {
                 dimsLabel: `${this._numero(this._wM())} × ${this._numero(this._dM())} m`,
                 footprint: { wMM: this._wmm(), dMM: this._dmm() },
                 walls: this._closedSides(),
-                columns: this._isArea() ? [] : this._columnsXY(),
+                columns: this._columnsXY(),
                 pieces: this._state.placed.map(p => ({ nombre: p.nombre, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
                 legend: this._bomGroups().map(g => ({ nombre: g.nombre, cant: g.cant })),
             };
@@ -432,10 +432,20 @@ const CompositorModule = {
             if (btn) { btn.disabled = false; btn.textContent = '📄 Plano PDF'; }
         }
     },
+    // Columnas SOLO donde hay material (sobre las paredes/laterales), en las uniones
+    // de módulo, compartiendo esquinas. Isla (sin paredes) → sin columnas de perímetro.
     _columnsXY() {
-        const O = this.OCTEXA, out = [];
-        for (let i = 0; i <= this._state.frente; i++) for (let j = 0; j <= this._state.fondo; j++) out.push({ x: i * O.ejeMM, y: j * O.ejeMM });
-        return out;
+        if (this._isArea()) return [];
+        const O = this.OCTEXA, F = this._state.frente, D = this._state.fondo;
+        const Wmm = F * O.ejeMM, Dmm = D * O.ejeMM;
+        const closed = this._closedSides();
+        const set = new Map();
+        const add = (x, y) => set.set(x + ',' + y, { x, y });
+        if (closed.includes('back')) for (let i = 0; i <= F; i++) add(i * O.ejeMM, 0);
+        if (closed.includes('front')) for (let i = 0; i <= F; i++) add(i * O.ejeMM, Dmm);
+        if (closed.includes('left')) for (let j = 0; j <= D; j++) add(0, j * O.ejeMM);
+        if (closed.includes('right')) for (let j = 0; j <= D; j++) add(Wmm, j * O.ejeMM);
+        return [...set.values()];
     },
     _download(blob, filename) {
         const url = URL.createObjectURL(blob);
