@@ -83,6 +83,7 @@ const Router = {
             'crm':              { render: () => CRM.render(), requiresAuth: true, module: 'crm', obj: typeof CRM !== 'undefined' ? CRM : null },
             'cotizador':        { render: () => this._openExternal('http://195.200.1.250/cotizador/'), requiresAuth: true, module: 'cotizador' },
             'catalogo':         { render: () => CatalogoModule.render(), requiresAuth: true, module: 'catalogo' },
+            'stands':           { render: () => StandsModule.render(), requiresAuth: true, module: 'stands' },
             'importar-cotizacion': { render: () => ImportarCotizacion.render(), requiresAuth: true },
 
             // ── Operaciones ──
