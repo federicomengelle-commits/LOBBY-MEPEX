@@ -39,6 +39,7 @@ const PlanoPDF = {
             });
             const maxW = 400, scale = Math.min(1, maxW / img.naturalWidth);
             const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+            this._logoAspect = w / h;   // proporción real → el PDF no lo estira
             const c = document.createElement('canvas'); c.width = w; c.height = h;
             const ctx = c.getContext('2d');
             ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
@@ -65,26 +66,33 @@ const PlanoPDF = {
         // ─── marco: 4 escuadras navy ───
         this._brackets(doc, 14);
 
-        // ─── logo centrado arriba (turquesa) ───
-        const logoW = 46, logoH = 14.5;
-        if (this._logoDataUrl) { try { doc.addImage(this._logoDataUrl, this._logoFormat, (PW - logoW) / 2, 7, logoW, logoH); } catch (_) {} }
-        else { doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TUR); doc.text('MEPEX', PW / 2, 17, { align: 'center' }); }
+        // ─── logo centrado arriba (turquesa), respetando su proporción real (cap de ancho) ───
+        const asp = this._logoAspect || 3.1, maxLogoW = 72;
+        let logoW = 13 * asp, logoH = 13;
+        if (logoW > maxLogoW) { logoW = maxLogoW; logoH = logoW / asp; }
+        if (this._logoDataUrl) { try { doc.addImage(this._logoDataUrl, this._logoFormat, (PW - logoW) / 2, 6, logoW, logoH); } catch (_) {} }
+        else { doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TUR); doc.text('MEPEX', PW / 2, 16, { align: 'center' }); }
 
         // meta sutil arriba-derecha
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUT);
         const fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const meta = [o.tipoLabel, o.dimsLabel, (o.m2 != null ? o.m2 + ' m²' : null)].filter(Boolean).join('  ·  ');
         doc.text(meta, PW - M - 2, 12, { align: 'right' });
-        doc.text(fecha, PW - M - 2, 16, { align: 'right' });
+        doc.text(fecha, PW - M - 2, 16.5, { align: 'right' });
+        // divisor turquesa
+        doc.setDrawColor(...TUR); doc.setLineWidth(0.4); doc.line(M, 23, PW - M, 23);
 
-        // ─── área de dibujo (sin leyenda lateral) ───
-        const drawTop = 30, drawBot = PH - M - 22, drawL = M + 16, drawR = PW - M - 16;
-        const availW = drawR - drawL, availH = drawBot - drawTop;
+        // ─── zonas verticales: dibujo+cotas arriba, franja de carátula abajo (no se pisan) ───
+        const caratH = 18, zoneBot = PH - caratH;          // carátula vive en [zoneBot .. PH]
+        const gutT = 7, gutB = 13, gutL = 8, gutR = 14;    // reservas para las cotas alrededor del plan
+        const areaX0 = M + 2 + gutL, areaX1 = PW - M - 2 - gutR;
+        const areaY0 = 27 + gutT, areaY1 = zoneBot - gutB;
+        const availW = areaX1 - areaX0, availH = areaY1 - areaY0;
         const fp = o.footprint || { wMM: 6000, dMM: 3000 };
         const Wmm = Math.max(1, fp.wMM), Dmm = Math.max(1, fp.dMM);
-        const scale = Math.min(availW / Wmm, availH / Dmm) * 0.9;   // mm_page por mm_real
+        const scale = Math.min(availW / Wmm, availH / Dmm) * 0.98;   // mm_page por mm_real (gutters ya reservados)
         const planW = Wmm * scale, planH = Dmm * scale;
-        const ox = drawL + (availW - planW) / 2, oy = drawTop + (availH - planH) / 2;
+        const ox = areaX0 + (availW - planW) / 2, oy = areaY0 + (availH - planH) / 2;
         const mapX = (xmm) => ox + xmm * scale, mapY = (ymm) => oy + ymm * scale;
 
         // piso (apenas un tono) + contorno fino
@@ -178,17 +186,15 @@ const PlanoPDF = {
         this._dimH(doc, ox, ox + planW, oy + planH + wOff, this._fmtM(wNom), PINK);
         this._dimV(doc, oy, oy + planH, ox + planW + dOff, this._fmtM(dNom), PINK);
 
-        // ─── carátula abajo-izquierda (CLIENTE / PROYECTO / LOTE, apiladas) ───
+        // ─── carátula (franja inferior reservada): CLIENTE / PROYECTO · LOTE — sin solaparse con las cotas ───
+        doc.setDrawColor(...NAVY); doc.setLineWidth(0.3);
+        try { doc.setGState(new doc.GState({ opacity: 0.4 })); } catch (_) {}
+        doc.line(M, zoneBot, PW - M, zoneBot);
+        try { doc.setGState(new doc.GState({ opacity: 1 })); } catch (_) {}
         doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(12);
-        const carat = [];
-        if (o.cliente) carat.push(`CLIENTE: ${o.cliente}`);
-        carat.push(`PROYECTO: ${o.nombre || '—'}`);
-        if (o.lote) carat.push(`LOTE: ${o.lote}`);
-        carat.forEach((line, i) => doc.text(line, M + 2, PH - M - 1.5 - (carat.length - 1 - i) * 6));
-
-        // footer discreto
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...MUT);
-        doc.text('MEPEX · Montaje y Equipamiento para Exposiciones', PW - M - 2, PH - M - 1.5, { align: 'right' });
+        const l2 = `PROYECTO: ${o.nombre || '—'}` + (o.lote ? `   ·   LOTE: ${o.lote}` : '');
+        if (o.cliente) { doc.text(`CLIENTE: ${o.cliente}`, M + 3, zoneBot + 7); doc.text(l2, M + 3, zoneBot + 14); }
+        else { doc.text(l2, M + 3, zoneBot + 10); }
     },
 
     // ─── escuadras del marco (4 esquinas) ───
