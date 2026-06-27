@@ -466,9 +466,10 @@ const CompositorModule = {
         const isTexto = p.kind === 'texto';
         const nameLabel = isTexto ? 'Texto' : escHtml(p.nombre);
         const textoFld = isTexto ? `<label class="cmp-sel-fld cmp-sel-txt">texto <input type="text" id="cmpSelTexto" value="${escAttr(p.texto || '')}" placeholder="Escribí…"></label>` : '';
+        const bomChip = (p.kind === 'item') ? `<button class="cmp-mini cmp-bom-chip cmp-bom-${this._bomTipoDe(p)}" data-a="bom" title="Cambiar Infraestructura / Equipamiento">${this._bomTipoDe(p) === 'infra' ? '🏗 Infra' : '🪑 Equip'}</button>` : '';
         el.innerHTML = `
             <span class="cmp-sel-name">${nameLabel}${p.locked ? ' 🔒' : ''}</span>
-            ${textoFld}
+            ${bomChip}${textoFld}
             <label class="cmp-sel-fld">ancho <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"> cm</label>
             <label class="cmp-sel-fld">${isTexto ? 'alto' : 'fondo'} <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
             <span class="cmp-sel-acts">
@@ -507,6 +508,7 @@ const CompositorModule = {
             else if (a === 'row') this._duplicateRow();
             else if (a === 'rot') this._rotatePiece();
             else if (a === 'align') this._openAlign(b);
+            else if (a === 'bom') this._toggleBom();
             else if (a === 'front') this._bringFront();
             else if (a === 'back') this._sendBack();
             else if (a === 'lock') this._toggleLock();
@@ -773,7 +775,7 @@ const CompositorModule = {
         const d = this._isArea() ? 800 : this.OCTEXA.profEstandarMM;
         const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
-        this._state.placed.push({ uid, kind: 'item', catId: ci.id, nombre: ci.nombre, precio: ci.precioAlquiler || 0, x, y, w, d, rot: 0 });
+        this._state.placed.push({ uid, kind: 'item', catId: ci.id, nombre: ci.nombre, precio: ci.precioAlquiler || 0, bom: this._clasifBOM(ci), x, y, w, d, rot: 0 });
         this._select(uid);
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
     },
@@ -869,12 +871,32 @@ const CompositorModule = {
     },
 
     // ═══ BOM ═══
+    // Infraestructura = lo que arma el aluminio (paneles/columnas/perfiles/cenefas/estructura);
+    // Equipamiento = muebles en sistema (vitrinas/mostradores/estanterías/exhibidores). Default por
+    // keyword sobre rubro+nombre; se puede pisar por pieza (chip Infra/Equip en el strip).
+    _BOM_INFRA_KW: ['panel', 'columna', 'perfil', 'cenefa', 'aluminio', 'estructura', 'viga', 'tabique', 'pared', 'pórtico', 'portico', 'totem', 'tótem'],
+    _clasifBOM(it) {
+        const s = this._norm(((it && it.rubro) || '') + ' ' + ((it && it.nombre) || ''));
+        return this._BOM_INFRA_KW.some(k => s.includes(this._norm(k))) ? 'infra' : 'equip';
+    },
+    _bomTipoDe(p) {
+        if (p.bom) return p.bom;
+        const ci = this._catalogo.find(c => String(c.id) === String(p.catId));
+        return this._clasifBOM(ci || { nombre: p.nombre });
+    },
+    _toggleBom() {
+        const p = this._sel(); if (!p || p.kind !== 'item') return;
+        this._pushHist();
+        p.bom = this._bomTipoDe(p) === 'infra' ? 'equip' : 'infra';
+        this._afterChange(true);
+    },
     _bomGroups() {
         const g = {};
         this._state.placed.forEach(p => {
-            if (p.kind !== 'item') return;   // solo ítems del catálogo se facturan (zonas/piezas = visual)
-            const k = String(p.catId);
-            if (!g[k]) g[k] = { catId: p.catId, nombre: p.nombre, precio: p.precio, cant: 0 };
+            if (p.kind !== 'item') return;   // solo ítems del catálogo se facturan (zonas/piezas/texto = visual)
+            const bom = this._bomTipoDe(p);
+            const k = bom + '|' + p.catId;
+            if (!g[k]) g[k] = { catId: p.catId, nombre: p.nombre, precio: p.precio, cant: 0, bom };
             g[k].cant += 1;
         });
         return Object.values(g);
@@ -884,8 +906,15 @@ const CompositorModule = {
         const groups = this._bomGroups();
         if (!groups.length) { cont.innerHTML = `<div class="cmp-empty">Colocá ítems para armar el BOM.</div>`; return; }
         let total = 0;
-        const rows = groups.map(g => { const sub = (g.precio || 0) * g.cant; total += sub; return `<tr><td>${escHtml(g.nombre)}</td><td class="cmp-num">${g.cant}</td><td class="cmp-num">$${this._fmt(g.precio)}</td><td class="cmp-num">$${this._fmt(sub)}</td></tr>`; }).join('');
-        cont.innerHTML = `<table class="cmp-bom-table"><thead><tr><th>Componente</th><th class="cmp-num">Cant</th><th class="cmp-num">$ unit</th><th class="cmp-num">$ sub</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3" class="cmp-num">TOTAL alquiler</td><td class="cmp-num cmp-total">$${this._fmt(total)}</td></tr></tfoot></table>`;
+        const section = (title, gs) => {
+            if (!gs.length) return '';
+            let sub = 0;
+            const rows = gs.map(g => { const s = (g.precio || 0) * g.cant; sub += s; return `<tr><td>${escHtml(g.nombre)}</td><td class="cmp-num">${g.cant}</td><td class="cmp-num">$${this._fmt(g.precio)}</td><td class="cmp-num">$${this._fmt(s)}</td></tr>`; }).join('');
+            total += sub;
+            return `<tr class="cmp-bom-sec"><td colspan="4">${title}</td></tr>${rows}<tr class="cmp-bom-subt"><td colspan="3" class="cmp-num">Subtotal</td><td class="cmp-num">$${this._fmt(sub)}</td></tr>`;
+        };
+        const body = section('🏗 Infraestructura', groups.filter(g => g.bom === 'infra')) + section('🪑 Equipamiento', groups.filter(g => g.bom !== 'infra'));
+        cont.innerHTML = `<table class="cmp-bom-table"><thead><tr><th>Componente</th><th class="cmp-num">Cant</th><th class="cmp-num">$ unit</th><th class="cmp-num">$ sub</th></tr></thead><tbody>${body}</tbody><tfoot><tr><td colspan="3" class="cmp-num">TOTAL alquiler</td><td class="cmp-num cmp-total">$${this._fmt(total)}</td></tr></tfoot></table>`;
     },
 
     // ═══ PLANO PDF ═══
@@ -1120,6 +1149,11 @@ const CompositorModule = {
             .cmp-bom-table{width:100%;border-collapse:collapse;font-size:.8rem}
             .cmp-bom-table th{text-align:left;color:var(--text-muted);font-size:.66rem;text-transform:uppercase;padding:5px 7px;border-bottom:1px solid var(--border)}
             .cmp-bom-table td{padding:6px 7px;border-bottom:1px solid var(--border);color:var(--text-primary)}
+            .cmp-bom-sec td{background:rgba(0,169,193,.07);color:var(--primary);font-size:.64rem;text-transform:uppercase;letter-spacing:.04em;font-weight:700;padding-top:9px}
+            .cmp-bom-subt td{color:var(--text-muted);font-family:var(--font-mono);border-bottom:2px solid var(--border)}
+            .cmp-bom-chip{font-weight:600}
+            .cmp-bom-infra{border-color:#9B7DFF;color:#9B7DFF}
+            .cmp-bom-equip{border-color:#00CC88;color:#00CC88}
             .cmp-bom-table tfoot td{border-bottom:none;color:var(--text-muted);font-family:var(--font-mono);padding-top:9px}
             .cmp-num{text-align:right;font-family:var(--font-mono)}
             .cmp-total{color:var(--primary);font-weight:700;font-size:.92rem}
