@@ -97,10 +97,13 @@ const CompositorPiezas = {
         ];
     },
     _g_banqueta(w, d) {
-        const r = Math.min(w, d) / 2;
+        // banqueta vista desde arriba: asiento triangular (3 patas) + poste central
+        const cx = w / 2, cy = d / 2, R = Math.min(w, d) * 0.46, pts = [];
+        for (let i = 0; i < 3; i++) { const a = -Math.PI / 2 + i * 2 * Math.PI / 3; pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); }
+        pts.push(pts[0].slice());   // cerrar el contorno para que el stroke quede completo
         return [
-            { t: 'rect', x: w * 0.08, y: d * 0.08, w: w * 0.84, h: d * 0.84, r: Math.min(w, d) * 0.22, fill: true },
-            { t: 'circ', cx: w / 2, cy: d / 2, r: r * 0.42 },
+            { t: 'poly', pts, fill: true },
+            { t: 'circ', cx, cy, r: Math.min(w, d) * 0.11 },
         ];
     },
     _g_silla(w, d) {

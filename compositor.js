@@ -18,7 +18,7 @@
 
 const CompositorModule = {
     OCTEXA: {
-        ejeMM: 990, medioEjeMM: 495, columnaDiamMM: 40, profEstandarMM: 500,
+        ejeMM: 1000, medioEjeMM: 500, columnaDiamMM: 40, profEstandarMM: 500,
         alturas: [2400, 2900, 3400, 3900, 5000],
         pisos: ['Alfombra nylon', 'Tarima 40mm', 'Tarima 80mm'],
         tipos: {
@@ -186,9 +186,12 @@ const CompositorModule = {
         if (!this._keyHandler) {
             this._keyHandler = (e) => {
                 if (!document.getElementById('cmpSvg')) return;
+                const t = e.target, tag = (t && t.tagName) || '';
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return; // no robar teclas mientras se escribe
                 const ctrl = e.ctrlKey || e.metaKey;
                 if (ctrl && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); e.shiftKey ? this._redo() : this._undo(); }
                 else if (ctrl && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); this._redo(); }
+                else if ((e.key === 'Delete' || e.key === 'Backspace') && this._selSet.length) { e.preventDefault(); this._selSet.length > 1 ? this._removeMulti() : this._removeSelected(); }
             };
             document.addEventListener('keydown', this._keyHandler);
         }
@@ -403,8 +406,9 @@ const CompositorModule = {
                 let ddy = this._snap(loc.y - this._drag.dy) - p.y;
                 const W = this._wmm(), D = this._dmm();
                 this._drag.group.forEach(it => {
-                    ddx = Math.max(-it.x, Math.min(W - it.w - it.x, ddx));
-                    ddy = Math.max(-it.y, Math.min(D - it.d - it.y, ddy));
+                    const b = this._bbox(it);   // recorta por la caja real (rotada) → llega a las esquinas
+                    if (b.w < W) ddx = Math.max(-b.left, Math.min(W - (b.left + b.w), ddx));
+                    if (b.h < D) ddy = Math.max(-b.top, Math.min(D - (b.top + b.h), ddy));
                 });
                 this._drag.group.forEach(it => { it.x += ddx; it.y += ddy; });
                 this._applyGroupTransforms(this._drag.group);
@@ -473,10 +477,10 @@ const CompositorModule = {
             <label class="cmp-sel-fld">ancho <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"> cm</label>
             <label class="cmp-sel-fld">${isTexto ? 'alto' : 'fondo'} <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
             <span class="cmp-sel-acts">
-                <button class="cmp-mini" data-a="dup" title="Duplicar">⧉ Duplicar</button>
-                <button class="cmp-mini" data-a="row" title="Duplicar al lado (fila)">⊞ Fila</button>
-                <button class="cmp-mini" data-a="rot" title="Girar 45°">↻ 45°</button>
-                <button class="cmp-mini" data-a="align" title="Alinear / centrar">⊹ Alinear ▾</button>
+                <button class="cmp-mini" data-a="dup" title="Duplicar">⧉</button>
+                <button class="cmp-mini" data-a="row" title="Duplicar en fila ×N">⊞</button>
+                <button class="cmp-mini" data-a="rot" title="Girar 45°">↻</button>
+                <button class="cmp-mini" data-a="align" title="Alinear / centrar / pegar a un borde">⊹▾</button>
                 <button class="cmp-mini" data-a="front" title="Traer al frente">⤒</button>
                 <button class="cmp-mini" data-a="back" title="Enviar al fondo">⤓</button>
                 <button class="cmp-mini" data-a="lock" title="${p.locked ? 'Desbloquear' : 'Bloquear'}">${p.locked ? '🔓' : '🔒'}</button>
@@ -542,10 +546,10 @@ const CompositorModule = {
         ContextMenu.show(r.left, r.bottom + 4, [
             { label: 'Centrar', icon: '⊹', action: () => this._center() },
             { divider: true },
-            { label: 'Pegar a la izquierda', icon: '←', action: () => set(() => { p.x = 0; }) },
-            { label: 'Pegar a la derecha', icon: '→', action: () => set(() => { p.x = Math.max(0, W - p.w); }) },
-            { label: 'Pegar arriba', icon: '↑', action: () => set(() => { p.y = 0; }) },
-            { label: 'Pegar abajo', icon: '↓', action: () => set(() => { p.y = Math.max(0, D - p.d); }) },
+            { label: 'Pegar a la izquierda', icon: '←', action: () => set(() => { p.x -= this._bbox(p).left; }) },
+            { label: 'Pegar a la derecha', icon: '→', action: () => set(() => { const b = this._bbox(p); p.x += W - (b.left + b.w); }) },
+            { label: 'Pegar arriba', icon: '↑', action: () => set(() => { p.y -= this._bbox(p).top; }) },
+            { label: 'Pegar abajo', icon: '↓', action: () => set(() => { const b = this._bbox(p); p.y += D - (b.top + b.h); }) },
             { divider: true },
             { label: 'Centrar horizontal', icon: '↔', action: () => set(() => { p.x = this._snap((W - p.w) / 2); }) },
             { label: 'Centrar vertical', icon: '↕', action: () => set(() => { p.y = this._snap((D - p.d) / 2); }) },
@@ -638,12 +642,13 @@ const CompositorModule = {
         const items = this._selectedPieces().filter(it => !it.locked);
         if (items.length < 2) return;
         this._pushHist();
-        if (edge === 'left') { const v = Math.min(...items.map(it => it.x)); items.forEach(it => { it.x = v; }); }
-        else if (edge === 'right') { const v = Math.max(...items.map(it => it.x + it.w)); items.forEach(it => { it.x = v - it.w; }); }
-        else if (edge === 'top') { const v = Math.min(...items.map(it => it.y)); items.forEach(it => { it.y = v; }); }
-        else if (edge === 'bottom') { const v = Math.max(...items.map(it => it.y + it.d)); items.forEach(it => { it.y = v - it.d; }); }
-        else if (edge === 'cx') { const v = items.reduce((s, it) => s + it.x + it.w / 2, 0) / items.length; items.forEach(it => { it.x = this._snap(v - it.w / 2); }); }
-        else if (edge === 'cy') { const v = items.reduce((s, it) => s + it.y + it.d / 2, 0) / items.length; items.forEach(it => { it.y = this._snap(v - it.d / 2); }); }
+        const bb = items.map(it => ({ it, b: this._bbox(it) }));
+        if (edge === 'left') { const v = Math.min(...bb.map(o => o.b.left)); bb.forEach(o => { o.it.x += v - o.b.left; }); }
+        else if (edge === 'right') { const v = Math.max(...bb.map(o => o.b.left + o.b.w)); bb.forEach(o => { o.it.x += v - (o.b.left + o.b.w); }); }
+        else if (edge === 'top') { const v = Math.min(...bb.map(o => o.b.top)); bb.forEach(o => { o.it.y += v - o.b.top; }); }
+        else if (edge === 'bottom') { const v = Math.max(...bb.map(o => o.b.top + o.b.h)); bb.forEach(o => { o.it.y += v - (o.b.top + o.b.h); }); }
+        else if (edge === 'cx') { const v = bb.reduce((s, o) => s + o.b.cx, 0) / bb.length; bb.forEach(o => { o.it.x += v - o.b.cx; }); }
+        else if (edge === 'cy') { const v = bb.reduce((s, o) => s + o.b.cy, 0) / bb.length; bb.forEach(o => { o.it.y += v - o.b.cy; }); }
         this._clampAll(); this._afterChange(false);
     },
     _openDistribute(btn) {
@@ -841,10 +846,20 @@ const CompositorModule = {
         this._state.placed = []; this._select(null);
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
     },
-    _clampAll() {
-        const W = this._wmm(), D = this._dmm();
-        this._state.placed.forEach(p => { p.x = Math.max(0, Math.min(W - p.w, p.x)); p.y = Math.max(0, Math.min(D - p.d, p.y)); });
+    // bounding box AXIS-ALIGNED de una pieza considerando su rotación (para clamp/alinear correctos)
+    _bbox(p) {
+        const r = (p.rot || 0) * Math.PI / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r));
+        const bw = p.w * c + p.d * s, bh = p.w * s + p.d * c;
+        const cx = p.x + p.w / 2, cy = p.y + p.d / 2;
+        return { left: cx - bw / 2, top: cy - bh / 2, w: bw, h: bh, cx, cy };
     },
+    _clampPiece(p) {
+        const W = this._wmm(), D = this._dmm(), b = this._bbox(p);
+        const cx = (b.w >= W) ? W / 2 : Math.max(b.w / 2, Math.min(W - b.w / 2, b.cx));
+        const cy = (b.h >= D) ? D / 2 : Math.max(b.h / 2, Math.min(D - b.h / 2, b.cy));
+        p.x = cx - p.w / 2; p.y = cy - p.d / 2;
+    },
+    _clampAll() { this._state.placed.forEach(p => this._clampPiece(p)); },
 
     // ═══ ESTRUCTURA (OCTEXA) ═══
     _renderEstructura() {
@@ -1071,14 +1086,17 @@ const CompositorModule = {
             .cmp-dims{margin-left:auto;text-align:right;display:flex;flex-direction:column;gap:2px}
             .cmp-dim-m2{font-family:var(--font-mono);color:var(--primary);font-size:1.2rem;font-weight:700}
             .cmp-dim-sub{color:var(--text-muted);font-size:.74rem}
-            .cmp-main{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
+            .cmp-main{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px;align-items:start}
             @media(max-width:980px){.cmp-main{grid-template-columns:1fr}}
             .cmp-canvas-col{display:flex;flex-direction:column;gap:10px}
             .cmp-canvas-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
             .cmp-hint{color:var(--text-dim);font-size:.72rem;flex:1;min-width:140px}
-            .cmp-sel-strip{display:none}
-            .cmp-sel-strip.on{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:rgba(242,141,21,.08);border:1px solid rgba(242,141,21,.3);border-radius:8px;padding:8px 12px}
-            .cmp-sel-name{color:#F28D15;font-weight:600;font-size:.84rem}
+            .cmp-sel-strip{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;height:48px;box-sizing:border-box;padding:6px 12px;border:1px solid transparent;border-radius:8px}
+            .cmp-sel-strip::-webkit-scrollbar{height:4px}
+            .cmp-sel-strip.on{background:rgba(242,141,21,.08);border-color:rgba(242,141,21,.3)}
+            .cmp-sel-strip:not(.on)::before{content:'Seleccioná una pieza para editarla (Supr la borra · Shift-clic para varias)';color:var(--text-dim);font-size:.74rem;white-space:nowrap}
+            .cmp-sel-name{color:#F28D15;font-weight:600;font-size:.84rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 0 auto}
+            .cmp-sel-strip .cmp-sel-fld,.cmp-sel-strip .cmp-mini,.cmp-sel-strip .cmp-bom-chip{flex:0 0 auto}
             .cmp-sel-fld{font-size:.7rem;color:var(--text-muted);display:flex;align-items:center;gap:6px}
             .cmp-sel-fld input{width:62px;background:#1A1A1A;border:1px solid var(--border);border-radius:5px;color:var(--text-primary);padding:5px 7px;font-family:var(--font-mono);font-size:.8rem}
             .cmp-sel-txt input{width:160px;font-family:var(--font-main)}
