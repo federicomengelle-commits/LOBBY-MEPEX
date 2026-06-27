@@ -89,11 +89,10 @@ const CompositorModule = {
                 <div class="cmp-main">
                     <div class="cmp-canvas-col">
                         <div class="cmp-canvas-tools">
-                            <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotPieza" disabled>↻ Girar pieza 45°</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotStand">⟳ Girar todo 90°</button>
-                            <button class="cmp-btn-ghost cmp-btn-xs" id="cmpQuitar" disabled>Quitar</button>
+                            <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpVaciar">Vaciar</button>
-                            <span class="cmp-hint">Clic en una pieza para seleccionarla · arrastrá para mover (snap a la grilla)</span>
+                            <span class="cmp-hint">Clic en una pieza para seleccionarla · arrastrá para mover (snap)</span>
                         </div>
                         <div id="cmpSelStrip" class="cmp-sel-strip"></div>
                         <div id="cmpPlanta" class="cmp-planta"></div>
@@ -145,9 +144,8 @@ const CompositorModule = {
         ['cmpTipo', 'cmpAltura', 'cmpPiso'].forEach(id => document.getElementById(id)?.addEventListener('change', reConfig));
         ['cmpFrente', 'cmpFondo', 'cmpAreaW', 'cmpAreaD'].forEach(id => document.getElementById(id)?.addEventListener('input', reConfig));
         document.getElementById('cmpPalQ')?.addEventListener('input', (e) => { this._paletteQ = e.target.value; this._renderPalette(); });
-        document.getElementById('cmpRotPieza')?.addEventListener('click', () => this._rotatePiece());
         document.getElementById('cmpRotStand')?.addEventListener('click', () => this._rotateStand());
-        document.getElementById('cmpQuitar')?.addEventListener('click', () => this._removeSelected());
+        document.getElementById('cmpEspejar')?.addEventListener('click', () => this._mirror());
         document.getElementById('cmpVaciar')?.addEventListener('click', () => this._clearAll());
         document.getElementById('cmpPlano')?.addEventListener('click', () => this._exportPlano());
         document.getElementById('cmpGuardar')?.addEventListener('click', () => this._guardarPrediseno());
@@ -238,8 +236,8 @@ const CompositorModule = {
                 inner = `<rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"${rectStyle}/><text x="${p.w / 2}" y="${p.d / 2}" class="cmp-comp-label">${escHtml(this._short(p.nombre))}</text>`;
             }
             const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${isPieza ? ' cmp-pieza' : ''}${sel ? ' cmp-comp-sel' : ''}`;
-            // handle de redimensionar (esquina inf-der) — solo en el seleccionado sin rotar
-            const handle = (sel && !p.rot) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
+            // handle de redimensionar (esquina inf-der) — solo en el seleccionado, sin rotar ni bloqueado
+            const handle = (sel && !p.rot && !p.locked) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
             return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">${inner}${handle}</g>`;
         }).join('');
 
@@ -266,7 +264,7 @@ const CompositorModule = {
                 e.preventDefault();
                 const uid = parseInt(g.dataset.uid, 10);
                 this._selUid = uid; this._refreshSel(); this._renderSelStrip();
-                const p = this._state.placed.find(x => x.uid === uid); if (!p) return;
+                const p = this._state.placed.find(x => x.uid === uid); if (!p || p.locked) return;
                 const st = toLocal(e);
                 this._drag = { uid, g, dx: st.x - p.x, dy: st.y - p.y };
                 g.setPointerCapture(e.pointerId);
@@ -311,21 +309,26 @@ const CompositorModule = {
 
     _refreshSel() {
         document.querySelectorAll('.cmp-comp').forEach(g => g.classList.toggle('cmp-comp-sel', parseInt(g.dataset.uid, 10) === this._selUid));
-        const has = this._selUid != null;
-        const rp = document.getElementById('cmpRotPieza'); if (rp) rp.disabled = !has;
-        const q = document.getElementById('cmpQuitar'); if (q) q.disabled = !has;
     },
 
     _renderSelStrip() {
         const el = document.getElementById('cmpSelStrip'); if (!el) return;
-        const p = this._selUid != null ? this._state.placed.find(x => x.uid === this._selUid) : null;
+        const p = this._sel();
         if (!p) { el.innerHTML = ''; el.classList.remove('on'); return; }
         el.classList.add('on');
         el.innerHTML = `
-            <span class="cmp-sel-name">${escHtml(p.nombre)}</span>
-            <label class="cmp-sel-fld">ancho (cm) <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"></label>
-            <label class="cmp-sel-fld">fondo (cm) <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"></label>
-            <span class="cmp-sel-rot">giro ${p.rot || 0}°</span>`;
+            <span class="cmp-sel-name">${escHtml(p.nombre)}${p.locked ? ' 🔒' : ''}</span>
+            <label class="cmp-sel-fld">ancho <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"> cm</label>
+            <label class="cmp-sel-fld">fondo <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
+            <span class="cmp-sel-acts">
+                <button class="cmp-mini" data-a="dup" title="Duplicar">⧉ Duplicar</button>
+                <button class="cmp-mini" data-a="row" title="Duplicar al lado (fila)">⊞ Fila</button>
+                <button class="cmp-mini" data-a="rot" title="Girar 45°">↻ 45°</button>
+                <button class="cmp-mini" data-a="front" title="Traer al frente">⤒</button>
+                <button class="cmp-mini" data-a="back" title="Enviar al fondo">⤓</button>
+                <button class="cmp-mini" data-a="lock" title="${p.locked ? 'Desbloquear' : 'Bloquear'}">${p.locked ? '🔓' : '🔒'}</button>
+                <button class="cmp-mini cmp-mini-del" data-a="del" title="Quitar">✕</button>
+            </span>`;
         const upd = () => {
             const w = parseFloat(document.getElementById('cmpSelW')?.value) || 10;
             const d = parseFloat(document.getElementById('cmpSelD')?.value) || 10;
@@ -334,6 +337,39 @@ const CompositorModule = {
         };
         document.getElementById('cmpSelW')?.addEventListener('change', upd);
         document.getElementById('cmpSelD')?.addEventListener('change', upd);
+        el.querySelectorAll('.cmp-mini').forEach(b => b.addEventListener('click', () => {
+            const a = b.dataset.a;
+            if (a === 'dup') this._duplicate();
+            else if (a === 'row') this._duplicateRow();
+            else if (a === 'rot') this._rotatePiece();
+            else if (a === 'front') this._bringFront();
+            else if (a === 'back') this._sendBack();
+            else if (a === 'lock') this._toggleLock();
+            else if (a === 'del') this._removeSelected();
+        }));
+    },
+
+    // ─── acciones por pieza ───
+    _sel() { return this._selUid != null ? this._state.placed.find(x => x.uid === this._selUid) : null; },
+    _afterChange(bom) { this._renderPlanta(); if (bom) this._renderBOM(); this._refreshSel(); this._renderSelStrip(); },
+    _cloneSel(dx, dy) {
+        const p = this._sel(); if (!p) return null;
+        const c = Object.assign({}, p);
+        c.uid = this._uidSeq++; c.locked = false;
+        c.x = Math.max(0, Math.min(this._wmm() - c.w, this._snap(p.x + dx)));
+        c.y = Math.max(0, Math.min(this._dmm() - c.d, this._snap(p.y + dy)));
+        this._state.placed.push(c); this._selUid = c.uid;
+        return c;
+    },
+    _duplicate() { if (this._cloneSel(this._snapStep() * 2, this._snapStep() * 2)) this._afterChange(true); },
+    _duplicateRow() { const p = this._sel(); if (p && this._cloneSel(p.w + (this._isArea() ? 200 : 0), 0)) this._afterChange(true); },
+    _bringFront() { const p = this._sel(); if (!p) return; this._state.placed = this._state.placed.filter(x => x !== p); this._state.placed.push(p); this._afterChange(false); },
+    _sendBack() { const p = this._sel(); if (!p) return; this._state.placed = this._state.placed.filter(x => x !== p); this._state.placed.unshift(p); this._afterChange(false); },
+    _toggleLock() { const p = this._sel(); if (!p) return; p.locked = !p.locked; this._afterChange(false); },
+    _mirror() {
+        const W = this._wmm();
+        this._state.placed.forEach(p => { p.x = Math.max(0, Math.min(W - p.w, W - p.x - p.w)); p.rot = (360 - (p.rot || 0)) % 360; });
+        this._afterChange(false);
     },
 
     // ═══ PALETA + COLOCAR ═══
@@ -374,7 +410,7 @@ const CompositorModule = {
         const w = Math.min(def.w, this._wmm()), d = Math.min(def.d, this._dmm());
         const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
-        this._state.placed.push({ uid, kind: 'pieza', piezaKey: key, glyph: def.glyph, nombre: def.label, color: '#00A9C1', w, d, rot: 0 });
+        this._state.placed.push({ uid, kind: 'pieza', piezaKey: key, glyph: def.glyph, nombre: def.label, color: '#00A9C1', x, y, w, d, rot: 0 });
         this._selUid = uid;
         this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
     },
@@ -650,6 +686,10 @@ const CompositorModule = {
             .cmp-sel-name{color:#F28D15;font-weight:600;font-size:.84rem}
             .cmp-sel-fld{font-size:.7rem;color:var(--text-muted);display:flex;align-items:center;gap:6px}
             .cmp-sel-fld input{width:62px;background:#1A1A1A;border:1px solid var(--border);border-radius:5px;color:var(--text-primary);padding:5px 7px;font-family:var(--font-mono);font-size:.8rem}
+            .cmp-sel-acts{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
+            .cmp-mini{background:#1A1A1A;border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:5px 9px;font-size:.74rem;cursor:pointer;transition:all 150ms}
+            .cmp-mini:hover{border-color:var(--primary);color:var(--primary)}
+            .cmp-mini-del:hover{border-color:var(--color-error);color:var(--color-error)}
             .cmp-sel-rot{font-size:.72rem;color:var(--text-muted);font-family:var(--font-mono)}
             .cmp-planta{background:#0a0a0a;border:1px solid var(--border);border-radius:10px;padding:10px;min-height:320px}
             .cmp-svg{width:100%;height:auto;max-height:460px;display:block;touch-action:none}
