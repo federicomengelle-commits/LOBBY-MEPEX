@@ -1135,8 +1135,31 @@ const ProyectoDetalle = {
             .pjd-conf-compromiso { font-size:11.5px; color:var(--text-muted,#aaa); font-style:italic; background:#1a1a1a; border-left:2px solid #00A9C1; border-radius:4px; padding:8px 10px; margin:0; }
             .pjd-conf-firma-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-family:'Space Mono',monospace; font-size:11px; text-transform:uppercase; color:var(--text-muted,#888); }
             #pjdConfCanvas { width:100%; height:180px; background:#fff; border:1px dashed #555; border-radius:6px; cursor:crosshair; touch-action:none; display:block; }
+            .pjd-conf-ctx { font-family:'Space Mono',monospace; font-size:11px; color:#00A9C1; padding-bottom:6px; border-bottom:1px solid #1c1c1c; }
+            .pjd-conf-recibe { display:flex; gap:10px; flex-wrap:wrap; }
+            .pjd-conf-recibe .form-field { min-width:140px; }
+            .pjd-conf-obs-toggle { background:transparent; border:none; color:#888; font-family:'Space Mono',monospace; font-size:11px; cursor:pointer; padding:0; text-align:left; }
+            .pjd-conf-obs-toggle:hover { color:#00A9C1; }
+            .pjd-conf-obs-hint { color:#555; }
         `;
         document.head.appendChild(s);
+    },
+
+    // Frase de la entrega adaptada al tipo de proyecto (stand → "Entrega del stand").
+    _entregaFrase() {
+        const tipos = (this._project?.tipos || []).map(t => t.tipo);
+        const nombre = (this._project?.nombre || '').toLowerCase();
+        if (tipos.includes('stand_full') || /\bstand\b/.test(nombre)) return 'Entrega del stand';
+        const map = {
+            alquiler_equipamiento: 'Entrega del equipamiento',
+            iluminacion: 'Entrega de iluminación',
+            infraestructura: 'Entrega de infraestructura',
+            grafica: 'Entrega de gráfica',
+            pisos: 'Entrega de pisos',
+            camarin: 'Entrega del camarín',
+        };
+        if (tipos.length === 1 && map[tipos[0]]) return map[tipos[0]];
+        return 'Entrega del proyecto';
     },
 
     async _renderEntregaTab() {
@@ -1167,13 +1190,13 @@ const ProyectoDetalle = {
             <div class="pjd-tab-pad">
                 <div class="pjd-novedades-header">
                     <div>
-                        <h3 class="pjd-section-title" style="margin:0;">Conformes de recepción</h3>
-                        <p class="pjd-section-helper" style="margin:2px 0 0;">El responsable que recibe firma digitalmente la entrega del stand.</p>
+                        <h3 class="pjd-section-title" style="margin:0;">${this._esc(this._entregaFrase())}</h3>
+                        <p class="pjd-section-helper" style="margin:2px 0 0;">El cliente firma la recepción y queda el acta con todo lo entregado.</p>
                     </div>
-                    <button class="btn btn-primary" id="pjdConfNuevo">+ Nuevo conforme</button>
+                    <button class="btn btn-primary" id="pjdConfNuevo">+ Registrar entrega</button>
                 </div>
                 ${conformes.length === 0
-                    ? `<div class="pjd-empty-state"><div class="pjd-empty-icon">✍️</div><h3 class="pjd-section-title">Sin conformes</h3><p class="pjd-section-empty">Generá el conforme de recepción al entregar el stand: el que recibe firma en la terminal y se compromete a devolver todo en orden.</p></div>`
+                    ? `<div class="pjd-empty-state"><div class="pjd-empty-icon">✍️</div><h3 class="pjd-section-title">Sin entregas registradas</h3><p class="pjd-section-empty">Cuando le entregues el proyecto al cliente: repasás la lista, el cliente firma en pantalla y queda el acta.</p></div>`
                     : `<ul class="pjd-conf-list">${rows}</ul>`}
             </div>
         `;
@@ -1199,8 +1222,11 @@ const ProyectoDetalle = {
                 <button type="button" class="pjd-conf-rm" data-remove title="Quitar">×</button>
             </div>`;
 
+        const p = this._project;
+        const ctx = [p.nombre, p.cliente?.nombre_empresa].filter(Boolean).join(' · ');
         const body = `
             <div class="pjd-conf-modal">
+                ${ctx ? `<div class="pjd-conf-ctx">${this._esc(ctx)}</div>` : ''}
                 <div class="pjd-conf-block">
                     <div class="pjd-conf-block-head">
                         <span>Elementos a entregar</span>
@@ -1209,30 +1235,32 @@ const ProyectoDetalle = {
                     <div class="pjd-conf-erows" id="pjdConfItems">${items.map(rowHTML).join('')}</div>
                     ${items.length ? '' : '<p class="pjd-form-helper" style="margin-top:4px;">No se encontraron ítems de la cotización. Agregá los elementos manualmente.</p>'}
                 </div>
-                <div class="form-field">
-                    <label class="form-label">Recibido por <span class="form-required">*</span></label>
-                    <input class="form-input" id="pjdConfReceptor" placeholder="Nombre del responsable que recibe">
+                <div class="pjd-conf-recibe">
+                    <div class="form-field" style="flex:1.4;">
+                        <label class="form-label">Recibe (cliente) <span class="form-required">*</span></label>
+                        <input class="form-input" id="pjdConfReceptor" placeholder="Nombre de quien recibe">
+                    </div>
+                    <div class="form-field" style="flex:1;">
+                        <label class="form-label">DNI / cargo</label>
+                        <input class="form-input" id="pjdConfDoc" placeholder="opcional">
+                    </div>
                 </div>
-                <div class="form-field">
-                    <label class="form-label">DNI / Cargo</label>
-                    <input class="form-input" id="pjdConfDoc" placeholder="Opcional">
+                <button type="button" class="pjd-conf-obs-toggle" id="pjdConfObsToggle"><span style="color:#00A9C1;">+</span> Agregar observaciones <span class="pjd-conf-obs-hint">(faltantes, estado, salvedades)</span></button>
+                <div class="form-field" id="pjdConfObsWrap" style="display:none;">
+                    <textarea class="form-input" id="pjdConfObs" rows="2" placeholder="Faltantes, estado o alguna salvedad puntual de esta entrega"></textarea>
                 </div>
-                <div class="form-field">
-                    <label class="form-label">Observaciones</label>
-                    <textarea class="form-input" id="pjdConfObs" rows="2" placeholder="Estado, faltantes, aclaraciones (opcional)"></textarea>
-                </div>
-                <p class="pjd-conf-compromiso">Al firmar, el receptor declara haber recibido los elementos en conformidad y se compromete a devolverlos en orden al cierre del evento.</p>
+                <p class="pjd-conf-compromiso">Al firmar, el cliente declara recibir los elementos en conformidad y se compromete a devolverlos en orden al cierre del evento. Cualquier faltante o daño queda a su cargo.</p>
                 <div class="pjd-conf-firma">
-                    <div class="pjd-conf-firma-head"><span>Firma del receptor *</span><button type="button" class="pjd-btn-mini" id="pjdConfClear">Limpiar</button></div>
+                    <div class="pjd-conf-firma-head"><span>Firma del cliente *</span><button type="button" class="pjd-btn-mini" id="pjdConfClear">Limpiar</button></div>
                     <canvas id="pjdConfCanvas" width="600" height="200"></canvas>
                 </div>
             </div>`;
 
         const instance = Modal.open({
-            title: 'Conforme de recepción',
+            title: this._entregaFrase(),
             body,
             size: 'lg',
-            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="pjdConfSave">Guardar y firmar</button>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="pjdConfSave">✍️ Firmar entrega</button>`,
         });
         const ov = instance.overlay;
 
@@ -1252,10 +1280,18 @@ const ProyectoDetalle = {
         const pad = this._initSignaturePad(canvas);
         ov.querySelector('#pjdConfClear')?.addEventListener('click', () => pad.clear());
 
+        ov.querySelector('#pjdConfObsToggle')?.addEventListener('click', () => {
+            const wrap = ov.querySelector('#pjdConfObsWrap');
+            const toggle = ov.querySelector('#pjdConfObsToggle');
+            wrap.style.display = 'block';
+            toggle.style.display = 'none';
+            ov.querySelector('#pjdConfObs')?.focus();
+        });
+
         ov.querySelector('#pjdConfSave')?.addEventListener('click', async () => {
             const receptor = ov.querySelector('#pjdConfReceptor').value.trim();
             if (!receptor) { Toast.warning('Ingresá quién recibe'); return; }
-            if (!pad.hasInk()) { Toast.warning('Falta la firma del receptor'); return; }
+            if (!pad.hasInk()) { Toast.warning('Falta la firma del cliente'); return; }
             const itemsSnap = [...ov.querySelectorAll('[data-erow]')].map(r => ({
                 nombre: r.querySelector('[data-nombre]').value.trim(),
                 cantidad: Number(r.querySelector('[data-qty]').value) || 0,
@@ -1277,14 +1313,14 @@ const ProyectoDetalle = {
             try {
                 const row = await API.createConforme(payload);
                 if (!row) throw new Error('createConforme devolvió null');
-                Toast.success('Conforme firmado');
+                Toast.success('Entrega firmada');
                 Modal.close(instance.id);
                 await this._descargarConformeData(row);
                 await this._renderTabContent();
             } catch (e) {
                 console.warn('[ProyectoDetalle] Error creando conforme:', e.message);
-                Toast.error('Error al guardar el conforme');
-                saveBtn.disabled = false; saveBtn.textContent = 'Guardar y firmar';
+                Toast.error('Error al guardar la entrega');
+                saveBtn.disabled = false; saveBtn.textContent = '✍️ Firmar entrega';
             }
         });
     },
