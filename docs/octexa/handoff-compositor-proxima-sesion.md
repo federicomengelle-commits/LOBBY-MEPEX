@@ -16,9 +16,11 @@ Un **capturador de ideas / distribuidor de espacios** rápido, **todo tuneable**
 - `zona` → bloque de espacio (Exhibición/Reunión/…); visual, no factura.
 - `pieza` → dibujito de `CompositorPiezas` (mesa/silla/vitrina/puerta/preset); visual, no factura; tiene `glyph`.
 
-## 1. Estado actual — HECHO + PUSHEADO (hasta commit `cde391d`)
+## 1. Estado actual — HECHO + PUSHEADO (hasta commit `5a17b4d`)
 
-Archivos: **`compositor.js?v=15`** · **`compositor-piezas.js?v=1`** · **`plano-pdf.js?v=7`** · `stands.js?v=2` · registrados en `index.html`.
+Archivos: **`compositor.js?v=17`** · **`compositor-piezas.js?v=2`** · **`plano-pdf.js?v=8`** · `stands.js?v=2` · registrados en `index.html`.
+
+> **⏳ Sesión 2026-06-27 (cont. 2) — fixes en browser + PDF rediseñado + layout repasado.** Detalle en memoria `project_stands_predisenos`. Resumen: alinear/drag por bbox (pieza rotada llega a la esquina) · eje 1000 · tecla Supr · canvas estable · banqueta triangular · **PDF**: logo en proporción + zonas sin solape (sin footer) · **layout**: paleta con pestañas (Catálogo/Piezas/Zonas) + lienzo más grande (600px) + toolbar agrupada. **⏳ Falta solo el OK visual de Fede** sobre el PDF real + la UI (Claude no puede ver el render: pdftoppm falta y los screenshots cuelgan → validado por mockups + posiciones deterministas + smokes).
 
 > **⏳ Sesión 2026-06-27 (charla pulido) — §2.1 + §2.2 + §2.3 HECHAS y pusheadas (`2249335`/`4829622`/`2f51d26`), FALTA verificación visual de Fede (el render SVG/PDF no se puede en headless).**
 > - **§2.1 Texto libre + Alinear** (`v=10`/`plano v=4`): `kind:'texto'` (botón "＋ Texto", rótulo editable inline, redimensionable, girable, no factura, va al PDF en navy) · "⊹ Centrar" → "⊹ Alinear ▾" (ContextMenu: centrar/pegar a cada borde/centrar por eje).
