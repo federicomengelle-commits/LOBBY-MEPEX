@@ -2,21 +2,28 @@
    MEPEX Lobby — Plano PDF (Compositor · C-2.5)
    =============================================
    Exporta el plano top-down de un layout (stand OCTEXA o área libre de
-   alquiler de mobiliario) a PDF A4 apaisado con branding MEPEX. Reemplaza el
-   paso por AutoCAD para los planitos de mobiliario. jsPDF + autotable.
+   alquiler de mobiliario) a PDF A4 apaisado con el estilo de los planos
+   reales de MEPEX (ver docs/octexa/planos-ref/ESTILO-plano-pdf.md):
+   marco con escuadras navy, logo centrado arriba, carátula CLIENTE/PROYECTO
+   abajo-izquierda, paredes finas navy, columnas = círculos huecos en los
+   nodos, cotas de módulo en azul + overall en rosa, rótulos sobre cada pieza.
+   Reemplaza el paso por AutoCAD para los planitos. jsPDF.
 
    API:
      PlanoPDF.generate({
-       nombre, modo:'octexa'|'area', tipoLabel, m2, dimsLabel,
-       footprint:{wMM,dMM}, walls:['back'|'front'|'left'|'right'...],
-       columns:[{x,y}], pieces:[{nombre,x,y,w,d,rot}], legend:[{nombre,cant}]
+       nombre, cliente, modo:'octexa'|'area', tipoLabel, m2, dimsLabel,
+       footprint:{wMM,dMM}, wNom, dNom, ejeMM, modulos:{f,d}|null,
+       walls:['back'|'front'|'left'|'right'...], columns:[{x,y}],
+       zonas:[{label,color,x,y,w,d,rot}],
+       pieces:[{kind:'item'|'pieza'|'texto', nombre, texto, glyph, color, x,y,w,d,rot}]
      }) → Promise<Blob|null>
    ============================================= */
 
 const PlanoPDF = {
     _logoDataUrl: null, _logoFormat: 'JPEG',
     _TURQUESA: [0, 169, 193], _NARANJA: [242, 141, 21],
-    _TEXTO: [40, 40, 40], _MUTED: [120, 120, 120], _LINE: [205, 205, 205], _NAVY: [26, 44, 82],
+    _TEXTO: [40, 40, 40], _MUTED: [120, 120, 120], _LINE: [205, 205, 205],
+    _NAVY: [26, 44, 82], _BLUE: [43, 108, 176], _PINK: [213, 63, 140],
     _PAGE_W: 297, _PAGE_H: 210, _MARGIN: 14,
 
     async _loadLogo() {
@@ -52,145 +59,169 @@ const PlanoPDF = {
 
     _render(doc, o) {
         const PW = this._PAGE_W, PH = this._PAGE_H, M = this._MARGIN;
-        const TUR = this._TURQUESA, TXT = this._TEXTO, MUT = this._MUTED, NAVY = this._NAVY;
+        const NAVY = this._NAVY, BLUE = this._BLUE, PINK = this._PINK, TUR = this._TURQUESA, MUT = this._MUTED;
 
-        // ─── Header / carátula ───
-        if (this._logoDataUrl) { try { doc.addImage(this._logoDataUrl, this._logoFormat, M, M, 42, 13); } catch (_) {} }
-        else { doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...TUR); doc.text('MEPEX', M, M + 9); }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...TUR);
-        doc.text('PLANO', PW - M, M + 7, { align: 'right' });
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...MUT);
+        // ─── marco: 4 escuadras navy ───
+        this._brackets(doc, 14);
+
+        // ─── logo centrado arriba (turquesa) ───
+        const logoW = 46, logoH = 14.5;
+        if (this._logoDataUrl) { try { doc.addImage(this._logoDataUrl, this._logoFormat, (PW - logoW) / 2, 7, logoW, logoH); } catch (_) {} }
+        else { doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TUR); doc.text('MEPEX', PW / 2, 17, { align: 'center' }); }
+
+        // meta sutil arriba-derecha
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUT);
         const fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        doc.text(`${o.nombre || 'Sin nombre'}`, PW - M, M + 12.5, { align: 'right' });
-        const meta = [o.tipoLabel, o.dimsLabel, (o.m2 != null ? o.m2 + ' m²' : null), fecha].filter(Boolean).join('  ·  ');
-        doc.text(meta, PW - M, M + 17, { align: 'right' });
+        const meta = [o.tipoLabel, o.dimsLabel, (o.m2 != null ? o.m2 + ' m²' : null)].filter(Boolean).join('  ·  ');
+        doc.text(meta, PW - M - 2, 12, { align: 'right' });
+        doc.text(fecha, PW - M - 2, 16, { align: 'right' });
 
-        let top = M + 22;
-        doc.setDrawColor(...TUR); doc.setLineWidth(0.5); doc.line(M, top, PW - M, top);
-        top += 6;
-
-        // ─── Área de dibujo (deja una franja derecha para la leyenda) ───
-        const legendW = 70;
-        const drawX0 = M, drawY0 = top, drawX1 = PW - M - legendW - 6, drawY1 = PH - M - 6;
-        const availW = drawX1 - drawX0, availH = drawY1 - drawY0;
-
+        // ─── área de dibujo (sin leyenda lateral) ───
+        const drawTop = 30, drawBot = PH - M - 22, drawL = M + 16, drawR = PW - M - 16;
+        const availW = drawR - drawL, availH = drawBot - drawTop;
         const fp = o.footprint || { wMM: 6000, dMM: 3000 };
         const Wmm = Math.max(1, fp.wMM), Dmm = Math.max(1, fp.dMM);
-        const scale = Math.min(availW / Wmm, availH / Dmm) * 0.92; // mm_page por mm_real
+        const scale = Math.min(availW / Wmm, availH / Dmm) * 0.9;   // mm_page por mm_real
         const planW = Wmm * scale, planH = Dmm * scale;
-        const ox = drawX0 + (availW - planW) / 2;   // offset para centrar
-        const oy = drawY0 + (availH - planH) / 2;
-        const mapX = (xmm) => ox + xmm * scale;
-        const mapY = (ymm) => oy + ymm * scale;
+        const ox = drawL + (availW - planW) / 2, oy = drawTop + (availH - planH) / 2;
+        const mapX = (xmm) => ox + xmm * scale, mapY = (ymm) => oy + ymm * scale;
 
-        // piso
-        doc.setFillColor(248, 250, 251); doc.setDrawColor(...TXT); doc.setLineWidth(0.5);
-        doc.rect(ox, oy, planW, planH, 'FD');
+        // piso (apenas un tono) + contorno fino
+        doc.setFillColor(250, 251, 252); doc.rect(ox, oy, planW, planH, 'F');
 
-        // grilla de referencia (cada 1 m)
-        doc.setDrawColor(232, 234, 236); doc.setLineWidth(0.15);
-        for (let x = 1000; x < Wmm; x += 1000) doc.line(mapX(x), oy, mapX(x), oy + planH);
-        for (let y = 1000; y < Dmm; y += 1000) doc.line(ox, mapY(y), ox + planW, mapY(y));
+        // grilla: octexa por eje (990) · área cada 1 m
+        const eje = o.ejeMM || 990;
+        const stepX = o.modulos ? eje : 1000, stepY = o.modulos ? eje : 1000;
+        doc.setDrawColor(226, 230, 235); doc.setLineWidth(0.1);
+        for (let x = stepX; x < Wmm - 1; x += stepX) doc.line(mapX(x), oy, mapX(x), oy + planH);
+        for (let y = stepY; y < Dmm - 1; y += stepY) doc.line(ox, mapY(y), ox + planW, mapY(y));
 
-        // paredes (OCTEXA)
+        // contorno del footprint
+        doc.setDrawColor(...NAVY); doc.setLineWidth(0.25); doc.rect(ox, oy, planW, planH, 'S');
+
+        // paredes cerradas en doble línea navy (espesor)
         const walls = o.walls || [];
-        doc.setDrawColor(...this._NARANJA); doc.setLineWidth(1.4);
-        if (walls.includes('back')) doc.line(ox, oy, ox + planW, oy);
-        if (walls.includes('front')) doc.line(ox, oy + planH, ox + planW, oy + planH);
-        if (walls.includes('left')) doc.line(ox, oy, ox, oy + planH);
-        if (walls.includes('right')) doc.line(ox + planW, oy, ox + planW, oy + planH);
+        const wall = (x1, y1, x2, y2) => {
+            doc.setDrawColor(...NAVY); doc.setLineWidth(0.8); doc.line(x1, y1, x2, y2);
+        };
+        if (walls.includes('back')) wall(ox, oy, ox + planW, oy);
+        if (walls.includes('front')) wall(ox, oy + planH, ox + planW, oy + planH);
+        if (walls.includes('left')) wall(ox, oy, ox, oy + planH);
+        if (walls.includes('right')) wall(ox + planW, oy, ox + planW, oy + planH);
 
-        // columnas ø40 (OCTEXA)
+        // columnas = círculos huecos navy en los nodos
         (o.columns || []).forEach(c => {
-            doc.setFillColor(150, 150, 150); doc.setDrawColor(120, 120, 120); doc.setLineWidth(0.2);
-            const r = Math.max(0.6, 40 * scale);
-            doc.circle(mapX(c.x), mapY(c.y), r, 'FD');
+            doc.setDrawColor(...NAVY); doc.setFillColor(255, 255, 255); doc.setLineWidth(0.35);
+            doc.circle(mapX(c.x), mapY(c.y), Math.max(0.7, 40 * scale), 'FD');
         });
 
-        // zonas (bloques de espacio translúcidos + label)
+        // ─── zonas (bloques translúcidos + label) ───
         doc.setFontSize(7.5);
         (o.zonas || []).forEach(z => {
             const corners = this._rotCorners(z.x, z.y, z.w, z.d, z.rot || 0).map(pt => [mapX(pt[0]), mapY(pt[1])]);
             const rgb = this._hexToRgb(z.color || '#888888');
-            doc.setFillColor(rgb[0], rgb[1], rgb[2]); doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setLineWidth(0.5);
-            try { doc.setGState(new doc.GState({ opacity: 0.16 })); } catch (_) {}
+            doc.setFillColor(rgb[0], rgb[1], rgb[2]); doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setLineWidth(0.4);
+            try { doc.setGState(new doc.GState({ opacity: 0.14 })); } catch (_) {}
             doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'F', true);
             try { doc.setGState(new doc.GState({ opacity: 1 })); } catch (_) {}
             doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'S', true);
-            const cx = z.x + z.w / 2, cy = z.y + z.d / 2;
             doc.setTextColor(rgb[0], rgb[1], rgb[2]); doc.setFont('helvetica', 'bold');
-            doc.text(String(z.label || ''), mapX(cx), mapY(cy) + 1, { align: 'center' });
+            doc.text(String(z.label || ''), mapX(z.x + z.w / 2), mapY(z.y + z.d / 2) + 1, { align: 'center' });
         });
 
-        // piezas — dibujito real (glyph) si lo trae · texto = rótulo libre · sino caja
-        let pieceNum = 0;
-        (o.pieces || []).forEach((p) => {
+        // ─── piezas: item → caja + rótulo rotado · pieza → glyph · texto → rótulo navy ───
+        (o.pieces || []).forEach(p => {
             const cx = p.x + p.w / 2, cy = p.y + p.d / 2;
+            const ang = -(p.rot || 0);
             if (p.kind === 'texto') {
-                if (!p.texto) return;   // etiqueta libre: no numera ni va a la leyenda
-                const targetMM = (p.d || 400) * 0.55 * scale;             // alto del texto en mm de página
-                const fs = Math.max(5, Math.min(42, targetMM / 0.3528));  // mm → pt
+                if (!p.texto) return;
+                const targetMM = (p.d || 400) * 0.55 * scale, fs = Math.max(5, Math.min(42, targetMM / 0.3528));
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...NAVY);
-                doc.text(String(p.texto), mapX(cx), mapY(cy), { align: 'center', baseline: 'middle', angle: -(p.rot || 0) });
+                doc.text(String(p.texto), mapX(cx), mapY(cy), { align: 'center', baseline: 'middle', angle: ang });
                 return;
             }
-            const rgb = p.color ? this._hexToRgb(p.color) : TUR;
+            const rgb = p.color ? this._hexToRgb(p.color) : NAVY;
             if (p.glyph && typeof CompositorPiezas !== 'undefined') {
                 const rad = (p.rot || 0) * Math.PI / 180, cc = Math.cos(rad), ss = Math.sin(rad), ccx = p.w / 2, ccy = p.d / 2;
                 const mapLocal = (lx, ly) => { const dx = lx - ccx, dy = ly - ccy; return [mapX(p.x + ccx + dx * cc - dy * ss), mapY(p.y + ccy + dx * ss + dy * cc)]; };
                 this._drawPrims(doc, CompositorPiezas.prims(p.glyph, p.w, p.d), mapLocal, scale, rgb);
             } else {
+                // caja del item: contorno navy fino, relleno muy claro
                 const corners = this._rotCorners(p.x, p.y, p.w, p.d, p.rot || 0).map(pt => [mapX(pt[0]), mapY(pt[1])]);
-                doc.setFillColor(225, 244, 247); doc.setDrawColor(...TUR); doc.setLineWidth(0.4);
+                doc.setFillColor(245, 247, 250); doc.setDrawColor(...NAVY); doc.setLineWidth(0.35);
                 doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'FD', true);
             }
-            pieceNum++;
-            doc.setTextColor(...TUR); doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
-            doc.text(String(pieceNum), mapX(cx), mapY(cy) + 1.2, { align: 'center' });
+            // rótulo del item SOBRE la pieza (azul, rotado, abreviado para entrar)
+            if (p.kind === 'item') {
+                const alongMM = (((p.rot || 0) % 180) === 90 ? p.d : p.w) * scale;
+                const { txt, fs } = this._fitLabel(p.nombre, alongMM);
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); doc.setTextColor(...BLUE);
+                doc.text(txt, mapX(cx), mapY(cy), { align: 'center', baseline: 'middle', angle: ang });
+            }
         });
 
-        // cotas overall
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUT);
-        doc.text(this._m(Wmm), ox + planW / 2, oy + planH + 5, { align: 'center' });
-        doc.text(this._m(Dmm), ox - 3, oy + planH / 2, { align: 'center', angle: 90 });
+        // ─── cotas ───
+        // módulo (azul) en el borde superior — solo OCTEXA
+        if (o.modulos && o.modulos.f) this._dimModulos(doc, ox, oy - 5, scale, o.modulos.f, eje, BLUE);
+        // overall (rosa): ancho abajo + fondo a la derecha, en metros NOMINALES
+        const wNom = (o.wNom != null) ? o.wNom : Wmm / 1000, dNom = (o.dNom != null) ? o.dNom : Dmm / 1000;
+        this._dimH(doc, ox, ox + planW, oy + planH + 7, this._fmtM(wNom), PINK);
+        this._dimV(doc, oy, oy + planH, ox + planW + 7, this._fmtM(dNom), PINK);
 
-        // ─── Leyenda (referencias) ───
-        const lx = PW - M - legendW;
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...TUR);
-        doc.text('REFERENCIAS', lx, top + 2);
-        const legend = (o.pieces || []).filter(p => p.kind !== 'texto').map((p, i) => [String(i + 1), p.nombre || '—']);
-        const bom = (o.legend || []);
-        doc.autoTable({
-            startY: top + 5,
-            head: [['#', 'Componente']],
-            body: legend.length ? legend : [['', '(sin piezas)']],
-            theme: 'grid',
-            styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 1.6, textColor: TXT, lineColor: this._LINE, lineWidth: 0.15 },
-            headStyles: { fillColor: TUR, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
-            columnStyles: { 0: { cellWidth: 8, halign: 'center', fontStyle: 'bold' } },
-            margin: { left: lx, right: M },
-            tableWidth: legendW,
-        });
-        let ly = (doc.lastAutoTable ? doc.lastAutoTable.finalY : top + 5) + 6;
-        if (bom.length) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...TUR);
-            doc.text('LISTA DE EQUIPAMIENTO', lx, ly); ly += 2;
-            doc.autoTable({
-                startY: ly,
-                head: [['Componente', 'Cant']],
-                body: bom.map(b => [b.nombre || '—', String(b.cant ?? '')]),
-                theme: 'grid',
-                styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 1.6, textColor: TXT, lineColor: this._LINE, lineWidth: 0.15 },
-                headStyles: { fillColor: [90, 90, 90], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
-                columnStyles: { 1: { cellWidth: 12, halign: 'center' } },
-                margin: { left: lx, right: M },
-                tableWidth: legendW,
-            });
+        // ─── carátula abajo-izquierda ───
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(13);
+        if (o.cliente) doc.text(`CLIENTE: ${o.cliente}`, M + 2, PH - M - 8);
+        doc.text(`PROYECTO: ${o.nombre || '—'}`, M + 2, PH - M - 1.5);
+
+        // footer discreto
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...MUT);
+        doc.text('MEPEX · Montaje y Equipamiento para Exposiciones', PW - M - 2, PH - M - 1.5, { align: 'right' });
+    },
+
+    // ─── escuadras del marco (4 esquinas) ───
+    _brackets(doc, len) {
+        const PW = this._PAGE_W, PH = this._PAGE_H, e = 10, L = len || 14;
+        doc.setDrawColor(...this._NAVY); doc.setLineWidth(1.0);
+        doc.line(e, e, e + L, e); doc.line(e, e, e, e + L);                               // TL
+        doc.line(PW - e, e, PW - e - L, e); doc.line(PW - e, e, PW - e, e + L);           // TR
+        doc.line(e, PH - e, e + L, PH - e); doc.line(e, PH - e, e, PH - e - L);           // BL
+        doc.line(PW - e, PH - e, PW - e - L, PH - e); doc.line(PW - e, PH - e, PW - e, PH - e - L); // BR
+    },
+
+    // cota horizontal con ticks en los extremos + label centrado arriba
+    _dimH(doc, x1, x2, y, label, color) {
+        doc.setDrawColor(...color); doc.setLineWidth(0.3);
+        doc.line(x1, y, x2, y);
+        doc.line(x1, y - 1.3, x1, y + 1.3); doc.line(x2, y - 1.3, x2, y + 1.3);
+        doc.setTextColor(...color); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+        doc.text(String(label), (x1 + x2) / 2, y - 1.6, { align: 'center' });
+    },
+    // cota vertical con ticks + label rotado
+    _dimV(doc, y1, y2, x, label, color) {
+        doc.setDrawColor(...color); doc.setLineWidth(0.3);
+        doc.line(x, y1, x, y2);
+        doc.line(x - 1.3, y1, x + 1.3, y1); doc.line(x - 1.3, y2, x + 1.3, y2);
+        doc.setTextColor(...color); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+        doc.text(String(label), x + 1.7, (y1 + y2) / 2, { align: 'center', angle: 90, baseline: 'middle' });
+    },
+    // cotas de módulo (950 por panel) a lo largo del borde superior
+    _dimModulos(doc, ox, y, scale, f, eje, color) {
+        doc.setDrawColor(...color); doc.setLineWidth(0.2);
+        doc.setTextColor(...color); doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+        for (let i = 0; i < f; i++) {
+            const xa = ox + i * eje * scale, xb = ox + (i + 1) * eje * scale;
+            doc.line(xa, y, xb, y);
+            doc.line(xa, y - 0.9, xa, y + 0.9); doc.line(xb, y - 0.9, xb, y + 0.9);
+            doc.text('950', (xa + xb) / 2, y - 1.1, { align: 'center' });
         }
-
-        // footer
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...MUT);
-        doc.text(`MEPEX · Montaje y Equipamiento para Exposiciones · ${new Date().toLocaleString('es-AR')}`, PW / 2, PH - 6, { align: 'center' });
+    },
+    _fmtM(m) { return (Number(m) || 0).toFixed(2).replace('.', ',') + ' m'; },
+    // abrevia un rótulo para que entre en `alongMM` (mm de página) y devuelve {txt, fs}
+    _fitLabel(name, alongMM) {
+        name = String(name || '');
+        const fs = Math.max(4.5, Math.min(7.5, alongMM * 0.16));
+        const maxChars = Math.max(3, Math.floor(alongMM / (fs * 0.42)));
+        return { txt: name.length > maxChars ? name.slice(0, maxChars).trim() : name, fs };
     },
 
     // 4 esquinas de un rect (x,y,w,d) rotado `deg` sobre su centro → [[x,y]×4]

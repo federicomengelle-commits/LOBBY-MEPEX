@@ -43,6 +43,7 @@ const CompositorModule = {
     _state: {
         modo: 'octexa',           // 'octexa' | 'area'
         nombre: '',
+        cliente: '',              // para la carátula del plano PDF
         tipo: 'isla',
         frente: 6, fondo: 3,      // módulos = m nominal (OCTEXA)
         areaW: 5, areaD: 4,       // metros (área libre)
@@ -82,6 +83,10 @@ const CompositorModule = {
                     <div class="cmp-ctl cmp-ctl-grow">
                         <label>Nombre del layout</label>
                         <input type="text" id="cmpNombre" value="${escAttr(this._state.nombre)}" placeholder="${this._isArea() ? 'Layout salón Pabellón 3' : 'Stand Natura — Expo'}">
+                    </div>
+                    <div class="cmp-ctl">
+                        <label>Cliente (carátula)</label>
+                        <input type="text" id="cmpCliente" value="${escAttr(this._state.cliente)}" placeholder="Ej. Cedent">
                     </div>
                     ${this._controlsHTML()}
                     <div class="cmp-dims" id="cmpDims"></div>
@@ -145,6 +150,7 @@ const CompositorModule = {
             this._state.modo = m; this._select(null); this._rebuild();
         }));
         document.getElementById('cmpNombre')?.addEventListener('input', (e) => { this._state.nombre = e.target.value; });
+        document.getElementById('cmpCliente')?.addEventListener('input', (e) => { this._state.cliente = e.target.value; });
         const reConfig = () => { this._readConfig(); this._clampAll(); this._renderPlanta(); this._renderEstructura(); this._renderBOM(); };
         ['cmpTipo', 'cmpAltura', 'cmpPiso'].forEach(id => document.getElementById(id)?.addEventListener('change', reConfig));
         ['cmpFrente', 'cmpFondo', 'cmpAreaW', 'cmpAreaD'].forEach(id => document.getElementById(id)?.addEventListener('input', reConfig));
@@ -811,10 +817,14 @@ const CompositorModule = {
         try {
             const o = {
                 nombre: this._state.nombre || 'Plano sin título',
+                cliente: this._state.cliente || '',
                 modo: this._state.modo,
                 tipoLabel: this._isArea() ? 'Área libre' : this.OCTEXA.tipos[this._state.tipo].label,
                 m2: this._m2(),
                 dimsLabel: `${this._numero(this._wM())} × ${this._numero(this._dM())} m`,
+                wNom: this._wM(), dNom: this._dM(),
+                ejeMM: this.OCTEXA.ejeMM,
+                modulos: this._isArea() ? null : { f: this._state.frente, d: this._state.fondo },
                 footprint: { wMM: this._wmm(), dMM: this._dmm() },
                 walls: this._closedSides(),
                 columns: this._columnsXY(),
