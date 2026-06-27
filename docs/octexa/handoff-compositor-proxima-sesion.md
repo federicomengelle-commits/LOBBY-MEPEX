@@ -16,9 +16,16 @@ Un **capturador de ideas / distribuidor de espacios** rápido, **todo tuneable**
 - `zona` → bloque de espacio (Exhibición/Reunión/…); visual, no factura.
 - `pieza` → dibujito de `CompositorPiezas` (mesa/silla/vitrina/puerta/preset); visual, no factura; tiene `glyph`.
 
-## 1. Estado actual — HECHO + PUSHEADO (hasta commit `8b18baa`)
+## 1. Estado actual — HECHO + PUSHEADO (hasta commit `2f51d26`)
 
-Archivos: **`compositor.js?v=9`** · **`compositor-piezas.js?v=1`** · **`plano-pdf.js?v=3`** · `stands.js?v=2` · registrados en `index.html`.
+Archivos: **`compositor.js?v=12`** · **`compositor-piezas.js?v=1`** · **`plano-pdf.js?v=5`** · `stands.js?v=2` · registrados en `index.html`.
+
+> **⏳ Sesión 2026-06-27 (charla pulido) — §2.1 + §2.2 + §2.3 HECHAS y pusheadas (`2249335`/`4829622`/`2f51d26`), FALTA verificación visual de Fede (el render SVG/PDF no se puede en headless).**
+> - **§2.1 Texto libre + Alinear** (`v=10`/`plano v=4`): `kind:'texto'` (botón "＋ Texto", rótulo editable inline, redimensionable, girable, no factura, va al PDF en navy) · "⊹ Centrar" → "⊹ Alinear ▾" (ContextMenu: centrar/pegar a cada borde/centrar por eje).
+> - **§2.2 Agrupar / multi-selección** (`v=11`): Shift/Ctrl-clic, drag del grupo junto, Agrupar/Desagrupar (`groupId`, viaja en undo), Distribuir ▾ H/V, Alinear ▾ entre sí, Duplicar/Bloquear/Quitar el set. Modelo `_selUid` (primaria) + `_selSet`.
+> - **§2.3 Plano PDF "como la gente"** (`v=12`/`plano v=5`): reescrito al estilo de los planos reales (escuadras navy, logo centrado, carátula CLIENTE/PROYECTO, sin leyenda lateral, rótulos sobre cada pieza, paredes navy, columnas huecas, cotas módulo azul + overall rosa nominal). Nuevo campo "Cliente (carátula)". Spec: `docs/octexa/planos-ref/ESTILO-plano-pdf.md`.
+> - **Verificación:** `node --check` + smoke DOM-stub (41 §2.1 / 32 §2.2 / 21 PDF, 0 fails). **Fede: `~/pull-lobby.sh` → verificar visual** (texto, multi-selección+grupos+distribuir, y sobre todo **generar un plano PDF real** y comparar con A.Laciar/Cedent).
+> - **A confirmar con Fede en la verificación del PDF:** (a) la cota de módulo se rotula **"950"** por panel (convención de sus planos) aunque el eje sea 990 — ¿ok o prefiere otra?; (b) ¿quiere la **lista de equipamiento** en un rincón? (la saqué para igualar los planos reales, que no la tienen); (c) afinar mm de carátula/cotas si hace falta.
 
 - **Dos modos:** 🏗️ Stand OCTEXA (topología centro/esquina/península/isla + grilla 990/495 + columnas en los **nodos de las paredes** + paredes) · 🪑 Área libre (m, para alquiler de mobiliario). m² **nominal** (1 módulo = 1 m → 6×3 = 18 m²).
 - **Colocar/mover** con snap (495 OCTEXA / 250 área), **redimensionar arrastrando** un handle (esquina inf-der; re-render al soltar para que el glyph escale).
@@ -31,7 +38,7 @@ Archivos: **`compositor.js?v=9`** · **`compositor-piezas.js?v=1`** · **`plano-
 
 ## 2. COLA DE TRABAJO (en orden)
 
-### 2.1 ⭐ Texto/etiqueta libre + Alinear (Fede los eligió — EMPEZAR ACÁ)
+### 2.1 ✅ HECHO (2026-06-27) — Texto/etiqueta libre + Alinear
 **Texto libre** (nuevo `kind:'texto'`):
 - Botón "＋ Texto" (global). `_placeTexto()` → push `{uid, kind:'texto', texto:'Texto', x,y,w:1500,d:400, rot:0}`.
 - Render en `_renderPlanta`: rama `kind==='texto'` → `<rect transparent class="cmp-hit"/>` + `<text font-size≈d*0.6 anchor=middle>` + selbox/handle si seleccionado.
@@ -42,11 +49,11 @@ Archivos: **`compositor.js?v=9`** · **`compositor-piezas.js?v=1`** · **`plano-
 - Reemplazar el botón "⊹ Centrar" por "⊹ Alinear ▾" que abre `ContextMenu.show(x, y, items)` con: Centrar · Pegar izquierda/derecha/arriba/abajo (set `p.x`/`p.y` a 0 o `W-w`/`D-d`). Cada uno: `_pushHist()` + set + `_clampAll()` + `_afterChange(false)`.
 - **API de ContextMenu** (ya verificada en `crm.js`): `ContextMenu.show(clientX, clientY, items)`. Mirar el shape exacto de `items` en `components.js` antes de usar (label + handler).
 
-### 2.2 Agrupar (multi-selección) — la 4ta que pidió Fede
+### 2.2 ✅ HECHO (2026-06-27) — Agrupar (multi-selección)
 Cambia el modelo de selección: `_selUid` → `_selSet` (array). Shift/Ctrl-clic agrega/saca; drag mueve todo el set junto; "Agrupar" asigna `groupId` (clic en un miembro selecciona todo el grupo); "Desagrupar". Con multi-selección habilitar **Distribuir** (repartir parejo N piezas, ej. vitrinas equiespaciadas). Es la más invasiva → hacerla sola y testear bien en `node`.
 
-### 2.3 ⭐⭐ Plano PDF "como la gente" (el que Fede dijo "fulero")
-Fede mandó sus **planos reales** (A.Laciar v53, Cedent V83/84). El PDF actual (cajas + leyenda lateral) está pobre. Rehacer `plano-pdf.js _render` copiando ese estilo (línea-art, A4 apaisado):
+### 2.3 ✅ HECHO (2026-06-27, ⏳ falta verificación visual de Fede) — Plano PDF "como la gente"
+Fede mandó sus **planos reales** (A.Laciar v53, Cedent V83/84) → estilo extraído en `docs/octexa/planos-ref/ESTILO-plano-pdf.md` y aplicado en `plano-pdf.js?v=5`. Lo construido (todo line-art, A4 apaisado):
 - **Marco** con corchetes en L en las 4 esquinas de la hoja (navy).
 - **Logo MEPEX centrado arriba** (turquesa); bloque **`CLIENTE: …` / `PROYECTO: …`** abajo-izquierda (pasar `cliente` en opts; hoy no se setea → agregar campo o usar el nombre).
 - Plan centrado, **sin** la leyenda lateral grande (los planos reales no la tienen); lista de equipamiento compacta opcional en un rincón.
@@ -71,5 +78,5 @@ Fede mandó sus **planos reales** (A.Laciar v53, Cedent V83/84). El PDF actual (
 ## 5. Cómo empezar el chat nuevo
 1. `git fetch origin && git status` (asegurá `8b18baa`+ y árbol limpio; otras charlas pueden haber avanzado).
 2. Leé este handoff + los docs del encabezado.
-3. Arrancá por **2.1 (Texto + Alinear)**, después 2.3 (PDF lindo) o 2.2 (Agrupar) según lo que pida Fede.
+3. **2.1 + 2.2 + 2.3 ya están** (ver §1). Lo próximo: **verificación visual de Fede del plano PDF** (generar uno real y comparar con A.Laciar/Cedent; afinar lo que marque), y después **2.4 (plantillas base + brief)**.
 4. Cada feature: construir → `node --check` + smoke DOM-stub → bump `?v=` → commit → push main → avisar a Fede que pullee y verifique visual.
