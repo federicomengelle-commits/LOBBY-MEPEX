@@ -16,9 +16,9 @@ Un **capturador de ideas / distribuidor de espacios** rápido, **todo tuneable**
 - `zona` → bloque de espacio (Exhibición/Reunión/…); visual, no factura.
 - `pieza` → dibujito de `CompositorPiezas` (mesa/silla/vitrina/puerta/preset); visual, no factura; tiene `glyph`.
 
-## 1. Estado actual — HECHO + PUSHEADO (hasta commit `c37431d`)
+## 1. Estado actual — HECHO + PUSHEADO (hasta commit `cde391d`)
 
-Archivos: **`compositor.js?v=14`** · **`compositor-piezas.js?v=1`** · **`plano-pdf.js?v=7`** · `stands.js?v=2` · registrados en `index.html`.
+Archivos: **`compositor.js?v=15`** · **`compositor-piezas.js?v=1`** · **`plano-pdf.js?v=7`** · `stands.js?v=2` · registrados en `index.html`.
 
 > **⏳ Sesión 2026-06-27 (charla pulido) — §2.1 + §2.2 + §2.3 HECHAS y pusheadas (`2249335`/`4829622`/`2f51d26`), FALTA verificación visual de Fede (el render SVG/PDF no se puede en headless).**
 > - **§2.1 Texto libre + Alinear** (`v=10`/`plano v=4`): `kind:'texto'` (botón "＋ Texto", rótulo editable inline, redimensionable, girable, no factura, va al PDF en navy) · "⊹ Centrar" → "⊹ Alinear ▾" (ContextMenu: centrar/pegar a cada borde/centrar por eje).
@@ -29,7 +29,7 @@ Archivos: **`compositor.js?v=14`** · **`compositor-piezas.js?v=1`** · **`plano
 > - **B1 — Lote + Toggle Líneas/Paneleado:** campo **Lote** en la carátula (CLIENTE/PROYECTO/LOTE) · **`_state.vista`** = `lineas` (solo contorno, para distribuir) | `paneleado` (estructura, producción); aplica a canvas y PDF.
 > - **B2 — paneles por lado + módulos variables:** clic en un lado → **`_state.panelOverride`** pone/saca panel (paredes, columnas y estructura se derivan de los lados con panel) · clic en un módulo → **cicla 950/455/660** (`_state.mods` por lado; **"tamaño manda"** = anotación, NO re-tila el footprint → el despiece exacto lo hace el importador 3ds Max). La cota de módulo dejó de ser fija "950": se rotula el ancho real por panel, en canvas y en el PDF (cotas por lado back/front/left/right; la overall rosa se corre si el lado tiene módulos).
 > - **Verificación:** node --check + smoke DOM-stub **137/137** (0 regresión). **Fede: verificar visual** — toggle, clic en lados, clic en módulos, y generar un PDF con módulos variables.
-> - **⏳ Falta B3 — Infra vs Equipamiento:** flag por pieza (infra/equipamiento) + **BOM en 2 secciones**, default según el rubro de Costos (decidido con Fede). **Definir antes de construir: qué rubros de Costos cuentan como "infraestructura".**
+> - **B3 — Infra vs Equipamiento ✅ HECHO** (`cde391d`, `compositor.js?v=15`): clasificación por keyword sobre rubro+nombre (infra = panel/columna/perfil/cenefa/estructura/aluminio…; equip = vitrinas/mostradores/estanterías/exhibidores = default) + **flag por pieza** con override (chip 🏗 Infra / 🪑 Equip en el strip) + **BOM en 2 secciones** (Infraestructura / Equipamiento) con subtotal + total. Smoke 20/20.
 > - **A confirmar al verificar el PDF:** (a) ¿quiere la **lista de equipamiento** en un rincón? (la saqué para igualar los planos reales; ver mockup); (b) afinar mm de carátula/cotas/rótulos si algo está corrido.
 
 - **Dos modos:** 🏗️ Stand OCTEXA (topología centro/esquina/península/isla + grilla 990/495 + columnas en los **nodos de las paredes** + paredes) · 🪑 Área libre (m, para alquiler de mobiliario). m² **nominal** (1 módulo = 1 m → 6×3 = 18 m²).
