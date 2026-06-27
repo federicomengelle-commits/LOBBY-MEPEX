@@ -1452,7 +1452,7 @@ const ProyectoDetalle = {
                 items_snapshot: itemsSnap,
                 observaciones: ov.querySelector('#pjdConfObs').value.trim() || null,
                 firma_data: pad.toDataURL(),
-                firmado_by: Auth.getUser()?.id || Auth.getUser()?.uid || null,
+                firmado_by: Auth.getUser()?.uid || null, // .uid = UUID de auth (.id es el username "fede", no es uuid)
             };
             const saveBtn = ov.querySelector('#pjdConfSave');
             saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
