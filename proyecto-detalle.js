@@ -213,6 +213,12 @@ const ProyectoDetalle = {
                             </div>
                         </div>
                         <div class="pjd-header-right">
+                            ${!this._isRO ? `
+                                <a href="#compras?tab=pedidos&nuevo=1&proyecto=${p.id}" class="btn btn-ghost pjd-btn-pedido" title="Cargar un pedido de compra para este proyecto">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+                                    Pedir compra
+                                </a>
+                            ` : ''}
                             ${!this._isRO && p.estado !== 'en_taller' && p.estado !== 'finalizado' && p.estado !== 'rechazado' ? `
                                 <button class="btn pjd-btn-taller" id="pjdBtnTaller" title="Delegar al taller con toda la info cargada" style="background:#F28D15;color:#0a0a0a;border:none;font-weight:700;">
                                     🔨 Pasar a Taller

@@ -52,6 +52,15 @@ const ComprasModule = {
         } else {
             await this._loadOrdenes();
         }
+
+        // Deep-link &nuevo=1&proyecto=<id> → abre el modal de nuevo pedido ya cargado
+        // (ej. desde el botón "Pedir compra" de la ficha del proyecto).
+        const hash = location.hash || '';
+        if (this._activeTab === 'pedidos' && /[?&]nuevo=1/.test(hash)) {
+            const pm = hash.match(/[?&]proyecto=([^&]+)/);
+            const proyId = pm ? decodeURIComponent(pm[1]) : null;
+            this._openPedidoModal(proyId ? { proyecto_id: proyId } : {});
+        }
     },
 
     _buildShell() {
