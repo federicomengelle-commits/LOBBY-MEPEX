@@ -16,16 +16,21 @@ Un **capturador de ideas / distribuidor de espacios** rápido, **todo tuneable**
 - `zona` → bloque de espacio (Exhibición/Reunión/…); visual, no factura.
 - `pieza` → dibujito de `CompositorPiezas` (mesa/silla/vitrina/puerta/preset); visual, no factura; tiene `glyph`.
 
-## 1. Estado actual — HECHO + PUSHEADO (hasta commit `2f51d26`)
+## 1. Estado actual — HECHO + PUSHEADO (hasta commit `c37431d`)
 
-Archivos: **`compositor.js?v=12`** · **`compositor-piezas.js?v=1`** · **`plano-pdf.js?v=5`** · `stands.js?v=2` · registrados en `index.html`.
+Archivos: **`compositor.js?v=14`** · **`compositor-piezas.js?v=1`** · **`plano-pdf.js?v=7`** · `stands.js?v=2` · registrados en `index.html`.
 
 > **⏳ Sesión 2026-06-27 (charla pulido) — §2.1 + §2.2 + §2.3 HECHAS y pusheadas (`2249335`/`4829622`/`2f51d26`), FALTA verificación visual de Fede (el render SVG/PDF no se puede en headless).**
 > - **§2.1 Texto libre + Alinear** (`v=10`/`plano v=4`): `kind:'texto'` (botón "＋ Texto", rótulo editable inline, redimensionable, girable, no factura, va al PDF en navy) · "⊹ Centrar" → "⊹ Alinear ▾" (ContextMenu: centrar/pegar a cada borde/centrar por eje).
 > - **§2.2 Agrupar / multi-selección** (`v=11`): Shift/Ctrl-clic, drag del grupo junto, Agrupar/Desagrupar (`groupId`, viaja en undo), Distribuir ▾ H/V, Alinear ▾ entre sí, Duplicar/Bloquear/Quitar el set. Modelo `_selUid` (primaria) + `_selSet`.
 > - **§2.3 Plano PDF "como la gente"** (`v=12`/`plano v=5`): reescrito al estilo de los planos reales (escuadras navy, logo centrado, carátula CLIENTE/PROYECTO, sin leyenda lateral, rótulos sobre cada pieza, paredes navy, columnas huecas, cotas módulo azul + overall rosa nominal). Nuevo campo "Cliente (carátula)". Spec: `docs/octexa/planos-ref/ESTILO-plano-pdf.md`.
 > - **Verificación:** `node --check` + smoke DOM-stub (41 §2.1 / 32 §2.2 / 21 PDF, 0 fails). **Fede: `~/pull-lobby.sh` → verificar visual** (texto, multi-selección+grupos+distribuir, y sobre todo **generar un plano PDF real** y comparar con A.Laciar/Cedent).
-> - **A confirmar con Fede en la verificación del PDF:** (a) la cota de módulo se rotula **"950"** por panel (convención de sus planos) aunque el eje sea 990 — ¿ok o prefiere otra?; (b) ¿quiere la **lista de equipamiento** en un rincón? (la saqué para igualar los planos reales, que no la tienen); (c) afinar mm de carátula/cotas si hace falta.
+> **⏳ Sesión 2026-06-27 (cont.) — B1 (`12ef167`) + B2 (`c37431d`): pulido de versatilidad. `compositor.js?v=14`·`plano-pdf.js?v=7`.**
+> - **B1 — Lote + Toggle Líneas/Paneleado:** campo **Lote** en la carátula (CLIENTE/PROYECTO/LOTE) · **`_state.vista`** = `lineas` (solo contorno, para distribuir) | `paneleado` (estructura, producción); aplica a canvas y PDF.
+> - **B2 — paneles por lado + módulos variables:** clic en un lado → **`_state.panelOverride`** pone/saca panel (paredes, columnas y estructura se derivan de los lados con panel) · clic en un módulo → **cicla 950/455/660** (`_state.mods` por lado; **"tamaño manda"** = anotación, NO re-tila el footprint → el despiece exacto lo hace el importador 3ds Max). La cota de módulo dejó de ser fija "950": se rotula el ancho real por panel, en canvas y en el PDF (cotas por lado back/front/left/right; la overall rosa se corre si el lado tiene módulos).
+> - **Verificación:** node --check + smoke DOM-stub **137/137** (0 regresión). **Fede: verificar visual** — toggle, clic en lados, clic en módulos, y generar un PDF con módulos variables.
+> - **⏳ Falta B3 — Infra vs Equipamiento:** flag por pieza (infra/equipamiento) + **BOM en 2 secciones**, default según el rubro de Costos (decidido con Fede). **Definir antes de construir: qué rubros de Costos cuentan como "infraestructura".**
+> - **A confirmar al verificar el PDF:** (a) ¿quiere la **lista de equipamiento** en un rincón? (la saqué para igualar los planos reales; ver mockup); (b) afinar mm de carátula/cotas/rótulos si algo está corrido.
 
 - **Dos modos:** 🏗️ Stand OCTEXA (topología centro/esquina/península/isla + grilla 990/495 + columnas en los **nodos de las paredes** + paredes) · 🪑 Área libre (m, para alquiler de mobiliario). m² **nominal** (1 módulo = 1 m → 6×3 = 18 m²).
 - **Colocar/mover** con snap (495 OCTEXA / 250 área), **redimensionar arrastrando** un handle (esquina inf-der; re-render al soltar para que el glyph escale).
