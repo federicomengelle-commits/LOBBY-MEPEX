@@ -16,6 +16,7 @@ const ConformePDF = {
 
     _logoDataUrl: null,
     _logoFormat: 'PNG',
+    _logoRatio: 0.16, // alto/ancho real del logo (2926×466) — para no estirarlo
 
     _MARGIN: 18,
     _PAGE_W: 210,
@@ -40,6 +41,7 @@ const ConformePDF = {
             const scale = Math.min(1, maxW / img.naturalWidth);
             const w = Math.round(img.naturalWidth * scale);
             const h = Math.round(img.naturalHeight * scale);
+            this._logoRatio = img.naturalHeight / img.naturalWidth;
             const canvas = document.createElement('canvas');
             canvas.width = w; canvas.height = h;
             const ctx = canvas.getContext('2d');
@@ -85,7 +87,10 @@ const ConformePDF = {
 
         // ─── Header ───
         if (this._logoDataUrl) {
-            try { doc.addImage(this._logoDataUrl, this._logoFormat || 'JPEG', MARGIN, y, 45, 14); }
+            try {
+                const logoW = 46, logoH = logoW * (this._logoRatio || 0.16);
+                doc.addImage(this._logoDataUrl, this._logoFormat || 'JPEG', MARGIN, y + 3, logoW, logoH);
+            }
             catch (e) { console.warn('[ConformePDF] addImage logo failed:', e.message); }
         } else {
             doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TURQUESA);

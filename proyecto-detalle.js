@@ -1326,7 +1326,7 @@ const ProyectoDetalle = {
                         <span class="pjd-conf-meta">${nItems} ítem${nItems === 1 ? '' : 's'} · ${this._fmtDate(c.firmado_at)}</span>
                     </div>
                     <div class="pjd-conf-actions">
-                        <button class="pjd-btn-mini" data-conf-pdf="${c.id}">📄 Acta</button>
+                        <button class="pjd-btn-mini" data-conf-pdf="${c.id}">📄 Ver acta</button>
                         ${this._isAdminLevel ? `<button class="pjd-btn-mini danger" data-conf-del="${c.id}">Eliminar</button>` : ''}
                     </div>
                 </li>`;
@@ -1350,7 +1350,7 @@ const ProyectoDetalle = {
 
     _attachEntregaEvents() {
         document.getElementById('pjdConfNuevo')?.addEventListener('click', () => this._openNuevoConformeModal());
-        document.querySelectorAll('[data-conf-pdf]').forEach(b => b.addEventListener('click', () => this._descargarConforme(b.dataset.confPdf)));
+        document.querySelectorAll('[data-conf-pdf]').forEach(b => b.addEventListener('click', () => this._verConforme(b.dataset.confPdf)));
         document.querySelectorAll('[data-conf-del]').forEach(b => b.addEventListener('click', () => this._eliminarConforme(b.dataset.confDel)));
     },
 
@@ -1461,7 +1461,7 @@ const ProyectoDetalle = {
                 if (!row) throw new Error('createConforme devolvió null');
                 Toast.success('Entrega firmada');
                 Modal.close(instance.id);
-                await this._descargarConformeData(row);
+                await this._verConformeData(row);
                 await this._renderTabContent();
             } catch (e) {
                 console.warn('[ProyectoDetalle] Error creando conforme:', e.message);
@@ -1525,6 +1525,41 @@ const ProyectoDetalle = {
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 4000);
         Toast.success('Acta generada');
+    },
+
+    // Visor del acta — la muestra en un modal (iframe) en vez de descargarla;
+    // el botón "Descargar PDF" adentro la baja si hace falta.
+    async _verConforme(id) {
+        const c = (this._conformes || []).find(x => String(x.id) === String(id));
+        if (!c) { Toast.error('No se encontró el acta'); return; }
+        await this._verConformeData(c);
+    },
+
+    async _verConformeData(c) {
+        if (typeof ConformePDF === 'undefined') { Toast.error('Generador de PDF no disponible'); return; }
+        Toast.info('Generando acta…');
+        const p = this._project || {};
+        const blob = await ConformePDF.generate({
+            proyecto: { nombre: p.nombre, cliente: p.cliente?.nombre_empresa, evento: p.evento?.nombre },
+            conforme: c,
+        });
+        if (!blob) { Toast.error('No se pudo generar el acta'); return; }
+        const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x';
+        const fecha = (c.firmado_at ? new Date(c.firmado_at) : new Date()).toISOString().split('T')[0];
+        const dlName = `MEPEX_CONFORME_${slug(p.nombre)}_${fecha}.pdf`;
+        const url = URL.createObjectURL(blob);
+        const inst = Modal.open({
+            title: 'Acta de entrega',
+            size: 'lg',
+            body: `<iframe src="${url}" style="width:100%;height:72vh;border:1px solid #2a2a2a;border-radius:6px;background:#fff;display:block;" title="Acta de entrega"></iframe>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cerrar</button><button class="btn btn-primary" id="pjdActaDl">⬇ Descargar PDF</button>`,
+        });
+        inst.overlay.querySelector('#pjdActaDl')?.addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.href = url; a.download = dlName;
+            document.body.appendChild(a); a.click(); a.remove();
+        });
+        setTimeout(() => URL.revokeObjectURL(url), 180000);
     },
 
     async _eliminarConforme(id) {
