@@ -11,7 +11,8 @@
 
    API:
      PlanoPDF.generate({
-       nombre, cliente, modo:'octexa'|'area', tipoLabel, m2, dimsLabel,
+       nombre, cliente, lote, vista:'paneleado'|'lineas',
+       modo:'octexa'|'area', tipoLabel, m2, dimsLabel,
        footprint:{wMM,dMM}, wNom, dNom, ejeMM, modulos:{f,d}|null,
        walls:['back'|'front'|'left'|'right'...], columns:[{x,y}],
        zonas:[{label,color,x,y,w,d,rot}],
@@ -96,24 +97,25 @@ const PlanoPDF = {
         for (let x = stepX; x < Wmm - 1; x += stepX) doc.line(mapX(x), oy, mapX(x), oy + planH);
         for (let y = stepY; y < Dmm - 1; y += stepY) doc.line(ox, mapY(y), ox + planW, mapY(y));
 
-        // contorno del footprint
-        doc.setDrawColor(...NAVY); doc.setLineWidth(0.25); doc.rect(ox, oy, planW, planH, 'S');
+        // contorno del footprint (en "líneas" es la forma protagonista, un poco más marcado)
+        const paneleado = o.vista !== 'lineas';
+        doc.setDrawColor(...NAVY); doc.setLineWidth(paneleado ? 0.25 : 0.6); doc.rect(ox, oy, planW, planH, 'S');
 
-        // paredes cerradas en doble línea navy (espesor)
-        const walls = o.walls || [];
-        const wall = (x1, y1, x2, y2) => {
-            doc.setDrawColor(...NAVY); doc.setLineWidth(0.8); doc.line(x1, y1, x2, y2);
-        };
-        if (walls.includes('back')) wall(ox, oy, ox + planW, oy);
-        if (walls.includes('front')) wall(ox, oy + planH, ox + planW, oy + planH);
-        if (walls.includes('left')) wall(ox, oy, ox, oy + planH);
-        if (walls.includes('right')) wall(ox + planW, oy, ox + planW, oy + planH);
+        if (paneleado) {
+            // paredes cerradas en doble línea navy (espesor)
+            const walls = o.walls || [];
+            const wall = (x1, y1, x2, y2) => { doc.setDrawColor(...NAVY); doc.setLineWidth(0.8); doc.line(x1, y1, x2, y2); };
+            if (walls.includes('back')) wall(ox, oy, ox + planW, oy);
+            if (walls.includes('front')) wall(ox, oy + planH, ox + planW, oy + planH);
+            if (walls.includes('left')) wall(ox, oy, ox, oy + planH);
+            if (walls.includes('right')) wall(ox + planW, oy, ox + planW, oy + planH);
 
-        // columnas = círculos huecos navy en los nodos
-        (o.columns || []).forEach(c => {
-            doc.setDrawColor(...NAVY); doc.setFillColor(255, 255, 255); doc.setLineWidth(0.35);
-            doc.circle(mapX(c.x), mapY(c.y), Math.max(0.7, 40 * scale), 'FD');
-        });
+            // columnas = círculos huecos navy en los nodos
+            (o.columns || []).forEach(c => {
+                doc.setDrawColor(...NAVY); doc.setFillColor(255, 255, 255); doc.setLineWidth(0.35);
+                doc.circle(mapX(c.x), mapY(c.y), Math.max(0.7, 40 * scale), 'FD');
+            });
+        }
 
         // ─── zonas (bloques translúcidos + label) ───
         doc.setFontSize(7.5);
@@ -161,17 +163,20 @@ const PlanoPDF = {
         });
 
         // ─── cotas ───
-        // módulo (azul) en el borde superior — solo OCTEXA
-        if (o.modulos && o.modulos.f) this._dimModulos(doc, ox, oy - 5, scale, o.modulos.f, eje, BLUE);
+        // módulo (azul) en el borde superior — solo OCTEXA paneleado
+        if (o.modulos && o.modulos.f && paneleado) this._dimModulos(doc, ox, oy - 5, scale, o.modulos.f, eje, BLUE);
         // overall (rosa): ancho abajo + fondo a la derecha, en metros NOMINALES
         const wNom = (o.wNom != null) ? o.wNom : Wmm / 1000, dNom = (o.dNom != null) ? o.dNom : Dmm / 1000;
         this._dimH(doc, ox, ox + planW, oy + planH + 7, this._fmtM(wNom), PINK);
         this._dimV(doc, oy, oy + planH, ox + planW + 7, this._fmtM(dNom), PINK);
 
-        // ─── carátula abajo-izquierda ───
-        doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(13);
-        if (o.cliente) doc.text(`CLIENTE: ${o.cliente}`, M + 2, PH - M - 8);
-        doc.text(`PROYECTO: ${o.nombre || '—'}`, M + 2, PH - M - 1.5);
+        // ─── carátula abajo-izquierda (CLIENTE / PROYECTO / LOTE, apiladas) ───
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(12);
+        const carat = [];
+        if (o.cliente) carat.push(`CLIENTE: ${o.cliente}`);
+        carat.push(`PROYECTO: ${o.nombre || '—'}`);
+        if (o.lote) carat.push(`LOTE: ${o.lote}`);
+        carat.forEach((line, i) => doc.text(line, M + 2, PH - M - 1.5 - (carat.length - 1 - i) * 6));
 
         // footer discreto
         doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(...MUT);

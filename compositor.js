@@ -44,11 +44,13 @@ const CompositorModule = {
         modo: 'octexa',           // 'octexa' | 'area'
         nombre: '',
         cliente: '',              // para la carátula del plano PDF
+        lote: '',                 // nº de lote / ubicación en el predio (carátula)
         tipo: 'isla',
         frente: 6, fondo: 3,      // módulos = m nominal (OCTEXA)
         areaW: 5, areaD: 4,       // metros (área libre)
         altura: 2400,
         piso: 'Alfombra nylon',
+        vista: 'paneleado',       // 'paneleado' (producción) | 'lineas' (distribuir) — toggle
         standRot: 0,              // 0/90/180/270 — solo para qué lados tienen pared (OCTEXA)
         placed: [],               // {uid,catId,nombre,precio,x,y,w,d,rot}
     },
@@ -88,6 +90,10 @@ const CompositorModule = {
                         <label>Cliente (carátula)</label>
                         <input type="text" id="cmpCliente" value="${escAttr(this._state.cliente)}" placeholder="Ej. Cedent">
                     </div>
+                    <div class="cmp-ctl cmp-ctl-num">
+                        <label>Lote</label>
+                        <input type="text" id="cmpLote" value="${escAttr(this._state.lote)}" placeholder="142">
+                    </div>
                     ${this._controlsHTML()}
                     <div class="cmp-dims" id="cmpDims"></div>
                 </div>
@@ -97,6 +103,11 @@ const CompositorModule = {
                         <div class="cmp-canvas-tools">
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpUndo" title="Deshacer (Ctrl+Z)" disabled>↶</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRedo" title="Rehacer (Ctrl+Y)" disabled>↷</button>
+                            <span class="cmp-tool-sep"></span>
+                            <span class="cmp-vista-toggle" title="Cómo se dibuja el stand">
+                                <button class="cmp-vista-seg ${this._state.vista === 'lineas' ? 'active' : ''}" data-vista="lineas">Líneas</button>
+                                <button class="cmp-vista-seg ${this._state.vista !== 'lineas' ? 'active' : ''}" data-vista="paneleado">Paneleado</button>
+                            </span>
                             <span class="cmp-tool-sep"></span>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpTexto" title="Agregar etiqueta de texto">＋ Texto</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotStand">⟳ Girar todo 90°</button>
@@ -151,6 +162,13 @@ const CompositorModule = {
         }));
         document.getElementById('cmpNombre')?.addEventListener('input', (e) => { this._state.nombre = e.target.value; });
         document.getElementById('cmpCliente')?.addEventListener('input', (e) => { this._state.cliente = e.target.value; });
+        document.getElementById('cmpLote')?.addEventListener('input', (e) => { this._state.lote = e.target.value; });
+        document.querySelectorAll('.cmp-vista-seg').forEach(b => b.addEventListener('click', () => {
+            const v = b.dataset.vista; if (v === this._state.vista) return;
+            this._state.vista = v;
+            document.querySelectorAll('.cmp-vista-seg').forEach(x => x.classList.toggle('active', x.dataset.vista === v));
+            this._renderPlanta();
+        }));
         const reConfig = () => { this._readConfig(); this._clampAll(); this._renderPlanta(); this._renderEstructura(); this._renderBOM(); };
         ['cmpTipo', 'cmpAltura', 'cmpPiso'].forEach(id => document.getElementById(id)?.addEventListener('change', reConfig));
         ['cmpFrente', 'cmpFondo', 'cmpAreaW', 'cmpAreaD'].forEach(id => document.getElementById(id)?.addEventListener('input', reConfig));
@@ -237,6 +255,11 @@ const CompositorModule = {
             for (let x = 1000; x < Wmm; x += 1000) grid += `<line x1="${x}" y1="0" x2="${x}" y2="${Dmm}" class="cmp-grid"/>`;
             for (let y = 1000; y < Dmm; y += 1000) grid += `<line x1="0" y1="${y}" x2="${Wmm}" y2="${y}" class="cmp-grid"/>`;
             bordes = `<rect x="0" y="0" width="${Wmm}" height="${Dmm}" class="cmp-area-edge"/>`;
+        } else if (this._state.vista === 'lineas') {
+            // vista "líneas": solo el contorno de la forma (para distribuir) — sin paneles ni columnas
+            for (let i = 0; i <= this._state.frente; i++) grid += `<line x1="${i * O.ejeMM}" y1="0" x2="${i * O.ejeMM}" y2="${Dmm}" class="cmp-grid"/>`;
+            for (let j = 0; j <= this._state.fondo; j++) grid += `<line x1="0" y1="${j * O.ejeMM}" x2="${Wmm}" y2="${j * O.ejeMM}" class="cmp-grid"/>`;
+            bordes = `<rect x="0" y="0" width="${Wmm}" height="${Dmm}" class="cmp-contorno"/>`;
         } else {
             for (let i = 0; i <= this._state.frente; i++) grid += `<line x1="${i * O.ejeMM}" y1="0" x2="${i * O.ejeMM}" y2="${Dmm}" class="cmp-grid"/>`;
             for (let j = 0; j <= this._state.fondo; j++) grid += `<line x1="0" y1="${j * O.ejeMM}" x2="${Wmm}" y2="${j * O.ejeMM}" class="cmp-grid"/>`;
@@ -818,6 +841,8 @@ const CompositorModule = {
             const o = {
                 nombre: this._state.nombre || 'Plano sin título',
                 cliente: this._state.cliente || '',
+                lote: this._state.lote || '',
+                vista: this._state.vista,
                 modo: this._state.modo,
                 tipoLabel: this._isArea() ? 'Área libre' : this.OCTEXA.tipos[this._state.tipo].label,
                 m2: this._m2(),
@@ -976,11 +1001,16 @@ const CompositorModule = {
             .cmp-mini:hover{border-color:var(--primary);color:var(--primary)}
             .cmp-mini-del:hover{border-color:var(--color-error);color:var(--color-error)}
             .cmp-tool-sep{width:1px;height:16px;background:var(--border);display:inline-block;margin:0 3px}
+            .cmp-vista-toggle{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+            .cmp-vista-seg{background:#1A1A1A;border:none;color:var(--text-muted);padding:5px 11px;font-size:.74rem;cursor:pointer;transition:all 150ms}
+            .cmp-vista-seg:hover{color:var(--text-primary)}
+            .cmp-vista-seg.active{background:rgba(0,169,193,.12);color:var(--primary)}
             .cmp-sel-rot{font-size:.72rem;color:var(--text-muted);font-family:var(--font-mono)}
             .cmp-planta{background:#0a0a0a;border:1px solid var(--border);border-radius:10px;padding:10px;min-height:320px}
             .cmp-svg{width:100%;height:auto;max-height:460px;display:block;touch-action:none}
             .cmp-foot{fill:rgba(0,169,193,.04);stroke:none}
             .cmp-area-edge{fill:rgba(155,125,255,.05);stroke:#9B7DFF;stroke-width:30;stroke-dasharray:0}
+            .cmp-contorno{fill:none;stroke:rgba(0,169,193,.55);stroke-width:28}
             .cmp-grid{stroke:#1e1e1e;stroke-width:6}
             .cmp-wall{stroke:#F28D15;stroke-width:60;stroke-linecap:round}
             .cmp-open{stroke:rgba(0,169,193,.55);stroke-width:24;stroke-dasharray:90 70;stroke-linecap:round}
