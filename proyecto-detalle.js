@@ -206,12 +206,10 @@ const ProyectoDetalle = {
                         <div class="pjd-header-left">
                             <h1 class="pjd-title">${this._esc(p.nombre || 'Sin nombre')}</h1>
                             <div class="pjd-header-badges">
-                                <span class="pjd-status-badge" style="--status-color: ${statusColor}">${this._esc(statusLabel)}</span>
                                 <span class="pjd-origin-badge ${isCRM ? 'crm' : 'manual'}" title="Origen del proyecto">
                                     ${isCRM ? '⚡ CRM' : '✋ Manual'}
                                 </span>
                                 ${evento ? `<a href="#eventos" class="pjd-event-pill" title="Ver evento">📅 ${this._esc(evento.nombre || '')}</a>` : ''}
-                                ${this._renderCicloBadge(p)}
                             </div>
                         </div>
                         <div class="pjd-header-right">
@@ -256,6 +254,8 @@ const ProyectoDetalle = {
                             ` : ''}
                         </div>
                     </div>
+
+                    ${this._renderEstadoHilo(p)}
 
                     <div class="pjd-tabs-bar">
                         ${this._tabs.map(t => `
@@ -1801,6 +1801,50 @@ const ProyectoDetalle = {
 
     _getStatusOption(value) { return this._statusOptions.find(s => s.value === value); },
 
+    // "Un solo hilo": stepper del ciclo de vida del proyecto (estado) con el ciclo del
+    // taller (estado_taller) anidado como sub-progreso de la fase "En taller".
+    _renderEstadoHilo(p) {
+        const flujo = ['por_iniciar', 'en_proceso', 'en_taller', 'finalizado'];
+        const estado = p.estado || 'por_iniciar';
+        if (estado === 'rechazado') {
+            return `<div class="pjd-estado-hilo"><div class="pjd-hilo-rechazado">✕ Proyecto rechazado</div></div>`;
+        }
+        const cur = flujo.indexOf(estado);
+        const steps = flujo.map((s, i) => {
+            const opt = this._getStatusOption(s) || { label: s, color: '#888' };
+            const st = i < cur ? 'done' : (i === cur ? 'active' : 'todo');
+            const barColor = st === 'done' ? '#00CC88' : (st === 'active' ? opt.color : '#2a2a2a');
+            const txtColor = st === 'done' ? '#00CC88' : (st === 'active' ? opt.color : '#555');
+            const ic = st === 'done' ? '✓ ' : (s === 'en_taller' && st === 'active' ? '🔨 ' : '');
+            return `<div class="pjd-step pjd-step--${st}" style="--sc:${barColor}">
+                <div class="pjd-step-bar"></div>
+                <div class="pjd-step-lbl" style="color:${txtColor}">${ic}${this._esc(opt.label)}</div>
+            </div>`;
+        }).join('');
+        const sub = estado === 'en_taller' ? this._renderCicloSub(p) : '';
+        return `<div class="pjd-estado-hilo"><div class="pjd-stepper">${steps}</div>${sub}</div>`;
+    },
+
+    // Sub-progreso del taller (solo visible cuando el proyecto está "En taller").
+    _renderCicloSub(p) {
+        const orden = ['pendiente', 'en_armado', 'listo', 'despachado', 'cerrado'];
+        const et = p.estado_taller || 'pendiente';
+        const cfg = this._cicloEstados[et] || this._cicloEstados.pendiente;
+        const pct = typeof p.completitud_pct === 'number' ? p.completitud_pct : cfg.pct;
+        const cur = orden.indexOf(et);
+        const steps = orden.map((e, i) => {
+            const c = this._cicloEstados[e];
+            const active = i === cur;
+            return `<span class="pjd-cs-step ${active ? 'active' : ''}"${active ? ` style="color:${c.color}"` : ''}>${active ? '● ' : ''}${c.label}</span>`;
+        }).join('<span class="pjd-cs-sep">›</span>');
+        return `<div class="pjd-ciclo-sub">
+            <span class="pjd-cs-lbl">Ciclo del taller</span>
+            <div class="pjd-cs-steps">${steps}</div>
+            <span class="pjd-cs-bar"><span style="width:${pct}%;background:${cfg.color}"></span></span>
+            <span class="pjd-cs-pct" style="color:${cfg.color}">${pct}%</span>
+        </div>`;
+    },
+
     // Renderiza el badge "ciclo del proyecto" usando estado_taller + completitud_pct
     _renderCicloBadge(p) {
         const estadoTaller = p.estado_taller || 'pendiente';
@@ -1982,6 +2026,25 @@ const ProyectoDetalle = {
                 background: #1a1a1a; border-radius: 2px; overflow: hidden;
             }
             .pjd-ciclo-fill { display: block; height: 100%; transition: width 250ms ease; }
+
+            /* Estado — un solo hilo (stepper del ciclo de vida + ciclo del taller anidado) */
+            .pjd-estado-hilo { margin-top: 12px; }
+            .pjd-stepper { display: flex; align-items: flex-start; gap: 0; }
+            .pjd-step { flex: 1; text-align: center; min-width: 0; }
+            .pjd-step--active { flex: 1.4; }
+            .pjd-step-bar { height: 3px; border-radius: 2px; background: var(--sc, #2a2a2a); }
+            .pjd-step--active .pjd-step-bar { box-shadow: 0 0 8px color-mix(in srgb, var(--sc) 55%, transparent); }
+            .pjd-step-lbl { font-size: 0.72rem; margin-top: 5px; }
+            .pjd-step--active .pjd-step-lbl { font-weight: 700; }
+            .pjd-hilo-rechazado { font-size: 0.8rem; font-weight: 700; color: #ff4444; background: rgba(255,68,68,0.08); border: 1px solid rgba(255,68,68,0.3); border-radius: 6px; padding: 8px 14px; display: inline-block; }
+            .pjd-ciclo-sub { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding: 8px 12px; background: rgba(0,169,193,0.05); border: 1px solid rgba(0,169,193,0.18); border-left: 3px solid #00A9C1; border-radius: 0 8px 8px 0; }
+            .pjd-cs-lbl { font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5BC4D4; }
+            .pjd-cs-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.72rem; color: #555; }
+            .pjd-cs-step.active { font-weight: 700; }
+            .pjd-cs-sep { color: #333; }
+            .pjd-cs-bar { flex: 1; min-width: 60px; height: 5px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+            .pjd-cs-bar > span { display: block; height: 100%; transition: width 250ms ease; }
+            .pjd-cs-pct { font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.74rem; font-weight: 700; }
 
             .pjd-header-right {
                 display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
