@@ -523,7 +523,13 @@ El vínculo **proyecto→perfil ya existe** (no hay que inventar): `proyectos.re
 
 **Track CAD / Diseño 3D** *(Meli/Fede):* BricsCAD Mechanical (planos VIEWBASE/VIEWSECTION) + 3dsMax (renders). Estandarizar biblioteca OCTEXA (codigo_pieza, categoria, dimensiones, es_grafica) alineada a Supabase. Scripts LISP/MaxScript → v1 exportan BOM a CSV (carga manual); API REST cuando madure. Handoff: `MEPEX_Handoff_Diseno`.
 
-**⭐ Configurador de stands 2D** *(sube de relevancia):* venta rápida SIN diseñador ("lo hace cualquiera"). Prediseñados + brand kit → visual brandeado. ImageMagick spike hecho. **⚡ Mismo motor que las gráficas de Fase 6.** A profundizar.
+**⭐ Configurador / Compositor de stands** (`#stands` → tab Compositor) *(venta rápida SIN diseñador, "lo hace cualquiera")* — **CONSTRUIDO + PUSHEADO 2026-06-27** (`compositor.js?v=15`/`plano-pdf.js?v=7`, commits hasta `cde391d`): texto+alinear · agrupar/multi-selección (distribuir/alinear) · **plano PDF con el estilo de los planos reales** (A.Laciar/Cedent → `docs/octexa/planos-ref/ESTILO-plano-pdf.md`) · lote + toggle **Líneas/Paneleado** · **paneles editables por lado** + **módulos variables 950/455/660** · **infra vs equipamiento** (BOM en 2 secciones). Smoke 157/157. Detalle: `docs/octexa/handoff-compositor-proxima-sesion.md` (+ `SUPERPLAN-octexa.md`). **Falta:**
+- ⏳ **Verificación visual de Fede:** generar un plano PDF real y comparar; probar toggle / clic en lados / clic en módulos.
+- **Parte A para Guardar/Cotizar:** correr `sql/stands_predisenos.sql` (RLS `proyecto_componentes`) + crear bucket privado `stands`. (El plano y la edición NO lo necesitan.)
+- **Pulidos post-verificación:** ¿lista de equipamiento (infra/equip) en un rincón del PDF? · afinar mm de carátula/cotas/rótulos.
+- **§2.4** plantillas base tuneables + arranque desde brief (requiere ALTER `proyectos.compositor_escena JSONB`).
+- **Columnas OCTEXA distintas** (doble / esquinera / media) — Fede: "más adelante".
+- **Importador 3ds Max** (CSV por MaxScript → match por código a `catalogo_items` → BOM) = la otra pata (ver Track CAD arriba). **⚡ Mismo motor de gráficas que Fase 6.**
 
 ---
 
