@@ -190,13 +190,12 @@ const App = {
     _renderSidebar(user) {
         const actions = Data.getQuickActionsForRole(user.role);
         const currentHash = Router.getHash();
-        const allowed = Data.rolePermissions[user.role] || [];
         const sections = this._buildSidebarSections();
 
-        const filterItems = (items) => items.filter(item => {
-            if (item.route === 'lobby' || item.route === 'tareas' || item.route === 'calendario' || item.route === 'notificaciones') return true;
-            return allowed.includes(item.route);
-        });
+        // El sidebar muestra SÓLO lo que el usuario puede navegar (mismo criterio que
+        // los guards de ruta: permiso del módulo + adminOnly/superadminOnly). Así la
+        // matriz del Panel (vía permisos del usuario) gobierna también la visibilidad.
+        const filterItems = (items) => items.filter(item => Router.canAccess(item.route));
 
         // Build categories HTML
         const categoriesHtml = sections.map(section => {

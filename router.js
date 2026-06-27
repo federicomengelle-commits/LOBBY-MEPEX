@@ -128,6 +128,19 @@ const Router = {
         this.handleRoute();
     },
 
+    // ¿El usuario actual puede NAVEGAR a esta ruta? Mismo criterio que los guards
+    // de handleRoute (superadminOnly / adminOnly / permiso del módulo). Lo usa el
+    // sidebar para mostrar SÓLO lo accesible → la matriz del Panel gobierna también
+    // la visibilidad, sin drift entre lo que se ve y lo que se puede abrir.
+    canAccess(routeKey) {
+        const route = this.routes && this.routes[routeKey];
+        if (!route) return true; // rutas sin gate (lobby / tareas / calendario) → visibles
+        if (route.superadminOnly && !Auth.isSuperAdmin()) return false;
+        if (route.adminOnly && !Auth.isAdminLevel()) return false;
+        if (route.module && !Auth.hasAccess(route.module)) return false;
+        return true;
+    },
+
     handleRoute() {
         if (!this._ready) return; // wait for session restore
 
