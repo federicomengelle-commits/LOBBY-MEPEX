@@ -24,6 +24,7 @@ const ProyectoDetalle = {
     _cotNumero: null,
     _novedades: [],
     _checklist: [], // items de taller_proyecto_checklist (tab Producción)
+    _fotosCache: null, // fotos del armado (Storage), cacheadas para no re-fetchear por tilde
 
     _tabs: [
         { key: 'resumen',     label: 'Resumen',           icon: '📋' },
@@ -88,6 +89,7 @@ const ProyectoDetalle = {
         this._isSuperAdmin = Auth.isSuperAdmin?.() || false;
         this._isTaller = (user.role === 'taller');
         this._projectId = id;
+        this._fotosCache = null;
         // Soporta deep-link tipo #proyectos/<id>?tab=novedades
         this._activeTab = this._readInitialTab() || 'resumen';
 
@@ -757,11 +759,13 @@ const ProyectoDetalle = {
                     ? '<p class="pjd-section-empty">No hay pasos de producción cargados.</p>'
                     : `<div class="pjd-prod-grid">${items}</div>`}
                 ${canEdit ? '' : '<p class="pjd-muted pjd-prod-ro">Solo lectura.</p>'}
+                ${this._fotosSectionHTML()}
             </div>
         `;
     },
 
     _attachProduccionEvents() {
+        this._ensureFotos(); // fuera del guard de RO: el taller (RO) igual sube fotos
         const container = document.getElementById('pjdContent');
         if (!container) return;
         if (this._isRO) return;
@@ -796,6 +800,147 @@ const ProyectoDetalle = {
         if (container) {
             container.innerHTML = this._renderProduccionContent();
             this._attachProduccionEvents();
+        }
+    },
+
+    // ═══════════════════════════════════════════
+    //  FOTOS DEL ARMADO (dentro de Producción)
+    //  Bucket privado `proyecto-fotos`, path <proyecto_id>/<archivo>.jpg.
+    //  Subir = cualquiera que ve Producción (incl. taller, el fotógrafo).
+    //  Borrar = admin/PM. Cache en _fotosCache (no re-fetch por cada tilde).
+    // ═══════════════════════════════════════════
+
+    _fotosSectionHTML() {
+        const fotos = this._fotosCache;
+        const canDel = this._isAdminLevel || this._userRole === 'pm';
+        let inner;
+        if (fotos == null) {
+            inner = '<div class="pjd-fotos-loading">Cargando fotos…</div>';
+        } else if (!fotos.length) {
+            inner = '<div class="pjd-fotos-empty">Sin fotos todavía. Sacale una al stand armado.</div>';
+        } else {
+            inner = `<div class="pjd-fotos-grid">${fotos.map(f => `
+                <div class="pjd-foto">
+                    <img src="${this._escAttr(f.url)}" alt="Foto del armado" loading="lazy">
+                    ${canDel ? `<button class="pjd-foto-del" data-foto-del="${this._escAttr(f.path)}" title="Borrar">×</button>` : ''}
+                </div>`).join('')}</div>`;
+        }
+        return `
+            <div class="pjd-fotos-section" id="pjdFotosWrap">
+                <div class="pjd-fotos-head">
+                    <span class="pjd-prod-h-title">Fotos del armado</span>
+                    <label class="pjd-foto-add">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                        Sacar / subir foto
+                        <input type="file" accept="image/*" capture="environment" id="pjdFotoInput" multiple>
+                    </label>
+                </div>
+                ${inner}
+            </div>`;
+    },
+
+    _ensureFotos() {
+        this._attachFotosWiring();
+        if (this._fotosCache == null) this._loadFotos(false);
+    },
+
+    async _loadFotos(force) {
+        if (this._fotosCache != null && !force) { this._attachFotosWiring(); return; }
+        try {
+            const { data: files, error } = await supabaseClient.storage.from('proyecto-fotos')
+                .list(this._projectId, { sortBy: { column: 'created_at', order: 'desc' }, limit: 100 });
+            if (error) throw error;
+            const valid = (files || []).filter(f => f.name && !f.name.startsWith('.'));
+            let fotos = [];
+            if (valid.length) {
+                const paths = valid.map(f => `${this._projectId}/${f.name}`);
+                const { data: signed } = await supabaseClient.storage.from('proyecto-fotos').createSignedUrls(paths, 3600);
+                fotos = (signed || []).map((s, i) => ({ path: paths[i], url: s.signedUrl })).filter(f => f.url);
+            }
+            this._fotosCache = fotos;
+        } catch (e) {
+            // El bucket puede no existir todavía (SQL pendiente) → degradar limpio.
+            console.warn('[ProyectoDetalle] Fotos no disponibles:', e.message);
+            this._fotosCache = [];
+        }
+        const wrap = document.getElementById('pjdFotosWrap');
+        if (wrap) { wrap.outerHTML = this._fotosSectionHTML(); this._attachFotosWiring(); }
+    },
+
+    _attachFotosWiring() {
+        const input = document.getElementById('pjdFotoInput');
+        if (input && !input._wired) {
+            input._wired = true;
+            input.addEventListener('change', (e) => { const fs = [...e.target.files]; e.target.value = ''; this._uploadFotos(fs); });
+        }
+        document.querySelectorAll('[data-foto-del]').forEach(b => {
+            if (b._wired) return; b._wired = true;
+            b.addEventListener('click', (ev) => { ev.stopPropagation(); this._deleteFoto(b.dataset.fotoDel); });
+        });
+        document.querySelectorAll('.pjd-foto img').forEach(img => {
+            if (img._wired) return; img._wired = true;
+            img.addEventListener('click', () => this._viewFoto(img.src));
+        });
+    },
+
+    async _uploadFotos(files) {
+        const imgs = (files || []).filter(f => /^image\//.test(f.type));
+        if (!imgs.length) return;
+        Toast.info(`Subiendo ${imgs.length} foto${imgs.length === 1 ? '' : 's'}…`);
+        let ok = 0;
+        for (const file of imgs) {
+            try {
+                const blob = await this._compressImage(file);
+                const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+                const { error } = await supabaseClient.storage.from('proyecto-fotos')
+                    .upload(`${this._projectId}/${name}`, blob, { contentType: 'image/jpeg', upsert: false });
+                if (error) throw error;
+                ok++;
+            } catch (e) { console.warn('[ProyectoDetalle] Error subiendo foto:', e.message); }
+        }
+        if (ok) Toast.success(`${ok} foto${ok === 1 ? '' : 's'} subida${ok === 1 ? '' : 's'}`);
+        else Toast.error('No se pudieron subir las fotos (¿bucket creado?)');
+        await this._loadFotos(true);
+    },
+
+    _compressImage(file) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const maxDim = 1600;
+                let w = img.naturalWidth, h = img.naturalHeight;
+                const scale = Math.min(1, maxDim / Math.max(w, h));
+                w = Math.round(w * scale); h = Math.round(h * scale);
+                const canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                canvas.toBlob((blob) => { URL.revokeObjectURL(img.src); resolve(blob || file); }, 'image/jpeg', 0.82);
+            };
+            img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
+            img.src = URL.createObjectURL(file);
+        });
+    },
+
+    _viewFoto(url) {
+        Modal.open({
+            title: 'Foto del armado',
+            body: `<div style="text-align:center;"><img src="${this._escAttr(url)}" style="max-width:100%;max-height:74vh;border-radius:6px;display:block;margin:0 auto;"></div>`,
+            size: 'lg',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cerrar</button>`,
+        });
+    },
+
+    async _deleteFoto(path) {
+        const ok = await Modal.confirm({ title: 'Borrar foto', message: '¿Borrar esta foto del armado?', danger: true });
+        if (!ok) return;
+        try {
+            const { error } = await supabaseClient.storage.from('proyecto-fotos').remove([path]);
+            if (error) throw error;
+            Toast.success('Foto borrada');
+            await this._loadFotos(true);
+        } catch (e) {
+            console.warn('[ProyectoDetalle] Error borrando foto:', e.message);
+            Toast.error('No se pudo borrar la foto');
         }
     },
 
@@ -2861,6 +3006,28 @@ const ProyectoDetalle = {
             }
             .pjd-dup-note strong { color: #cdd; font-weight: 700; }
             .pjd-dup-note-ic { color: #00A9C1; font-size: 0.9rem; }
+
+            /* Fotos del armado (en Producción) */
+            .pjd-fotos-section { margin-top: 22px; border-top: 1px solid #1c1c1c; padding-top: 16px; }
+            .pjd-fotos-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+            .pjd-foto-add {
+                display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+                font-family: var(--font-mono); font-size: 0.74rem; font-weight: 700;
+                color: #0a0a0a; background: #00A9C1; padding: 8px 14px; border-radius: 6px;
+                transition: background 200ms ease;
+            }
+            .pjd-foto-add:hover { background: #00bcd6; }
+            .pjd-foto-add input { display: none; }
+            .pjd-fotos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+            .pjd-foto { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; border: 1px solid #2a2a2a; background: #1a1a1a; }
+            .pjd-foto img { width: 100%; height: 100%; object-fit: cover; cursor: zoom-in; display: block; }
+            .pjd-foto-del {
+                position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+                border-radius: 50%; border: none; background: rgba(0,0,0,.6); color: #fff;
+                font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            }
+            .pjd-foto-del:hover { background: #ff4444; }
+            .pjd-fotos-empty, .pjd-fotos-loading { font-family: var(--font-main); font-size: 0.82rem; color: #888; padding: 6px 0; }
         `;
     },
 };
