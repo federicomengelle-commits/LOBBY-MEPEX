@@ -681,7 +681,7 @@ const StandsModule = {
                 await supabaseClient.from('proyecto_componentes').delete().eq('proyecto_id', proyectoId);
             } else {
                 payload.estado = 'activo';
-                payload.created_from = 'stands';
+                payload.created_from = 'manual';   // CHECK proyectos_created_from_check no acepta 'stands'
                 const { data: proy, error } = await supabaseClient.from('proyectos').insert(payload).select('id').single();
                 if (error) throw error;
                 proyectoId = proy.id;

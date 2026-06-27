@@ -122,15 +122,20 @@ const PlanoPDF = {
             doc.text(String(z.label || ''), mapX(cx), mapY(cy) + 1, { align: 'center' });
         });
 
-        // piezas (rectángulos rotados + label)
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
+        // piezas — dibujito real (glyph) si lo trae, sino caja
         (o.pieces || []).forEach((p, i) => {
             const cx = p.x + p.w / 2, cy = p.y + p.d / 2;
-            const corners = this._rotCorners(p.x, p.y, p.w, p.d, p.rot || 0).map(pt => [mapX(pt[0]), mapY(pt[1])]);
-            doc.setFillColor(225, 244, 247); doc.setDrawColor(...TUR); doc.setLineWidth(0.4);
-            doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'FD', true);
-            // número de referencia
-            doc.setTextColor(...TUR); doc.setFont('helvetica', 'bold');
+            const rgb = p.color ? this._hexToRgb(p.color) : TUR;
+            if (p.glyph && typeof CompositorPiezas !== 'undefined') {
+                const rad = (p.rot || 0) * Math.PI / 180, cc = Math.cos(rad), ss = Math.sin(rad), ccx = p.w / 2, ccy = p.d / 2;
+                const mapLocal = (lx, ly) => { const dx = lx - ccx, dy = ly - ccy; return [mapX(p.x + ccx + dx * cc - dy * ss), mapY(p.y + ccy + dx * ss + dy * cc)]; };
+                this._drawPrims(doc, CompositorPiezas.prims(p.glyph, p.w, p.d), mapLocal, scale, rgb);
+            } else {
+                const corners = this._rotCorners(p.x, p.y, p.w, p.d, p.rot || 0).map(pt => [mapX(pt[0]), mapY(pt[1])]);
+                doc.setFillColor(225, 244, 247); doc.setDrawColor(...TUR); doc.setLineWidth(0.4);
+                doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'FD', true);
+            }
+            doc.setTextColor(...TUR); doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
             doc.text(String(i + 1), mapX(cx), mapY(cy) + 1.2, { align: 'center' });
         });
 
@@ -200,6 +205,28 @@ const PlanoPDF = {
         const n = h.length === 3 ? h.split('').map(c => c + c).join('') : (h || '888888');
         const int = parseInt(n, 16);
         return isNaN(int) ? [136, 136, 136] : [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+    },
+    _tint(rgb) { return [Math.round(rgb[0] + (255 - rgb[0]) * 0.86), Math.round(rgb[1] + (255 - rgb[1]) * 0.86), Math.round(rgb[2] + (255 - rgb[2]) * 0.86)]; },
+    // Dibuja primitivas de un glyph (CompositorPiezas) transformadas a la página
+    _drawPrims(doc, prims, mapLocal, scale, rgb) {
+        (prims || []).forEach(pr => {
+            doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setLineWidth(0.3);
+            if (pr.t === 'rect') {
+                const c = [[pr.x, pr.y], [pr.x + pr.w, pr.y], [pr.x + pr.w, pr.y + pr.h], [pr.x, pr.y + pr.h]].map(pt => mapLocal(pt[0], pt[1]));
+                if (pr.fill) { doc.setFillColor(...this._tint(rgb)); doc.lines(this._segs(c), c[0][0], c[0][1], [1, 1], 'FD', true); }
+                else doc.lines(this._segs(c), c[0][0], c[0][1], [1, 1], 'S', true);
+            } else if (pr.t === 'circ') {
+                const cc = mapLocal(pr.cx, pr.cy);
+                if (pr.fill) { doc.setFillColor(...this._tint(rgb)); doc.circle(cc[0], cc[1], pr.r * scale, 'FD'); }
+                else doc.circle(cc[0], cc[1], pr.r * scale, 'S');
+            } else if (pr.t === 'line') {
+                const a = mapLocal(pr.x1, pr.y1), b = mapLocal(pr.x2, pr.y2); doc.line(a[0], a[1], b[0], b[1]);
+            } else if (pr.t === 'poly') {
+                const pts = pr.pts.map(pt => mapLocal(pt[0], pt[1]));
+                if (pr.fill) { doc.setFillColor(...this._tint(rgb)); doc.lines(this._segs(pts), pts[0][0], pts[0][1], [1, 1], 'FD', true); }
+                else for (let k = 1; k < pts.length; k++) doc.line(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1]);
+            }
+        });
     },
 };
 

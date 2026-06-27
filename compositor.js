@@ -228,15 +228,19 @@ const CompositorModule = {
             const sel = p.uid === this._selUid;
             const rot = p.rot ? ` rotate(${p.rot},${p.w / 2},${p.d / 2})` : '';
             const isZona = p.kind === 'zona';
-            const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${sel ? ' cmp-comp-sel' : ''}`;
-            const rectStyle = isZona ? ` style="fill:${p.color}22;stroke:${p.color}"` : '';
+            const isPieza = p.kind === 'pieza';
+            let inner;
+            if (isPieza && typeof CompositorPiezas !== 'undefined') {
+                // dibujito real + rect transparente para que toda la caja sea agarrable
+                inner = `<rect width="${p.w}" height="${p.d}" fill="transparent" class="cmp-hit"/>${CompositorPiezas.svg(p.glyph, p.w, p.d, p.color || '#00A9C1')}${sel ? `<rect width="${p.w}" height="${p.d}" class="cmp-selbox"/>` : ''}`;
+            } else {
+                const rectStyle = isZona ? ` style="fill:${p.color}22;stroke:${p.color}"` : '';
+                inner = `<rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"${rectStyle}/><text x="${p.w / 2}" y="${p.d / 2}" class="cmp-comp-label">${escHtml(this._short(p.nombre))}</text>`;
+            }
+            const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${isPieza ? ' cmp-pieza' : ''}${sel ? ' cmp-comp-sel' : ''}`;
             // handle de redimensionar (esquina inf-der) — solo en el seleccionado sin rotar
             const handle = (sel && !p.rot) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
-            return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">
-                <rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"${rectStyle}/>
-                <text x="${p.w / 2}" y="${p.d / 2}" class="cmp-comp-label">${escHtml(this._short(p.nombre))}</text>
-                ${handle}
-            </g>`;
+            return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">${inner}${handle}</g>`;
         }).join('');
 
         host.innerHTML = `
@@ -339,8 +343,13 @@ const CompositorModule = {
             <div class="cmp-pal-sub">Zonas (distribuir espacio)</div>
             <div class="cmp-zona-chips">
                 ${this._ZONAS.map(z => `<button class="cmp-zona-chip" data-zona="${z.key}" style="--zc:${z.color}">${escHtml(z.label)}</button>`).join('')}
-            </div>
-            <div class="cmp-pal-sub">Ítems del catálogo</div>`;
+            </div>`;
+        const piezasHTML = (typeof CompositorPiezas !== 'undefined') ? CompositorPiezas.RUBROS.map(rb => {
+            const items = CompositorPiezas.LIB.filter(p => p.rubro === rb);
+            if (!items.length) return '';
+            return `<div class="cmp-pal-sub">${escHtml(rb)}</div>
+                <div class="cmp-pieza-chips">${items.map(p => `<button class="cmp-pieza-chip" data-pieza="${escAttr(p.key)}" title="${escAttr(p.label)}">${escHtml(p.label)}</button>`).join('')}</div>`;
+        }).join('') : '';
         const q = this._norm(this._paletteQ);
         let list = this._catalogo.slice();
         if (q) list = list.filter(c => this._norm(c.nombre).includes(q) || this._norm(c.codigo || '').includes(q) || this._norm(c.rubro || '').includes(q));
@@ -353,9 +362,21 @@ const CompositorModule = {
                 <span class="cmp-pal-name">${escHtml(c.nombre)}${c.tipoReceta === 'subalquilado' ? ' <span class="cmp-chip cmp-chip-sub">subalq</span>' : ''}</span>
                 <span class="cmp-pal-price">$${this._fmt(c.precioAlquiler)}</span>
             </button>`).join('');
-        cont.innerHTML = zonasHTML + itemsHTML;
+        cont.innerHTML = zonasHTML + piezasHTML + `<div class="cmp-pal-sub">Catálogo (Costos)</div>` + itemsHTML;
         cont.querySelectorAll('.cmp-zona-chip').forEach(b => b.addEventListener('click', () => this._placeZona(b.dataset.zona)));
+        cont.querySelectorAll('.cmp-pieza-chip').forEach(b => b.addEventListener('click', () => this._placePieza(b.dataset.pieza)));
         cont.querySelectorAll('.cmp-pal-item').forEach(b => b.addEventListener('click', () => this._placeItem(b.dataset.id)));
+    },
+
+    _placePieza(key) {
+        const def = (typeof CompositorPiezas !== 'undefined') ? CompositorPiezas.get(key) : null;
+        if (!def) return;
+        const w = Math.min(def.w, this._wmm()), d = Math.min(def.d, this._dmm());
+        const { x, y } = this._spawnXY(w, d);
+        const uid = this._uidSeq++;
+        this._state.placed.push({ uid, kind: 'pieza', piezaKey: key, glyph: def.glyph, nombre: def.label, color: '#00A9C1', w, d, rot: 0 });
+        this._selUid = uid;
+        this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
     },
 
     // tamaño/posición default para algo nuevo (barrido para no apilar exacto)
@@ -456,7 +477,7 @@ const CompositorModule = {
     _bomGroups() {
         const g = {};
         this._state.placed.forEach(p => {
-            if (p.kind === 'zona') return;   // las zonas no se facturan
+            if (p.kind !== 'item') return;   // solo ítems del catálogo se facturan (zonas/piezas = visual)
             const k = String(p.catId);
             if (!g[k]) g[k] = { catId: p.catId, nombre: p.nombre, precio: p.precio, cant: 0 };
             g[k].cant += 1;
@@ -488,7 +509,7 @@ const CompositorModule = {
                 walls: this._closedSides(),
                 columns: this._columnsXY(),
                 zonas: this._state.placed.filter(p => p.kind === 'zona').map(p => ({ label: p.nombre, color: p.color, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
-                pieces: this._state.placed.filter(p => p.kind !== 'zona').map(p => ({ nombre: p.nombre, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
+                pieces: this._state.placed.filter(p => p.kind !== 'zona').map(p => ({ nombre: p.nombre, glyph: p.glyph || null, color: p.color || null, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
                 legend: this._bomGroups().map(g => ({ nombre: g.nombre, cant: g.cant })),
             };
             const blob = await PlanoPDF.generate(o);
@@ -558,7 +579,7 @@ const CompositorModule = {
                 tipo_stand: this._isArea() ? null : this._state.tipo,
                 ancho_m: this._wM(), prof_m: this._dM(), m2: this._m2(),
                 cliente_id: cliId || null, evento_id: evId || null,
-                es_prediseno: !!pred, estado: 'activo', created_from: 'compositor',
+                es_prediseno: !!pred, estado: 'activo', created_from: 'manual',
                 notas: this._isArea()
                     ? `Compositor · área libre ${this._numero(this._wM())}×${this._numero(this._dM())} m (${this._m2()} m²) · piso ${this._state.piso}`
                     : `Compositor OCTEXA · ${this.OCTEXA.tipos[this._state.tipo].label} ${this._state.frente}×${this._state.fondo} m (${this._m2()} m²) · altura ${this._numero(this._state.altura / 1000)}m · piso ${this._state.piso}`,
@@ -664,6 +685,11 @@ const CompositorModule = {
             .cmp-zona-chip:hover{background:color-mix(in srgb, var(--zc) 30%, transparent)}
             .cmp-zona .cmp-comp-rect{stroke-dasharray:40 26}
             .cmp-handle{fill:#F28D15;stroke:#1a1000;stroke-width:8;cursor:nwse-resize}
+            .cmp-pieza-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+            .cmp-pieza-chip{font-size:.72rem;padding:5px 10px;border-radius:8px;cursor:pointer;background:#151515;border:1px solid var(--border);color:var(--text-primary);transition:all 150ms}
+            .cmp-pieza-chip:hover{border-color:var(--primary);color:var(--primary);background:#191919}
+            .cmp-hit{cursor:grab}
+            .cmp-selbox{fill:none;stroke:#F28D15;stroke-width:14;stroke-dasharray:46 32}
             .cmp-pal-item{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#151515;border:1px solid var(--border);border-radius:6px;padding:7px 10px;cursor:pointer;text-align:left;transition:all 150ms}
             .cmp-pal-item:hover{border-color:var(--primary);background:#191919}
             .cmp-pal-name{color:var(--text-primary);font-size:.8rem}
