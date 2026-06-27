@@ -17,6 +17,8 @@ Los 3 pilares del circuito de stands, cada uno con su trabajo:
 
 El diferenciador del compositor = lo que 3ds Max **no** da barato: precio en vivo atado a Costos + preview navegable + base exportable. NO es un segundo diseñador; es el "armado express con número". Para diseño custom fino seguís en 3ds Max (y el GLTF que exporta el compositor sirve de bloque base allá).
 
+**Segundo uso (Fede 2026-06-27) — planos de alquiler de mobiliario, sin AutoCAD.** El mismo compositor sirve para componer **layouts de alquiler de mobiliario** (mesas, sillas, etc. en un área) y **exportar un plano PDF** listo — reemplaza el paso por AutoCAD para esos planitos. Es el **win rápido y de menor dependencia** (no necesita el despiece estructural OCTEXA de C-0): área libre + muebles del catálogo + rotación + plano PDF.
+
 ---
 
 ## 1. Visión — "LEGO de OCTEXA"
@@ -25,11 +27,13 @@ Encastrás **piezas OCTEXA reales** sobre la grilla modular, en **3D navegable**
 
 **Lo que lo hace rico (no el croquis pobre de hoy):**
 - 3D real (orbit, alturas reales de la escalera 2,40→5,00 m), no plano.
+- **Tipo de stand** seleccionable: **centro/línea · esquina · península · isla** (define frentes abiertos, paredes y retiro).
+- **Girar el stand entero** (girador del footprint, para orientarlo al pasillo/entrada) **y girar cada pieza** — no solo 90°: al menos 3 orientaciones (eje 1, eje 2 y **diagonal 45°**), en pasos de 45° por clic.
 - Piezas OCTEXA con **geometría real** (vitrina mostrador/alta, mostrador, estantería, panel ranurado, cenefa, columnas ø40) — no cajas genéricas — cada una linkeada a Costos.
 - **Paredes** que dibujás en el perímetro, altura por lado, respetando el **retiro 1 m** del vecino según topología; cenefa; **zonas de gráfica** (placeholder de marca).
 - **Terminaciones**: color de placa, alfombra/tarima → afectan look + BOM.
 - **BOM exacto en vivo**: componentes (catálogo) + **estructura derivada de la geometría** (columnas, m de perfil, m² de placa, vidrios) → precio + total mientras armás.
-- **Salidas**: guardar escena editable (alimenta la biblioteca) · preview 3D en la propuesta · cotizar · **export GLTF** a 3ds Max.
+- **Salidas**: guardar escena editable (alimenta la biblioteca) · preview 3D en la propuesta · cotizar · **plano PDF (top-down)** · **export GLTF** a 3ds Max.
 
 ---
 
@@ -37,7 +41,7 @@ Encastrás **piezas OCTEXA reales** sobre la grilla modular, en **3D navegable**
 
 - **Three.js por CDN con import map** en `index.html` (ESM; el stack no tiene bundler). `OrbitControls` + `GLTFExporter` del mismo CDN. **Lazy-load**: el motor 3D se importa dinámicamente recién al abrir el tab (no infla el resto de la app).
 - **Vive como tab `compositor` dentro de `#stands`** (igual que hoy), pero en archivo nuevo **`compositor3d.js`** (`Compositor3D`). Se retira `compositor.js` (2D) cuando C-1 esté navegable.
-- **Interacción**: colocar/mover por raycast al plano de piso + **snap a la grilla** (medio módulo 495); rotar 90°; borrar; configurar (altura/terminación); presets de cámara (planta / iso / perspectiva); undo.
+- **Interacción**: colocar/mover por raycast al plano de piso + **snap a la grilla** (medio módulo 495); **rotar la pieza en pasos de 45°** por clic (3+ orientaciones: eje 1, eje 2, diagonal); **girar el stand entero** (control de rotación del footprint); borrar; configurar (altura/terminación); presets de cámara (**planta / iso / perspectiva** — la vista planta = el plano PDF); undo.
 - **Render del cliente**: visor Three.js **read-only** reutilizable (embed en la propuesta y, opcional, en la ficha del prediseño).
 
 ---
@@ -71,8 +75,9 @@ CREATE TABLE IF NOT EXISTS octexa_piezas (
 ## 4. Motor de geometría
 
 - Grilla **990 (módulo) / 495 (medio)**, columnas **ø40** en cada cruce, alturas escalera **2400/2900/3400/3900/5000**, prof estándar 500 (de `octexa-data.json`).
-- **Esqueleto paramétrico**: del footprint (topología + frente×fondo×altura) se generan columnas + perfiles de perímetro + paredes según topología (isla 0 / penín. 1 / esquina 2 / lineal 3 lados cerrados) con retiro 1 m.
-- **Piezas** = meshes paramétricos desde `octexa_piezas.geometria` (no cajas). Snap a la grilla.
+- **Dos modos de footprint**: **(a) Stand OCTEXA** = topología + frente×fondo×altura → esqueleto paramétrico (columnas + perfiles de perímetro + paredes según topología y **retiro 1 m**). Topologías: **centro/línea** (3 lados cerrados, 1 frente) · **esquina** (2 cerrados) · **península** (1 cerrado) · **isla** (0). **(b) Área libre** = solo ancho×fondo en m, sin estructura OCTEXA → para layouts de **alquiler de mobiliario** (mesas/sillas/etc.) que terminan en plano PDF.
+- **Girar el stand entero** (rotación del footprint completo) + **girar cada pieza** en pasos de 45° (eje 1 / eje 2 / diagonal).
+- **Piezas** = meshes paramétricos desde `octexa_piezas.geometria` (no cajas). Muebles = ítems del catálogo con footprint 2D para el plano. Snap a la grilla.
 
 ---
 
@@ -89,6 +94,7 @@ CREATE TABLE IF NOT EXISTS octexa_piezas (
 ## 6. Salidas
 
 - **Guardar** como `proyecto` (es_prediseno opcional) + `compositor_escena` (reabrir/editar) + `proyecto_componentes` (BOM).
+- **Plano PDF (top-down)** — la vista en planta proyectada a PDF con cotas + leyenda/BOM + carátula MEPEX (jsPDF, ya cargado). **Reemplaza el paso por AutoCAD** para los planitos de alquiler de mobiliario. Sirve igual para el plano del stand.
 - **Preview 3D** read-only para la propuesta / ficha de prediseño.
 - **Cotizar** → reusa `StandsModule._usarEnCotizacion`.
 - **Export GLTF** (`.glb`) → bloque base para 3ds Max.
@@ -101,13 +107,15 @@ CREATE TABLE IF NOT EXISTS octexa_piezas (
 |---|---|---|---|
 | **C-0** | Datos OCTEXA: cargar `octexa_piezas` (geometría + despiece) + ítems estructurales en Costos. | Piezas con geometría y precio | P0 de `octexa-data.json` (despiece) |
 | **C-1** | Motor 3D base (Three.js, lazy): escena, grilla, cámara orbital, **esqueleto paramétrico** (footprint → columnas/perfiles/paredes). | Stand "vacío" 3D navegable | — |
-| **C-2** | Piezas OCTEXA paramétricas: paleta + colocar/mover/rotar/snap en 3D. | Componer con piezas reales | C-0 (geometría) |
+| **C-2** | Colocar/mover/**rotar 45°**/snap en 3D + **girar el stand entero** + modo **área libre**. Paleta de piezas/muebles del catálogo. | Componer con piezas reales | geometría básica |
+| **C-2.5 ⭐** | **Alquiler de mobiliario + exportador de plano PDF (top-down, cotas + leyenda + carátula).** Win rápido y de baja dependencia (no necesita C-0 ni la estructura OCTEXA). **Reemplaza AutoCAD** para esos planitos. | Planito PDF de mobiliario sin AutoCAD | C-2 |
 | **C-3** | Paredes/cenefa/gráficas/pisos/colores (presentable al cliente). | Stand "vestido" | C-2 |
 | **C-4** | BOM exacto + precio (componentes + estructura derivada → Costos). | Diseño→BOM→precio cerrado | C-0 (despiece) |
 | **C-5** | Salidas: guardar/editar escena · preview propuesta · cotizar · export GLTF. | Circuito completo | C-1..C-4 |
 | **C-6** | Inteligencia (futuro): arrancar de un prediseño y variar · sugerir layout por m²/rubro · validar reglas OCTEXA (alturas/refuerzo/Maxima) · **render IA desde la vista 3D** (pipeline del programa OCTEXA). | — | C-5 |
 
 > **C-1 entrega valor solo** (stand 3D navegable) aunque C-0 no esté. El **único cuello para el BOM estructural exacto = C-0** (los componentes ya tienen precio sin C-0).
+> **C-2.5 (mobiliario + plano PDF) es el primer valor entregable real** y no depende de C-0 ni de la estructura OCTEXA → buen candidato a salir primero (reemplaza AutoCAD para alquiler de mobiliario) mientras se completa el dato OCTEXA para el lado stand.
 
 ---
 
