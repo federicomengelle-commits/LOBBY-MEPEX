@@ -1,0 +1,187 @@
+{
+  "version": "0.1",
+  "estado": "en construccion",
+  "fuentes": ["Manual Tecnico OCTEXA", "Brochure MEPEX", "Nota manuscrita Fede+Ana"],
+  "modulacion": {
+    "entre_ejes_mm": 990,
+    "perfil_visible_mm": 950,
+    "columna_diam_mm": 40,
+    "offset_columna_por_lado_mm": 20,
+    "medio_modulo": {
+      "entre_ejes_mm": 495,
+      "perfil_visible_mm": 455,
+      "placa_mm": 465
+    },
+    "encastre_placa_mm": 10,
+    "placa_modulo_mm": 960,
+    "placa_medio_modulo_mm": 465,
+    "placa_max_entera_mm": 2500,
+    "regla_placa": "placa = perfil_visible + 10mm (5mm por lado)",
+    "regla_dura": "cada placa es individual por modulo; al combinar hay columna en el medio. NO existe placa continua de 2 modulos.",
+    "combinaciones": [
+      { "modulos": 0.5, "perfil_visible_mm": 455, "entre_ejes_mm": 495, "placa_mm": "465", "placa_total_mm": 465 },
+      { "modulos": 1, "perfil_visible_mm": 950, "entre_ejes_mm": 990, "placa_mm": "960", "placa_total_mm": 960 },
+      { "modulos": 1.5, "perfil_visible_mm": 1445, "entre_ejes_mm": 1485, "placa_mm": "960 + 465", "placa_total_mm": 1425 },
+      { "modulos": 2, "perfil_visible_mm": 1940, "entre_ejes_mm": 1980, "placa_mm": "960 + 960", "placa_total_mm": 1920 },
+      { "modulos": 2.5, "perfil_visible_mm": 2435, "entre_ejes_mm": 2475, "placa_mm": "960 + 960 + 465", "placa_total_mm": 2385 },
+      { "modulos": 3, "perfil_visible_mm": 2930, "entre_ejes_mm": 2970, "placa_mm": "960 x 3", "placa_total_mm": 2880 }
+    ]
+  },
+  "vertical": {
+    "perfil_seccion_mm": 50,
+    "encastre_mm": 10,
+    "regla_oro": "perfiles = 50mm; placas = multiplos de 50mm; encastre = +10mm real",
+    "ejemplo_modulo_1m": {
+      "perfil_inferior_mm": 50,
+      "vano_visible_mm": 900,
+      "placa_real_mm": 910,
+      "perfil_superior_mm": 50,
+      "total_mm": 1000,
+      "placa_dimensiones_mm": "960 x 910"
+    },
+    "alturas_mm": {
+      "base": 2400,
+      "estandar": [2400, 2900, 3400, 3900],
+      "maxima": 5000,
+      "paso_mm": 500,
+      "anomalia": "3900->5000 = +1100; confirmar si existen 4400/4900 o si 5000 es techo estructural especial",
+      "confirmar": true
+    }
+  },
+  "cenefa": {
+    "alto_mm": 300,
+    "rango_tipico_mm": [2100, 2400],
+    "composicion_mm": "50 (perfil) + 200 (visible) / 210 (real) (placa grafica) + 50 (perfil)",
+    "placa_grafica_visible_mm": 200,
+    "placa_grafica_real_mm": 210,
+    "placa_cenefa_dimensiones_mm": "960 x 210"
+  },
+  "graficas": {
+    "ancho_grafica_mm": "perfil_visible + 10",
+    "alto_grafica_mm": "vano + 10",
+    "placa_max_mm": 2500,
+    "metodos": ["vinilo sobre placa (principal)", "letras corporeas (polyfan o MDF)", "backlight (opcional)"]
+  },
+  "perfiles": [
+    { "nombre": "barra completa", "largo_mm": 6000, "peso_anotado_kg": 4.150, "peso_calc_kg": 4.150, "nota": "dato primario, define la densidad" },
+    { "nombre": "medio modulo", "alias": "Perfil de 50", "largo_mm": 455, "peso_anotado_kg": 0.320, "peso_anotado_sin_redondeo_kg": 0.317, "peso_calc_kg": 0.3147, "delta_pct": 1.68, "veredicto": "cuadra bien" },
+    { "nombre": "modulo (metro)", "alias": "Perfil de Metro / PPo", "largo_mm": 950, "peso_anotado_kg": 0.700, "peso_calc_kg": 0.6571, "delta_pct": 6.53, "veredicto": "NO cuadra (+6.5%); pesar en balanza", "confirmar": true }
+  ],
+  "densidad_lineal_kg_m": 0.6917,
+  "barra_perfil": { "largo_m": 6, "peso_kg": 4.150 },
+  "columna": {
+    "diam_mm": 40,
+    "offset_por_lado_mm": 20,
+    "confirmar": ["peso por unidad o kg/m", "largos disponibles por altura", "numero de canales/caras enchufables (4 vs 8 tipo Octanorm)", "espesor de pared", "aleacion"]
+  },
+  "diagonales_mm": {
+    "medio_modulo_visible": { "base_mm": 455, "exacta_mm": 643.47, "corte_obra_mm": 660 },
+    "modulo_perfil_visible": { "base_mm": 950, "exacta_mm": 1343.50, "corte_obra_mm": 1360 },
+    "modulo_eje_a_eje": { "base_mm": 990, "exacta_mm": 1400.07, "corte_obra_mm": 1400 },
+    "medio_modulo_eje_a_eje": { "base_mm": 495, "exacta_mm": 700.04, "corte_obra_mm": null },
+    "holgura_corte_mm": 16.5,
+    "confirmar": "cual se cota para fabricacion: 1400 (eje-eje) o 1360 (visible)"
+  },
+  "componentes": [
+    {
+      "nombre": "Vitrina Mostrador",
+      "alto_mm": 1000,
+      "prof_mm": 500,
+      "descomposicion_vertical_mm": "50 + 200 (vidrio) + 50 + 650 (faldon) + 50 = 1000",
+      "detalle": "Superior vidrio 200mm con estante de vidrio (placa 210). Inferior faldon placa 660 (650 visible + 10) + perfil base 50. Zona guardado con estante de melamina. Componente mas usado.",
+      "confirmar_despiece": true
+    },
+    {
+      "nombre": "Vitrina Alta",
+      "alto_mm": 2400,
+      "prof_mm": 500,
+      "descomposicion_vertical_mm": "1000 (faldon) + 1100 (vidrio central) + 300 (cenefa) = 2400",
+      "detalle": "Vidrio central con 2-3 estantes de vidrio. Plafon con spot dicroica embutido. Puertas con o sin.",
+      "confirmar_despiece": true
+    },
+    {
+      "nombre": "Estanteria",
+      "alto_mm": 2400,
+      "prof_mm": 500,
+      "detalle": "Estantes abiertos sin vidrio (estandar). 5 estantes por defecto (rango 4-6). Panel trasero blanco. Opcion con vidrio.",
+      "confirmar_despiece": true
+    },
+    {
+      "nombre": "Mostrador Simple",
+      "alto_mm": 1000,
+      "prof_mm": 500,
+      "detalle": "Superior mesada. Debajo estante tipo gaveta abierta. Generalmente con puertas para guardado. Cerradura tipo serrucho. Uso atencion / punto de venta.",
+      "confirmar_despiece": true
+    },
+    {
+      "nombre": "Panel Ranurado",
+      "alto_mm": 2400,
+      "anchos_mm": [500, 700, 1000],
+      "descomposicion_vertical_mm": "300 (cenefa) + 1800 (placa ranurada util) + 300 (cenefa) = 2400",
+      "detalle": "Slatwall. Cenefa 300 arriba y abajo. Funcion colgar accesorios con ganchos.",
+      "confirmar_despiece": true
+    },
+    {
+      "nombre": "Caja Punto de Cobro",
+      "alto_mm": "1000-1200",
+      "prof_mm": 500,
+      "detalle": "Base mostrador estandar. Opcion alzada 200mm (placa hasta 1200). Motivo: cubrir manipulacion de dinero / privacidad al cajero.",
+      "confirmar_despiece": true
+    }
+  ],
+  "profundidades_mm": [250, 350, 500, 700, 1000],
+  "profundidad_estandar_mm": 500,
+  "tipos_stand": [
+    { "tipo": "isla", "frentes_abiertos": 4, "lados_contra_vecino": 0, "retiro_vecino_m": 0, "restriccion_altura": "ninguna (cenefa vale todo)" },
+    { "tipo": "peninsula", "frentes_abiertos": 3, "lados_contra_vecino": 1, "retiro_vecino_m": 1.0, "restriccion_altura": "retiro 1m del vecino en altura", "nota": "el mas comun en ferias medianas" },
+    { "tipo": "esquina", "frentes_abiertos": 2, "lados_contra_vecino": 2, "retiro_vecino_m": 1.0, "restriccion_altura": "retiro 1m de cada vecino en altura", "nota": "opcion economica" },
+    { "tipo": "lineal", "frentes_abiertos": 1, "lados_contra_vecino": 3, "retiro_vecino_m": 1.0, "restriccion_altura": "muy limitado en altura (sin numero)", "confirmar": "limite numerico real" }
+  ],
+  "regla_retiro_universal_m": 1.0,
+  "pisos": ["alfombra nylon", "tarima 40mm", "tarima 80mm"],
+  "tarimas": {
+    "tarima_40mm": { "elevacion_mm": 40, "terminacion": "alfombra encima o remate de placa blanca" },
+    "tarima_80mm": { "elevacion_mm": 80, "terminacion": "alfombra encima o remate de placa blanca", "nota": "mayor presencia" },
+    "confirmar": ["estructura interna (bastidor + tablero)", "modulo de armado", "peso/m2", "capacidad de carga kg/m2", "rampa accesibilidad"]
+  },
+  "maxima_octanorm": {
+    "tipo": "perfil cuadrado estructural",
+    "seccion_cm": "8x8 a 12x12",
+    "seccion_mm": "80x80 a 120x120",
+    "anclaje": "doble en cada punta",
+    "uso_probable": "alturas 3.40m+, techos, totems, voladizos, segundo piso",
+    "estado": "PENDIENTE de datos",
+    "datos_pendientes": true,
+    "confirmar": ["secciones reales disponibles", "peso lineal kg/m por seccion", "espesor de pared", "largos estandar de barra", "geometria de canal/ranura", "tipo de conector/anclaje doble", "modulo/grilla propia", "compatibilidad con modular o40", "tabla de luces/alturas maximas", "bases/patas y anclaje a piso", "precio por barra y por kg", "acabado/aleacion", "capacidad de carga techo/segundo nivel"]
+  },
+  "brochure_contexto": {
+    "vehiculos": { "ford_cargo_kg": 8000, "ford_transit_kg": 2400, "combinado_kg": 10400 },
+    "galpones": { "superficie_cubierta_m2": 1200, "cantidad": 2, "ubicaciones": ["Avellaneda", "Lanus"] },
+    "nota": "el brochure NO contiene specs tecnicas de OCTEXA (perfiles, medidas, pesos, BOM)"
+  },
+  "pendientes": [
+    "P0: despiece pieza por pieza (BOM) de cada componente del catalogo",
+    "P0: material y espesor de placa por componente (vincular a tipos de modulo Costos)",
+    "P0: pesar el perfil de metro real en balanza (resolver +6.5%)",
+    "P0: seccion completa del perfil de 50 y de la columna o40 + peso/m columna + numero de canales",
+    "P0: cuna de encastre y conector de columna (pieza, cantidad, peso, precio)",
+    "P0: precios (perfil, columna, placa por material, vidrio, spot LED, dicroica, alfombra, tarima)",
+    "P1: cierre de esquina a 90 y conteo de columnas por topologia (L, U, perimetro, isla)",
+    "P1: retiros y alturas contra medianera (muro ciego permitido; desde que altura aplica; limite lineal)",
+    "P1: alturas 3.40/3.90/5.00 con o40 sola o requieren Maxima/refuerzo/arriostramiento",
+    "P1: voladizo y estabilidad (cenefa/estante/cartel sin apoyo; pared libre que necesita riostra)",
+    "P1: diagonal de fabricacion a 1400 (eje) o 1360 (visible) + criterio +16mm holgura",
+    "P1: escalera de alturas: existen 4400/4900 o 5000 es techo estructural fijo",
+    "P2: iluminacion (modelo/potencia/precio spot LED y dicroica + regla spots/m + consumo por stand)",
+    "P2: vidrios (espesor, tipo templado/float, dimensiones por componente, peso/m2)",
+    "P2: puertas/cerraduras (dimension, hoja, modelo cerradura tipo serrucho, herrajes)",
+    "P2: techo/plafon (existe sistema modular?, como se arma, specs y peso)",
+    "P2: tarima (estructura interna, modulo armado, peso/m2, capacidad de carga, rampa)",
+    "P2: pesos armados de cada componente (para carga de camion)",
+    "P2: Maxima: levantar tabla completa de secciones/pesos/largos/conector/grilla/luces",
+    "P3: defaults (color placa, color alfombra, terminacion perfil, estantes default)",
+    "P3: aclarar o50mm del croquis de la nota (redondo 50 vs perfil-50 medio modulo)",
+    "P3: confirmar que ninguna pieza individual supere 2500mm",
+    "P3: alfombra (ancho de rollo, rendimiento m2/rollo, colores reales disponibles)"
+  ]
+}
