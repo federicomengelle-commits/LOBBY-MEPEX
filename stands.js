@@ -113,6 +113,7 @@ const StandsModule = {
 
     _buildShell() {
         const tabs = [{ id: 'buscar', label: 'Buscar por medida' }];
+        if (this._canWrite) tabs.push({ id: 'compositor', label: '🧩 Compositor' });
         if (this._canWrite) tabs.push({ id: 'nuevo', label: this._editId ? 'Editar prediseño' : 'Nuevo prediseño' });
         return `
             <div class="std-wrap">
@@ -149,6 +150,11 @@ const StandsModule = {
     _renderBody() {
         const body = document.getElementById('stdBody');
         if (!body) return;
+        if (this._activeTab === 'compositor' && this._canWrite) {
+            if (typeof CompositorModule !== 'undefined') CompositorModule.renderInto(body, this);
+            else body.innerHTML = `<div class="std-empty"><p>Compositor no disponible (no cargó compositor.js).</p></div>`;
+            return;
+        }
         if (this._activeTab === 'nuevo' && this._canWrite) { this._renderNuevo(body); return; }
         this._renderBuscar(body);
     },
