@@ -28,7 +28,7 @@ Ambas desembocan en el **cotizador** (de donde Fede ya saca las propuestas hermo
 
 | # | Pilar | Qué es | Doc | Estado |
 |---|---|---|---|---|
-| **1** | **Cerebro OCTEXA** | Fuente de verdad geométrica del sistema modular (la base de todo cálculo/diseño) | [SISTEMA-OCTEXA-fuente-de-verdad.md](SISTEMA-OCTEXA-fuente-de-verdad.md) + `octexa-data.json` | 🟢 Geometría documentada y verificada · faltan datos (pesos, Maxima) |
+| **1** | **Cerebro OCTEXA** | Fuente de verdad geométrica del sistema modular (la base de todo cálculo/diseño) | [SISTEMA-OCTEXA-fuente-de-verdad.md](SISTEMA-OCTEXA-fuente-de-verdad.md) + `octexa-data.json` | 🟢 Geometría + reglas + **catálogo oficial de perfiles** (T1+T2+T3) · faltan precios $, catálogo blando y Maxima |
 | **2** | **Fundación de datos** | Reestructurar el archivo (Evento→Proyecto, nombres parseables) + backup 3-2-1 | [reestructuracion-documental-y-datos-mepex.md](reestructuracion-documental-y-datos-mepex.md) | 🟡 Diseño definitivo · falta **ejecutar** (dry-run F1) |
 | **3** | **Módulo Prediseñados** | Biblioteca de stands filtrable + ficha + patrones de costo | [modulo-base-datos-stands-blueprint.md](modulo-base-datos-stands-blueprint.md) | 🟡 Blueprint · **a reconciliar** (usar `proyectos`, no tablas nuevas) |
 | **4** | **Compositor de stands** | Armar stands desde módulos OCTEXA → BOM → cotizador | *(spec futura)* | 🔴 Idea · depende del Pilar 1 completo |
@@ -57,10 +57,41 @@ PILAR 2 (fundación de datos) ──────────► PILAR 3 (predise
 
 ## 📊 ESTADO (qué está hecho)
 
-- **Pilar 1 — Cerebro OCTEXA · ~70%.** Geometría completa y verificada (grilla 990/495, alturas, componentes, tipos de stand, gráfica, pisos) + JSON semilla + pesos de perfil de la nota Fede+Ana. Despiece por componente = ya en recetas de Costos.
+- **Pilar 1 — Cerebro OCTEXA · ~93%.** Geometría + reglas de diseño + **catálogo oficial de extrusiones** cerrados (entrevista Fede 2026-06-27, T1+T2+T3 con la Lista Perfiles OCTEXA 2021). Datos de fábrica: aluminio **6063/Brinell 60/templado/blanco**; **12 perfiles con código/sección/kg/m** (columna CS8-040 0,9347; media columna CH8-040; puntera CE8-040; doble CD8-080 1,96; dinteles DAA/DLA/DLL 0,57–0,68; cerrojos PCH/PCM-058); **tabla de largos PERFIL/EE** (EE=perfil+40); **arcos curvos Z460** Ø990/1400/1980/2800. + reglas: 8 caras a 45°, esquina = columna compartida, medianera 2,50, **5 m sin Maxima**, voladizo ~50 cm, diagonales 660/1.360/2.720/4.160. Despiece por componente = recetas de Costos. **Falta solo:** precios $ (de Costos/$ por kg), catálogo "blando" (iluminación/vidrios/puertas/techo/tarima), pesos armados, conteo de columnas por topología (derivable), y el subsistema Maxima.
 - **Pilar 2 — Fundación de datos · ~40% (diseño 100%, ejecución 0%).** Convención, estructura, migración, backup y conexión a LOBBY **definidos**. Falta ejecutar.
 - **Pilar 3 — Prediseñados · ~20%.** Blueprint escrito; falta reconciliar a `proyectos` y construir.
 - **Pilar 4 — Compositor · ~5%.** Concepto definido; sin spec.
+
+---
+
+## 🧠 RUTA DEL CEREBRO — completar + usar (lo que queda, ejecutable)
+
+> El cerebro (Pilar 1) está al **~93%**. Esta es la ruta para **terminarlo**, **blindarlo para extenderlo** (piezas nuevas / Maxima) y **enchufarlo al diseñador**. Ordenada por valor + dependencia. *(El bloque de migración del archivo → prediseñados, abajo en "LO QUE FALTA", corre en paralelo.)*
+
+### Bloque A — Completar los datos (entrevistas cortas, como T1-T3)
+| # | Qué | Quién | Estado |
+|---|---|---|---|
+| A1 | **Catálogo blando**: iluminación (spot LED/dicroica), vidrios (espesor/tipo/medidas), puertas/cerradura, techo/plafón, tarima (estructura/carga), alfombra (rollo/rendimiento) | entrevista Fede (1 tanda) | ⏳ |
+| A2 | **Maxima**: subsistema entero (secciones, kg/m, conector doble, grilla, luces, compat. ø40). ¿Hay un Excel como el de OCTEXA? | Excel/foto + entrevista | ⏳ "al caer" |
+| A3 | **Pesos armados** por componente (carga de camión) | Fede, cuando junte | ⏳ |
+| A4 | **Precios** ($ por perfil/columna/placa/vidrio/luz/alfombra, al día) | Fede los pasa | ⏳ |
+| A5 | **Conteo de columnas por topología** (isla/L/U/perímetro) | lo derivo yo del grafo de paños | ⏳ yo |
+
+### Bloque B — Blindar para EXTENDER (crear piezas nuevas / subsistemas)
+| # | Qué | Quién |
+|---|---|---|
+| B1 | **Esquema de "pieza" y "subsistema"** en el JSON: un molde claro (código/sección/kg/m/rol/sistema) para agregar piezas y subsistemas (OCTEXA-8 / OCTEXA-6 / Maxima / arcos) sin romper | yo |
+| B2 | **Validador** (script): chequea consistencia geométrica (EE=perfil+40, descomposiciones que cierran, placa=perfil+10) → al agregar piezas se verifica solo | yo |
+| B3 | **Cross-link de códigos** cerebro `perfiles_catalogo.codigo` ↔ Costos `catalogo_items.codigo` → el BOM usa precios reales | yo + Costos |
+
+### Bloque C — USAR el cerebro (el puente al diseñador)
+| # | Qué | Depende de |
+|---|---|---|
+| C1 | **Motor de ensamblaje stand→BOM**: dado footprint + tipo + altura → perfiles/columnas/placas + cantidades. El corazón del "diseñador automatizado fiel a la medida" | A5, B1-B3 |
+| C2 | Enchufar al **compositor / configurador 3D** + **importador 3ds Max** | C1 + pivot 3D ([compositor-3d-blueprint.md](compositor-3d-blueprint.md)) |
+| C3 | BOM → **cotizador** (propuesta automática) | C1 + Costos |
+
+**Por dónde arrancar:** A1 (catálogo blando, 1 tanda con vos) + A5/B1/B2 (yo, en paralelo). Maxima (A2) cuando tengas el material. El **Bloque C es la meta** — necesita A+B listos. Precios (A4) entran al final, no bloquean nada.
 
 ---
 

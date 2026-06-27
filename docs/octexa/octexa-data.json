@@ -1,7 +1,42 @@
 {
   "version": "0.1",
   "estado": "en construccion",
-  "fuentes": ["Manual Tecnico OCTEXA", "Brochure MEPEX", "Nota manuscrita Fede+Ana"],
+  "fuentes": ["Manual Tecnico OCTEXA", "Brochure MEPEX", "Nota manuscrita Fede+Ana", "Entrevista Fede 2026-06-27 (T1: columna/perfil/conector/pesos)"],
+  "nombre_origen": "OCTEXA = OCTogonal + hEXAgonal. Columna octogonal (8 caras) = estandar; hexagonal (6 caras) existe pero casi no se usa. La octogonal enchufa hasta 8 panos a 45 grados.",
+  "material_acabado": { "material": "aluminio", "aleacion": "6063", "dureza": "Brinell 60", "estado": "templado", "marca": "Aluar", "acabado": "Pintado Color Blanco (columnas y dinteles); cerrojos Natural", "fuente": "Lista Perfiles OCTEXA 2021 + Fede" },
+  "perfiles_catalogo": {
+    "fuente": "Lista Perfiles OCTEXA 2012 (rev 08-ABR-2021), Excel oficial",
+    "nota": "catalogo oficial de extrusiones. Aleacion 6063, dureza Brinell 60, templado (Aluar).",
+    "items": [
+      { "codigo": "CS8-040", "desc": "Columna Simple Octogonal", "seccion_mm": "40 x 40 (8 caras)", "kg_m": 0.9347, "largo_barra_mm": "a medida", "acabado": "blanco", "rol": "poste estandar" },
+      { "codigo": "CS6-040", "desc": "Columna Simple Exagonal", "seccion_mm": "40 x 40 (6 caras)", "kg_m": 1.0638, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "poste hexagonal (casi no se usa)" },
+      { "codigo": "CH8-040", "desc": "Columna Hemi Octogonal (media columna)", "seccion_mm": "40 x 28", "kg_m": null, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "media columna: frente liso, perfiles rectos" },
+      { "codigo": "CE8-040", "desc": "Columna Esquinera salida Octogonal (puntera media cana)", "seccion_mm": "28 x 28", "kg_m": null, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "esquina 90 redondeada" },
+      { "codigo": "CE6-040", "desc": "Columna Esquinera salida Exagonal", "seccion_mm": "28 x 34", "kg_m": null, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "esquina hexagonal" },
+      { "codigo": "CD8-080", "desc": "Columna Doble Octogonal", "seccion_mm": "80 x 40", "kg_m": 1.96, "largo_barra_mm": "a medida", "acabado": "blanco", "rol": "doble pared" },
+      { "codigo": "DAA-052", "desc": "Dintel Doble Aletado", "seccion_mm": "52 x 45.5", "kg_m": 0.65, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "larguero horizontal (encastra placa)" },
+      { "codigo": "DLA-052", "desc": "Dintel Simple Aletado", "seccion_mm": "52 x 35.5", "kg_m": 0.68, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "larguero horizontal, el comun en recetas" },
+      { "codigo": "DLL-052", "desc": "Dintel Liso Normal", "seccion_mm": "52 x 15.5", "kg_m": 0.57, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "perfil liso basico (= el 15x52 de Fede)" },
+      { "codigo": "DLL-040", "desc": "Dintel Liso Bajo", "seccion_mm": "40 x 15.5", "kg_m": null, "largo_barra_mm": 6000, "acabado": "blanco", "rol": "perfil liso bajo" },
+      { "codigo": "PCH-058", "desc": "Perfil Cerrojo Hembra", "seccion_mm": "58 x 8", "kg_m": null, "largo_barra_mm": 3000, "acabado": "natural", "rol": "mitad hembra del cerrojo" },
+      { "codigo": "PCM-058", "desc": "Perfil Cerrojo Macho", "seccion_mm": "58 x 8", "kg_m": null, "largo_barra_mm": 3000, "acabado": "natural", "rol": "mitad macho del cerrojo" }
+    ]
+  },
+  "perfil_lengths_catalogo": {
+    "fuente": "Tabla PERFIL/EE OCTEXA (foto Fede 2026-06-27)",
+    "regla": "EE (entre ejes) = PERFIL (visible) + 40 (columna) SIEMPRE",
+    "incluye": "largos rectos por fraccion de modulo (1/4=207.5, 1/2=455, 3/4=702.5, 1=950, 1.5=1445, 2=1940, 2.5=2435, 3=2930, 4=3920) + diagonales reusados como perfil (660, 1360, 4160). Los grandes (3920+) son vigas/pasos de luz (1 dintel largo, columnas solo en puntas).",
+    "tabla_perfil_ee_mm": [[207.5,247.5],[310,350],[455,495],[660,700],[702.5,742.5],[950,990],[1360,1400],[1445,1485],[1940,1980],[2435,2475],[2930,2970],[3465,3505],[3920,3960],[4160,4200],[4455,4495],[4910,4950]]
+  },
+  "arcos_curvos": {
+    "fuente": "ARCOS 1/4 CIRCULO LARGUERO Z460 (foto Fede 2026-06-27)",
+    "larguero": "Z460",
+    "tipo": "cuartos de circulo (largueros curvos)",
+    "diametros_mm": [990, 1400, 1980, 2800],
+    "precio_ref_mxn_por_tramo": { "d990": 299.46, "d1400": 373.91, "d1980": 448.35, "d2800": 597.25 },
+    "precio_nota": "precios en pesos MEXICANOS por tramo 1/4 circulo, sin IVA. Tensochapa montada $160 MXN. Referencia, NO precio AR.",
+    "confirmar": "precio AR + si MEPEX los stockea/usa"
+  },
   "modulacion": {
     "entre_ejes_mm": 990,
     "perfil_visible_mm": 950,
@@ -29,6 +64,8 @@
   },
   "vertical": {
     "perfil_seccion_mm": 50,
+    "perfil_seccion_real_mm": "52 x 15.5",
+    "perfil_seccion_nota": "se disena/cota como 50 para redondear; el perfil/dintel basico (DLL-052 Liso Normal) mide 52 x 15.5mm (catalogo OCTEXA 2021). Dinteles aletados mas anchos (45.5 / 35.5) para encastre de placa.",
     "encastre_mm": 10,
     "regla_oro": "perfiles = 50mm; placas = multiplos de 50mm; encastre = +10mm real",
     "ejemplo_modulo_1m": {
@@ -41,11 +78,12 @@
     },
     "alturas_mm": {
       "base": 2400,
-      "estandar": [2400, 2900, 3400, 3900],
+      "medianera_estandar": 2500,
+      "estandar": [2400, 2500, 2900, 3400, 3950],
       "maxima": 5000,
       "paso_mm": 500,
-      "anomalia": "3900->5000 = +1100; confirmar si existen 4400/4900 o si 5000 es techo estructural especial",
-      "confirmar": true
+      "resuelto_2026_06_27": "5000mm se alcanza con columna OCTEXA comun (NO requiere Maxima). NO existen 4400/4900: va de 3950 (~4m) directo a 5000 (techo). El 2500 es la altura tipica de division medianera entre stands.",
+      "nota_3950": "el manual decia 3900; Fede confirma 3950"
     }
   },
   "cenefa": {
@@ -65,14 +103,46 @@
   "perfiles": [
     { "nombre": "barra completa", "largo_mm": 6000, "peso_anotado_kg": 4.150, "peso_calc_kg": 4.150, "nota": "dato primario, define la densidad" },
     { "nombre": "medio modulo", "alias": "Perfil de 50", "largo_mm": 455, "peso_anotado_kg": 0.320, "peso_anotado_sin_redondeo_kg": 0.317, "peso_calc_kg": 0.3147, "delta_pct": 1.68, "veredicto": "cuadra bien" },
-    { "nombre": "modulo (metro)", "alias": "Perfil de Metro / PPo", "largo_mm": 950, "peso_anotado_kg": 0.700, "peso_calc_kg": 0.6571, "delta_pct": 6.53, "veredicto": "NO cuadra (+6.5%); pesar en balanza", "confirmar": true }
+    { "nombre": "modulo (metro)", "alias": "Perfil de Metro / PPo", "largo_mm": 950, "peso_anotado_kg": 0.700, "peso_calc_kg": 0.6571, "delta_pct": 6.53, "veredicto": "RESUELTO (Fede 2026-06-27): el 0.700 es SOLO perfil, NO incluye el cerrojo (que se pesa/costea aparte). Densidad de campo ~0.75 kg/m." }
   ],
-  "densidad_lineal_kg_m": 0.6917,
+  "densidad_lineal_kg_m_por_dintel": { "DLL-052_liso_normal": 0.57, "DAA-052_doble_aletado": 0.65, "DLA-052_simple_aletado": 0.68 },
+  "densidad_lineal_nota": "RESUELTO con catalogo OCTEXA 2021: el peso del perfil depende del DINTEL. Liso normal 0.57, doble aletado 0.65, simple aletado 0.68 kg/m. Para BOM usar el kg/m del dintel especifico (recetas de Costos usan aletados). El campo Fede ~0.75 y la barra 0.6917 eran estimaciones; manda el catalogo.",
   "barra_perfil": { "largo_m": 6, "peso_kg": 4.150 },
   "columna": {
     "diam_mm": 40,
     "offset_por_lado_mm": 20,
-    "confirmar": ["peso por unidad o kg/m", "largos disponibles por altura", "numero de canales/caras enchufables (4 vs 8 tipo Octanorm)", "espesor de pared", "aleacion"]
+    "caras": 8,
+    "geometria": "octogonal (8 caras enchufables) = estandar. Hexagonal (6 caras) existe pero casi no se usa.",
+    "conexiones_max": "hasta 8 panos por columna, a 45 grados entre si (origen del girar pieza cada 45)",
+    "peso_kg_m": 0.9347,
+    "codigo": "CS8-040",
+    "peso_fuente": "CS8-040 catalogo OCTEXA 2021 (0.9347 kg/m). El estimado de Fede ~0.9 fue casi exacto.",
+    "hexagonal": "CS6-040 = 1.0638 kg/m (40x40, 6 caras)",
+    "material": "aluminio 6063 blanco; largo a medida",
+    "confirmar": ["espesor de pared exacto"]
+  },
+  "conector": {
+    "nombre": "cerrojo de punta (macho-hembra)",
+    "codigos": "PCH-058 (hembra) + PCM-058 (macho); extrusion 58x8 natural, barra 3000mm",
+    "composicion": "2 piezas (macho + hembra, cortadas del perfil 58x8) + 1 tornillo Allen tipo gusano, por cada punta de perfil",
+    "mecanismo": "el tornillo Allen se rosca y expande la pieza; la punta del perfil se abre y queda anclada en la ranura de la columna octogonal",
+    "cantidad_por_perfil": 2,
+    "en_peso_perfil": false,
+    "bom": "herraje mas repetido del sistema; item de BOM aparte del perfil",
+    "confirmar": ["peso por unidad", "precio por unidad"],
+    "fuente": "Fede 2026-06-27"
+  },
+  "columna_variantes": [
+    { "nombre": "octogonal o40", "codigo": "CS8-040", "seccion_mm": "40 x 40 (8 caras)", "kg_m": 0.9347, "uso": "estandar; enchufa hasta 8 panos a 45 grados" },
+    { "nombre": "puntera media cana (esquinera salida octogonal)", "codigo": "CE8-040", "seccion_mm": "28 x 28", "uso": "esquina a 90 grados con punta redondeada (radio desde centro)" },
+    { "nombre": "media columna (hemi octogonal)", "codigo": "CH8-040", "seccion_mm": "40 x 28", "uso": "deja un lado exterior liso; mostradores consecutivos con perfiles rectos (sin loma)" },
+    { "nombre": "columna doble", "codigo": "CD8-080", "seccion_mm": "80 x 40", "kg_m": 1.96, "uso": "doble pared (muro doble)" },
+    { "nombre": "hexagonal", "codigo": "CS6-040", "seccion_mm": "40 x 40 (6 caras)", "kg_m": 1.0638, "uso": "existe pero casi no se usa" }
+  ],
+  "esquina_90": "pivot unico = una columna compartida en la punta. Terminacion: puntera media cana (redondeada) o media columna (frente liso).",
+  "voladizo": {
+    "regla": "vuelo maximo ~50cm (medio modulo) pero rara vez se hace. Practica: profundidad 25cm + altura baja (<=50cm), ej cenefa entre 2,40 y 2,90. Mas que eso palanquea y no va.",
+    "fuente": "Fede 2026-06-27"
   },
   "estructura": {
     "fuente": "Fede 2026-06-27",
@@ -85,12 +155,15 @@
     "despiece_bom": "columnas = nodos unicos del grafo; perfiles = 2 x panos; placas = 1 x pano (largo segun combinaciones)"
   },
   "diagonales_mm": {
-    "medio_modulo_visible": { "base_mm": 455, "exacta_mm": 643.47, "corte_obra_mm": 660 },
-    "modulo_perfil_visible": { "base_mm": 950, "exacta_mm": 1343.50, "corte_obra_mm": 1360 },
-    "modulo_eje_a_eje": { "base_mm": 990, "exacta_mm": 1400.07, "corte_obra_mm": 1400 },
-    "medio_modulo_eje_a_eje": { "base_mm": 495, "exacta_mm": 700.04, "corte_obra_mm": null },
-    "holgura_corte_mm": 16.5,
-    "confirmar": "cual se cota para fabricacion: 1400 (eje-eje) o 1360 (visible)"
+    "fabricacion_sistema_cerrado": {
+      "medio_modulo_0.5x0.5": 660,
+      "modulo_1x1": 1360,
+      "modulos_2x2": 2720,
+      "modulos_3x3": 4160
+    },
+    "criterio": "se cota la diagonal VISIBLE (no eje-eje). Valores canonicos de fabricacion, sistema cerrado (Fede 2026-06-27). Descartado el 1400 eje-eje.",
+    "exactas_calc_mm": { "medio_modulo": 643.47, "modulo": 1343.50 },
+    "holgura_corte_mm": 16.5
   },
   "componentes": [
     {
@@ -145,9 +218,14 @@
     { "tipo": "isla", "frentes_abiertos": 4, "lados_contra_vecino": 0, "retiro_vecino_m": 0, "restriccion_altura": "ninguna (cenefa vale todo)" },
     { "tipo": "peninsula", "frentes_abiertos": 3, "lados_contra_vecino": 1, "retiro_vecino_m": 1.0, "restriccion_altura": "retiro 1m del vecino en altura", "nota": "el mas comun en ferias medianas" },
     { "tipo": "esquina", "frentes_abiertos": 2, "lados_contra_vecino": 2, "retiro_vecino_m": 1.0, "restriccion_altura": "retiro 1m de cada vecino en altura", "nota": "opcion economica" },
-    { "tipo": "lineal", "frentes_abiertos": 1, "lados_contra_vecino": 3, "retiro_vecino_m": 1.0, "restriccion_altura": "muy limitado en altura (sin numero)", "confirmar": "limite numerico real" }
+    { "tipo": "lineal", "frentes_abiertos": 1, "lados_contra_vecino": 3, "retiro_vecino_m": 1.0, "restriccion_altura": "limitado a ~2,50m (medianera); subir mas exige retiro reglamentario" }
   ],
   "regla_retiro_universal_m": 1.0,
+  "medianera": {
+    "altura_division_estandar_m": 2.50,
+    "regla": "la division entre stands vecinos suele ser de 2,50m. Para subir por encima hay que separarse del vecino (retiro) segun reglamento del predio/expo (varia por feria).",
+    "fuente": "Fede 2026-06-27"
+  },
   "pisos": ["alfombra nylon", "tarima 40mm", "tarima 80mm"],
   "tarimas": {
     "tarima_40mm": { "elevacion_mm": 40, "terminacion": "alfombra encima o remate de placa blanca" },
@@ -159,7 +237,7 @@
     "seccion_cm": "8x8 a 12x12",
     "seccion_mm": "80x80 a 120x120",
     "anclaje": "doble en cada punta",
-    "uso_probable": "alturas 3.40m+, techos, totems, voladizos, segundo piso",
+    "uso_probable": "NO para altura simple: hasta 5m se hace con columna OCTEXA comun (Fede 2026-06-27). Maxima queda para segundo piso / grandes luces de techo / cargas estructurales pesadas (uso real a confirmar)",
     "estado": "PENDIENTE de datos",
     "datos_pendientes": true,
     "confirmar": ["secciones reales disponibles", "peso lineal kg/m por seccion", "espesor de pared", "largos estandar de barra", "geometria de canal/ranura", "tipo de conector/anclaje doble", "modulo/grilla propia", "compatibilidad con modular o40", "tabla de luces/alturas maximas", "bases/patas y anclaje a piso", "precio por barra y por kg", "acabado/aleacion", "capacidad de carga techo/segundo nivel"]
@@ -172,16 +250,14 @@
   "pendientes": [
     "P0: despiece pieza por pieza (BOM) de cada componente del catalogo",
     "P0: material y espesor de placa por componente (vincular a tipos de modulo Costos)",
-    "P0: pesar el perfil de metro real en balanza (resolver +6.5%)",
-    "P0: seccion completa del perfil de 50 y de la columna o40 + peso/m columna + numero de canales",
-    "P0: cuna de encastre y conector de columna (pieza, cantidad, peso, precio)",
+    "P0 RESUELTO (catalogo OCTEXA 2021): perfiles/dinteles con codigo+seccion+kg/m; columna CS8-040 0.9347; conector PCH/PCM-058. Material aleacion 6063 / Brinell 60 / templado Aluar / blanco. Falta solo peso/precio unitario del cerrojo.",
     "P0: precios (perfil, columna, placa por material, vidrio, spot LED, dicroica, alfombra, tarima)",
-    "P1: cierre de esquina a 90 y conteo de columnas por topologia (L, U, perimetro, isla)",
-    "P1: retiros y alturas contra medianera (muro ciego permitido; desde que altura aplica; limite lineal)",
-    "P1: alturas 3.40/3.90/5.00 con o40 sola o requieren Maxima/refuerzo/arriostramiento",
-    "P1: voladizo y estabilidad (cenefa/estante/cartel sin apoyo; pared libre que necesita riostra)",
-    "P1: diagonal de fabricacion a 1400 (eje) o 1360 (visible) + criterio +16mm holgura",
-    "P1: escalera de alturas: existen 4400/4900 o 5000 es techo estructural fijo",
+    "P1 RESUELTO: esquina 90 = columna compartida unica + variantes (puntera media cana 28x28, media columna 40x28, columna doble). Falta solo conteo de columnas por topologia (L/U/perimetro/isla) para BOM automatico.",
+    "P1 RESUELTO: medianera estandar 2,50m; subir mas exige retiro segun reglamento de la expo (varia por feria).",
+    "P1 RESUELTO: hasta 5m con columna OCTEXA comun, NO requiere Maxima.",
+    "P1 RESUELTO: voladizo max ~50cm; practica prof 25cm + altura <=50cm; mas palanquea.",
+    "P1 RESUELTO: diagonal de fabricacion = visible. Valores 660 / 1360 / 2720 / 4160. Descartado el 1400.",
+    "P1 RESUELTO: NO existen 4400/4900; va de 3950 (~4m) a 5000 (techo).",
     "P2: iluminacion (modelo/potencia/precio spot LED y dicroica + regla spots/m + consumo por stand)",
     "P2: vidrios (espesor, tipo templado/float, dimensiones por componente, peso/m2)",
     "P2: puertas/cerraduras (dimension, hoja, modelo cerradura tipo serrucho, herrajes)",
