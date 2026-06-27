@@ -9836,6 +9836,13 @@ a.ev-doc-link:hover { text-decoration: underline; }
     width: 18px;
     text-align: center;
 }
+/* Íconos SVG ilustrados del sidebar — sólo el <svg> externo; el anidado (X de MEPEX) queda intacto */
+.se-item-emoji > svg,
+.sidebar-nav-icon > svg {
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+}
 
 .se-item-label {
     font-size: 12.5px;

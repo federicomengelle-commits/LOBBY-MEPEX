@@ -219,7 +219,7 @@ const App = {
                         <div class="se-item${currentHash === item.route ? ' active' : ''}"
                              data-route="${item.route}"
                              style="--cat-color: ${section.color}">
-                            <span class="se-item-emoji">${item.emoji}</span>
+                            <span class="se-item-emoji">${item.icon}</span>
                             <span class="se-item-label">${item.label}</span>
                         </div>
                         `).join('')}
@@ -241,7 +241,7 @@ const App = {
                         <div class="sidebar-strip-flyout-label">${section.label}</div>
                         ${visibleItems.map(item => `
                             <a href="#${item.route}" class="sidebar-strip-flyout-link${currentHash === item.route ? ' active' : ''}" data-route="${item.route}">
-                                <span class="sidebar-nav-icon">${item.emoji}</span>
+                                <span class="sidebar-nav-icon">${item.icon}</span>
                                 <span>${item.label}</span>
                             </a>
                         `).join('')}
@@ -286,7 +286,7 @@ const App = {
             if (cat.modules) {
                 items = cat.modules.map(m => ({
                     label: m.shortName || m.id,
-                    emoji: this._extractEmoji(m.icon),
+                    icon: m.icon || '📄',
                     route: m.id,
                 }));
             } else if (cat.moduleIds) {
@@ -294,7 +294,7 @@ const App = {
                     const mod = Data.getModuleById(id);
                     return {
                         label: mod ? mod.shortName : id,
-                        emoji: mod ? this._extractEmoji(mod.icon) : '📄',
+                        icon: mod ? (mod.icon || '📄') : '📄',
                         route: id,
                     };
                 });
