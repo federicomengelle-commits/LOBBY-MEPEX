@@ -107,8 +107,23 @@ const PlanoPDF = {
             doc.circle(mapX(c.x), mapY(c.y), r, 'FD');
         });
 
+        // zonas (bloques de espacio translúcidos + label)
+        doc.setFontSize(7.5);
+        (o.zonas || []).forEach(z => {
+            const corners = this._rotCorners(z.x, z.y, z.w, z.d, z.rot || 0).map(pt => [mapX(pt[0]), mapY(pt[1])]);
+            const rgb = this._hexToRgb(z.color || '#888888');
+            doc.setFillColor(rgb[0], rgb[1], rgb[2]); doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setLineWidth(0.5);
+            try { doc.setGState(new doc.GState({ opacity: 0.16 })); } catch (_) {}
+            doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'F', true);
+            try { doc.setGState(new doc.GState({ opacity: 1 })); } catch (_) {}
+            doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'S', true);
+            const cx = z.x + z.w / 2, cy = z.y + z.d / 2;
+            doc.setTextColor(rgb[0], rgb[1], rgb[2]); doc.setFont('helvetica', 'bold');
+            doc.text(String(z.label || ''), mapX(cx), mapY(cy) + 1, { align: 'center' });
+        });
+
         // piezas (rectángulos rotados + label)
-        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
         (o.pieces || []).forEach((p, i) => {
             const cx = p.x + p.w / 2, cy = p.y + p.d / 2;
             const corners = this._rotCorners(p.x, p.y, p.w, p.d, p.rot || 0).map(pt => [mapX(pt[0]), mapY(pt[1])]);
@@ -180,6 +195,12 @@ const PlanoPDF = {
         return s;
     },
     _m(mm) { return (Math.round(mm / 10) / 100).toLocaleString('es-AR') + ' m'; },
+    _hexToRgb(hex) {
+        const h = String(hex || '').replace('#', '');
+        const n = h.length === 3 ? h.split('').map(c => c + c).join('') : (h || '888888');
+        const int = parseInt(n, 16);
+        return isNaN(int) ? [136, 136, 136] : [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+    },
 };
 
 if (typeof module !== 'undefined' && module.exports) { module.exports = PlanoPDF; }

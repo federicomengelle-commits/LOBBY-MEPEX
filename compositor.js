@@ -29,6 +29,17 @@ const CompositorModule = {
         },
     },
 
+    // Zonas = bloques de espacio (no facturables) para distribuir el stand rápido.
+    _ZONAS: [
+        { key: 'exhibicion', label: 'Exhibición', color: '#00A9C1' },
+        { key: 'reunion', label: 'Reunión', color: '#9B7DFF' },
+        { key: 'mostrador', label: 'Mostrador', color: '#F28D15' },
+        { key: 'deposito', label: 'Depósito', color: '#888888' },
+        { key: 'estar', label: 'Estar', color: '#00CC88' },
+        { key: 'cocina', label: 'Cocina / Office', color: '#4A90D9' },
+        { key: 'acceso', label: 'Acceso', color: '#E8E8E8' },
+    ],
+
     _state: {
         modo: 'octexa',           // 'octexa' | 'area'
         nombre: '',
@@ -214,11 +225,17 @@ const CompositorModule = {
         }
 
         const comps = this._state.placed.map(p => {
-            const sel = p.uid === this._selUid ? ' cmp-comp-sel' : '';
+            const sel = p.uid === this._selUid;
             const rot = p.rot ? ` rotate(${p.rot},${p.w / 2},${p.d / 2})` : '';
-            return `<g class="cmp-comp${sel}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">
-                <rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"/>
+            const isZona = p.kind === 'zona';
+            const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${sel ? ' cmp-comp-sel' : ''}`;
+            const rectStyle = isZona ? ` style="fill:${p.color}22;stroke:${p.color}"` : '';
+            // handle de redimensionar (esquina inf-der) — solo en el seleccionado sin rotar
+            const handle = (sel && !p.rot) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
+            return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">
+                <rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"${rectStyle}/>
                 <text x="${p.w / 2}" y="${p.d / 2}" class="cmp-comp-label">${escHtml(this._short(p.nombre))}</text>
+                ${handle}
             </g>`;
         }).join('');
 
@@ -263,6 +280,29 @@ const CompositorModule = {
             g.addEventListener('pointerup', end);
             g.addEventListener('pointercancel', end);
         });
+        // Redimensionar arrastrando el handle (sin re-render → no pierde el pointer capture)
+        svg.querySelectorAll('.cmp-handle').forEach(h => {
+            h.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const uid = parseInt(h.dataset.uid, 10);
+                if (this._state.placed.find(x => x.uid === uid)) { this._resize = { uid }; h.setPointerCapture(e.pointerId); }
+            });
+            h.addEventListener('pointermove', (e) => {
+                if (!this._resize || this._resize.uid !== parseInt(h.dataset.uid, 10)) return;
+                const p = this._state.placed.find(x => x.uid === this._resize.uid); if (!p) return;
+                const loc = toLocal(e);
+                p.w = Math.max(200, Math.min(this._wmm() - p.x, this._snap(loc.x - p.x)));
+                p.d = Math.max(200, Math.min(this._dmm() - p.y, this._snap(loc.y - p.y)));
+                const g = h.parentNode;
+                g.querySelector('.cmp-comp-rect').setAttribute('width', p.w);
+                g.querySelector('.cmp-comp-rect').setAttribute('height', p.d);
+                const lbl = g.querySelector('.cmp-comp-label'); lbl.setAttribute('x', p.w / 2); lbl.setAttribute('y', p.d / 2);
+                h.setAttribute('x', p.w - 150); h.setAttribute('y', p.d - 150);
+            });
+            const endR = (e) => { if (this._resize) { try { h.releasePointerCapture(e.pointerId); } catch (_) {} this._resize = null; this._renderSelStrip(); } };
+            h.addEventListener('pointerup', endR);
+            h.addEventListener('pointercancel', endR);
+        });
     },
 
     _refreshSel() {
@@ -295,33 +335,58 @@ const CompositorModule = {
     // ═══ PALETA + COLOCAR ═══
     _renderPalette() {
         const cont = document.getElementById('cmpPalList'); if (!cont) return;
+        const zonasHTML = `
+            <div class="cmp-pal-sub">Zonas (distribuir espacio)</div>
+            <div class="cmp-zona-chips">
+                ${this._ZONAS.map(z => `<button class="cmp-zona-chip" data-zona="${z.key}" style="--zc:${z.color}">${escHtml(z.label)}</button>`).join('')}
+            </div>
+            <div class="cmp-pal-sub">Ítems del catálogo</div>`;
         const q = this._norm(this._paletteQ);
         let list = this._catalogo.slice();
         if (q) list = list.filter(c => this._norm(c.nombre).includes(q) || this._norm(c.codigo || '').includes(q) || this._norm(c.rubro || '').includes(q));
         list = list.slice(0, 200);
-        if (!this._catalogo.length) { cont.innerHTML = `<div class="cmp-empty">No se pudo cargar el catálogo.</div>`; return; }
-        if (!list.length) { cont.innerHTML = `<div class="cmp-empty">Sin ítems para "${escHtml(this._paletteQ)}".</div>`; return; }
-        cont.innerHTML = list.map(c => `
+        let itemsHTML;
+        if (!this._catalogo.length) itemsHTML = `<div class="cmp-empty">No se pudo cargar el catálogo.</div>`;
+        else if (!list.length) itemsHTML = `<div class="cmp-empty">Sin ítems para "${escHtml(this._paletteQ)}".</div>`;
+        else itemsHTML = list.map(c => `
             <button class="cmp-pal-item" data-id="${escAttr(c.id)}">
                 <span class="cmp-pal-name">${escHtml(c.nombre)}${c.tipoReceta === 'subalquilado' ? ' <span class="cmp-chip cmp-chip-sub">subalq</span>' : ''}</span>
                 <span class="cmp-pal-price">$${this._fmt(c.precioAlquiler)}</span>
             </button>`).join('');
-        cont.querySelectorAll('.cmp-pal-item').forEach(b => b.addEventListener('click', () => this._place(b.dataset.id)));
+        cont.innerHTML = zonasHTML + itemsHTML;
+        cont.querySelectorAll('.cmp-zona-chip').forEach(b => b.addEventListener('click', () => this._placeZona(b.dataset.zona)));
+        cont.querySelectorAll('.cmp-pal-item').forEach(b => b.addEventListener('click', () => this._placeItem(b.dataset.id)));
     },
 
-    _place(catId) {
+    // tamaño/posición default para algo nuevo (barrido para no apilar exacto)
+    _spawnXY(w, d) {
+        const n = this._state.placed.length, step = this._isArea() ? 500 : this.OCTEXA.medioEjeMM;
+        const perRow = Math.max(1, Math.floor((this._wmm() - w) / step) || 1);
+        let x = this._snap((n % perRow) * step);
+        let y = this._snap(Math.floor(n / perRow) * step);
+        return { x: Math.max(0, Math.min(this._wmm() - w, x)), y: Math.max(0, Math.min(this._dmm() - d, y)) };
+    },
+
+    _placeItem(catId) {
         const ci = this._catalogo.find(c => String(c.id) === String(catId)); if (!ci) return;
         const w = this._isArea() ? 800 : this.OCTEXA.ejeMM;
         const d = this._isArea() ? 800 : this.OCTEXA.profEstandarMM;
-        const n = this._state.placed.length, step = this._isArea() ? 1000 : this.OCTEXA.ejeMM;
-        const perRow = Math.max(1, Math.floor(this._wmm() / step));
-        let x = (n % perRow) * step, y = Math.floor(n / perRow) * (d + 200);
-        x = Math.max(0, Math.min(this._wmm() - w, x));
-        y = Math.max(0, Math.min(this._dmm() - d, y));
+        const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
-        this._state.placed.push({ uid, catId: ci.id, nombre: ci.nombre, precio: ci.precioAlquiler || 0, x, y, w, d, rot: 0 });
+        this._state.placed.push({ uid, kind: 'item', catId: ci.id, nombre: ci.nombre, precio: ci.precioAlquiler || 0, x, y, w, d, rot: 0 });
         this._selUid = uid;
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
+    },
+
+    _placeZona(key) {
+        const z = this._ZONAS.find(x => x.key === key); if (!z) return;
+        const base = this._isArea() ? 2000 : this.OCTEXA.ejeMM * 2;
+        const w = Math.min(base, this._wmm()), d = Math.min(base, this._dmm());
+        const { x, y } = this._spawnXY(w, d);
+        const uid = this._uidSeq++;
+        this._state.placed.push({ uid, kind: 'zona', zonaKey: key, nombre: z.label, color: z.color, x, y, w, d, rot: 0 });
+        this._selUid = uid;
+        this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
     },
 
     _rotatePiece() {
@@ -391,6 +456,7 @@ const CompositorModule = {
     _bomGroups() {
         const g = {};
         this._state.placed.forEach(p => {
+            if (p.kind === 'zona') return;   // las zonas no se facturan
             const k = String(p.catId);
             if (!g[k]) g[k] = { catId: p.catId, nombre: p.nombre, precio: p.precio, cant: 0 };
             g[k].cant += 1;
@@ -421,7 +487,8 @@ const CompositorModule = {
                 footprint: { wMM: this._wmm(), dMM: this._dmm() },
                 walls: this._closedSides(),
                 columns: this._columnsXY(),
-                pieces: this._state.placed.map(p => ({ nombre: p.nombre, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
+                zonas: this._state.placed.filter(p => p.kind === 'zona').map(p => ({ label: p.nombre, color: p.color, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
+                pieces: this._state.placed.filter(p => p.kind !== 'zona').map(p => ({ nombre: p.nombre, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
                 legend: this._bomGroups().map(g => ({ nombre: g.nombre, cant: g.cant })),
             };
             const blob = await PlanoPDF.generate(o);
@@ -590,7 +657,13 @@ const CompositorModule = {
             .cmp-palette,.cmp-bom{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
             .cmp-pal-search{width:100%;box-sizing:border-box;background:#1A1A1A;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);padding:8px 10px;font-size:.82rem;margin-bottom:8px}
             .cmp-pal-search:focus{outline:none;border-color:var(--primary)}
-            .cmp-pal-list{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+            .cmp-pal-list{max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+            .cmp-pal-sub{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim);margin:8px 0 5px}
+            .cmp-zona-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+            .cmp-zona-chip{font-size:.72rem;padding:5px 10px;border-radius:14px;cursor:pointer;background:color-mix(in srgb, var(--zc) 16%, transparent);border:1px solid var(--zc);color:var(--zc);transition:all 150ms}
+            .cmp-zona-chip:hover{background:color-mix(in srgb, var(--zc) 30%, transparent)}
+            .cmp-zona .cmp-comp-rect{stroke-dasharray:40 26}
+            .cmp-handle{fill:#F28D15;stroke:#1a1000;stroke-width:8;cursor:nwse-resize}
             .cmp-pal-item{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#151515;border:1px solid var(--border);border-radius:6px;padding:7px 10px;cursor:pointer;text-align:left;transition:all 150ms}
             .cmp-pal-item:hover{border-color:var(--primary);background:#191919}
             .cmp-pal-name{color:var(--text-primary);font-size:.8rem}
