@@ -30,14 +30,14 @@ const HomeModule = {
     _layouts: {
         superadmin: {
             kind: '2col',
-            toggle: true,
+            toggle: false,
             band: ['kpi-presupuestos', 'kpi-margen', 'kpi-dias-caja', 'kpi-cash30'],
             left:  { label: 'OPERATIVO',      keys: ['agenda-proxima', 'proyectos-curso', 'cola-taller', 'alertas-operativas', 'materiales-faltantes'] },
             right: { label: 'ADMINISTRATIVO', keys: ['pulso-financiero', 'cobros-pendientes', 'pagos-proximos', 'pipeline-comercial', 'alertas-admin'] },
         },
         admin: {
             kind: 'admin',
-            toggle: true,
+            toggle: false,
             band: ['kpi-presupuestos', 'kpi-margen', 'kpi-dias-caja', 'kpi-cash30'],
             hero: 'calendario-admin-digest',
             side: ['pulso-financiero', 'cobros-pendientes', 'pagos-proximos'],
@@ -465,7 +465,9 @@ const HomeModule = {
     },
 
     _db() { return (typeof supabaseClient !== 'undefined' && supabaseClient) || (window.API && API.supabase) || null; },
-    _canal() { const c = localStorage.getItem('finanzas_vista_canal') || 'oficial'; return c === 'total' ? null : c; },
+    // El lobby muestra SIEMPRE la vista oficial (el toggle Oficial/Interno vive solo
+    // en Finanzas; acá distorsionaba). El canal interno se consulta desde Finanzas.
+    _canal() { return 'oficial'; },
     _todayStr(now) { return now.toISOString().slice(0, 10); },
     _offsetStr(now, days) { return new Date(now.getTime() + days * 86400000).toISOString().slice(0, 10); },
     _monthRange(now) {
