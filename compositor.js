@@ -373,16 +373,18 @@ const CompositorModule = {
         }
         const F = this._state.frente, D = this._state.fondo;
         const columnas = this._columnsXY().length;
-        const wallModules = { isla: 0, peninsula: F, esquina: F + D, lineal: F + 2 * D }[this._state.tipo];
+        // panos = módulos de pared (cada paño = 1 placa + 2 perfiles). columnas = nodos (compartidas).
+        const panos = { isla: 0, peninsula: F, esquina: F + D, lineal: F + 2 * D }[this._state.tipo];
+        const placas = panos, perfiles = panos * 2;
         el.innerHTML = `
-            <div class="cmp-estr-head">Estructura OCTEXA <span class="cmp-estr-tag">estimación v1</span></div>
+            <div class="cmp-estr-head">Estructura OCTEXA <span class="cmp-estr-tag">despiece estimado · perímetro v1</span></div>
             <div class="cmp-estr-grid">
                 <div class="cmp-estr-it"><span>Columnas ø40</span><strong>${columnas}</strong></div>
-                <div class="cmp-estr-it"><span>Cerramiento</span><strong>${wallModules} m</strong></div>
+                <div class="cmp-estr-it"><span>Placas (paños)</span><strong>${placas}</strong></div>
+                <div class="cmp-estr-it"><span>Perfiles</span><strong>${perfiles}</strong></div>
                 <div class="cmp-estr-it"><span>Altura</span><strong>${this._numero(this._state.altura / 1000)} m</strong></div>
-                <div class="cmp-estr-it"><span>Frentes abiertos</span><strong>${this.OCTEXA.tipos[this._state.tipo].frentesAbiertos}</strong></div>
             </div>
-            <div class="cmp-estr-note">Regla rectangular v1. El despiece fino + precio estructural entran al cargar los ítems OCTEXA en Costos.</div>`;
+            <div class="cmp-estr-note">Cada paño = 1 placa + 2 perfiles (≈0,95 m) + columnas ø40 en los nodos (compartidas). Estimación de perímetro v1; los paños internos / cruces y el precio entran al cargar los ítems OCTEXA en Costos.</div>`;
     },
 
     // ═══ BOM ═══
