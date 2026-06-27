@@ -9,6 +9,17 @@
 
 ---
 
+## ✅ EJECUTADO 2026-06-26f — construido + verificado en preview, pusheado a main
+
+Las 3 piezas hechas **+ features extra pedidas por Fede en vivo** (todas validadas con mockups `show_widget` antes de codear): triage por grupos · acciones al hover (WhatsApp/agendar/respondido/snooze) · avatar de owner · próxima-acción con vencida fusionada · **snooze** (posponer) · toggle **Solo míos** · **segmento de línea de negocio Stands·Expo·Todo** (campo nuevo `crm_casos.linea`).
+
+- `crm.js?v=22` · `api.js?v=63` · `sql/crm_bandeja_v2.sql` (snooze + línea). Verificado por `preview_eval` (render/triage/segmento/snooze/chip presupuesto/avatar/menús/CASO VINCULADO; 0 errores). Pieza 2 incluye **semi-auto cotizado** al vincular. Pieza 3 (auditoría) sin SQL (tabla `audit_log` ya existe).
+- **⛔ Fede SQL-FIRST:** correr `sql/crm_bandeja_v2.sql` → recién después `~/pull-lobby.sh`. El código degrada limpio sin el SQL.
+- Detalle completo: CLAUDE.md §10 (sesión 2026-06-26f) + memoria `project_crm_bandeja_v2`.
+- **Pendiente:** verificación en prod logueada + pulir-loop visual sobre el render real (screenshots cuelgan headless).
+
+---
+
 ## ✅ DISEÑO CERRADO (decisiones de Fede en el prediseño — NO re-debatir)
 
 ### Bandeja — la fila (`_renderCasoRow`)

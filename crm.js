@@ -61,6 +61,10 @@ const CRM = {
     _casosEstadoFilter: null,
     _casosFlagFilter: null,     // null | 'sinresp' | 'noleido' (filtro rápido de la bandeja)
     _lecturas: {},              // {casoId: last_read_at} del usuario actual (leído/no-leído)
+    _snoozes: {},               // {casoId: snoozed_until ISO} del usuario actual (Bandeja v2)
+    _casosLinea: null,          // null = todas | 'stand' | 'expo' (segmento línea de negocio)
+    _casosSoloMios: false,      // toggle: ver solo los casos donde soy owner
+    _casosPospuestosOpen: false,// grupo "Pospuestos" colapsado/expandido
     _casoActivoId: null,        // si hay ficha de caso abierta (takeover de crm-main)
     _clienteActivoId: null,     // si hay ficha de cliente abierta (full-screen, refactor v2)
     _casoDrag: null,            // caso siendo arrastrado en el pipeline kanban
@@ -143,6 +147,14 @@ const CRM = {
         { value: 'ganado',      label: 'Ganado',      color: '#00CC88' },
         { value: 'perdido',     label: 'Perdido',     color: '#E94B4B' },
     ],
+
+    // ─── Casos: líneas de negocio (segmento de la Bandeja v2) ───
+    // 'stand' = diseño/construcción de stands (PMs) · 'expo' = equipamiento/alquiler/subalquileres (comercial)
+    _lineas: [
+        { value: 'stand', label: 'Stands',          color: '#00CC88', icon: '🏗️' },
+        { value: 'expo',  label: 'Expo / Subalq.',  color: '#F28D15', icon: '📦' },
+    ],
+    _lineaConfig(v) { return this._lineas.find(l => l.value === v) || null; },
 
     // ─── Casos: config de canales del timeline ───
     _canalConfig: {
@@ -308,6 +320,7 @@ const CRM = {
             this._casoMsgMap = (API.getUltimosMensajesPorCaso && casoIds.length)
                 ? await API.getUltimosMensajesPorCaso(casoIds) : {};
             this._lecturas = (API.getCasoLecturas ? await API.getCasoLecturas() : {}) || {};
+            this._snoozes = (API.getCasoSnoozes ? await API.getCasoSnoozes() : {}) || {};
 
             // Build project count per client
             this._clients.forEach(c => {
@@ -990,6 +1003,7 @@ const CRM = {
             const result = await API.createClient(data);
             if (result) {
                 Toast.success('Cliente creado');
+                if (typeof AuditLog !== 'undefined') AuditLog.record('create', 'crm', `Creó cliente ${data.name}`, 'clientes', (result && result.id) || null);
                 Modal.close(instance.id);
                 await this._loadData();
             } else {
@@ -1024,6 +1038,7 @@ const CRM = {
             const result = await API.updateClient(client.id, data);
             if (result) {
                 Toast.success('Cliente actualizado');
+                if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Editó cliente ${data.name || client.name}`, 'clientes', client.id);
                 Modal.close(instance.id);
                 await this._loadData();
                 // Si estábamos en la ficha full-screen de ese cliente, re-renderizarla con datos frescos
@@ -1048,6 +1063,7 @@ const CRM = {
         const result = await API.deleteClient(client.id);
         if (result) {
             Toast.success('Cliente eliminado');
+            if (typeof AuditLog !== 'undefined') AuditLog.record('delete', 'crm', `Eliminó cliente ${client.name}`, 'clientes', client.id);
             this._closePanel();
             await this._loadData();
         } else {
@@ -1717,6 +1733,7 @@ const CRM = {
                 const result = await API.updateCotizacionEstado(id, newEstado);
                 if (result) {
                     Toast.success(`Cotizaci\u00F3n movida a ${this._formatEstadoCot(newEstado)}`);
+                    if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Cotizaci\u00F3n ${cot.numero || id}: estado \u2192 ${this._formatEstadoCot(newEstado)}`, 'cotizaciones', id);
                 } else {
                     // Revert
                     cot.estado = oldEstado;
@@ -2377,6 +2394,7 @@ const CRM = {
     _renderCotResumen(cot) {
         const est = this._getCotEstadoConfig(cot.estado);
         const vendedor = this._getVendedorName(cot.vendedorId);
+        const casoVinc = cot.casoId ? this._casos.find(k => k.id === cot.casoId) : null;
         const fecha = cot.fechaEvento ? new Date(cot.fechaEvento).toLocaleDateString('es-AR') : '\u2014';
         const fechaEmision = cot.fechaEmision ? new Date(cot.fechaEmision).toLocaleDateString('es-AR') : (cot.createdAt ? new Date(cot.createdAt).toLocaleDateString('es-AR') : '\u2014');
         const subtotal = cot.subtotal || cot.montoTotal || 0;
@@ -2469,6 +2487,26 @@ const CRM = {
                     <div class="crm-vinculo-empty">
                         <span class="crm-vinculo-empty-text">Sin proyecto vinculado</span>
                         <button class="crm-btn-secondary" data-action="link-proyecto">+ Vincular proyecto</button>
+                    </div>
+                `}
+            </div>
+
+            <!-- Caso (CRM) vinculado -->
+            <div class="crm-panel-section">
+                <h4 class="crm-panel-section-title">CASO (CRM) VINCULADO</h4>
+                ${casoVinc ? `
+                    <div class="crm-vinculo-card">
+                        <span class="crm-vinculo-icon">\ud83d\uddc2\ufe0f</span>
+                        <div class="crm-vinculo-info">
+                            <div class="crm-vinculo-name">${this._escHtml(casoVinc.titulo)}</div>
+                            <a href="#crm" class="crm-vinculo-link" data-action="goto-caso" data-id="${casoVinc.id}">Ver caso \u2192</a>
+                        </div>
+                        <button class="crm-vinculo-unlink" data-action="unlink-caso" title="Desvincular">\u00d7</button>
+                    </div>
+                ` : `
+                    <div class="crm-vinculo-empty">
+                        <span class="crm-vinculo-empty-text">Sin caso vinculado</span>
+                        <button class="crm-btn-secondary" data-action="link-caso">+ Vincular caso</button>
                     </div>
                 `}
             </div>
@@ -2786,6 +2824,7 @@ const CRM = {
                 const result = await API.deleteCotizacion(cot.id);
                 if (result) {
                     Toast.success('Cotizaci\u00F3n eliminada');
+                    if (typeof AuditLog !== 'undefined') AuditLog.record('delete', 'crm', `Elimin\u00F3 cotizaci\u00F3n ${cot.numero || cot.id}`, 'cotizaciones', cot.id);
                     this._closeCotPanel();
                     await this._loadData();
                 } else {
@@ -2897,6 +2936,22 @@ const CRM = {
                     Router.navigate('proyectos');
                 });
             });
+            // Caso (CRM) — link reverso
+            body.querySelectorAll('[data-action="link-caso"]').forEach(b => {
+                b.addEventListener('click', () => this._openLinkPicker(cot, 'caso'));
+            });
+            body.querySelectorAll('[data-action="unlink-caso"]').forEach(b => {
+                b.addEventListener('click', () => this._unlinkVinculo(cot, 'caso'));
+            });
+            body.querySelectorAll('[data-action="goto-caso"]').forEach(a => {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = a.dataset.id;
+                    this._closeCotPanel();
+                    if (this._activeTab !== 'bandeja' && this._activeTab !== 'pipeline') this._switchTab('bandeja');
+                    this._openCaso(id);
+                });
+            });
         }
     },
 
@@ -2912,6 +2967,10 @@ const CRM = {
         } else if (kind === 'cliente') {
             items = (await API.getClients() || []);
             label = 'cliente'; titulo = 'Vincular cliente';
+        } else if (kind === 'caso') {
+            items = this._casos.filter(c => c.estado !== 'perdido')
+                .map(c => ({ id: c.id, name: `${c.titulo} — ${this._casoClienteName(c)}` }));
+            label = 'caso'; titulo = 'Vincular caso';
         }
 
         const renderList = (filterText) => {
@@ -2945,8 +3004,8 @@ const CRM = {
         const search  = overlay.querySelector('#crmLinkSearch');
         const list    = overlay.querySelector('#crmLinkList');
 
-        const fieldByKind = { evento: 'event_id', proyecto: 'project_id', cliente: 'cliente_id' };
-        const labelByKind = { evento: 'Evento',  proyecto: 'Proyecto',  cliente: 'Cliente' };
+        const fieldByKind = { evento: 'event_id', proyecto: 'project_id', cliente: 'cliente_id', caso: 'caso_id' };
+        const labelByKind = { evento: 'Evento',  proyecto: 'Proyecto',  cliente: 'Cliente', caso: 'Caso' };
 
         const attachItemListeners = () => {
             list.querySelectorAll('.crm-link-item').forEach(btn => {
@@ -2956,6 +3015,8 @@ const CRM = {
                     const result = await API.updateCotizacion(cot.id, payload);
                     if (result) {
                         Toast.success(`${labelByKind[kind]} vinculado`);
+                        if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Cotización ${cot.numero || cot.id}: ${labelByKind[kind].toLowerCase()} vinculado`, 'cotizaciones', cot.id);
+                        if (kind === 'caso') await this._semiAutoCotizado(id);   // semi-auto: lead/contactado → cotizado
                         Modal.close(instance.id);
                         await this._reloadCotPanel(cot.id);
                     } else {
@@ -2976,18 +3037,32 @@ const CRM = {
     },
 
     async _unlinkVinculo(cot, kind) {
-        const fieldByKind = { evento: 'event_id', proyecto: 'project_id', cliente: 'cliente_id' };
-        const labelByKind = { evento: 'Evento',  proyecto: 'Proyecto',  cliente: 'Cliente' };
+        const fieldByKind = { evento: 'event_id', proyecto: 'project_id', cliente: 'cliente_id', caso: 'caso_id' };
+        const labelByKind = { evento: 'Evento',  proyecto: 'Proyecto',  cliente: 'Cliente', caso: 'Caso' };
         const field = fieldByKind[kind];
         if (!field) return;
         const payload = { [field]: null };
         const result = await API.updateCotizacion(cot.id, payload);
         if (result) {
             Toast.success(`${labelByKind[kind]} desvinculado`);
+            if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Cotización ${cot.numero || cot.id}: ${labelByKind[kind].toLowerCase()} desvinculado`, 'cotizaciones', cot.id);
             await this._reloadCotPanel(cot.id);
         } else {
             Toast.error(`Error al desvincular ${kind}`);
         }
+    },
+
+    // Semi-auto: al vincular una cotización a un caso, si el caso venía de lead/contactado,
+    // salta solo a "cotizado". El resto de las transiciones siguen siendo manuales.
+    async _semiAutoCotizado(casoId) {
+        let caso = this._casos.find(c => c.id === casoId);
+        if (!caso) { this._casos = await API.getCasos(); caso = this._casos.find(c => c.id === casoId); }
+        if (!caso || !['lead', 'contactado'].includes(caso.estado)) return;
+        await API.updateCaso(casoId, { estado: 'cotizado' });
+        await API.createMensaje({ casoId, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: 'Estado → Cotizado (cotización vinculada)' });
+        if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Caso "${caso.titulo}": estado → Cotizado (auto al vincular cotización)`, 'crm_casos', casoId);
+        this._casos = await API.getCasos();
+        Toast.info('Caso movido a "Cotizado"');
     },
 
     async _reloadCotPanel(cotId) {
@@ -3041,6 +3116,7 @@ const CRM = {
             const result = await API.updateCotizacion(cot.id, { notasInternas: notas });
             if (result) {
                 Toast.success('Notas actualizadas');
+                if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Cotización ${cot.numero || cot.id}: editó notas internas`, 'cotizaciones', cot.id);
                 Modal.close(instance.id);
                 cot.notasInternas = notas;
                 this._cotPanelData = cot;
@@ -3298,12 +3374,24 @@ const CRM = {
             const accionVencida = !!(c.proximaAccionFecha && new Date(c.proximaAccionFecha).getTime() < now);
             const sinResponder = !!(last && ['whatsapp', 'email'].includes(last.canal) && last.direccion === 'entrante');
             const noLeido = this._isCasoNoLeido(c.id, last ? last.fecha : null);
+            // "Enfriándose": >7 días sin contacto y sin otra alerta más fuerte ya activa.
+            const enfriandose = (days || 0) > 7 && !sinResponder && !accionVencida;
+            // Snooze (posponer) por usuario: vigente solo si la fecha es futura.
+            const snoozedUntil = this._snoozes[c.id] || null;
+            const isSnoozed = !!(snoozedUntil && new Date(snoozedUntil).getTime() > now);
+            // Lead nuevo: recién entrado, todavía sin trabajar.
+            const dCreado = this._getDaysSince(c.createdAt);
+            const esNuevo = c.estado === 'lead' && dCreado !== null && dCreado <= 2;
+            const necesitaAccion = accionVencida || sinResponder;
             let score = 0;
             if (accionVencida) score += 100000;
             if (sinResponder) score += 50000;
             if (noLeido) score += 25000;
+            if (enfriandose) score += 10000;
             score += (days || 0);
-            return { ...c, _last: last, _days: days, _accionVencida: accionVencida, _sinResponder: sinResponder, _noLeido: noLeido, _score: score };
+            return { ...c, _last: last, _days: days, _accionVencida: accionVencida, _sinResponder: sinResponder,
+                _noLeido: noLeido, _enfriandose: enfriandose, _snoozedUntil: snoozedUntil, _isSnoozed: isSnoozed,
+                _esNuevo: esNuevo, _necesitaAccion: necesitaAccion, _score: score };
         });
         enriched.sort((a, b) => b._score - a._score);
         return enriched;
@@ -3353,6 +3441,10 @@ const CRM = {
         </div>` : '';
         return `<div class="casos-wrap">
             ${kpiCards}
+            <div class="casos-controls">
+                ${this._lineaSegmentHtml(all)}
+                <button class="casos-mios ${this._casosSoloMios ? 'active' : ''}" id="casosMios" title="Ver solo los casos donde sos responsable">${this._casosSoloMios ? '☑' : '☐'} Solo míos</button>
+            </div>
             ${this._casosToolbarHtml()}
             <div class="casos-chips">${chips}</div>
             ${sinAsig}
@@ -3360,9 +3452,28 @@ const CRM = {
         </div>`;
     },
 
+    // Segmento de línea de negocio (Stands · Expo · Todo). Los contadores son sobre activos.
+    _lineaSegmentHtml(all) {
+        const counts = { stand: 0, expo: 0 };
+        all.forEach(c => { if (c.linea === 'stand') counts.stand++; else if (c.linea === 'expo') counts.expo++; });
+        const seg = (val, label, color, n) => {
+            const active = this._casosLinea === val;
+            const style = active && color ? ` style="background:${color}1f;color:${color};border-color:${color}66"` : '';
+            return `<button class="casos-seg ${active ? 'active' : ''}" data-linea="${val == null ? '' : val}"${style}>${label}${n != null ? ` <span class="casos-seg-n">${n}</span>` : ''}</button>`;
+        };
+        return `<div class="casos-segmento">
+            ${this._lineas.map(l => seg(l.value, l.label, l.color, counts[l.value])).join('')}
+            ${seg(null, 'Todo', null, null)}
+        </div>`;
+    },
+
     _bandejaRowsHtml() {
-        const all = this._enrichCasos();
-        let list = all;
+        let list = this._enrichCasos();
+        // ── filtros base ──
+        if (this._casosSoloMios) {
+            const u = Auth.getUser?.() || {}; const uid = u.uid || u.id || null;
+            if (uid) list = list.filter(c => c.ownerId === uid);
+        }
         if (this._casosSearch) {
             const q = normStr(this._casosSearch);
             list = list.filter(c => normStr(c.titulo).includes(q) || normStr(this._casoClienteName(c)).includes(q) || normStr(c.eventoTexto).includes(q));
@@ -3370,12 +3481,60 @@ const CRM = {
         if (this._casosEstadoFilter) list = list.filter(c => c.estado === this._casosEstadoFilter);
         if (this._casosFlagFilter === 'sinresp') list = list.filter(c => c._sinResponder);
         else if (this._casosFlagFilter === 'noleido') list = list.filter(c => c._noLeido);
-        if (!list.length) {
-            return `<div class="casos-empty"><div class="casos-empty-icon">📂</div>
-                <h3>No hay casos ${this._casosSearch || this._casosEstadoFilter ? 'con esos filtros' : 'activos'}</h3>
-                <p>Creá un caso con <strong>"Nuevo caso"</strong> arriba para empezar a seguir una oportunidad.</p></div>`;
+
+        // ── snooze: los pospuestos vigentes salen de la cola y van a su propio grupo ──
+        const pospuestos = list.filter(c => c._isSnoozed);
+        const activos = list.filter(c => !c._isSnoozed);
+
+        if (this._casosLinea) {
+            // VISTA FOCALIZADA en una línea → triage: Necesitan acción / En seguimiento.
+            const dela = activos.filter(c => c.linea === this._casosLinea);
+            if (!dela.length && !pospuestos.length) return this._casosEmptyHtml();
+            const urge = dela.filter(c => c._necesitaAccion);
+            const segui = dela.filter(c => !c._necesitaAccion);
+            let html = '';
+            if (urge.length)  html += this._grupoHtml('Necesitan acción', '#EF5350', urge);
+            if (segui.length) html += this._grupoHtml('En seguimiento', '#00A9C1', segui);
+            if (!urge.length && !segui.length && !pospuestos.length) return this._casosEmptyHtml();
+            return html + this._pospuestosHtml(pospuestos);
         }
-        return list.map(c => this._renderCasoRow(c)).join('');
+
+        // VISTA "TODO" → secciones por línea (con encabezado); urgentes floteados por score.
+        if (!activos.length && !pospuestos.length) return this._casosEmptyHtml();
+        const buckets = [
+            { val: 'stand', cfg: this._lineaConfig('stand') },
+            { val: 'expo',  cfg: this._lineaConfig('expo') },
+            { val: null,    cfg: { label: 'Sin clasificar', color: '#888888', icon: '🏷️' } },
+        ];
+        let html = '';
+        buckets.forEach(b => {
+            const items = activos.filter(c => (c.linea || null) === b.val);
+            if (items.length) html += this._grupoHtml(b.cfg.label, b.cfg.color, items, b.cfg.icon);
+        });
+        return (html || this._casosEmptyHtml()) + this._pospuestosHtml(pospuestos);
+    },
+
+    _casosEmptyHtml() {
+        const filtrando = this._casosSearch || this._casosEstadoFilter || this._casosLinea || this._casosSoloMios || this._casosFlagFilter;
+        return `<div class="casos-empty"><div class="casos-empty-icon">📂</div>
+            <h3>No hay casos ${filtrando ? 'con esos filtros' : 'activos'}</h3>
+            <p>Creá un caso con <strong>"Nuevo caso"</strong> arriba para empezar a seguir una oportunidad.</p></div>`;
+    },
+
+    _grupoHtml(label, color, items, icon) {
+        return `<div class="casos-grupo">
+            <div class="casos-grupo-head"><span class="casos-grupo-dot" style="background:${color}"></span>${icon ? icon + ' ' : ''}${label}<span class="casos-grupo-n">${items.length}</span></div>
+            ${items.map(c => this._renderCasoRow(c)).join('')}
+        </div>`;
+    },
+
+    _pospuestosHtml(items) {
+        if (!items.length) return '';
+        const open = this._casosPospuestosOpen;
+        return `<div class="casos-grupo casos-pospuestos">
+            <div class="casos-grupo-head casos-posp-head" id="casosPospToggle"><span class="casos-grupo-dot" style="background:#9B7DFF"></span>💤 Pospuestos<span class="casos-grupo-n">${items.length}</span><span class="casos-posp-caret">${open ? '▾' : '▸'}</span></div>
+            ${open ? items.map(c => this._renderCasoRow(c)).join('') : ''}
+        </div>`;
     },
 
     _kpiCard(label, val, color, flag) {
@@ -3383,38 +3542,101 @@ const CRM = {
         return `<div class="casos-kpi${flag ? ' casos-kpi--btn' : ''}${active ? ' active' : ''}" style="--kpi:${color}"${flag ? ` data-flag="${flag}"` : ''}><div class="casos-kpi-val">${val}</div><div class="casos-kpi-label">${label}</div></div>`;
     },
 
+    // ─── helpers de la fila (Bandeja v2) ───
+    _casoInitials(name) {
+        const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return '?';
+        if (parts.length === 1) return parts[0][0].toUpperCase();
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+    },
+    _avatarColor(name) {
+        const palette = ['#00A9C1', '#9B7DFF', '#F28D15', '#00CC88', '#4A90D9', '#E94B4B'];
+        let h = 0; const s = name || '';
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+        return palette[h % palette.length];
+    },
+    _ownerAvatar(ownerId) {
+        const name = this._getVendedorName(ownerId);
+        if (!name || name === '—' || /sin asignar/i.test(name)) {
+            return `<span class="caso-owner-av caso-owner-av--none" title="Sin responsable">+</span>`;
+        }
+        const col = this._avatarColor(name);
+        return `<span class="caso-owner-av" title="${this._escHtml(name)}" style="background:${col}2e;border-color:${col}66;color:${col}">${this._escHtml(this._casoInitials(name))}</span>`;
+    },
+    _waLinkForCaso(caso) {
+        const cli = caso.clienteId ? this._clients.find(x => x.id === caso.clienteId) : null;
+        const d = ((cli && cli.phone) || '').replace(/[^\d]/g, '');
+        if (!d) return '';
+        return `https://wa.me/${d.length <= 10 ? ('54' + d) : d}`;
+    },
+    // El presupuesto vinculado más reciente; si no hay, el monto estimado del caso.
+    _presupuestoChipHtml(caso) {
+        const cots = this._cotizaciones.filter(c => c.casoId === caso.id);
+        if (cots.length) {
+            const cot = cots.slice().sort((a, b) =>
+                new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
+            const ec = this._cotEstados.find(e => e.value === cot.estado);
+            const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '';
+            const est = ec ? ` · <span style="color:${ec.color}">${ec.label}</span>` : '';
+            return `<span class="caso-chip-presu" data-cot-id="${cot.id}" title="Abrir cotización">📄 ${this._escHtml(cot.numero || 'COT')}${monto ? ' · ' + monto : ''}${est}</span>`;
+        }
+        if (caso.montoEstimado) {
+            return `<span class="caso-chip-estimado" title="Monto estimado del caso">~ $${caso.montoEstimado.toLocaleString('es-AR')}</span>`;
+        }
+        return '';
+    },
+    _proximaAccionChipHtml(caso) {
+        if (!caso.proximaAccion) return '';
+        const venc = caso._accionVencida;
+        const fechaTxt = caso.proximaAccionFecha
+            ? new Date(caso.proximaAccionFecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '';
+        const suf = venc ? (fechaTxt ? `venció ${fechaTxt}` : 'vencida') : fechaTxt;
+        return `<span class="caso-chip-accion ${venc ? 'vencida' : ''}">⏭ ${this._escHtml(caso.proximaAccion)}${suf ? ' · ' + suf : ''}</span>`;
+    },
+
     _renderCasoRow(c) {
         const estadoCfg = this._casoEstados.find(e => e.value === c.estado) || this._casoEstados[0];
-        const temp = this._tempConfig[this._effTemp(c)];
         const cliente = this._casoClienteName(c);
         const last = c._last;
         const canalCfg = last ? (this._canalConfig[last.canal] || this._canalConfig.nota) : null;
         const snippet = last ? this._escHtml((last.resumen_ia || last.contenido || '').slice(0, 100)) : 'Sin mensajes todavía';
         const daysColor = this._getDaysColor(c._days);
         const aging = c._days === null ? '' : `<span class="caso-row-aging" style="color:${daysColor}">${c._days === 0 ? 'hoy' : c._days + 'd'}</span>`;
-        const owner = this._getVendedorName(c.ownerId);
-        const accion = c.proximaAccion ? `<div class="caso-row-accionwrap"><span class="caso-row-accion ${c._accionVencida ? 'vencida' : ''}">⏭ ${this._escHtml(c.proximaAccion)}</span></div>` : '';
-        const flags = `${c._sinResponder ? '<span class="caso-flag sinresp">sin responder</span>' : ''}${c._accionVencida ? '<span class="caso-flag venc">vencida</span>' : ''}`;
-        const rowCls = `caso-row${c._sinResponder ? ' caso-row--sinresp' : ''}${c._noLeido ? ' caso-row--noleido' : ''}`;
-        return `<div class="${rowCls}" data-caso-id="${c.id}">
-            <div class="caso-row-temp" title="${temp ? temp.label : ''}">${temp ? temp.icon : '•'}</div>
+        // Chips de urgencia (la "vencida" va dentro del chip de próxima acción, no acá).
+        const chips = [];
+        if (c._sinResponder) chips.push('<span class="caso-flag sinresp">sin responder</span>');
+        if (c._enfriandose)  chips.push('<span class="caso-flag enfri">enfriándose</span>');
+        if (c._esNuevo)      chips.push('<span class="caso-flag nuevo">nuevo</span>');
+        const presu = this._presupuestoChipHtml(c);
+        const accion = this._proximaAccionChipHtml(c);
+        const metaRow = (presu || accion) ? `<div class="caso-row-meta">${presu}${accion}</div>` : '';
+        // Acciones rápidas (visibles al hover). data-stop evita que el click abra la ficha.
+        const wa = this._waLinkForCaso(c);
+        const acts = [];
+        if (wa) acts.push(`<a class="caso-act" data-stop="1" href="${wa}" target="_blank" rel="noopener" title="WhatsApp">💬</a>`);
+        acts.push(`<button class="caso-act" data-stop="1" data-act="agendar" title="Agendar acción">📅</button>`);
+        if (c._sinResponder) acts.push(`<button class="caso-act" data-stop="1" data-act="respondido" title="Marcar respondido">✓</button>`);
+        acts.push(`<button class="caso-act" data-stop="1" data-act="snooze" title="Posponer">💤</button>`);
+        acts.push(`<button class="caso-act" data-stop="1" data-act="linea" title="Clasificar línea">🏷️</button>`);
+        const rowCls = `caso-row${c._necesitaAccion ? ' caso-row--urge' : ''}${c._noLeido ? ' caso-row--noleido' : ''}`;
+        return `<div class="${rowCls}" data-caso-id="${c.id}" style="border-left-color:${estadoCfg.color}">
             <div class="caso-row-main">
                 <div class="caso-row-top">
                     ${c._noLeido ? '<span class="caso-unread-dot" title="No leído"></span>' : ''}
                     <span class="caso-row-titulo">${this._escHtml(c.titulo)}</span>
-                    <span class="caso-row-estado" style="background:${estadoCfg.color}1f;color:${estadoCfg.color}">${estadoCfg.label}</span>
-                    ${flags}
+                    <button class="caso-row-estado" data-stop="1" data-act="estado" style="background:${estadoCfg.color}1f;color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoCfg.label} <span class="caso-estado-caret">▾</span></button>
+                    ${chips.join('')}
                 </div>
                 <div class="caso-row-sub">
                     <span class="caso-row-cliente">${this._escHtml(cliente)}</span>
                     <span class="caso-row-sep">·</span>
                     <span class="caso-row-snippet">${canalCfg ? canalCfg.icon + ' ' : ''}${snippet}</span>
                 </div>
-                ${accion}
+                ${metaRow}
             </div>
             <div class="caso-row-right">
-                ${aging}
-                <span class="caso-row-owner">${this._escHtml(owner)}</span>
+                <div class="caso-row-actions">${acts.join('')}</div>
+                <div class="caso-row-stat">${aging}${this._ownerAvatar(c.ownerId)}</div>
             </div>
         </div>`;
     },
@@ -3439,13 +3661,14 @@ const CRM = {
         return this._casoEstados.map(col => {
             const items = byEstado[col.value] || [];
             const cards = items.map(c => {
-                const temp = this._tempConfig[this._effTemp(c)];
                 const last = this._casoMsgMap[c.id];
                 const days = this._getDaysSince(last ? last.fecha : c.updatedAt);
                 const dc = this._getDaysColor(days);
                 const monto = c.montoEstimado ? '$' + c.montoEstimado.toLocaleString('es-AR') : '';
+                const lc = c.linea ? this._lineaConfig(c.linea) : null;
+                const lineaDot = lc ? `<span class="caso-pcard-linea" title="${this._escHtml(lc.label)}" style="background:${lc.color}"></span>` : '';
                 return `<div class="caso-pcard" data-caso-id="${c.id}" draggable="true">
-                    <div class="caso-pcard-top"><span class="caso-pcard-titulo">${this._escHtml(c.titulo)}</span>${temp ? `<span title="${temp.label}">${temp.icon}</span>` : ''}</div>
+                    <div class="caso-pcard-top"><span class="caso-pcard-titulo">${this._escHtml(c.titulo)}</span>${lineaDot}</div>
                     <div class="caso-pcard-cli">${this._escHtml(this._casoClienteName(c))}</div>
                     <div class="caso-pcard-foot"><span>${monto}</span><span style="color:${dc}">${days === null ? '' : (days === 0 ? 'hoy' : days + 'd')}</span></div>
                 </div>`;
@@ -3477,8 +3700,24 @@ const CRM = {
     },
 
     _attachCasoCardClicks() {
-        document.querySelectorAll('#casosBody [data-caso-id]').forEach(el =>
-            el.addEventListener('click', async () => { await this._openCaso(el.dataset.casoId); }));
+        const body = document.getElementById('casosBody');
+        if (!body) return;
+        body.querySelectorAll('[data-caso-id]').forEach(row => {
+            // Click en la fila abre la ficha, EXCEPTO si fue sobre un control (data-stop / chip presupuesto).
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('[data-stop]') || e.target.closest('.caso-chip-presu')) return;
+                this._openCaso(row.dataset.casoId);
+            });
+            row.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._handleRowAction(btn.dataset.act, row.dataset.casoId, btn);
+            }));
+            const presu = row.querySelector('.caso-chip-presu');
+            if (presu) presu.addEventListener('click', (e) => { e.stopPropagation(); this._openCotById(presu.dataset.cotId); });
+            row.querySelectorAll('a[data-stop]').forEach(a => a.addEventListener('click', (e) => e.stopPropagation()));
+        });
+        const posp = document.getElementById('casosPospToggle');
+        if (posp) posp.addEventListener('click', () => { this._casosPospuestosOpen = !this._casosPospuestosOpen; this._refreshCasosBody(); });
     },
 
     _attachCasosBandejaEvents() {
@@ -3496,6 +3735,129 @@ const CRM = {
         }));
         document.querySelectorAll('.casos-sa-assign').forEach(b =>
             b.addEventListener('click', () => this._asignarMensajeModal(b.dataset.msgId)));
+        // Segmento de línea de negocio
+        document.querySelectorAll('.casos-seg').forEach(b => b.addEventListener('click', () => {
+            this._casosLinea = b.dataset.linea || null;
+            this._renderTabContent();
+        }));
+        // Toggle "Solo míos"
+        const mios = document.getElementById('casosMios');
+        if (mios) mios.addEventListener('click', () => { this._casosSoloMios = !this._casosSoloMios; this._renderTabContent(); });
+    },
+
+    // ─── acciones de la fila (Bandeja v2) ───
+    _handleRowAction(act, casoId, btn) {
+        const caso = this._casos.find(c => c.id === casoId);
+        if (!caso) return;
+        const rect = btn.getBoundingClientRect();
+        if (act === 'estado')     return this._openEstadoMenu(caso, rect);
+        if (act === 'snooze')     return this._openSnoozeMenu(caso, rect);
+        if (act === 'linea')      return this._openLineaMenu(caso, rect);
+        if (act === 'agendar')    return this._openNuevoCasoModal(caso);
+        if (act === 'respondido') return this._marcarRespondido(caso);
+    },
+
+    _openEstadoMenu(caso, rect) {
+        const items = this._casoEstados.map(e => ({
+            icon: `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${e.color}"></span>`,
+            label: e.value === caso.estado ? `<strong style="color:${e.color}">${e.label}</strong>` : e.label,
+            action: () => { if (e.value !== caso.estado) this._changeCasoEstado(caso.id, e.value); },
+        }));
+        ContextMenu.show(rect.left, rect.bottom + 4, items);
+    },
+
+    _openSnoozeMenu(caso, rect) {
+        const items = [
+            { icon: '💤', label: 'Mañana',              action: () => this._snoozeCaso(caso, 1) },
+            { icon: '💤', label: 'En 3 días',           action: () => this._snoozeCaso(caso, 3) },
+            { icon: '💤', label: 'La semana que viene', action: () => this._snoozeCaso(caso, 7) },
+        ];
+        if (this._snoozes[caso.id]) {
+            items.push({ divider: true });
+            items.push({ icon: '↩️', label: 'Quitar posponer', action: () => this._unsnooze(caso) });
+        }
+        ContextMenu.show(rect.left, rect.bottom + 4, items);
+    },
+
+    _openLineaMenu(caso, rect) {
+        const items = this._lineas.map(l => ({
+            icon: `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${l.color}"></span>`,
+            label: caso.linea === l.value ? `<strong style="color:${l.color}">${l.label}</strong>` : l.label,
+            action: () => this._setLinea(caso, l.value),
+        }));
+        if (caso.linea) {
+            items.push({ divider: true });
+            items.push({ icon: '🏷️', label: 'Sin clasificar', action: () => this._setLinea(caso, null) });
+        }
+        ContextMenu.show(rect.left, rect.bottom + 4, items);
+    },
+
+    // Cambia el estado de un caso (reusable: Bandeja ▾, pipeline DnD, etc.) + auditoría.
+    async _changeCasoEstado(casoId, nuevo) {
+        const caso = this._casos.find(c => c.id === casoId);
+        if (!caso || caso.estado === nuevo) return;
+        const prevLabel = this._casoEstados.find(e => e.value === caso.estado)?.label || caso.estado;
+        const newLabel = this._casoEstados.find(e => e.value === nuevo)?.label || nuevo;
+        await API.updateCaso(casoId, { estado: nuevo });
+        await API.createMensaje({ casoId, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Estado → ${newLabel}` });
+        if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Caso "${caso.titulo}": estado ${prevLabel} → ${newLabel}`, 'crm_casos', casoId);
+        Toast.success(`Movido a ${newLabel}`);
+        await this._reloadCasosLite();
+        this._renderTabContent();
+    },
+
+    async _setLinea(caso, val) {
+        if ((caso.linea || null) === (val || null)) return;
+        await API.updateCaso(caso.id, { linea: val });
+        const lbl = val ? (this._lineaConfig(val)?.label || val) : 'sin clasificar';
+        if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Caso "${caso.titulo}": línea → ${lbl}`, 'crm_casos', caso.id);
+        Toast.success(`Línea: ${lbl}`);
+        await this._reloadCasosLite();
+        this._renderTabContent();
+    },
+
+    async _snoozeCaso(caso, days) {
+        const d = new Date(); d.setDate(d.getDate() + days); d.setHours(9, 0, 0, 0);
+        if (await API.snoozeCaso(caso.id, d)) {
+            Toast.success(days === 1 ? 'Pospuesto hasta mañana' : `Pospuesto ${days} días`);
+            await this._reloadCasosLite();
+            this._renderTabContent();
+        } else { Toast.error('No se pudo posponer'); }
+    },
+
+    async _unsnooze(caso) {
+        if (await API.unsnoozeCaso(caso.id)) {
+            Toast.success('Reactivado');
+            await this._reloadCasosLite();
+            this._renderTabContent();
+        }
+    },
+
+    async _marcarRespondido(caso) {
+        await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'nota', direccion: 'saliente', contenido: '✓ Respondido (marcado a mano)' });
+        await API.marcarCasoLeido(caso.id);
+        Toast.success('Marcado como respondido');
+        await this._reloadCasosLite();
+        this._renderTabContent();
+    },
+
+    async _openCotById(cotId) {
+        const cot = this._cotizaciones.find(c => String(c.id) === String(cotId));
+        if (!cot) return;
+        this._switchTab('cotizaciones');
+        await this._openCotPanel(cot);
+    },
+
+    // Recarga liviana de casos + mapas derivados (sin recargar clientes/cotizaciones/etc.).
+    async _reloadCasosLite() {
+        this._casos = await API.getCasos();
+        const ids = this._casos.map(c => c.id);
+        this._casoMsgMap = (API.getUltimosMensajesPorCaso && ids.length) ? await API.getUltimosMensajesPorCaso(ids) : {};
+        this._lecturas = (API.getCasoLecturas ? await API.getCasoLecturas() : {}) || {};
+        this._snoozes = (API.getCasoSnoozes ? await API.getCasoSnoozes() : {}) || {};
+        this._counts.bandeja = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
+        this._counts.pipeline = this._casos.length;
+        this._updateTabCounts();
     },
 
     _attachCasosPipelineEvents() {
@@ -3525,13 +3887,7 @@ const CRM = {
                 if (!casoId || !nuevo) return;
                 const caso = this._casos.find(c => c.id === casoId);
                 if (!caso || caso.estado === nuevo) return;
-                await API.updateCaso(casoId, { estado: nuevo });
-                await API.createMensaje({ casoId, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Estado → ${this._casoEstados.find(x => x.value === nuevo)?.label || nuevo}` });
-                this._casos = await API.getCasos();
-                this._counts.bandeja = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
-                this._counts.pipeline = this._casos.length;
-                this._updateTabCounts();
-                this._refreshCasosBody();
+                await this._changeCasoEstado(casoId, nuevo);   // update + mensaje + auditoría + re-render
             });
         });
     },
@@ -3579,6 +3935,7 @@ const CRM = {
         const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
         const owner = this._getVendedorName(caso.ownerId);
         const monto = caso.montoEstimado ? '$' + caso.montoEstimado.toLocaleString('es-AR') : '—';
+        const lineaCfg = caso.linea ? this._lineaConfig(caso.linea) : null;
         const cotsCaso = this._cotizaciones.filter(c => c.casoId === caso.id);
         const accionVencida = !!(caso.proximaAccionFecha && new Date(caso.proximaAccionFecha).getTime() < Date.now());
         const accionFechaTxt = caso.proximaAccionFecha ? new Date(caso.proximaAccionFecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
@@ -3599,6 +3956,7 @@ const CRM = {
                     <div class="caso-head-meta">
                         ${cliente ? `<a class="caso-meta-chip caso-cliente-link" data-client-id="${cliente.id}">🏢 ${this._escHtml(cliente.name)}</a>` : '<span class="caso-meta-chip">Sin cliente</span>'}
                         ${caso.eventoTexto ? `<span class="caso-meta-chip">📅 ${this._escHtml(caso.eventoTexto)}</span>` : ''}
+                        <button class="caso-meta-chip caso-linea-chip" id="casoLinea" title="Clasificar línea de negocio"${lineaCfg ? ` style="color:${lineaCfg.color};border-color:${lineaCfg.color}55"` : ''}>${lineaCfg ? lineaCfg.icon + ' ' + lineaCfg.label : '🏷️ Sin clasificar'}</button>
                         <select class="caso-temp-select" id="casoTemp" style="color:${temp ? temp.color : '#888'}" title="Temperatura — Auto = por recencia: Hot ≤5d · Warm 6-12d · Cold >12d. Elegí una para fijarla.">${tempOpts}</select>
                         <span class="caso-meta-chip">💰 ${monto}</span>
                         <span class="caso-meta-chip">👤 ${this._escHtml(owner)}</span>
@@ -4071,8 +4429,11 @@ const CRM = {
             const caso = getCaso();
             if (!caso) return;
             const nuevo = est.value;
+            const prevLabel = this._casoEstados.find(e => e.value === caso.estado)?.label || caso.estado;
+            const newLabel = this._casoEstados.find(e => e.value === nuevo)?.label || nuevo;
             await API.updateCaso(caso.id, { estado: nuevo });
-            await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Estado → ${this._casoEstados.find(e => e.value === nuevo)?.label || nuevo}` });
+            await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: `Estado → ${newLabel}` });
+            if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Caso "${caso.titulo}": estado ${prevLabel} → ${newLabel}`, 'crm_casos', caso.id);
             await this._reloadCasoYFicha(caso.id);
         });
         const tempSel = document.getElementById('casoTemp');
@@ -4084,6 +4445,8 @@ const CRM = {
             await API.updateCaso(caso.id, patch);
             await this._reloadCasoYFicha(caso.id);
         });
+        const lineaBtn = document.getElementById('casoLinea');
+        if (lineaBtn) lineaBtn.addEventListener('click', () => { const c = getCaso(); if (c) this._openLineaMenu(c, lineaBtn.getBoundingClientRect()); });
         const edit = document.getElementById('casoEdit');
         if (edit) edit.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
         const del = document.getElementById('casoDelete');
@@ -4122,6 +4485,7 @@ const CRM = {
             const r = await API.deleteCaso(caso.id);
             if (r) {
                 Toast.success('Caso eliminado');
+                if (typeof AuditLog !== 'undefined') AuditLog.record('delete', 'crm', `Eliminó caso "${caso.titulo}"`, 'crm_casos', caso.id);
                 this._casoActivoId = null;
                 this._casos = await API.getCasos();
                 const ids = this._casos.map(c => c.id);
@@ -4179,6 +4543,11 @@ const CRM = {
                 <div><label class="caso-f-label">Estado</label><select class="crm-input" id="cfEstado">${estadoOpts}</select></div>
                 <div><label class="caso-f-label">Temperatura</label><select class="crm-input" id="cfTemp">${tempOpts}</select></div>
             </div>
+            <label class="caso-f-label">Línea de negocio</label>
+            <select class="crm-input" id="cfLinea">
+                <option value="" ${!caso.linea ? 'selected' : ''}>— Sin clasificar —</option>
+                ${this._lineas.map(l => `<option value="${l.value}" ${caso.linea === l.value ? 'selected' : ''}>${l.icon} ${l.label}</option>`).join('')}
+            </select>
             <div class="caso-f-row">
                 <div><label class="caso-f-label">Monto estimado</label><input type="number" min="0" class="crm-input" id="cfMonto" value="${caso.montoEstimado || ''}" placeholder="0"></div>
                 <div><label class="caso-f-label">Responsable</label><select class="crm-input" id="cfOwner">${ownerOpts}</select></div>
@@ -4217,6 +4586,7 @@ const CRM = {
             montoEstimado: v('cfMonto')?.value || '',
             ownerId: v('cfOwner')?.value || null,
             origen: v('cfOrigen')?.value?.trim() || '',
+            linea: v('cfLinea')?.value || null,
             proximaAccion: accion,
             proximaAccionFecha: accionFecha ? new Date(accionFecha + 'T12:00:00').toISOString() : null,
         };
@@ -4266,6 +4636,7 @@ const CRM = {
             const res = isEdit ? await API.updateCaso(caso.id, data) : await API.createCaso(data);
             if (res) {
                 Toast.success(isEdit ? 'Caso actualizado' : 'Caso creado');
+                if (typeof AuditLog !== 'undefined') AuditLog.record(isEdit ? 'edit' : 'create', 'crm', `${isEdit ? 'Editó' : 'Creó'} caso "${data.titulo}"`, 'crm_casos', res.id);
                 Modal.close(instance.id);
                 this._casos = await API.getCasos();
                 const ids = this._casos.map(c => c.id);
@@ -6416,26 +6787,61 @@ const CRM = {
 
 /* Lista de casos */
 .casos-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-.caso-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 200ms ease; }
+.caso-row { display: flex; align-items: stretch; gap: 14px; padding: 11px 14px; background: var(--bg-card); border: 1px solid var(--border); border-left-width: 4px; border-radius: 8px; cursor: pointer; transition: all 200ms ease; }
 .caso-row:hover { border-color: rgba(0,169,193,0.4); transform: translateX(2px); box-shadow: var(--glow-sm); }
+.caso-row--urge { background: rgba(239,83,80,0.045); }
 .caso-row-temp { font-size: 1.2rem; flex-shrink: 0; width: 24px; text-align: center; }
 .caso-row-main { flex: 1; min-width: 0; }
 .caso-row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.caso-row-titulo { font-weight: 600; color: var(--text-primary); font-size: 0.92rem; }
-.caso-row-estado { font-size: 0.68rem; font-weight: 700; padding: 2px 9px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.03em; }
-.caso-flag { font-size: 0.66rem; padding: 2px 7px; border-radius: 8px; font-weight: 600; }
-.caso-flag.sinresp { background: rgba(37,211,102,0.15); color: #25D366; }
+.caso-row-titulo { font-weight: 600; color: #F4F4F4; font-size: 0.93rem; }
+.caso-row-estado { display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 700; padding: 2px 6px 2px 9px; border: 1px solid transparent; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.03em; cursor: pointer; font-family: inherit; line-height: 1.3; }
+.caso-row-estado:hover { filter: brightness(1.18); }
+.caso-estado-caret { font-size: 0.62rem; opacity: 0.85; }
+.caso-flag { font-size: 0.66rem; padding: 2px 8px; border-radius: 8px; font-weight: 600; border: 1px solid transparent; }
+.caso-flag.sinresp { background: rgba(239,83,80,0.15); color: #EF5350; border-color: rgba(239,83,80,0.3); }
+.caso-flag.enfri { background: rgba(242,141,21,0.15); color: #F2A24B; border-color: rgba(242,141,21,0.3); }
+.caso-flag.nuevo { background: rgba(0,169,193,0.12); color: #00A9C1; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.6rem; font-weight: 700; }
 .caso-flag.venc { background: rgba(239,83,80,0.15); color: #EF5350; }
 .caso-row-sub { display: flex; align-items: center; gap: 7px; margin-top: 4px; font-size: 0.8rem; color: var(--text-muted); }
 .caso-row-cliente { color: var(--text-primary); font-weight: 500; flex-shrink: 0; }
 .caso-row-sep { color: var(--text-dim); }
 .caso-row-snippet { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.caso-row-accionwrap { margin-top: 5px; }
-.caso-row-accion { font-size: 0.76rem; color: #F28D15; }
-.caso-row-accion.vencida { color: #EF5350; font-weight: 600; }
-.caso-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.caso-row-meta { display: flex; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
+.caso-chip-presu, .caso-chip-estimado, .caso-chip-accion { font-size: 0.72rem; padding: 3px 9px; border-radius: 7px; display: inline-flex; align-items: center; gap: 5px; }
+.caso-chip-presu { background: rgba(155,125,255,0.12); color: #B9A3FF; border: 1px solid rgba(155,125,255,0.35); cursor: pointer; font-family: var(--font-mono); }
+.caso-chip-presu:hover { background: rgba(155,125,255,0.22); }
+.caso-chip-estimado { background: rgba(255,255,255,0.04); color: #999; border: 1px solid var(--border); font-family: var(--font-mono); }
+.caso-chip-accion { background: rgba(0,169,193,0.1); color: #5BC4D4; border: 1px solid rgba(0,169,193,0.3); }
+.caso-chip-accion.vencida { background: rgba(239,83,80,0.13); color: #EF5350; border-color: rgba(239,83,80,0.35); }
+.caso-row-right { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 6px; flex-shrink: 0; }
+.caso-row-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 150ms ease; }
+.caso-row:hover .caso-row-actions { opacity: 1; }
+.caso-act { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #1a1a1a; border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; font-size: 0.85rem; text-decoration: none; transition: all 150ms ease; }
+.caso-act:hover { border-color: var(--primary); color: var(--primary); }
+.caso-row-stat { display: flex; align-items: center; gap: 8px; }
 .caso-row-aging { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; }
 .caso-row-owner { font-size: 0.72rem; color: var(--text-dim); }
+.caso-owner-av { width: 22px; height: 22px; border-radius: 50%; border: 1px solid; font-size: 0.66rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.caso-owner-av--none { background: #1a1a1a; border: 1px dashed #444; color: #666; font-weight: 400; }
+/* Bandeja v2 — controles (segmento de línea + solo míos) */
+.casos-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; flex-wrap: wrap; }
+.casos-segmento { display: flex; gap: 6px; flex-wrap: wrap; }
+.casos-seg { font-size: 0.8rem; padding: 5px 14px; border-radius: 7px; background: #141414; color: var(--text-muted); border: 1px solid var(--border); cursor: pointer; font-family: var(--font-main); transition: all 150ms ease; }
+.casos-seg:hover { color: var(--text-primary); }
+.casos-seg.active { font-weight: 600; }
+.casos-seg-n { font-family: var(--font-mono); font-size: 0.7rem; opacity: 0.7; margin-left: 3px; }
+.casos-mios { font-size: 0.78rem; padding: 5px 12px; border-radius: 7px; background: #141414; color: var(--text-muted); border: 1px solid var(--border); cursor: pointer; font-family: var(--font-main); white-space: nowrap; }
+.casos-mios.active { border-color: var(--primary); color: var(--primary); background: rgba(0,169,193,0.1); }
+/* Bandeja v2 — grupos (triage / línea / pospuestos) */
+.casos-grupo { margin-bottom: 14px; }
+.casos-grupo-head { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); margin: 0 2px 8px; }
+.casos-grupo-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.casos-grupo-n { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); background: rgba(255,255,255,0.05); padding: 1px 7px; border-radius: 8px; }
+.casos-pospuestos { opacity: 0.9; }
+.casos-posp-head { cursor: pointer; }
+.casos-posp-head:hover { color: var(--primary); }
+.casos-posp-caret { margin-left: auto; color: var(--text-dim); font-size: 0.7rem; }
+.caso-pcard-linea { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; align-self: center; }
 
 /* Empty */
 .casos-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
@@ -6479,6 +6885,8 @@ const CRM = {
 .caso-meta-chip { font-size: 0.78rem; color: var(--text-muted); background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
 a.caso-cliente-link { cursor: pointer; }
 a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary); }
+.caso-linea-chip { cursor: pointer; font-family: var(--font-main); line-height: 1.3; }
+.caso-linea-chip:hover { filter: brightness(1.15); border-color: var(--primary); }
 .caso-estado-select { font-size: 0.78rem; font-weight: 600; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-family: var(--font-main); }
 .caso-accion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 8px 12px; background: rgba(242,141,21,0.08); border: 1px solid rgba(242,141,21,0.2); border-radius: 6px; }
 .caso-accion.vencida { background: rgba(239,83,80,0.08); border-color: rgba(239,83,80,0.3); }

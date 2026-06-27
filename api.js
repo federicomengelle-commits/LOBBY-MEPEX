@@ -1031,6 +1031,7 @@ const API = {
             proximaAccionFecha: c.proxima_accion_fecha || null,
             motivoPerdida: c.motivo_perdida || '',
             proyectoId: c.proyecto_id || null,
+            linea: c.linea || null,   // 'stand' | 'expo' | null (sin clasificar)
             createdAt: c.created_at,
             updatedAt: c.updated_at,
             createdBy: c.created_by || null,
@@ -1094,6 +1095,7 @@ const API = {
                 origen: data.origen || null,
                 proxima_accion: data.proximaAccion || null,
                 proxima_accion_fecha: data.proximaAccionFecha || null,
+                linea: data.linea || null,
                 created_by: uid,
             };
             const { data: row, error } = await supabaseClient.from('crm_casos').insert(payload).select().single();
@@ -1108,7 +1110,7 @@ const API = {
                 clienteId: 'cliente_id', titulo: 'titulo', eventoId: 'evento_id', eventoTexto: 'evento_texto',
                 estado: 'estado', temperatura: 'temperatura', temperaturaManual: 'temperatura_manual', montoEstimado: 'monto_estimado', ownerId: 'owner_id',
                 origen: 'origen', proximaAccion: 'proxima_accion', proximaAccionFecha: 'proxima_accion_fecha',
-                motivoPerdida: 'motivo_perdida', proyectoId: 'proyecto_id',
+                motivoPerdida: 'motivo_perdida', proyectoId: 'proyecto_id', linea: 'linea',
             };
             const p = {};
             Object.keys(map).forEach(k => {
@@ -1199,6 +1201,48 @@ const API = {
             if (error) throw error;
             return true;
         } catch (e) { console.warn('[API] marcarCasoLeido:', e.message); return false; }
+    },
+
+    // ─── Snooze por usuario (Bandeja v2) ───
+    // "Posponer" un caso lo saca de la cola de trabajo del usuario hasta `until`.
+    // Personal: cuelga de crm_caso_lecturas (caso_id,user_id), no de crm_casos.
+    async getCasoSnoozes() {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            if (!uid) return {};
+            const { data, error } = await supabaseClient.from('crm_caso_lecturas')
+                .select('caso_id, snoozed_until').eq('user_id', uid).not('snoozed_until', 'is', null);
+            if (error) throw error;
+            const map = {};
+            (data || []).forEach(r => { if (r.snoozed_until) map[r.caso_id] = r.snoozed_until; });
+            return map;
+        } catch (e) { console.warn('[API] getCasoSnoozes:', e.message); return {}; }
+    },
+
+    async snoozeCaso(casoId, until) {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            if (!uid || !casoId) return false;
+            const iso = until instanceof Date ? until.toISOString() : until;
+            const { error } = await supabaseClient.from('crm_caso_lecturas')
+                .upsert({ caso_id: casoId, user_id: uid, snoozed_until: iso }, { onConflict: 'caso_id,user_id' });
+            if (error) throw error;
+            return true;
+        } catch (e) { console.warn('[API] snoozeCaso:', e.message); return false; }
+    },
+
+    async unsnoozeCaso(casoId) {
+        try {
+            const user = Auth.getUser?.();
+            const uid = user?.uid || user?.id || null;
+            if (!uid || !casoId) return false;
+            const { error } = await supabaseClient.from('crm_caso_lecturas')
+                .upsert({ caso_id: casoId, user_id: uid, snoozed_until: null }, { onConflict: 'caso_id,user_id' });
+            if (error) throw error;
+            return true;
+        } catch (e) { console.warn('[API] unsnoozeCaso:', e.message); return false; }
     },
 
     async createMensaje(data) {
@@ -2633,6 +2677,7 @@ const API = {
             if ('event_id' in data) payload.event_id = data.event_id;
             if ('project_id' in data) payload.project_id = data.project_id;
             if ('casoId' in data) payload.caso_id = data.casoId || null;   // CRM Casos (Fase 7)
+            if ('caso_id' in data) payload.caso_id = data.caso_id;         // snake (link/unlink genérico) — acepta null explícito
             // Estado (para flujo Aprobar)
             if ('estado' in data) payload.estado = data.estado;
             await UndoHelpers.updateRecord('cotizaciones', id, payload, 'Edito cotizacion');
