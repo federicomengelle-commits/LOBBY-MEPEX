@@ -74,6 +74,16 @@
     "offset_por_lado_mm": 20,
     "confirmar": ["peso por unidad o kg/m", "largos disponibles por altura", "numero de canales/caras enchufables (4 vs 8 tipo Octanorm)", "espesor de pared", "aleacion"]
   },
+  "estructura": {
+    "fuente": "Fede 2026-06-27",
+    "modelo": "grafo de panos (mecano/lego). Unidad = pano = 1 placa + 2 perfiles (uno arriba, uno abajo) + columnas o40 en los 2 nodos.",
+    "columnas_son": "nodos que unen perfiles; van donde hay paneleria (perimetro/divisiones/totems/cruces), NO en cada cruce de la grilla; compartidas entre panos vecinos",
+    "entre_ejes_regla_mm": "perfil_visible + columna_diam = 950 + 40 = 990 (medio modulo: 455 + 40)",
+    "pared_N_modulos": "N placas, 2N perfiles, N+1 columnas (una por junta + extremos)",
+    "paso_viga_abierta": "1 perfil largo (ej 2930 para 3m) + columna SOLO en cada punta, sin intermedias",
+    "cruz_X": "1 columna central + 4 en los extremos = 5 columnas, 4 placas, 8 perfiles (2 por pano)",
+    "despiece_bom": "columnas = nodos unicos del grafo; perfiles = 2 x panos; placas = 1 x pano (largo segun combinaciones)"
+  },
   "diagonales_mm": {
     "medio_modulo_visible": { "base_mm": 455, "exacta_mm": 643.47, "corte_obra_mm": 660 },
     "modulo_perfil_visible": { "base_mm": 950, "exacta_mm": 1343.50, "corte_obra_mm": 1360 },

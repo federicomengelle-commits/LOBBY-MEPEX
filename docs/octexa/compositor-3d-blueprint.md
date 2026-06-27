@@ -74,7 +74,18 @@ CREATE TABLE IF NOT EXISTS octexa_piezas (
 
 ## 4. Motor de geometría
 
-- Grilla **990 (módulo) / 495 (medio)**, columnas **ø40** en cada cruce, alturas escalera **2400/2900/3400/3900/5000**, prof estándar 500 (de `octexa-data.json`).
+### 4.0 Modelo estructural OCTEXA (mecano) — explicado por Fede 2026-06-27 · ⚠️ corrige el error de "una columna por cruce"
+El sistema es un **grafo de paños**, no una grilla rellena:
+- **Unidad = paño** (panel): `1 placa + 2 perfiles (uno arriba, uno abajo) + columnas ø40 en sus 2 nodos`.
+- **Columnas = NODOS** que unen perfiles. Van **donde hay panelería** (perímetro, divisiones internas, totems, cruces), **NO** en cada cruce de la grilla. Son **compartidas** entre paños vecinos.
+- **Entre ejes = perfil + columna** → perfil 950 (95 cm) + columna ø40 → **990 mm** (1 módulo). Medio módulo = perfil 455 + columna. Sale natural del sistema (½ columna de cada lado).
+- **Pared seguida de N módulos** → N placas, **2N perfiles**, **N+1 columnas** (una en cada junta + extremos).
+- **Paso / viga abierta** (ej. 3 m sin panelar) → 1 perfil largo (2930) + columna **solo en cada punta** (sin columnas intermedias).
+- **Cruz (X)** → 1 columna central + 4 en los extremos = **5 columnas, 4 placas, 8 perfiles**.
+- **Despiece estructural (BOM)** se deriva del grafo de paños: columnas = nodos únicos · perfiles = 2 × paños · placas = 1 × paño (largo según combinación de `octexa-data.json`). Implementado como **estimación de perímetro** en C-2.5 (`compositor.js _columnsXY()` + panel de estructura); el grafo completo (paños internos/cruces/vigas) entra al permitir **dibujar paños libres** (C-3) + precio al cargar los ítems en Costos (C-0).
+
+### 4.1 Grilla y modos
+- Grilla **990 (módulo) / 495 (medio)**, columnas **ø40** **en los nodos de panelería** (ver 4.0), alturas escalera **2400/2900/3400/3900/5000**, prof estándar 500 (de `octexa-data.json`).
 - **Dos modos de footprint**: **(a) Stand OCTEXA** = topología + frente×fondo×altura → esqueleto paramétrico (columnas + perfiles de perímetro + paredes según topología y **retiro 1 m**). Topologías: **centro/línea** (3 lados cerrados, 1 frente) · **esquina** (2 cerrados) · **península** (1 cerrado) · **isla** (0). **(b) Área libre** = solo ancho×fondo en m, sin estructura OCTEXA → para layouts de **alquiler de mobiliario** (mesas/sillas/etc.) que terminan en plano PDF.
 - **Girar el stand entero** (rotación del footprint completo) + **girar cada pieza** en pasos de 45° (eje 1 / eje 2 / diagonal).
 - **Piezas** = meshes paramétricos desde `octexa_piezas.geometria` (no cajas). Muebles = ítems del catálogo con footprint 2D para el plano. Snap a la grilla.
