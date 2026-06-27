@@ -3923,6 +3923,28 @@ const CRM = {
         this._renderTabContent();
     },
 
+    // Banda de presupuesto prominente arriba del timeline de la ficha (cotización más reciente).
+    _presupuestoStripHtml(cotsCaso) {
+        if (!cotsCaso || !cotsCaso.length) {
+            return `<div class="caso-presu-strip caso-presu-empty"><span class="cps-icon">📄</span><span class="cps-empty">Sin presupuesto vinculado</span></div>`;
+        }
+        const cot = cotsCaso.slice().sort((a, b) =>
+            new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
+        const ec = this._cotEstados.find(e => e.value === cot.estado);
+        const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '';
+        const more = cotsCaso.length > 1 ? `<span class="cps-more">+${cotsCaso.length - 1} más</span>` : '';
+        return `<div class="caso-presu-strip">
+            <span class="cps-icon">📄</span>
+            <div class="cps-main">
+                <span class="cps-num">${this._escHtml(cot.numero || 'COT')}</span>
+                ${monto ? `<span class="cps-monto">${monto}</span>` : ''}
+                ${ec ? `<span class="cps-estado" style="color:${ec.color}">${ec.label}</span>` : ''}
+                ${more}
+            </div>
+            <button class="cps-open" data-cot-id="${cot.id}">Abrir →</button>
+        </div>`;
+    },
+
     _renderCasoFicha() {
         const caso = this._casos.find(c => c.id === this._casoActivoId);
         if (!caso) { this._casoActivoId = null; return this._renderCasosBandeja(); }
@@ -3970,6 +3992,7 @@ const CRM = {
                                <button class="caso-accion-set" id="casoAccionSet">+ Agendar</button>`}
                     </div>
                 </div>
+                ${this._presupuestoStripHtml(cotsCaso)}
                 <div class="caso-timeline" id="casoTimeline">${this._renderTimeline(this._casoMensajes)}</div>
                 <div id="casoComposer">${this._renderComposer()}</div>
             </div>
@@ -4447,6 +4470,8 @@ const CRM = {
         });
         const lineaBtn = document.getElementById('casoLinea');
         if (lineaBtn) lineaBtn.addEventListener('click', () => { const c = getCaso(); if (c) this._openLineaMenu(c, lineaBtn.getBoundingClientRect()); });
+        const presuOpen = document.querySelector('.cps-open');
+        if (presuOpen) presuOpen.addEventListener('click', () => this._openCotById(presuOpen.dataset.cotId));
         const edit = document.getElementById('casoEdit');
         if (edit) edit.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
         const del = document.getElementById('casoDelete');
@@ -6887,6 +6912,17 @@ a.caso-cliente-link { cursor: pointer; }
 a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary); }
 .caso-linea-chip { cursor: pointer; font-family: var(--font-main); line-height: 1.3; }
 .caso-linea-chip:hover { filter: brightness(1.15); border-color: var(--primary); }
+.caso-presu-strip { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 11px 14px; background: rgba(155,125,255,0.09); border: 1px solid rgba(155,125,255,0.32); border-radius: 8px; flex-shrink: 0; }
+.caso-presu-strip.caso-presu-empty { background: var(--bg-card); border: 1px dashed var(--border); }
+.cps-icon { font-size: 1.1rem; flex-shrink: 0; }
+.cps-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; flex-wrap: wrap; }
+.cps-num { font-family: var(--font-mono); font-weight: 700; color: #B9A3FF; }
+.cps-monto { font-family: var(--font-mono); font-weight: 700; color: var(--text-primary); }
+.cps-estado { font-size: 0.78rem; font-weight: 600; }
+.cps-more { font-size: 0.72rem; color: var(--text-dim); }
+.cps-empty { color: var(--text-dim); font-size: 0.85rem; }
+.cps-open { background: rgba(155,125,255,0.16); border: 1px solid rgba(155,125,255,0.4); color: #B9A3FF; border-radius: 6px; padding: 5px 12px; font-size: 0.78rem; cursor: pointer; font-family: var(--font-main); white-space: nowrap; flex-shrink: 0; }
+.cps-open:hover { background: rgba(155,125,255,0.25); }
 .caso-estado-select { font-size: 0.78rem; font-weight: 600; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; cursor: pointer; font-family: var(--font-main); }
 .caso-accion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 8px 12px; background: rgba(242,141,21,0.08); border: 1px solid rgba(242,141,21,0.2); border-radius: 6px; }
 .caso-accion.vencida { background: rgba(239,83,80,0.08); border-color: rgba(239,83,80,0.3); }
