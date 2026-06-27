@@ -52,7 +52,7 @@ const CompositorModule = {
         placed: [],               // {uid,catId,nombre,precio,x,y,w,d,rot}
     },
     _catalogo: [], _host: null, _container: null,
-    _selUid: null, _drag: null, _paletteQ: '', _stylesInjected: false, _uidSeq: 1,
+    _selUid: null, _selSet: [], _drag: null, _paletteQ: '', _stylesInjected: false, _uidSeq: 1,
     _undoStack: [], _redoStack: [], _keyHandler: null,
 
     // ═══ ENTRADA ═══
@@ -97,7 +97,7 @@ const CompositorModule = {
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotStand">⟳ Girar todo 90°</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpVaciar">Vaciar</button>
-                            <span class="cmp-hint">Clic en una pieza para seleccionarla · arrastrá para mover (snap)</span>
+                            <span class="cmp-hint">Clic para seleccionar · Shift/Ctrl-clic para varias · arrastrá para mover (snap)</span>
                         </div>
                         <div id="cmpSelStrip" class="cmp-sel-strip"></div>
                         <div id="cmpPlanta" class="cmp-planta"></div>
@@ -142,7 +142,7 @@ const CompositorModule = {
     _attach() {
         document.querySelectorAll('.cmp-modo').forEach(b => b.addEventListener('click', () => {
             const m = b.dataset.modo; if (m === this._state.modo) return;
-            this._state.modo = m; this._selUid = null; this._rebuild();
+            this._state.modo = m; this._select(null); this._rebuild();
         }));
         document.getElementById('cmpNombre')?.addEventListener('input', (e) => { this._state.nombre = e.target.value; });
         const reConfig = () => { this._readConfig(); this._clampAll(); this._renderPlanta(); this._renderEstructura(); this._renderBOM(); };
@@ -242,7 +242,7 @@ const CompositorModule = {
         }
 
         const comps = this._state.placed.map(p => {
-            const sel = p.uid === this._selUid;
+            const sel = this._selSet.includes(p.uid);
             const rot = p.rot ? ` rotate(${p.rot},${p.w / 2},${p.d / 2})` : '';
             const isZona = p.kind === 'zona';
             const isPieza = p.kind === 'pieza';
@@ -260,8 +260,8 @@ const CompositorModule = {
                 inner = `<rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"${rectStyle}/><text x="${p.w / 2}" y="${p.d / 2}" class="cmp-comp-label">${escHtml(this._short(p.nombre))}</text>`;
             }
             const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${isPieza ? ' cmp-pieza' : ''}${isTexto ? ' cmp-texto' : ''}${sel ? ' cmp-comp-sel' : ''}`;
-            // handle de redimensionar (esquina inf-der) — solo en el seleccionado, sin rotar ni bloqueado
-            const handle = (sel && !p.rot && !p.locked) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
+            // handle de redimensionar (esquina inf-der) — solo con UNA pieza seleccionada, sin rotar ni bloqueado
+            const handle = (this._selSet.length === 1 && sel && !p.rot && !p.locked) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
             return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">${inner}${handle}</g>`;
         }).join('');
 
@@ -287,7 +287,19 @@ const CompositorModule = {
             g.addEventListener('pointerdown', (e) => {
                 e.preventDefault();
                 const uid = parseInt(g.dataset.uid, 10);
-                this._selUid = uid; this._refreshSel(); this._renderSelStrip();
+                const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+                if (multi) {
+                    // Shift/Ctrl-clic: agrega o saca esta pieza (o su grupo) de la selección
+                    const grp = this._expandGroup(uid);
+                    const allIn = grp.every(u => this._selSet.includes(u));
+                    this._selSet = allIn ? this._selSet.filter(u => !grp.includes(u)) : [...new Set(this._selSet.concat(grp))];
+                    this._selUid = this._selSet.includes(uid) ? uid : (this._selSet.length ? this._selSet[this._selSet.length - 1] : null);
+                } else if (this._selSet.length > 1 && this._selSet.includes(uid)) {
+                    this._selUid = uid;   // mantener el set para arrastrar todo el grupo junto
+                } else {
+                    this._selSet = this._expandGroup(uid); this._selUid = uid;   // grupo de la pieza (o solo ella)
+                }
+                this._refreshSel(); this._renderSelStrip();
                 const p = this._state.placed.find(x => x.uid === uid); if (!p || p.locked) return;
                 const st = toLocal(e);
                 this._drag = { uid, g, dx: st.x - p.x, dy: st.y - p.y };
@@ -296,12 +308,22 @@ const CompositorModule = {
             g.addEventListener('pointermove', (e) => {
                 if (!this._drag || this._drag.uid !== parseInt(g.dataset.uid, 10)) return;
                 const p = this._state.placed.find(x => x.uid === this._drag.uid); if (!p) return;
-                if (!this._drag.moved) { this._pushHist(); this._drag.moved = true; }
+                if (!this._drag.moved) {
+                    this._pushHist(); this._drag.moved = true;
+                    const inSet = this._selSet.length > 1 && this._selSet.includes(this._drag.uid);
+                    this._drag.group = (inSet ? this._selectedPieces() : [p]).filter(it => !it.locked);
+                }
                 const loc = toLocal(e);
-                p.x = Math.max(0, Math.min(this._wmm() - p.w, this._snap(loc.x - this._drag.dx)));
-                p.y = Math.max(0, Math.min(this._dmm() - p.d, this._snap(loc.y - this._drag.dy)));
-                const rot = p.rot ? ` rotate(${p.rot},${p.w / 2},${p.d / 2})` : '';
-                g.setAttribute('transform', `translate(${p.x},${p.y})${rot}`);
+                // delta del cursor → desplaza todo el grupo, recortado para que ninguno se salga
+                let ddx = this._snap(loc.x - this._drag.dx) - p.x;
+                let ddy = this._snap(loc.y - this._drag.dy) - p.y;
+                const W = this._wmm(), D = this._dmm();
+                this._drag.group.forEach(it => {
+                    ddx = Math.max(-it.x, Math.min(W - it.w - it.x, ddx));
+                    ddy = Math.max(-it.y, Math.min(D - it.d - it.y, ddy));
+                });
+                this._drag.group.forEach(it => { it.x += ddx; it.y += ddy; });
+                this._applyGroupTransforms(this._drag.group);
             });
             const end = (e) => { if (this._drag) { try { g.releasePointerCapture(e.pointerId); } catch (_) {} this._drag = null; } };
             g.addEventListener('pointerup', end);
@@ -332,11 +354,28 @@ const CompositorModule = {
     },
 
     _refreshSel() {
-        document.querySelectorAll('.cmp-comp').forEach(g => g.classList.toggle('cmp-comp-sel', parseInt(g.dataset.uid, 10) === this._selUid));
+        document.querySelectorAll('.cmp-comp').forEach(g => g.classList.toggle('cmp-comp-sel', this._selSet.includes(parseInt(g.dataset.uid, 10))));
+    },
+    // Aplica el transform de cada pieza del grupo directo al DOM (sin re-render, conserva el pointer capture)
+    _applyGroupTransforms(grp) {
+        const svg = document.getElementById('cmpSvg'); if (!svg) return;
+        grp.forEach(it => {
+            const g = svg.querySelector(`.cmp-comp[data-uid="${it.uid}"]`);
+            if (g) { const rot = it.rot ? ` rotate(${it.rot},${it.w / 2},${it.d / 2})` : ''; g.setAttribute('transform', `translate(${it.x},${it.y})${rot}`); }
+        });
+    },
+    // ─── selección (single + multi) ───
+    _select(uid) { this._selUid = uid == null ? null : uid; this._selSet = uid == null ? [] : [uid]; },
+    _selectedPieces() { return this._state.placed.filter(p => this._selSet.includes(p.uid)); },
+    _expandGroup(uid) {
+        const p = this._state.placed.find(x => x.uid === uid);
+        if (p && p.groupId) return this._state.placed.filter(x => x.groupId === p.groupId).map(x => x.uid);
+        return [uid];
     },
 
     _renderSelStrip() {
         const el = document.getElementById('cmpSelStrip'); if (!el) return;
+        if (this._selSet.length > 1) { this._renderMultiStrip(el); return; }
         const p = this._sel();
         if (!p) { el.innerHTML = ''; el.classList.remove('on'); return; }
         el.classList.add('on');
@@ -400,7 +439,7 @@ const CompositorModule = {
         c.uid = this._uidSeq++; c.locked = false;
         c.x = Math.max(0, Math.min(this._wmm() - c.w, this._snap(p.x + dx)));
         c.y = Math.max(0, Math.min(this._dmm() - c.d, this._snap(p.y + dy)));
-        this._state.placed.push(c); this._selUid = c.uid;
+        this._state.placed.push(c); this._select(c.uid);
         return c;
     },
     _duplicate() { if (!this._sel()) return; this._pushHist(); if (this._cloneSel(this._snapStep() * 2, this._snapStep() * 2)) this._afterChange(true); },
@@ -424,6 +463,122 @@ const CompositorModule = {
             { divider: true },
             { label: 'Centrar horizontal', icon: '↔', action: () => set(() => { p.x = this._snap((W - p.w) / 2); }) },
             { label: 'Centrar vertical', icon: '↕', action: () => set(() => { p.y = this._snap((D - p.d) / 2); }) },
+        ]);
+    },
+
+    // ═══ MULTI-SELECCIÓN (agrupar · distribuir · alinear varias) ═══
+    _selectMany(uids, primary) { this._selSet = uids.slice(); this._selUid = primary != null ? primary : (uids.length ? uids[uids.length - 1] : null); },
+    _renderMultiStrip(el) {
+        el.classList.add('on');
+        const items = this._selectedPieces();
+        const n = items.length;
+        const gid = items[0] && items[0].groupId;
+        const grouped = !!gid && items.every(it => it.groupId === gid);
+        el.innerHTML = `
+            <span class="cmp-sel-name">${n} seleccionadas${grouped ? ' · 🔗 grupo' : ''}</span>
+            <span class="cmp-sel-acts">
+                <button class="cmp-mini" data-a="${grouped ? 'ungroup' : 'group'}" title="${grouped ? 'Desagrupar' : 'Agrupar (se mueven juntas)'}">${grouped ? '✂ Desagrupar' : '🔗 Agrupar'}</button>
+                <button class="cmp-mini" data-a="distrib" title="Distribuir parejo (3+)">⇿ Distribuir ▾</button>
+                <button class="cmp-mini" data-a="align" title="Alinear entre sí">⊹ Alinear ▾</button>
+                <button class="cmp-mini" data-a="dup" title="Duplicar todas">⧉ Duplicar</button>
+                <button class="cmp-mini" data-a="lock" title="Bloquear / desbloquear todas">🔒</button>
+                <button class="cmp-mini cmp-mini-del" data-a="del" title="Quitar todas">✕</button>
+            </span>`;
+        el.querySelectorAll('.cmp-mini').forEach(b => b.addEventListener('click', () => {
+            const a = b.dataset.a;
+            if (a === 'group') this._groupSelected();
+            else if (a === 'ungroup') this._ungroupSelected();
+            else if (a === 'distrib') this._openDistribute(b);
+            else if (a === 'align') this._openAlignMulti(b);
+            else if (a === 'dup') this._duplicateMulti();
+            else if (a === 'lock') this._toggleLockMulti();
+            else if (a === 'del') this._removeMulti();
+        }));
+    },
+    _groupSelected() {
+        const items = this._selectedPieces(); if (items.length < 2) return;
+        this._pushHist();
+        const gid = 'g' + (this._uidSeq++);
+        items.forEach(it => { it.groupId = gid; });
+        this._afterChange(false);
+    },
+    _ungroupSelected() {
+        const items = this._selectedPieces(); if (!items.length) return;
+        this._pushHist();
+        items.forEach(it => { delete it.groupId; });
+        this._afterChange(false);
+    },
+    _duplicateMulti() {
+        const items = this._selectedPieces(); if (!items.length) return;
+        this._pushHist();
+        const off = this._snapStep() * 2, W = this._wmm(), D = this._dmm(), neu = [];
+        items.forEach(p => {
+            const c = Object.assign({}, p); c.uid = this._uidSeq++; c.locked = false; delete c.groupId;
+            c.x = Math.max(0, Math.min(W - c.w, this._snap(p.x + off)));
+            c.y = Math.max(0, Math.min(D - c.d, this._snap(p.y + off)));
+            this._state.placed.push(c); neu.push(c.uid);
+        });
+        this._selectMany(neu);
+        this._afterChange(true);
+    },
+    _removeMulti() {
+        if (!this._selSet.length) return;
+        this._pushHist();
+        const set = this._selSet.slice();
+        this._state.placed = this._state.placed.filter(p => !set.includes(p.uid));
+        this._select(null);
+        this._afterChange(true);
+    },
+    _toggleLockMulti() {
+        const items = this._selectedPieces(); if (!items.length) return;
+        this._pushHist();
+        const lock = items.some(it => !it.locked);   // si hay alguna libre → bloquear todas; si todas bloqueadas → liberar
+        items.forEach(it => { it.locked = lock; });
+        this._afterChange(false);
+    },
+    _distribute(axis) {
+        const items = this._selectedPieces().filter(it => !it.locked);
+        if (items.length < 3) { Toast.info('Elegí 3 o más piezas para distribuir'); return; }
+        this._pushHist();
+        const key = axis === 'h' ? 'x' : 'y', size = axis === 'h' ? 'w' : 'd';
+        items.sort((a, b) => (a[key] + a[size] / 2) - (b[key] + b[size] / 2));
+        const firstC = items[0][key] + items[0][size] / 2;
+        const lastC = items[items.length - 1][key] + items[items.length - 1][size] / 2;
+        const step = (lastC - firstC) / (items.length - 1);
+        items.forEach((it, i) => { it[key] = this._snap((firstC + step * i) - it[size] / 2); });
+        this._clampAll(); this._afterChange(false);
+    },
+    _alignMulti(edge) {
+        const items = this._selectedPieces().filter(it => !it.locked);
+        if (items.length < 2) return;
+        this._pushHist();
+        if (edge === 'left') { const v = Math.min(...items.map(it => it.x)); items.forEach(it => { it.x = v; }); }
+        else if (edge === 'right') { const v = Math.max(...items.map(it => it.x + it.w)); items.forEach(it => { it.x = v - it.w; }); }
+        else if (edge === 'top') { const v = Math.min(...items.map(it => it.y)); items.forEach(it => { it.y = v; }); }
+        else if (edge === 'bottom') { const v = Math.max(...items.map(it => it.y + it.d)); items.forEach(it => { it.y = v - it.d; }); }
+        else if (edge === 'cx') { const v = items.reduce((s, it) => s + it.x + it.w / 2, 0) / items.length; items.forEach(it => { it.x = this._snap(v - it.w / 2); }); }
+        else if (edge === 'cy') { const v = items.reduce((s, it) => s + it.y + it.d / 2, 0) / items.length; items.forEach(it => { it.y = this._snap(v - it.d / 2); }); }
+        this._clampAll(); this._afterChange(false);
+    },
+    _openDistribute(btn) {
+        if (typeof ContextMenu === 'undefined') return;
+        const r = btn.getBoundingClientRect();
+        ContextMenu.show(r.left, r.bottom + 4, [
+            { label: 'Distribuir horizontal', icon: '↔', action: () => this._distribute('h') },
+            { label: 'Distribuir vertical', icon: '↕', action: () => this._distribute('v') },
+        ]);
+    },
+    _openAlignMulti(btn) {
+        if (typeof ContextMenu === 'undefined') return;
+        const r = btn.getBoundingClientRect();
+        ContextMenu.show(r.left, r.bottom + 4, [
+            { label: 'Alinear izquierdas', icon: '←', action: () => this._alignMulti('left') },
+            { label: 'Alinear derechas', icon: '→', action: () => this._alignMulti('right') },
+            { label: 'Centrar (eje horizontal)', icon: '↔', action: () => this._alignMulti('cx') },
+            { divider: true },
+            { label: 'Alinear arriba', icon: '↑', action: () => this._alignMulti('top') },
+            { label: 'Alinear abajo', icon: '↓', action: () => this._alignMulti('bottom') },
+            { label: 'Centrar (eje vertical)', icon: '↕', action: () => this._alignMulti('cy') },
         ]);
     },
     _mirror() {
@@ -451,7 +606,7 @@ const CompositorModule = {
                 c.y = b.y;
                 this._state.placed.push(c);
             }
-            this._selUid = b.uid; this._afterChange(true);
+            this._select(b.uid); this._afterChange(true);
         });
     },
 
@@ -466,7 +621,7 @@ const CompositorModule = {
         this._redoStack = [];
         this._updateUndoButtons();
     },
-    _applyHist(json) { Object.assign(this._state, JSON.parse(json)); this._selUid = null; this._rebuild(); },
+    _applyHist(json) { Object.assign(this._state, JSON.parse(json)); this._select(null); this._rebuild(); },
     _undo() { if (!this._undoStack.length) return; this._redoStack.push(this._capture()); this._applyHist(this._undoStack.pop()); this._updateUndoButtons(); },
     _redo() { if (!this._redoStack.length) return; this._undoStack.push(this._capture()); this._applyHist(this._redoStack.pop()); this._updateUndoButtons(); },
     _updateUndoButtons() {
@@ -514,7 +669,7 @@ const CompositorModule = {
         const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
         this._state.placed.push({ uid, kind: 'pieza', piezaKey: key, glyph: def.glyph, nombre: def.label, color: '#00A9C1', x, y, w, d, rot: 0 });
-        this._selUid = uid;
+        this._select(uid);
         this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
     },
 
@@ -535,7 +690,7 @@ const CompositorModule = {
         const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
         this._state.placed.push({ uid, kind: 'item', catId: ci.id, nombre: ci.nombre, precio: ci.precioAlquiler || 0, x, y, w, d, rot: 0 });
-        this._selUid = uid;
+        this._select(uid);
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
     },
 
@@ -547,7 +702,7 @@ const CompositorModule = {
         const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
         this._state.placed.push({ uid, kind: 'zona', zonaKey: key, nombre: z.label, color: z.color, x, y, w, d, rot: 0 });
-        this._selUid = uid;
+        this._select(uid);
         this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
     },
 
@@ -558,12 +713,12 @@ const CompositorModule = {
         const { x, y } = this._spawnXY(w, d);
         const uid = this._uidSeq++;
         this._state.placed.push({ uid, kind: 'texto', texto: 'Texto', nombre: 'Texto', x, y, w, d, rot: 0 });
-        this._selUid = uid;
+        this._select(uid);
         this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
     },
 
     _rotatePiece() {
-        const p = this._selUid != null ? this._state.placed.find(x => x.uid === this._selUid) : null;
+        const p = this._sel();
         if (!p) return;
         this._pushHist();
         p.rot = ((p.rot || 0) + 45) % 360;
@@ -591,13 +746,13 @@ const CompositorModule = {
         if (this._selUid == null) return;
         this._pushHist();
         this._state.placed = this._state.placed.filter(p => p.uid !== this._selUid);
-        this._selUid = null;
+        this._select(null);
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
     },
     _clearAll() {
         if (!this._state.placed.length) return;
         this._pushHist();
-        this._state.placed = []; this._selUid = null;
+        this._state.placed = []; this._select(null);
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
     },
     _clampAll() {
@@ -852,6 +1007,7 @@ const CompositorModule = {
             .cmp-pieza-chip{font-size:.72rem;padding:5px 10px;border-radius:8px;cursor:pointer;background:#151515;border:1px solid var(--border);color:var(--text-primary);transition:all 150ms}
             .cmp-pieza-chip:hover{border-color:var(--primary);color:var(--primary);background:#191919}
             .cmp-hit{cursor:grab}
+            .cmp-comp-sel .cmp-hit{stroke:#F28D15;stroke-width:14;stroke-dasharray:46 32}
             .cmp-selbox{fill:none;stroke:#F28D15;stroke-width:14;stroke-dasharray:46 32}
             .cmp-pal-item{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#151515;border:1px solid var(--border);border-radius:6px;padding:7px 10px;cursor:pointer;text-align:left;transition:all 150ms}
             .cmp-pal-item:hover{border-color:var(--primary);background:#191919}
