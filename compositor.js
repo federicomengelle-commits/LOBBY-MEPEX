@@ -81,12 +81,12 @@ const CompositorModule = {
                         <select id="cmpTipo">${Object.keys(T).map(k => `<option value="${k}" ${s.tipo === k ? 'selected' : ''}>${T[k].label}</option>`).join('')}</select>
                     </div>
                     <div class="cmp-ctl cmp-ctl-num">
-                        <label>Frente (módulos)</label>
-                        <input type="number" id="cmpFrente" value="${s.frente}" min="1" max="12" step="1">
+                        <label>Frente (m)</label>
+                        <input type="number" id="cmpFrente" value="${s.frente}" min="1" max="20" step="1">
                     </div>
                     <div class="cmp-ctl cmp-ctl-num">
-                        <label>Fondo (módulos)</label>
-                        <input type="number" id="cmpFondo" value="${s.fondo}" min="1" max="12" step="1">
+                        <label>Fondo (m)</label>
+                        <input type="number" id="cmpFondo" value="${s.fondo}" min="1" max="20" step="1">
                     </div>
                     <div class="cmp-ctl">
                         <label>Altura</label>
@@ -152,19 +152,23 @@ const CompositorModule = {
     _readConfig() {
         const g = (id) => document.getElementById(id);
         this._state.tipo = g('cmpTipo')?.value || 'isla';
-        this._state.frente = Math.max(1, Math.min(12, parseInt(g('cmpFrente')?.value, 10) || 1));
-        this._state.fondo = Math.max(1, Math.min(12, parseInt(g('cmpFondo')?.value, 10) || 1));
+        this._state.frente = Math.max(1, Math.min(20, parseInt(g('cmpFrente')?.value, 10) || 1));
+        this._state.fondo = Math.max(1, Math.min(20, parseInt(g('cmpFondo')?.value, 10) || 1));
         this._state.altura = parseInt(g('cmpAltura')?.value, 10) || 2400;
         this._state.piso = g('cmpPiso')?.value || 'Alfombra nylon';
         this._renderDims();
     },
 
     // ─── medidas derivadas ───
+    // mm para el DIBUJO de la planta = eje OCTEXA real (990mm entre ejes).
     _wmm() { return this._state.frente * this.OCTEXA.ejeMM; },
     _dmm() { return this._state.fondo * this.OCTEXA.ejeMM; },
-    _wM() { return this._wmm() / 1000; },
-    _dM() { return this._dmm() / 1000; },
-    _m2() { return Math.round(this._wM() * this._dM() * 100) / 100; },
+    // medida NOMINAL de comercialización: 1 módulo = 1 m (los stands se venden y
+    // cotizan en metros redondos → 6×3 = 18 m², no 17,6). El eje real de 990mm
+    // queda para el plano y para el despiece estructural cuando se cargue en Costos.
+    _wM() { return this._state.frente; },
+    _dM() { return this._state.fondo; },
+    _m2() { return this._state.frente * this._state.fondo; },
 
     _renderDims() {
         const el = document.getElementById('cmpDims');
@@ -372,7 +376,7 @@ const CompositorModule = {
         const columnas = (F + 1) * (D + 1);
         // cerramiento (módulos lineales de pared) según topología
         const wallModules = { isla: 0, peninsula: F, esquina: F + D, lineal: F + 2 * D }[this._state.tipo];
-        const wallM = Math.round(wallModules * this.OCTEXA.ejeMM / 1000 * 100) / 100;
+        const wallM = wallModules; // nominal 1 módulo = 1 m (coherente con el footprint)
         el.innerHTML = `
             <div class="cmp-estr-head">Estructura OCTEXA <span class="cmp-estr-tag">estimación geométrica v1</span></div>
             <div class="cmp-estr-grid">
@@ -474,7 +478,7 @@ const CompositorModule = {
                 es_prediseno: !!pred,
                 estado: 'activo',
                 created_from: 'compositor',
-                notas: `Compositor OCTEXA · ${this.OCTEXA.tipos[this._state.tipo].label} ${this._state.frente}×${this._state.fondo} mód · altura ${this._numero(this._state.altura / 1000)}m · piso ${this._state.piso}`,
+                notas: `Compositor OCTEXA · ${this.OCTEXA.tipos[this._state.tipo].label} ${this._state.frente}×${this._state.fondo} m (${this._m2()} m²) · altura ${this._numero(this._state.altura / 1000)}m · piso ${this._state.piso}`,
             };
             const { data: proy, error } = await supabaseClient.from('proyectos').insert(payload).select('id,nombre,cliente_id,evento_id,tipo_stand,m2').single();
             if (error) throw error;
