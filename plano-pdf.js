@@ -16,7 +16,7 @@
 const PlanoPDF = {
     _logoDataUrl: null, _logoFormat: 'JPEG',
     _TURQUESA: [0, 169, 193], _NARANJA: [242, 141, 21],
-    _TEXTO: [40, 40, 40], _MUTED: [120, 120, 120], _LINE: [205, 205, 205],
+    _TEXTO: [40, 40, 40], _MUTED: [120, 120, 120], _LINE: [205, 205, 205], _NAVY: [26, 44, 82],
     _PAGE_W: 297, _PAGE_H: 210, _MARGIN: 14,
 
     async _loadLogo() {
@@ -52,7 +52,7 @@ const PlanoPDF = {
 
     _render(doc, o) {
         const PW = this._PAGE_W, PH = this._PAGE_H, M = this._MARGIN;
-        const TUR = this._TURQUESA, TXT = this._TEXTO, MUT = this._MUTED;
+        const TUR = this._TURQUESA, TXT = this._TEXTO, MUT = this._MUTED, NAVY = this._NAVY;
 
         // ─── Header / carátula ───
         if (this._logoDataUrl) { try { doc.addImage(this._logoDataUrl, this._logoFormat, M, M, 42, 13); } catch (_) {} }
@@ -122,9 +122,18 @@ const PlanoPDF = {
             doc.text(String(z.label || ''), mapX(cx), mapY(cy) + 1, { align: 'center' });
         });
 
-        // piezas — dibujito real (glyph) si lo trae, sino caja
-        (o.pieces || []).forEach((p, i) => {
+        // piezas — dibujito real (glyph) si lo trae · texto = rótulo libre · sino caja
+        let pieceNum = 0;
+        (o.pieces || []).forEach((p) => {
             const cx = p.x + p.w / 2, cy = p.y + p.d / 2;
+            if (p.kind === 'texto') {
+                if (!p.texto) return;   // etiqueta libre: no numera ni va a la leyenda
+                const targetMM = (p.d || 400) * 0.55 * scale;             // alto del texto en mm de página
+                const fs = Math.max(5, Math.min(42, targetMM / 0.3528));  // mm → pt
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...NAVY);
+                doc.text(String(p.texto), mapX(cx), mapY(cy), { align: 'center', baseline: 'middle', angle: -(p.rot || 0) });
+                return;
+            }
             const rgb = p.color ? this._hexToRgb(p.color) : TUR;
             if (p.glyph && typeof CompositorPiezas !== 'undefined') {
                 const rad = (p.rot || 0) * Math.PI / 180, cc = Math.cos(rad), ss = Math.sin(rad), ccx = p.w / 2, ccy = p.d / 2;
@@ -135,8 +144,9 @@ const PlanoPDF = {
                 doc.setFillColor(225, 244, 247); doc.setDrawColor(...TUR); doc.setLineWidth(0.4);
                 doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'FD', true);
             }
+            pieceNum++;
             doc.setTextColor(...TUR); doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
-            doc.text(String(i + 1), mapX(cx), mapY(cy) + 1.2, { align: 'center' });
+            doc.text(String(pieceNum), mapX(cx), mapY(cy) + 1.2, { align: 'center' });
         });
 
         // cotas overall
@@ -148,7 +158,7 @@ const PlanoPDF = {
         const lx = PW - M - legendW;
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...TUR);
         doc.text('REFERENCIAS', lx, top + 2);
-        const legend = (o.pieces || []).map((p, i) => [String(i + 1), p.nombre || '—']);
+        const legend = (o.pieces || []).filter(p => p.kind !== 'texto').map((p, i) => [String(i + 1), p.nombre || '—']);
         const bom = (o.legend || []);
         doc.autoTable({
             startY: top + 5,

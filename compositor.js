@@ -93,6 +93,7 @@ const CompositorModule = {
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpUndo" title="Deshacer (Ctrl+Z)" disabled>↶</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRedo" title="Rehacer (Ctrl+Y)" disabled>↷</button>
                             <span class="cmp-tool-sep"></span>
+                            <button class="cmp-btn-ghost cmp-btn-xs" id="cmpTexto" title="Agregar etiqueta de texto">＋ Texto</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotStand">⟳ Girar todo 90°</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpVaciar">Vaciar</button>
@@ -148,6 +149,7 @@ const CompositorModule = {
         ['cmpTipo', 'cmpAltura', 'cmpPiso'].forEach(id => document.getElementById(id)?.addEventListener('change', reConfig));
         ['cmpFrente', 'cmpFondo', 'cmpAreaW', 'cmpAreaD'].forEach(id => document.getElementById(id)?.addEventListener('input', reConfig));
         document.getElementById('cmpPalQ')?.addEventListener('input', (e) => { this._paletteQ = e.target.value; this._renderPalette(); });
+        document.getElementById('cmpTexto')?.addEventListener('click', () => this._placeTexto());
         document.getElementById('cmpRotStand')?.addEventListener('click', () => this._rotateStand());
         document.getElementById('cmpEspejar')?.addEventListener('click', () => this._mirror());
         document.getElementById('cmpVaciar')?.addEventListener('click', () => this._clearAll());
@@ -244,15 +246,20 @@ const CompositorModule = {
             const rot = p.rot ? ` rotate(${p.rot},${p.w / 2},${p.d / 2})` : '';
             const isZona = p.kind === 'zona';
             const isPieza = p.kind === 'pieza';
+            const isTexto = p.kind === 'texto';
             let inner;
             if (isPieza && typeof CompositorPiezas !== 'undefined') {
                 // dibujito real + rect transparente para que toda la caja sea agarrable
                 inner = `<rect width="${p.w}" height="${p.d}" fill="transparent" class="cmp-hit"/>${CompositorPiezas.svg(p.glyph, p.w, p.d, p.color || '#00A9C1')}${sel ? `<rect width="${p.w}" height="${p.d}" class="cmp-selbox"/>` : ''}`;
+            } else if (isTexto) {
+                // etiqueta libre: rect transparente agarrable + texto escalado por el alto
+                const fs = Math.max(120, Math.round((p.d || 400) * 0.6));
+                inner = `<rect width="${p.w}" height="${p.d}" fill="transparent" class="cmp-hit"/><text x="${p.w / 2}" y="${p.d / 2}" class="cmp-texto-label" style="font-size:${fs}px">${escHtml(p.texto || '')}</text>${sel ? `<rect width="${p.w}" height="${p.d}" class="cmp-selbox"/>` : ''}`;
             } else {
                 const rectStyle = isZona ? ` style="fill:${p.color}22;stroke:${p.color}"` : '';
                 inner = `<rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"${rectStyle}/><text x="${p.w / 2}" y="${p.d / 2}" class="cmp-comp-label">${escHtml(this._short(p.nombre))}</text>`;
             }
-            const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${isPieza ? ' cmp-pieza' : ''}${sel ? ' cmp-comp-sel' : ''}`;
+            const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${isPieza ? ' cmp-pieza' : ''}${isTexto ? ' cmp-texto' : ''}${sel ? ' cmp-comp-sel' : ''}`;
             // handle de redimensionar (esquina inf-der) — solo en el seleccionado, sin rotar ni bloqueado
             const handle = (sel && !p.rot && !p.locked) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
             return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">${inner}${handle}</g>`;
@@ -333,15 +340,19 @@ const CompositorModule = {
         const p = this._sel();
         if (!p) { el.innerHTML = ''; el.classList.remove('on'); return; }
         el.classList.add('on');
+        const isTexto = p.kind === 'texto';
+        const nameLabel = isTexto ? 'Texto' : escHtml(p.nombre);
+        const textoFld = isTexto ? `<label class="cmp-sel-fld cmp-sel-txt">texto <input type="text" id="cmpSelTexto" value="${escAttr(p.texto || '')}" placeholder="Escribí…"></label>` : '';
         el.innerHTML = `
-            <span class="cmp-sel-name">${escHtml(p.nombre)}${p.locked ? ' 🔒' : ''}</span>
+            <span class="cmp-sel-name">${nameLabel}${p.locked ? ' 🔒' : ''}</span>
+            ${textoFld}
             <label class="cmp-sel-fld">ancho <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"> cm</label>
-            <label class="cmp-sel-fld">fondo <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
+            <label class="cmp-sel-fld">${isTexto ? 'alto' : 'fondo'} <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
             <span class="cmp-sel-acts">
                 <button class="cmp-mini" data-a="dup" title="Duplicar">⧉ Duplicar</button>
                 <button class="cmp-mini" data-a="row" title="Duplicar al lado (fila)">⊞ Fila</button>
                 <button class="cmp-mini" data-a="rot" title="Girar 45°">↻ 45°</button>
-                <button class="cmp-mini" data-a="center" title="Centrar en el stand">⊹ Centrar</button>
+                <button class="cmp-mini" data-a="align" title="Alinear / centrar">⊹ Alinear ▾</button>
                 <button class="cmp-mini" data-a="front" title="Traer al frente">⤒</button>
                 <button class="cmp-mini" data-a="back" title="Enviar al fondo">⤓</button>
                 <button class="cmp-mini" data-a="lock" title="${p.locked ? 'Desbloquear' : 'Bloquear'}">${p.locked ? '🔓' : '🔒'}</button>
@@ -357,12 +368,22 @@ const CompositorModule = {
         };
         document.getElementById('cmpSelW')?.addEventListener('change', upd);
         document.getElementById('cmpSelD')?.addEventListener('change', upd);
+        if (isTexto) {
+            const ti = document.getElementById('cmpSelTexto');
+            let pushedText = false;
+            ti?.addEventListener('input', () => {
+                if (!pushedText) { this._pushHist(); pushedText = true; }
+                p.texto = ti.value; p.nombre = ti.value || 'Texto';
+                const t = document.querySelector(`.cmp-comp[data-uid="${p.uid}"] .cmp-texto-label`);
+                if (t) t.textContent = p.texto;
+            });
+        }
         el.querySelectorAll('.cmp-mini').forEach(b => b.addEventListener('click', () => {
             const a = b.dataset.a;
             if (a === 'dup') this._duplicate();
             else if (a === 'row') this._duplicateRow();
             else if (a === 'rot') this._rotatePiece();
-            else if (a === 'center') this._center();
+            else if (a === 'align') this._openAlign(b);
             else if (a === 'front') this._bringFront();
             else if (a === 'back') this._sendBack();
             else if (a === 'lock') this._toggleLock();
@@ -387,6 +408,24 @@ const CompositorModule = {
     _sendBack() { const p = this._sel(); if (!p) return; this._pushHist(); this._state.placed = this._state.placed.filter(x => x !== p); this._state.placed.unshift(p); this._afterChange(false); },
     _toggleLock() { const p = this._sel(); if (!p) return; this._pushHist(); p.locked = !p.locked; this._afterChange(false); },
     _center() { const p = this._sel(); if (!p) return; this._pushHist(); p.x = this._snap((this._wmm() - p.w) / 2); p.y = this._snap((this._dmm() - p.d) / 2); this._clampAll(); this._afterChange(false); },
+    // Menú Alinear (pieza única): centrar + pegar a un borde + centrar por eje
+    _openAlign(btn) {
+        const p = this._sel(); if (!p || typeof ContextMenu === 'undefined') return;
+        const r = btn.getBoundingClientRect();
+        const W = this._wmm(), D = this._dmm();
+        const set = (fn) => { this._pushHist(); fn(); this._clampAll(); this._afterChange(false); };
+        ContextMenu.show(r.left, r.bottom + 4, [
+            { label: 'Centrar', icon: '⊹', action: () => this._center() },
+            { divider: true },
+            { label: 'Pegar a la izquierda', icon: '←', action: () => set(() => { p.x = 0; }) },
+            { label: 'Pegar a la derecha', icon: '→', action: () => set(() => { p.x = Math.max(0, W - p.w); }) },
+            { label: 'Pegar arriba', icon: '↑', action: () => set(() => { p.y = 0; }) },
+            { label: 'Pegar abajo', icon: '↓', action: () => set(() => { p.y = Math.max(0, D - p.d); }) },
+            { divider: true },
+            { label: 'Centrar horizontal', icon: '↔', action: () => set(() => { p.x = this._snap((W - p.w) / 2); }) },
+            { label: 'Centrar vertical', icon: '↕', action: () => set(() => { p.y = this._snap((D - p.d) / 2); }) },
+        ]);
+    },
     _mirror() {
         if (!this._state.placed.length) return;
         this._pushHist();
@@ -512,6 +551,17 @@ const CompositorModule = {
         this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
     },
 
+    // Etiqueta de texto libre (no factura; va al plano como rótulo)
+    _placeTexto() {
+        this._pushHist();
+        const w = Math.min(1500, this._wmm()), d = Math.min(400, this._dmm());
+        const { x, y } = this._spawnXY(w, d);
+        const uid = this._uidSeq++;
+        this._state.placed.push({ uid, kind: 'texto', texto: 'Texto', nombre: 'Texto', x, y, w, d, rot: 0 });
+        this._selUid = uid;
+        this._renderPlanta(); this._refreshSel(); this._renderSelStrip();
+    },
+
     _rotatePiece() {
         const p = this._selUid != null ? this._state.placed.find(x => x.uid === this._selUid) : null;
         if (!p) return;
@@ -614,7 +664,7 @@ const CompositorModule = {
                 walls: this._closedSides(),
                 columns: this._columnsXY(),
                 zonas: this._state.placed.filter(p => p.kind === 'zona').map(p => ({ label: p.nombre, color: p.color, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
-                pieces: this._state.placed.filter(p => p.kind !== 'zona').map(p => ({ nombre: p.nombre, glyph: p.glyph || null, color: p.color || null, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
+                pieces: this._state.placed.filter(p => p.kind !== 'zona').map(p => ({ kind: p.kind, nombre: p.nombre, texto: p.texto || null, glyph: p.glyph || null, color: p.color || null, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
                 legend: this._bomGroups().map(g => ({ nombre: g.nombre, cant: g.cant })),
             };
             const blob = await PlanoPDF.generate(o);
@@ -755,6 +805,7 @@ const CompositorModule = {
             .cmp-sel-name{color:#F28D15;font-weight:600;font-size:.84rem}
             .cmp-sel-fld{font-size:.7rem;color:var(--text-muted);display:flex;align-items:center;gap:6px}
             .cmp-sel-fld input{width:62px;background:#1A1A1A;border:1px solid var(--border);border-radius:5px;color:var(--text-primary);padding:5px 7px;font-family:var(--font-mono);font-size:.8rem}
+            .cmp-sel-txt input{width:160px;font-family:var(--font-main)}
             .cmp-sel-acts{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
             .cmp-mini{background:#1A1A1A;border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:5px 9px;font-size:.74rem;cursor:pointer;transition:all 150ms}
             .cmp-mini:hover{border-color:var(--primary);color:var(--primary)}
@@ -773,6 +824,8 @@ const CompositorModule = {
             .cmp-comp-rect{fill:rgba(0,169,193,.22);stroke:var(--primary);stroke-width:10}
             .cmp-comp-sel .cmp-comp-rect{fill:rgba(242,141,21,.28);stroke:#F28D15;stroke-width:16}
             .cmp-comp-label{fill:var(--text-primary);font-size:120px;font-family:var(--font-main);text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+            .cmp-texto-label{fill:var(--text-primary);font-family:var(--font-main);font-weight:600;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+            .cmp-texto .cmp-selbox{stroke:#F28D15}
             .cmp-estructura{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
             .cmp-estr-head{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:#9B7DFF;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px}
             .cmp-estr-tag{font-size:.6rem;background:rgba(155,125,255,.15);color:#9B7DFF;padding:1px 7px;border-radius:8px;font-weight:600;letter-spacing:0}
