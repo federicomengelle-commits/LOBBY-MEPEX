@@ -693,15 +693,16 @@ const ProyectoDetalle = {
         const p = this._project;
         const enTaller = p.estado === 'en_taller';
 
-        // Empty-state si el proyecto todavía no pasó a taller.
+        // El checklist solo aplica en taller; las fotos del armado se ven siempre
+        // (para revisarlas también después, cuando el proyecto ya está finalizado).
         if (!enTaller) {
             return `
                 <div class="pjd-tab-pad">
                     <div class="pjd-section-empty pjd-prod-empty">
                         <div class="pjd-prod-empty-icon">🔨</div>
-                        <p>Este proyecto aún no pasó a taller.</p>
-                        <p class="pjd-muted">El checklist de producción aparece cuando el estado del proyecto es <strong>En taller</strong>.</p>
+                        <p>El checklist de armado aparece cuando el proyecto está <strong>En taller</strong>.</p>
                     </div>
+                    ${this._fotosSectionHTML()}
                 </div>
             `;
         }
