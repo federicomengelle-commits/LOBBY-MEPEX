@@ -163,12 +163,20 @@ const PlanoPDF = {
         });
 
         // ─── cotas ───
-        // módulo (azul) en el borde superior — solo OCTEXA paneleado
-        if (o.modulos && o.modulos.f && paneleado) this._dimModulos(doc, ox, oy - 5, scale, o.modulos.f, eje, BLUE);
-        // overall (rosa): ancho abajo + fondo a la derecha, en metros NOMINALES
+        // cotas de módulo (azul) en cada lado con panel — anchos reales de o.mods
+        if (paneleado && o.mods) {
+            const g = { ox, oy, planW, planH };
+            if (o.mods.back) this._dimModSide(doc, 'back', g, o.mods.back, BLUE, 4);
+            if (o.mods.left) this._dimModSide(doc, 'left', g, o.mods.left, BLUE, 4);
+            if (o.mods.right) this._dimModSide(doc, 'right', g, o.mods.right, BLUE, 4);
+            if (o.mods.front) this._dimModSide(doc, 'front', g, o.mods.front, BLUE, 4);
+        }
+        // overall (rosa): ancho abajo + fondo a la derecha, en metros NOMINALES (se corren si hay módulos en ese lado)
         const wNom = (o.wNom != null) ? o.wNom : Wmm / 1000, dNom = (o.dNom != null) ? o.dNom : Dmm / 1000;
-        this._dimH(doc, ox, ox + planW, oy + planH + 7, this._fmtM(wNom), PINK);
-        this._dimV(doc, oy, oy + planH, ox + planW + 7, this._fmtM(dNom), PINK);
+        const wOff = (paneleado && o.mods && o.mods.front) ? 11 : 7;
+        const dOff = (paneleado && o.mods && o.mods.right) ? 11 : 7;
+        this._dimH(doc, ox, ox + planW, oy + planH + wOff, this._fmtM(wNom), PINK);
+        this._dimV(doc, oy, oy + planH, ox + planW + dOff, this._fmtM(dNom), PINK);
 
         // ─── carátula abajo-izquierda (CLIENTE / PROYECTO / LOTE, apiladas) ───
         doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(12);
@@ -209,15 +217,26 @@ const PlanoPDF = {
         doc.setTextColor(...color); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
         doc.text(String(label), x + 1.7, (y1 + y2) / 2, { align: 'center', angle: 90, baseline: 'middle' });
     },
-    // cotas de módulo (950 por panel) a lo largo del borde superior
-    _dimModulos(doc, ox, y, scale, f, eje, color) {
+    // cotas de módulo a lo largo de un lado con panel (anchos reales del array `arr`)
+    _dimModSide(doc, side, g, arr, color, off) {
+        if (!arr || !arr.length) return;
+        const n = arr.length;
         doc.setDrawColor(...color); doc.setLineWidth(0.2);
         doc.setTextColor(...color); doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
-        for (let i = 0; i < f; i++) {
-            const xa = ox + i * eje * scale, xb = ox + (i + 1) * eje * scale;
-            doc.line(xa, y, xb, y);
-            doc.line(xa, y - 0.9, xa, y + 0.9); doc.line(xb, y - 0.9, xb, y + 0.9);
-            doc.text('950', (xa + xb) / 2, y - 1.1, { align: 'center' });
+        if (side === 'back' || side === 'front') {
+            const y = side === 'back' ? g.oy - off : g.oy + g.planH + off, seg = g.planW / n;
+            for (let i = 0; i < n; i++) {
+                const xa = g.ox + i * seg, xb = g.ox + (i + 1) * seg;
+                doc.line(xa, y, xb, y); doc.line(xa, y - 0.9, xa, y + 0.9); doc.line(xb, y - 0.9, xb, y + 0.9);
+                doc.text(String(arr[i]), (xa + xb) / 2, side === 'back' ? y - 1.1 : y + 2.6, { align: 'center' });
+            }
+        } else {
+            const x = side === 'left' ? g.ox - off : g.ox + g.planW + off, seg = g.planH / n;
+            for (let i = 0; i < n; i++) {
+                const ya = g.oy + i * seg, yb = g.oy + (i + 1) * seg;
+                doc.line(x, ya, x, yb); doc.line(x - 0.9, ya, x + 0.9, ya); doc.line(x - 0.9, yb, x + 0.9, yb);
+                doc.text(String(arr[i]), x + (side === 'left' ? -1.4 : 1.4), (ya + yb) / 2, { align: 'center', angle: 90, baseline: 'middle' });
+            }
         }
     },
     _fmtM(m) { return (Number(m) || 0).toFixed(2).replace('.', ',') + ' m'; },

@@ -51,6 +51,8 @@ const CompositorModule = {
         altura: 2400,
         piso: 'Alfombra nylon',
         vista: 'paneleado',       // 'paneleado' (producción) | 'lineas' (distribuir) — toggle
+        panelOverride: {},        // {back/front/left/right: true|false} pisa el default de la topología
+        mods: {},                 // {side: [950,455,660,...]} ancho rotulado por módulo (tamaño manda)
         standRot: 0,              // 0/90/180/270 — solo para qué lados tienen pared (OCTEXA)
         placed: [],               // {uid,catId,nombre,precio,x,y,w,d,rot}
     },
@@ -223,9 +225,38 @@ const CompositorModule = {
     _snapStep() { return this._isArea() ? 250 : this.OCTEXA.medioEjeMM; },
     _snap(v) { const s = this._snapStep(); return Math.round(v / s) * s; },
 
-    _closedSides() {
+    _topoSides() {
         if (this._isArea()) return [];
         return this._rotatedSides(this.OCTEXA.tipos[this._state.tipo].paredes, this._state.standRot || 0);
+    },
+    // lados con panel = topología, pisada por panelOverride (clic en un lado lo togglea)
+    _closedSides() {
+        if (this._isArea()) return [];
+        const base = this._topoSides(), ov = this._state.panelOverride || {};
+        return ['back', 'front', 'left', 'right'].filter(s => (s in ov) ? !!ov[s] : base.includes(s));
+    },
+    _toggleSide(side) {
+        this._pushHist();
+        const has = this._closedSides().includes(side);
+        this._state.panelOverride = Object.assign({}, this._state.panelOverride, { [side]: !has });
+        this._renderPlanta(); this._renderEstructura();
+    },
+    // módulos rotulados por lado (tamaño manda: el footprint NO cambia, esto es anotación)
+    _sideSlots(side) { return (side === 'back' || side === 'front') ? this._state.frente : this._state.fondo; },
+    _modsForSide(side) {
+        const n = this._sideSlots(side);
+        let arr = (this._state.mods && this._state.mods[side]) ? this._state.mods[side].slice() : [];
+        while (arr.length < n) arr.push(950);
+        if (arr.length > n) arr = arr.slice(0, n);
+        return arr;
+    },
+    _cycleMod(side, i) {
+        const order = [950, 455, 660];
+        this._pushHist();
+        const arr = this._modsForSide(side);
+        arr[i] = order[(order.indexOf(arr[i]) + 1) % order.length];
+        this._state.mods = Object.assign({}, this._state.mods, { [side]: arr });
+        this._renderPlanta();
     },
     _rotatedSides(sides, rot) {
         const order = ['back', 'right', 'front', 'left'];
@@ -250,7 +281,7 @@ const CompositorModule = {
         const vbW = Wmm + 2 * M, vbH = Dmm + 2 * M;
         const O = this.OCTEXA;
 
-        let grid = '', cols = '', bordes = '';
+        let grid = '', cols = '', bordes = '', modlabels = '';
         if (this._isArea()) {
             for (let x = 1000; x < Wmm; x += 1000) grid += `<line x1="${x}" y1="0" x2="${x}" y2="${Dmm}" class="cmp-grid"/>`;
             for (let y = 1000; y < Dmm; y += 1000) grid += `<line x1="0" y1="${y}" x2="${Wmm}" y2="${y}" class="cmp-grid"/>`;
@@ -265,9 +296,13 @@ const CompositorModule = {
             for (let j = 0; j <= this._state.fondo; j++) grid += `<line x1="0" y1="${j * O.ejeMM}" x2="${Wmm}" y2="${j * O.ejeMM}" class="cmp-grid"/>`;
             const closed = this._closedSides();
             const edge = (side, x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="${closed.includes(side) ? 'cmp-wall' : 'cmp-open'}"/>`;
-            bordes = edge('back', 0, 0, Wmm, 0) + edge('front', 0, Dmm, Wmm, Dmm) + edge('left', 0, 0, 0, Dmm) + edge('right', Wmm, 0, Wmm, Dmm);
+            const hit = (side, x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="cmp-edge-hit" data-side="${side}"><title>${closed.includes(side) ? 'Sacar' : 'Poner'} panel (${side})</title></line>`;
+            bordes = edge('back', 0, 0, Wmm, 0) + edge('front', 0, Dmm, Wmm, Dmm) + edge('left', 0, 0, 0, Dmm) + edge('right', Wmm, 0, Wmm, Dmm)
+                + hit('back', 0, 0, Wmm, 0) + hit('front', 0, Dmm, Wmm, Dmm) + hit('left', 0, 0, 0, Dmm) + hit('right', Wmm, 0, Wmm, Dmm);
             // columnas SOLO donde hay material (paredes/laterales), en las uniones de módulo
             cols = this._columnsXY().map(c => `<circle cx="${c.x}" cy="${c.y}" r="${O.columnaDiamMM * 2.4}" class="cmp-col"/>`).join('');
+            // módulos rotulados (clickeables: ciclan 950/455/660) en los lados con panel
+            modlabels = this._modLabelsSVG(closed, Wmm, Dmm);
         }
 
         const comps = this._state.placed.map(p => {
@@ -298,10 +333,30 @@ const CompositorModule = {
             <svg id="cmpSvg" viewBox="0 0 ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet" class="cmp-svg">
                 <g transform="translate(${M},${M})">
                     ${this._isArea() ? '' : `<rect x="0" y="0" width="${Wmm}" height="${Dmm}" class="cmp-foot"/>`}
-                    ${grid}${bordes}${cols}${comps}
+                    ${grid}${bordes}${cols}${modlabels}${comps}
                 </g>
             </svg>`;
         this._attachDrag();
+        this._attachEdges();
+    },
+
+    // rótulos de módulo clickeables a lo largo de cada lado con panel
+    _modLabelsSVG(closed, Wmm, Dmm) {
+        const O = this.OCTEXA, out = [];
+        const lbl = (side, i, x, y) => {
+            const w = this._modsForSide(side)[i];
+            out.push(`<g class="cmp-mod" data-side="${side}" data-idx="${i}"><rect x="${x - 170}" y="${y - 130}" width="340" height="230" fill="transparent"/><text x="${x}" y="${y}" class="cmp-mod-lbl">${w}</text></g>`);
+        };
+        if (closed.includes('back')) for (let i = 0; i < this._state.frente; i++) lbl('back', i, (i + 0.5) * O.ejeMM, -170);
+        if (closed.includes('front')) for (let i = 0; i < this._state.frente; i++) lbl('front', i, (i + 0.5) * O.ejeMM, Dmm + 300);
+        if (closed.includes('left')) for (let i = 0; i < this._state.fondo; i++) lbl('left', i, -260, (i + 0.5) * O.ejeMM + 40);
+        if (closed.includes('right')) for (let i = 0; i < this._state.fondo; i++) lbl('right', i, Wmm + 260, (i + 0.5) * O.ejeMM + 40);
+        return out.join('');
+    },
+    _attachEdges() {
+        const svg = document.getElementById('cmpSvg'); if (!svg) return;
+        svg.querySelectorAll('.cmp-edge-hit').forEach(l => l.addEventListener('click', () => this._toggleSide(l.dataset.side)));
+        svg.querySelectorAll('.cmp-mod').forEach(g => g.addEventListener('click', (e) => { e.stopPropagation(); this._cycleMod(g.dataset.side, parseInt(g.dataset.idx, 10)); }));
     },
 
     _attachDrag() {
@@ -799,7 +854,8 @@ const CompositorModule = {
         const F = this._state.frente, D = this._state.fondo;
         const columnas = this._columnsXY().length;
         // panos = módulos de pared (cada paño = 1 placa + 2 perfiles). columnas = nodos (compartidas).
-        const panos = { isla: 0, peninsula: F, esquina: F + D, lineal: F + 2 * D }[this._state.tipo];
+        // se derivan de los lados con panel (respeta el toggle por lado).
+        const panos = this._closedSides().reduce((s, side) => s + ((side === 'back' || side === 'front') ? F : D), 0);
         const placas = panos, perfiles = panos * 2;
         el.innerHTML = `
             <div class="cmp-estr-head">Estructura OCTEXA <span class="cmp-estr-tag">despiece estimado · perímetro v1</span></div>
@@ -850,6 +906,7 @@ const CompositorModule = {
                 wNom: this._wM(), dNom: this._dM(),
                 ejeMM: this.OCTEXA.ejeMM,
                 modulos: this._isArea() ? null : { f: this._state.frente, d: this._state.fondo },
+                mods: this._isArea() ? null : this._closedSides().reduce((m, s) => { m[s] = this._modsForSide(s); return m; }, {}),
                 footprint: { wMM: this._wmm(), dMM: this._dmm() },
                 walls: this._closedSides(),
                 columns: this._columnsXY(),
@@ -1015,6 +1072,12 @@ const CompositorModule = {
             .cmp-wall{stroke:#F28D15;stroke-width:60;stroke-linecap:round}
             .cmp-open{stroke:rgba(0,169,193,.55);stroke-width:24;stroke-dasharray:90 70;stroke-linecap:round}
             .cmp-col{fill:#888;stroke:#bbb;stroke-width:6}
+            .cmp-edge-hit{stroke:transparent;stroke-width:180;pointer-events:stroke;cursor:pointer}
+            .cmp-edge-hit:hover{stroke:rgba(242,141,21,.2)}
+            .cmp-mod{cursor:pointer}
+            .cmp-mod rect{pointer-events:all}
+            .cmp-mod-lbl{fill:#6FA8DC;font-size:150px;font-family:var(--font-mono);text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+            .cmp-mod:hover .cmp-mod-lbl{fill:#F28D15}
             .cmp-comp{cursor:grab}.cmp-comp:active{cursor:grabbing}
             .cmp-comp-rect{fill:rgba(0,169,193,.22);stroke:var(--primary);stroke-width:10}
             .cmp-comp-sel .cmp-comp-rect{fill:rgba(242,141,21,.28);stroke:#F28D15;stroke-width:16}
