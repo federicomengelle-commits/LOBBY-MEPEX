@@ -73,14 +73,12 @@ const PlanoPDF = {
         if (this._logoDataUrl) { try { doc.addImage(this._logoDataUrl, this._logoFormat, (PW - logoW) / 2, 6, logoW, logoH); } catch (_) {} }
         else { doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TUR); doc.text('MEPEX', PW / 2, 16, { align: 'center' }); }
 
-        // meta sutil arriba-derecha
+        // meta sutil arriba-derecha (despejada de la escuadra del corner)
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUT);
         const fecha = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const meta = [o.tipoLabel, o.dimsLabel, (o.m2 != null ? o.m2 + ' m²' : null)].filter(Boolean).join('  ·  ');
-        doc.text(meta, PW - M - 2, 12, { align: 'right' });
-        doc.text(fecha, PW - M - 2, 16.5, { align: 'right' });
-        // divisor turquesa
-        doc.setDrawColor(...TUR); doc.setLineWidth(0.4); doc.line(M, 23, PW - M, 23);
+        doc.text(meta, PW - M - 13, 12.5, { align: 'right' });
+        doc.text(fecha, PW - M - 13, 17, { align: 'right' });
 
         // ─── zonas verticales: dibujo+cotas arriba, franja de carátula abajo (no se pisan) ───
         const caratH = 18, zoneBot = PH - caratH;          // carátula vive en [zoneBot .. PH]
@@ -186,11 +184,7 @@ const PlanoPDF = {
         this._dimH(doc, ox, ox + planW, oy + planH + wOff, this._fmtM(wNom), PINK);
         this._dimV(doc, oy, oy + planH, ox + planW + dOff, this._fmtM(dNom), PINK);
 
-        // ─── carátula (franja inferior reservada): CLIENTE / PROYECTO · LOTE — sin solaparse con las cotas ───
-        doc.setDrawColor(...NAVY); doc.setLineWidth(0.3);
-        try { doc.setGState(new doc.GState({ opacity: 0.4 })); } catch (_) {}
-        doc.line(M, zoneBot, PW - M, zoneBot);
-        try { doc.setGState(new doc.GState({ opacity: 1 })); } catch (_) {}
+        // ─── carátula (franja inferior reservada): CLIENTE / PROYECTO · LOTE — sin líneas que toquen las escuadras ───
         doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(12);
         const l2 = `PROYECTO: ${o.nombre || '—'}` + (o.lote ? `   ·   LOTE: ${o.lote}` : '');
         if (o.cliente) { doc.text(`CLIENTE: ${o.cliente}`, M + 3, zoneBot + 7); doc.text(l2, M + 3, zoneBot + 14); }

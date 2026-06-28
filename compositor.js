@@ -1030,7 +1030,7 @@ const CompositorModule = {
                 tipo_stand: this._isArea() ? null : this._state.tipo,
                 ancho_m: this._wM(), prof_m: this._dM(), m2: this._m2(),
                 cliente_id: cliId || null, evento_id: evId || null,
-                es_prediseno: !!pred, estado: 'activo', created_from: 'manual',
+                es_prediseno: !!pred, estado: 'por_iniciar', created_from: 'manual',
                 notas: this._isArea()
                     ? `Compositor · área libre ${this._numero(this._wM())}×${this._numero(this._dM())} m (${this._m2()} m²) · piso ${this._state.piso}`
                     : `Compositor OCTEXA · ${this.OCTEXA.tipos[this._state.tipo].label} ${this._state.frente}×${this._state.fondo} m (${this._m2()} m²) · altura ${this._numero(this._state.altura / 1000)}m · piso ${this._state.piso}`,
