@@ -1691,8 +1691,11 @@ const EventosModule = {
             if (lista.length === 0) return `<p style="color:#666;padding:12px;text-align:center">Sin resultados</p>`;
             return lista.map(p => {
                 const color = tipoColors[p.tipo] || '#666';
+                const tipoLbl = { interna: 'Interna', eventual: 'Eventual', cuadrilla: 'Cuadrilla' }[p.tipo] || '';
                 const checked = selected.has(String(p.id)) ? 'checked' : '';
                 const rolesTxt = (p.roles_operativos || []).map(r => this._ROL_LABELS[r] || r).join(' · ') || (p.rol_legacy || '');
+                const tipoChip = tipoLbl ? `<span class="ev-persona-tipo" style="font-size:9px;text-transform:uppercase;font-weight:700;border-radius:9px;padding:1px 7px;white-space:nowrap;background:${color}22;color:${color};border:1px solid ${color}55;">${tipoLbl}</span>` : '';
+                const telLink = p.telefono ? `<a class="ev-persona-option-tel" href="https://wa.me/${this._waNumber(p.telefono)}" target="_blank" rel="noopener" title="WhatsApp a ${this._escAttr(p.nombre)}" style="color:#00CC88;text-decoration:none;white-space:nowrap;">💬 ${this._escAttr(p.telefono)}</a>` : '';
                 return `
                     <label class="ev-persona-option ${checked ? 'ev-persona-selected' : ''}" data-persona-id="${p.id}">
                         <input type="checkbox" value="${p.id}" ${checked} style="display:none">
@@ -1700,7 +1703,8 @@ const EventosModule = {
                             <span class="ev-persona-option-nombre">${this._escAttr(p.nombre)}</span>
                             <span class="ev-persona-option-rol" style="color:${color}">${this._escAttr(rolesTxt)}</span>
                         </div>
-                        ${p.telefono ? `<span class="ev-persona-option-tel">📞 ${this._escAttr(p.telefono)}</span>` : ''}
+                        ${tipoChip}
+                        ${telLink}
                     </label>
                 `;
             }).join('');
@@ -1777,6 +1781,7 @@ const EventosModule = {
         refreshList();
 
         listEl.addEventListener('click', (e) => {
+            if (e.target.closest('a')) return; // dejar pasar el link de WhatsApp sin togglear la selección
             const label = e.target.closest('.ev-persona-option');
             if (!label || !listEl.contains(label)) return;
             e.preventDefault();
