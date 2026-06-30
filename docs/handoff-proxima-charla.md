@@ -66,3 +66,14 @@ Plan que MANDA: `docs/finanzas-contabilidad-refactor-PLAN-EJECUCION.md`. Pendien
 
 ## 4. Cómo elegir
 Decile a Claude el ítem (A–G). Para **B** (importador 3ds Max) traé el CSV de ejemplo. Para **E/F** confirmá que querés tocar plata/RRHH (más riesgo, más verificación). **A** y **G** son los de menor fricción para una charla corta.
+
+## 5. Prompt para arrancar la charla nueva (copiar/pegar)
+```
+Trabajamos en LOBBY-MEPEX (C:\Users\Fede\Desktop\APPS ANTIGRAVITY\LOBBY-MEPEX). Antes de tocar nada:
+1) Preguntame si hago `git fetch origin && git reset --hard origin/main` (árbol compartido con otras charlas — sincronizar primero).
+2) Leé en este orden: `docs/handoff-proxima-charla.md` (menú + reglas + fuentes de verdad), después `CLAUDE.md` §10, `PROGRESO.md`, `PLAN-MAESTRO-rediseno-lobby.md`, y la memoria del tema que elija.
+
+Quiero desarrollar: [ELEGÍ — A Eventos pulido / B Importador 3ds Max (adjunto un CSV de ejemplo) / C CRM Bandeja v2 / D ARCA / E Finanzas / F RRHH v2 / G cierres chicos].
+
+Protocolo del proyecto: plan-first si es refactor grande; SQL-first si hay DDL (yo corro el SQL antes de pullear); push directo a `main` (`git push origin HEAD:main`), no PRs; `git add` SOLO lo tuyo + bumpear `?v=`; verificá en preview lo que se pueda (los screenshots y el render de PDF/SVG cuelgan headless → validá por estado/posiciones + mockups show_widget; el OK visual final lo doy yo tras pull). Mínimos tokens, certero, mostrame antes de encadenar cambios.
+```
