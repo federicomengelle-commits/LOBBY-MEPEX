@@ -6050,6 +6050,111 @@ const API = {
         const { error } = await supabaseClient.from('evento_costos').update({ estado: 'anulado' }).eq('id', id);
         if (error) throw error;
     },
+
+    // ─── PUENTE asignaciones → jornales del Rendimiento ───
+    // Helper PURO (testeable): dado jornadas [{id,fase}] y asignaciones
+    // [{persona_id|persona:{id,nombre,apellido}, jornada_id, fase, estado}],
+    // devuelve [{persona_id, persona_nombre, fase, dias}] (una por persona-fase, dias>0).
+    // dias = nº de jornadas en que está la persona (jornada_id directo, o TODAS las
+    // jornadas de su fase si la asignación es general/sin jornada).
+    _computeJornalLines(jornadas, asignaciones) {
+        const jorByFase = {}, faseById = {};
+        (jornadas || []).forEach(j => {
+            (jorByFase[j.fase] = jorByFase[j.fase] || []).push(j.id);
+            faseById[j.id] = j.fase;
+        });
+        const acc = {}, nombres = {};
+        (asignaciones || []).forEach(a => {
+            if (a.estado === 'cancelada' || a._deleted) return;
+            const pid = a.persona_id || (a.persona && a.persona.id);
+            if (!pid) return;
+            const key = String(pid);
+            nombres[key] = a.persona ? `${a.persona.nombre || ''} ${a.persona.apellido || ''}`.trim() : (a.persona_nombre || '');
+            acc[key] = acc[key] || {};
+            if (a.jornada_id) {
+                const fase = faseById[a.jornada_id] || a.fase || 'armado';
+                (acc[key][fase] = acc[key][fase] || new Set()).add(a.jornada_id);
+            } else {
+                const fase = a.fase || 'armado';
+                const ids = jorByFase[fase] || [];
+                acc[key][fase] = acc[key][fase] || new Set();
+                if (ids.length) ids.forEach(id => acc[key][fase].add(id));
+                else acc[key][fase].add('__fase__'); // sin jornadas cargadas → 1 día de la fase
+            }
+        });
+        const out = [];
+        for (const pid in acc) for (const fase in acc[pid]) {
+            const dias = acc[pid][fase].size;
+            if (dias > 0) out.push({ persona_id: pid, persona_nombre: nombres[pid] || '', fase, dias });
+        }
+        return out;
+    },
+
+    async _getPersonasJornalMap() {
+        try {
+            const res = await supabaseClient.from('personas').select('id, jornal_diario');
+            if (res.error) return {};
+            const m = {};
+            (res.data || []).forEach(p => { m[String(p.id)] = parseFloat(p.jornal_diario) || 0; });
+            return m;
+        } catch (e) { return {}; }
+    },
+
+    // Sincroniza las líneas de jornal de evento_costos con las asignaciones del evento.
+    // Una fila por (persona, fase): crea las nuevas, actualiza días (preservando la
+    // tarifa si monto_editado), y borra (soft) las que quedaron sin asignación SIEMPRE
+    // que no tengan pagos. Devuelve {ok, created, updated, removed}.
+    async syncJornalesEvento(eventoId) {
+        if (!eventoId) return { ok: false };
+        try {
+            const [jornadas, asignaciones, costos, rates] = await Promise.all([
+                this.getJornadas(eventoId),
+                this.getAsignacionesByEvento(eventoId),
+                this.getEventoCostos(eventoId),
+                this._getPersonasJornalMap(),
+            ]);
+            const lines = this._computeJornalLines(jornadas, asignaciones);
+            const existing = (costos || []).filter(c => c.categoria === 'jornal' && !c._deleted && c.persona_id);
+            const keyOf = (pid, fase) => `${pid}|${fase || ''}`;
+            const exMap = {};
+            existing.forEach(c => { exMap[keyOf(c.persona_id, c.fase)] = c; });
+            let created = 0, updated = 0, removed = 0;
+            const seen = new Set();
+            for (const l of lines) {
+                const k = keyOf(l.persona_id, l.fase);
+                seen.add(k);
+                const rate = rates[String(l.persona_id)] || 0;
+                const row = exMap[k];
+                if (row) {
+                    const tarifa = row.monto_editado ? (parseFloat(row.tarifa) || 0) : rate;
+                    await this.updateEventoCosto(row.id, {
+                        dias: l.dias, tarifa,
+                        monto: Math.round(l.dias * tarifa * 100) / 100,
+                    });
+                    updated++;
+                } else {
+                    await this.createEventoCosto({
+                        evento_id: eventoId, categoria: 'jornal', persona_id: l.persona_id,
+                        fase: l.fase, dias: l.dias, tarifa: rate,
+                        monto: Math.round(l.dias * rate * 100) / 100,
+                        descripcion: `Jornal — ${l.persona_nombre || 'persona'}`,
+                        estado: 'pendiente',
+                    });
+                    created++;
+                }
+            }
+            for (const c of existing) {
+                const k = keyOf(c.persona_id, c.fase);
+                const hasPago = (parseFloat(c.monto_pagado) || 0) > 0 || c.estado === 'pagado' || c.estado === 'parcial';
+                if (!seen.has(k) && !hasPago) { await this.deleteEventoCosto(c.id); removed++; }
+            }
+            return { ok: true, created, updated, removed };
+        } catch (e) {
+            console.warn('[API] syncJornalesEvento:', e.message);
+            return { ok: false, error: e.message };
+        }
+    },
+
     async getPagosByCosto(costoId) {
         try {
             const { data, error } = await supabaseClient.from('evento_costo_pagos')

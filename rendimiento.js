@@ -217,6 +217,7 @@ const RendimientoModule = {
                     <div class="rend-group-body">
                         ${rows.length ? this._buildTable(cat, rows) : '<div class="rend-noitems">Sin ítems en esta categoría.</div>'}
                         <button class="rend-addrow" data-add="${cat.id}">＋ agregar ${cat.label.toLowerCase()}</button>
+                        ${cat.id === 'jornal' ? `<button class="rend-addrow" data-sync-jornales="1" title="Trae las personas asignadas al Evento (por día) como jornales — preserva los montos editados y los que ya tienen pago" style="margin-left:8px;">🔄 Traer de asignaciones</button>` : ''}
                     </div>
                 </div>`;
         }).join('');
@@ -280,10 +281,29 @@ const RendimientoModule = {
         return `<table class="rend-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     },
 
+    // Puente: trae las personas asignadas al evento (por día) como líneas de jornal.
+    // Preserva las tarifas editadas (monto_editado) y las filas con pago; quita las
+    // que quedaron sin asignación y sin pago. Ver API.syncJornalesEvento.
+    async _syncJornales() {
+        if (!this._eventoId) return;
+        const btn = document.querySelector('[data-sync-jornales]');
+        if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando…'; }
+        const r = await API.syncJornalesEvento(this._eventoId);
+        if (r && r.ok) {
+            Toast.success(`Jornales sincronizados: ${r.created} nuevo${r.created !== 1 ? 's' : ''} · ${r.updated} actualizado${r.updated !== 1 ? 's' : ''}${r.removed ? ` · ${r.removed} quitado${r.removed !== 1 ? 's' : ''}` : ''}`);
+            this._costos = await API.getEventoCostos(this._eventoId);
+            this._renderBody();
+        } else {
+            Toast.error('No se pudo sincronizar' + (r && r.error ? ': ' + r.error : ''));
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 Traer de asignaciones'; }
+        }
+    },
+
     _attachPlanillaEvents() {
         const body = document.getElementById('rendBody');
         if (!body) return;
         document.getElementById('rendBtnDuplicar')?.addEventListener('click', () => this._openDuplicarModal());
+        document.querySelector('[data-sync-jornales]')?.addEventListener('click', () => this._syncJornales());
 
         body.querySelectorAll('[data-toggle]').forEach(h => h.addEventListener('click', () => {
             const cat = h.dataset.toggle;
