@@ -4,6 +4,13 @@
 > una charla nueva y elegir QUÉ desarrollar. Autocontenido: cada ítem dice qué es, en qué
 > estado está, qué necesita y por dónde entrar (archivos / docs / memoria).
 
+## ⭐ Fuentes de verdad del estado (leer SIEMPRE antes de tocar)
+- **`PROGRESO.md`** — lo YA HECHO (≈89% del rediseño) + el **track OCTEXA/compositor** (sección "Compositor de stands"). Cada sesión vive ahí.
+- **`PLAN-MAESTRO-rediseno-lobby.md`** — lo que FALTA (≈11%) por **Fases** + **§Ideas de mejora pendientes** + **§TRACKS PARALELOS** (ahí vive el Compositor + Importador 3ds Max + Diseño 3D).
+- **`CLAUDE.md`** (raíz) — instrucciones del proyecto + **§10 Estado actual** (el log de sesiones, fuente canónica del día).
+- **`memory/MEMORY.md`** + las memorias temáticas (`project_*`, `feedback_*`) — contexto/decisiones que NO están en el código.
+- **Regla de los 2 archivos** (Fede): al cerrar una sesión, mover lo hecho de PLAN-MAESTRO → PROGRESO y **rebalancear los %**. Ideas futuras → al PLAN. (El compositor es track paralelo: NO entra en el % del rediseño.)
+
 ---
 
 ## 0. Reglas de arranque (SIEMPRE, cualquier charla)
