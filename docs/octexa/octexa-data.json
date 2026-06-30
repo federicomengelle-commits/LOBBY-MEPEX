@@ -214,6 +214,17 @@
   ],
   "profundidades_mm": [250, 350, 500, 700, 1000],
   "profundidad_estandar_mm": 500,
+  "premisas_diseno": [
+    { "id": "altura_mostrador_910", "regla": "altura de mostrador / carteleria aerea = 910 mm", "detalle": "placa 910 x 960; la medida mas usada", "fuente": "Fede 2026-06-27" },
+    { "id": "placas_duras_default", "regla": "usar placas duras (mas caras) por defecto", "detalle": "no se rompen y se reusan muchas veces; en alquiler el costo es por uso, no por compra", "fuente": "Fede 2026-06-27" },
+    { "id": "maximizar_reuso", "regla": "maximizar reuso: priorizar medidas y modulos estandar", "detalle": "menos corte a medida, menos descarte; piezas que sirven entre obras", "fuente": "Fede 2026-06-27" }
+  ],
+  "_schema": {
+    "nota": "molde para extender el cerebro sin romper. El validador (tools/octexa/validate-cerebro.js) chequea estas reglas.",
+    "pieza": { "requeridos": ["codigo", "desc", "seccion_mm"], "opcionales": ["kg_m", "largo_barra_mm", "acabado", "rol"], "regla_codigo": "unico; debe matchear catalogo_items.codigo en Costos para el cross-link de precio" },
+    "subsistema": { "ejemplos": ["octexa_8 (octogonal, estandar)", "octexa_6 (hexagonal)", "maxima (perfil cuadrado, pendiente)", "arcos (curvos Z460)"], "regla": "cada subsistema declara su grilla/EE propia; no mezclar densidades ni grillas hasta confirmar compatibilidad" },
+    "invariantes_geometricas": ["EE = perfil_visible + columna_diam", "placa = perfil_visible + encastre", "descomposicion vertical suma = alto", "diagonal corte >= diagonal exacta (holgura)"]
+  },
   "tipos_stand": [
     { "tipo": "isla", "frentes_abiertos": 4, "lados_contra_vecino": 0, "retiro_vecino_m": 0, "restriccion_altura": "ninguna (cenefa vale todo)" },
     { "tipo": "peninsula", "frentes_abiertos": 3, "lados_contra_vecino": 1, "retiro_vecino_m": 1.0, "restriccion_altura": "retiro 1m del vecino en altura", "nota": "el mas comun en ferias medianas" },
