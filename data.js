@@ -19,10 +19,10 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
-        venta:      ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos'],
-        pm:         ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'compras', 'inventario', 'flota'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
+        venta:      ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos'],
+        pm:         ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'compras', 'inventario', 'flota'],
         taller:     ['eventos', 'proyectos', 'inventario', 'locaciones', 'flota'], // reorg C/D 2026-06-25: módulos Taller y Logística DISUELTOS → el rol taller usa Proyectos (galpón, read-only) + Tareas; transporte vive en la ficha del Evento. +locaciones read-only (RLS taller/deposito).
     },
 
@@ -68,7 +68,7 @@ const Data = {
             name: 'COMERCIAL',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>',
             color: '#F28D15',
-            moduleIds: ['crm', 'cotizador', 'catalogo', 'stands'],
+            moduleIds: ['crm', 'cotizador', 'catalogo', 'stands', 'disenador'],
         },
         {
             id: 'operaciones',
@@ -214,6 +214,24 @@ const Data = {
             ],
             connections: [
                 { to: 'crm', label: 'Ver CRM', context: 'Cotizaciones generadas' },
+                { to: 'costos', label: 'Ver Costos', context: 'Precio de los componentes' },
+            ],
+        },
+
+        disenador: {
+            id: 'disenador',
+            name: 'Diseñador OCTEXA',
+            shortName: 'Diseñador',
+            icon: '🤖',
+            description: 'Configurador de stands OCTEXA: armá por zonas, mirá el BOM en vivo (medidas fieles al cerebro) y cotizá.',
+            status: 'development',
+            color: '#F28D15',
+            order: 3.6,
+            sections: [
+                { id: 'config', name: 'Configurador', icon: '🧩', description: 'Footprint + topología + zonas → BOM en vivo + variantes', fields: [] },
+            ],
+            connections: [
+                { to: 'stands', label: 'Ver Prediseñados', context: 'Guardar como prediseño' },
                 { to: 'costos', label: 'Ver Costos', context: 'Precio de los componentes' },
             ],
         },

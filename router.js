@@ -84,6 +84,7 @@ const Router = {
             'cotizador':        { render: () => this._openExternal('http://195.200.1.250/cotizador/'), requiresAuth: true, module: 'cotizador' },
             'catalogo':         { render: () => CatalogoModule.render(), requiresAuth: true, module: 'catalogo' },
             'stands':           { render: () => StandsModule.render(), requiresAuth: true, module: 'stands' },
+            'disenador':        { render: () => DisenadorOctexa.render(), requiresAuth: true, module: 'disenador' },
             'importar-cotizacion': { render: () => ImportarCotizacion.render(), requiresAuth: true },
 
             // ── Operaciones ──
