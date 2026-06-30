@@ -3262,6 +3262,17 @@ const EventosModule = {
             Toast.success(`Organizador "${nombre}" creado`);
         });
 
+        // Al elegir "Desde", posicionar "Hasta" en esa fecha (si está vacío o es anterior)
+        // y fijar el mínimo, así el picker de Hasta abre ya en la fecha de inicio.
+        const tentDesdeEl = instance.overlay.querySelector('[name="tentDesde"]');
+        const tentHastaEl = instance.overlay.querySelector('[name="tentHasta"]');
+        tentDesdeEl?.addEventListener('change', () => {
+            const d = tentDesdeEl.value;
+            if (!d || !tentHastaEl) return;
+            tentHastaEl.min = d;
+            if (!tentHastaEl.value || tentHastaEl.value < d) tentHastaEl.value = d;
+        });
+
         const submitBtn = instance.overlay.querySelector('#evCreateSubmit');
         submitBtn?.addEventListener('click', async () => {
             const form = instance.overlay.querySelector('#evCreateForm');
