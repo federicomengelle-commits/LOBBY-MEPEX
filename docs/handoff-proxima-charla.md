@@ -35,7 +35,7 @@
 ## 2. MENÚ — qué desarrollar (priorizado por listo-para-atacar)
 
 ### A. ⭐ Eventos — pulido de la ficha *(pulir-pantallas, riesgo bajo, self-contained)*
-Es el próximo del catálogo de "pulir-pantallas" (después de Proyectos). Faltan: modales **crear / editar / asignar** + filas finas de **Transporte** y **Docs**. Método: skill `pulir-pantallas` (mostrar render real → indicación de Fede → aplicar en vivo). Entry: `eventos.js`, memoria `project_proyectos_refactor` (lista el pendiente), skill `pulir-pantallas`.
+Es el próximo del catálogo de "pulir-pantallas" (después de Proyectos). **Transporte ya quedó en filas finas** (`eventos.js?v=27`, commit `f938298`, 2026-06-29 — cards chunky → filas densas de 2 líneas); Docs/Seguros ya eran filas finas. **Falta: modales crear / editar / asignar** (mejor INTERACTIVO con vos por ser subjetivo). Método: skill `pulir-pantallas` (mostrar render real → indicación de Fede → aplicar en vivo). Entry: `eventos.js`, memoria `project_proyectos_refactor` (lista el pendiente), skill `pulir-pantallas`.
 
 ### B. ⭐ Importador desde 3ds Max *(stands — LA pieza que falta para crear prediseños de verdad)*
 El diseñador modela en 3ds Max con las piezas codeadas; exporta un **CSV por MaxScript** (rubro·código·nombre·**cantidad**) → el importador lo parsea → match por `catalogo_items.codigo` → escribe `proyecto_componentes` + precio (Costos). **Mismo patrón que `importar-cotizacion.js`** (parse → match → filas). **Necesita:** que Fede pase **1 CSV de ejemplo real** para fijar las columnas exactas. Datos ya confirmados por Fede: todos los códigos matchean `catalogo_items.codigo`, el CSV trae cantidades. Entry: memorias `feedback_compositor_vs_3dsmax` + `project_stands_predisenos`.
