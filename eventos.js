@@ -159,6 +159,31 @@ const EventosModule = {
                 .ev-addp-note strong { color:#00CC88; }
                 .ev-modal-persona-footer { padding-top:10px; border-top:1px solid #2a2a2a; }
 
+                /* Modal transporte (agregar/editar vehículo) */
+                .ev-trans-form { display:flex; flex-direction:column; gap:13px; }
+                .ev-trans-form .ev-form-input { margin:0; }
+                .ev-trans-adhoc { border:1px dashed #2a2a2a; border-radius:6px; padding:10px;
+                    display:flex; flex-direction:column; gap:6px; }
+                .ev-trans-adhoc-chk { display:flex; align-items:center; gap:8px; margin:0;
+                    font-size:12px; color:#aaa; }
+                .ev-trans-adhoc-chk .ev-trans-adhoc-hint { color:#666; }
+                .ev-trans-3col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+                .ev-trans-stack { display:flex; flex-direction:column; gap:6px; }
+                .ev-trans-addrow { display:flex; flex-wrap:wrap; gap:6px; }
+                .ev-trans-addrow .ev-form-input { flex:1; min-width:130px; }
+                .ev-trans-manual { display:flex; gap:6px; }
+                .ev-trans-manual .ev-trans-manual-txt { flex:2; }
+                .ev-trans-manual .ev-trans-manual-cant { flex:0 0 70px; max-width:70px; }
+                .ev-trans-items { list-style:none; margin:6px 0 0; padding:0;
+                    display:flex; flex-direction:column; gap:5px; }
+                .ev-trans-items .ev-trans-item { display:flex; align-items:center; gap:8px;
+                    font-size:13px; color:#E8E8E8; background:#1a1a1a; border:1px solid #2a2a2a;
+                    border-radius:6px; padding:6px 9px; }
+                .ev-trans-items .ev-trans-item-label { flex:1; min-width:0;
+                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+                .ev-trans-detchk { display:flex; align-items:center; gap:4px;
+                    font-size:10px; color:#9B7DFF; white-space:nowrap; cursor:pointer; }
+
                 /* Movimientos de transporte (Fase 4) */
                 .ev-mov-item { display:flex; flex-direction:column; gap:4px; padding:10px;
                     background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px;
@@ -2328,7 +2353,7 @@ const EventosModule = {
         const isAdhoc = !!existing && !existing.vehiculo_id && !!existing.vehiculo_adhoc_descripcion;
 
         const body = `
-            <div class="ev-modal-mov" style="display:flex;flex-direction:column;gap:14px;">
+            <div class="ev-trans-form">
                 <div>
                     <label class="ev-form-label">Vehículo</label>
                     <select id="evTransVeh" class="ev-form-input">
@@ -2337,21 +2362,23 @@ const EventosModule = {
                         <option value="__adhoc__" ${isAdhoc ? 'selected' : ''}>➕ Ajeno ad-hoc</option>
                     </select>
                 </div>
-                <div id="evTransAdhocBox" style="display:${isAdhoc ? 'block' : 'none'};border:1px dashed #2a2a2a;border-radius:6px;padding:10px;">
-                    <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;color:#aaa;">
+                <div id="evTransAdhocBox" class="ev-trans-adhoc" style="display:${isAdhoc ? 'flex' : 'none'};">
+                    <label class="ev-trans-adhoc-chk">
                         <input type="checkbox" id="evTransAdhocGuardar"> Guardar en Flota
-                        <span style="color:#666;">(si no, queda solo para este viaje)</span>
+                        <span class="ev-trans-adhoc-hint">(si no, queda solo para este viaje)</span>
                     </label>
-                    <input type="text" id="evTransAdhocDesc" class="ev-form-input ev-input-sm" placeholder="Descripción (ej: Camión Iveco tercero)" value="${this._escAttr(existing?.vehiculo_adhoc_descripcion || '')}" style="margin-bottom:6px;">
-                    <input type="text" id="evTransAdhocPat" class="ev-form-input ev-input-sm" placeholder="Patente (opcional)" value="${this._escAttr(existing?.vehiculo_adhoc_patente || '')}" style="margin-bottom:6px;">
+                    <input type="text" id="evTransAdhocDesc" class="ev-form-input ev-input-sm" placeholder="Descripción (ej: Camión Iveco tercero)" value="${this._escAttr(existing?.vehiculo_adhoc_descripcion || '')}">
+                    <input type="text" id="evTransAdhocPat" class="ev-form-input ev-input-sm" placeholder="Patente (opcional)" value="${this._escAttr(existing?.vehiculo_adhoc_patente || '')}">
                     <input type="text" id="evTransAdhocProp" class="ev-form-input ev-input-sm" placeholder="Propietario / contacto (opcional)" value="${this._escAttr(existing?.vehiculo_adhoc_propietario || '')}">
                 </div>
                 <div>
                     <label class="ev-form-label">Chofer</label>
-                    <input type="text" id="evTransChofer" class="ev-form-input ev-input-sm" placeholder="Nombre del chofer" value="${this._escAttr(existing?.chofer_nombre || existing?.chofer_nombre_resuelto || '')}" style="margin-bottom:6px;">
-                    <input type="text" id="evTransChoferTel" class="ev-form-input ev-input-sm" placeholder="Teléfono (WhatsApp)" value="${this._escAttr(existing?.chofer_telefono || existing?.chofer_telefono_resuelto || '')}">
+                    <div class="ev-trans-stack">
+                        <input type="text" id="evTransChofer" class="ev-form-input ev-input-sm" placeholder="Nombre del chofer" value="${this._escAttr(existing?.chofer_nombre || existing?.chofer_nombre_resuelto || '')}">
+                        <input type="text" id="evTransChoferTel" class="ev-form-input ev-input-sm" placeholder="Teléfono (WhatsApp)" value="${this._escAttr(existing?.chofer_telefono || existing?.chofer_telefono_resuelto || '')}">
+                    </div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                <div class="ev-trans-3col">
                     <div>
                         <label class="ev-form-label">Fase</label>
                         <select id="evTransFase" class="ev-form-input">
@@ -2373,22 +2400,22 @@ const EventosModule = {
                 </div>
                 <div>
                     <label class="ev-form-label">Qué lleva</label>
-                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
-                        <select id="evTransAddProy" class="ev-form-input ev-input-sm" style="flex:1;min-width:130px;">
+                    <div class="ev-trans-addrow">
+                        <select id="evTransAddProy" class="ev-form-input ev-input-sm">
                             <option value="">+ Stand del evento…</option>
                             ${(proyectos || []).map(p => `<option value="${this._escAttr(p.id)}">${this._escAttr(p.nombre || 'Sin nombre')}</option>`).join('')}
                         </select>
-                        <select id="evTransAddEquipo" class="ev-form-input ev-input-sm" style="flex:1;min-width:130px;">
+                        <select id="evTransAddEquipo" class="ev-form-input ev-input-sm">
                             <option value="">+ Equipo…</option>
                             ${equiposOp.map(e => `<option value="${this._escAttr(e.id)}" data-cont="${e.es_contenedor ? '1' : '0'}" data-nombre="${this._escAttr(e.nombre)}">${this._escAttr(e.nombre)}${e.es_contenedor ? ' (canasto)' : ''}</option>`).join('')}
                         </select>
                     </div>
-                    <div style="display:flex;gap:6px;margin-bottom:8px;">
-                        <input type="text" id="evTransManualTxt" class="ev-form-input ev-input-sm" placeholder="Ítem manual…" style="flex:2;">
-                        <input type="number" id="evTransManualCant" class="ev-form-input ev-input-sm" placeholder="Cant" min="1" value="1" style="flex:1;max-width:70px;">
+                    <div class="ev-trans-manual">
+                        <input type="text" id="evTransManualTxt" class="ev-form-input ev-input-sm ev-trans-manual-txt" placeholder="Ítem manual…">
+                        <input type="number" id="evTransManualCant" class="ev-form-input ev-input-sm ev-trans-manual-cant" placeholder="Cant" min="1" value="1">
                         <button class="btn btn-ghost" id="evTransAddManual" style="white-space:nowrap;">+ Agregar</button>
                     </div>
-                    <ul id="evTransItemsList" class="ev-trans-items" style="display:flex;"></ul>
+                    <ul id="evTransItemsList" class="ev-trans-items"></ul>
                 </div>
                 <div>
                     <label class="ev-form-label">Notas</label>
@@ -2418,10 +2445,10 @@ const EventosModule = {
                 const ico = it.item_type === 'proyecto' ? '🏗️' : it.item_type === 'equipo' ? '📦' : '•';
                 const cant = (it.cantidad && it.cantidad != 1) ? ` ×${it.cantidad}` : '';
                 const detChk = (it.item_type === 'equipo' && it.es_contenedor)
-                    ? `<label style="font-size:10px;color:#9B7DFF;margin-left:6px;"><input type="checkbox" data-det-idx="${idx}" ${it.detallar_contenido ? 'checked' : ''}> desglosar</label>`
+                    ? `<label class="ev-trans-detchk"><input type="checkbox" data-det-idx="${idx}" ${it.detallar_contenido ? 'checked' : ''}> desglosar</label>`
                     : '';
-                return `<li style="display:flex;align-items:center;gap:6px;">
-                    <span style="flex:1;">${ico} ${this._escAttr(it.label || '')}${cant}</span>
+                return `<li class="ev-trans-item">
+                    <span class="ev-trans-item-label">${ico} ${this._escAttr(it.label || '')}${cant}</span>
                     ${detChk}
                     <button class="ev-icon-btn ev-remove-persona-btn" data-rm-idx="${idx}" title="Quitar">&times;</button>
                 </li>`;
@@ -2438,7 +2465,7 @@ const EventosModule = {
         // Toggle adhoc box
         document.getElementById('evTransVeh')?.addEventListener('change', (e) => {
             const box = document.getElementById('evTransAdhocBox');
-            if (box) box.style.display = e.target.value === '__adhoc__' ? 'block' : 'none';
+            if (box) box.style.display = e.target.value === '__adhoc__' ? 'flex' : 'none';
         });
 
         // Add proyecto
