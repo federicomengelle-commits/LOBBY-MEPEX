@@ -2748,14 +2748,16 @@ const EventosModule = {
         const inst = Modal.open({ title: 'Organizador y link', body, size: 'sm', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evOLSave">Guardar</button>` });
         const orgInput = inst.overlay.querySelector('#evOLOrg');
         inst.overlay.querySelector('#evOLOrgAdd')?.addEventListener('click', async () => {
-            const suggested = (orgInput?.value || '').trim();
-            const nombre = (window.prompt('Nombre del organizador (empresa):', suggested) || '').trim();
-            if (!nombre) return;
+            const nombre = (orgInput?.value || '').trim();
+            if (!nombre) { orgInput?.focus(); Toast.warning('Escribí el nombre del organizador en el campo'); return; }
+            const yaExiste = (this._clientesMini || []).find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
+            if (yaExiste) { Toast.info(`"${yaExiste.nombre}" ya existe, lo seleccioné`); if (orgInput) orgInput.value = yaExiste.nombre; return; }
             const id = await this._createOrganizador(nombre);
             if (!id) return;
             const dl = inst.overlay.querySelector('#evOLOrgList');
             if (dl) dl.innerHTML = (this._clientesMini || []).map(c => `<option value="${this._escAttr(c.nombre)}"></option>`).join('');
             if (orgInput) orgInput.value = nombre;
+            Toast.success(`Organizador "${nombre}" creado`);
         });
         inst.overlay.querySelector('#evOLSave')?.addEventListener('click', async () => {
             const orgName = (orgInput?.value || '').trim();
@@ -3214,9 +3216,10 @@ const EventosModule = {
         const venueAddBtn = instance.overlay.querySelector('#evVenueAddBtn');
         const venueInput = instance.overlay.querySelector('[name="venue"]');
         venueAddBtn?.addEventListener('click', async () => {
-            const suggested = (venueInput?.value || '').trim();
-            const nombre = (window.prompt('Nombre del nuevo predio:', suggested) || '').trim();
-            if (!nombre) return;
+            const nombre = (venueInput?.value || '').trim();
+            if (!nombre) { venueInput?.focus(); Toast.warning('Escribí el nombre del predio en el campo de arriba'); return; }
+            const yaExiste = this._venues.find(v => v.name.toLowerCase() === nombre.toLowerCase());
+            if (yaExiste) { Toast.info(`"${yaExiste.name}" ya está en la lista`); if (venueInput) venueInput.value = yaExiste.name; return; }
             venueAddBtn.disabled = true;
             const created = await API.createVenue({ name: nombre });
             venueAddBtn.disabled = false;
@@ -3241,9 +3244,10 @@ const EventosModule = {
         const orgAddBtn = instance.overlay.querySelector('#evOrgAddBtn');
         const orgInput = instance.overlay.querySelector('[name="organizador"]');
         orgAddBtn?.addEventListener('click', async () => {
-            const suggested = (orgInput?.value || '').trim();
-            const nombre = (window.prompt('Nombre del organizador (empresa):', suggested) || '').trim();
-            if (!nombre) return;
+            const nombre = (orgInput?.value || '').trim();
+            if (!nombre) { orgInput?.focus(); Toast.warning('Escribí el nombre del organizador en el campo'); return; }
+            const yaExiste = (this._clientesMini || []).find(c => c.nombre.toLowerCase() === nombre.toLowerCase());
+            if (yaExiste) { Toast.info(`"${yaExiste.nombre}" ya existe, lo seleccioné`); if (orgInput) orgInput.value = yaExiste.nombre; return; }
             orgAddBtn.disabled = true;
             const id = await this._createOrganizador(nombre);
             orgAddBtn.disabled = false;
