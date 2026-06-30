@@ -6058,10 +6058,17 @@ const API = {
     // dias = nº de jornadas en que está la persona (jornada_id directo, o TODAS las
     // jornadas de su fase si la asignación es general/sin jornada).
     _computeJornalLines(jornadas, asignaciones) {
+        // La fase media tiene dos nombres en el sistema: las jornadas usan 'evento',
+        // pero Rendimiento (consumidor) y las asignaciones generales usan 'funcionamiento'.
+        // Canonicalizamos a 'funcionamiento' para que el puente hable el idioma de Rendimiento
+        // (sino la fila sale con fase='evento' que Rendimiento no agrupa, y una asignación
+        // general en 'funcionamiento' no engancharía las jornadas 'evento' → contaría 1 día).
+        const NORM = (f) => (f === 'evento' ? 'funcionamiento' : (f || 'armado'));
         const jorByFase = {}, faseById = {};
         (jornadas || []).forEach(j => {
-            (jorByFase[j.fase] = jorByFase[j.fase] || []).push(j.id);
-            faseById[j.id] = j.fase;
+            const f = NORM(j.fase);
+            (jorByFase[f] = jorByFase[f] || []).push(j.id);
+            faseById[j.id] = f;
         });
         const acc = {}, nombres = {};
         (asignaciones || []).forEach(a => {
@@ -6072,10 +6079,10 @@ const API = {
             nombres[key] = a.persona ? `${a.persona.nombre || ''} ${a.persona.apellido || ''}`.trim() : (a.persona_nombre || '');
             acc[key] = acc[key] || {};
             if (a.jornada_id) {
-                const fase = faseById[a.jornada_id] || a.fase || 'armado';
+                const fase = faseById[a.jornada_id] || NORM(a.fase);
                 (acc[key][fase] = acc[key][fase] || new Set()).add(a.jornada_id);
             } else {
-                const fase = a.fase || 'armado';
+                const fase = NORM(a.fase);
                 const ids = jorByFase[fase] || [];
                 acc[key][fase] = acc[key][fase] || new Set();
                 if (ids.length) ids.forEach(id => acc[key][fase].add(id));

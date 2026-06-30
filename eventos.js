@@ -132,17 +132,31 @@ const EventosModule = {
 
                 /* Modal agregar persona */
                 .ev-modal-persona { display:flex; flex-direction:column; gap:0; }
-                .ev-persona-list { max-height:240px; overflow-y:auto; border:1px solid #2a2a2a;
-                    border-radius:6px; background:#0d0d0d; }
-                .ev-persona-option { display:flex; align-items:center; justify-content:space-between;
-                    gap:8px; padding:8px 12px; cursor:pointer; border-bottom:1px solid #1a1a1a; }
+                .ev-addp-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; margin-bottom:12px; }
+                .ev-addp-grid .ev-form-input { margin:0; }
+                .ev-addp-controls { display:flex; gap:8px; margin-bottom:10px; }
+                .ev-addp-controls .ev-form-input { margin:0; }
+                .ev-addp-search { flex:2; }
+                .ev-addp-filter { flex:1; min-width:0; }
+                .ev-persona-list { max-height:260px; overflow-y:auto; border:1px solid #2a2a2a;
+                    border-radius:8px; background:#0d0d0d; }
+                .ev-persona-option { display:flex; align-items:center; gap:10px;
+                    padding:7px 11px; cursor:pointer; border-bottom:1px solid #1a1a1a; }
                 .ev-persona-option:last-child { border-bottom:none; }
-                .ev-persona-option:hover { background:#1a1a1a; }
-                .ev-persona-selected { background:#00A9C110 !important; border-left:2px solid #00A9C1; }
-                .ev-persona-option-info { display:flex; flex-direction:column; flex:1; }
-                .ev-persona-option-nombre { font-size:13px; color:#E8E8E8; }
-                .ev-persona-option-rol { font-size:11px; }
-                .ev-persona-option-tel { font-family:'Space Mono',monospace; font-size:10px; color:#666; white-space:nowrap; }
+                .ev-persona-option:hover { background:#161616; }
+                .ev-persona-selected { background:#00A9C112 !important; box-shadow:inset 2px 0 0 #00A9C1; }
+                .ev-persona-option-info { display:flex; flex-direction:column; gap:1px; flex:1; min-width:0; }
+                .ev-persona-option-nombre { font-size:13px; font-weight:500; color:#E8E8E8;
+                    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                .ev-persona-option-rol { font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+                .ev-persona-tipo { font-size:9px; text-transform:uppercase; font-weight:700;
+                    border-radius:9px; padding:1px 7px; white-space:nowrap; }
+                .ev-persona-option-tel { font-family:'Space Mono',monospace; font-size:10px;
+                    color:#00CC88; text-decoration:none; white-space:nowrap; }
+                .ev-persona-option-tel:hover { text-decoration:underline; }
+                .ev-addp-note { margin-top:10px; padding:7px 11px; font-size:11px; color:#888;
+                    background:#00CC8814; border:1px solid #00CC8830; border-radius:6px; }
+                .ev-addp-note strong { color:#00CC88; }
                 .ev-modal-persona-footer { padding-top:10px; border-top:1px solid #2a2a2a; }
 
                 /* Movimientos de transporte (Fase 4) */
@@ -1694,11 +1708,11 @@ const EventosModule = {
                 const tipoLbl = { interna: 'Interna', eventual: 'Eventual', cuadrilla: 'Cuadrilla' }[p.tipo] || '';
                 const checked = selected.has(String(p.id)) ? 'checked' : '';
                 const rolesTxt = (p.roles_operativos || []).map(r => this._ROL_LABELS[r] || r).join(' · ') || (p.rol_legacy || '');
-                const tipoChip = tipoLbl ? `<span class="ev-persona-tipo" style="font-size:9px;text-transform:uppercase;font-weight:700;border-radius:9px;padding:1px 7px;white-space:nowrap;background:${color}22;color:${color};border:1px solid ${color}55;">${tipoLbl}</span>` : '';
-                const telLink = p.telefono ? `<a class="ev-persona-option-tel" href="https://wa.me/${this._waNumber(p.telefono)}" target="_blank" rel="noopener" title="WhatsApp a ${this._escAttr(p.nombre)}" style="color:#00CC88;text-decoration:none;white-space:nowrap;">💬 ${this._escAttr(p.telefono)}</a>` : '';
+                const tipoChip = tipoLbl ? `<span class="ev-persona-tipo" style="background:${color}22;color:${color};border:1px solid ${color}55;">${tipoLbl}</span>` : '';
+                const telLink = p.telefono ? `<a class="ev-persona-option-tel" href="https://wa.me/${this._waNumber(p.telefono)}" target="_blank" rel="noopener" title="WhatsApp a ${this._escAttr(p.nombre)}">💬 ${this._escAttr(p.telefono)}</a>` : '';
                 return `
                     <label class="ev-persona-option ${checked ? 'ev-persona-selected' : ''}" data-persona-id="${p.id}">
-                        <input type="checkbox" value="${p.id}" ${checked} style="display:none">
+                        <input type="checkbox" value="${p.id}" ${checked} hidden>
                         <div class="ev-persona-option-info">
                             <span class="ev-persona-option-nombre">${this._escAttr(p.nombre)}</span>
                             <span class="ev-persona-option-rol" style="color:${color}">${this._escAttr(rolesTxt)}</span>
@@ -1716,7 +1730,7 @@ const EventosModule = {
 
         const body = `
             <div class="ev-modal-persona">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+                <div class="ev-addp-grid">
                     <div><label class="ev-form-label">Fase *</label>
                         <select id="evAsigFase" class="ev-form-input">
                             <option value="armado">Armado</option>
@@ -1730,21 +1744,21 @@ const EventosModule = {
                             ${this._ROLES_OP.map(r => `<option value="${r}">${this._ROL_LABELS[r]}</option>`).join('')}
                         </select>
                     </div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
                     <div><label class="ev-form-label">Desde</label><input type="datetime-local" class="ev-form-input" id="evAsigDesde" value="${defaultsByFase.armado.ini || ''}"></div>
                     <div><label class="ev-form-label">Hasta</label><input type="datetime-local" class="ev-form-input" id="evAsigHasta" value="${defaultsByFase.armado.fin || ''}"></div>
                 </div>
-                <input type="text" id="evPersonaSearch" class="ev-form-input" placeholder="🔍 Buscar por nombre…" style="margin-bottom:8px">
-                <select id="evPersonaFiltroRol" class="ev-form-input" style="margin-bottom:10px">
-                    <option value="">Todos los roles operativos</option>
-                    ${rolesDisponibles.map(r => `<option value="${this._escAttr(r)}">${this._escAttr(this._ROL_LABELS[r] || r)}</option>`).join('')}
-                </select>
+                <div class="ev-addp-controls">
+                    <input type="text" id="evPersonaSearch" class="ev-form-input ev-addp-search" placeholder="🔍 Buscar por nombre…">
+                    <select id="evPersonaFiltroRol" class="ev-form-input ev-addp-filter">
+                        <option value="">Todos los roles operativos</option>
+                        ${rolesDisponibles.map(r => `<option value="${this._escAttr(r)}">${this._escAttr(this._ROL_LABELS[r] || r)}</option>`).join('')}
+                    </select>
+                </div>
                 <div class="ev-persona-list" id="evPersonaList">
                     ${buildPersonaList('', '', selected)}
                 </div>
-                <div style="background:rgba(0,204,136,0.08);border:1px solid rgba(0,204,136,0.25);padding:8px 12px;border-radius:6px;margin-top:10px;font-size:11px;color:#888;">
-                    Las asignaciones se crean en estado <strong style="color:#00CC88">aprobada</strong> directamente.
+                <div class="ev-addp-note">
+                    Las asignaciones se crean en estado <strong>aprobada</strong> directamente.
                 </div>
             </div>
         `;
