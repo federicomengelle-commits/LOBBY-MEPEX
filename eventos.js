@@ -192,6 +192,10 @@ const EventosModule = {
                     padding:10px 14px; border-radius:6px; margin-bottom:14px; }
                 .ev-edit-asig-person strong { color:#00A9C1; }
 
+                /* Modal crear evento — alinea los inputs de la fila Locación/Organizador
+                   (el label de Organizador ocupa 2 líneas → reserva la misma altura de label) */
+                .ev-form-grid .ev-ff-pair .form-label { min-height:2.1rem; line-height:1.35; }
+
                 /* Movimientos de transporte (Fase 4) */
                 .ev-mov-item { display:flex; flex-direction:column; gap:4px; padding:10px;
                     background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px;
@@ -3165,7 +3169,7 @@ const EventosModule = {
                         <label class="form-label">Nombre del evento <span class="form-required">*</span></label>
                         <input class="form-input" type="text" name="name" placeholder="Ej: Expo Alimentek 2026" required>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field ev-ff-pair">
                         <label class="form-label">Locación / Predio</label>
                         <div class="ev-venue-row" style="display:flex; gap:6px; align-items:stretch;">
                             <input class="form-input" type="text" name="venue" list="evVenueList" placeholder="Ej: La Rural" autocomplete="off" style="flex:1;">
@@ -3173,7 +3177,7 @@ const EventosModule = {
                         </div>
                         <datalist id="evVenueList">${this._venues.map(v => `<option value="${this._escAttr(v.name)}"></option>`).join('')}</datalist>
                     </div>
-                    <div class="form-field">
+                    <div class="form-field ev-ff-pair">
                         <label class="form-label">Organizador <span style="font-weight:400;color:var(--text-dim);font-size:0.7rem;">(empresa — de Clientes)</span></label>
                         <div class="ev-venue-row" style="display:flex; gap:6px; align-items:stretch;">
                             <input class="form-input" type="text" name="organizador" list="evOrgList" placeholder="Buscar organizador / cliente…" autocomplete="off" style="flex:1;">
