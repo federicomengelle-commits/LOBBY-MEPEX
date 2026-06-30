@@ -1867,28 +1867,16 @@ const EventosModule = {
             }).join('');
 
             const remitoTxt = t.remito_firmado_url
-                ? '<span class="ev-trans-remito ok">✓ Remito firmado</span>'
-                : (t.remito_pdf_url ? '<span class="ev-trans-remito gen">Remito generado</span>' : '<span class="ev-trans-remito none">Sin remito</span>');
+                ? '<span class="ev-trans-remito ok" title="Remito firmado">● firmado</span>'
+                : (t.remito_pdf_url ? '<span class="ev-trans-remito gen" title="Remito generado">● generado</span>' : '<span class="ev-trans-remito none" title="Sin remito">● s/remito</span>');
 
             return `
-                <div class="ev-trans-card" data-trans-id="${this._escAttr(t.id)}" style="border-left-color:${faseColor[t.fase] || '#888'};">
-                    <div class="ev-trans-head">
+                <div class="ev-trans-row" data-trans-id="${this._escAttr(t.id)}" style="border-left-color:${faseColor[t.fase] || '#888'};">
+                    <div class="ev-trans-row-top">
                         <span class="ev-trans-veh">🚚 ${this._escAttr(t.vehiculo_label)}</span>
                         ${propChip}
-                    </div>
-                    <div class="ev-trans-meta">
-                        <span>🔖 ${patente}</span>
                         <span class="ev-trans-fase" style="color:${faseColor[t.fase] || '#888'};">${fase}</span>
-                        <span>📅 ${fechaHora}</span>
-                    </div>
-                    <div class="ev-trans-meta">
-                        ${choferHTML}
-                    </div>
-                    <button class="ev-trans-items-toggle" data-trans-toggle="${this._escAttr(t.id)}">📦 ${cntTxt} ▾</button>
-                    <ul class="ev-trans-items" id="evTransItems-${this._escAttr(t.id)}" style="display:none;">
-                        ${itemsDetail || '<li class="ev-section-empty">Sin ítems cargados</li>'}
-                    </ul>
-                    <div class="ev-trans-foot">
+                        <span class="ev-trans-grow"></span>
                         ${remitoTxt}
                         ${!this._isRO ? `
                         <div class="ev-trans-actions">
@@ -1898,32 +1886,42 @@ const EventosModule = {
                             <button class="ev-icon-btn ev-remove-persona-btn" data-trans-del="${this._escAttr(t.id)}" title="Eliminar">&times;</button>
                         </div>` : ''}
                     </div>
+                    <div class="ev-trans-meta-line">
+                        <span class="ev-trans-dim">🔖 ${patente}</span>
+                        <span class="ev-trans-dim">📅 ${fechaHora}</span>
+                        ${choferHTML}
+                        <button class="ev-trans-items-toggle" data-trans-toggle="${this._escAttr(t.id)}">📦 ${cntTxt} ▾</button>
+                    </div>
+                    <ul class="ev-trans-items" id="evTransItems-${this._escAttr(t.id)}" style="display:none;">
+                        ${itemsDetail || '<li class="ev-section-empty">Sin ítems cargados</li>'}
+                    </ul>
                 </div>
             `;
         };
 
         return `
             <style>
-                .ev-trans-card { background:#1a1a1a; border:1px solid #2a2a2a; border-left:3px solid #888; border-radius:6px; padding:10px 12px; margin-bottom:8px; }
-                .ev-trans-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
-                .ev-trans-veh { font-family:'Outfit',sans-serif; font-size:13px; font-weight:600; color:#E8E8E8; }
-                .ev-trans-chip { font-family:'Space Mono',monospace; font-size:9px; text-transform:uppercase; font-weight:700; border-radius:10px; padding:2px 8px; }
+                .ev-trans-row { background:#161616; border:1px solid #242424; border-left:3px solid #888; border-radius:5px; padding:6px 10px; margin-bottom:5px; }
+                .ev-trans-row-top { display:flex; align-items:center; gap:8px; }
+                .ev-trans-veh { font-family:'Outfit',sans-serif; font-size:12.5px; font-weight:600; color:#E8E8E8; white-space:nowrap; }
+                .ev-trans-grow { flex:1 1 auto; }
+                .ev-trans-chip { font-family:'Space Mono',monospace; font-size:8.5px; text-transform:uppercase; font-weight:700; border-radius:10px; padding:1px 7px; }
                 .ev-trans-chip.mepex { background:#00A9C115; border:1px solid #00A9C140; color:#00A9C1; }
                 .ev-trans-chip.tercero { background:#F28D1515; border:1px solid #F28D1540; color:#F28D15; }
-                .ev-trans-meta { display:flex; flex-wrap:wrap; gap:10px; font-family:'Space Mono',monospace; font-size:11px; color:#aaa; margin-bottom:4px; }
-                .ev-trans-fase { text-transform:uppercase; font-weight:700; font-size:10px; }
+                .ev-trans-fase { font-family:'Space Mono',monospace; text-transform:uppercase; font-weight:700; font-size:9.5px; letter-spacing:.03em; }
+                .ev-trans-meta-line { display:flex; flex-wrap:wrap; align-items:center; gap:5px 12px; font-family:'Space Mono',monospace; font-size:10.5px; color:#9a9a9a; margin-top:3px; }
+                .ev-trans-dim { color:#9a9a9a; }
                 .ev-trans-chofer-link { color:#00A9C1; text-decoration:none; }
                 .ev-trans-chofer-link:hover { text-decoration:underline; }
-                .ev-trans-items-toggle { background:transparent; border:none; color:#00A9C1; font-family:'Space Mono',monospace; font-size:11px; cursor:pointer; padding:4px 0; text-align:left; }
-                .ev-trans-items { list-style:none; margin:4px 0 6px; padding:0 0 0 4px; display:flex; flex-direction:column; gap:3px; font-size:12px; color:#ccc; }
+                .ev-trans-items-toggle { background:transparent; border:none; color:#00A9C1; font-family:'Space Mono',monospace; font-size:10.5px; cursor:pointer; padding:0; margin-left:auto; }
+                .ev-trans-items { list-style:none; margin:5px 0 1px; padding:0 0 0 2px; display:flex; flex-direction:column; gap:3px; font-size:11.5px; color:#ccc; }
                 .ev-trans-items li { font-family:'Outfit',sans-serif; }
                 .ev-trans-detail-flag { color:#9B7DFF; font-size:10px; }
-                .ev-trans-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:6px; padding-top:6px; border-top:1px solid #2a2a2a; }
-                .ev-trans-remito { font-family:'Space Mono',monospace; font-size:10px; }
+                .ev-trans-remito { font-family:'Space Mono',monospace; font-size:9.5px; white-space:nowrap; }
                 .ev-trans-remito.ok { color:#00CC88; }
                 .ev-trans-remito.gen { color:#00A9C1; }
                 .ev-trans-remito.none { color:#666; }
-                .ev-trans-actions { display:flex; gap:4px; }
+                .ev-trans-actions { display:flex; gap:2px; }
             </style>
             <div class="ev-panel-section" id="evSecTransporte">
                 <div class="ev-section-header">
