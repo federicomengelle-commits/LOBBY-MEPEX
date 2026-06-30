@@ -184,6 +184,14 @@ const EventosModule = {
                 .ev-trans-detchk { display:flex; align-items:center; gap:4px;
                     font-size:10px; color:#9B7DFF; white-space:nowrap; cursor:pointer; }
 
+                /* Modal editar asignación */
+                .ev-edit-asig .ev-form-row { margin-bottom:10px; }
+                .ev-edit-asig .ev-form-row:last-child { margin-bottom:0; }
+                .ev-edit-asig-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+                .ev-edit-asig-person { background:#00A9C114; border:1px solid #00A9C14d;
+                    padding:10px 14px; border-radius:6px; margin-bottom:14px; }
+                .ev-edit-asig-person strong { color:#00A9C1; }
+
                 /* Movimientos de transporte (Fase 4) */
                 .ev-mov-item { display:flex; flex-direction:column; gap:4px; padding:10px;
                     background:#1a1a1a; border:1px solid #2a2a2a; border-radius:6px;
@@ -1639,11 +1647,11 @@ const EventosModule = {
         const fechaFinLocal = asignacion.fecha_fin ? asignacion.fecha_fin.slice(0,16) : '';
 
         const body = `
-            <div class="ev-modal-persona">
-                <div style="background:rgba(0,169,193,0.08);border:1px solid rgba(0,169,193,0.3);padding:10px 14px;border-radius:6px;margin-bottom:14px;">
-                    <strong style="color:#00A9C1;">${this._escAttr(nombreFull)}</strong>
+            <div class="ev-modal-persona ev-edit-asig">
+                <div class="ev-edit-asig-person">
+                    <strong>${this._escAttr(nombreFull)}</strong>
                 </div>
-                <div class="ev-form-row" style="margin-bottom:10px;">
+                <div class="ev-form-row">
                     <label class="ev-form-label">Fase *</label>
                     <select class="ev-form-input" id="evAsigFase">
                         <option value="armado"          ${asignacion.fase==='armado'?'selected':''}>Armado</option>
@@ -1651,18 +1659,18 @@ const EventosModule = {
                         <option value="desarme"         ${asignacion.fase==='desarme'?'selected':''}>Desarme</option>
                     </select>
                 </div>
-                <div class="ev-form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+                <div class="ev-form-row ev-edit-asig-grid">
                     <div><label class="ev-form-label">Desde</label><input type="datetime-local" class="ev-form-input" id="evAsigDesde" value="${fechaIniLocal}"></div>
                     <div><label class="ev-form-label">Hasta</label><input type="datetime-local" class="ev-form-input" id="evAsigHasta" value="${fechaFinLocal}"></div>
                 </div>
-                <div class="ev-form-row" style="margin-bottom:10px;">
+                <div class="ev-form-row">
                     <label class="ev-form-label">Rol en el evento</label>
                     <select class="ev-form-input" id="evAsigRol">
                         <option value="">(sin rol específico)</option>
                         ${this._ROLES_OP.map(r => `<option value="${r}" ${asignacion.rol===r?'selected':''}>${this._ROL_LABELS[r]}</option>`).join('')}
                     </select>
                 </div>
-                <div class="ev-form-row" style="margin-bottom:10px;">
+                <div class="ev-form-row">
                     <label class="ev-form-label">Estado</label>
                     <select class="ev-form-input" id="evAsigEstado">
                         <option value="propuesta"  ${asignacion.estado==='propuesta'?'selected':''}>Propuesta</option>
