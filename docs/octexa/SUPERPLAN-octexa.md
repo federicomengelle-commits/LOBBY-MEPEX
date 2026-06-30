@@ -24,6 +24,41 @@ Ambas desembocan en el **cotizador** (de donde Fede ya saca las propuestas hermo
 
 ---
 
+## 🔥 PLAN OFICIAL — las 10 features, en fases (aprobado Fede 2026-06-27)
+
+> El **camino más corto a la bomba**: secuencia que entrega valor temprano, cada fase habilita la siguiente. Seleccionado del [BACKLOG-features.md](BACKLOG-features.md). Tag: ✅ arranca Claude solo · ⏳ necesita dato de Fede · 🏗️ build grande · 🔌 reusa lo que ya hay.
+
+### Fase 1 — El cimiento (rápido)
+| # | Feature | Por qué | Quién |
+|---|---|---|---|
+| 1 | **Validador geométrico** | garantiza "nunca falla una medida"; red de seguridad de todo | ✅ Claude |
+| 2 | **Editor de piezas + premisas** | cerebro extensible (Maxima, piezas nuevas, máximas) sin romper | ✅ Claude |
+| 3 | **BOM automático a nivel stand** | el corazón: diseño → despiece + cantidades (+ conteo de columnas) | 🏗️ Claude |
+
+### Fase 2 — La herramienta que vende
+| # | Feature | Por qué | Quién |
+|---|---|---|---|
+| 4 | **Cotización automática** | BOM → precio al instante (reusa cotizador + Costos) | ⏳ precios de Fede |
+| 5 | **Configurador desde mapa de zonas** | mapás zonas → configurás espacios → propone (sobre el compositor) | 🏗️ |
+| 6 | **CRM → propuesta instantánea** | lead nuevo → stand+render+precio para la 1ª reunión | 🏗️🔌 |
+
+### Fase 3 — El wow (la IA)
+| # | Feature | Por qué | Quién |
+|---|---|---|---|
+| 7 | **Diseñador IA copiloto** | IA propone sobre el mapa de zonas, grounded en el cerebro (alucina lindo, nunca la medida) | 🏗️ |
+| 8 | **Generador de gráfica por marca** | logo del cliente → gráfica en los espacios; mata el overlay manual | 🏗️ |
+| 9 | **Gemelo digital del inventario** | diseñar consciente del stock; automático (solo ingresos/retiros) | 🏗️🔌 |
+
+### Fase 4 — Escala
+| # | Feature | Por qué | Quién |
+|---|---|---|---|
+| 10 | **Asistente OCTEXA (chat)** | preguntarle al cerebro; base del asistente de todo el lobby | 💰 |
+
+**Menciones de honor** (fáciles de intercalar, plata directa): lista de corte/nesting · pricing inteligente.
+**Arranque inmediato:** Fase 1 #1 y #2 las hace Claude **sin esperar datos**. Backlog completo: [BACKLOG-features.md](BACKLOG-features.md) · visión: [disenador-IA-vision.md](disenador-IA-vision.md).
+
+---
+
 ## 🧱 LOS 4 PILARES
 
 | # | Pilar | Qué es | Doc | Estado |
