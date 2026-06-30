@@ -298,6 +298,7 @@ const EventosModule = {
             const [evs, venues] = await Promise.all([
                 API.getEvents(),
                 API.getVenues ? API.getVenues() : Promise.resolve([]),
+                this._loadClientesMini(),
             ]);
             events = evs;
             this._venues = venues || [];
@@ -319,6 +320,7 @@ const EventosModule = {
                     estado: norm === 'rechazado' ? 'rechazado' : this._deriveEstado(merged),
                     estadoManual: norm,
                     notas: e.notas || '',
+                    organizadorNombre: this._orgMap ? (this._orgMap[String(merged.organizadorId)] || null) : null,
                 };
             });
         } else {
@@ -816,6 +818,7 @@ const EventosModule = {
                     <button class="ev-panel-close" id="evPanelClose">&times;</button>
                     <h2 class="ev-panel-name">${ev.name || 'Sin nombre'}</h2>
                     <div class="ev-panel-venue">${ev.venue || '—'}</div>
+                    ${this._renderPanelOrgLink(ev)}
                     <div class="ev-panel-status-row">
                         <span class="ev-status-badge" style="--status-color: ${statusColor}">${this._getStatusLabel(ev.estado)}</span>
                         <span class="ev-panel-color-swatch" style="background: ${ev.color || statusColor}" title="Color del evento"></span>
@@ -2650,6 +2653,76 @@ const EventosModule = {
         `;
     },
 
+    // ── Organizador + Link del evento (fila del header de la ficha) ──
+    _renderPanelOrgLink(ev) {
+        const items = [];
+        if (ev.organizadorNombre) items.push(`<span style="color:#bbb;" title="Organizador">🏢 ${this._escAttr(ev.organizadorNombre)}</span>`);
+        if (ev.linkUrl) items.push(`<a href="${this._escAttr(this._linkHref(ev.linkUrl))}" target="_blank" rel="noopener" style="color:#00A9C1;text-decoration:none;" title="${this._escAttr(ev.linkUrl)}">🔗 ${this._escAttr(this._linkLabel(ev.linkUrl))}</a>`);
+        const editBtn = !this._isRO ? `<button id="evOrgLinkEdit" title="Editar organizador y link" style="background:transparent;border:none;color:#888;cursor:pointer;font-size:12px;padding:0 2px;line-height:1;">✏️</button>` : '';
+        if (!items.length && this._isRO) return '';
+        if (!items.length) items.push(`<span style="color:#555;">+ organizador / link</span>`);
+        return `<div class="ev-panel-orglink" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:6px;font-size:12px;font-family:'Space Mono',monospace;">${items.join('')}${editBtn}</div>`;
+    },
+    _linkHref(url) {
+        let u = String(url || '').trim();
+        if (!u) return '#';
+        if (u.startsWith('@')) return 'https://instagram.com/' + u.slice(1).replace(/^\/+/, '');
+        if (!/^https?:\/\//i.test(u)) return 'https://' + u;
+        return u;
+    },
+    _linkLabel(url) {
+        return String(url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').slice(0, 42);
+    },
+    async _openOrgLinkModal(ev) {
+        if (!ev) return;
+        if (!this._clientesMini) await this._loadClientesMini();
+        const body = `
+            <div class="mepex-form" style="display:flex;flex-direction:column;gap:14px;">
+                <div class="form-field">
+                    <label class="form-label">Organizador</label>
+                    <div style="display:flex;gap:6px;">
+                        <input class="form-input" type="text" id="evOLOrg" list="evOLOrgList" value="${this._escAttr(ev.organizadorNombre || '')}" placeholder="Buscar organizador / cliente…" autocomplete="off" style="flex:1;">
+                        <button type="button" class="btn btn-ghost" id="evOLOrgAdd" style="padding:0 12px;white-space:nowrap;">+ Nuevo</button>
+                    </div>
+                    <datalist id="evOLOrgList">${(this._clientesMini || []).map(c => `<option value="${this._escAttr(c.nombre)}"></option>`).join('')}</datalist>
+                </div>
+                <div class="form-field">
+                    <label class="form-label">Link del evento <span style="font-weight:400;color:var(--text-dim);font-size:0.7rem;">(web / Instagram)</span></label>
+                    <input class="form-input" type="text" id="evOLLink" value="${this._escAttr(ev.linkUrl || '')}" placeholder="https://… ó @instagram" autocomplete="off">
+                </div>
+            </div>`;
+        const inst = Modal.open({ title: 'Organizador y link', body, size: 'sm', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evOLSave">Guardar</button>` });
+        const orgInput = inst.overlay.querySelector('#evOLOrg');
+        inst.overlay.querySelector('#evOLOrgAdd')?.addEventListener('click', async () => {
+            const suggested = (orgInput?.value || '').trim();
+            const nombre = (window.prompt('Nombre del organizador (empresa):', suggested) || '').trim();
+            if (!nombre) return;
+            const id = await this._createOrganizador(nombre);
+            if (!id) return;
+            const dl = inst.overlay.querySelector('#evOLOrgList');
+            if (dl) dl.innerHTML = (this._clientesMini || []).map(c => `<option value="${this._escAttr(c.nombre)}"></option>`).join('');
+            if (orgInput) orgInput.value = nombre;
+        });
+        inst.overlay.querySelector('#evOLSave')?.addEventListener('click', async () => {
+            const orgName = (orgInput?.value || '').trim();
+            const linkUrl = (inst.overlay.querySelector('#evOLLink')?.value || '').trim() || null;
+            let organizadorId = null;
+            if (orgName) {
+                const found = (this._clientesMini || []).find(c => c.nombre.toLowerCase() === orgName.toLowerCase());
+                organizadorId = found ? found.id : await this._createOrganizador(orgName);
+            }
+            const ok = await API.updateEvent(ev.id, { linkUrl, organizadorId });
+            if (ok) {
+                Toast.success('Actualizado');
+                Modal.close(inst.id);
+                await this._loadEvents();
+                this._refreshPanel();
+            } else {
+                Toast.error('No se pudo guardar');
+            }
+        });
+    },
+
     // ═══════════════════════════════════════════
     //  CONFLICT DETECTION
     // ═══════════════════════════════════════════
@@ -2773,6 +2846,7 @@ const EventosModule = {
     _attachPanelEvents(ev) {
         // Close panel
         document.getElementById('evPanelClose')?.addEventListener('click', () => this._closePanel());
+        document.getElementById('evOrgLinkEdit')?.addEventListener('click', () => this._openOrgLinkModal(this._activePanelData));
 
         // Colapsar/expandir secciones (handler delegado, 1 sola vez por panel).
         const panel = document.getElementById('evSidePanel');
@@ -2983,6 +3057,50 @@ const EventosModule = {
     //  MODALS
     // ═══════════════════════════════════════════
 
+    // Carga liviana de clientes (id/nombre/es_organizador) para el picker de Organizador.
+    // Degrada si la columna es_organizador no existe aún (pre-SQL).
+    async _loadClientesMini() {
+        try {
+            let res = await supabaseClient.from('clientes')
+                .select('id, nombre_empresa, es_organizador').eq('_deleted', false)
+                .order('nombre_empresa', { ascending: true });
+            if (res.error) {
+                res = await supabaseClient.from('clientes')
+                    .select('id, nombre_empresa').eq('_deleted', false)
+                    .order('nombre_empresa', { ascending: true });
+            }
+            this._clientesMini = (res.data || []).map(c => ({ id: c.id, nombre: c.nombre_empresa || '', esOrg: !!c.es_organizador }));
+            // organizadores primero, después el resto, alfabético dentro de cada grupo
+            this._clientesMini.sort((a, b) => (b.esOrg - a.esOrg) || a.nombre.localeCompare(b.nombre));
+        } catch (e) {
+            this._clientesMini = this._clientesMini || [];
+        }
+        this._orgMap = {};
+        this._clientesMini.forEach(c => { this._orgMap[String(c.id)] = c.nombre; });
+        return true;
+    },
+
+    // Crea un cliente marcado como organizador y lo devuelve (id). Self-contained
+    // (insert directo con los defaults de createClient). Degrada si falta es_organizador.
+    async _createOrganizador(name) {
+        const nombre = (name || '').trim();
+        if (!nombre) return null;
+        try {
+            const { data, error } = await supabaseClient.from('clientes')
+                .insert({ nombre_empresa: nombre, razon_social: '', cuit: '', contacto_empresa: '', cargo: '', tipo: '', estado: 'activo', score: 0, es_organizador: true })
+                .select('id, nombre_empresa').single();
+            if (error) throw error;
+            const row = { id: data.id, nombre: data.nombre_empresa || nombre, esOrg: true };
+            this._clientesMini = this._clientesMini || [];
+            if (!this._clientesMini.some(c => String(c.id) === String(row.id))) this._clientesMini.push(row);
+            if (this._orgMap) this._orgMap[String(row.id)] = row.nombre;
+            return row.id;
+        } catch (e) {
+            Toast.error('No se pudo crear el organizador: ' + (e.message || e));
+            return null;
+        }
+    },
+
     _showCreateModal() {
         const body = `
             <form class="mepex-form" id="evCreateForm" autocomplete="off">
@@ -3000,10 +3118,16 @@ const EventosModule = {
                         <datalist id="evVenueList">${this._venues.map(v => `<option value="${this._escAttr(v.name)}"></option>`).join('')}</datalist>
                     </div>
                     <div class="form-field">
-                        <label class="form-label">Estado</label>
-                        <select class="form-input form-select" name="estado">
-                            ${this._statusOptions.map(s => `<option value="${s.value}" ${s.value === 'proximo' ? 'selected' : ''}>${s.label}</option>`).join('')}
-                        </select>
+                        <label class="form-label">Organizador <span style="font-weight:400;color:var(--text-dim);font-size:0.7rem;">(empresa — de Clientes)</span></label>
+                        <div class="ev-venue-row" style="display:flex; gap:6px; align-items:stretch;">
+                            <input class="form-input" type="text" name="organizador" list="evOrgList" placeholder="Buscar organizador / cliente…" autocomplete="off" style="flex:1;">
+                            <button type="button" class="btn btn-ghost" id="evOrgAddBtn" title="Crear organizador nuevo" style="padding:0 12px; white-space:nowrap;">+ Nuevo</button>
+                        </div>
+                        <datalist id="evOrgList">${(this._clientesMini || []).map(c => `<option value="${this._escAttr(c.nombre)}"></option>`).join('')}</datalist>
+                    </div>
+                    <div class="form-field form-field-full">
+                        <label class="form-label">Link del evento <span style="font-weight:400;color:var(--text-dim);font-size:0.7rem;">(web / Instagram — opcional)</span></label>
+                        <input class="form-input" type="text" name="link" placeholder="https://…  ó  @instagram" autocomplete="off">
                     </div>
                     <div class="form-field form-field-full">
                         <label class="form-label">Fecha tentativa <span style="font-weight:400;color:var(--text-dim);font-size:0.7rem;">(opcional — las jornadas la definen después)</span></label>
@@ -3059,6 +3183,23 @@ const EventosModule = {
             Toast.success(`Predio "${created.name}" agregado`);
         });
 
+        // "+ Nuevo organizador": prompt → crea cliente organizador → refresca datalist.
+        const orgAddBtn = instance.overlay.querySelector('#evOrgAddBtn');
+        const orgInput = instance.overlay.querySelector('[name="organizador"]');
+        orgAddBtn?.addEventListener('click', async () => {
+            const suggested = (orgInput?.value || '').trim();
+            const nombre = (window.prompt('Nombre del organizador (empresa):', suggested) || '').trim();
+            if (!nombre) return;
+            orgAddBtn.disabled = true;
+            const id = await this._createOrganizador(nombre);
+            orgAddBtn.disabled = false;
+            if (!id) return;
+            const dl = instance.overlay.querySelector('#evOrgList');
+            if (dl) dl.innerHTML = (this._clientesMini || []).map(c => `<option value="${this._escAttr(c.nombre)}"></option>`).join('');
+            if (orgInput) orgInput.value = nombre;
+            Toast.success(`Organizador "${nombre}" creado`);
+        });
+
         const submitBtn = instance.overlay.querySelector('#evCreateSubmit');
         submitBtn?.addEventListener('click', async () => {
             const form = instance.overlay.querySelector('#evCreateForm');
@@ -3078,10 +3219,18 @@ const EventosModule = {
             }
 
             const venue = (getVal('venue') || '').trim();
+            const linkUrl = (getVal('link') || '').trim() || null;
+            const orgName = (getVal('organizador') || '').trim();
+            let organizadorId = null;
+            if (orgName) {
+                const found = (this._clientesMini || []).find(c => c.nombre.toLowerCase() === orgName.toLowerCase());
+                organizadorId = found ? found.id : await this._createOrganizador(orgName);
+            }
             const data = {
                 name,
                 venue,
-                status: getVal('estado'),
+                linkUrl,
+                organizadorId,
                 setupDate: null,
                 setupEndDate: null,
                 eventStartDate: tentDesde,

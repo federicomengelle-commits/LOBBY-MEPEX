@@ -249,6 +249,8 @@ const API = {
                 teardownTimeClose: e.hora_desarme_cierre || null,
                 color: e.color || null,
                 notasOperativas: e.notas_operativas || '',
+                linkUrl: e.link_url || null,
+                organizadorId: e.organizador_id || null,
                 priority: '',
                 status: '',
             }));
@@ -501,6 +503,8 @@ const API = {
                 estado: data.estado || 'activo',
                 score: parseInt(data.score) || 0,
             };
+            // Rol organizador (omit-when-false para degradar si falta la columna).
+            if (data.esOrganizador) payload.es_organizador = true;
             const result = await UndoHelpers.createRecord('clientes', payload, `Nuevo cliente: ${data.name || ''}`);
             this.clearCache();
             return result || true;
@@ -654,6 +658,9 @@ const API = {
                 color: data.color || null,
                 notas_operativas: data.notasOperativas || null,
             };
+            // Omit-when-null para degradar si el SQL (link_url/organizador_id) no corrió aún.
+            if (data.linkUrl) payload.link_url = data.linkUrl;
+            if (data.organizadorId) payload.organizador_id = data.organizadorId;
             const result = await UndoHelpers.createRecord('eventos', payload, `Nuevo evento: ${data.name || ''}`);
             this.clearCache();
             return result || true;
@@ -682,6 +689,8 @@ const API = {
             if (data.teardownTimeClose !== undefined) payload.hora_desarme_cierre = data.teardownTimeClose || null;
             if (data.color !== undefined) payload.color = data.color;
             if (data.notasOperativas !== undefined) payload.notas_operativas = data.notasOperativas;
+            if (data.linkUrl !== undefined) payload.link_url = data.linkUrl || null;
+            if (data.organizadorId !== undefined) payload.organizador_id = data.organizadorId || null;
             // priority/status: columnas removidas en el rename, se ignoran silenciosamente.
             await UndoHelpers.updateRecord('eventos', id, payload, `Edito evento: ${data.name || ''}`);
             this.clearCache();
