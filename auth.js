@@ -85,6 +85,12 @@ const Auth = {
         const user = this.getUser();
         if (!user) return 'none';
 
+        // 0) Superadmin (Fede) = acceso total SIEMPRE, antes de cualquier matriz.
+        // Evita que un módulo nuevo (ej. disenador) quede invisible por no estar
+        // cargado en roles.permissions del DB (fuente de verdad para los demás roles).
+        // Sin esto, agregar un módulo requería tocar el DB o el superadmin quedaba afuera. 2026-07-01
+        if (user.role === 'superadmin') return 'write';
+
         // 1) Custom per-user override (array of module IDs = write access)
         if (user.customPermissions) {
             return user.customPermissions.includes(moduleId) ? 'write' : 'none';
