@@ -2,12 +2,9 @@
    Diseñador OCTEXA — módulo del lobby (STANDALONE · Fase 2 #5)
    Configurador desde mapa de zonas → BOM en vivo → variantes → guardar/cotizar.
    Motor: OctexaBOM + OctexaDesign (libs UMD en tools/octexa/, cargadas por el wiring patch).
-   ⚠ NO wireado todavía. Para activarlo (ver docs/octexa/HANDOFF-autonomo-2026-06-27.md):
-     1) index.html: <script src="tools/octexa/octexa-bom.js"></script>
-                    <script src="tools/octexa/octexa-design.js"></script>
-                    <script src="disenador.js?v=1"></script>   (antes de app.js)
-     2) router.js: ruta '#disenador' → DisenadorOctexa.render()
-     3) data.js: module-def + permisos (super/admin/venta/pm)
+   ✅ WIREADO (index.html carga octexa-bom/octexa-design/disenador · router '#disenador' ·
+      data.js module-def). Acceso SOLO superadmin mientras se prueba (route superadminOnly:true,
+      2026-07-01); ampliar roles en data.js.rolePermissions + sacar el flag cuando esté listo.
    Patrón de guardado calcado de compositor.js (_persist) y stands.js (_usarEnCotizacion).
    ========================================================================== */
 const DisenadorOctexa = {

@@ -20,9 +20,9 @@ const Data = {
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
         superadmin: ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
-        venta:      ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos'],
-        pm:         ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'compras', 'inventario', 'flota'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
+        venta:      ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos'],
+        pm:         ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'compras', 'inventario', 'flota'],
         taller:     ['eventos', 'proyectos', 'inventario', 'locaciones', 'flota'], // reorg C/D 2026-06-25: módulos Taller y Logística DISUELTOS → el rol taller usa Proyectos (galpón, read-only) + Tareas; transporte vive en la ficha del Evento. +locaciones read-only (RLS taller/deposito).
     },
 
