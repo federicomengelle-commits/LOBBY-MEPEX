@@ -1180,6 +1180,12 @@ const EventosModule = {
             return `<div class="ev-asig-fase"><span class="ev-asig-fase-lbl">${faseLabel[f]}</span>${js.map(j => `<label class="ev-asig-dia"><input type="checkbox" class="ev-asig-diack" value="${j.id}" data-fase="${j.fase}" data-fecha="${j.fecha}" ${j.id === preId ? 'checked' : ''}> ${this._fmtDiaFecha(j.fecha)}</label>`).join('')}</div>`;
         }).join('');
         const rolesDisponibles = [...new Set(personas.flatMap(p => p.roles_operativos || []))].sort();
+        // Crew del armado (unión de la gente asignada a cualquier jornada de fase 'armado').
+        // Preset "traer los del armado" — pensado para cargar el desarme de una.
+        const armadoJornadaIds = new Set(jornadas.filter(j => j.fase === 'armado').map(j => String(j.id)));
+        const armadoPersonaIds = [...new Set((this._asignCache[eventoId] || [])
+            .filter(a => a.jornada_id && armadoJornadaIds.has(String(a.jornada_id)))
+            .map(a => String(a.persona_id)))];
 
         const buildPersonaList = (filterRol, search, selected) => {
             let lista = personas;
@@ -1218,6 +1224,9 @@ const EventosModule = {
                 .ev-asig-fase{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
                 .ev-asig-fase-lbl{font-family:var(--font-mono);font-size:0.64rem;text-transform:uppercase;color:var(--text-dim);min-width:62px;}
                 .ev-asig-dia{display:inline-flex;align-items:center;gap:5px;font-size:0.8rem;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 9px;cursor:pointer;}
+                .ev-asig-h-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+                .ev-asig-copybtn{font-family:var(--font-main);font-size:0.68rem;text-transform:none;letter-spacing:0;font-weight:500;background:transparent;border:1px dashed var(--primary);color:var(--primary);border-radius:6px;padding:3px 9px;cursor:pointer;white-space:nowrap;}
+                .ev-asig-copybtn:hover{background:rgba(0,169,193,0.12);}
             </style>
             <div class="ev-asig">
                 <div>
@@ -1229,7 +1238,10 @@ const EventosModule = {
                     <select id="evAsigRolDef" class="ev-form-input"><option value="">—</option>${this._ROLES_OP.map(r => `<option value="${r}">${this._ROL_LABELS[r] || r}</option>`).join('')}</select>
                 </div>
                 <div>
-                    <div class="ev-asig-h">Personas <span class="ev-asig-hint">(tocá para tildar)</span></div>
+                    <div class="ev-asig-h ev-asig-h-row">
+                        <span>Personas <span class="ev-asig-hint">(tocá para tildar)</span></span>
+                        ${armadoPersonaIds.length ? `<button type="button" id="evAsigTraerArmado" class="ev-asig-copybtn" title="Tildar a todos los que fueron al armado (después ajustás)">⧉ Traer los del armado (${armadoPersonaIds.length})</button>` : ''}
+                    </div>
                     <div class="ev-addp-controls">
                         <input type="text" id="evAsigSearch" class="ev-form-input ev-addp-search" placeholder="🔍 Buscar por nombre…">
                         <select id="evAsigFiltroRol" class="ev-form-input ev-addp-filter">
@@ -1269,6 +1281,11 @@ const EventosModule = {
             searchTimer = setTimeout(() => { search = e.target.value; refreshList(); }, 200);
         });
         ov.querySelector('#evAsigFiltroRol')?.addEventListener('change', (e) => { filterRol = e.target.value; refreshList(); });
+        ov.querySelector('#evAsigTraerArmado')?.addEventListener('click', () => {
+            armadoPersonaIds.forEach(id => selected.add(id));
+            refreshList(); updateCount();
+            Toast.info(`${armadoPersonaIds.length} del armado tildado${armadoPersonaIds.length === 1 ? '' : 's'} — ajustá y guardá`);
+        });
 
         saveBtn.addEventListener('click', async () => {
             const dias = [...ov.querySelectorAll('.ev-asig-diack:checked')].map(c => ({ id: c.value, fase: c.dataset.fase, fecha: c.dataset.fecha }));
