@@ -34,181 +34,89 @@
             font-family: 'Outfit', sans-serif;
             min-height: 100vh;
         }
-        body {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
+        body { display: flex; align-items: center; justify-content: center; padding: 20px; }
         .card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            max-width: 520px;
+            border-radius: 14px;
+            max-width: 500px;
             width: 100%;
-            padding: 32px 28px;
+            padding: 30px 26px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
-        .header {
-            text-align: center;
-            margin-bottom: 28px;
-        }
-        .logo {
-            max-width: 140px;
-            height: auto;
-            margin: 0 auto 18px auto;
-            display: block;
-        }
-        .header h1 {
-            font-size: 1.4rem;
-            font-weight: 600;
-            color: var(--primary);
-            margin-bottom: 6px;
-        }
-        .header p {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-            line-height: 1.4;
-        }
-        .evento-title {
+        .header { text-align: center; margin-bottom: 22px; }
+        .logo { max-width: 150px; height: auto; margin: 0 auto 16px auto; display: block; }
+        .header h1 { font-size: 1.35rem; font-weight: 600; color: var(--text-primary); margin-bottom: 5px; }
+        .header p { font-size: 0.9rem; color: var(--text-muted); line-height: 1.4; }
+        .ctx {
             background: rgba(0,169,193,0.08);
             border: 1px solid rgba(0,169,193,0.25);
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 12px 14px;
-            margin-bottom: 24px;
+            margin-bottom: 26px;
             text-align: center;
         }
-        .evento-title strong {
-            color: var(--primary);
-            font-weight: 600;
+        .ctx .proj { color: var(--primary); font-weight: 600; font-size: 1rem; }
+        .ctx .sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; font-family: 'Space Mono', monospace; }
+        .q-label { display: block; font-size: 0.95rem; font-weight: 500; margin-bottom: 10px; }
+        .sec-title {
+            font-family: 'Space Mono', monospace; font-size: 0.66rem; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.12em; margin: 26px 0 4px;
         }
-        .question {
-            margin-bottom: 24px;
-        }
-        .question-label {
-            display: block;
-            font-size: 0.95rem;
-            font-weight: 500;
-            margin-bottom: 12px;
-        }
-        .question-hint {
-            display: block;
-            font-size: 0.78rem;
-            color: var(--text-muted);
-            margin-bottom: 14px;
-        }
-        .nps-scale {
-            display: grid;
-            grid-template-columns: repeat(11, 1fr);
-            gap: 5px;
-            margin-bottom: 8px;
-        }
-        @media (max-width: 480px) {
-            .nps-scale { grid-template-columns: repeat(6, 1fr); }
-        }
+        .nps-scale { display: grid; grid-template-columns: repeat(11, 1fr); gap: 5px; margin-bottom: 8px; }
+        @media (max-width: 480px) { .nps-scale { grid-template-columns: repeat(6, 1fr); } }
         .nps-btn {
-            aspect-ratio: 1;
-            border: 1.5px solid var(--border);
-            background: #0a0a0a;
-            color: var(--text-primary);
-            border-radius: 8px;
-            font-family: 'Space Mono', monospace;
-            font-size: 0.95rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 180ms ease;
-            min-height: 44px;
+            aspect-ratio: 1; border: 1.5px solid var(--border); background: #0a0a0a;
+            color: var(--text-primary); border-radius: 8px; font-family: 'Space Mono', monospace;
+            font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: all 160ms ease; min-height: 44px;
         }
         .nps-btn:hover { border-color: var(--primary); }
-        .nps-btn.selected { background: var(--primary); color: var(--bg); border-color: var(--primary); }
-        .nps-btn.selected[data-score="0"],
-        .nps-btn.selected[data-score="1"],
-        .nps-btn.selected[data-score="2"],
-        .nps-btn.selected[data-score="3"],
-        .nps-btn.selected[data-score="4"],
-        .nps-btn.selected[data-score="5"],
-        .nps-btn.selected[data-score="6"] { background: var(--error); border-color: var(--error); }
-        .nps-btn.selected[data-score="7"],
-        .nps-btn.selected[data-score="8"] { background: var(--accent); border-color: var(--accent); }
-        .nps-btn.selected[data-score="9"],
-        .nps-btn.selected[data-score="10"] { background: var(--success); border-color: var(--success); }
+        .nps-btn.selected[data-score="0"], .nps-btn.selected[data-score="1"], .nps-btn.selected[data-score="2"],
+        .nps-btn.selected[data-score="3"], .nps-btn.selected[data-score="4"], .nps-btn.selected[data-score="5"],
+        .nps-btn.selected[data-score="6"] { background: var(--error); border-color: var(--error); color: #fff; }
+        .nps-btn.selected[data-score="7"], .nps-btn.selected[data-score="8"] { background: var(--accent); border-color: var(--accent); color: #1a0e00; }
+        .nps-btn.selected[data-score="9"], .nps-btn.selected[data-score="10"] { background: var(--success); border-color: var(--success); color: #04251a; }
         .nps-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.7rem;
-            color: var(--text-dim);
-            font-family: 'Space Mono', monospace;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--text-dim);
+            font-family: 'Space Mono', monospace; text-transform: uppercase; letter-spacing: 0.05em;
         }
+        .dim {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            padding: 12px 0; border-bottom: 1px solid #1c1c1c;
+        }
+        .dim:last-of-type { border-bottom: none; }
+        .dim-label { font-size: 0.88rem; color: #d8d8d8; }
+        .stars { display: flex; gap: 4px; }
+        .star {
+            background: none; border: none; color: #333; font-size: 1.5rem; cursor: pointer;
+            padding: 2px; line-height: 1; transition: color 120ms ease; min-width: 30px; min-height: 40px;
+        }
+        .star.on { color: var(--accent); }
+        .star:hover { color: var(--accent); }
         textarea {
-            width: 100%;
-            background: #0a0a0a;
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 12px 14px;
-            border-radius: 8px;
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.95rem;
-            min-height: 100px;
-            resize: vertical;
+            width: 100%; background: #0a0a0a; border: 1px solid var(--border); color: var(--text-primary);
+            padding: 12px 14px; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.95rem;
+            min-height: 90px; resize: vertical; margin-top: 4px;
         }
         textarea:focus { outline: none; border-color: var(--primary); }
         .btn {
-            width: 100%;
-            background: var(--primary);
-            color: var(--bg);
-            border: none;
-            padding: 14px;
-            border-radius: 8px;
-            font-family: 'Space Mono', monospace;
-            font-size: 0.95rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 200ms ease;
-            margin-top: 8px;
-            min-height: 50px;
+            width: 100%; background: var(--primary); color: var(--bg); border: none; padding: 15px;
+            border-radius: 9px; font-family: 'Space Mono', monospace; font-size: 0.95rem; font-weight: 700;
+            cursor: pointer; transition: all 200ms ease; margin-top: 24px; min-height: 52px;
         }
-        .btn:hover:not(:disabled) {
-            background: #00C2DC;
-            box-shadow: 0 0 16px rgba(0,169,193,0.5);
-        }
-        .btn:disabled {
-            background: #333;
-            color: #666;
-            cursor: not-allowed;
-        }
-        .state-screen {
-            text-align: center;
-            padding: 30px 0;
-        }
-        .state-icon {
-            font-size: 3.5rem;
-            margin-bottom: 16px;
-        }
-        .state-screen h2 {
-            font-size: 1.3rem;
-            margin-bottom: 10px;
-        }
-        .state-screen p {
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
+        .btn:hover:not(:disabled) { background: #00C2DC; box-shadow: 0 0 16px rgba(0,169,193,0.5); }
+        .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .state-screen { text-align: center; padding: 30px 0; }
+        .state-icon { font-size: 3.5rem; margin-bottom: 16px; }
+        .state-screen h2 { font-size: 1.3rem; margin-bottom: 10px; }
+        .state-screen p { color: var(--text-muted); line-height: 1.5; }
         .footer {
-            margin-top: 24px;
-            text-align: center;
-            font-size: 0.75rem;
-            color: var(--text-dim);
-            font-family: 'Space Mono', monospace;
-            letter-spacing: 0.05em;
+            margin-top: 24px; text-align: center; font-size: 0.72rem; color: var(--text-dim);
+            font-family: 'Space Mono', monospace; letter-spacing: 0.05em;
         }
         .spinner {
-            display: inline-block;
-            width: 40px; height: 40px;
-            border: 3px solid #333;
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            display: inline-block; width: 40px; height: 40px; border: 3px solid #333;
+            border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
@@ -224,18 +132,20 @@
 
     <script src="config.js"></script>
     <script>
+        // Aspectos valorados (mismos keys que proyecto-detalle.js _encuestaAspectos).
+        const ASPECTOS = [
+            { key: 'calidad',  label: 'Calidad y terminación del stand' },
+            { key: 'tiempos',  label: 'Cumplimiento de los tiempos' },
+            { key: 'atencion', label: 'Atención y comunicación' },
+            { key: 'armado',   label: 'Armado y desarme' },
+        ];
+
         (async () => {
             const card = document.getElementById('card');
+            const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-            // Estados de UI
             const renderError = (msg) => {
-                card.innerHTML = `
-                    <div class="state-screen">
-                        <div class="state-icon">❌</div>
-                        <h2>No pudimos cargar la encuesta</h2>
-                        <p>${msg}</p>
-                    </div>
-                `;
+                card.innerHTML = `<div class="state-screen"><div class="state-icon">❌</div><h2>No pudimos cargar la encuesta</h2><p>${esc(msg)}</p></div>`;
             };
             const renderThanks = (nps) => {
                 const emoji = nps >= 9 ? '🎉' : nps >= 7 ? '🙏' : '🤝';
@@ -243,90 +153,83 @@
                     <div class="state-screen">
                         <div class="state-icon">${emoji}</div>
                         <h2>¡Gracias por tu respuesta!</h2>
-                        <p>Tu opinión nos ayuda a mejorar.</p>
+                        <p>Tu opinión nos ayuda a mejorar cada stand.</p>
                         <p style="margin-top: 16px; color: var(--primary); font-family: 'Space Mono';">— Equipo MEPEX</p>
                     </div>
-                    <div class="footer">MEPEX · Montaje y Equipamiento para Exposiciones</div>
-                `;
+                    <div class="footer">MEPEX · Montaje y Equipamiento para Exposiciones</div>`;
             };
 
-            // Parse token
             const params = new URLSearchParams(window.location.search);
             const token = params.get('t');
-            if (!token) {
-                renderError('Falta el código de la encuesta en el link.');
-                return;
-            }
+            if (!token) { renderError('Falta el código de la encuesta en el link.'); return; }
 
-            // Fetch encuesta + evento
             try {
+                // Sin joins a proyectos (RLS anon). Fallback a evento/cliente para encuestas viejas.
                 const { data: enc, error: encErr } = await supabaseClient
                     .from('encuestas_evento')
-                    .select(`
-                        *,
-                        evento:eventos!evento_id(nombre, predio, fecha_evento_inicio),
-                        cliente:clientes!cliente_id(nombre_empresa, razon_social)
-                    `)
+                    .select(`*, evento:eventos!evento_id(nombre), cliente:clientes!cliente_id(nombre_empresa, razon_social)`)
                     .eq('token', token)
                     .maybeSingle();
                 if (encErr) throw encErr;
-                if (!enc) {
-                    renderError('El link de encuesta no es válido o ya expiró.');
-                    return;
-                }
-                if (enc.respondida_at) {
-                    renderThanks(enc.nps);
-                    return;
-                }
+                if (!enc) { renderError('El link de encuesta no es válido o ya expiró.'); return; }
+                if (enc.respondida_at) { renderThanks(enc.nps); return; }
 
-                // Render form
-                const evNombre = enc.evento?.nombre || 'su evento';
-                const clienteNombre = enc.cliente?.nombre_empresa || enc.cliente?.razon_social || '';
+                const titulo = enc.titulo || enc.evento?.nombre || 'tu stand';
+                const subtitulo = enc.subtitulo || [enc.cliente?.nombre_empresa || enc.cliente?.razon_social].filter(Boolean).join('');
+
                 card.innerHTML = `
                     <div class="header">
                         <img src="assets/logo_full.png" alt="MEPEX" class="logo" onerror="this.style.display='none'">
-                        <h1>¿Cómo estuvo nuestro servicio?</h1>
-                        <p>Nos importa tu opinión.</p>
+                        <h1>¿Cómo estuvo tu experiencia?</h1>
+                        <p>Tu opinión sobre el stand nos ayuda a mejorar.</p>
                     </div>
-
-                    <div class="evento-title">
-                        ${clienteNombre ? `<div style="font-size:0.78rem; color: var(--text-muted); margin-bottom:4px;">${clienteNombre}</div>` : ''}
-                        <strong>${evNombre}</strong>
+                    <div class="ctx">
+                        <div class="proj">${esc(titulo)}</div>
+                        ${subtitulo ? `<div class="sub">${esc(subtitulo)}</div>` : ''}
                     </div>
-
                     <form id="encForm">
-                        <div class="question">
-                            <label class="question-label">¿Qué tan probable es que nos recomiendes?</label>
-                            <span class="question-hint">Elegí un número del 0 (nada probable) al 10 (totalmente probable)</span>
-                            <div class="nps-scale" id="npsScale">
-                                ${Array.from({ length: 11 }, (_, i) => `<button type="button" class="nps-btn" data-score="${i}">${i}</button>`).join('')}
-                            </div>
-                            <div class="nps-labels">
-                                <span>Nada</span>
-                                <span>Totalmente</span>
-                            </div>
+                        <label class="q-label">¿Qué tan probable es que nos recomiendes?</label>
+                        <div class="nps-scale" id="npsScale">
+                            ${Array.from({ length: 11 }, (_, i) => `<button type="button" class="nps-btn" data-score="${i}">${i}</button>`).join('')}
                         </div>
+                        <div class="nps-labels"><span>Nada probable</span><span>Totalmente</span></div>
 
-                        <div class="question">
-                            <label class="question-label" for="comentario">Algún comentario (opcional)</label>
-                            <textarea id="comentario" placeholder="Lo que quieras compartir con nosotros..."></textarea>
-                        </div>
+                        <div class="sec-title">Valorá cada aspecto (opcional)</div>
+                        ${ASPECTOS.map(a => `
+                            <div class="dim">
+                                <span class="dim-label">${a.label}</span>
+                                <div class="stars" data-dim="${a.key}">
+                                    ${[1, 2, 3, 4, 5].map(v => `<button type="button" class="star" data-v="${v}">★</button>`).join('')}
+                                </div>
+                            </div>`).join('')}
+
+                        <div class="sec-title">Comentario (opcional)</div>
+                        <textarea id="comentario" placeholder="Lo que quieras compartir con nosotros…"></textarea>
 
                         <button type="submit" class="btn" id="submitBtn" disabled>Enviar respuesta</button>
-                    </form>
-                `;
+                    </form>`;
 
-                // Wire NPS selection
+                // NPS
                 let npsSelected = null;
                 const npsBtns = document.querySelectorAll('.nps-btn');
                 const submitBtn = document.getElementById('submitBtn');
-                npsBtns.forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        npsSelected = parseInt(btn.dataset.score);
-                        npsBtns.forEach(b => b.classList.remove('selected'));
-                        btn.classList.add('selected');
-                        submitBtn.disabled = false;
-                    });
+                npsBtns.forEach(btn => btn.addEventListener('click', () => {
+                    npsSelected = parseInt(btn.dataset.score);
+                    npsBtns.forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    submitBtn.disabled = false;
+                }));
+
+                // Estrellas por aspecto
+                const respuestas = {};
+                document.querySelectorAll('.stars').forEach(group => {
+                    const dim = group.dataset.dim;
+                    const stars = [...group.querySelectorAll('.star')];
+                    stars.forEach(star => star.addEventListener('click', () => {
+                        const v = parseInt(star.dataset.v);
+                        respuestas[dim] = v;
+                        stars.forEach(s => s.classList.toggle('on', parseInt(s.dataset.v) <= v));
+                    }));
                 });
 
                 // Submit
@@ -336,14 +239,11 @@
                     submitBtn.disabled = true;
                     submitBtn.textContent = 'Enviando...';
                     const comentario = document.getElementById('comentario').value.trim() || null;
+                    const payloadResp = Object.keys(respuestas).length ? respuestas : null;
                     try {
                         const { error } = await supabaseClient
                             .from('encuestas_evento')
-                            .update({
-                                nps: npsSelected,
-                                comentario,
-                                respondida_at: new Date().toISOString(),
-                            })
+                            .update({ nps: npsSelected, respuestas: payloadResp, comentario, respondida_at: new Date().toISOString() })
                             .eq('token', token);
                         if (error) throw error;
                         renderThanks(npsSelected);

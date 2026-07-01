@@ -4222,6 +4222,25 @@ const API = {
         }
     },
 
+    // Devuelve la encuesta más reciente de un proyecto (si existe). Null sino.
+    async getEncuestaForProyecto(proyectoId) {
+        if (!proyectoId) return null;
+        try {
+            const { data, error } = await supabaseClient
+                .from('encuestas_evento')
+                .select('*')
+                .eq('proyecto_id', proyectoId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            return data || null;
+        } catch (e) {
+            console.warn('[API] Error getEncuestaForProyecto:', e.message);
+            return null;
+        }
+    },
+
     async getEncuestaByToken(token) {
         try {
             const { data, error } = await supabaseClient
@@ -4240,14 +4259,18 @@ const API = {
             : Math.random().toString(36).slice(2) + Date.now().toString(36));
         const user = Auth.getUser?.();
         const payload = {
-            evento_id: data.eventoId || data.evento_id,
+            proyecto_id: data.proyectoId || data.proyecto_id || null,
+            evento_id: data.eventoId || data.evento_id || null,
             cliente_id: data.clienteId || data.cliente_id || null,
             token,
+            // Contexto que ve el cliente en el link público (denormalizado, sin joins).
+            titulo: data.titulo || null,
+            subtitulo: data.subtitulo || null,
             enviada_at: data.enviadaAt || new Date().toISOString(),
-            enviada_por: user?.uid || user?.id || null,
+            enviada_por: user?.uid || null,  // FK a profiles → SIEMPRE el UUID (.uid), nunca el username (.id)
         };
-        if (!payload.evento_id) {
-            console.warn('[API] createEncuesta: evento_id obligatorio');
+        if (!payload.proyecto_id && !payload.evento_id) {
+            console.warn('[API] createEncuesta: falta proyecto_id o evento_id');
             return null;
         }
         try {

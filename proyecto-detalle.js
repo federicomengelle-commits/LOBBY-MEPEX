@@ -34,6 +34,14 @@ const ProyectoDetalle = {
         { key: 'entrega',     label: 'Entrega',           icon: '✍️' },
     ],
 
+    // Aspectos valorados en la encuesta de satisfacción (mismos keys que encuesta.html).
+    _encuestaAspectos: [
+        { key: 'calidad',  label: 'Calidad y terminación del stand' },
+        { key: 'tiempos',  label: 'Cumplimiento de los tiempos' },
+        { key: 'atencion', label: 'Atención y comunicación' },
+        { key: 'armado',   label: 'Armado y desarme' },
+    ],
+
     _statusOptions: [
         { value: 'por_iniciar', label: 'Por iniciar', color: '#F28D15' },
         { value: 'en_proceso',  label: 'En proceso',  color: '#00A9C1' },
@@ -1310,10 +1318,16 @@ const ProyectoDetalle = {
 
     async _renderEntregaTab() {
         this._ensureConfStyles();
+        this._ensureEncStyles();
         let conformes = [];
         try { conformes = await API.getConformesByProyecto(this._projectId); }
         catch (e) { console.warn('[ProyectoDetalle] Error cargando conformes:', e.message); }
         this._conformes = conformes;
+
+        let enc = null;
+        try { enc = await API.getEncuestaForProyecto(this._projectId); }
+        catch (e) { console.warn('[ProyectoDetalle] Error cargando encuesta:', e.message); }
+        this._encuesta = enc;
 
         const tipoLabel = { recepcion: 'Recepción', devolucion: 'Devolución' };
         const rows = conformes.map(c => {
@@ -1344,14 +1358,139 @@ const ProyectoDetalle = {
                 ${conformes.length === 0
                     ? `<div class="pjd-empty-state"><div class="pjd-empty-icon">✍️</div><h3 class="pjd-section-title">Sin entregas registradas</h3><p class="pjd-section-empty">Cuando le entregues el proyecto al cliente: repasás la lista, el cliente firma en pantalla y queda el acta.</p></div>`
                     : `<ul class="pjd-conf-list">${rows}</ul>`}
+                ${this._renderEncuestaSection(enc)}
             </div>
         `;
+    },
+
+    // ── Sección "Satisfacción del cliente" (encuesta NPS + aspectos, por proyecto) ──
+    _renderEncuestaSection(enc) {
+        const url = enc ? this._encUrl(enc.token) : '';
+        let inner;
+        if (!enc) {
+            inner = `<div class="pjd-enc-empty">
+                <span class="pjd-enc-empty-ico">📊</span>
+                <div>
+                    <div class="pjd-enc-empty-t">Sin encuesta generada</div>
+                    <div class="pjd-enc-empty-s">Generá el link, se lo pasás al cliente y respondés cómo estuvo el stand.</div>
+                </div>
+            </div>`;
+        } else if (!enc.respondida_at) {
+            const enviada = enc.enviada_at ? this._fmtDate(enc.enviada_at) : '—';
+            inner = `
+                <div class="pjd-enc-pending">⏳ Pendiente de respuesta · link generado ${enviada}</div>
+                <div class="pjd-enc-linkrow">
+                    <input type="text" id="pjdEncUrl" value="${this._escAttr(url)}" readonly>
+                    <button class="btn btn-primary" id="pjdEncCopy">📋 Copiar link</button>
+                </div>
+                <p class="pjd-enc-hint">Mandaselo al cliente por WhatsApp o email. No necesita login: abre el link y responde.</p>`;
+        } else {
+            const nps = enc.nps;
+            const color = nps >= 9 ? '#00CC88' : nps >= 7 ? '#F28D15' : '#ff4444';
+            const label = nps >= 9 ? 'Promotor' : nps >= 7 ? 'Pasivo' : 'Detractor';
+            const resp = enc.respuestas || {};
+            const dims = this._encuestaAspectos
+                .filter(a => resp[a.key] != null)
+                .map(a => `<div class="pjd-enc-dim"><span>${a.label}</span>${this._starsHTML(resp[a.key])}</div>`)
+                .join('');
+            inner = `
+                <div class="pjd-enc-result">
+                    <div class="pjd-enc-nps">
+                        <span class="pjd-enc-nps-num" style="color:${color}">${nps}</span>
+                        <div>
+                            <div class="pjd-enc-nps-lbl" style="color:${color}">${label}</div>
+                            <div class="pjd-enc-nps-cap">recomendación (NPS 0–10)</div>
+                        </div>
+                    </div>
+                    ${dims ? `<div class="pjd-enc-dims">${dims}</div>` : ''}
+                    ${enc.comentario ? `<div class="pjd-enc-coment">${this._esc(enc.comentario)}</div>` : ''}
+                    <div class="pjd-enc-fecha">Respondida el ${this._fmtDate(enc.respondida_at)}</div>
+                </div>`;
+        }
+        return `
+            <div class="pjd-enc-section">
+                <div class="pjd-enc-head">
+                    <div>
+                        <h3 class="pjd-section-title" style="margin:0;">Satisfacción del cliente</h3>
+                        <p class="pjd-section-helper" style="margin:2px 0 0;">Encuesta corta (NPS + aspectos) sobre cómo estuvo el stand.</p>
+                    </div>
+                    ${(!enc && !this._isTaller) ? `<button class="btn btn-primary" id="pjdEncGen">+ Generar encuesta</button>` : ''}
+                </div>
+                ${inner}
+            </div>`;
+    },
+
+    _starsHTML(n) {
+        const v = Math.max(0, Math.min(5, parseInt(n) || 0));
+        let s = '';
+        for (let i = 1; i <= 5; i++) s += `<span class="pjd-enc-star${i <= v ? ' on' : ''}">★</span>`;
+        return `<span class="pjd-enc-stars">${s}</span>`;
+    },
+
+    _encUrl(token) {
+        const base = window.location.origin + window.location.pathname.replace(/[^/]*$/, '');
+        return `${base}encuesta.html?t=${token}`;
+    },
+
+    async _generarEncuesta() {
+        const p = this._project;
+        if (!p) return;
+        const subtitulo = [p.cliente?.nombre_empresa, p.evento?.nombre].filter(Boolean).join(' · ');
+        const enc = await API.createEncuesta({
+            proyectoId: this._projectId,
+            eventoId: p.evento_id || p.evento?.id || null,
+            clienteId: p.cliente_id || p.cliente?.id || null,
+            titulo: p.nombre || 'Tu stand',
+            subtitulo: subtitulo || null,
+        });
+        if (!enc) { Toast.error('No se pudo generar la encuesta'); return; }
+        Toast.success('Encuesta generada — copiá el link y mandáselo al cliente');
+        await this._renderTabContent();
     },
 
     _attachEntregaEvents() {
         document.getElementById('pjdConfNuevo')?.addEventListener('click', () => this._openNuevoConformeModal());
         document.querySelectorAll('[data-conf-pdf]').forEach(b => b.addEventListener('click', () => this._verConforme(b.dataset.confPdf)));
         document.querySelectorAll('[data-conf-del]').forEach(b => b.addEventListener('click', () => this._eliminarConforme(b.dataset.confDel)));
+        // Encuesta de satisfacción
+        document.getElementById('pjdEncGen')?.addEventListener('click', () => this._generarEncuesta());
+        document.getElementById('pjdEncCopy')?.addEventListener('click', async () => {
+            const input = document.getElementById('pjdEncUrl');
+            if (!input) return;
+            try { await navigator.clipboard.writeText(input.value); Toast.success('Link copiado'); }
+            catch { input.select(); document.execCommand('copy'); Toast.success('Link copiado'); }
+        });
+    },
+
+    _ensureEncStyles() {
+        if (document.getElementById('pjd-enc-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'pjd-enc-styles';
+        s.textContent = `
+            .pjd-enc-section{margin-top:26px;padding-top:20px;border-top:1px solid var(--border);}
+            .pjd-enc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;}
+            .pjd-enc-empty{display:flex;align-items:center;gap:14px;background:var(--bg-card-2,#0e0e0e);border:1px solid var(--border);border-radius:10px;padding:16px 18px;}
+            .pjd-enc-empty-ico{font-size:1.6rem;opacity:0.85;}
+            .pjd-enc-empty-t{font-weight:600;color:var(--text-primary);font-size:0.92rem;}
+            .pjd-enc-empty-s{font-size:0.8rem;color:var(--text-muted);margin-top:2px;}
+            .pjd-enc-pending{font-family:var(--font-mono);font-size:0.72rem;color:#F28D15;background:rgba(242,141,21,0.08);border:1px solid rgba(242,141,21,0.3);border-radius:8px;padding:9px 12px;margin-bottom:12px;}
+            .pjd-enc-linkrow{display:flex;gap:8px;}
+            .pjd-enc-linkrow input{flex:1;background:var(--bg-card-2,#0a0a0a);border:1px solid var(--border);color:var(--primary);padding:10px 12px;border-radius:6px;font-family:var(--font-mono);font-size:0.78rem;}
+            .pjd-enc-hint{font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;line-height:1.5;}
+            .pjd-enc-result{background:var(--bg-card-2,#0e0e0e);border:1px solid var(--border);border-radius:10px;padding:16px 18px;}
+            .pjd-enc-nps{display:flex;align-items:center;gap:14px;}
+            .pjd-enc-nps-num{font-family:var(--font-mono);font-size:2.4rem;font-weight:700;line-height:1;}
+            .pjd-enc-nps-lbl{font-size:1rem;font-weight:600;}
+            .pjd-enc-nps-cap{font-size:0.72rem;color:var(--text-dim);font-family:var(--font-mono);margin-top:2px;}
+            .pjd-enc-dims{margin-top:14px;border-top:1px solid var(--border);padding-top:8px;}
+            .pjd-enc-dim{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;font-size:0.85rem;color:var(--text-primary);}
+            .pjd-enc-stars{display:inline-flex;gap:3px;white-space:nowrap;}
+            .pjd-enc-star{color:#333;font-size:1rem;}
+            .pjd-enc-star.on{color:#F28D15;}
+            .pjd-enc-coment{margin-top:12px;background:var(--bg,#0a0a0a);border-radius:6px;padding:10px 12px;font-size:0.86rem;color:#ccc;line-height:1.5;white-space:pre-wrap;}
+            .pjd-enc-fecha{font-family:var(--font-mono);font-size:0.7rem;color:var(--text-dim);margin-top:10px;}
+        `;
+        document.head.appendChild(s);
     },
 
     async _openNuevoConformeModal() {
