@@ -68,6 +68,40 @@ const AdminPanel = {
         return map[action] || action;
     },
 
+    // Nombre legible de la entidad afectada. Los creates/edits/deletes vía UndoHelpers
+    // guardan los valores en details (create=values, update=new, delete=snapshot) pero
+    // SIN un `message` → de ahí buscamos un campo de nombre para no mostrar "crear en X" pelado.
+    _auditEntityName(details) {
+        const src = (details && (details.values || details.new || details.snapshot)) || null;
+        if (!src || typeof src !== 'object') return null;
+        for (const f of ['nombre', 'titulo', 'nombre_empresa', 'razon_social', 'empresa', 'name', 'concepto', 'numero', 'descripcion']) {
+            const v = src[f];
+            if (typeof v === 'string' && v.trim()) return v.trim();
+            if (typeof v === 'number' && f === 'numero') return String(v);
+        }
+        return null;
+    },
+
+    _auditTipoSingular(mod) {
+        const map = {
+            eventos: 'evento', clientes: 'cliente', proyectos: 'proyecto', cotizaciones: 'cotización',
+            crm_casos: 'caso', insumos_base: 'insumo', catalogo_items: 'ítem', proveedor: 'proveedor',
+            listas_precio: 'lista', interacciones: 'interacción', receta_componentes: 'componente',
+        };
+        return map[(mod || '').toLowerCase()] || '';
+    },
+
+    // Texto del audit cuando no hay `details.message` (acciones genéricas de UndoHelpers).
+    _auditFallbackText(log, details) {
+        const modLabel = log.module || log.table_name || 'sistema';
+        const name = this._auditEntityName(details);
+        if (!name) return `${this._getActionLabel(log.action)} en ${modLabel}`;
+        const past = { create: 'creó', edit: 'editó', update: 'editó', delete: 'eliminó' }[log.action]
+            || this._getActionLabel(log.action).toLowerCase();
+        const tipo = this._auditTipoSingular(log.table_name || log.module);
+        return `${past}${tipo ? ' ' + tipo : ''} «${name}»`;
+    },
+
     _buildDetailFromLegacy(log) {
         const d = log.details;
         const table = log.table_name || '';
@@ -1928,7 +1962,7 @@ const AdminPanel = {
             const modLabel = log.module || log.table_name || 'sistema';
             const moduleColor = this._getModuleColor(modLabel);
             const details = log.details || {};
-            const detail = details.message || `${this._getActionLabel(log.action)} en ${modLabel}`;
+            const detail = details.message || this._auditFallbackText(log, details);
             const device = details.device || '';
             const actionLabel = log.action === 'update' ? 'edit' : log.action;
 
