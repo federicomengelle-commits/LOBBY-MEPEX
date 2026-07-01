@@ -4452,12 +4452,17 @@ const API = {
         }
     },
 
+    // asignaciones_evento.fase CHECK = ('armado','funcionamiento','desarme').
+    // Las jornadas usan 'evento' para la fase media → normalizar al escribir,
+    // sino el INSERT viola el CHECK "asignaciones_evento_fase_check".
+    _faseAsignacion(f) { return f === 'evento' ? 'funcionamiento' : (f || 'armado'); },
+
     async createAsignacionEvento(data) {
         const user = Auth.getUser?.();
         const payload = {
             evento_id: data.eventoId || data.evento_id,
             persona_id: data.personaId || data.persona_id,
-            fase: data.fase || 'armado',
+            fase: this._faseAsignacion(data.fase),
             fecha_inicio: data.fechaInicio || data.fecha_inicio || null,
             fecha_fin: data.fechaFin || data.fecha_fin || null,
             rol: data.rol || null,
@@ -4503,7 +4508,7 @@ const API = {
 
     async updateAsignacionEvento(id, data) {
         const payload = {};
-        if (data.fase !== undefined) payload.fase = data.fase;
+        if (data.fase !== undefined) payload.fase = this._faseAsignacion(data.fase);
         if (data.fechaInicio !== undefined) payload.fecha_inicio = data.fechaInicio;
         if (data.fecha_inicio !== undefined) payload.fecha_inicio = data.fecha_inicio;
         if (data.fechaFin !== undefined) payload.fecha_fin = data.fechaFin;
