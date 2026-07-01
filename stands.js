@@ -680,7 +680,7 @@ const StandsModule = {
                 // reemplazar BOM (hard delete previo: tabla chica, evita duplicados)
                 await supabaseClient.from('proyecto_componentes').delete().eq('proyecto_id', proyectoId);
             } else {
-                payload.estado = 'activo';
+                payload.estado = 'por_iniciar';    // CHECK proyectos_estado_check no acepta 'activo'
                 payload.created_from = 'manual';   // CHECK proyectos_created_from_check no acepta 'stands'
                 const { data: proy, error } = await supabaseClient.from('proyectos').insert(payload).select('id').single();
                 if (error) throw error;
