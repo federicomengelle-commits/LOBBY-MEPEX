@@ -26,8 +26,8 @@ const DisenadorOctexa = {
     _catMap: {},   // codigo → item
 
     async render() {
-        const user = (window.Auth && Auth.getUser) ? Auth.getUser() : null;
-        if (!user) return (window.Router && Router.navigate) ? Router.navigate('login') : null;
+        const user = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null;
+        if (!user) return (typeof Router !== 'undefined' && Router.navigate) ? Router.navigate('login') : null;
         const content = document.getElementById('mainContent');
         if (!content) return;
         if (!window.OctexaBOM || !window.OctexaDesign) {
@@ -46,7 +46,7 @@ const DisenadorOctexa = {
 
     async _loadCatalogo() {
         try {
-            this._catalogo = (window.API && API.getCatalogoItems) ? (await API.getCatalogoItems()) || [] : [];
+            this._catalogo = (typeof API !== 'undefined' && API.getCatalogoItems) ? (await API.getCatalogoItems()) || [] : [];
         } catch (e) { console.warn('[Diseñador] catálogo:', e); this._catalogo = []; }
         this._catMap = {};
         this._catalogo.forEach(c => { if (c.codigo) this._catMap[String(c.codigo)] = c; });
@@ -230,7 +230,7 @@ const DisenadorOctexa = {
                 const { error: bomErr } = await supabaseClient.from('proyecto_componentes').insert(rows.map(r => ({ proyecto_id: proy.id, catalogo_item_id: r.catId, cantidad: r.cant })));
                 if (bomErr) Toast.warning('Guardado, pero el BOM falló: ' + bomErr.message);
             }
-            if (window.API && API._cache) delete API._cache['projects'];
+            if (typeof API !== 'undefined' && API._cache) delete API._cache['projects'];
             Toast.success(`"${proy.nombre}" guardado`);
             if (cotizar && typeof StandsModule !== 'undefined' && StandsModule._usarEnCotizacion) {
                 if (!StandsModule._catMap || !Object.keys(StandsModule._catMap).length) {
