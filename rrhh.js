@@ -938,7 +938,7 @@ const RRHHModule = {
                 <div class="hr-sec-title">Trabajo</div>
                 <div class="hr-fields">
                     ${field('Ingreso', p.fecha_ingreso ? `${this._formatDate(p.fecha_ingreso)} (${this._calcAntiguedad(p.fecha_ingreso)})` : null, true)}
-                    ${field('Costo por día', raw.costo_dia_referencial ? this._fmtMoney(raw.costo_dia_referencial) : null, true)}
+                    ${field('Jornal diario', raw.costo_dia_referencial ? this._fmtMoney(raw.costo_dia_referencial) : null, true)}
                     ${p.documentacion ? field('Documentación', p.documentacion, false, true) : ''}
                 </div>
             `;
@@ -1172,8 +1172,9 @@ const RRHHModule = {
                             <input type="date" id="rhPIngreso" class="form-input" value="${item?.fecha_ingreso || ''}" style="padding:10px;">
                         </div>
                         <div>
-                            <label class="form-label">Costo por día ($)</label>
+                            <label class="form-label">Jornal diario ($)</label>
                             <input type="number" id="rhPCostoDia" class="form-input" value="${raw.costo_dia_referencial ?? ''}" placeholder="0" min="0" step="500" style="padding:10px;font-family:'Space Mono',monospace;">
+                            <div style="font-size:0.62rem;color:#888;margin-top:4px;">Tarifa base para Rendimiento por evento</div>
                         </div>
                     </div>
                     <div>

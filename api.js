@@ -6104,10 +6104,13 @@ const API = {
 
     async _getPersonasJornalMap() {
         try {
-            const res = await supabaseClient.from('personas').select('id, jornal_diario');
+            // Unificado 2026-06-30: la tarifa por persona vive en `costo_dia_referencial`
+            // (el campo "Jornal diario" de RRHH → Nómina). La columna `jornal_diario`
+            // quedó inerte (no se usa ni escribe desde ningún lado).
+            const res = await supabaseClient.from('personas').select('id, costo_dia_referencial');
             if (res.error) return {};
             const m = {};
-            (res.data || []).forEach(p => { m[String(p.id)] = parseFloat(p.jornal_diario) || 0; });
+            (res.data || []).forEach(p => { m[String(p.id)] = parseFloat(p.costo_dia_referencial) || 0; });
             return m;
         } catch (e) { return {}; }
     },
