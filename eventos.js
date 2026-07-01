@@ -1154,6 +1154,7 @@ const EventosModule = {
         c.querySelectorAll('.ev-jc-del').forEach(btn => btn.addEventListener('click', async () => {
             const a = (this._asignCache[eventoId] || []).find(x => String(x.id) === String(btn.dataset.asig));
             await API.deleteAsignacionEvento(btn.dataset.asig);
+            API.syncJornalesEvento(eventoId).catch(() => {}); // auto-alimenta los jornales de Rendimiento
             API.logEventChange(eventoId, 'Quitó persona', { nombre: a?.persona?.nombre || a?.persona_nombre || '' });
             await this._loadJornadasSection(eventoId);
             this._loadHistorialSection(eventoId);
@@ -1303,7 +1304,10 @@ const EventosModule = {
                 }
             }
             Toast.success(`${creadas} agregada${creadas === 1 ? '' : 's'}${saltadas ? ` · ${saltadas} ya estaban` : ''}.`);
-            if (creadas > 0) API.logEventChange(eventoId, 'Asignó gente a jornadas', { nombre: `${creadas} asignación${creadas === 1 ? '' : 'es'}` });
+            if (creadas > 0) {
+                API.syncJornalesEvento(eventoId).catch(() => {}); // auto-alimenta los jornales de Rendimiento
+                API.logEventChange(eventoId, 'Asignó gente a jornadas', { nombre: `${creadas} asignación${creadas === 1 ? '' : 'es'}` });
+            }
             Modal.close(inst.id);
             await this._loadJornadasSection(eventoId);
             this._loadHistorialSection(eventoId);
@@ -1358,6 +1362,7 @@ const EventosModule = {
             });
             try {
                 await API.setJornadas(eventoId, arr);
+                API.syncJornalesEvento(eventoId).catch(() => {}); // los días cambian → re-alimenta los jornales de Rendimiento
                 API.logEventChange(eventoId, 'Jornadas actualizadas');
                 Toast.success('Jornadas guardadas.');
                 Modal.close(inst.id);
