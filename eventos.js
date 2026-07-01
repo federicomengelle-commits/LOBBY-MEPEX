@@ -3155,7 +3155,7 @@ const EventosModule = {
                 </div>
                 <div class="form-field">
                     <label class="form-label">Nombre <span class="form-required">*</span></label>
-                    <input class="form-input" type="text" name="nombre" placeholder="Ej: Plano La Rural 2026" required>
+                    <input class="form-input" type="text" name="nombre" placeholder="${isSeguro ? 'Ej: Póliza ART 2026' : 'Ej: Plano La Rural 2026'}" required>
                 </div>
                 <div class="form-field">
                     <label class="form-label">Link (Drive / URL)</label>
