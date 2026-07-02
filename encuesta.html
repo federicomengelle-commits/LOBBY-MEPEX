@@ -17,12 +17,13 @@
     <style>
         :root {
             --primary: #00A9C1;
+            --brand: #00ABC8;
             --bg: #050505;
-            --bg-card: #111;
-            --border: #2a2a2a;
+            --bg-card: #0d0d0d;
+            --border: #262626;
             --text-primary: #E8E8E8;
-            --text-muted: #888;
-            --text-dim: #555;
+            --text-muted: #8f8f8f;
+            --text-dim: #565656;
             --success: #00CC88;
             --error: #ff4444;
             --accent: #F28D15;
@@ -34,110 +35,144 @@
             font-family: 'Outfit', sans-serif;
             min-height: 100vh;
         }
-        body { display: flex; align-items: center; justify-content: center; padding: 20px; }
+        body {
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+            background-image:
+                linear-gradient(90deg, rgba(0,171,200,0.025) 1px, transparent 1px),
+                linear-gradient(rgba(0,171,200,0.025) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
         .card {
+            position: relative; overflow: hidden;
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 14px;
-            max-width: 500px;
+            border-radius: 16px;
+            max-width: 460px;
             width: 100%;
             padding: 30px 26px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
+        .card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: var(--brand); z-index: 2;
+        }
+        .card-wmk {
+            position: absolute; right: -46px; bottom: -46px; width: 210px; height: 210px;
+            color: var(--brand); opacity: 0.05; z-index: 0; pointer-events: none;
+        }
+        .header, .ctx, #encForm { position: relative; z-index: 1; }
+        .brand-logo { width: 122px; height: 52px; color: var(--brand); display: block; margin: 0 auto; }
         .header { text-align: center; margin-bottom: 22px; }
-        .logo { max-width: 150px; height: auto; margin: 0 auto 16px auto; display: block; }
-        .header h1 { font-size: 1.35rem; font-weight: 600; color: var(--text-primary); margin-bottom: 5px; }
-        .header p { font-size: 0.9rem; color: var(--text-muted); line-height: 1.4; }
+        .header h1 { font-size: 1.3rem; font-weight: 600; color: var(--text-primary); margin: 16px 0 4px; }
+        .header p { font-size: 0.88rem; color: var(--text-muted); line-height: 1.4; }
         .ctx {
-            background: rgba(0,169,193,0.08);
-            border: 1px solid rgba(0,169,193,0.25);
-            border-radius: 10px;
+            background: rgba(0,171,200,0.08);
+            border: 1px solid rgba(0,171,200,0.25);
+            border-radius: 11px;
             padding: 12px 14px;
-            margin-bottom: 26px;
+            margin-bottom: 24px;
             text-align: center;
         }
-        .ctx .proj { color: var(--primary); font-weight: 600; font-size: 1rem; }
-        .ctx .sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; font-family: 'Space Mono', monospace; }
-        .q-label { display: block; font-size: 0.95rem; font-weight: 500; margin-bottom: 10px; }
+        .ctx .proj { color: var(--brand); font-weight: 600; font-size: 1rem; }
+        .ctx .sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; font-family: 'Space Mono', monospace; }
+        .q-label { display: block; font-size: 0.94rem; font-weight: 500; margin-bottom: 12px; }
         .sec-title {
-            font-family: 'Space Mono', monospace; font-size: 0.66rem; color: var(--text-dim);
-            text-transform: uppercase; letter-spacing: 0.12em; margin: 26px 0 4px;
+            font-family: 'Space Mono', monospace; font-size: 0.62rem; color: var(--text-dim);
+            text-transform: uppercase; letter-spacing: 0.13em; margin: 26px 0 12px;
         }
         .nps-scale { display: grid; grid-template-columns: repeat(11, 1fr); gap: 5px; margin-bottom: 8px; }
-        @media (max-width: 480px) { .nps-scale { grid-template-columns: repeat(6, 1fr); } }
         .nps-btn {
-            aspect-ratio: 1; border: 1.5px solid var(--border); background: #0a0a0a;
+            aspect-ratio: 1; border: 1.5px solid var(--border); background: #070707;
             color: var(--text-primary); border-radius: 8px; font-family: 'Space Mono', monospace;
-            font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: all 160ms ease; min-height: 44px;
+            font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: all 160ms ease; min-height: 42px;
         }
-        .nps-btn:hover { border-color: var(--primary); }
+        .nps-btn:hover { border-color: var(--brand); }
         .nps-btn.selected[data-score="0"], .nps-btn.selected[data-score="1"], .nps-btn.selected[data-score="2"],
         .nps-btn.selected[data-score="3"], .nps-btn.selected[data-score="4"], .nps-btn.selected[data-score="5"],
         .nps-btn.selected[data-score="6"] { background: var(--error); border-color: var(--error); color: #fff; }
         .nps-btn.selected[data-score="7"], .nps-btn.selected[data-score="8"] { background: var(--accent); border-color: var(--accent); color: #1a0e00; }
         .nps-btn.selected[data-score="9"], .nps-btn.selected[data-score="10"] { background: var(--success); border-color: var(--success); color: #04251a; }
         .nps-labels {
-            display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--text-dim);
+            display: flex; justify-content: space-between; font-size: 0.64rem; color: var(--text-dim);
             font-family: 'Space Mono', monospace; text-transform: uppercase; letter-spacing: 0.05em;
         }
         .dim {
-            display: flex; align-items: center; justify-content: space-between; gap: 10px;
-            padding: 12px 0; border-bottom: 1px solid #1c1c1c;
+            display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px;
+            padding: 12px 0; border-bottom: 1px solid #1a1a1a;
         }
         .dim:last-of-type { border-bottom: none; }
-        .dim-label { font-size: 0.88rem; color: #d8d8d8; }
-        .stars { display: flex; gap: 4px; }
+        .dim-label { font-size: 0.86rem; color: #d6d6d6; }
+        .stars { display: flex; gap: 5px; }
         .star {
-            background: none; border: none; color: #333; font-size: 1.5rem; cursor: pointer;
+            background: none; border: none; color: #333; font-size: 1.4rem; cursor: pointer;
             padding: 2px; line-height: 1; transition: color 120ms ease; min-width: 30px; min-height: 40px;
         }
         .star.on { color: var(--accent); }
         .star:hover { color: var(--accent); }
         textarea {
-            width: 100%; background: #0a0a0a; border: 1px solid var(--border); color: var(--text-primary);
-            padding: 12px 14px; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.95rem;
-            min-height: 90px; resize: vertical; margin-top: 4px;
+            width: 100%; background: #070707; border: 1px solid var(--border); color: var(--text-primary);
+            padding: 12px 14px; border-radius: 9px; font-family: 'Outfit', sans-serif; font-size: 0.92rem;
+            min-height: 88px; resize: vertical; margin-top: 4px;
         }
-        textarea:focus { outline: none; border-color: var(--primary); }
+        textarea:focus { outline: none; border-color: var(--brand); }
         .btn {
-            width: 100%; background: var(--primary); color: var(--bg); border: none; padding: 15px;
-            border-radius: 9px; font-family: 'Space Mono', monospace; font-size: 0.95rem; font-weight: 700;
+            width: 100%; background: var(--brand); color: #03222a; border: none; padding: 15px;
+            border-radius: 9px; font-family: 'Space Mono', monospace; font-size: 0.92rem; font-weight: 700;
             cursor: pointer; transition: all 200ms ease; margin-top: 24px; min-height: 52px;
         }
-        .btn:hover:not(:disabled) { background: #00C2DC; box-shadow: 0 0 16px rgba(0,169,193,0.5); }
-        .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
-        .state-screen { text-align: center; padding: 30px 0; }
-        .state-icon { font-size: 3.5rem; margin-bottom: 16px; }
-        .state-screen h2 { font-size: 1.3rem; margin-bottom: 10px; }
-        .state-screen p { color: var(--text-muted); line-height: 1.5; }
+        .btn:hover:not(:disabled) { background: #00C2DC; box-shadow: 0 0 16px rgba(0,171,200,0.5); }
+        .btn:disabled { background: #262626; color: #666; cursor: not-allowed; }
+        .state-screen { text-align: center; padding: 24px 0; position: relative; z-index: 1; }
+        .state-icon { font-size: 3rem; margin: 14px 0 12px; }
+        .state-screen h2 { font-size: 1.22rem; font-weight: 600; margin-bottom: 10px; }
+        .state-screen p { color: var(--text-muted); line-height: 1.55; font-size: 0.9rem; }
+        .state-screen a { color: var(--primary); text-decoration: none; }
+        .load-iso {
+            width: 104px; height: 104px; color: var(--brand); display: block; margin: 8px auto;
+            animation: breathe 1.7s ease-in-out infinite;
+        }
+        @keyframes breathe {
+            0%, 100% { opacity: 0.13; transform: scale(0.93); }
+            50% { opacity: 0.42; transform: scale(1.03); }
+        }
         .footer {
-            margin-top: 24px; text-align: center; font-size: 0.72rem; color: var(--text-dim);
-            font-family: 'Space Mono', monospace; letter-spacing: 0.05em;
+            margin-top: 24px; text-align: center; font-size: 0.62rem; color: var(--text-dim);
+            font-family: 'Space Mono', monospace; letter-spacing: 0.05em; position: relative; z-index: 1;
         }
         .review-box {
-            background: rgba(0,169,193,0.08); border: 1px solid rgba(0,169,193,0.28);
-            border-radius: 11px; padding: 16px; margin: 6px 0 0;
+            background: rgba(0,171,200,0.08); border: 1px solid rgba(0,171,200,0.28);
+            border-radius: 11px; padding: 16px; margin: 6px 0 0; position: relative; z-index: 1;
         }
         .review-box p { font-size: 0.82rem; color: #cfcfcf; line-height: 1.5; margin: 0 0 14px; }
         .review-btn {
-            display: block; width: 100%; background: var(--primary); color: #031f24; text-decoration: none;
+            display: block; width: 100%; background: var(--brand); color: #03222a; text-decoration: none;
             padding: 14px; border-radius: 9px; font-family: 'Space Mono', monospace; font-weight: 700;
             font-size: 0.9rem; text-align: center; transition: all 200ms ease; box-sizing: border-box;
         }
-        .review-btn:hover { background: #00C2DC; box-shadow: 0 0 16px rgba(0,169,193,0.5); }
-        .spinner {
-            display: inline-block; width: 40px; height: 40px; border: 3px solid #333;
-            border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .review-btn:hover { background: #00C2DC; box-shadow: 0 0 16px rgba(0,171,200,0.5); }
     </style>
 </head>
 
 <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="mepexLogo" viewBox="0 0 13238.69 5669.29">
+            <path d="m3527.62,3608.94v-1394.88h1284.48v257.68h-1026.81v309.96h1026.81v259.63h-1026.81v309.98h1026.81v257.63h-1284.48Z" fill="currentColor"/>
+            <path d="m6138.26,3608.94v-1392.94h1123.62c74.96,0,138.89,26.85,191.81,80.42,52.97,53.63,79.5,116.55,79.5,188.85v375.86c0,73.63-26.53,136.93-79.5,189.86-52.91,52.96-116.85,79.46-191.81,79.46l-867.9,1.94v476.54h-255.71Zm323.54-736.17h745.88c34.87,0,54.89-1.96,60.02-5.86,5.2-3.84,7.79-23.82,7.79-60.05v-267.32c0-36.14-2.59-56.49-7.79-61.02-5.13-4.48-25.15-6.78-60.02-6.78h-745.88c-36.2,0-56.51,2.3-61.06,6.78-4.52,4.53-6.76,24.88-6.76,61.02v267.32c0,36.22,2.25,56.21,6.76,60.05,4.55,3.9,24.86,5.86,61.06,5.86Z" fill="currentColor"/>
+            <path d="m8772.35,3608.94v-1394.88h1284.4v257.68h-1026.74v309.96h1026.74v259.63h-1026.74v309.98h1026.74v257.63h-1284.4Z" fill="currentColor"/>
+            <polygon points="2274.91 2214.05 2023.1 2214.05 2021.15 2214.05 1488.6 3349.14 957.58 2214.05 703.79 2214.05 703.79 3608.94 957.58 3608.94 957.58 2756.59 1356.31 3608.94 1366.69 3608.94 1610.16 3608.94 1620.5 3608.94 2023.1 2750.75 2023.1 3608.94 2276.92 3608.94 2276.92 2214.05 2274.91 2214.05" fill="currentColor"/>
+            <polygon points="12120.25 2568.97 12326.13 2740.09 12870.01 2286.51 12870.01 1943.86 12120.25 2568.97" fill="currentColor"/>
+            <polygon points="11255.94 2533.32 11709.53 2911.5 11255.94 3289.63 11255.94 3632.34 11914.98 3082.78 12870.01 3879.12 12870.01 3536.38 11255.94 2190.63 11255.94 2533.32" fill="currentColor"/>
+        </symbol>
+        <symbol id="mepexIso" viewBox="0 0 9024.99 9024.99">
+            <polygon points="4602.93 3267.07 5351.47 3889.2 7328.81 2240.09 7328.81 994.34 4602.93 3267.07" fill="currentColor"/>
+            <polygon points="1460.52 3137.38 3109.7 4512.49 1460.52 5887.36 1460.52 7133.35 3856.65 5135.28 7328.81 8030.66 7328.81 6784.47 1460.52 1891.47 1460.52 3137.38" fill="currentColor"/>
+        </symbol>
+    </svg>
+
     <div class="card" id="card">
         <div class="state-screen">
-            <div class="spinner"></div>
-            <p style="margin-top: 16px;">Cargando encuesta...</p>
+            <svg class="load-iso" viewBox="0 0 9024.99 9024.99" aria-hidden="true"><use href="#mepexIso"/></svg>
+            <p style="color: var(--text-muted); margin-top: 4px;">Cargando tu encuesta…</p>
         </div>
     </div>
 
@@ -145,18 +180,28 @@
     <script>
         // Aspectos valorados (mismos keys que proyecto-detalle.js _encuestaAspectos).
         const ASPECTOS = [
-            { key: 'calidad',  label: 'Calidad y terminación del stand' },
+            { key: 'calidad',  label: 'Calidad y terminación' },
             { key: 'tiempos',  label: 'Cumplimiento de los tiempos' },
             { key: 'atencion', label: 'Atención y comunicación' },
             { key: 'armado',   label: 'Armado y desarme' },
         ];
+
+        // Logo MEPEX real (SVG inline, mismo vector de la marca).
+        const LOGO = '<svg class="brand-logo" viewBox="0 0 13238.69 5669.29" role="img" aria-label="MEPEX"><use href="#mepexLogo"/></svg>';
 
         (async () => {
             const card = document.getElementById('card');
             const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
             const renderError = (msg) => {
-                card.innerHTML = `<div class="state-screen"><div class="state-icon">❌</div><h2>No pudimos cargar la encuesta</h2><p>${esc(msg)}</p></div>`;
+                card.innerHTML = `
+                    <div class="state-screen">
+                        ${LOGO}
+                        <div class="state-icon" style="font-size: 2rem; color: var(--text-dim); margin: 16px 0 10px;">✕</div>
+                        <h2>Este link no está disponible</h2>
+                        <p>${esc(msg)}</p>
+                        <p style="margin-top: 14px; font-size: 0.82rem;">¿Dudas? Escribinos a <a href="mailto:mepex@mepex.com.ar">mepex@mepex.com.ar</a></p>
+                    </div>`;
             };
             // Reseña en Google SOLO para clientes contentos (NPS >= 8). A un cliente
             // disconforme no lo mandamos a dejar una reseña pública ("review gating").
@@ -165,6 +210,7 @@
                 if (nps >= 8) {
                     card.innerHTML = `
                         <div class="state-screen" style="padding-bottom: 6px;">
+                            ${LOGO}
                             <div class="state-icon">🎉</div>
                             <h2>¡Gracias${nps === 10 ? ' por el 10' : ''}!</h2>
                             <p>Que te hayas ido contento con el stand es exactamente lo que buscamos. Un equipo como el nuestro se alimenta de esto.</p>
@@ -173,17 +219,18 @@
                             <p>¿Nos regalás 30 segundos? Contá en Google cómo estuvo. A las marcas que nos están buscando les ayuda a decidirse — y a nosotros nos hace el día.</p>
                             <a class="review-btn" href="${GOOGLE_REVIEW_URL}" target="_blank" rel="noopener">★&nbsp;&nbsp;Dejar mi reseña en Google</a>
                         </div>
-                        <p style="text-align:center; margin-top: 18px; color: var(--primary); font-family: 'Space Mono'; font-size: 0.8rem;">— Equipo MEPEX</p>
-                        <div class="footer">MEPEX · Montaje y Equipamiento para Exposiciones</div>`;
+                        <p style="text-align:center; margin-top: 18px; color: var(--brand); font-family: 'Space Mono'; font-size: 0.8rem;">— Equipo MEPEX</p>
+                        <div class="footer">MEPEX · MONTAJE Y EQUIPAMIENTO PARA EXPOSICIONES</div>`;
                 } else {
                     card.innerHTML = `
                         <div class="state-screen">
+                            ${LOGO}
                             <div class="state-icon">🤝</div>
                             <h2>Gracias por tu sinceridad</h2>
                             <p>Sentimos que algo no estuvo a la altura. Tu comentario le llega directo al equipo y nos vamos a poner en contacto para resolverlo.</p>
-                            <p style="margin-top: 16px; color: var(--primary); font-family: 'Space Mono';">— Equipo MEPEX</p>
+                            <p style="margin-top: 16px; color: var(--brand); font-family: 'Space Mono'; font-size: 0.8rem;">— Equipo MEPEX</p>
                         </div>
-                        <div class="footer">MEPEX · Montaje y Equipamiento para Exposiciones</div>`;
+                        <div class="footer">MEPEX · MONTAJE Y EQUIPAMIENTO PARA EXPOSICIONES</div>`;
                 }
             };
 
@@ -206,10 +253,11 @@
                 const subtitulo = enc.subtitulo || [enc.cliente?.nombre_empresa || enc.cliente?.razon_social].filter(Boolean).join('');
 
                 card.innerHTML = `
+                    <svg class="card-wmk" viewBox="0 0 9024.99 9024.99" aria-hidden="true"><use href="#mepexIso"/></svg>
                     <div class="header">
-                        <img src="assets/logo_full.png" alt="MEPEX" class="logo" onerror="this.style.display='none'">
+                        ${LOGO}
                         <h1>¿Cómo estuvo tu experiencia?</h1>
-                        <p>Tu opinión sobre el stand nos ayuda a mejorar.</p>
+                        <p>Contanos cómo te fue con el stand — son 30 segundos.</p>
                     </div>
                     <div class="ctx">
                         <div class="proj">${esc(titulo)}</div>
@@ -222,7 +270,7 @@
                         </div>
                         <div class="nps-labels"><span>Nada probable</span><span>Totalmente</span></div>
 
-                        <div class="sec-title">Valorá cada aspecto (opcional)</div>
+                        <div class="sec-title">Valorá cada aspecto · opcional</div>
                         ${ASPECTOS.map(a => `
                             <div class="dim">
                                 <span class="dim-label">${a.label}</span>
@@ -231,7 +279,7 @@
                                 </div>
                             </div>`).join('')}
 
-                        <div class="sec-title">Comentario (opcional)</div>
+                        <div class="sec-title">Algo más que quieras contarnos · opcional</div>
                         <textarea id="comentario" placeholder="Lo que quieras compartir con nosotros…"></textarea>
 
                         <button type="submit" class="btn" id="submitBtn" disabled>Enviar respuesta</button>
