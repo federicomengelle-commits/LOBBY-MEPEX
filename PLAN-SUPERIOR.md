@@ -35,9 +35,8 @@ SQL que figuraban como "⛔ Fede debe correr" y el QA de hoy confirmó **ya apli
 ## ⏳ LO QUE FALTA — checklist real, ordenada
 
 ### 🔴 Ahora (esta semana)
-- **Largar la ronda de testeo:** `~/pull-lobby.sh` final → confirmar que **`/lobby-api` responde** (si no, a Lelean le falla el reset de contraseña) → mandar los WhatsApp (`docs/testeo/mensajes-whatsapp.md`) + adjuntar PDFs → crear el grupo de reporte. **Antes, una pasada logueado:** responder 1 encuesta PRUEBA, 1 cobro/pago que genere asiento, subir 1 foto de armado.
+- **Largar la ronda de testeo — pre-largue EJECUTADO 2026-07-02, todo verde:** pasada logueada en prod ✅ (encuesta E2E con gating Google + cobro→asiento auto balanceado + foto de armado; cleanup exacto, 0 errores de consola) · `/lobby-api/health` OK ✅ · prod sirve el último código ✅ · housekeeping git hecho ✅ (`docs/testeo/` pusheado `bf1f5df`, ramas viejas borradas). **Queda solo: mandar los WhatsApp (`docs/testeo/mensajes-whatsapp.md`) + adjuntar los PDFs (`docs/testeo/pdf/`) + crear el grupo de reporte.**
 - **🔐 Seguridad — revocar la API key de La PyME** (`lpk_live_…` quedó expuesta en el historial de git, pendiente desde 2026-06-23). 5 minutos, hacelo ya.
-- **Git housekeeping:** commitear/pushear `docs/testeo/` · borrar la rama vieja `pulido-proyectos` (sus commits ya están en main con otro hash) · `importar-3dsmax.js` queda untracked a propósito.
 
 ### 🟠 Cierres cortos (dependen solo de vos)
 - **ARCA:** 1 emisión real **Factura A con 2 alícuotas (21+10,5)** → si sale bien, confirmar `_EMISOR` y sacar el `⚠️ verificar`. Único paso que falta del facturador.
