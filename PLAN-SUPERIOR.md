@@ -61,6 +61,13 @@ SQL que figuraban como "⛔ Fede debe correr" y el QA de hoy confirmó **ya apli
 
 ---
 
+## 📣 Marketing — hacer de MEPEX una máquina de demanda (nuevo frente)
+El sistema optimiza la OPERACIÓN, pero la DEMANDA (leads/ventas) es otra máquina. Idea de Fede:
+atacar **por evento**, ofrecer **prediseñados a precio de entrada** vía CRM + generador de propuestas +
+PDF comercial lindo → si pican, upsell a personalizado. **Simple, un loop, un evento a la vez** (no ahogarse).
+Plan completo y ejecutable en **`docs/PLAN-MARKETING.md`**. Desbloquea valor sobre lo YA construido —
+no requiere código nuevo, sí diseñar la oferta (prediseñados + precios) y correr el loop.
+
 ## 🎯 Orden recomendado
 **Testeo → cierres cortos (ARCA + key + VPS) → CSV → OCTEXA Pilar 2.**
 La ronda de testeo es la palanca: valida de un saque los ~15 features construidos en junio, trae el CSV que destraba el importador, y te dice dónde pulir con criterio real (en vez de adivinar). Mientras el equipo prueba, cerrás ARCA + la key + VPS (una tarde), y OCTEXA Pilar 2 arranca apenas pases la ruta del archivo histórico. Gmail/WhatsApp quedan en la heladera hasta que se destraben solos.
