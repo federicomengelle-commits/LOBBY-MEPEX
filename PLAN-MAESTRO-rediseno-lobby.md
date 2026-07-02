@@ -1,4 +1,7 @@
-# PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  RESTANTE ≈ 9%
+# 🧊 PLAN MAESTRO — Rediseño integral LOBBY-MEPEX  ·  [CONGELADO 2026-07-02]
+
+> ⚠️ **ARCHIVO CONGELADO.** La fuente de verdad de lo que FALTA es ahora **`PLAN-SUPERIOR.md`**.
+> Este documento queda como **referencia histórica / changelog del rediseño del lobby (Etapa I, ≈90% cerrado)**. No usarlo para decidir próximos pasos.
 
 > **Documento vivo = lo que FALTA hacer.** Lo que YA se hizo vive en `PROGRESO.md` (≈90%). No repetir acá lo que está en PROGRESO.
 > *(Rebalanceo 2026-06-30b — **Eventos: modales unificados + pulido completo + fixes en prod → a PROGRESO** (9 commits, verificado live vía Chrome): un solo modal de alta de gente día-aware (borrado el duplicado + sección "Equipo asignado" muerta, −420 líneas) + preset "⧉ Traer los del armado" + fin del window.prompt + alineación labels + "Hasta" auto-posiciona + 2 bugs de taxonomía de fase (evento↔funcionamiento/intermedio). **Cierra el pulido del módulo Eventos.** PLAN 10→9, PROGRESO 89→90.
