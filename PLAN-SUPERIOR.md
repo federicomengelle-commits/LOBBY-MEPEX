@@ -35,15 +35,17 @@ SQL que figuraban como "⛔ Fede debe correr" y el QA de hoy confirmó **ya apli
 ## ⏳ LO QUE FALTA — checklist real, ordenada
 
 ### 🔴 Ahora (esta semana)
-- **Largar la ronda de testeo — pre-largue EJECUTADO 2026-07-02, todo verde:** pasada logueada en prod ✅ (encuesta E2E con gating Google + cobro→asiento auto balanceado + foto de armado; cleanup exacto, 0 errores de consola) · `/lobby-api/health` OK ✅ · prod sirve el último código ✅ · housekeeping git hecho ✅ (`docs/testeo/` pusheado `bf1f5df`, ramas viejas borradas). **Queda solo: mandar los WhatsApp (`docs/testeo/mensajes-whatsapp.md`) + adjuntar los PDFs (`docs/testeo/pdf/`) + crear el grupo de reporte.**
+- **CSV de 3ds Max** — Fede lo pide el **2026-07-03** (los PMs empiezan a exportar al menos un par de artículos). Con esa muestra fijamos el formato de columnas (código + cantidad; el parser de `importar-3dsmax.js` ya banca `,`/`;`/tab, encabezados con sinónimos, es-AR) → cierro el importador y lo subo.
+
+### 🗓️ Ronda de testeo — PLANIFICADA para la semana del lunes **2026-07-13** (decisión Fede 2026-07-02)
+- **Pre-largue EJECUTADO 2026-07-02, todo verde:** pasada logueada en prod ✅ (encuesta E2E con gating Google + cobro→asiento auto balanceado + foto de armado; cleanup exacto, 0 errores de consola) · `/lobby-api/health` OK ✅ · prod sirve el último código ✅ · kit completo en `docs/testeo/` ✅. **Al largarla queda solo: mandar los WhatsApp (`docs/testeo/mensajes-whatsapp.md`) + adjuntar los PDFs (`docs/testeo/pdf/`) + crear el grupo de reporte.** La app está lista — se larga cuando Fede diga.
 - ~~🔐 revocar la API key de La PyME~~ → **REVOCADA 2026-07-02** ✅ (eliminada del panel de La PyME; la del historial de git quedó muerta).
 
 ### 🟠 Cierres cortos (dependen solo de vos)
-- **ARCA:** 1 emisión real **Factura A con 2 alícuotas (21+10,5)** → si sale bien, confirmar `_EMISOR` y sacar el `⚠️ verificar`. Único paso que falta del facturador.
 - ~~VPS restos (La PyME)~~ → **LIMPIO 2026-07-02** ✅ (`routes/lapyme.js` y `server.js` ya estaban limpios; borradas las 2 líneas `LAPYME_*` del `.env` · `pm2 restart` · `arca/status` ok:true · error log vacío). Queda solo el **(opcional Fase 13)**: deploy `tools/vps/ocr-comprobante.js` + bucket `comprobantes` (sin esto la carga de comprobantes por foto cae a modo manual — funciona igual).
-- **CSV de 3ds Max** (te lo van a traer los PMs del testeo) → cierro el importador y lo subo.
 
 ### 🟡 Después del testeo (con los reportes en mano)
+- **ARCA — verificación oportunista, sin apuro** (decisión Fede 2026-07-02: "debe andar igual, no creo que falle"): la primera vez que salga una **Factura A real con 2 alícuotas (21+10,5)**, mirar el PDF → confirmar `_EMISOR` y sacar el `⚠️ verificar` de `finanzas.js`. No bloquea nada.
 - **Triage de la ronda** → arreglar lo que el equipo cace → resto del catálogo `pulir-pantallas` (Inventario, Compras, Locaciones, CRM Bandeja visual).
 - **Fase 4 restos:** remito simple (a charlar — pisa con el remito de Transporte) · retiro legacy de `cargas` · mail directo al proveedor.
 - **Finanzas restantes:** Fase 5 conciliación bancaria CSV · Fase 7 cierre pre-2027 (saldos apertura como asiento + bloqueo ejercicio + CRUD `mapeo_cuentas`) · 3b.2 switch de `compras.js` a proveedor UUID.
@@ -67,6 +69,6 @@ PDF comercial lindo → si pican, upsell a personalizado. **Simple, un loop, un 
 Plan completo y ejecutable en **`docs/PLAN-MARKETING.md`**. Desbloquea valor sobre lo YA construido —
 no requiere código nuevo, sí diseñar la oferta (prediseñados + precios) y correr el loop.
 
-## 🎯 Orden recomendado
-**Testeo → cierres cortos (ARCA + key + VPS) → CSV → OCTEXA Pilar 2.**
-La ronda de testeo es la palanca: valida de un saque los ~15 features construidos en junio, trae el CSV que destraba el importador, y te dice dónde pulir con criterio real (en vez de adivinar). Mientras el equipo prueba, cerrás ARCA + la key + VPS (una tarde), y OCTEXA Pilar 2 arranca apenas pases la ruta del archivo histórico. Gmail/WhatsApp quedan en la heladera hasta que se destraben solos.
+## 🎯 Orden recomendado (actualizado 2026-07-02)
+**CSV 3ds Max (2026-07-03) → ronda de testeo (semana del lunes 2026-07-13) → triage → OCTEXA Pilar 2 en paralelo.**
+Los cierres de seguridad/VPS ya quedaron hechos (key La PyME revocada + VPS limpio + pre-largue verde). Lo próximo es el CSV: los PMs exportan un par de artículos, se fija el formato y se cierra el importador 3ds Max. La ronda se larga la semana del 13/07 y valida de un saque los ~15 features de junio + dice dónde pulir con criterio real. ARCA quedó como verificación oportunista (sin apuro, Fede confía que anda). OCTEXA Pilar 2 arranca cuando Fede pase la ruta del archivo histórico. Gmail/WhatsApp en la heladera hasta que se destraben solos.
