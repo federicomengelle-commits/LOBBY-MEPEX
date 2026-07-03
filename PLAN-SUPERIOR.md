@@ -40,7 +40,7 @@ SQL que figuraban como "⛔ Fede debe correr" y el QA de hoy confirmó **ya apli
 
 ### 🟠 Cierres cortos (dependen solo de vos)
 - **ARCA:** 1 emisión real **Factura A con 2 alícuotas (21+10,5)** → si sale bien, confirmar `_EMISOR` y sacar el `⚠️ verificar`. Único paso que falta del facturador.
-- **VPS restos:** `rm /home/mepex/api/routes/lapyme.js` + sacar la línea comentada en `server.js` · **(opcional Fase 13)** deploy `tools/vps/ocr-comprobante.js` + bucket `comprobantes` (sin esto la carga de comprobantes por foto cae a modo manual — funciona igual).
+- ~~VPS restos (La PyME)~~ → **LIMPIO 2026-07-02** ✅ (`routes/lapyme.js` y `server.js` ya estaban limpios; borradas las 2 líneas `LAPYME_*` del `.env` · `pm2 restart` · `arca/status` ok:true · error log vacío). Queda solo el **(opcional Fase 13)**: deploy `tools/vps/ocr-comprobante.js` + bucket `comprobantes` (sin esto la carga de comprobantes por foto cae a modo manual — funciona igual).
 - **CSV de 3ds Max** (te lo van a traer los PMs del testeo) → cierro el importador y lo subo.
 
 ### 🟡 Después del testeo (con los reportes en mano)
