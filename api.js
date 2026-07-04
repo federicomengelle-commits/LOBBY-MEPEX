@@ -3941,6 +3941,36 @@ const API = {
         }
     },
 
+    // #5 — Notifica UNA sola vez los pagos a proveedores recién vencidos (además del puntito).
+    // Race-safe: el UPDATE ... RETURNING claimea atómicamente cada fila (notif_vencido_at pasa
+    // de NULL a now()) → dos navegadores no duplican el aviso. Requiere la columna
+    // compras_pagos.notif_vencido_at (sql/notif_operativas.sql); si no existe, sale limpio.
+    async notifyPagosVencidos() {
+        try {
+            const hoy = new Date().toISOString().split('T')[0];
+            const { data: claimed, error } = await supabaseClient
+                .from('compras_pagos')
+                .update({ notif_vencido_at: new Date().toISOString() })
+                .eq('_deleted', false).eq('estado', 'pendiente')
+                .lt('fecha_vencimiento', hoy).is('notif_vencido_at', null)
+                .select('id, concepto, monto');
+            if (error) return 0;
+            for (const p of (claimed || [])) {
+                const monto = p.monto != null ? ` ($${Number(p.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })})` : '';
+                await this.createNotification({
+                    tipo: 'pago_proveedor_vencido',
+                    titulo: 'Pago a proveedor vencido',
+                    mensaje: `${p.concepto || 'Pago #' + p.id}${monto} venció.`,
+                    target_role: 'admin',
+                    entidad_tipo: 'pago',   // entidad_id se omite: compras_pagos.id es bigint y notifications.entidad_id es uuid
+                    link: '#compras',
+                    prioridad: 'alta',
+                });
+            }
+            return (claimed || []).length;
+        } catch (e) { console.warn('[API] notifyPagosVencidos:', e.message); return 0; }
+    },
+
     // ═════════════════════════════════════════════════════════════
     //  FASE 5 — Compras: PEDIDOS (paso 1 del doble paso)
     //  El taller (o cualquiera) crea un pedido simple "hay que comprar

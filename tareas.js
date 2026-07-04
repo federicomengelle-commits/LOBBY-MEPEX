@@ -112,7 +112,9 @@ const Tareas = {
             taller: ['superadmin','admin','taller'], compras: ['superadmin','admin'], rrhh: ['superadmin','admin'],
             inventario: ['superadmin','admin'], locaciones: ['superadmin','admin'],
         };
-        return { ...base, finanzas: ['superadmin','admin'] };
+        // flota: la alerta pasiva la ven super/admin/pm/taller, pero la TAREA accionable
+        // (renovar VTV/seguro) va a admin+taller (decisión Fede) — pm no la claimea.
+        return { ...base, finanzas: ['superadmin','admin'], flota: ['superadmin','admin','taller'] };
     },
 
     _prefsKey(user) { return 'mepex_tareas_prefs_' + (user.uid || user.id); },
@@ -377,6 +379,36 @@ const Tareas = {
                 proyecto_id: null, prioridad: 'alta', fecha_limite: e.fecha || null,
                 estado: 'pendiente', target_role: 'admin', link: '#finanzas',
             }));
+        },
+        async flota() {
+            // VTV / seguro / service vencido o ≤15 días → tarea claimeable (admin+taller).
+            // El vencimiento ya era alerta pasiva; acá se vuelve accionable.
+            const hoy = new Date().toISOString().split('T')[0];
+            const en15 = new Date(Date.now() + 15 * 864e5).toISOString().split('T')[0];
+            const { data } = await supabaseClient
+                .from('produccion_mantenimiento')
+                .select('id, vehiculo_id, tipo, nombre, fecha_proximo_vencimiento')
+                .eq('_deleted', false).not('vehiculo_id', 'is', null)
+                .not('fecha_proximo_vencimiento', 'is', null).lte('fecha_proximo_vencimiento', en15);
+            if (!data || !data.length) return [];
+            let vehNames = {};
+            const vids = [...new Set(data.map(m => m.vehiculo_id).filter(Boolean))];
+            if (vids.length) {
+                const { data: vs } = await supabaseClient.from('vehiculos').select('id, descripcion').in('id', vids);
+                (vs || []).forEach(v => { vehNames[v.id] = v.descripcion || ''; });
+            }
+            return data.map(m => {
+                const vencido = m.fecha_proximo_vencimiento < hoy;
+                return {
+                    id: `flota_mant:${m.id}`, dedupe_key: `flota_mant:${m.id}`, es_derivada: true,
+                    titulo: `${m.tipo || 'Mantenimiento'}: ${vehNames[m.vehiculo_id] || 'vehículo'}`,
+                    descripcion: `${m.nombre || 'Vencimiento'} — ${vencido ? 'VENCIDO' : 'vence ≤15d'}`,
+                    origen: 'manual', modulo: 'flota', proyecto_id: null,
+                    prioridad: vencido ? 'critica' : 'alta',
+                    fecha_limite: m.fecha_proximo_vencimiento, estado: 'pendiente',
+                    target_role: 'taller', link: '#flota',
+                };
+            });
         },
         // RUTINAS recurrentes (Fase F): materializa las plantillas `rutinas` que ya
         // entran en su ventana (lead_days) o están vencidas, como tareas claimeables

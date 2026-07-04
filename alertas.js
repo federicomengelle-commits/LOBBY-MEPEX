@@ -38,6 +38,7 @@ const Alertas = {
         compras:    ['superadmin', 'admin'],
         rrhh:       ['superadmin', 'admin'],
         inventario: ['superadmin', 'admin'],
+        equipos:    ['superadmin', 'admin', 'taller'],   // equipos fuera de servicio / en reparación (Inventario · 5º tab) — el taller los usa
         locaciones: ['superadmin', 'admin'],
         'calendario-adm': ['superadmin', 'admin'],
         tareas:     ['superadmin', 'admin', 'pm', 'taller', 'venta'],
@@ -259,6 +260,9 @@ const Alertas = {
                 .eq('_deleted', false).eq('estado', 'pendiente')
                 .lt('fecha_vencimiento', Alertas._dateOffset(0));
             if (error || !count) return [];
+            // #5 — además del puntito, ping a la campana por pagos recién vencidos.
+            // Idempotente + race-safe (claim atómico vía flag server-side notif_vencido_at).
+            if (typeof API !== 'undefined' && API.notifyPagosVencidos) API.notifyPagosVencidos().catch(() => {});
             return [{
                 moduleId: 'compras', tipo: 'pago_vencido', key: 'compras_pagos_vencidos',
                 severidad: 'danger', icon: '💸',
@@ -322,6 +326,23 @@ const Alertas = {
                 severidad: 'warning', icon: '📦',
                 titulo: `${n} ${Alertas._plural(n, 'insumo')} con stock bajo`,
                 detalle: 'Por debajo del mínimo', link: '#inventario', count: n,
+            }];
+        },
+
+        // Equipos fuera de servicio o en reparación (Inventario · 5º tab). Visible admin+taller.
+        async equipos() {
+            const { data, error } = await supabaseClient
+                .from('equipos').select('id, estado')
+                .eq('_deleted', false).in('estado', ['fuera_de_servicio', 'en_reparacion']);
+            if (error || !data || !data.length) return [];
+            const n = data.length;
+            const fs = data.filter(e => e.estado === 'fuera_de_servicio').length;
+            return [{
+                moduleId: 'equipos', tipo: 'equipo_fuera_servicio', key: 'equipos_fuera_servicio',
+                severidad: fs ? 'danger' : 'warning', icon: '🛠️',
+                titulo: n === 1 ? '1 equipo sin operar' : `${n} equipos sin operar`,
+                detalle: fs ? `${fs} fuera de servicio${n - fs ? ` · ${n - fs} en reparación` : ''}` : 'En reparación',
+                link: '#inventario', count: n,
             }];
         },
 

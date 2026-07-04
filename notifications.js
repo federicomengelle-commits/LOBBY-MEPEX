@@ -34,8 +34,11 @@ const Notifications = {
           desc: 'Novedades de obra, stands listos, pase a taller',
           tipos: ['novedad_para_taller', 'proyecto_listo', 'proyecto_en_taller'] },
         { key: 'compras', label: 'Compras y recepción', icon: '🛒',
-          desc: 'Pedidos de compra, órdenes recibidas incompletas',
-          tipos: ['pedido_compra', 'oc_recepcion_incompleta'] },
+          desc: 'Pedidos de compra, órdenes incompletas, pagos a proveedores vencidos',
+          tipos: ['pedido_compra', 'oc_recepcion_incompleta', 'pago_proveedor_vencido'] },
+        { key: 'inventario', label: 'Inventario y equipos', icon: '📦',
+          desc: 'Stock que cruza el mínimo, equipos fuera de servicio',
+          tipos: ['stock_minimo', 'equipo_fuera_servicio'] },
     ],
 
     // ─── Lifecycle ────────────────────────────
