@@ -15,6 +15,7 @@ const FlotaModule = {
     _mantAll: [],          // mantenimiento de toda la flota (para la tabla)
     _mantSel: [],          // mantenimiento del vehículo seleccionado
     _selId: null,
+    _isRO: false,          // read-only por rol (pm/taller): ve la flota, no la edita
     _filterEstado: '',
     _filterPropio: null,   // null = todos · true = MEPEX · false = Tercero
     _search: '',
@@ -34,6 +35,9 @@ const FlotaModule = {
         if (!user) return Router.navigate('login');
         const content = document.getElementById('mainContent');
         if (!content) return;
+        this._isRO = (typeof Data?.isReadOnly === 'function')
+            ? Data.isReadOnly(user.role, 'flota')
+            : (Data?.readOnlyPermissions?.[user.role] || []).includes('flota');
         content.innerHTML = this._buildShell();
         this._injectStyles();
         await this._loadData();
@@ -109,8 +113,10 @@ const FlotaModule = {
                     </select>
                 </div>
                 <div class="flota-toolbar-right">
+                    ${!this._isRO ? `
                     <button class="btn-secondary" id="flotaAjeno">＋ Ajeno rápido</button>
                     <button class="btn-primary" id="flotaNuevo">＋ Nuevo vehículo</button>
+                    ` : ''}
                 </div>
             </div>
             <div class="flota-layout">
@@ -227,7 +233,7 @@ const FlotaModule = {
                     </div>
                 </div>
                 <div class="flota-panel-actions">
-                    <button class="flota-mini" data-act="edit-veh">✎ Editar</button>
+                    ${!this._isRO ? `<button class="flota-mini" data-act="edit-veh">✎ Editar</button>` : ''}
                     ${admin ? `<button class="flota-mini" data-act="prog-rutina">🔁 Rutina</button>` : ''}
                     ${admin ? `<button class="flota-mini danger" data-act="del-veh">🗑</button>` : ''}
                 </div>
@@ -255,7 +261,7 @@ const FlotaModule = {
             <div class="flota-sec">
                 <div class="flota-sec-title">
                     Mantenimiento
-                    <button class="flota-mini" data-act="add-mant">＋ Item</button>
+                    ${!this._isRO ? `<button class="flota-mini" data-act="add-mant">＋ Item</button>` : ''}
                 </div>
                 ${this._renderMant()}
             </div>
@@ -276,8 +282,10 @@ const FlotaModule = {
                     </div>
                     <div class="flota-mant-meta">
                         ${venc ? `<span class="flota-venc ${venc.cls}">${venc.label}</span>` : '<span class="flota-dim">sin venc.</span>'}
+                        ${!this._isRO ? `
                         <button class="flota-mini" data-act="edit-mant" data-mid="${m.id}">✎</button>
                         <button class="flota-mini danger" data-act="del-mant" data-mid="${m.id}">🗑</button>
+                        ` : ''}
                     </div>
                 </div>
             `;
@@ -300,6 +308,7 @@ const FlotaModule = {
 
     // ─── Vehículo modal ───
     _openVehiculoModal(id) {
+        if (this._isRO) return;
         const v = id ? this._vehiculos.find(x => x.id === id) : null;
         const isEdit = !!v;
         const admin = this._isAdmin();
@@ -375,6 +384,7 @@ const FlotaModule = {
     },
 
     async _deleteVehiculo(id) {
+        if (this._isRO) return;
         const ok = await Confirm.delete('este vehículo');
         if (!ok) return;
         await API.deleteVehiculo(id);
@@ -385,6 +395,7 @@ const FlotaModule = {
 
     // ─── Mantenimiento modal ───
     _openMantModal(mid) {
+        if (this._isRO) return;
         const m = mid ? this._mantSel.find(x => String(x.id) === String(mid)) : null;
         const isEdit = !!m;
         const body = `
@@ -428,6 +439,7 @@ const FlotaModule = {
     },
 
     async _deleteMant(mid) {
+        if (this._isRO) return;
         const ok = await Confirm.delete('este item de mantenimiento');
         if (!ok) return;
         await API.deleteMantenimiento(mid);
@@ -497,6 +509,7 @@ const FlotaModule = {
 
     // ─── Alta "Ajeno rápido" (vehículo tercero, es_propio=false) ───
     _openAjenoRapidoModal() {
+        if (this._isRO) return;
         const body = `
             <div class="flota-form">
                 <p class="flota-ajeno-hint">Alta express de un vehículo de tercero. Queda en la flota como <b>Tercero</b>.</p>
