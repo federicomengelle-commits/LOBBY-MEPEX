@@ -92,8 +92,13 @@ Referencia de "pulido" = Eventos/Proyectos/Finanzas-Facturación.
 3. **Pulido**: Inventario (el más crudo) → Flota → Compras (KPIs) → Locaciones-op.
 4. **Integración fina**: pedidos→piezas/equipos · chofer transporte↔flota · progreso producción unificado. (3b.2 proveedores = pasada aparte, riesgosa.)
 
-## ⛔ Pendiente de Fede al arrancar (de esta sesión)
-Correr SQL: `sql/fase7_bloqueo_ejercicio.sql` + `sql/compras_stock_recepcion.sql`. Pull: contabilidad v14 · finanzas v50 · lobby v15 · tareas v10 · api v71 · locaciones v8 · compras v13 · alertas v7. Probar en prod el circuito de recepción (escribe stock real).
+## ✅ Avance sesión 2026-07-04b (Flota fix + Notificaciones)
+- **Paso #1 hecho:** fix del gating RO de Flota (`flota.js?v=6`, commit `c421f07`). pm/taller ya no pueden escribir; lectura intacta. Verificado en preview.
+- **Paso #2 arrancado — Notificaciones:** matriz evento→rol confirmada con Fede + gaps #1–#5 construidos (`api.js?v=73`/`alertas.js?v=8`/`tareas.js?v=11`/`notifications.js?v=7`, commits `a4dd521`+`429081b`). Detalle en memoria `project_capa_operativa_integracion`. **#6/#8 push descartados** (Fede: campana solo críticas). **#7 egresos-alerta NO hecho** (badge ruidoso; confirmar).
+- **Restan del handoff:** pulido de pantallas (Inventario→Flota→Compras→Locaciones-op) · integración fina (pedidos→piezas/equipos, chofer transporte↔flota, progreso producción unificado, 3b.2 proveedores).
+
+## ⛔ Pendiente de Fede al arrancar
+Correr SQL: `sql/fase7_bloqueo_ejercicio.sql` + `sql/compras_stock_recepcion.sql` + **`sql/notif_operativas.sql`** (triggers stock/equipo + flag `compras_pagos.notif_vencido_at`). Pull: contabilidad v14 · finanzas v50 · lobby v15 · **api v73 · alertas v8 · tareas v11 · notifications v7 · flota v6** · locaciones v8 · compras v13. Probar en prod: recepción de OC (escribe stock real) · OC incompleta→notif admin · equipo→fuera_de_servicio→notif admin+taller · salida de stock que cruce el mínimo→notif.
 
 ## Referencias
 Memorias: `project_capa_operativa_integracion`, `project_finanzas_refactor_handoff` (3b.2), `feedback_skill_pulir_pantallas`, `feedback_taller_cero_friccion`, `feedback_autonomous_batches`. Docs: `docs/schema-prod.md` (verificar), `docs/capa-operativa-blueprint.md` (reorg + DDL equipos), skill `.claude/skills/pulir-pantallas/`.
