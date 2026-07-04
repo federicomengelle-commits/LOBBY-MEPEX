@@ -4547,8 +4547,9 @@ const FinanzasModule = {
     //  tránsito NO distorsiona el banco. Verificado en prod: reconcilia EXACTO con el método
     //  legacy (suma de ingresos/egresos) cuando no hay valores en tránsito — KPI total
     //  $8.314.400 idéntico en los 3 canales. Fallback a legacy si la cuenta no tiene
-    //  plan_cuenta vinculada. ⚠️ Si en Fase 7 se postean asientos de apertura, quitar el
-    //  saldo_inicial de acá para no duplicarlo (hoy la apertura NO es asiento).
+    //  plan_cuenta vinculada. Fase 7: si el ejercicio de apertura de la cuenta está
+    //  bloqueado, el saldo_inicial ya vive dentro del asiento de apertura (→ saldos_mensuales),
+    //  así que _saldoCuentaContable NO lo vuelve a sumar (ver _ensureAperturaBloqueada).
     async _ensurePlanCuentaMap() {
         if (this._planCuentaMap) return;
         const { data } = await supabaseClient.from('plan_cuentas')
@@ -4557,19 +4558,35 @@ const FinanzasModule = {
         (data || []).forEach(p => { this._planCuentaMap[p.cuenta_financiera_id] = p.id; });
     },
 
+    // plan_cuenta ids cuyo ejercicio de apertura ya fue bloqueado (fn_generar_asiento_apertura
+    // posteó el asiento de apertura → el saldo inicial ya está en saldos_mensuales). Hoy 0 filas.
+    async _ensureAperturaBloqueada() {
+        if (this._aperturaBloqueadaSet) return;
+        this._aperturaBloqueadaSet = new Set();
+        try {
+            const { data } = await supabaseClient.from('saldos_apertura')
+                .select('cuenta_id').eq('bloqueado', true).eq('_deleted', false);
+            (data || []).forEach(r => this._aperturaBloqueadaSet.add(r.cuenta_id));
+        } catch (e) { /* tabla nueva / sin permiso → set vacío = comportamiento previo */ }
+    },
+
     async _saldoCuentaContable(cuentaId, canal = null) {
         const cuenta = this._cuentas.find(c => c.id === cuentaId);
         const base = (cuenta ? Number(cuenta.saldo_inicial) : 0) || 0;
         await this._ensurePlanCuentaMap();
         const planId = this._planCuentaMap[cuentaId];
         if (!planId) return await this._saldoCuentaLegacy(cuentaId, canal, base);
+        // Fase 7: apertura bloqueada → el saldo inicial ya está en el asiento de apertura
+        // (dentro de saldos_mensuales). No sumarlo de nuevo. Hoy set vacío = no-op.
+        await this._ensureAperturaBloqueada();
+        const effBase = this._aperturaBloqueadaSet.has(planId) ? 0 : base;
         let q = supabaseClient.from('saldos_mensuales').select('periodo, canal, saldo_final').eq('cuenta_id', planId);
         if (canal) q = q.eq('canal', canal);
         const { data: sm } = await q;
         const byCanal = {};
         (sm || []).forEach(r => { if (!byCanal[r.canal] || r.periodo > byCanal[r.canal].periodo) byCanal[r.canal] = r; });
         const movs = Object.values(byCanal).reduce((s, r) => s + (Number(r.saldo_final) || 0), 0);
-        return base + movs;
+        return effBase + movs;
     },
 
     async _saldoCuentaLegacy(cuentaId, canal, base) {

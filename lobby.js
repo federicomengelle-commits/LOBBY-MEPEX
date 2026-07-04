@@ -552,6 +552,9 @@ const HomeModule = {
             if (canal) cuentas = cuentas.filter(c => c.canal_default === canal);
             const { data: planLinks } = await db.from('plan_cuentas').select('id, cuenta_financiera_id').not('cuenta_financiera_id', 'is', null).eq('_deleted', false);
             const planByCf = {}; (planLinks || []).forEach(p => { planByCf[p.cuenta_financiera_id] = p.id; });
+            // Fase 7: apertura bloqueada → saldo_inicial ya está en saldos_mensuales (no duplicar). Hoy 0 filas.
+            const aperturaBloqueada = new Set();
+            try { const { data: apBloq } = await db.from('saldos_apertura').select('cuenta_id').eq('bloqueado', true).eq('_deleted', false); (apBloq || []).forEach(r => aperturaBloqueada.add(r.cuenta_id)); } catch (e) { /* set vacío = comportamiento previo */ }
             const planIds = cuentas.map(c => planByCf[c.id]).filter(Boolean);
             const smByPlan = {};
             if (planIds.length) {
@@ -561,12 +564,13 @@ const HomeModule = {
                 (sm || []).forEach(r => { const m = (smByPlan[r.cuenta_id] = smByPlan[r.cuenta_id] || {}); if (!m[r.canal] || r.periodo > m[r.canal].periodo) m[r.canal] = r; });
             }
             const cuentasSaldos = await Promise.all(cuentas.map(async c => {
-                const base = Number(c.saldo_inicial) || 0;
                 const planId = planByCf[c.id];
                 if (planId) {
+                    const base = aperturaBloqueada.has(planId) ? 0 : (Number(c.saldo_inicial) || 0);
                     const byCanal = smByPlan[planId] || {};
                     return { nombre: c.nombre, tipo: c.tipo, saldo: base + Object.values(byCanal).reduce((s, r) => s + (Number(r.saldo_final) || 0), 0) };
                 }
+                const base = Number(c.saldo_inicial) || 0;
                 let qi = db.from('ingresos').select('monto').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'confirmado');
                 let qe = db.from('egresos').select('monto').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'pagado');
                 if (canal) { qi = qi.eq('canal', canal); qe = qe.eq('canal', canal); }
