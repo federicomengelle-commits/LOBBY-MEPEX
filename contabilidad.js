@@ -5234,10 +5234,11 @@ const ContabilidadModule = {
                     ${rows.map(r => {
                         const c = cuentasMap[r.cuenta_contable_id];
                         const cuentaLabel = c ? `<strong>${c.codigo}</strong> · ${c.nombre}` : `<em style="color:var(--color-error);">cuenta no encontrada</em>`;
-                        const campo = r.campo_origen
-                            ? `<code style="font-size:11px;">${r.campo_origen}</code>`
-                            : `<span style="color:var(--text-muted); font-style:italic;">(genérico)</span>`;
-                        const valor = r.valor_origen
+                        const esGenerico = !r.campo_origen || r.campo_origen === 'default';
+                        const campo = esGenerico
+                            ? `<span style="color:var(--text-muted); font-style:italic;">(genérico)</span>`
+                            : `<code style="font-size:11px;">${r.campo_origen}</code>`;
+                        const valor = (!esGenerico && r.valor_origen)
                             ? `<code style="font-size:11px;">${r.valor_origen}</code>`
                             : '—';
                         const tipoBadge = r.tipo_movimiento === 'ingreso'
@@ -5249,7 +5250,7 @@ const ContabilidadModule = {
                                 <td style="padding:8px;">${campo}</td>
                                 <td style="padding:8px;">${valor}</td>
                                 <td style="padding:8px;">${cuentaLabel}</td>
-                                <td style="padding:8px; text-align:center; color:var(--text-muted);">${r.posicion ?? 0}</td>
+                                <td style="padding:8px; text-align:center; color:var(--text-muted);">${r.posicion || '—'}</td>
                                 <td style="padding:8px; text-align:center;">${r.activo ? '✓' : '✗'}</td>
                                 <td style="padding:8px; color:var(--text-muted); font-size:12px;">${r.descripcion || ''}</td>
                                 <td style="padding:8px; text-align:right;">
@@ -5291,11 +5292,25 @@ const ContabilidadModule = {
 
     _openMapeoModal(mapeo) {
         const isEdit = !!mapeo;
-        const m = mapeo || { tipo_movimiento: 'ingreso', campo_origen: '', valor_origen: '', cuenta_contable_id: '', posicion: 0, activo: true, descripcion: '' };
+        const m = mapeo || { tipo_movimiento: 'ingreso', campo_origen: '', valor_origen: '', cuenta_contable_id: '', activo: true, descripcion: '' };
+        const tipo0 = m.tipo_movimiento || 'ingreso';
 
-        // Opciones de campo_origen según tipo_movimiento (de fn_asiento_auto_*)
-        // Ingreso → medio / canal / (vacío = genérico)
-        // Egreso  → categoria / (vacío = genérico)
+        // Valores válidos que leen los triggers fn_asiento_auto_ingreso/egreso:
+        //   ingreso → campo_origen='servicio' (SRV-*) | 'default' (genérico)
+        //   egreso  → campo_origen='categoria'        | NULL      (genérico)
+        const SERVICIOS = ['SRV-STAND', 'SRV-ALQUILER', 'SRV-EXPO', 'SRV-ADIC'];
+        const CATEGORIAS = ['proveedor', 'rrhh', 'impuesto', 'servicio', 'credito_fiscal', 'alquiler', 'logistica', 'otro'];
+        const campoOpts = (t, sel) => t === 'ingreso'
+            ? `<option value="servicio" ${sel === 'servicio' ? 'selected' : ''}>Por servicio del comprobante</option>
+               <option value="default"  ${sel !== 'servicio' ? 'selected' : ''}>Genérico — cobro sin factura</option>`
+            : `<option value="categoria" ${sel === 'categoria' ? 'selected' : ''}>Por categoría del egreso</option>
+               <option value=""          ${sel !== 'categoria' ? 'selected' : ''}>Genérico — cualquier egreso</option>`;
+        const valorOpts = (t) => (t === 'ingreso' ? SERVICIOS : CATEGORIAS).map(v => `<option value="${v}"></option>`).join('');
+
+        const isEspEx = m.campo_origen === 'servicio' || m.campo_origen === 'categoria';
+        const campoSel0 = isEdit ? (isEspEx ? m.campo_origen : '') : (tipo0 === 'ingreso' ? 'servicio' : 'categoria');
+        const esEspecifico0 = campoSel0 === 'servicio' || campoSel0 === 'categoria';
+
         const cuentaOptions = (this._cuentasImputables || []).map(c =>
             `<option value="${c.id}" ${String(c.id) === String(m.cuenta_contable_id) ? 'selected' : ''}>${c.codigo} · ${c.nombre}</option>`
         ).join('');
@@ -5308,23 +5323,21 @@ const ContabilidadModule = {
                     <div>
                         <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Tipo de movimiento *</label>
                         <select id="mapeoTipo" class="cont-form-select" style="width:100%;">
-                            <option value="ingreso" ${m.tipo_movimiento === 'ingreso' ? 'selected' : ''}>Ingreso</option>
-                            <option value="egreso"  ${m.tipo_movimiento === 'egreso'  ? 'selected' : ''}>Egreso</option>
+                            <option value="ingreso" ${tipo0 === 'ingreso' ? 'selected' : ''}>Ingreso (cobro)</option>
+                            <option value="egreso"  ${tipo0 === 'egreso'  ? 'selected' : ''}>Egreso (pago)</option>
                         </select>
                     </div>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
                         <div>
-                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Campo origen</label>
+                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Regla de match</label>
                             <select id="mapeoCampo" class="cont-form-select" style="width:100%;">
-                                <option value="">— Genérico (fallback) —</option>
-                                <option value="medio"     ${m.campo_origen === 'medio' ? 'selected' : ''}>medio (solo ingresos)</option>
-                                <option value="canal"     ${m.campo_origen === 'canal' ? 'selected' : ''}>canal (solo ingresos)</option>
-                                <option value="categoria" ${m.campo_origen === 'categoria' ? 'selected' : ''}>categoría (solo egresos)</option>
+                                ${campoOpts(tipo0, campoSel0)}
                             </select>
                         </div>
-                        <div>
-                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Valor origen</label>
-                            <input type="text" id="mapeoValor" class="cont-form-input" value="${m.valor_origen || ''}" placeholder="ej: efectivo / oficial / servicios" style="width:100%;">
+                        <div id="mapeoValorWrap" style="${esEspecifico0 ? '' : 'display:none;'}">
+                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Valor a matchear</label>
+                            <input type="text" id="mapeoValor" class="cont-form-input" list="mapeoValorList" value="${(m.valor_origen && esEspecifico0) ? m.valor_origen : ''}" placeholder="elegí o escribí…" style="width:100%;">
+                            <datalist id="mapeoValorList">${valorOpts(tipo0)}</datalist>
                         </div>
                     </div>
                     <div>
@@ -5334,11 +5347,7 @@ const ContabilidadModule = {
                             ${cuentaOptions}
                         </select>
                     </div>
-                    <div style="display:grid; grid-template-columns: 100px 100px 1fr; gap:12px; align-items:end;">
-                        <div>
-                            <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Posición</label>
-                            <input type="number" id="mapeoPos" class="cont-form-input" value="${m.posicion ?? 0}" style="width:100%;">
-                        </div>
+                    <div style="display:grid; grid-template-columns: auto 1fr; gap:12px; align-items:end;">
                         <div>
                             <label style="display:flex; align-items:center; gap:6px; font-size:13px; padding-bottom:8px;">
                                 <input type="checkbox" id="mapeoActivo" ${m.activo !== false ? 'checked' : ''}> Activo
@@ -5350,9 +5359,9 @@ const ContabilidadModule = {
                         </div>
                     </div>
                     <div style="background:rgba(0,169,193,0.08); border-left:3px solid var(--primary); padding:10px 12px; font-size:12px; color:var(--text-muted); line-height:1.5;">
-                        <strong style="color:var(--primary);">Cómo se aplica:</strong> al confirmar un ingreso o pagar un egreso,
-                        el sistema busca el mapeo con campo+valor que coincide. Si no hay match específico, usa el genérico (campo vacío).
-                        Si tampoco hay genérico, el movimiento queda sin asiento contable.
+                        <strong style="color:var(--primary);">Cómo se aplica:</strong> al confirmar un ingreso o pagar un egreso, el sistema
+                        busca la regla específica que coincide (servicio del comprobante / categoría del egreso). Si no hay match, usa la
+                        regla <em>genérica</em>. Sin ninguna regla que aplique, el movimiento queda sin asiento automático.
                     </div>
                 </div>
             `,
@@ -5363,6 +5372,22 @@ const ContabilidadModule = {
         });
 
         setTimeout(() => {
+            const campoEl = document.getElementById('mapeoCampo');
+            const valorWrap = document.getElementById('mapeoValorWrap');
+            const valorListEl = document.getElementById('mapeoValorList');
+            const toggleValor = () => {
+                const esp = campoEl?.value === 'servicio' || campoEl?.value === 'categoria';
+                if (valorWrap) valorWrap.style.display = esp ? '' : 'none';
+            };
+            document.getElementById('mapeoTipo')?.addEventListener('change', (e) => {
+                const t = e.target.value;
+                if (campoEl) campoEl.innerHTML = campoOpts(t, t === 'ingreso' ? 'servicio' : 'categoria');
+                if (valorListEl) valorListEl.innerHTML = valorOpts(t);
+                const vEl = document.getElementById('mapeoValor');
+                if (vEl) vEl.value = '';
+                toggleValor();
+            });
+            campoEl?.addEventListener('change', toggleValor);
             document.getElementById('mapeoSaveBtn')?.addEventListener('click', async () => {
                 await this._saveMapeo(mapeo, instance);
             });
@@ -5370,25 +5395,36 @@ const ContabilidadModule = {
     },
 
     async _saveMapeo(existing, instance) {
-        const tipo    = document.getElementById('mapeoTipo')?.value;
-        const campo   = document.getElementById('mapeoCampo')?.value || null;
+        const tipo     = document.getElementById('mapeoTipo')?.value;
+        const campoRaw = document.getElementById('mapeoCampo')?.value;          // servicio|default|categoria|''
         const valorRaw = document.getElementById('mapeoValor')?.value?.trim() || '';
-        const valor   = campo ? (valorRaw || null) : null; // si no hay campo, valor se ignora
-        const cuenta  = document.getElementById('mapeoCuenta')?.value || null;
-        const pos     = parseInt(document.getElementById('mapeoPos')?.value, 10) || 0;
-        const activo  = document.getElementById('mapeoActivo')?.checked;
-        const desc    = document.getElementById('mapeoDesc')?.value?.trim() || '';
+        const cuenta   = document.getElementById('mapeoCuenta')?.value || null;
+        const activo   = document.getElementById('mapeoActivo')?.checked;
+        const desc     = document.getElementById('mapeoDesc')?.value?.trim() || '';
+
+        // Normalización campo/valor a lo que leen los triggers fn_asiento_auto_*:
+        //   ingreso específico → campo='servicio'  + valor=SRV-*
+        //   ingreso genérico   → campo='default'   + valor='default'
+        //   egreso  específico → campo='categoria' + valor=categoría
+        //   egreso  genérico   → campo=NULL        + valor=NULL
+        let campo, valor;
+        if (tipo === 'ingreso') {
+            if (campoRaw === 'servicio') { campo = 'servicio'; valor = valorRaw || null; }
+            else                         { campo = 'default';  valor = 'default'; }
+        } else {
+            if (campoRaw === 'categoria') { campo = 'categoria'; valor = valorRaw || null; }
+            else                          { campo = null;        valor = null; }
+        }
+        // posicion (text NOT NULL) = lado donde cae la cuenta mapeada. Los triggers
+        // hoy lo hardcodean; lo dejamos coherente: ingreso→haber, egreso→debe.
+        const posicion = tipo === 'ingreso' ? 'haber' : 'debe';
 
         if (!tipo) { Toast.error('Tipo de movimiento es obligatorio'); return; }
         if (!cuenta) { Toast.error('Tenés que elegir la cuenta contable destino'); return; }
-        if (campo && !valor) { Toast.error('Si elegís un campo origen, también necesitás el valor a matchear'); return; }
-
-        // Validación: campo/tipo coherente con las fn SQL
-        if (tipo === 'ingreso' && campo && !['medio','canal'].includes(campo)) {
-            Toast.warning('Para ingresos el sistema solo lee campo=medio o campo=canal — la regla no va a matchear');
-        }
-        if (tipo === 'egreso' && campo && campo !== 'categoria') {
-            Toast.warning('Para egresos el sistema solo lee campo=categoria — la regla no va a matchear');
+        const esEspecifico = campo === 'servicio' || campo === 'categoria';
+        if (esEspecifico && !valor) {
+            Toast.error(tipo === 'ingreso' ? 'Elegí el servicio a matchear (SRV-…)' : 'Elegí la categoría a matchear');
+            return;
         }
 
         const payload = {
@@ -5396,7 +5432,7 @@ const ContabilidadModule = {
             campo_origen: campo,
             valor_origen: valor,
             cuenta_contable_id: cuenta,
-            posicion: pos,
+            posicion,
             activo,
             descripcion: desc || null,
         };
