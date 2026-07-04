@@ -973,6 +973,10 @@ const InventarioModule = {
 
     _buildPiezasHTML() {
         return `
+            <div class="inv-kpis">
+                ${this._kpiCard('invPzKpiTotal', 'Total piezas', '🧩', '#00A9C1')}
+                ${this._kpiCard('invPzKpiConStock', 'Con stock físico', '📦', '#00CC88')}
+            </div>
             <div class="inv-filters">
                 <div class="inv-filter-group">
                     <span class="inv-filter-label">Rubro</span>
@@ -1014,6 +1018,11 @@ const InventarioModule = {
             console.warn('[Inventario] Error loading piezas:', e.message);
             this._piezas = [];
         }
+        // KPIs de cabecera (neutrales: total del catálogo + las que hoy tienen stock físico;
+        // la mayoría de las piezas son a demanda, por eso NO se alarma el stock 0).
+        const conStock = this._piezas.filter(i => Number(i.stock) > 0).length;
+        const tEl = document.getElementById('invPzKpiTotal'); if (tEl) tEl.textContent = this._piezas.length;
+        const cEl = document.getElementById('invPzKpiConStock'); if (cEl) cEl.textContent = conStock;
         this._applyPiezasFilters();
         this._populatePiezasCategorias();
     },
@@ -1082,8 +1091,11 @@ const InventarioModule = {
 
         const rows = data.map(item => {
             const stock = item.stock || 0;
-            const badgeCls = stock > 5 ? 'inv-badge-ok' : stock >= 1 ? 'inv-badge-bajo' : 'inv-badge-critico';
-            const badgeTxt = stock > 5 ? 'OK' : stock >= 1 ? 'Bajo' : 'Crítico';
+            // Neutral: las piezas del catálogo son mayormente a demanda → stock 0 = "A demanda"
+            // (no alarma). Con stock físico = "Disponible".
+            const badge = stock >= 1
+                ? `<span class="inv-badge inv-badge-ok">Disponible</span>`
+                : `<span class="inv-badge" style="background:rgba(120,120,120,0.12);color:#888">A demanda</span>`;
             const rc = this._rubroBadgeColor(item.rubro);
             return `
                 <tr class="inv-row" data-id="${item.id}" data-type="pieza">
@@ -1094,7 +1106,7 @@ const InventarioModule = {
                     </td>
                     <td class="inv-td">${item.categoria || '<span class="inv-td-muted">—</span>'}</td>
                     <td class="inv-td inv-td-code">${stock}</td>
-                    <td class="inv-td"><span class="inv-badge ${badgeCls}">${badgeTxt}</span></td>
+                    <td class="inv-td">${badge}</td>
                 </tr>`;
         }).join('');
 
@@ -1160,6 +1172,11 @@ const InventarioModule = {
 
     _buildMaterialesHTML() {
         return `
+            <div class="inv-kpis">
+                ${this._kpiCard('invMtKpiTotal', 'Total materiales', '🪵', '#F28D15')}
+                ${this._kpiCard('invMtKpiBajoMin', 'Bajo el mínimo', '⚠️', '#00CC88')}
+                ${this._kpiCard('invMtKpiConStock', 'Con stock', '📦', '#00CC88')}
+            </div>
             <div class="inv-filters">
                 <div class="inv-filter-group">
                     <span class="inv-filter-label">Clasificación</span>
@@ -1195,6 +1212,13 @@ const InventarioModule = {
             console.warn('[Inventario] Error loading materiales:', e.message);
             this._materiales = [];
         }
+        // KPIs de cabecera. "Bajo el mínimo" es neutral: verde en 0, rojo cuando algún
+        // material cruza su mínimo (se activa solo a medida que cargues stock/mínimos).
+        const bajoMin = this._materiales.filter(m => m.stock != null && m.stock_minimo != null && Number(m.stock) < Number(m.stock_minimo)).length;
+        const conStock = this._materiales.filter(m => Number(m.stock) > 0).length;
+        const tEl = document.getElementById('invMtKpiTotal'); if (tEl) tEl.textContent = this._materiales.length;
+        const bEl = document.getElementById('invMtKpiBajoMin'); if (bEl) { bEl.textContent = bajoMin; bEl.style.color = bajoMin > 0 ? '#E74C3C' : '#00CC88'; }
+        const cEl = document.getElementById('invMtKpiConStock'); if (cEl) cEl.textContent = conStock;
         this._applyMaterialesFilters();
     },
 
@@ -1247,14 +1271,22 @@ const InventarioModule = {
 
         const rows = data.map(item => {
             const stock = item.stock || 0;
+            // Estado neutral: rojo sólo si cruza un mínimo cargado; si no, "En stock"/"Sin stock"
+            // sin alarma (la mayoría de los materiales aún no tiene stock/mínimo cargado).
+            const bajo = item.stock_minimo != null && stock < Number(item.stock_minimo);
+            const badge = bajo
+                ? `<span class="inv-badge inv-badge-critico">Bajo mín</span>`
+                : (stock > 0
+                    ? `<span class="inv-badge inv-badge-ok">En stock</span>`
+                    : `<span class="inv-badge" style="background:rgba(120,120,120,0.12);color:#888">Sin stock</span>`);
             return `
                 <tr class="inv-row" data-id="${item.id}" data-type="material">
                     <td class="inv-td"><span class="inv-td-code">${item.codigo || '—'}</span></td>
                     <td class="inv-td inv-td-name">${item.nombre || '—'}</td>
                     <td class="inv-td">${item.clasificacion || '<span class="inv-td-muted">—</span>'}</td>
-                    <td class="inv-td">${item.categoria || '<span class="inv-td-muted">—</span>'}</td>
                     <td class="inv-td inv-td-code">${stock}</td>
                     <td class="inv-td">${item.unidadBase || '<span class="inv-td-muted">—</span>'}</td>
+                    <td class="inv-td">${badge}</td>
                 </tr>`;
         }).join('');
 
@@ -1266,9 +1298,9 @@ const InventarioModule = {
                             <th class="inv-th sortable" data-sort="codigo" data-ctx="materiales">CÓDIGO${sortIcon('codigo')}</th>
                             <th class="inv-th sortable" data-sort="nombre" data-ctx="materiales">NOMBRE${sortIcon('nombre')}</th>
                             <th class="inv-th sortable" data-sort="clasificacion" data-ctx="materiales">CLASIFICACIÓN${sortIcon('clasificacion')}</th>
-                            <th class="inv-th sortable" data-sort="categoria" data-ctx="materiales">CATEGORÍA${sortIcon('categoria')}</th>
                             <th class="inv-th sortable" data-sort="stock" data-ctx="materiales">STOCK${sortIcon('stock')}</th>
                             <th class="inv-th">UNIDAD</th>
+                            <th class="inv-th">ESTADO</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -1328,7 +1360,7 @@ const InventarioModule = {
 
     _buildEquiposHTML() {
         return `
-            <div class="inv-equipos-kpis">
+            <div class="inv-kpis">
                 <div class="inv-dash-stat" style="--stat-accent: #9B7DFF">
                     <div class="inv-dash-stat-top">
                         <span class="inv-dash-stat-label">Total equipos</span>
@@ -1343,6 +1375,7 @@ const InventarioModule = {
                     </div>
                     <div class="inv-dash-stat-value" style="color: #00A9C1" id="invEqKpiCont">—</div>
                 </div>
+                ${this._kpiCard('invEqKpiFuera', 'Fuera de servicio', '🛠️', '#00CC88')}
             </div>
             <div class="inv-filters">
                 <div class="inv-filter-group">
@@ -1388,6 +1421,12 @@ const InventarioModule = {
         const contEl = document.getElementById('invEqKpiCont');
         if (totalEl) totalEl.textContent = this._equipos.length;
         if (contEl) contEl.textContent = this._equipos.filter(e => e.es_contenedor).length;
+        const fueraEl = document.getElementById('invEqKpiFuera');
+        if (fueraEl) {
+            const fuera = this._equipos.filter(e => e.estado === 'fuera_de_servicio' || e.estado === 'en_reparacion').length;
+            fueraEl.textContent = fuera;
+            fueraEl.style.color = fuera > 0 ? '#E74C3C' : '#00CC88';
+        }
         this._applyEquiposFilters();
     },
 
@@ -1478,8 +1517,8 @@ const InventarioModule = {
         const style = document.createElement('style');
         style.id = 'inv-equipos-styles';
         style.textContent = `
-            .inv-equipos-kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-            .inv-equipos-kpis .inv-dash-stat { flex: 1; min-width: 160px; }
+            .inv-kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+            .inv-kpis .inv-dash-stat { flex: 1; min-width: 160px; }
             .inv-eq-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
             .inv-eq-manifiesto-row {
                 display: flex; align-items: center; gap: 8px; padding: 6px 0;
@@ -2320,6 +2359,11 @@ const InventarioModule = {
     _buildMovimientosHTML() {
         const isRO = this._isRO;
         return `
+            <div class="inv-kpis">
+                ${this._kpiCard('invMovKpiEnt', 'Entradas del mes', '📥', '#00CC88')}
+                ${this._kpiCard('invMovKpiCon', 'Consumos del mes', '📤', '#F28D15')}
+                ${this._kpiCard('invMovKpiTra', 'Transformaciones del mes', '⇄', '#9B7DFF')}
+            </div>
             ${!isRO ? `
             <div class="inv-mov-toolbar">
                 <button class="inv-mov-btn inv-mov-btn-entrada" id="invBtnEntrada">
@@ -2429,6 +2473,16 @@ const InventarioModule = {
             proySelect.innerHTML = `<option value="">Todos</option>` +
                 this._proyectosList.map(p => `<option value="${p.id}" ${this._movProyectoFilter === String(p.id) ? 'selected' : ''}>${p.nombre}</option>`).join('');
         }
+
+        // KPIs de cabecera: actividad del mes en curso por tipo de movimiento.
+        const now = new Date();
+        const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const delMes = this._movimientos.filter(m => m.created_at && m.created_at >= mesInicio);
+        const cnt = (t) => delMes.filter(m => m.tipo === t).length;
+        const setMov = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        setMov('invMovKpiEnt', cnt('entrada'));
+        setMov('invMovKpiCon', cnt('consumo'));
+        setMov('invMovKpiTra', cnt('transformacion'));
 
         this._applyMovimientosFilters();
     },
@@ -3243,6 +3297,11 @@ const InventarioModule = {
 
     _buildFisicoListHTML() {
         return `
+            <div class="inv-kpis">
+                ${this._kpiCard('invFisKpiTotal', 'Sesiones', '📋', '#00A9C1')}
+                ${this._kpiCard('invFisKpiCurso', 'En curso', '⏳', '#00CC88')}
+                ${this._kpiCard('invFisKpiDiff', 'Con diferencias', '⚠️', '#00CC88')}
+            </div>
             ${!this._isRO ? `
             <div style="margin-bottom:16px">
                 <button class="inv-panel-btn" id="invBtnNuevaSesion" style="margin-top:0">
@@ -3278,6 +3337,13 @@ const InventarioModule = {
                 this._locacionesList = data || [];
             } catch (e) { this._locacionesList = []; }
         }
+
+        // KPIs de cabecera: sesiones totales, en curso y las que encontraron diferencias.
+        const enCurso = this._fisicoSesiones.filter(s => s.estado !== 'cerrada').length;
+        const conDiff = this._fisicoSesiones.filter(s => (s.inventario_fisico_conteo || []).some(c => c.diferencia != null && c.diferencia !== 0)).length;
+        const tEl = document.getElementById('invFisKpiTotal'); if (tEl) tEl.textContent = this._fisicoSesiones.length;
+        const cEl = document.getElementById('invFisKpiCurso'); if (cEl) cEl.textContent = enCurso;
+        const dEl = document.getElementById('invFisKpiDiff'); if (dEl) { dEl.textContent = conDiff; dEl.style.color = conDiff > 0 ? '#E74C3C' : '#00CC88'; }
 
         this._renderFisicoList();
     },
@@ -3837,5 +3903,18 @@ const InventarioModule = {
         this._activeTab = key;
         document.querySelectorAll('.section-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
         this._renderTabContent();
+    },
+
+    // Card de KPI de cabecera reutilizable (mismo look que el Dashboard/Equipos).
+    // El valor arranca en '—' y lo llena el _loadX correspondiente (con su color).
+    _kpiCard(id, label, icon, color) {
+        return `
+            <div class="inv-dash-stat" style="--stat-accent:${color}">
+                <div class="inv-dash-stat-top">
+                    <span class="inv-dash-stat-label">${label}</span>
+                    <span class="inv-dash-stat-icon">${icon}</span>
+                </div>
+                <div class="inv-dash-stat-value" style="color:${color}" id="${id}">—</div>
+            </div>`;
     },
 };

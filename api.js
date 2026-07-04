@@ -1577,6 +1577,11 @@ const API = {
                 costoUnitario: parseFloat(i.costo_unitario) || 0,
                 moneda: i.moneda || 'ARS',
                 unidadBase: i.unidad || 'unidad',
+                // stock real (col `stock`, la RPC ajustar_stock opera sobre ella; `stock_actual` está muerta).
+                // Antes el mapping los omitía → la tabla de Materiales mostraba 0 en todos y el KPI
+                // "bajo el mínimo" nunca disparaba.
+                stock: i.stock != null ? Number(i.stock) : 0,
+                stock_minimo: i.stock_minimo != null ? Number(i.stock_minimo) : null,
                 proveedor: i.proveedor || '',
                 notas: i.notas || '',
                 fechaUltimoPrecio: i.fecha_ultimo_precio || null,
