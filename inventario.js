@@ -2398,12 +2398,6 @@ const InventarioModule = {
                     <span class="inv-filter-label">Hasta</span>
                     <input type="date" class="inv-select" id="invMovHasta" value="${this._movHasta}">
                 </div>
-                <div class="inv-filter-group">
-                    <span class="inv-filter-label">Proyecto</span>
-                    <select class="inv-select" id="invMovProyFilter">
-                        <option value="">Todos</option>
-                    </select>
-                </div>
             </div>
             <div id="invMovMain">
                 <div class="inv-loading"><div class="spinner"></div> Cargando movimientos…</div>
@@ -2467,13 +2461,6 @@ const InventarioModule = {
             this._locacionesList = data || [];
         } catch (e) { this._locacionesList = []; }
 
-        // Populate proyecto filter
-        const proySelect = document.getElementById('invMovProyFilter');
-        if (proySelect) {
-            proySelect.innerHTML = `<option value="">Todos</option>` +
-                this._proyectosList.map(p => `<option value="${p.id}" ${this._movProyectoFilter === String(p.id) ? 'selected' : ''}>${p.nombre}</option>`).join('');
-        }
-
         // KPIs de cabecera: actividad del mes en curso por tipo de movimiento.
         const now = new Date();
         const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -2500,9 +2487,6 @@ const InventarioModule = {
         if (this._movHasta) {
             const hasta = new Date(this._movHasta + 'T23:59:59');
             data = data.filter(m => new Date(m.created_at) <= hasta);
-        }
-        if (this._movProyectoFilter) {
-            data = data.filter(m => String(m.proyecto_id) === this._movProyectoFilter);
         }
 
         this._movimientosFiltered = data;
@@ -2551,9 +2535,10 @@ const InventarioModule = {
                 : '<span class="inv-td-muted">—</span>';
             const proy = mov.proyecto_id ? (this._proyectosList.find(p => String(p.id) === String(mov.proyecto_id))?.nombre || '—') : '<span class="inv-td-muted">—</span>';
 
+            const accent = { entrada: '#00CC88', consumo: '#F28D15', transformacion: '#9B7DFF', ajuste: '#888888' }[mov.tipo] || '#888888';
             return `
                 <tr class="inv-row inv-mov-row" data-mov-id="${mov.id}">
-                    <td class="inv-td" style="font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; color:#888">${fecha}</td>
+                    <td class="inv-td" style="font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; color:#888; border-left:3px solid ${accent}; padding-left:10px">${fecha}</td>
                     <td class="inv-td">${tipoBadge(mov.tipo, mov.subtipo)}</td>
                     <td class="inv-td" style="max-width:300px; white-space:normal; font-size:0.82rem">${itemsSummary}</td>
                     <td class="inv-td">${proy}</td>
@@ -2641,9 +2626,6 @@ const InventarioModule = {
 
         const hastaSel = document.getElementById('invMovHasta');
         if (hastaSel) hastaSel.addEventListener('change', () => { this._movHasta = hastaSel.value; this._applyMovimientosFilters(); });
-
-        const proySel = document.getElementById('invMovProyFilter');
-        if (proySel) proySel.addEventListener('change', () => { this._movProyectoFilter = proySel.value; this._applyMovimientosFilters(); });
     },
 
     // ═══════════════════════════════════════════
