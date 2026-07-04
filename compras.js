@@ -1,9 +1,10 @@
 /* =============================================
    MEPEX Lobby — Módulo Compras
    =============================================
-   Categoría: ADMIN & FINANZAS. Reemplaza Proveedores.
-   3 tabs: Proveedores, Órdenes de Compra, Pagos
-   Solo superadmin y admin.
+   Categoría: ADMIN & FINANZAS.
+   3 tabs: Proveedores · Pedidos · Órdenes de Compra (la tab Pagos se retiró →
+   los pagos se ven en Finanzas). Cada tab con KPIs de cabecera (_kpiCard).
+   Acceso: superadmin, admin, pm (taller no).
    ============================================= */
 
 const ComprasModule = {
@@ -126,6 +127,26 @@ const ComprasModule = {
         });
     },
 
+    // ─── KPIs de cabecera (look consistente con Inventario/Eventos) ───
+    // La data ya está cargada antes de renderizar → los valores se pasan directo.
+    _ensureKpiStyles() {
+        if (document.getElementById('cmp-kpi-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'cmp-kpi-styles';
+        s.textContent = `
+            .cmp-kpis{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+            .cmp-kpi{background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:10px 14px;flex:1;min-width:150px}
+            .cmp-kpi-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+            .cmp-kpi-label{font-family:var(--font-mono);font-size:0.62rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--text-muted,#888)}
+            .cmp-kpi-icon{font-size:1.1rem}
+            .cmp-kpi-value{font-family:var(--font-mono);font-size:1.5rem;font-weight:700;margin-top:4px}
+        `;
+        document.head.appendChild(s);
+    },
+    _kpiCard(label, icon, value, color) {
+        return `<div class="cmp-kpi"><div class="cmp-kpi-top"><span class="cmp-kpi-label">${label}</span><span class="cmp-kpi-icon">${icon}</span></div><div class="cmp-kpi-value" style="color:${color}">${value}</div></div>`;
+    },
+
 
     // ════════════════════════════════════════════════════
     //  FASE 5 — PEDIDOS (paso 1 del doble paso)
@@ -202,8 +223,19 @@ const ComprasModule = {
                 </tr>`;
         }).join('');
 
+        this._ensureKpiStyles();
+        const allPed = this._pedidos || [];
+        const nPend = allPed.filter(p => p.estado === 'pendiente').length;
+        const nComp = allPed.filter(p => p.estado === 'en_compra').length;
+        const nUrg = allPed.filter(p => p.urgencia === 'urgente' && p.estado !== 'comprado' && p.estado !== 'cancelado').length;
+
         cc.innerHTML = `
             <div class="cmp-pedidos">
+                <div class="cmp-kpis">
+                    ${this._kpiCard('Pendientes', '⏳', nPend, nPend ? '#F28D15' : '#00CC88')}
+                    ${this._kpiCard('En compra', '🛒', nComp, '#00A9C1')}
+                    ${this._kpiCard('Urgentes', '🔥', nUrg, nUrg ? '#E74C3C' : '#888888')}
+                </div>
                 <div class="cmp-ped-toolbar">
                     <div class="cmp-ped-info">Pedidos de compra · el taller pide, Compras gestiona</div>
                     <div class="cmp-ped-tools">
@@ -638,7 +670,16 @@ const ComprasModule = {
             filtered = filtered.filter(p => this._getCalifAvg(p) >= minCalif);
         }
 
+        this._ensureKpiStyles();
+        const nProv = this._proveedores.length;
+        const nBien = this._proveedores.filter(p => this._getCalifAvg(p) >= 4).length;
+
         cc.innerHTML = `
+            <div class="cmp-kpis">
+                ${this._kpiCard('Proveedores', '🏪', nProv, '#00A9C1')}
+                ${this._kpiCard('Rubros', '🏷️', rubros.length, '#9B7DFF')}
+                ${this._kpiCard('Bien calificados', '⭐', nBien, '#00CC88')}
+            </div>
             <div class="cmp-toolbar">
                 <h3 class="cmp-toolbar-title">Proveedores</h3>
                 <button class="cmp-btn-add" id="cmpAddProv">+ Nuevo Proveedor</button>
@@ -1022,7 +1063,19 @@ const ComprasModule = {
         let filtered = [...this._ordenes];
         if (this._filterEstadoOC) filtered = filtered.filter(o => o.estado === this._filterEstadoOC);
 
+        this._ensureKpiStyles();
+        const porAprobar = this._ordenes.filter(o => o.estado === 'pendiente').length;
+        const porRecibir = this._ordenes.filter(o => o.estado === 'aprobada').length;
+        const montoAbierto = this._ordenes
+            .filter(o => o.estado === 'pendiente' || o.estado === 'aprobada')
+            .reduce((s, o) => s + (Number(o.monto_total) || 0), 0);
+
         cc.innerHTML = `
+            <div class="cmp-kpis">
+                ${this._kpiCard('Por aprobar', '📝', porAprobar, porAprobar ? '#F28D15' : '#00CC88')}
+                ${this._kpiCard('Por recibir', '📦', porRecibir, porRecibir ? '#00A9C1' : '#00CC88')}
+                ${this._kpiCard('Monto abierto', '💰', this._formatMoney(montoAbierto), '#E8E8E8')}
+            </div>
             <div class="cmp-toolbar">
                 <h3 class="cmp-toolbar-title">Órdenes de Compra</h3>
                 <button class="cmp-btn-add" id="cmpAddOC">+ Nueva OC</button>
