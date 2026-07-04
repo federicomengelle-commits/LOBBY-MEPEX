@@ -106,65 +106,9 @@ const InventarioModule = {
         return `
             <style>
                 /* ─── Inventario Module Styles ─── */
-                .inv-wrapper {
-                    display: flex;
-                    flex-direction: column;
-                    height: 100%;
-                    min-height: calc(100vh - 56px);
-                    padding: 24px 32px;
-                    background: var(--bg, #050505);
-                }
-                .inv-toolbar {
-                    display: flex;
-                    align-items: flex-start;
-                    justify-content: space-between;
-                    margin-bottom: 20px;
-                }
-                .inv-toolbar-left { display: flex; flex-direction: column; gap: 6px; }
-                .inv-title {
-                    font-family: var(--font-main, 'Outfit', sans-serif);
-                    font-size: 1.6rem;
-                    font-weight: 700;
-                    color: #E8E8E8;
-                    margin: 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                }
-                .inv-title-icon { font-size: 1.4rem; }
-
-                /* ─── Tabs ─── */
-                .inv-tabs-bar {
-                    display: flex;
-                    align-items: center;
-                    gap: 4px;
-                    border-bottom: 1px solid #2a2a2a;
-                    margin-bottom: 24px;
-                    padding-bottom: 0;
-                }
-                .inv-tab {
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 10px 16px;
-                    background: transparent;
-                    border: none;
-                    color: #888888;
-                    font-family: var(--font-mono, 'Space Mono', monospace);
-                    font-size: 0.8rem;
-                    font-weight: 400;
-                    cursor: pointer;
-                    border-bottom: 2px solid transparent;
-                    transition: color 250ms ease, border-color 250ms ease;
-                    white-space: nowrap;
-                }
-                .inv-tab:hover { color: #E8E8E8; }
-                .inv-tab.active {
-                    color: #9B7DFF;
-                    border-bottom-color: #9B7DFF;
-                    font-weight: 700;
-                }
-                .inv-tab-icon { font-size: 1rem; }
+                /* Chrome (encabezado + tabs) migrado a las clases globales estándar
+                   .module-view / .module-subheader / .module-section-tabs / .section-tab
+                   (igual que Eventos · Compras · Flota). Ver _buildShell abajo. */
 
                 /* ─── Content area ─── */
                 #inventario-content { min-height: 300px; }
@@ -928,10 +872,9 @@ const InventarioModule = {
                 }
             </style>
 
-            <div class="inv-wrapper">
-                <!-- Toolbar -->
-                <div class="inv-toolbar">
-                    <div class="inv-toolbar-left">
+            <div class="module-view inventario-module">
+                <div class="module-subheader">
+                    <div class="module-subheader-top">
                         <div class="module-breadcrumb">
                             <a href="#lobby" class="breadcrumb-link">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -942,25 +885,25 @@ const InventarioModule = {
                             <span class="breadcrumb-sep">›</span>
                             <span class="breadcrumb-current">Inventario</span>
                         </div>
-                        <h1 class="inv-title">
-                            <span class="inv-title-icon">📦</span>
-                            Inventario
-                        </h1>
+                    </div>
+                    <div class="module-subheader-bottom">
+                        <div class="module-header-title">
+                            <span class="module-header-icon">📦</span>
+                            <h2 class="title-2">Inventario</h2>
+                        </div>
+                    </div>
+                    <div class="module-section-tabs">
+                        ${this._tabs.map(t => `
+                            <button class="section-tab ${this._activeTab === t.key ? 'active' : ''}" data-tab="${t.key}">
+                                <span class="section-tab-icon">${t.icon}</span>
+                                <span class="section-tab-text">${t.label}</span>
+                            </button>
+                        `).join('')}
                     </div>
                 </div>
-
-                <!-- Tabs -->
-                <div class="inv-tabs-bar">
-                    ${this._tabs.map(t => `
-                        <button class="inv-tab ${this._activeTab === t.key ? 'active' : ''}" data-tab="${t.key}">
-                            <span class="inv-tab-icon">${t.icon}</span>
-                            ${t.label}
-                        </button>
-                    `).join('')}
+                <div class="module-content">
+                    <div id="inventario-content"></div>
                 </div>
-
-                <!-- Tab content -->
-                <div id="inventario-content"></div>
             </div>
         `;
     },
@@ -3149,115 +3092,149 @@ const InventarioModule = {
     // ═══════════════════════════════════════════
 
     async _renderDashboard(container) {
-        // Load data in parallel
+        this._ensureDashStyles();
         await this._ensureItemsCached();
 
-        let piezas = this._allPiezas;
-        let materiales = this._allMateriales;
-        let transfCount = 0;
+        const piezas = this._allPiezas || [];
+        const materiales = this._allMateriales || [];
 
+        // Materiales bajo el mínimo — sólo insumos_base tiene stock_minimo (catalogo_items no).
+        // Usa la columna real `stock` (consistente con alertas.js y la RPC ajustar_stock).
+        const bajoMin = materiales
+            .filter(m => m.stock != null && m.stock_minimo != null && Number(m.stock) < Number(m.stock_minimo))
+            .sort((a, b) => (Number(a.stock) - Number(a.stock_minimo)) - (Number(b.stock) - Number(b.stock_minimo)));
+
+        // Equipos fuera de servicio / en reparación (puente con la alerta de equipos).
+        let equiposCaidos = [];
         try {
-            const startOfMonth = new Date();
-            startOfMonth.setDate(1);
-            startOfMonth.setHours(0, 0, 0, 0);
+            const { data } = await supabaseClient.from('equipos')
+                .select('id, codigo, nombre, estado')
+                .eq('_deleted', false).in('estado', ['fuera_de_servicio', 'en_reparacion']);
+            equiposCaidos = data || [];
+        } catch (e) { equiposCaidos = []; }
 
-            const { count, error } = await supabaseClient
-                .from('inventario_movimientos')
-                .select('id', { count: 'exact', head: true })
-                .eq('tipo', 'transformacion')
-                .eq('_deleted', false)
-                .gte('created_at', startOfMonth.toISOString());
-            if (!error) transfCount = count || 0;
-        } catch (e) { transfCount = 0; }
+        // Puente a Compras — sólo si el rol accede a Compras (taller no la ve).
+        const canCompras = ((Data.rolePermissions && Data.rolePermissions[this._userRole]) || []).includes('compras');
+        let pedidosPend = 0, ordenesPorRecibir = 0;
+        if (canCompras) {
+            try {
+                const [p, o] = await Promise.all([
+                    supabaseClient.from('compras_pedidos').select('id', { count: 'exact', head: true })
+                        .eq('_deleted', false).eq('estado', 'pendiente'),
+                    supabaseClient.from('compras_ordenes').select('id', { count: 'exact', head: true })
+                        .eq('_deleted', false).in('estado', ['pendiente', 'aprobada']),
+                ]);
+                pedidosPend = p.count || 0;
+                ordenesPorRecibir = o.count || 0;
+            } catch (e) { /* Compras es opcional en el dashboard */ }
+        }
 
-        // Compute stats
-        const totalPiezas = piezas.length;
-        const totalMateriales = materiales.length;
-        const alertItems = [
-            ...piezas.filter(i => (i.stock || 0) <= 0).map(i => ({ ...i, _tipo: 'pieza' })),
-            ...materiales.filter(i => (i.stock || 0) <= 0).map(i => ({ ...i, _tipo: 'material' })),
+        const atencion = [
+            ...bajoMin.map(m => ({ ...m, _tipo: 'material' })),
+            ...equiposCaidos.map(e => ({ ...e, _tipo: 'equipo' })),
         ];
-        const alertCount = alertItems.length;
 
-        // Build HTML
+        const bridgeTxt = [
+            pedidosPend ? `<b>${pedidosPend}</b> ${pedidosPend === 1 ? 'pedido' : 'pedidos'} por gestionar` : '',
+            ordenesPorRecibir ? `<b>${ordenesPorRecibir}</b> ${ordenesPorRecibir === 1 ? 'orden' : 'órdenes'} por recibir` : '',
+        ].filter(Boolean).join(' · ');
+
+        // KPIs clickeables → cada uno lleva a su tab (launchpad del galpón).
         container.innerHTML = `
-            <!-- Stat cards -->
-            <div class="inv-dash-stats">
-                <div class="inv-dash-stat" style="--stat-accent: #00A9C1">
-                    <div class="inv-dash-stat-top">
-                        <span class="inv-dash-stat-label">Total Piezas</span>
-                        <span class="inv-dash-stat-icon">🔧</span>
-                    </div>
-                    <div class="inv-dash-stat-value" style="color: #00A9C1">${totalPiezas}</div>
+            <div class="invd-kpis">
+                <div class="invd-kpi" data-goto="piezas">
+                    <div class="invd-kpi-top"><span class="invd-kpi-label">Piezas</span><span class="invd-kpi-icon">🧩</span></div>
+                    <div class="invd-kpi-value" style="color:#00A9C1">${piezas.length}</div>
+                    <div class="invd-kpi-go">ver stock →</div>
                 </div>
-                <div class="inv-dash-stat" style="--stat-accent: #F28D15">
-                    <div class="inv-dash-stat-top">
-                        <span class="inv-dash-stat-label">Total Materiales</span>
-                        <span class="inv-dash-stat-icon">📦</span>
-                    </div>
-                    <div class="inv-dash-stat-value" style="color: #F28D15">${totalMateriales}</div>
+                <div class="invd-kpi" data-goto="materiales">
+                    <div class="invd-kpi-top"><span class="invd-kpi-label">Materiales</span><span class="invd-kpi-icon">🪵</span></div>
+                    <div class="invd-kpi-value" style="color:#F28D15">${materiales.length}</div>
+                    <div class="invd-kpi-go">ver stock →</div>
                 </div>
-                <div class="inv-dash-stat" style="--stat-accent: #E74C3C">
-                    <div class="inv-dash-stat-top">
-                        <span class="inv-dash-stat-label">Alertas Stock Bajo</span>
-                        <span class="inv-dash-stat-icon">⚠️</span>
-                    </div>
-                    <div class="inv-dash-stat-value" style="color: ${alertCount > 0 ? '#E74C3C' : '#00CC88'}">${alertCount > 0 ? alertCount : 'Sin alertas'}</div>
+                <div class="invd-kpi" data-goto="materiales">
+                    <div class="invd-kpi-top"><span class="invd-kpi-label">Bajo el mínimo</span><span class="invd-kpi-icon">⚠️</span></div>
+                    <div class="invd-kpi-value" style="color:${bajoMin.length ? '#E74C3C' : '#00CC88'}">${bajoMin.length}</div>
+                    <div class="invd-kpi-go" ${bajoMin.length ? 'style="color:#E74C3C"' : ''}>${bajoMin.length ? 'ver faltantes' : 'todo ok'} →</div>
                 </div>
-                <div class="inv-dash-stat" style="--stat-accent: #F28D15">
-                    <div class="inv-dash-stat-top">
-                        <span class="inv-dash-stat-label">Transformaciones del Mes</span>
-                        <span class="inv-dash-stat-icon">⇄</span>
-                    </div>
-                    <div class="inv-dash-stat-value" style="color: #F28D15">${transfCount}</div>
+                <div class="invd-kpi" data-goto="equipos">
+                    <div class="invd-kpi-top"><span class="invd-kpi-label">Equipos caídos</span><span class="invd-kpi-icon">🛠️</span></div>
+                    <div class="invd-kpi-value" style="color:${equiposCaidos.length ? '#E74C3C' : '#00CC88'}">${equiposCaidos.length}</div>
+                    <div class="invd-kpi-go" ${equiposCaidos.length ? 'style="color:#E74C3C"' : ''}>${equiposCaidos.length ? 'ver equipos' : 'todo ok'} →</div>
                 </div>
             </div>
 
-            <!-- Alertas activas -->
-            <div class="inv-dash-section">
-                <h3 class="inv-dash-section-title">Alertas Activas</h3>
-                ${alertCount > 0 ? `
-                    <div class="inv-dash-alert-list">
-                        ${alertItems.slice(0, 10).map(item => `
-                            <div class="inv-dash-alert-item">
-                                <span class="inv-modal-item-tag" style="color:${item._tipo === 'pieza' ? '#9B7DFF' : '#F28D15'}; border-color:${item._tipo === 'pieza' ? '#9B7DFF' : '#F28D15'}">${item._tipo}</span>
-                                <span class="inv-dash-alert-code">${item.codigo || '---'}</span>
-                                <span class="inv-dash-alert-name">${item.nombre}</span>
-                                <span class="inv-dash-alert-stock">Stock: ${item.stock || 0}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                    ${alertCount > 10 ? `
-                        <button class="inv-dash-ver-todos" id="invDashVerTodos">Ver todos (${alertCount}) &#8594;</button>
-                    ` : ''}
-                ` : `
-                    <div class="inv-dash-ok">&#10004; Todo el stock esta en niveles normales</div>
-                `}
+            <div class="invd-sec">
+                <h3 class="invd-sec-title">Necesita atención${atencion.length ? ` <span class="invd-count">${atencion.length}</span>` : ''}</h3>
+                ${atencion.length ? `
+                    ${atencion.slice(0, 12).map(it => it._tipo === 'material' ? `
+                        <div class="invd-row" data-goto="materiales">
+                            <span class="invd-tag" style="color:#F28D15;border-color:#F28D15">material</span>
+                            <span class="invd-code">${escHtml(it.codigo) || '—'}</span>
+                            <span class="invd-name">${escHtml(it.nombre) || '—'}</span>
+                            <span class="invd-stock" style="color:#E74C3C">${it.stock} / mín ${it.stock_minimo}</span>
+                            <span class="invd-arrow">→</span>
+                        </div>` : `
+                        <div class="invd-row" data-goto="equipos">
+                            <span class="invd-tag" style="color:#9B7DFF;border-color:#9B7DFF">equipo</span>
+                            <span class="invd-code">${escHtml(it.codigo) || '—'}</span>
+                            <span class="invd-name">${escHtml(it.nombre) || '—'}</span>
+                            <span class="invd-stock" style="color:${it.estado === 'fuera_de_servicio' ? '#E74C3C' : '#F28D15'}">${it.estado === 'fuera_de_servicio' ? 'fuera de servicio' : 'en reparación'}</span>
+                            <span class="invd-arrow">→</span>
+                        </div>`).join('')}
+                    ${atencion.length > 12 ? `<div class="invd-more">y ${atencion.length - 12} más…</div>` : ''}
+                ` : `<div class="invd-ok">✓ Todo el stock está en niveles normales y los equipos operativos.</div>`}
             </div>
 
-            <!-- Flow placeholder -->
-            <div class="inv-dash-section">
-                <h3 class="inv-dash-section-title">Flow de Materiales</h3>
-                <div class="inv-dash-placeholder">
-                    📊 Proyeccion de materiales — Proximamente.<br>
-                    Asigna materiales a proyectos para ver el flow semanal.
-                </div>
-            </div>
+            ${canCompras && bridgeTxt ? `
+            <div class="invd-bridge" id="invDashCompras">
+                <span class="invd-bridge-ic">🛒</span>
+                <span class="invd-bridge-txt">En camino a reponer: ${bridgeTxt}</span>
+                <span class="invd-bridge-go">ir a Compras →</span>
+            </div>` : ''}
         `;
 
-        // "Ver todos" link
-        const verTodos = document.getElementById('invDashVerTodos');
-        if (verTodos) {
-            verTodos.addEventListener('click', () => {
-                // Navigate to stock piezas or materiales depending on which has more alerts
-                const piezaAlerts = alertItems.filter(i => i._tipo === 'pieza').length;
-                this._activeTab = piezaAlerts > 0 ? 'piezas' : 'materiales';
-                document.querySelectorAll('.inv-tab').forEach(b => b.classList.remove('active'));
-                const targetTab = document.querySelector(`.inv-tab[data-tab="${this._activeTab}"]`);
-                if (targetTab) targetTab.classList.add('active');
-                this._renderTabContent();
-            });
-        }
+        // Atajos clickeables → tabs internos + puente a Compras.
+        container.querySelectorAll('[data-goto]').forEach(el =>
+            el.addEventListener('click', () => this._goTab(el.dataset.goto)));
+        const bridge = document.getElementById('invDashCompras');
+        if (bridge) bridge.addEventListener('click', () => Router.navigate('compras'));
+    },
+
+    _ensureDashStyles() {
+        if (document.getElementById('inv-dash-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'inv-dash-styles';
+        s.textContent = `
+            .invd-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+            @media(max-width:760px){.invd-kpis{grid-template-columns:repeat(2,1fr)}}
+            .invd-kpi{background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:11px 13px;cursor:pointer;transition:border-color .2s}
+            .invd-kpi:hover{border-color:var(--primary,#00A9C1)}
+            .invd-kpi-top{display:flex;justify-content:space-between;align-items:center}
+            .invd-kpi-label{font-family:var(--font-mono);font-size:0.62rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--text-muted,#888)}
+            .invd-kpi-icon{font-size:1.15rem}
+            .invd-kpi-value{font-family:var(--font-mono);font-size:1.6rem;font-weight:700;margin-top:2px}
+            .invd-kpi-go{font-family:var(--font-mono);font-size:0.62rem;color:var(--primary,#00A9C1);margin-top:5px;opacity:0.85}
+            .invd-sec{margin-top:4px}
+            .invd-sec-title{font-family:var(--font-mono);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-dim,#555);margin:0 0 8px;display:flex;align-items:center;gap:8px}
+            .invd-count{background:rgba(231,76,60,0.15);color:#E74C3C;border-radius:9px;padding:0 8px;font-size:0.7rem}
+            .invd-row{display:flex;gap:10px;align-items:center;background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:7px;padding:8px 11px;font-size:0.82rem;margin-bottom:6px;cursor:pointer;transition:border-color .2s}
+            .invd-row:hover{border-color:var(--primary,#00A9C1)}
+            .invd-tag{font-family:var(--font-mono);font-size:0.6rem;padding:1px 7px;border:1px solid;border-radius:9px;white-space:nowrap}
+            .invd-code{font-family:var(--font-mono);color:var(--text-dim,#555);font-size:0.75rem}
+            .invd-name{color:var(--text-primary,#E8E8E8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .invd-stock{margin-left:auto;font-family:var(--font-mono);font-size:0.75rem;white-space:nowrap}
+            .invd-arrow{color:var(--text-dim,#555)}
+            .invd-more{font-family:var(--font-mono);font-size:0.72rem;color:var(--text-dim,#555);padding:4px 2px}
+            .invd-ok{color:var(--color-success,#00CC88);font-size:0.85rem;padding:14px;background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:8px}
+            .invd-bridge{display:flex;align-items:center;gap:14px;background:rgba(0,169,193,0.06);border:1px solid rgba(0,169,193,0.25);border-radius:8px;padding:12px 14px;margin-top:16px;cursor:pointer;transition:background .2s}
+            .invd-bridge:hover{background:rgba(0,169,193,0.12)}
+            .invd-bridge-ic{font-size:1.25rem}
+            .invd-bridge-txt{font-size:0.82rem;flex:1;color:var(--text-muted,#bbb)}
+            .invd-bridge-txt b{color:var(--primary,#00A9C1);font-family:var(--font-mono)}
+            .invd-bridge-go{font-family:var(--font-mono);font-size:0.72rem;color:var(--primary,#00A9C1);white-space:nowrap}
+        `;
+        document.head.appendChild(s);
     },
 
     // ═══════════════════════════════════════════
@@ -3849,16 +3826,16 @@ const InventarioModule = {
 
     _attachEvents() {
         // Tab clicks
-        document.querySelectorAll('.inv-tab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this._activeTab = btn.dataset.tab;
-
-                // Update active class
-                document.querySelectorAll('.inv-tab').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-
-                this._renderTabContent();
-            });
+        document.querySelectorAll('.section-tab').forEach(btn => {
+            btn.addEventListener('click', () => this._goTab(btn.dataset.tab));
         });
+    },
+
+    // Cambia de tab (lo usan los tabs y los atajos clickeables del Dashboard).
+    _goTab(key) {
+        if (!key) return;
+        this._activeTab = key;
+        document.querySelectorAll('.section-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
+        this._renderTabContent();
     },
 };
