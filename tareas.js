@@ -27,11 +27,84 @@ const Tareas = {
     _tableReady: true,
 
     _MODULOS: [
-        ['taller', 'Taller'], ['compras', 'Compras'], ['rrhh', 'RRHH'],
+        ['taller', 'Producción'], ['compras', 'Compras'], ['rrhh', 'RRHH'],
         ['crm', 'CRM'], ['eventos', 'Eventos'], ['proyectos', 'Proyectos'],
         ['inventario', 'Inventario'], ['locaciones', 'Locaciones'], ['flota', 'Flota'],
         ['finanzas', 'Finanzas'], ['general', 'General'],
     ],
+
+    // Inyecta el CSS scopeado del módulo una sola vez (patrón de finanzas.js/locaciones.js).
+    // Reproduce EXACTO lo que antes eran estilos inline — ver _shell/_statChip/_sectionBtn/
+    // _renderList/_card/_rutinaRow. Los colores dinámicos (prioridad/estado/dot de grupo)
+    // se pasan por CSS var inline `--tar-accent` en vez de hardcodear reglas por valor.
+    _ensureStyles() {
+        if (document.getElementById('tareas-tar-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'tareas-tar-styles';
+        style.textContent = `
+            .tar-breadcrumb-cat { color: #00A9C1; }
+            .tar-header-icon { display: inline-flex; align-items: center; }
+            .tar-btn-nueva { white-space: nowrap; }
+            .tar-content { padding: 16px 24px; }
+            .tar-sections { display: flex; gap: 8px; margin-bottom: 16px; }
+            .tar-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+            .tar-stats.tar-hidden { display: none; }
+            .tar-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+            .tar-filters.tar-hidden { display: none; }
+            .tar-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+            .tar-tab { padding: 6px 14px; background: transparent; color: var(--text-muted); border: none; font-family: var(--font-mono); font-size: .72rem; cursor: pointer; }
+            .tar-tab.active { background: var(--primary); color: #000; }
+            .tar-select-modulo { max-width: 160px; }
+            .tar-select-estado { max-width: 150px; }
+            .tar-input-q { max-width: 150px; }
+            .tar-spacer { flex: 1; }
+            .tar-count { font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted); }
+            .tar-loading { text-align: center; padding: 40px; color: var(--text-muted); }
+            .tar-empty { text-align: center; padding: 48px; color: var(--text-muted); }
+            .tar-empty-hint { font-size: .8rem; color: var(--text-dim); }
+
+            .tar-section { padding: 7px 16px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-family: var(--font-mono); font-size: .72rem; cursor: pointer; }
+            .tar-section.active { border-color: var(--primary); background: var(--primary); color: #000; }
+
+            .tar-stat { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; }
+            .tar-stat-n { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; color: var(--tar-accent, var(--text-primary)); }
+            .tar-stat-label { font-family: var(--font-mono); font-size: .65rem; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+
+            .tar-group { margin-bottom: 20px; }
+            .tar-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+            .tar-group-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tar-accent, var(--text-muted)); }
+            .tar-group-icon { display: inline-flex; }
+            .tar-group-label { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .05em; text-transform: uppercase; color: var(--tar-accent, var(--text-muted)); }
+            .tar-group-count { font-family: var(--font-mono); font-size: .7rem; color: var(--text-dim); }
+
+            .tar-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--tar-accent, var(--border)); border-radius: 6px; margin-bottom: 8px; }
+            .tar-card.tar-card-hecha { opacity: .7; }
+            .tar-card-body { flex: 1; min-width: 0; }
+            .tar-card-title { font-family: var(--font-main); font-size: .9rem; color: var(--text-primary); }
+            .tar-card-title.tar-strike { text-decoration: line-through; opacity: .7; }
+            .tar-card-meta { display: flex; gap: 10px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+            .tar-card-actions { display: flex; gap: 6px; align-items: center; }
+            .tar-chip { font-family: var(--font-mono); font-size: .65rem; color: var(--tar-accent, var(--text-dim)); }
+            .tar-chip-fecha { font-family: var(--font-mono); font-size: .65rem; color: var(--text-dim); }
+            .tar-chip-curso { font-family: var(--font-mono); font-size: .6rem; color: var(--primary); }
+            .tar-chip-hecha { font-family: var(--font-mono); font-size: .6rem; color: #00CC88; }
+            .tar-badge-origen { font-size: .6rem; }
+            .tar-btn-eliminar { color: var(--color-error); }
+
+            .tar-rutina-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid #9B7DFF; border-radius: 6px; margin-bottom: 8px; }
+            .tar-rutina-row.tar-rutina-inactiva { opacity: .6; }
+            .tar-rutina-title { font-family: var(--font-main); font-size: .9rem; color: var(--text-primary); }
+            .tar-rutina-tipo { font-family: var(--font-mono); font-size: .62rem; color: #9B7DFF; }
+            .tar-rutina-freq { font-family: var(--font-mono); font-size: .62rem; color: var(--text-dim); }
+            .tar-rutina-role { font-family: var(--font-mono); font-size: .62rem; color: var(--text-dim); }
+            .tar-rutina-fecha { font-family: var(--font-mono); font-size: .62rem; color: var(--tar-accent, var(--text-muted)); }
+            .tar-rutina-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+            .tar-rutina-count { font-family: var(--font-mono); font-size: .72rem; color: var(--text-muted); }
+            .tar-badge-estado { font-size: .6rem; color: var(--tar-accent); }
+            .tar-badge-estado.tar-badge-activa { border-color: var(--tar-accent); }
+        `;
+        document.head.appendChild(style);
+    },
 
     _visibility() {
         const base = (typeof Alertas !== 'undefined' && Alertas._visibility) ? Alertas._visibility : {
@@ -65,6 +138,7 @@ const Tareas = {
         if (this._section === 'rutinas' && !this._adminLevel) this._section = 'tareas';
         const content = document.getElementById('mainContent');
         if (!content) return;
+        this._ensureStyles();
         content.innerHTML = this._shell(user);
         await this._load(user);
         this._renderActive(user);
@@ -77,8 +151,8 @@ const Tareas = {
         const stats = document.getElementById('tareasStats');
         const filters = document.getElementById('tareasFilters');
         const nb = document.getElementById('tareasNueva');
-        if (stats) stats.style.display = isRut ? 'none' : 'flex';
-        if (filters) filters.style.display = isRut ? 'none' : 'flex';
+        if (stats) stats.classList.toggle('tar-hidden', isRut);
+        if (filters) filters.classList.toggle('tar-hidden', isRut);
         if (nb) nb.style.display = isRut ? 'none' : '';
         if (isRut) this._renderRutinas(user);
         else this._renderList(user);
@@ -384,55 +458,55 @@ const Tareas = {
               <div class="module-breadcrumb">
                 <a href="#lobby" class="breadcrumb-link">Lobby</a>
                 <span class="breadcrumb-sep">›</span>
-                <span class="breadcrumb-cat" style="color:#00A9C1">PRINCIPAL</span>
+                <span class="breadcrumb-cat tar-breadcrumb-cat">PRINCIPAL</span>
                 <span class="breadcrumb-sep">›</span>
                 <span class="breadcrumb-current">Centro de Tareas</span>
               </div>
             </div>
             <div class="module-subheader-bottom">
               <div class="module-header-title">
-                <span class="module-header-icon" style="display:inline-flex;align-items:center;">${this._checkIcon(24)}</span>
+                <span class="module-header-icon tar-header-icon">${this._checkIcon(24)}</span>
                 <h2 class="title-2">Centro de Tareas</h2>
               </div>
-              <button class="btn btn-primary btn-sm" id="tareasNueva" style="white-space:nowrap;">+ Nueva tarea</button>
+              <button class="btn btn-primary btn-sm tar-btn-nueva" id="tareasNueva">+ Nueva tarea</button>
             </div>
           </div>
-          <div class="module-content" style="padding:16px 24px;">
-            ${this._adminLevel ? `<div id="tareasSections" style="display:flex;gap:8px;margin-bottom:16px;">
+          <div class="module-content tar-content">
+            ${this._adminLevel ? `<div id="tareasSections" class="tar-sections">
               ${this._sectionBtn('tareas', '📋 Tareas')}${this._sectionBtn('rutinas', '🔁 Rutinas')}
             </div>` : ''}
-            <div id="tareasStats" style="display:${this._section === 'rutinas' ? 'none' : 'flex'};gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
-            <div id="tareasFilters" style="display:${this._section === 'rutinas' ? 'none' : 'flex'};gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
-              <div class="tareas-toggle" style="display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-                <button class="tareas-tab" data-view="mias" style="padding:6px 14px;background:${this._view === 'mias' ? 'var(--primary)' : 'transparent'};color:${this._view === 'mias' ? '#000' : 'var(--text-muted)'};border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">MIS TAREAS</button>
-                ${canEquipo ? `<button class="tareas-tab" data-view="equipo" style="padding:6px 14px;background:${this._view === 'equipo' ? 'var(--primary)' : 'transparent'};color:${this._view === 'equipo' ? '#000' : 'var(--text-muted)'};border:none;font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">DEL EQUIPO</button>` : ''}
+            <div id="tareasStats" class="tar-stats${this._section === 'rutinas' ? ' tar-hidden' : ''}"></div>
+            <div id="tareasFilters" class="tar-filters${this._section === 'rutinas' ? ' tar-hidden' : ''}">
+              <div class="tareas-toggle tar-toggle">
+                <button class="tareas-tab tar-tab${this._view === 'mias' ? ' active' : ''}" data-view="mias">MIS TAREAS</button>
+                ${canEquipo ? `<button class="tareas-tab tar-tab${this._view === 'equipo' ? ' active' : ''}" data-view="equipo">DEL EQUIPO</button>` : ''}
               </div>
-              <select id="tareasFEstado" class="input" style="max-width:150px;">
+              <select id="tareasFEstado" class="input tar-select-estado">
                 ${opt('abiertas', 'Abiertas', this._estado)}${opt('hechas', 'Hechas', this._estado)}${opt('todas', 'Todas', this._estado)}
               </select>
-              <select id="tareasFModulo" class="input" style="max-width:160px;">
+              <select id="tareasFModulo" class="input tar-select-modulo">
                 <option value="">Todos los módulos</option>
                 ${this._MODULOS.map(([v, l]) => opt(v, l, this._fModulo)).join('')}
               </select>
-              <input id="tareasQ" class="input" placeholder="Buscar…" style="max-width:150px;" value="${this._esc(this._q)}">
-              <span style="flex:1"></span>
-              <span id="tareasCount" style="font-family:var(--font-mono);font-size:.72rem;color:var(--text-muted);"></span>
+              <input id="tareasQ" class="input tar-input-q" placeholder="Buscar…" value="${this._esc(this._q)}">
+              <span class="tar-spacer"></span>
+              <span id="tareasCount" class="tar-count"></span>
             </div>
-            <div id="tareasGroups"><div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando…</div></div>
+            <div id="tareasGroups"><div class="tar-loading">Cargando…</div></div>
           </div>
         </div>`;
     },
 
     _statChip(label, n, color) {
-        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;">
-          <span style="font-family:var(--font-mono);font-size:1.1rem;font-weight:700;color:${color};">${n}</span>
-          <span style="font-family:var(--font-mono);font-size:.65rem;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);">${label}</span>
+        return `<div class="tar-stat" style="--tar-accent:${color}">
+          <span class="tar-stat-n">${n}</span>
+          <span class="tar-stat-label">${label}</span>
         </div>`;
     },
 
     _sectionBtn(section, label) {
         const on = this._section === section;
-        return `<button class="tareas-section" data-section="${section}" style="padding:7px 16px;border-radius:6px;border:1px solid ${on ? 'var(--primary)' : 'var(--border)'};background:${on ? 'var(--primary)' : 'transparent'};color:${on ? '#000' : 'var(--text-muted)'};font-family:var(--font-mono);font-size:.72rem;cursor:pointer;">${label}</button>`;
+        return `<button class="tareas-section tar-section${on ? ' active' : ''}" data-section="${section}">${label}</button>`;
     },
 
     _renderList(user) {
@@ -463,20 +537,20 @@ const Tareas = {
             let h = '';
             groups.forEach(([k, label, color]) => {
                 if (!g[k].length) return;
-                h += `<div style="margin-bottom:20px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                  <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>
-                  <span style="font-family:var(--font-mono);font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:${color};">${label}</span>
-                  <span style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);">${g[k].length}</span>
+                h += `<div class="tar-group"><div class="tar-group-head" style="--tar-accent:${color}">
+                  <span class="tar-group-dot"></span>
+                  <span class="tar-group-label">${label}</span>
+                  <span class="tar-group-count">${g[k].length}</span>
                 </div>${g[k].map(t => this._card(t)).join('')}</div>`;
             });
             return h;
         };
         const renderHechas = () => {
             if (!hechas.length) return '';
-            return `<div style="margin-bottom:20px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <span style="display:inline-flex;">${this._checkIcon(14)}</span>
-              <span style="font-family:var(--font-mono);font-size:.7rem;letter-spacing:.05em;text-transform:uppercase;color:#00CC88;">Hechas</span>
-              <span style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-dim);">${hechas.length}</span>
+            return `<div class="tar-group"><div class="tar-group-head" style="--tar-accent:#00CC88">
+              <span class="tar-group-icon">${this._checkIcon(14)}</span>
+              <span class="tar-group-label">Hechas</span>
+              <span class="tar-group-count">${hechas.length}</span>
             </div>${hechas.map(t => this._card(t)).join('')}</div>`;
         };
 
@@ -488,7 +562,7 @@ const Tareas = {
         const cEl = document.getElementById('tareasCount');
         if (cEl) cEl.textContent = `${shown} ${shown === 1 ? 'tarea' : 'tareas'}`;
 
-        if (!html) html = `<div style="text-align:center;padding:48px;color:var(--text-muted);">🎉 Nada por acá${this._tableReady ? '' : '<br><span style="font-size:.8rem;color:var(--text-dim)">(corré sql/fase11_tareas.sql para tareas manuales y claim)</span>'}</div>`;
+        if (!html) html = `<div class="tar-empty">🎉 Nada por acá${this._tableReady ? '' : '<br><span class="tar-empty-hint">(corré sql/fase11_tareas.sql para tareas manuales y claim)</span>'}</div>`;
         cont.innerHTML = html;
         cont.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => this._action(user, b.dataset.act, b.dataset.id)));
     },
@@ -497,23 +571,23 @@ const Tareas = {
         const pColor = t.prioridad === 'critica' ? '#ff4444' : t.prioridad === 'alta' ? '#F28D15' : '#888888';
         const enCurso = t.estado === 'en_curso';
         const hecha = t.estado === 'hecha';
-        const ctxChip = t.proyecto_nombre ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);">▣ ${this._esc(t.proyecto_nombre)}</span>` : '';
-        const rutinaChip = (t.origen === 'rutina') ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:#9B7DFF;">🔁 ${this._esc(t._rutina_label || 'Rutina')}</span>` : '';
+        const ctxChip = t.proyecto_nombre ? `<span class="tar-chip-fecha">▣ ${this._esc(t.proyecto_nombre)}</span>` : '';
+        const rutinaChip = (t.origen === 'rutina') ? `<span class="tar-chip" style="--tar-accent:#9B7DFF">🔁 ${this._esc(t._rutina_label || 'Rutina')}</span>` : '';
         const respChip = (this._view === 'equipo' && t.responsable_id)
-            ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:var(--primary);">👤 ${this._esc(this._profiles[t.responsable_id] || '—')}</span>` : '';
+            ? `<span class="tar-chip" style="--tar-accent:var(--primary)">👤 ${this._esc(this._profiles[t.responsable_id] || '—')}</span>` : '';
         return `
-        <div class="tarea-card" data-id="${this._esc(t.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid ${hecha ? '#00CC88' : pColor};border-radius:6px;margin-bottom:8px;${hecha ? 'opacity:.7;' : ''}">
-          <div style="flex:1;min-width:0;">
-            <div style="font-family:var(--font-main);font-size:.9rem;color:var(--text-primary);${hecha ? 'text-decoration:line-through;opacity:.7;' : ''}">${this._esc(t.titulo)}</div>
-            <div style="display:flex;gap:10px;align-items:center;margin-top:4px;flex-wrap:wrap;">
-              <span class="badge badge-ghost" style="font-size:.6rem;">${this._esc(t.origen)}</span>
+        <div class="tarea-card tar-card${hecha ? ' tar-card-hecha' : ''}" data-id="${this._esc(t.id)}" style="--tar-accent:${hecha ? '#00CC88' : pColor}">
+          <div class="tar-card-body">
+            <div class="tar-card-title${hecha ? ' tar-strike' : ''}">${this._esc(t.titulo)}</div>
+            <div class="tar-card-meta">
+              <span class="badge badge-ghost tar-badge-origen">${this._esc(t.origen)}</span>
               ${ctxChip}${rutinaChip}${respChip}
-              ${t.fecha_limite ? `<span style="font-family:var(--font-mono);font-size:.65rem;color:var(--text-dim);">📅 ${t.fecha_limite}</span>` : ''}
-              ${enCurso ? `<span style="font-family:var(--font-mono);font-size:.6rem;color:var(--primary);">EN CURSO</span>` : ''}
-              ${hecha && t.completada_at ? `<span style="font-family:var(--font-mono);font-size:.6rem;color:#00CC88;">✓ ${String(t.completada_at).split('T')[0]}</span>` : ''}
+              ${t.fecha_limite ? `<span class="tar-chip-fecha">📅 ${t.fecha_limite}</span>` : ''}
+              ${enCurso ? `<span class="tar-chip-curso">EN CURSO</span>` : ''}
+              ${hecha && t.completada_at ? `<span class="tar-chip-hecha">✓ ${String(t.completada_at).split('T')[0]}</span>` : ''}
             </div>
           </div>
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div class="tar-card-actions">
             ${hecha
                 ? `<button class="btn btn-ghost btn-sm" data-act="reabrir" data-id="${this._esc(t.id)}">Reabrir</button>`
                 : `${!enCurso ? `<button class="btn btn-ghost btn-sm" data-act="tomar" data-id="${this._esc(t.id)}">Tomar</button>` : ''}
@@ -521,7 +595,7 @@ const Tareas = {
             <a class="btn btn-ghost btn-sm" href="${t.link || '#tareas'}">Abrir</a>
             ${(this._view === 'equipo' && this._canManage && !hecha) ? `<button class="btn btn-ghost btn-sm" data-act="reasignar" data-id="${this._esc(t.id)}" title="Reasignar">↪</button>` : ''}
             ${(!t.es_derivada && !hecha) ? `<button class="btn btn-ghost btn-sm" data-act="editar" data-id="${this._esc(t.id)}" title="Editar">✎</button>` : ''}
-            ${(!t.es_derivada) ? `<button class="btn btn-ghost btn-sm" data-act="eliminar" data-id="${this._esc(t.id)}" title="Eliminar" style="color:var(--color-error);">✕</button>` : ''}
+            ${(!t.es_derivada) ? `<button class="btn btn-ghost btn-sm tar-btn-eliminar" data-act="eliminar" data-id="${this._esc(t.id)}" title="Eliminar">✕</button>` : ''}
           </div>
         </div>`;
     },
@@ -529,7 +603,7 @@ const Tareas = {
     _attach(user) {
         const setView = (v) => {
             this._view = v; this._savePrefs(user);
-            document.querySelectorAll('.tareas-tab').forEach(x => { x.style.background = x.dataset.view === v ? 'var(--primary)' : 'transparent'; x.style.color = x.dataset.view === v ? '#000' : 'var(--text-muted)'; });
+            document.querySelectorAll('.tareas-tab').forEach(x => { x.classList.toggle('active', x.dataset.view === v); });
             this._renderList(user);
         };
         document.querySelectorAll('.tareas-tab').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
@@ -537,10 +611,7 @@ const Tareas = {
             if (this._section === b.dataset.section) return;
             this._section = b.dataset.section;
             document.querySelectorAll('.tareas-section').forEach(x => {
-                const on = x.dataset.section === this._section;
-                x.style.background = on ? 'var(--primary)' : 'transparent';
-                x.style.color = on ? '#000' : 'var(--text-muted)';
-                x.style.borderColor = on ? 'var(--primary)' : 'var(--border)';
+                x.classList.toggle('active', x.dataset.section === this._section);
             });
             this._renderActive(user);
         }));
@@ -717,25 +788,25 @@ const Tareas = {
         const venc = r.proxima_fecha && r.proxima_fecha < hoy;
         const fColor = !r.activa ? 'var(--text-dim)' : (venc ? '#ff4444' : 'var(--text-muted)');
         const estadoChip = r.activa
-            ? `<span class="badge badge-ghost" style="font-size:.6rem;color:#00CC88;border-color:#00CC88;">ACTIVA</span>`
-            : `<span class="badge badge-ghost" style="font-size:.6rem;color:var(--text-dim);">PAUSADA</span>`;
-        const tipoChip = `<span style="font-family:var(--font-mono);font-size:.62rem;color:#9B7DFF;">${this._esc(r.activo_tipo || 'general')}${r.activo_label ? ' · ' + this._esc(r.activo_label) : ''}</span>`;
+            ? `<span class="badge badge-ghost tar-badge-estado tar-badge-activa" style="--tar-accent:#00CC88">ACTIVA</span>`
+            : `<span class="badge badge-ghost tar-badge-estado" style="--tar-accent:var(--text-dim)">PAUSADA</span>`;
+        const tipoChip = `<span class="tar-rutina-tipo">${this._esc(r.activo_tipo || 'general')}${r.activo_label ? ' · ' + this._esc(r.activo_label) : ''}</span>`;
         return `
-        <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #9B7DFF;border-radius:6px;margin-bottom:8px;${r.activa ? '' : 'opacity:.6;'}">
-          <div style="flex:1;min-width:0;">
-            <div style="font-family:var(--font-main);font-size:.9rem;color:var(--text-primary);">🔁 ${this._esc(r.titulo)}</div>
-            <div style="display:flex;gap:10px;align-items:center;margin-top:4px;flex-wrap:wrap;">
+        <div class="tar-rutina-row${r.activa ? '' : ' tar-rutina-inactiva'}">
+          <div class="tar-card-body">
+            <div class="tar-rutina-title">🔁 ${this._esc(r.titulo)}</div>
+            <div class="tar-card-meta">
               ${tipoChip}
-              <span style="font-family:var(--font-mono);font-size:.62rem;color:var(--text-dim);">${this._freqLabel(r)}</span>
-              ${r.target_role ? `<span style="font-family:var(--font-mono);font-size:.62rem;color:var(--text-dim);">→ ${this._esc(r.target_role)}</span>` : ''}
-              <span style="font-family:var(--font-mono);font-size:.62rem;color:${fColor};">📅 ${r.proxima_fecha || '—'}${venc ? ' (vencida)' : ''}</span>
+              <span class="tar-rutina-freq">${this._freqLabel(r)}</span>
+              ${r.target_role ? `<span class="tar-rutina-role">→ ${this._esc(r.target_role)}</span>` : ''}
+              <span class="tar-rutina-fecha" style="--tar-accent:${fColor}">📅 ${r.proxima_fecha || '—'}${venc ? ' (vencida)' : ''}</span>
               ${estadoChip}
             </div>
           </div>
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div class="tar-card-actions">
             <button class="btn btn-ghost btn-sm" data-rut-act="${r.activa ? 'pausar' : 'reanudar'}" data-rut-id="${this._esc(r.id)}">${r.activa ? 'Pausar' : 'Reanudar'}</button>
             <button class="btn btn-ghost btn-sm" data-rut-act="editar" data-rut-id="${this._esc(r.id)}" title="Editar">✎</button>
-            <button class="btn btn-ghost btn-sm" data-rut-act="eliminar" data-rut-id="${this._esc(r.id)}" title="Eliminar" style="color:var(--color-error);">✕</button>
+            <button class="btn btn-ghost btn-sm tar-btn-eliminar" data-rut-act="eliminar" data-rut-id="${this._esc(r.id)}" title="Eliminar">✕</button>
           </div>
         </div>`;
     },
@@ -743,19 +814,19 @@ const Tareas = {
     async _renderRutinas(user) {
         const cont = document.getElementById('tareasGroups');
         if (!cont) return;
-        cont.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando rutinas…</div>`;
+        cont.innerHTML = `<div class="tar-loading">Cargando rutinas…</div>`;
         this._rutinas = (typeof API !== 'undefined' && API.getRutinas) ? await API.getRutinas() : [];
         const hoy = this._today();
         const rows = this._rutinas;
         const header = `
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
-            <span style="font-family:var(--font-mono);font-size:.72rem;color:var(--text-muted);">${rows.length} ${rows.length === 1 ? 'rutina' : 'rutinas'}</span>
-            <span style="flex:1"></span>
+          <div class="tar-rutina-header">
+            <span class="tar-rutina-count">${rows.length} ${rows.length === 1 ? 'rutina' : 'rutinas'}</span>
+            <span class="tar-spacer"></span>
             <button class="btn btn-primary btn-sm" id="rutNueva">+ Nueva rutina</button>
           </div>`;
         const body = rows.length
             ? rows.map(r => this._rutinaRow(r, hoy)).join('')
-            : `<div style="text-align:center;padding:48px;color:var(--text-muted);">Sin rutinas cargadas.<br><span style="font-size:.8rem;color:var(--text-dim);">Creá una con “+ Nueva rutina” o corré sql/reorg_f_rutinas.sql.</span></div>`;
+            : `<div class="tar-empty">Sin rutinas cargadas.<br><span class="tar-empty-hint">Creá una con “+ Nueva rutina” o corré sql/reorg_f_rutinas.sql.</span></div>`;
         cont.innerHTML = header + body;
         const nb = document.getElementById('rutNueva');
         if (nb) nb.addEventListener('click', () => this._rutinaModal(user, null));
