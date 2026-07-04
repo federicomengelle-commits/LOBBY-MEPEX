@@ -230,6 +230,7 @@ const LocacionesModule = {
 
         let lugares = [];
         let documentos = [];
+        let equipos = [];
         try {
             const { data: lData, error: lErr } = await supabaseClient
                 .from('locaciones')
@@ -249,6 +250,14 @@ const LocacionesModule = {
                     .in('locacion_id', ids)
                     .order('fecha_vencimiento', { ascending: true });
                 documentos = dData || [];
+
+                const { data: eData } = await supabaseClient
+                    .from('equipos')
+                    .select('id,nombre,tipo_equipo,estado,es_contenedor,ubicacion_id')
+                    .eq('_deleted', false)
+                    .in('ubicacion_id', ids)
+                    .order('nombre', { ascending: true });
+                equipos = eData || [];
             }
         } catch (e) {
             console.warn('[Locaciones] Error loading cara operativa:', e);
@@ -273,6 +282,12 @@ const LocacionesModule = {
             const k = String(d.locacion_id);
             (docsByLoc[k] = docsByLoc[k] || []).push(d);
         });
+        const equiposByLoc = {};
+        equipos.forEach(e => {
+            const k = String(e.ubicacion_id);
+            (equiposByLoc[k] = equiposByLoc[k] || []).push(e);
+        });
+        this._ensureEquipoStyles();
 
         cc.innerHTML = `
             <div class="loc-cards-grid">
@@ -308,6 +323,18 @@ const LocacionesModule = {
                                                 <span class="loc-venc-badge ${x.venc.class}">${x.venc.label}</span>
                                             </div>
                                         `).join('')}
+                                    </div>
+                                ` : ''}
+                                ${(equiposByLoc[String(l.id)] || []).length > 0 ? `
+                                    <div class="loc-op-equipos">
+                                        <span class="loc-op-equipos-title">🛠️ Equipos (${equiposByLoc[String(l.id)].length})</span>
+                                        ${equiposByLoc[String(l.id)].slice(0, 6).map(e => `
+                                            <div class="loc-op-eq-row">
+                                                <span class="loc-op-eq-dot" style="background:${this._equipoEstadoColor(e.estado)}"></span>
+                                                <span>${this._esc(e.nombre || '—')}${e.es_contenedor ? ' 📦' : ''}</span>
+                                            </div>
+                                        `).join('')}
+                                        ${equiposByLoc[String(l.id)].length > 6 ? `<span class="loc-op-equipos-title">+${equiposByLoc[String(l.id)].length - 6} más</span>` : ''}
                                     </div>
                                 ` : ''}
                             </div>
@@ -585,10 +612,16 @@ const LocacionesModule = {
                                 <p>${this._esc(lugar.notas)}</p>
                             </div>
                         ` : ''}
+
+                        <div class="loc-ficha-section-title">Equipos en este lugar <span id="locEquiposCount" class="loc-equipos-count"></span></div>
+                        <div id="locEquiposContent" class="loc-equipos-list"><div class="loc-equipos-loading">Cargando…</div></div>
                     </div>
                 </div>
             </div>
         `;
+
+        this._ensureEquipoStyles();
+        this._loadEquiposLugar(lugar.id);
 
         document.getElementById('locBack')?.addEventListener('click', () => {
             this._selectedLugarId = null;
@@ -599,6 +632,62 @@ const LocacionesModule = {
             if (typeof Tareas !== 'undefined' && Tareas.openProgramarRutina) Tareas.openProgramarRutina({ activo_tipo: 'locacion', activo_id: String(lugar.id), activo_label: lugar.nombre, modulo: 'locaciones', target_role: 'admin' });
         });
         document.getElementById('locDeleteLugar')?.addEventListener('click', () => this._deleteLugar(lugar.id));
+    },
+
+    // ── Equipos por lugar (vista inversa Locaciones→Equipos, read-only) ──
+    _equipoEstadoColor(estado) {
+        return ({ operativo: '#00CC88', en_reparacion: '#F28D15', fuera_de_servicio: '#ff4444', baja: '#555555' })[estado] || '#888888';
+    },
+
+    _ensureEquipoStyles() {
+        if (document.getElementById('loc-equipo-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'loc-equipo-styles';
+        style.textContent = `
+            .loc-equipos-count { color: var(--text-dim, #555); font-weight: 400; }
+            .loc-equipos-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+            .loc-eq-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-card, #111); border: 1px solid var(--border, #2a2a2a); border-radius: 6px; }
+            .loc-eq-name { font-weight: 600; color: var(--text-primary, #e8e8e8); flex: 1; min-width: 0; }
+            .loc-eq-tipo { font-family: var(--font-mono); font-size: .7rem; color: var(--text-muted, #888); text-transform: capitalize; }
+            .loc-eq-cont { font-family: var(--font-mono); font-size: .7rem; color: #9B7DFF; }
+            .loc-eq-estado { font-family: var(--font-mono); font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; }
+            .loc-equipos-empty, .loc-equipos-loading { color: var(--text-muted, #888); font-size: .85rem; padding: 8px 0; }
+            .loc-eq-link { display: inline-block; margin-top: 8px; font-size: .75rem; color: var(--primary, #00A9C1); text-decoration: none; }
+            .loc-eq-link:hover { text-decoration: underline; }
+            .loc-op-equipos { margin-top: 8px; }
+            .loc-op-equipos-title { font-family: var(--font-mono); font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted, #888); }
+            .loc-op-eq-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: .8rem; color: var(--text-primary, #e8e8e8); }
+            .loc-op-eq-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        `;
+        document.head.appendChild(style);
+    },
+
+    async _loadEquiposLugar(locacionId) {
+        const cont = document.getElementById('locEquiposContent');
+        if (!cont) return;
+        const equipos = (typeof API !== 'undefined' && API.getEquiposByUbicacion) ? await API.getEquiposByUbicacion(locacionId) : [];
+        this._renderEquiposLugar(equipos);
+    },
+
+    _renderEquiposLugar(equipos) {
+        const cont = document.getElementById('locEquiposContent');
+        const countEl = document.getElementById('locEquiposCount');
+        if (!cont) return;
+        if (countEl) countEl.textContent = equipos.length ? `(${equipos.length})` : '';
+        if (!equipos.length) {
+            cont.innerHTML = `<div class="loc-equipos-empty">Sin equipos asignados a este lugar.</div>`;
+            return;
+        }
+        cont.innerHTML = equipos.map(e => {
+            const col = this._equipoEstadoColor(e.estado);
+            const contChip = e.es_contenedor ? `<span class="loc-eq-cont">📦 ${e.manifiesto_count} ítems</span>` : '';
+            return `<div class="loc-eq-row">
+                <span class="loc-eq-name">${this._esc(e.nombre || '—')}</span>
+                <span class="loc-eq-tipo">${this._esc(e.tipo_equipo || '')}</span>
+                ${contChip}
+                <span class="loc-eq-estado" style="color:${col}">${this._esc(e.estado || '')}</span>
+            </div>`;
+        }).join('') + `<a class="loc-eq-link" href="#inventario">Ver / editar en Inventario →</a>`;
     },
 
     async _showFormLugar(existing = null) {

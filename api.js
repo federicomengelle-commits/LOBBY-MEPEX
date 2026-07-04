@@ -6806,6 +6806,35 @@ const API = {
         }
     },
 
+    // Equipos ubicados en una locación (vista inversa Locaciones→Equipos). Read-only.
+    // ubicacion_id es FK lógica bigint → locaciones.id (sin constraint).
+    async getEquiposByUbicacion(locacionId) {
+        try {
+            const { data, error } = await supabaseClient
+                .from('equipos')
+                .select('*')
+                .eq('ubicacion_id', locacionId)
+                .eq('_deleted', false)
+                .order('nombre', { ascending: true });
+            if (error) throw error;
+            const rows = data || [];
+            const contIds = rows.filter(r => r.es_contenedor).map(r => r.id);
+            const conteo = {};
+            if (contIds.length > 0) {
+                const { data: lineas } = await supabaseClient
+                    .from('equipo_contenido')
+                    .select('contenedor_id')
+                    .in('contenedor_id', contIds)
+                    .eq('_deleted', false);
+                (lineas || []).forEach(l => { conteo[l.contenedor_id] = (conteo[l.contenedor_id] || 0) + 1; });
+            }
+            return rows.map(r => ({ ...r, manifiesto_count: r.es_contenedor ? (conteo[r.id] || 0) : 0 }));
+        } catch (e) {
+            console.warn('[API] getEquiposByUbicacion:', e.message);
+            return [];
+        }
+    },
+
     // Helper: mapa { locacion_id: nombre } para una lista de ids.
     async _equiposLocMap(ids) {
         const map = {};
