@@ -306,13 +306,15 @@ const Alertas = {
         },
 
         // Inventario: insumos con stock por debajo del mínimo
+        // (usa la columna real 'stock' — 'stock_actual' está muerta/desactualizada,
+        //  la UI de Inventario y la RPC ajustar_stock operan sobre 'stock').
         async inventario() {
             const { data, error } = await supabaseClient
-                .from('insumos_base').select('id, stock_actual, stock_minimo')
+                .from('insumos_base').select('id, stock, stock_minimo')
                 .eq('_deleted', false).not('stock_minimo', 'is', null);
             if (error || !data) return [];
             const n = data.filter(i =>
-                i.stock_actual !== null && i.stock_minimo !== null && i.stock_actual < i.stock_minimo
+                i.stock !== null && i.stock_minimo !== null && i.stock < i.stock_minimo
             ).length;
             if (!n) return [];
             return [{

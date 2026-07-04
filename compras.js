@@ -448,6 +448,22 @@ const ComprasModule = {
             .cmp-presu-egreso.btn:hover{box-shadow:0 0 14px rgba(74,144,217,.4)}
             .cmp-presu-egreso.done{color:#00CC88;font-size:.82rem;font-family:var(--font-mono,monospace);padding:8px 0}
             .cmp-presu-egreso.pend{color:#666;font-size:.8rem;padding:8px 0}
+            .cmp-recepcion-badge{margin-bottom:16px;padding:10px 14px;border-radius:8px}
+            .cmp-recepcion-incompleta{background:rgba(242,141,21,.1);border:1px solid rgba(242,141,21,.35)}
+            .cmp-recepcion-completa{background:rgba(0,204,136,.08);border:1px solid rgba(0,204,136,.25)}
+            .cmp-recepcion-tag{font-family:var(--font-mono,monospace);font-weight:700;font-size:.8rem;text-transform:uppercase}
+            .cmp-recepcion-incompleta .cmp-recepcion-tag{color:#F28D15}
+            .cmp-recepcion-completa .cmp-recepcion-tag{color:#00CC88}
+            .cmp-recepcion-nota{font-size:.84rem;color:#ccc;margin:6px 0 0}
+            .cmp-recep-table{width:100%;border-collapse:collapse;font-size:.85rem;margin-bottom:14px}
+            .cmp-recep-table th{text-align:left;font-family:var(--font-mono,monospace);font-size:.6rem;text-transform:uppercase;letter-spacing:.5px;color:#888;padding:8px 10px;border-bottom:1px solid #2a2a2a}
+            .cmp-recep-table td{padding:8px 10px;border-bottom:1px solid #1a1a1a;vertical-align:middle}
+            .cmp-recep-table input{width:100%;padding:7px 9px;font-size:.85rem}
+            .cmp-recep-cant-pedida{color:#888;font-family:var(--font-mono,monospace);text-align:center}
+            .cmp-recep-seg{display:inline-flex;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:8px;padding:3px;gap:3px;width:100%;margin-bottom:12px}
+            .cmp-recep-seg button{flex:1;background:transparent;border:none;color:#888;font-family:var(--font-main,sans-serif);font-size:.84rem;font-weight:600;padding:9px;border-radius:6px;cursor:pointer;transition:all .2s}
+            .cmp-recep-seg button.on[data-rc="completa"]{background:rgba(0,204,136,.15);color:#00CC88}
+            .cmp-recep-seg button.on[data-rc="incompleta"]{background:rgba(242,141,21,.15);color:#F28D15}
         `;
         document.head.appendChild(s);
     },
@@ -458,6 +474,16 @@ const ComprasModule = {
 
     _esc(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
     _escAttr(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); },
+
+    // Carga this._insumos on-demand (el tab Órdenes no los precarga; solo Pedidos lo hace hoy).
+    async _ensureInsumosLoaded() {
+        if (Array.isArray(this._insumos) && this._insumos.length) return this._insumos;
+        try {
+            const { data } = await supabaseClient.from('insumos_base').select('id, nombre, unidad').eq('_deleted', false).order('nombre');
+            this._insumos = data || [];
+        } catch (e) { console.warn('[Compras] ensureInsumosLoaded:', e.message); this._insumos = this._insumos || []; }
+        return this._insumos;
+    },
 
     _formatDate(d) {
         if (!d) return '—';
@@ -1116,6 +1142,15 @@ const ComprasModule = {
                     }).join('<div class="cmp-pipeline-arrow">→</div>')}
                 </div>
 
+                ${oc.recepcion_pendiente ? `
+                <div class="cmp-recepcion-badge cmp-recepcion-incompleta">
+                    <span class="cmp-recepcion-tag">⚠️ Recepción incompleta</span>
+                    ${oc.recepcion_nota ? `<p class="cmp-recepcion-nota">${this._esc(oc.recepcion_nota)}</p>` : ''}
+                </div>` : (oc.estado === 'recibida' || oc.estado === 'pagada') && oc.recepcion_estado === 'completa' ? `
+                <div class="cmp-recepcion-badge cmp-recepcion-completa">
+                    <span class="cmp-recepcion-tag">✓ Recepción completa</span>
+                </div>` : ''}
+
                 <div class="cmp-ficha-grid">
                     <div class="cmp-ficha-field">
                         <span class="cmp-field-label">Fecha</span>
@@ -1181,6 +1216,9 @@ const ComprasModule = {
         document.getElementById('cmpAdvanceOC')?.addEventListener('click', async () => {
             const next = nextEstado[oc.estado];
             if (!next) return;
+            // pendiente→aprobada y recibida→pagada: avance directo (sin cambios).
+            // aprobada→recibida: SIEMPRE pasa por el modal de recepción (suma stock + registra movimiento).
+            if (next === 'recibida') { this._openRecepcionModal(oc); return; }
             try {
                 await supabaseClient.from('compras_ordenes').update({ estado: next }).eq('id', oc.id);
                 oc.estado = next;
@@ -1275,6 +1313,111 @@ const ComprasModule = {
         if (oc) oc.monto_total = total;
     },
 
+    // ─── Modal Recepción (aprobada → recibida: suma stock + registra movimiento) ───
+
+    async _openRecepcionModal(oc) {
+        await this._ensureInsumosLoaded();
+        const items = this._ordenItems.filter(i => String(i.orden_id) === String(oc.id));
+        if (!items.length) { Toast.warning('Esta OC no tiene items cargados — agregá al menos uno antes de recibir'); return; }
+
+        const insumoOpts = (this._insumos || []).map(i => `<option value="${this._escAttr(i.nombre || '')}" data-insumo-id="${i.id}">`).join('');
+        const rows = items.map((it, idx) => {
+            const insumoActual = it.insumo_id ? (this._insumos || []).find(i => String(i.id) === String(it.insumo_id)) : null;
+            return `
+                <tr data-recep-row="${idx}" data-item-id="${it.id}">
+                    <td>${this._esc(it.nombre)}</td>
+                    <td class="cmp-recep-cant-pedida">${it.cantidad ?? '—'}</td>
+                    <td>
+                        <input list="cmpRecepInsumos" class="cmp-recep-insumo" placeholder="Buscar insumo…" value="${this._escAttr(insumoActual?.nombre || '')}">
+                    </td>
+                    <td>
+                        <input type="number" class="cmp-recep-cant" min="0" step="any" value="${it.cantidad_recibida ?? it.cantidad ?? ''}">
+                    </td>
+                </tr>`;
+        }).join('');
+
+        Modal.open({
+            title: `Recepción — OC ${oc.numero_oc || '(sin número)'}`,
+            size: 'lg',
+            body: `
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                    <table class="cmp-recep-table">
+                        <thead><tr><th>Item</th><th>Cant. pedida</th><th>Insumo (stock)</th><th>Cant. recibida</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    <datalist id="cmpRecepInsumos">${insumoOpts}</datalist>
+
+                    <div class="cmp-recep-seg" id="cmpRecepEstadoSeg">
+                        <button type="button" class="on" data-rc="completa">✓ Recepción completa</button>
+                        <button type="button" data-rc="incompleta">⚠️ Incompleta (falta seguir)</button>
+                    </div>
+                    <div id="cmpRecepNotaWrap" style="display:none;">
+                        <label class="form-label">Nota de seguimiento</label>
+                        <textarea id="cmpRecepNota" class="form-input" rows="2" placeholder="Qué falta, cuándo se espera, etc."></textarea>
+                    </div>
+                </div>`,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn-primary" id="cmpRecepSave">Confirmar recepción</button>`,
+        });
+
+        setTimeout(() => {
+            let recepcionEstado = 'completa';
+            const insumosByName = {};
+            (this._insumos || []).forEach(i => { insumosByName[(i.nombre || '').toLowerCase()] = i; });
+
+            document.getElementById('cmpRecepEstadoSeg')?.addEventListener('click', (e) => {
+                const b = e.target.closest('button'); if (!b) return;
+                [...e.currentTarget.children].forEach(x => x.classList.toggle('on', x === b));
+                recepcionEstado = b.dataset.rc;
+                const notaWrap = document.getElementById('cmpRecepNotaWrap');
+                if (notaWrap) notaWrap.style.display = recepcionEstado === 'incompleta' ? 'block' : 'none';
+            });
+
+            document.getElementById('cmpRecepSave')?.addEventListener('click', async () => {
+                const payloadItems = [...document.querySelectorAll('[data-recep-row]')].map(row => {
+                    const insumoInput = row.querySelector('.cmp-recep-insumo');
+                    const cantInput = row.querySelector('.cmp-recep-cant');
+                    const nombreInsumo = (insumoInput?.value || '').trim();
+                    const matched = insumosByName[nombreInsumo.toLowerCase()];
+                    const itemId = row.dataset.itemId;
+                    const item = items.find(i => String(i.id) === String(itemId));
+                    return {
+                        id: itemId,
+                        insumo_id: matched ? matched.id : null,
+                        cantidad_recibida: cantInput?.value === '' ? null : Number(cantInput.value),
+                        nombre: item?.nombre || null,
+                    };
+                });
+
+                if (recepcionEstado === 'incompleta') {
+                    const nota = document.getElementById('cmpRecepNota')?.value?.trim();
+                    if (!nota) { Toast.warning('Contá qué falta para poder seguir el caso'); return; }
+                }
+
+                const saveBtn = document.getElementById('cmpRecepSave');
+                if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando…'; }
+
+                const usuario = Auth.getUser()?.name || Auth.getUser()?.id || 'sistema';
+                const result = await API.recibirOrdenCompra(oc.id, {
+                    items: payloadItems,
+                    recepcion_estado: recepcionEstado,
+                    recepcion_nota: recepcionEstado === 'incompleta' ? (document.getElementById('cmpRecepNota')?.value?.trim() || null) : null,
+                    usuario,
+                });
+
+                if (result && result.ok) {
+                    Toast.success(`Recepción registrada${result.aplicados ? ` — stock actualizado en ${result.aplicados} insumo(s)` : ''}`);
+                    Modal.close();
+                    oc.estado = 'recibida';
+                    await this._loadOrdenItems(oc.id);
+                    this._renderFichaOrden();
+                } else {
+                    Toast.error(result?.error || 'No se pudo registrar la recepción');
+                    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Confirmar recepción'; }
+                }
+            });
+        }, 50);
+    },
+
     // ─── Modal Orden ───
 
     _showOrdenModal(editId) {
@@ -1330,9 +1473,10 @@ const ComprasModule = {
                             <select id="cmpOCEstado" class="form-input form-select" style="font-size:1rem;padding:12px;">
                                 <option value="pendiente" ${(!item || item.estado === 'pendiente') ? 'selected' : ''}>Pendiente</option>
                                 <option value="aprobada" ${item?.estado === 'aprobada' ? 'selected' : ''}>Aprobada</option>
-                                <option value="recibida" ${item?.estado === 'recibida' ? 'selected' : ''}>Recibida</option>
+                                ${item?.estado === 'recibida' ? '<option value="recibida" selected>Recibida (vía recepción)</option>' : ''}
                                 <option value="pagada" ${item?.estado === 'pagada' ? 'selected' : ''}>Pagada</option>
                             </select>
+                            ${item?.estado === 'recibida' ? '<span style="display:block;margin-top:6px;font-size:.74rem;color:#888;">El estado "Recibida" se logra desde el botón de recepción — acá solo podés avanzar a Pagada.</span>' : ''}
                         </div>
                     </div>
                     <div>
@@ -1385,7 +1529,9 @@ const ComprasModule = {
 
     // ─── Modal Agregar Item a OC ───
 
-    _showAddItemModal(oc) {
+    async _showAddItemModal(oc) {
+        await this._ensureInsumosLoaded();
+        const insumoOpts = (this._insumos || []).map(i => `<option value="${this._escAttr(i.nombre || '')}">`).join('');
         Modal.open({
             title: 'Agregar Item a OC',
             size: 'small',
@@ -1394,6 +1540,11 @@ const ComprasModule = {
                     <div>
                         <label class="form-label" style="font-size:1rem;">Nombre / Descripción</label>
                         <input type="text" id="cmpItemNombre" class="form-input" placeholder="Ej: Panel blanco 100x250" style="font-size:1rem;padding:12px;">
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size:1rem;">Insumo vinculado (opcional — para sumar stock al recibir)</label>
+                        <input type="text" id="cmpItemInsumo" list="cmpItemInsumos" class="form-input" placeholder="Buscar insumo…" style="font-size:1rem;padding:12px;">
+                        <datalist id="cmpItemInsumos">${insumoOpts}</datalist>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div>
@@ -1418,6 +1569,8 @@ const ComprasModule = {
         });
 
         setTimeout(() => {
+            const insumosByName = {};
+            (this._insumos || []).forEach(i => { insumosByName[(i.nombre || '').toLowerCase()] = i; });
             document.getElementById('cmpItemSave')?.addEventListener('click', async () => {
                 const nombre = document.getElementById('cmpItemNombre')?.value?.trim();
                 if (!nombre) { Toast.warning('Ingresá el nombre del item'); return; }
@@ -1425,11 +1578,14 @@ const ComprasModule = {
                 const cantidad = parseInt(document.getElementById('cmpItemCant')?.value) || 0;
                 const precioUnit = parseFloat(document.getElementById('cmpItemPrecio')?.value) || 0;
                 const subtotal = cantidad * precioUnit;
+                const insumoNombre = (document.getElementById('cmpItemInsumo')?.value || '').trim();
+                const insumoMatch = insumoNombre ? insumosByName[insumoNombre.toLowerCase()] : null;
 
                 try {
                     await supabaseClient.from('compras_orden_items').insert({
                         orden_id: oc.id,
                         nombre,
+                        insumo_id: insumoMatch ? insumoMatch.id : null,
                         cantidad: cantidad || null,
                         precio_unitario: precioUnit || null,
                         subtotal: subtotal || null,

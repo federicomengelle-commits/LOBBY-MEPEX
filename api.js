@@ -4080,6 +4080,7 @@ const API = {
                     orden_id: row.id,
                     nombre: it.unidad ? `${it.descripcion} (${it.unidad})` : it.descripcion,
                     cantidad: (it.cantidad === '' || it.cantidad == null) ? null : Number(it.cantidad),
+                    insumo_id: it.insumo_id ?? null,   // preserva el link resuelto en el pedido → recepción suma stock
                     precio_unitario: null,
                     subtotal: null,
                     notas: null,
@@ -4197,6 +4198,79 @@ const API = {
             if (oc.pedido_id) await this.setPedidoEstado(oc.pedido_id, 'comprado');
             return { egreso_id };
         } catch (e) { console.warn('[API] generarEgresoDeOC:', e.message); return { error: e.message }; }
+    },
+
+    // Ajuste atómico de stock (RPC ajustar_stock + fallback read-modify-write).
+    // Reusa la MISMA vía que Inventario (columna real 'stock', no 'stock_actual').
+    async ajustarStock(tabla, id, delta) {
+        try {
+            const { data, error } = await supabaseClient.rpc('ajustar_stock', { p_tabla: tabla, p_id: id, p_delta: delta });
+            if (error) throw error;
+            return data;
+        } catch (e) {
+            const { data: row } = await supabaseClient.from(tabla).select('stock').eq('id', id).maybeSingle();
+            const nuevo = (Number(row?.stock) || 0) + Number(delta);
+            await supabaseClient.from(tabla).update({ stock: nuevo }).eq('id', id);
+            return nuevo;
+        }
+    },
+
+    // SEAM Compras→Stock: recibe una OC → suma stock de los insumos + registra el
+    // movimiento de inventario + marca la OC recibida (con modo completa/incompleta + nota).
+    // Idempotente por stock_aplicado (no dobla el stock si se re-marca recibida).
+    // items: [{ id, insumo_id, cantidad_recibida, nombre }]  (id = compras_orden_items.id)
+    async recibirOrdenCompra(ordenId, { items = [], recepcion_estado = 'completa', recepcion_nota = null, usuario = 'sistema' } = {}) {
+        try {
+            const { data: oc, error } = await supabaseClient.from('compras_ordenes').select('*').eq('id', ordenId).maybeSingle();
+            if (error) throw error;
+            if (!oc) return { error: 'OC no encontrada' };
+            if (oc.stock_aplicado) return { error: 'Esta OC ya fue recibida (el stock ya se aplicó)' };
+
+            const numeroOc = oc.numero_oc || ('#' + oc.id);
+            const conStock = items.filter(it => it.insumo_id && Number(it.cantidad_recibida) > 0);
+
+            // 1) Sumar stock de cada insumo (atómico)
+            for (const it of conStock) {
+                await this.ajustarStock('insumos_base', it.insumo_id, Number(it.cantidad_recibida));
+            }
+
+            // 2) Registrar el movimiento de inventario (entrada por compra) — auditable
+            if (conStock.length) {
+                try {
+                    const { data: mov } = await supabaseClient.from('inventario_movimientos').insert({
+                        tipo: 'entrada', subtipo: 'compra', usuario,
+                        notas: `OC ${numeroOc}${recepcion_estado === 'incompleta' ? ' (recepción incompleta)' : ''}`,
+                    }).select('id').single();
+                    if (mov?.id) {
+                        await supabaseClient.from('inventario_movimiento_items').insert(conStock.map(it => ({
+                            movimiento_id: mov.id, direccion: 'entrada', item_tipo: 'insumo',
+                            item_id: it.insumo_id, item_nombre: it.nombre || null, cantidad: Number(it.cantidad_recibida),
+                        })));
+                    }
+                } catch (e2) { console.warn('[API] recibirOrdenCompra movimiento:', e2.message); }
+            }
+
+            // 3) Persistir cantidad_recibida + insumo_id por ítem
+            for (const it of items) {
+                if (it.id == null) continue;
+                await supabaseClient.from('compras_orden_items').update({
+                    cantidad_recibida: (it.cantidad_recibida === '' || it.cantidad_recibida == null) ? null : Number(it.cantidad_recibida),
+                    insumo_id: it.insumo_id ?? null,
+                }).eq('id', it.id);
+            }
+
+            // 4) Marcar la OC recibida (incompleta → queda pendiente de seguimiento)
+            await supabaseClient.from('compras_ordenes').update({
+                estado: 'recibida',
+                recepcion_estado,
+                recepcion_nota: recepcion_nota || null,
+                recepcion_pendiente: recepcion_estado === 'incompleta',
+                stock_aplicado: true,
+                recibida_at: new Date().toISOString(),
+            }).eq('id', ordenId);
+
+            return { ok: true, aplicados: conStock.length };
+        } catch (e) { console.warn('[API] recibirOrdenCompra:', e.message); return { error: e.message }; }
     },
 
     // ═════════════════════════════════════════════════════════════
