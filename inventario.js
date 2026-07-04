@@ -49,7 +49,7 @@ const InventarioModule = {
     _piezasSearch: '',
     _piezasRubroFilter: null,
     _piezasCategoriaFilter: null,
-    _piezasRubroOptions: ['Equipamiento', 'Iluminación', 'Infraestructura', 'Más servicios', 'Pisos'],
+    _piezasRubroOptions: ['Equipamiento', 'Iluminación', 'Infraestructura', 'Pisos'],
 
     // Materiales state
     _materiales: [],
@@ -58,7 +58,7 @@ const InventarioModule = {
     _materialesSortDir: 'asc',
     _materialesSearch: '',
     _materialesClasFilter: null,
-    _materialesClasOptions: ['Materiales', 'Insumo', 'Consumibles', 'Sub alquiler'],
+    _materialesClasOptions: ['Materiales', 'Insumo', 'Consumibles', 'Logística'],
 
     // Equipos state
     _equipos: [],
@@ -1013,7 +1013,7 @@ const InventarioModule = {
     async _loadPiezas() {
         try {
             const items = await API.getCatalogoItems();
-            this._piezas = (items || []).filter(i => i.stock !== undefined);
+            this._piezas = this._soloPiezasFisicas(items);
         } catch (e) {
             console.warn('[Inventario] Error loading piezas:', e.message);
             this._piezas = [];
@@ -1207,7 +1207,7 @@ const InventarioModule = {
     async _loadMateriales() {
         try {
             const items = await API.getInsumos();
-            this._materiales = items || [];
+            this._materiales = this._soloMaterialesReales(items);
         } catch (e) {
             console.warn('[Inventario] Error loading materiales:', e.message);
             this._materiales = [];
@@ -2652,10 +2652,10 @@ const InventarioModule = {
 
     async _ensureItemsCached() {
         if (this._allPiezas.length === 0) {
-            try { this._allPiezas = (await API.getCatalogoItems()) || []; } catch(e) { this._allPiezas = []; }
+            try { this._allPiezas = this._soloPiezasFisicas(await API.getCatalogoItems()); } catch(e) { this._allPiezas = []; }
         }
         if (this._allMateriales.length === 0) {
-            try { this._allMateriales = (await API.getInsumos()) || []; } catch(e) { this._allMateriales = []; }
+            try { this._allMateriales = this._soloMaterialesReales(await API.getInsumos()); } catch(e) { this._allMateriales = []; }
         }
     },
 
@@ -3916,5 +3916,18 @@ const InventarioModule = {
                 </div>
                 <div class="inv-dash-stat-value" style="color:${color}" id="${id}">—</div>
             </div>`;
+    },
+
+    // ─── Discriminación del stock (decisión Fede 2026-07-04b) ───
+    // El padrón inicial mezcla cosas que NO son stock físico. Regla única:
+    //  · Piezas = catalogo_items FÍSICAS propias → excluye subalquiladas (se gestionan
+    //    en Costos) y servicios (rubro 'Más servicios').
+    //  · Materiales = insumos_base reales → excluye el subalquiler (~mitad del padrón).
+    // Se aplica en las tablas, el dashboard, el picker de movimientos y el conteo físico.
+    _soloPiezasFisicas(items) {
+        return (items || []).filter(i => i.tipoReceta === 'propio' && i.rubro !== 'Más servicios');
+    },
+    _soloMaterialesReales(items) {
+        return (items || []).filter(i => i.clasificacion !== 'Sub alquiler');
     },
 };
