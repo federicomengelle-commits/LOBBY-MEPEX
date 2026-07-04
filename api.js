@@ -4269,6 +4269,19 @@ const API = {
                 recibida_at: new Date().toISOString(),
             }).eq('id', ordenId);
 
+            // 5) Aviso a admin si la recepción quedó incompleta (queda pendiente de seguimiento)
+            if (recepcion_estado === 'incompleta') {
+                await this.createNotification({
+                    tipo: 'oc_recepcion_incompleta',
+                    titulo: 'Recepción de compra incompleta',
+                    mensaje: `OC ${numeroOc} se recibió parcial${recepcion_nota ? ` — ${recepcion_nota}` : ''}. Falta seguimiento.`,
+                    target_role: 'admin',
+                    entidad_tipo: 'orden_compra',   // entidad_id se omite: compras_ordenes.id es bigint y notifications.entidad_id es uuid
+                    link: '#compras?tab=ordenes',
+                    prioridad: 'normal',
+                });
+            }
+
             return { ok: true, aplicados: conStock.length };
         } catch (e) { console.warn('[API] recibirOrdenCompra:', e.message); return { error: e.message }; }
     },

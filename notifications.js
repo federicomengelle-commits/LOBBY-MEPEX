@@ -33,6 +33,9 @@ const Notifications = {
         { key: 'taller', label: 'Taller y producción', icon: '🔧',
           desc: 'Novedades de obra, stands listos, pase a taller',
           tipos: ['novedad_para_taller', 'proyecto_listo', 'proyecto_en_taller'] },
+        { key: 'compras', label: 'Compras y recepción', icon: '🛒',
+          desc: 'Pedidos de compra, órdenes recibidas incompletas',
+          tipos: ['pedido_compra', 'oc_recepcion_incompleta'] },
     ],
 
     // ─── Lifecycle ────────────────────────────
