@@ -88,9 +88,14 @@ peinar (mail/WhatsApp/cotizaciones/facturas) → rescatar → **dedup** contra l
 **enriquecer** (rubro/eventos/canal) → **segmentar** → **mailing** (subdominio dedicado + SPF/DKIM, Brevo/listmonk) →
 **atacar por evento** → el CRM enriquece la base con el uso. **Arranca MANUAL ya** (export Google Contacts +
 WhatsApp + barrer facturas/cotizaciones); la peinada **automática** espera Gmail E2 (bloqueado por iPlan).
-**Primer código del lobby:** importador de contactos CSV (patrón `importar-cotizacion`) + campos en `clientes`
-(`origen`/`estado` lead-cliente/`opt_out`/`email_valido`/`eventos_participados`) + vista "salud de la base"
-(extiende los KPIs de Clientes ya puestos) + 🐞 arreglar `_projectCount` (columna Proyectos hoy en 0 para los 265).
+**Primer código del lobby:** ~~importador de contactos CSV + campos en `clientes`~~ **✅ HECHO 2026-07-05**
+(`a6819a9`, `importar-contactos.js?v=1`/`api.js?v=78`/`crm.js?v=31`, ⛔ SQL `sql/clientes_base_campos.sql`):
+importador CSV (parser tolerante Google Contacts/WhatsApp + dedup email→CUIT→tel→nombre + crea nuevos /
+completa existentes sin pisar) desde CRM→Clientes; campos `origen`/`estado_comercial`/`opt_out`/`email_valido`/
+`tel_valido`/`eventos_participados`/`fecha_primer_contacto`. + `_projectCount` ya arreglado (2026-07-05).
+**Falta (siguientes bloques):** vista "salud de la base" (extiende los KPIs de Clientes: leads/clientes,
+opt-out, válidos, por rubro) + segmentador/export para el mailing + auto-enriquecimiento (facturar/cotizar → ficha).
+⏳ Fede: correr el SQL + pull + probar con un export real de Google Contacts.
 
 ## 🎯 Orden recomendado (actualizado 2026-07-02)
 **CSV 3ds Max (2026-07-03) → ronda de testeo (semana del lunes 2026-07-13) → triage → OCTEXA Pilar 2 en paralelo.**
