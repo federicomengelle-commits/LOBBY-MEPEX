@@ -1223,6 +1223,21 @@ const CostosModule = {
     //  TAB: INSUMOS
     // ═══════════════════════════════════════════
 
+    // KPIs de cabecera por tab (Insumos / Recetas) — consistente con Listas.
+    // Strip propio (no depende de CSS externo), inyectado 1 vez.
+    _ensureTabKpiStyles() {
+        if (document.getElementById('costos-tab-kpi-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'costos-tab-kpi-styles';
+        s.textContent = `
+            .costos-tab-kpis{display:flex;gap:24px;padding:4px 2px 12px;margin-bottom:12px;border-bottom:1px solid var(--border,#2a2a2a);flex-wrap:wrap;}
+            .costos-tab-kpi{display:flex;flex-direction:column;gap:2px;line-height:1;}
+            .costos-tab-kpi .n{font-family:var(--font-mono,monospace);font-size:1.4rem;font-weight:700;}
+            .costos-tab-kpi .l{font-family:var(--font-mono,monospace);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted,#888);}
+        `;
+        document.head.appendChild(s);
+    },
+
     _renderInsumosFilters() {
         const filtersEl = document.getElementById('costosFilters');
         if (!filtersEl) return;
@@ -1235,7 +1250,17 @@ const CostosModule = {
             : [...new Set(this._insumos.map(i => i.proveedor).filter(Boolean))].sort();
         const tipoAmortOpts = this._tiposAmortizacion.map(t => t.codigo);
 
+        this._ensureTabKpiStyles();
+        const kpiTotal = this._insumos.length;
+        const kpiSinCosto = this._insumos.filter(i => !i.costoUnitario || Number(i.costoUnitario) === 0).length;
+        const kpiSinAmort = this._insumos.filter(i => !i.tipoAmortizacion).length;
+
         filtersEl.innerHTML = `
+            <div class="costos-tab-kpis">
+                <div class="costos-tab-kpi"><span class="n" style="color:#00A9C1">${kpiTotal}</span><span class="l">insumos</span></div>
+                <div class="costos-tab-kpi"><span class="n" style="color:${kpiSinCosto ? '#ff4444' : '#00CC88'}">${kpiSinCosto}</span><span class="l">sin costo</span></div>
+                <div class="costos-tab-kpi"><span class="n" style="color:${kpiSinAmort ? '#F28D15' : '#00CC88'}">${kpiSinAmort}</span><span class="l">sin amortización</span></div>
+            </div>
             <div class="costos-filter-bar">
                 ${this._renderMultiFilter('clasificacion', 'Clasificación', this._clasificacionOpts, this._filterClasificacion)}
                 ${this._renderMultiFilter('categoria', 'Categoría', this._categoriaOpts, this._filterCategoria)}
@@ -1918,7 +1943,17 @@ const CostosModule = {
         const rubroOpts = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
         const est = this._filterRecetaEstado;
 
+        this._ensureTabKpiStyles();
+        const kpiTotal = this._catalogoItems.length;
+        const kpiCotizables = this._catalogoItems.filter(i => i.esCotizable === true).length;
+        const kpiIncompletas = this._catalogoItems.filter(i => this._getRecetaStatus(i.id).status === 'incompleta').length;
+
         filtersEl.innerHTML = `
+            <div class="costos-tab-kpis">
+                <div class="costos-tab-kpi"><span class="n" style="color:#00A9C1">${kpiTotal}</span><span class="l">recetas</span></div>
+                <div class="costos-tab-kpi"><span class="n" style="color:#00CC88">${kpiCotizables}</span><span class="l">cotizables</span></div>
+                <div class="costos-tab-kpi"><span class="n" style="color:${kpiIncompletas ? '#F28D15' : '#00CC88'}">${kpiIncompletas}</span><span class="l">incompletas</span></div>
+            </div>
             <div class="costos-filter-bar">
                 ${this._renderMultiFilter('rubro', 'Rubro', rubroOpts, this._filterRubro || [])}
                 <div class="costos-estado-chips">
