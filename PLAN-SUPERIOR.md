@@ -93,9 +93,14 @@ WhatsApp + barrer facturas/cotizaciones); la peinada **automática** espera Gmai
 importador CSV (parser tolerante Google Contacts/WhatsApp + dedup email→CUIT→tel→nombre + crea nuevos /
 completa existentes sin pisar) desde CRM→Clientes; campos `origen`/`estado_comercial`/`opt_out`/`email_valido`/
 `tel_valido`/`eventos_participados`/`fecha_primer_contacto`. + `_projectCount` ya arreglado (2026-07-05).
-**Falta (siguientes bloques):** vista "salud de la base" (extiende los KPIs de Clientes: leads/clientes,
-opt-out, válidos, por rubro) + segmentador/export para el mailing + auto-enriquecimiento (facturar/cotizar → ficha).
-⏳ Fede: correr el SQL + pull + probar con un export real de Google Contacts.
+**+ ✅ Vista "salud de la base" HECHA 2026-07-05** (`9280c59`, `crm.js?v=32`): fila de KPIs en CRM→Clientes
+(Contactables · Con CUIT · Leads · Opt-out); Contactables/CUIT informan ya, Leads/Opt-out se activan al importar.
+**⏸ PENDIENTE — ESPERA ARCHIVOS/INFO DE FEDE** (dicho 2026-07-05: "no tengo nada para darte ahora; cuando tenga
+todos los archivos y la info, le metemos lo que corresponde"). Cuando Fede junte el material (export de Google
+Contacts/WhatsApp, facturas/CUIT, listas de feria) → **probar el importador con data real** + encarar los bloques
+que **necesitan esa data + decisiones**: **segmentador/export** para el mailing (definir ejes + destino Brevo/listmonk)
+· **auto-enriquecimiento** (facturar/cotizar/asignar-evento → completa la ficha) · **validación** email/tel (Fase 2).
+⏳ Fede: correr `sql/clientes_base_campos.sql` + pull (importar-contactos v1 · api v78 · crm v32).
 
 ## 🎯 Orden recomendado (actualizado 2026-07-02)
 **CSV 3ds Max (2026-07-03) → ronda de testeo (semana del lunes 2026-07-13) → triage → OCTEXA Pilar 2 en paralelo.**
