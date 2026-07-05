@@ -322,11 +322,10 @@ const CRM = {
             this._lecturas = (API.getCasoLecturas ? await API.getCasoLecturas() : {}) || {};
             this._snoozes = (API.getCasoSnoozes ? await API.getCasoSnoozes() : {}) || {};
 
-            // Build project count per client
+            // Build project count per client — match por clientId (FK real), no por nombre.
+            // (Bug: getProjects devuelve `clientId`, no `clientName` → daba 0 para TODOS.)
             this._clients.forEach(c => {
-                c._projectCount = this._projects.filter(p =>
-                    p.clientName && c.name && p.clientName.toLowerCase() === c.name.toLowerCase()
-                ).length;
+                c._projectCount = this._projects.filter(p => p.clientId && String(p.clientId) === String(c.id)).length;
             });
 
             // Update counts
