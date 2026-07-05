@@ -3193,6 +3193,30 @@ const InventarioModule = {
             } catch (e) { /* Compras es opcional en el dashboard */ }
         }
 
+        // Última sesión de inventario físico — señal de confianza del stock (banda de arriba).
+        let ultSesion = null;
+        try {
+            const { data } = await supabaseClient
+                .from('inventario_fisico_sesiones')
+                .select('id, fecha, estado, created_at, inventario_fisico_conteo(diferencia)')
+                .eq('_deleted', false)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            ultSesion = (data && data[0]) || null;
+        } catch (e) { ultSesion = null; }
+
+        // Movimientos recientes (últimos 5) — llena el "flaco" con actividad real.
+        let movs = [];
+        try {
+            const { data } = await supabaseClient
+                .from('inventario_movimientos')
+                .select('tipo, subtipo, usuario, created_at, inventario_movimiento_items(item_nombre, cantidad, direccion)')
+                .eq('_deleted', false)
+                .order('created_at', { ascending: false })
+                .limit(5);
+            movs = data || [];
+        } catch (e) { movs = []; }
+
         const atencion = [
             ...bajoMin.map(m => ({ ...m, _tipo: 'material' })),
             ...equiposCaidos.map(e => ({ ...e, _tipo: 'equipo' })),
@@ -3203,8 +3227,12 @@ const InventarioModule = {
             ordenesPorRecibir ? `<b>${ordenesPorRecibir}</b> ${ordenesPorRecibir === 1 ? 'orden' : 'órdenes'} por recibir` : '',
         ].filter(Boolean).join(' · ');
 
+        const bandHTML = this._dashBandHTML(ultSesion);
+        const movsHTML = this._dashMovsHTML(movs);
+
         // KPIs clickeables → cada uno lleva a su tab (launchpad del galpón).
         container.innerHTML = `
+            ${bandHTML}
             <div class="invd-kpis">
                 <div class="invd-kpi" data-goto="piezas">
                     <div class="invd-kpi-top"><span class="invd-kpi-label">Piezas</span><span class="invd-kpi-icon">🧩</span></div>
@@ -3228,6 +3256,7 @@ const InventarioModule = {
                 </div>
             </div>
 
+            <div class="invd-cols">
             <div class="invd-sec">
                 <h3 class="invd-sec-title">Necesita atención${atencion.length ? ` <span class="invd-count">${atencion.length}</span>` : ''}</h3>
                 ${atencion.length ? `
@@ -3249,6 +3278,11 @@ const InventarioModule = {
                     ${atencion.length > 12 ? `<div class="invd-more">y ${atencion.length - 12} más…</div>` : ''}
                 ` : `<div class="invd-ok">✓ Todo el stock está en niveles normales y los equipos operativos.</div>`}
             </div>
+            <div class="invd-sec">
+                <h3 class="invd-sec-title">Movimientos recientes</h3>
+                ${movsHTML}
+            </div>
+            </div>
 
             ${canCompras && bridgeTxt ? `
             <div class="invd-bridge" id="invDashCompras">
@@ -3263,6 +3297,60 @@ const InventarioModule = {
             el.addEventListener('click', () => this._goTab(el.dataset.goto)));
         const bridge = document.getElementById('invDashCompras');
         if (bridge) bridge.addEventListener('click', () => Router.navigate('compras'));
+    },
+
+    _dashRelTime(iso) {
+        if (!iso) return '';
+        const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+        if (dias <= 0) return 'hoy';
+        if (dias === 1) return 'ayer';
+        if (dias < 30) return `hace ${dias}d`;
+        return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    },
+
+    _dashBandHTML(sesion) {
+        if (!sesion) {
+            return `<div class="invd-band invd-band-empty" data-goto="fisico">
+                <div><div class="invd-band-k">Confianza del stock</div>
+                <div class="invd-band-v">Nunca hiciste un conteo físico — validá los números con uno.</div></div>
+                <span class="invd-band-go">Nuevo conteo →</span>
+            </div>`;
+        }
+        const base = sesion.fecha ? new Date(sesion.fecha + 'T12:00:00') : (sesion.created_at ? new Date(sesion.created_at) : null);
+        const fStr = base ? base.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+        const hace = this._dashRelTime(sesion.created_at);
+        const conteos = sesion.inventario_fisico_conteo || [];
+        const difs = conteos.filter(c => c.diferencia != null && c.diferencia !== 0).length;
+        const cerrada = sesion.estado === 'cerrada';
+        const estadoTxt = cerrada
+            ? `<span style="color:${difs ? '#F28D15' : '#00CC88'}">${difs} diferencia${difs !== 1 ? 's' : ''} ajustada${difs !== 1 ? 's' : ''}</span>`
+            : `<span style="color:#F28D15">en curso</span>`;
+        return `<div class="invd-band" data-goto="fisico">
+            <div>
+                <div class="invd-band-k">Confianza del stock${hace ? ` · <span style="color:#555">${hace}</span>` : ''}</div>
+                <div class="invd-band-v">Último conteo: <b>${fStr}</b> · ${estadoTxt}</div>
+            </div>
+            <span class="invd-band-go">${cerrada ? 'Nuevo conteo' : 'Seguir contando'} →</span>
+        </div>`;
+    },
+
+    _dashMovsHTML(movs) {
+        if (!movs || movs.length === 0) return `<div class="invd-ok">Sin movimientos recientes.</div>`;
+        return movs.map(m => {
+            const items = m.inventario_movimiento_items || [];
+            const first = items[0];
+            const nombre = first ? first.item_nombre : (m.subtipo || m.tipo || 'Movimiento');
+            const extra = items.length > 1 ? ` <span style="color:#555">+${items.length - 1}</span>` : '';
+            const dir = first ? first.direccion : null;
+            const ic = m.tipo === 'ajuste' ? '⇄' : (dir === 'entrada' ? '📥' : '📤');
+            const color = m.tipo === 'ajuste' ? '#9B7DFF' : (dir === 'entrada' ? '#00CC88' : '#F28D15');
+            const qty = first ? `${dir === 'entrada' ? '+' : '−'}${Math.abs(Number(first.cantidad) || 0)}` : '';
+            return `<div class="invd-mov">
+                <span class="invd-mov-ic" style="color:${color}">${ic}</span>
+                <span class="invd-mov-name">${escHtml(nombre)}${extra}${qty ? ` <span class="invd-mov-qty">${qty}</span>` : ''}</span>
+                <span class="invd-mov-when">${this._dashRelTime(m.created_at)}</span>
+            </div>`;
+        }).join('');
     },
 
     _ensureDashStyles() {
@@ -3297,6 +3385,21 @@ const InventarioModule = {
             .invd-bridge-txt{font-size:0.82rem;flex:1;color:var(--text-muted,#bbb)}
             .invd-bridge-txt b{color:var(--primary,#00A9C1);font-family:var(--font-mono)}
             .invd-bridge-go{font-family:var(--font-mono);font-size:0.72rem;color:var(--primary,#00A9C1);white-space:nowrap}
+            .invd-band{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(0,169,193,0.05);border:1px solid rgba(0,169,193,0.2);border-left:3px solid var(--primary,#00A9C1);border-radius:8px;padding:12px 15px;margin-bottom:16px;cursor:pointer;transition:background .2s}
+            .invd-band:hover{background:rgba(0,169,193,0.1)}
+            .invd-band-empty{border-left-color:#555;background:rgba(255,255,255,0.02);border-color:var(--border,#2a2a2a)}
+            .invd-band-k{font-family:var(--font-mono);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--primary,#00A9C1);margin-bottom:3px}
+            .invd-band-empty .invd-band-k{color:#888}
+            .invd-band-v{font-size:0.9rem;color:var(--text-primary,#E8E8E8)}
+            .invd-band-v b{font-family:var(--font-mono)}
+            .invd-band-go{font-family:var(--font-mono);font-size:0.72rem;color:var(--primary,#00A9C1);white-space:nowrap}
+            .invd-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+            @media(max-width:760px){.invd-cols{grid-template-columns:1fr}}
+            .invd-mov{display:flex;gap:10px;align-items:center;background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:7px;padding:8px 11px;font-size:0.82rem;margin-bottom:6px}
+            .invd-mov-ic{font-size:0.95rem}
+            .invd-mov-name{flex:1;color:var(--text-primary,#E8E8E8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .invd-mov-qty{font-family:var(--font-mono);color:var(--text-muted,#888);font-size:0.75rem}
+            .invd-mov-when{font-family:var(--font-mono);font-size:0.68rem;color:var(--text-dim,#555);white-space:nowrap}
         `;
         document.head.appendChild(s);
     },
