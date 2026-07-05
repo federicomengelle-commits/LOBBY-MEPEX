@@ -584,8 +584,17 @@ const CRM = {
     },
 
     _renderClientesTable() {
+        // Cabecera de KPIs (sobre todos los clientes) — reusa la card de casos.
+        const _cliAct = this._clients.filter(c => (c.estado || 'activo') === 'activo').length;
+        const _cliProy = this._clients.filter(c => (c._projectCount || 0) > 0).length;
+        const kpisHtml = `<div style="display:flex;gap:12px;margin-bottom:14px">
+            <div style="flex:1">${this._kpiCard('Clientes', this._clients.length, '#00A9C1')}</div>
+            <div style="flex:1">${this._kpiCard('Activos', _cliAct, '#00CC88')}</div>
+            <div style="flex:1">${this._kpiCard('Con proyectos', _cliProy, '#9B7DFF')}</div>
+        </div>`;
+
         if (this._filteredClients.length === 0) {
-            return `
+            return kpisHtml + `
                 <div class="crm-empty">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     <p>${this._searchQuery || this._tipoFilter || this._rubroFilter || this._estadoFilter ? 'No se encontraron clientes con esos filtros.' : 'No hay clientes registrados.'}</p>
@@ -610,7 +619,7 @@ const CRM = {
 
         const rowsHtml = this._filteredClients.map(c => this._renderClientRow(c)).join('');
 
-        return `
+        return kpisHtml + `
             <div class="crm-table-wrap">
                 <table class="crm-table table-stack-mobile">
                     <thead><tr>${thHtml}</tr></thead>
