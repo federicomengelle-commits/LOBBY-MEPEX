@@ -76,6 +76,17 @@ PDF comercial lindo → si pican, upsell a personalizado. **Simple, un loop, un 
 Plan completo y ejecutable en **`docs/PLAN-MARKETING.md`**. Desbloquea valor sobre lo YA construido —
 no requiere código nuevo, sí diseñar la oferta (prediseñados + precios) y correr el loop.
 
+**+ Base de clientes = el combustible (nuevo, 2026-07-05).** La máquina necesita una base **limpia,
+enriquecida y segmentada**. Radiografía real (verificada en prod): **265 clientes, solo ~40 con teléfono /
+34 con email** (~15% contactables) — es el cuello. **Protocolo completo en `docs/PLAN-BASE-CLIENTES.md`:**
+peinar (mail/WhatsApp/cotizaciones/facturas) → rescatar → **dedup** contra la base → **validar/limpiar** →
+**enriquecer** (rubro/eventos/canal) → **segmentar** → **mailing** (subdominio dedicado + SPF/DKIM, Brevo/listmonk) →
+**atacar por evento** → el CRM enriquece la base con el uso. **Arranca MANUAL ya** (export Google Contacts +
+WhatsApp + barrer facturas/cotizaciones); la peinada **automática** espera Gmail E2 (bloqueado por iPlan).
+**Primer código del lobby:** importador de contactos CSV (patrón `importar-cotizacion`) + campos en `clientes`
+(`origen`/`estado` lead-cliente/`opt_out`/`email_valido`/`eventos_participados`) + vista "salud de la base"
+(extiende los KPIs de Clientes ya puestos) + 🐞 arreglar `_projectCount` (columna Proyectos hoy en 0 para los 265).
+
 ## 🎯 Orden recomendado (actualizado 2026-07-02)
 **CSV 3ds Max (2026-07-03) → ronda de testeo (semana del lunes 2026-07-13) → triage → OCTEXA Pilar 2 en paralelo.**
 Los cierres de seguridad/VPS ya quedaron hechos (key La PyME revocada + VPS limpio + pre-largue verde). Lo próximo es el CSV: los PMs exportan un par de artículos, se fija el formato y se cierra el importador 3ds Max. La ronda se larga la semana del 13/07 y valida de un saque los ~15 features de junio + dice dónde pulir con criterio real. ARCA quedó como verificación oportunista (sin apuro, Fede confía que anda). OCTEXA Pilar 2 arranca cuando Fede pase la ruta del archivo histórico. Gmail/WhatsApp en la heladera hasta que se destraben solos.
