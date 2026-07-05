@@ -195,6 +195,12 @@ const LocacionesModule = {
             .loc-op-doc-dot.loc-vencido { background: #ff4444; }
             .loc-op-doc-dot.loc-proximo { background: #F28D15; }
             .loc-op-doc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .loc-kpis { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+            .loc-kpi { flex: 1; min-width: 150px; background: var(--bg-card,#111); border: 1px solid var(--border,#2a2a2a); border-radius: 8px; padding: 11px 14px; }
+            .loc-kpi-top { display: flex; justify-content: space-between; align-items: center; }
+            .loc-kpi-label { font-family: var(--font-mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted,#888); }
+            .loc-kpi-icon { font-size: 1.05rem; }
+            .loc-kpi-value { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; margin-top: 2px; }
         `;
         const style = document.createElement('style');
         style.id = 'loc-fase-e-styles';
@@ -872,7 +878,20 @@ const LocacionesModule = {
         if (this._selectedDocLocacionId) filtered = filtered.filter(d => String(d.locacion_id) === String(this._selectedDocLocacionId));
         if (this._filterTipoDoc) filtered = filtered.filter(d => d.tipo_doc === this._filterTipoDoc);
 
+        // Cabecera de vencimientos (sobre lo que se está viendo)
+        let vencidos = 0, proximos = 0;
+        filtered.forEach(d => {
+            const v = this._getVencimientoInfo(d.fecha_vencimiento);
+            if (v.class === 'loc-vencido') vencidos++;
+            else if (v.class === 'loc-proximo') proximos++;
+        });
+
         cc.innerHTML = `
+            <div class="loc-kpis">
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Documentos</span><span class="loc-kpi-icon">📄</span></div><div class="loc-kpi-value" style="color:#00A9C1">${filtered.length}</div></div>
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Vencidos</span><span class="loc-kpi-icon">⛔</span></div><div class="loc-kpi-value" style="color:${vencidos ? '#ff4444' : '#00CC88'}">${vencidos}</div></div>
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Por vencer 30d</span><span class="loc-kpi-icon">⚠️</span></div><div class="loc-kpi-value" style="color:${proximos ? '#F28D15' : '#00CC88'}">${proximos}</div></div>
+            </div>
             <div class="loc-toolbar">
                 <h3 class="loc-toolbar-title">Documentación por Locación</h3>
                 <button class="loc-btn-add" id="locAddDoc">+ Nuevo Documento</button>

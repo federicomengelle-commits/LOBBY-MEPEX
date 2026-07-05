@@ -137,13 +137,17 @@ const FlotaModule = {
         });
         document.getElementById('flotaNuevo')?.addEventListener('click', () => this._openVehiculoModal(null));
         document.getElementById('flotaAjeno')?.addEventListener('click', () => this._openAjenoRapidoModal());
+        this._attachSalidasEvents();
+        this._attachVencEvents();
+        this._attachTableEvents();
+    },
+
+    _attachSalidasEvents() {
         document.getElementById('flotaSalidasToggle')?.addEventListener('click', () => {
             this._salidasOpen = !this._salidasOpen;
             const sec = document.getElementById('flotaSalidas');
-            if (sec) { sec.innerHTML = this._renderSalidasInner(); }
+            if (sec) { sec.innerHTML = this._renderSalidasInner(); this._attachSalidasEvents(); }
         });
-        this._attachVencEvents();
-        this._attachTableEvents();
     },
 
     // es_propio efectivo: usa la columna si está; fallback a propietario.
