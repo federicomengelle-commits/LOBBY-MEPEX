@@ -458,7 +458,20 @@ const LocacionesModule = {
         // Warning: locaciones con tipo NO clasificable (taller/deposito/oficina).
         const sinTipo = this._lugares.filter(l => !this._tiposClasificables.includes(l.tipo));
 
+        // Cabecera: total, activos, contratos de alquiler por vencer
+        const activos = filtered.filter(l => (l.estado || 'activo') === 'activo').length;
+        let contratosVenc = 0;
+        filtered.forEach(l => {
+            const v = this._getVencimientoInfo(l.contrato_vence);
+            if (v.class === 'loc-vencido' || v.class === 'loc-proximo') contratosVenc++;
+        });
+
         cc.innerHTML = `
+            <div class="loc-kpis">
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Lugares</span><span class="loc-kpi-icon">🏢</span></div><div class="loc-kpi-value" style="color:#00A9C1">${filtered.length}</div></div>
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Activos</span><span class="loc-kpi-icon">🟢</span></div><div class="loc-kpi-value" style="color:#00CC88">${activos}</div></div>
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Contratos por vencer</span><span class="loc-kpi-icon">⚠️</span></div><div class="loc-kpi-value" style="color:${contratosVenc ? '#F28D15' : '#00CC88'}">${contratosVenc}</div></div>
+            </div>
             <div class="loc-toolbar">
                 <h3 class="loc-toolbar-title">Lugares</h3>
                 <button class="loc-btn-add" id="locAddLugar">+ Nuevo Lugar</button>
@@ -1134,7 +1147,16 @@ const LocacionesModule = {
             return { ...s, insumo_nombre: insumo?.nombre || '(ID: ' + s.insumo_id + ')', insumo_cat: insumo?.categoria || '—' };
         });
 
+        // Cabecera: ítems, disponibles, en reparación
+        const stDisp = filtered.filter(s => (s.estado || 'disponible') === 'disponible').length;
+        const stRep = filtered.filter(s => s.estado === 'en_reparacion').length;
+
         cc.innerHTML = `
+            <div class="loc-kpis">
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Ítems</span><span class="loc-kpi-icon">📦</span></div><div class="loc-kpi-value" style="color:#00A9C1">${filtered.length}</div></div>
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">Disponibles</span><span class="loc-kpi-icon">🟢</span></div><div class="loc-kpi-value" style="color:#00CC88">${stDisp}</div></div>
+                <div class="loc-kpi"><div class="loc-kpi-top"><span class="loc-kpi-label">En reparación</span><span class="loc-kpi-icon">🛠️</span></div><div class="loc-kpi-value" style="color:${stRep ? '#ff4444' : '#00CC88'}">${stRep}</div></div>
+            </div>
             <div class="loc-toolbar">
                 <h3 class="loc-toolbar-title">Stock por Locación</h3>
             </div>
