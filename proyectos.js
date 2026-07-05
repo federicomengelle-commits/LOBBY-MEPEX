@@ -732,8 +732,33 @@ const ProyectosModule = {
 
     // ─── TABLE VIEW ───
 
+    // KPIs de cabecera del pipeline (solo vista tabla / oficina; NO el galpón).
+    _ensurePjKpiStyles() {
+        if (document.getElementById('pj-kpi-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'pj-kpi-styles';
+        s.textContent = `
+            .pj-kpis{display:flex;gap:24px;padding:2px 2px 14px;margin-bottom:14px;border-bottom:1px solid var(--border,#2a2a2a);flex-wrap:wrap;}
+            .pj-kpi{display:flex;flex-direction:column;gap:2px;line-height:1;}
+            .pj-kpi .n{font-family:var(--font-mono,monospace);font-size:1.4rem;font-weight:700;}
+            .pj-kpi .l{font-family:var(--font-mono,monospace);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted,#888);}
+        `;
+        document.head.appendChild(s);
+    },
+
     _renderTableView() {
         const projects = this._filteredProjects;
+
+        this._ensurePjKpiStyles();
+        const _all = this._projects || [];
+        const _cnt = st => _all.filter(p => (p.estado || '') === st).length;
+        const kpis = `
+            <div class="pj-kpis">
+                <div class="pj-kpi"><span class="n" style="color:#E8E8E8">${_all.length}</span><span class="l">proyectos</span></div>
+                <div class="pj-kpi"><span class="n" style="color:#F28D15">${_cnt('por_iniciar')}</span><span class="l">por iniciar</span></div>
+                <div class="pj-kpi"><span class="n" style="color:#00A9C1">${_cnt('en_proceso')}</span><span class="l">en proceso</span></div>
+                <div class="pj-kpi"><span class="n" style="color:#9B7DFF">${_cnt('en_taller')}</span><span class="l">en taller</span></div>
+            </div>`;
 
         const columns = [
             { id: 'nombre',        label: 'Proyecto',     sortable: true  },
@@ -755,7 +780,7 @@ const ProyectosModule = {
 
         if (projects.length === 0) {
             const filtered = this._searchQuery || this._statusFilter || this._eventFilter || this._responsibleFilter || this._typeFilter;
-            return `
+            return kpis + `
                 <div class="pj-empty">
                     <div class="pj-empty-icon">🏗️</div>
                     <p>No hay proyectos${filtered ? ' con estos filtros' : ''}</p>
@@ -763,7 +788,7 @@ const ProyectosModule = {
             `;
         }
 
-        return `
+        return kpis + `
             <div class="pj-table-wrapper">
                 <table class="pj-table">
                     <thead>
