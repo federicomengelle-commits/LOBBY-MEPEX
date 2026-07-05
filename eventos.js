@@ -2028,11 +2028,12 @@ const EventosModule = {
     async _openTransporteModal(eventoId, transId) {
         const ev = this._events.find(e => e.id === eventoId);
         // Cargar en paralelo flota propia, equipos operativos, proyectos del evento.
-        const [vehiculos, equipos, proyectos, existing] = await Promise.all([
+        const [vehiculos, equipos, proyectos, existing, choferes] = await Promise.all([
             API.getVehiculos({ soloActivos: true }),
             API.getEquipos(),
             this._loadProyectosVinculados(eventoId),
             transId ? API.getTransporteById(transId) : Promise.resolve(null),
+            API.getChoferes().catch(() => []),
         ]);
         const equiposOp = (equipos || []).filter(e => e.estado === 'operativo' || e.estado == null);
 
@@ -2059,6 +2060,11 @@ const EventosModule = {
 
         const isAdhoc = !!existing && !existing.vehiculo_id && !!existing.vehiculo_adhoc_descripcion;
 
+        const choferOpts = (choferes || []).map(p => {
+            const nom = `${p.nombre || ''} ${p.apellido || ''}`.trim();
+            return `<option value="${this._escAttr(p.id)}" data-nombre="${this._escAttr(nom)}" data-tel="${this._escAttr(p.telefono || '')}" ${existing?.chofer_persona_id === p.id ? 'selected' : ''}>${this._escAttr(nom)}</option>`;
+        }).join('');
+
         const body = `
             <div class="ev-trans-form">
                 <div>
@@ -2080,6 +2086,10 @@ const EventosModule = {
                 </div>
                 <div>
                     <label class="ev-form-label">Chofer</label>
+                    ${choferOpts ? `<select id="evTransChoferPersona" class="ev-form-input ev-input-sm" style="margin-bottom:6px;">
+                        <option value="">— A mano / tercero —</option>
+                        ${choferOpts}
+                    </select>` : ''}
                     <div class="ev-trans-stack">
                         <input type="text" id="evTransChofer" class="ev-form-input ev-input-sm" placeholder="Nombre del chofer" value="${this._escAttr(existing?.chofer_nombre || existing?.chofer_nombre_resuelto || '')}">
                         <input type="text" id="evTransChoferTel" class="ev-form-input ev-input-sm" placeholder="Teléfono (WhatsApp)" value="${this._escAttr(existing?.chofer_telefono || existing?.chofer_telefono_resuelto || '')}">
@@ -2207,6 +2217,17 @@ const EventosModule = {
             renderItems();
         });
 
+        // Chofer: elegir una persona autocompleta nombre + teléfono (editable a mano igual)
+        document.getElementById('evTransChoferPersona')?.addEventListener('change', (e) => {
+            const opt = e.target.selectedOptions[0];
+            if (opt && opt.value) {
+                const nEl = document.getElementById('evTransChofer');
+                const tEl = document.getElementById('evTransChoferTel');
+                if (nEl) nEl.value = opt.dataset.nombre || '';
+                if (tEl) tEl.value = opt.dataset.tel || '';
+            }
+        });
+
         // Guardar
         document.getElementById('evTransSaveBtn')?.addEventListener('click', async () => {
             const vehVal = document.getElementById('evTransVeh')?.value || '';
@@ -2214,13 +2235,14 @@ const EventosModule = {
             const fecha = document.getElementById('evTransFecha')?.value || null;
             const hora = document.getElementById('evTransHora')?.value || null;
             const destino = document.getElementById('evTransDestino')?.value.trim() || null;
+            const choferPersonaId = document.getElementById('evTransChoferPersona')?.value || null;
             const choferNombre = document.getElementById('evTransChofer')?.value.trim() || null;
             const choferTel = document.getElementById('evTransChoferTel')?.value.trim() || null;
             const notas = document.getElementById('evTransNotas')?.value.trim() || null;
 
             const payload = {
                 eventoId, fase, fecha, horaSalida: hora, destino, notas,
-                choferNombre, choferTelefono: choferTel,
+                choferPersonaId, choferNombre, choferTelefono: choferTel,
                 vehiculoId: null,
                 vehiculoAdhocDescripcion: null, vehiculoAdhocPatente: null, vehiculoAdhocPropietario: null,
             };
