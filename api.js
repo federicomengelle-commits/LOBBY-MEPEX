@@ -60,6 +60,14 @@ const API = {
                 tipo: c.tipo || '',
                 estado: c.estado || 'activo',
                 score: parseInt(c.score) || 0,
+                // Base de clientes (campos nuevos — sql/clientes_base_campos.sql; undefined si no corrió)
+                origen: c.origen || '',
+                estadoComercial: c.estado_comercial || '',
+                optOut: !!c.opt_out,
+                emailValido: c.email_valido,
+                telValido: c.tel_valido,
+                eventosParticipados: c.eventos_participados ?? null,
+                fechaPrimerContacto: c.fecha_primer_contacto || null,
             }));
 
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -503,6 +511,11 @@ const API = {
             };
             // Rol organizador (omit-when-false para degradar si falta la columna).
             if (data.esOrganizador) payload.es_organizador = true;
+            // Base de clientes (omit-when-undefined; requieren sql/clientes_base_campos.sql)
+            if (data.origen !== undefined) payload.origen = data.origen;
+            if (data.estadoComercial !== undefined) payload.estado_comercial = data.estadoComercial;
+            if (data.optOut !== undefined) payload.opt_out = !!data.optOut;
+            if (data.fechaPrimerContacto !== undefined) payload.fecha_primer_contacto = data.fechaPrimerContacto;
             const result = await UndoHelpers.createRecord('clientes', payload, `Nuevo cliente: ${data.name || ''}`);
             this.clearCache();
             return result || true;
@@ -528,6 +541,13 @@ const API = {
             if (data.tipo !== undefined) payload.tipo = data.tipo;
             if (data.estado !== undefined) payload.estado = data.estado;
             if (data.score !== undefined) payload.score = parseInt(data.score) || 0;
+            // Base de clientes (omit-when-undefined; requieren sql/clientes_base_campos.sql)
+            if (data.origen !== undefined) payload.origen = data.origen;
+            if (data.estadoComercial !== undefined) payload.estado_comercial = data.estadoComercial;
+            if (data.optOut !== undefined) payload.opt_out = !!data.optOut;
+            if (data.emailValido !== undefined) payload.email_valido = data.emailValido;
+            if (data.telValido !== undefined) payload.tel_valido = data.telValido;
+            if (data.fechaPrimerContacto !== undefined) payload.fecha_primer_contacto = data.fechaPrimerContacto;
             await UndoHelpers.updateRecord('clientes', id, payload, `Edito cliente: ${data.name || ''}`);
             this.clearCache();
             return true;

@@ -587,7 +587,15 @@ const CRM = {
         // Contactabilidad: gap real para la máquina de demanda (la mayoría no tiene tel/email).
         const _cliTel = this._clients.filter(c => c.phone && String(c.phone).trim()).length;
         const _cliMail = this._clients.filter(c => c.email && String(c.email).trim()).length;
-        const kpisHtml = `<div style="display:flex;gap:12px;margin-bottom:14px">
+        const _canImport = typeof Auth !== 'undefined' && Auth.isAdminLevel && Auth.isAdminLevel();
+        const kpisHtml = `
+            ${_canImport ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+                <a href="#importar-contactos" class="btn btn-ghost btn-sm" title="Importar contactos desde un CSV (Google Contacts, WhatsApp, feria…) con dedup contra la base">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Importar contactos
+                </a>
+            </div>` : ''}
+            <div style="display:flex;gap:12px;margin-bottom:14px">
             <div style="flex:1">${this._kpiCard('Clientes', this._clients.length, '#00A9C1')}</div>
             <div style="flex:1">${this._kpiCard('Con teléfono', _cliTel, '#00CC88')}</div>
             <div style="flex:1">${this._kpiCard('Con email', _cliMail, '#9B7DFF')}</div>

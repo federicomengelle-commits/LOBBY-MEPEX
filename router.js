@@ -86,6 +86,7 @@ const Router = {
             'stands':           { render: () => StandsModule.render(), requiresAuth: true, module: 'stands' },
             'disenador':        { render: () => DisenadorOctexa.render(), requiresAuth: true, module: 'disenador', superadminOnly: true },
             'importar-cotizacion': { render: () => ImportarCotizacion.render(), requiresAuth: true },
+            'importar-contactos': { render: () => ImportarContactos.render(), requiresAuth: true },
 
             // ── Operaciones ──
             'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },
