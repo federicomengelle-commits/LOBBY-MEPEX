@@ -80,12 +80,26 @@ const CargaComprobante = {
                     </div>
                     <button class="ccmp-calc" id="ccmpCalc">Calcular desde Neto + IVA 21%</button>
 
+                    <label class="ccmp-lbl">¿A dónde va este gasto?</label>
+                    <div class="ccmp-dest" id="ccmpDest">
+                        <button type="button" class="ccmp-dest-btn on" data-dest="finanzas">🧾 Finanzas</button>
+                        <button type="button" class="ccmp-dest-btn" data-dest="rendimiento">📊 Rendimiento del evento</button>
+                    </div>
+                    <div class="ccmp-rendbox" id="ccmpRendBox" style="display:none">
+                        <div class="ccmp-2">
+                            <div><label class="ccmp-lbl">Categoría (Rendimiento)</label><select id="ccmpRendCat" class="ccmp-in"><option value="proveedor">Proveedor</option><option value="flete">Flete</option><option value="seguro">Seguro</option><option value="comida">Comida</option><option value="jornal">Jornal</option></select></div>
+                            <div></div>
+                        </div>
+                        <div class="ccmp-desthint">Se carga como línea en la planilla del evento (staging, sin egreso). Al cerrar el evento se migra a Egresos. Elegí el evento abajo.</div>
+                    </div>
+                    <div id="ccmpPagoWrap">
                     <label class="ccmp-lbl"><input type="checkbox" id="ccmpGenEgreso"> Registrar también el pago (genera egreso + asiento)</label>
                     <div class="ccmp-egreso" id="ccmpEgresoBox" style="display:none">
                         <div class="ccmp-2">
                             <div><label class="ccmp-lbl">Cuenta (tesorería)</label><select id="ccmpCuenta" class="ccmp-in"><option value="">— Sin cuenta —</option>${cuentas.map(c => `<option value="${c.id}">${this._esc(c.nombre)}</option>`).join('')}</select></div>
                             <div><label class="ccmp-lbl">Medio</label><select id="ccmpMedio" class="ccmp-in"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="cheque">Cheque</option><option value="debito_automatico">Débito automático</option></select></div>
                         </div>
+                    </div>
                     </div>
                     <div class="ccmp-2">
                         <div><label class="ccmp-lbl">Canal</label><select id="ccmpCanal" class="ccmp-in"><option value="oficial">Oficial</option><option value="interno">Interno</option></select></div>
@@ -143,6 +157,15 @@ const CargaComprobante = {
             $('ccmpIva').value = iva; $('ccmpTotal').value = Math.round((neto + iva) * 100) / 100;
         });
         $('ccmpGenEgreso')?.addEventListener('change', e => { $('ccmpEgresoBox').style.display = e.target.checked ? 'block' : 'none'; });
+        this._destino = 'finanzas';
+        $('ccmpDest')?.addEventListener('click', e => {
+            const b = e.target.closest('.ccmp-dest-btn'); if (!b) return;
+            this._destino = b.dataset.dest;
+            [...e.currentTarget.children].forEach(x => x.classList.toggle('on', x === b));
+            const rend = this._destino === 'rendimiento';
+            $('ccmpRendBox').style.display = rend ? 'block' : 'none';
+            $('ccmpPagoWrap').style.display = rend ? 'none' : 'block';
+        });
         $('ccmpSave')?.addEventListener('click', () => this._save());
     },
 
@@ -224,6 +247,18 @@ const CargaComprobante = {
                 total, categoria, archivo_url,
             };
 
+            if (this._destino === 'rendimiento') {
+                if (!evento_id) { Toast.warning('Elegí el evento (destino Rendimiento)'); btn.disabled = false; btn.textContent = 'Guardar comprobante'; return; }
+                await API.crearCostoDesdeComprobante({
+                    evento_id, categoria: $('ccmpRendCat')?.value || 'proveedor', proyecto_id, canal,
+                    comprobante: { ...comprobante, concepto, fecha },
+                });
+                Toast.success('Gasto cargado en Rendimiento del evento (staging)');
+                Modal.close(this._inst.id);
+                if (typeof RendimientoModule !== 'undefined' && Router.getHash?.() === 'rendimiento') RendimientoModule.render?.();
+                return;
+            }
+
             if ($('ccmpGenEgreso').checked) {
                 // Circuito único: comprobante + egreso + link bidireccional → asiento auto (con IVA, Fase 2)
                 const cuenta_id = $('ccmpCuenta').value || null;
@@ -280,6 +315,12 @@ const CargaComprobante = {
         .ccmp-calc { align-self:flex-start; margin:8px 0; font-family:var(--font-mono,'Space Mono'); font-size:.7rem; font-weight:700; background:transparent; border:1px solid var(--border,#2a2a2a); color:var(--text-muted,#888); border-radius:7px; padding:6px 12px; cursor:pointer; }
         .ccmp-calc:hover { color:var(--primary,#00A9C1); border-color:var(--primary,#00A9C1); }
         .ccmp-egreso { border-left:2px solid var(--primary,#00A9C1); padding-left:12px; margin:4px 0; }
+        .ccmp-dest { display:flex; gap:8px; margin:2px 0 6px; }
+        .ccmp-dest-btn { flex:1; padding:9px 10px; border:1px solid var(--border,#2a2a2a); background:var(--bg-card,#111); color:var(--text-muted,#888); border-radius:8px; cursor:pointer; font-size:.85rem; transition:all .15s; }
+        .ccmp-dest-btn:hover { border-color:var(--primary,#00A9C1); color:var(--text-primary,#E8E8E8); }
+        .ccmp-dest-btn.on { border-color:var(--primary,#00A9C1); background:rgba(0,169,193,.12); color:var(--primary,#00A9C1); font-weight:600; }
+        .ccmp-rendbox { border-left:2px solid #9B7DFF; padding-left:12px; margin:4px 0 8px; }
+        .ccmp-desthint { font-size:.74rem; color:var(--text-muted,#888); margin-top:4px; }
         .ccmp-btn { font-family:var(--font-mono,'Space Mono',monospace); font-size:.8rem; font-weight:700; border-radius:8px; padding:9px 16px; cursor:pointer; border:1px solid var(--border,#2a2a2a); background:transparent; color:var(--text-primary,#E8E8E8); }
         .ccmp-btn-primary { background:var(--primary,#00A9C1); color:#050505; border-color:var(--primary,#00A9C1); }
         .ccmp-btn-ia { background:rgba(155,125,255,.12); border-color:#9B7DFF; color:#9B7DFF; }

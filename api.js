@@ -6460,16 +6460,16 @@ const API = {
         categoria_dominio, concepto, monto, fecha = null, medio = null, canal = null,
         cuenta_id = null, estado = 'pagado', proyecto_id = null, evento_id = null,
         proveedor_id = null, empleado_id = null, destinatario = null, subcategoria = null,
-        comprobante = null, orden_compra_id = null, moneda = 'ARS', cotizacion = 1, notas = null,
+        comprobante = null, comprobante_recibido_id = null, orden_compra_id = null, moneda = 'ARS', cotizacion = 1, notas = null,
     } = {}) {
         const map = this._gastoDominio(categoria_dominio);
         fecha = fecha || this._today();
         canal = canal || 'oficial';
         medio = medio || 'transferencia';
-        let comprobante_recibido_id = null;
 
-        // 1) Comprobante recibido (si el proveedor factura)
-        if (comprobante && Number(comprobante.total) > 0) {
+        // 1) Comprobante recibido (si el proveedor factura y no vino uno YA existente,
+        //    ej. al migrar una línea de Rendimiento que ya tenía su comprobante de staging).
+        if (!comprobante_recibido_id && comprobante && Number(comprobante.total) > 0) {
             comprobante_recibido_id = await this.createComprobanteRecibido({
                 fecha,
                 tipo: comprobante.tipo || 'factura_a',   // FIX: 'A' violaba el CHECK del enum
@@ -6725,6 +6725,7 @@ const API = {
             destinatario: costo.persona_nombre || costo.proveedor_nombre || costo.descripcion || null,
             subcategoria: dom,
             comprobante: comprobante ? { ...comprobante, proveedor_nombre: comprobante.razon_social || costo.proveedor_nombre || null } : null,
+            comprobante_recibido_id: costo.comprobante_recibido_id || null,   // reusa el comprobante de staging (no lo duplica)
             notas,
         });
 
@@ -6735,6 +6736,9 @@ const API = {
             created_by: this._uid(),
         }).select('id').single();
         if (error) throw error;
+        // Link de migración: la línea apunta a su egreso → el dashboard no lo cuenta doble.
+        // try/catch: la columna egreso_id es del SQL rendimiento_gastos_evento; sin él, degrada.
+        try { await supabaseClient.from('evento_costos').update({ egreso_id }).eq('id', costo.id); } catch (e) { /* columna nueva */ }
         return { pago_id: pago.id, egreso_id, comprobante_recibido_id };
     },
 
@@ -6748,6 +6752,104 @@ const API = {
             await supabaseClient.from('egresos').update({ estado: 'anulado' }).eq('id', pago.egreso_id);
         }
         return { ok: true, egreso_id: pago.egreso_id };
+    },
+
+    // ═══ Circuito de gastos de evento: staging desde comprobante + cierre/migración ═══
+
+    // Carga un comprobante como GASTO de un evento → línea de planilla (staging, sin egreso).
+    // El comprobante recibido queda imputado al evento; al cerrar/migrar se convierte en egreso.
+    async crearCostoDesdeComprobante({ evento_id, categoria = 'proveedor', proyecto_id = null, proveedor_id = null, comprobante, canal = 'oficial' } = {}) {
+        if (!evento_id) throw new Error('Falta el evento');
+        if (!comprobante || !(Number(comprobante.total) > 0)) throw new Error('Falta el total del comprobante');
+        const desc = comprobante.concepto || comprobante.razon_social || comprobante.proveedor_nombre || 'Gasto de evento';
+        // 1) comprobante recibido imputado al evento (staging, sin egreso todavía)
+        const comprobante_recibido_id = await this.createComprobanteRecibido({
+            fecha: comprobante.fecha || this._today(),
+            tipo: comprobante.tipo || 'factura_a',
+            numero: comprobante.numero || null,
+            proveedor_id: proveedor_id || null,
+            proveedor_nombre: comprobante.razon_social || comprobante.proveedor_nombre || null,
+            cuit: comprobante.cuit || null,
+            concepto: desc,
+            neto: comprobante.neto ?? null, iva: comprobante.iva ?? null, total: comprobante.total,
+            categoria: comprobante.categoria || 'material',   // taxonomía de comprobantes_recibidos
+            canal, proyecto_id: proyecto_id || null, evento_id,
+            archivo_url: comprobante.archivo_url || null,
+        });
+        // 2) línea de planilla (pendiente, con el comprobante adjunto)
+        const { data: costo, error } = await supabaseClient.from('evento_costos').insert({
+            evento_id, proyecto_id: proyecto_id || null, categoria, descripcion: desc,
+            proveedor_id: proveedor_id || null, monto: Number(comprobante.total),
+            comprobante_recibido_id, created_by: this._uid(),
+        }).select('id').single();
+        if (error) throw error;
+        return { costo_id: costo.id, comprobante_recibido_id };
+    },
+
+    // Migrar una línea SIN pago real: crea el egreso en estado 'pendiente' (gasto reconocido,
+    // sin asiento hasta que se pague desde Finanzas) + link de migración. NO crea evento_costo_pagos.
+    async migrarLineaPendiente(costo, { fecha = null, canal = 'oficial' } = {}) {
+        const dom = costo.categoria;
+        const catLabel = this.RENDIMIENTO_CAT_LABEL[costo.categoria] || 'Costo';
+        const saldo = (Number(costo.monto) || 0) - (Number(costo.monto_pagado) || 0);
+        const { egreso_id } = await this.registrarGasto({
+            categoria_dominio: dom,
+            concepto: `${catLabel}: ${costo.descripcion}`,
+            monto: saldo > 0 ? saldo : (Number(costo.monto) || 0),
+            fecha, canal, estado: 'pendiente',
+            proyecto_id: costo.proyecto_id || null, evento_id: costo.evento_id || null,
+            proveedor_id: (dom === 'flete' || dom === 'proveedor') ? (costo.proveedor_id || null) : null,
+            empleado_id: dom === 'jornal' ? (costo.persona_id || null) : null,
+            destinatario: costo.persona_nombre || costo.proveedor_nombre || costo.descripcion || null,
+            subcategoria: dom,
+            comprobante_recibido_id: costo.comprobante_recibido_id || null,
+        });
+        await supabaseClient.from('evento_costos').update({ egreso_id }).eq('id', costo.id);
+        return { egreso_id };
+    },
+
+    // Conciliar: una línea de planilla corresponde a un egreso YA cargado directo en Finanzas.
+    // Crea el pago apuntando a ese egreso existente (no crea uno nuevo) + link de migración.
+    async conciliarEgresoConLinea(costoId, egresoId, { monto = null } = {}) {
+        const { data: eg } = await supabaseClient.from('egresos')
+            .select('monto, total_en_ars, comprobante_recibido_id').eq('id', egresoId).maybeSingle();
+        const m = monto != null ? monto : (Number(eg?.total_en_ars) || Number(eg?.monto) || 0);
+        const { data: pago, error } = await supabaseClient.from('evento_costo_pagos').insert({
+            costo_id: costoId, monto: m, fecha: this._today(),
+            egreso_id: egresoId, comprobante_recibido_id: eg?.comprobante_recibido_id || null,
+            notas: 'Conciliado con egreso ya cargado', created_by: this._uid(),
+        }).select('id').single();
+        if (error) throw error;
+        await supabaseClient.from('evento_costos').update({ egreso_id: egresoId }).eq('id', costoId);
+        return { pago_id: pago.id };
+    },
+
+    // Egresos imputados al evento que NO están linkeados a ninguna línea (candidatos a conciliar).
+    async getEgresosSueltosEvento(eventoId) {
+        const { data: egs } = await supabaseClient.from('egresos')
+            .select('id, fecha, concepto, monto, total_en_ars, categoria, estado, proveedor_id')
+            .eq('evento_id', eventoId).eq('_deleted', false).neq('estado', 'anulado');
+        const egIds = (egs || []).map(e => e.id);
+        if (!egIds.length) return [];
+        const { data: pagos } = await supabaseClient.from('evento_costo_pagos').select('egreso_id').in('egreso_id', egIds);
+        const { data: costos } = await supabaseClient.from('evento_costos').select('egreso_id').eq('evento_id', eventoId).not('egreso_id', 'is', null);
+        const linked = new Set([...(pagos || []).map(p => p.egreso_id), ...(costos || []).map(c => c.egreso_id)].filter(Boolean));
+        return (egs || []).filter(e => !linked.has(e.id));
+    },
+
+    // Cierre / reapertura de la migración del evento (botón manual).
+    async cerrarEventoRendimiento(eventoId) {
+        const { error } = await supabaseClient.from('evento_rendimiento').upsert(
+            { evento_id: eventoId, cerrado_at: new Date().toISOString(), cerrado_by: this._uid() },
+            { onConflict: 'evento_id' });
+        if (error) throw error;
+        return { ok: true };
+    },
+    async reabrirEventoRendimiento(eventoId) {
+        const { error } = await supabaseClient.from('evento_rendimiento')
+            .update({ cerrado_at: null, cerrado_by: null }).eq('evento_id', eventoId);
+        if (error) throw error;
+        return { ok: true };
     },
 
     // ── Duplicar planilla de otro evento (líneas, sin pagos; quedan en 'pendiente') ──
@@ -6828,7 +6930,11 @@ const API = {
             const egIds = (egEvento || []).map(e => e.id);
             if (egIds.length) {
                 const { data: pagados } = await supabaseClient.from('evento_costo_pagos').select('egreso_id').in('egreso_id', egIds);
-                const linked = new Set((pagados || []).map(p => p.egreso_id).filter(Boolean));
+                // + egresos migrados directo desde una línea (link evento_costos.egreso_id) → no duplicar.
+                // try/catch: la columna egreso_id es del SQL rendimiento_gastos_evento; sin él, degrada al comportamiento previo.
+                let migrados = [];
+                try { const rm = await supabaseClient.from('evento_costos').select('egreso_id').eq('evento_id', eventoId).not('egreso_id', 'is', null); migrados = rm.data || []; } catch (e) { /* columna nueva */ }
+                const linked = new Set([...(pagados || []).map(p => p.egreso_id), ...migrados.map(c => c.egreso_id)].filter(Boolean));
                 costoDirecto = (egEvento || []).filter(e => !linked.has(e.id))
                     .reduce((s, e) => s + (Number(e.total_en_ars) || Number(e.monto) || 0), 0);
             }

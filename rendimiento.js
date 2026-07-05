@@ -229,6 +229,10 @@ const RendimientoModule = {
         return `
             <div class="rend-planilla">
                 <div class="rend-toolbar">
+                    ${this._rend?.cerrado_at
+                        ? `<span class="rend-cerrado">🔒 Cerrado ${String(this._rend.cerrado_at).slice(0, 10)}</span><button class="rend-btn rend-btn-ghost" id="rendBtnReabrir">Reabrir</button>`
+                        : `<button class="rend-btn rend-btn-primary" id="rendBtnCerrar">🔒 Cerrar y migrar a Egresos</button>`}
+                    <span style="flex:1"></span>
                     <button class="rend-btn rend-btn-ghost" id="rendBtnDuplicar">⎘ Duplicar planilla de otro evento</button>
                 </div>
                 ${groups}
@@ -303,6 +307,8 @@ const RendimientoModule = {
         const body = document.getElementById('rendBody');
         if (!body) return;
         document.getElementById('rendBtnDuplicar')?.addEventListener('click', () => this._openDuplicarModal());
+        document.getElementById('rendBtnCerrar')?.addEventListener('click', () => this._openCierreModal());
+        document.getElementById('rendBtnReabrir')?.addEventListener('click', () => this._reabrir());
         document.querySelector('[data-sync-jornales]')?.addEventListener('click', () => this._syncJornales());
 
         body.querySelectorAll('[data-toggle]').forEach(h => h.addEventListener('click', () => {
@@ -693,6 +699,108 @@ const RendimientoModule = {
 
     // ═══════════════════════════════════════════ DUPLICAR
 
+    // ═══════════════════════════════════════════ CIERRE / MIGRACIÓN
+    async _openCierreModal() {
+        const pendientes = (this._costos || []).filter(c => c.estado === 'pendiente' && !c.egreso_id);
+        let sueltos = [];
+        try { sueltos = await API.getEgresosSueltosEvento(this._eventoId); } catch (e) { console.warn('[Rendimiento] sueltos', e); }
+        const catLabel = id => (this.CATS.find(c => c.id === id) || {}).label || id;
+        const lineOpts = pendientes.map(c => `<option value="${c.id}">${this._esc(catLabel(c.categoria))}: ${this._esc(c.descripcion)} · ${this._money(this._costoMonto(c))}</option>`).join('');
+        const cuentaOpts = (this._cuentas || []).map(c => `<option value="${c.id}" data-canal="${c.canal_default || 'oficial'}">${this._esc(c.nombre)}</option>`).join('');
+
+        const conciliBlock = sueltos.length ? `
+            <div class="rend-cierre-sec">
+                <h4>Ya cargado en Finanzas para este evento (${sueltos.length})</h4>
+                <p class="rend-cierre-hint">Si alguno es de la planilla, elegí a qué línea corresponde para <b>no duplicarlo</b>.</p>
+                ${sueltos.map(e => `
+                    <div class="rend-cierre-row">
+                        <span class="rend-cierre-eg">${this._esc(e.concepto || '(sin concepto)')} · <b>${this._money(Number(e.total_en_ars) || Number(e.monto) || 0)}</b> · ${String(e.fecha || '').slice(0, 10)}</span>
+                        <select class="rend-conc" data-eg="${e.id}"><option value="">— no es de la planilla —</option>${lineOpts}</select>
+                    </div>`).join('')}
+            </div>` : '';
+
+        const migrarBlock = pendientes.length ? `
+            <div class="rend-cierre-sec">
+                <h4>Líneas a migrar a Egresos (${pendientes.length})</h4>
+                <p class="rend-cierre-hint">Marcá las que <b>ya se pagaron</b> en el evento (generan egreso + asiento). Las que dejes sin marcar quedan como egreso <b>pendiente de pago</b>.</p>
+                ${pendientes.map(c => `
+                    <label class="rend-cierre-line">
+                        <input type="checkbox" class="rend-mig" data-costo="${c.id}" checked>
+                        <span>${this._esc(catLabel(c.categoria))}: ${this._esc(c.descripcion)} · <b>${this._money(this._costoMonto(c))}</b></span>
+                    </label>`).join('')}
+                <div class="rend-form-row" style="margin-top:10px">
+                    <div class="rend-fg"><label>Cuenta (para las pagadas)</label><select id="rendCierreCuenta"><option value="">— Sin cuenta —</option>${cuentaOpts}</select></div>
+                    <div class="rend-fg"><label>Medio</label><select id="rendCierreMedio"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="cheque">Cheque</option><option value="mercadopago">MercadoPago</option></select></div>
+                </div>
+                <div class="rend-form-row">
+                    <div class="rend-fg"><label>Canal</label><select id="rendCierreCanal"><option value="oficial">Oficial</option><option value="interno">Interno</option></select></div>
+                    <div class="rend-fg"><label>Fecha</label><input type="date" id="rendCierreFecha" value="${API._today()}"></div>
+                </div>
+            </div>` : '<div class="rend-cierre-sec"><p class="rend-cierre-hint">No hay líneas pendientes de migrar. Al cerrar, el evento queda marcado como conciliado.</p></div>';
+
+        Modal.open({
+            title: '🔒 Cerrar evento y migrar a Egresos',
+            size: 'lg',
+            body: `<div class="rend-cierre">${conciliBlock}${migrarBlock}</div>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="rendCierreSave">Cerrar y migrar</button>`,
+        });
+
+        document.getElementById('rendCierreCuenta')?.addEventListener('change', (e) => {
+            const canal = e.target.selectedOptions[0]?.dataset.canal;
+            const cEl = document.getElementById('rendCierreCanal');
+            if (canal && cEl) cEl.value = canal;
+        });
+
+        document.getElementById('rendCierreSave')?.addEventListener('click', async () => {
+            const btn = document.getElementById('rendCierreSave');
+            if (btn) { btn.disabled = true; btn.textContent = 'Procesando…'; }
+            const fecha = document.getElementById('rendCierreFecha')?.value || API._today();
+            const medio = document.getElementById('rendCierreMedio')?.value || 'transferencia';
+            const canal = document.getElementById('rendCierreCanal')?.value || 'oficial';
+            const cuenta_id = document.getElementById('rendCierreCuenta')?.value || null;
+
+            // 1) Conciliaciones (línea ← egreso ya cargado)
+            const conciliadas = new Set();
+            for (const s of [...document.querySelectorAll('.rend-conc')].filter(x => x.value)) {
+                const costoId = s.value;
+                if (conciliadas.has(costoId)) continue;   // una línea, un egreso
+                try { await API.conciliarEgresoConLinea(costoId, s.dataset.eg); conciliadas.add(costoId); }
+                catch (e) { console.error('[Rendimiento] conciliar', e); }
+            }
+
+            // 2) Migración de las líneas NO conciliadas (pagada → egreso pagado; si no → pendiente)
+            let ok = 0, fail = 0;
+            for (const chk of [...document.querySelectorAll('.rend-mig')]) {
+                const costoId = chk.dataset.costo;
+                if (conciliadas.has(costoId)) continue;
+                const costo = (this._costos || []).find(c => String(c.id) === String(costoId));
+                if (!costo) continue;
+                const saldo = this._costoMonto(costo) - (Number(costo.monto_pagado) || 0);
+                if (saldo <= 0) continue;
+                try {
+                    if (chk.checked) await API.pagarCostoEvento({ costo, monto: saldo, fecha, medio, canal, cuenta_id, comprobante: null });
+                    else await API.migrarLineaPendiente(costo, { fecha, canal });
+                    ok++;
+                } catch (e) { console.error('[Rendimiento] migrar', costo.id, e); fail++; }
+            }
+
+            // 3) Marcar el evento cerrado
+            try { await API.cerrarEventoRendimiento(this._eventoId); } catch (e) { console.error('[Rendimiento] cerrar', e); }
+
+            Modal.closeAll();
+            if (fail) Toast.warning(`${ok} migradas, ${fail} con error — revisá la consola`);
+            else Toast.success(`Evento cerrado · ${ok} línea(s) migrada(s)${conciliadas.size ? ' · ' + conciliadas.size + ' conciliada(s)' : ''}`);
+            await this._loadEvento();
+        });
+    },
+
+    async _reabrir() {
+        const ok = await Modal.confirm({ title: 'Reabrir evento', message: 'Vuelve a estado abierto (podés seguir cargando/migrando gastos). Los egresos ya migrados NO se tocan.', danger: false });
+        if (!ok) return;
+        try { await API.reabrirEventoRendimiento(this._eventoId); Toast.success('Evento reabierto'); await this._loadEvento(); }
+        catch (e) { Toast.error('No se pudo reabrir'); }
+    },
+
     _openDuplicarModal() {
         const opts = this._eventos.filter(e => e.id !== this._eventoId)
             .map(e => `<option value="${e.id}">${this._esc(e.nombre)}${e.fecha_evento_inicio ? ' · ' + e.fecha_evento_inicio : ''}</option>`).join('');
@@ -954,7 +1062,16 @@ const RendimientoModule = {
         .rend-loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:60px;color:var(--text-muted)}
         .rend-empty,.rend-noitems{padding:24px;text-align:center;color:var(--text-muted);font-size:.88rem}
         .rend-noitems{padding:14px}
-        .rend-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+        .rend-toolbar{display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;gap:8px}
+        .rend-cerrado{color:#00CC88;font-size:.82rem;font-weight:600}
+        .rend-cierre{display:flex;flex-direction:column;gap:16px}
+        .rend-cierre-sec{border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px}
+        .rend-cierre-sec h4{margin:0 0 4px;font-size:.95rem;color:var(--text-primary,#E8E8E8)}
+        .rend-cierre-hint{margin:0 0 10px;font-size:.78rem;color:var(--text-muted,#888)}
+        .rend-cierre-row{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1a1a1a;flex-wrap:wrap}
+        .rend-cierre-eg{font-size:.84rem;color:var(--text-primary,#E8E8E8)}
+        .rend-conc{min-width:220px;padding:6px 8px;border:1px solid var(--border,#2a2a2a);background:var(--bg-card,#111);color:var(--text-primary,#E8E8E8);border-radius:6px;font-size:.8rem}
+        .rend-cierre-line{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:.85rem;color:var(--text-primary,#E8E8E8);cursor:pointer}
         .rend-btn{border:none;border-radius:6px;padding:9px 16px;font-family:var(--font-mono);font-weight:700;font-size:.78rem;letter-spacing:.02em;cursor:pointer}
         .rend-btn-primary{background:var(--primary);color:#012;box-shadow:var(--glow-sm)}
         .rend-btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text-muted)}
