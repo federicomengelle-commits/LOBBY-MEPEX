@@ -585,12 +585,13 @@ const CRM = {
 
     _renderClientesTable() {
         // Cabecera de KPIs (sobre todos los clientes) — reusa la card de casos.
-        const _cliAct = this._clients.filter(c => (c.estado || 'activo') === 'activo').length;
-        const _cliProy = this._clients.filter(c => (c._projectCount || 0) > 0).length;
+        // Contactabilidad: gap real para la máquina de demanda (la mayoría no tiene tel/email).
+        const _cliTel = this._clients.filter(c => c.phone && String(c.phone).trim()).length;
+        const _cliMail = this._clients.filter(c => c.email && String(c.email).trim()).length;
         const kpisHtml = `<div style="display:flex;gap:12px;margin-bottom:14px">
             <div style="flex:1">${this._kpiCard('Clientes', this._clients.length, '#00A9C1')}</div>
-            <div style="flex:1">${this._kpiCard('Activos', _cliAct, '#00CC88')}</div>
-            <div style="flex:1">${this._kpiCard('Con proyectos', _cliProy, '#9B7DFF')}</div>
+            <div style="flex:1">${this._kpiCard('Con teléfono', _cliTel, '#00CC88')}</div>
+            <div style="flex:1">${this._kpiCard('Con email', _cliMail, '#9B7DFF')}</div>
         </div>`;
 
         if (this._filteredClients.length === 0) {

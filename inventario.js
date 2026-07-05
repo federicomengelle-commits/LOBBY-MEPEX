@@ -3339,15 +3339,19 @@ const InventarioModule = {
         return movs.map(m => {
             const items = m.inventario_movimiento_items || [];
             const first = items[0];
+            const multi = items.length > 1;
             const nombre = first ? first.item_nombre : (m.subtipo || m.tipo || 'Movimiento');
-            const extra = items.length > 1 ? ` <span style="color:#555">+${items.length - 1}</span>` : '';
             const dir = first ? first.direccion : null;
             const ic = m.tipo === 'ajuste' ? '⇄' : (dir === 'entrada' ? '📥' : '📤');
             const color = m.tipo === 'ajuste' ? '#9B7DFF' : (dir === 'entrada' ? '#00CC88' : '#F28D15');
-            const qty = first ? `${dir === 'entrada' ? '+' : '−'}${Math.abs(Number(first.cantidad) || 0)}` : '';
+            // Multi-ítem → "N ítems" (la cantidad del primero engañaba); un ítem → ±cantidad.
+            const meta = multi
+                ? `${items.length} ítems`
+                : (first ? `${dir === 'entrada' ? '+' : '−'}${Math.abs(Number(first.cantidad) || 0)}` : '');
             return `<div class="invd-mov">
                 <span class="invd-mov-ic" style="color:${color}">${ic}</span>
-                <span class="invd-mov-name">${escHtml(nombre)}${extra}${qty ? ` <span class="invd-mov-qty">${qty}</span>` : ''}</span>
+                <span class="invd-mov-name">${escHtml(nombre)}</span>
+                ${meta ? `<span class="invd-mov-qty">${meta}</span>` : ''}
                 <span class="invd-mov-when">${this._dashRelTime(m.created_at)}</span>
             </div>`;
         }).join('');
