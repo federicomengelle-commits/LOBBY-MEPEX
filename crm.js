@@ -4080,6 +4080,11 @@ const CRM = {
         return escapedHtml.replace(/@([\wÀ-ÿ.]+)/g, '<span class="tl-mention">@$1</span>');
     },
 
+    // Botón de borrar (revelado al hover) para un ítem del timeline. Soft-delete via API.
+    _tlDelBtn(m) {
+        return (m && m.id) ? `<button class="tl-del" data-del-msg="${m.id}" title="Eliminar del historial" aria-label="Eliminar">🗑</button>` : '';
+    },
+
     _renderTimelineItem(m) {
         const cfg = this._canalConfig[m.canal] || this._canalConfig.nota;
         const time = m.fecha ? new Date(m.fecha).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -4091,7 +4096,7 @@ const CRM = {
 
         if (m.canal === 'email') {
             const subject = m.metadata && m.metadata.subject ? this._escHtml(m.metadata.subject) : '';
-            return `<div class="tl-row tl-${side}"><div class="tl-card tl-email">
+            return `<div class="tl-row tl-${side}">${this._tlDelBtn(m)}<div class="tl-card tl-email">
                 <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${cfg.icon} Email ${side === 'in' ? '· recibido' : (side === 'out' ? '· enviado' : '')}</span><span class="tl-meta">${autor} · ${time}</span></div>
                 ${subject ? `<div class="tl-subject">${subject}</div>` : ''}
                 ${resumen}
@@ -4100,7 +4105,7 @@ const CRM = {
             </div></div>`;
         }
         if (m.canal === 'nota') {
-            return `<div class="tl-row tl-mid"><div class="tl-card tl-nota">
+            return `<div class="tl-row tl-mid">${this._tlDelBtn(m)}<div class="tl-card tl-nota">
                 <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${cfg.icon} Nota interna</span><span class="tl-meta">${autor} · ${time}</span></div>
                 <div class="tl-body">${this._renderMenciones(contenido)}</div>
                 ${adj}
@@ -4108,7 +4113,7 @@ const CRM = {
         }
         if (m.canal === 'llamada' || m.canal === 'reunion') {
             const dur = m.metadata && m.metadata.duracion ? ` · ⏱ ${m.metadata.duracion} min` : '';
-            return `<div class="tl-row tl-mid"><div class="tl-card tl-call">
+            return `<div class="tl-row tl-mid">${this._tlDelBtn(m)}<div class="tl-card tl-call">
                 <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${cfg.icon} ${cfg.label}${dur}</span><span class="tl-meta">${autor} · ${time}</span></div>
                 ${resumen}
                 ${contenido ? `<div class="tl-body">${contenido}</div>` : ''}
@@ -4119,7 +4124,7 @@ const CRM = {
             return `<div class="tl-row tl-sys"><div class="tl-sys-line">${cfg.icon} ${contenido} <span class="tl-meta">· ${time}</span></div></div>`;
         }
         // whatsapp (burbuja)
-        return `<div class="tl-row tl-${side}"><div class="tl-bubble tl-wa-${side}">
+        return `<div class="tl-row tl-${side}">${this._tlDelBtn(m)}<div class="tl-bubble tl-wa-${side}">
             ${resumen}
             ${contenido ? `<div class="tl-body">${contenido}</div>` : ''}
             ${adj}
@@ -4160,7 +4165,7 @@ const CRM = {
             <textarea class="cmp-textarea" id="cmpText" placeholder="${placeholder}" rows="3"></textarea>
             <div class="cmp-actions">
                 <button class="cmp-img-btn" id="cmpImgBtn" title="Adjuntar imagen / captura">📎 Imagen</button>
-                <span class="cmp-hint">Tip: pegá una captura (Ctrl+V) y se adjunta al historial</span>
+                <span class="cmp-hint">Ctrl+Enter guarda · pegá una captura (Ctrl+V) y se adjunta</span>
                 <div class="cmp-spacer"></div>
                 ${waBtn}
                 <button class="btn btn-primary" id="cmpSend">Guardar</button>
@@ -4258,6 +4263,10 @@ const CRM = {
         if (proc) proc.addEventListener('click', async () => { await this._procesarWhatsapp(document.getElementById('cmpText')?.value || ''); });
         const send = document.getElementById('cmpSend');
         if (send) send.addEventListener('click', () => this._sendComposer());
+        // Ctrl/Cmd + Enter guarda (flujo rápido de registro).
+        if (ta) ta.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this._sendComposer(); }
+        });
     },
 
     async _sendComposer() {
@@ -4281,6 +4290,7 @@ const CRM = {
             if (canal === 'nota') this._notifyMenciones(texto, caso);
             this._pendingAdjuntos = [];
             await this._reloadCasoYFicha(caso.id);
+            document.getElementById('cmpText')?.focus();
             Toast.success('Guardado');
         } else {
             Toast.error('No se pudo guardar');
@@ -4501,7 +4511,29 @@ const CRM = {
         this._attachComposerEvents();
         this._renderPendingAdjuntos();
         const tl = document.getElementById('casoTimeline');
-        if (tl) tl.scrollTop = tl.scrollHeight;
+        if (tl) {
+            tl.scrollTop = tl.scrollHeight;
+            // Borrar un mensaje del historial (delegado; el botón se revela al hover).
+            tl.addEventListener('click', (e) => {
+                const del = e.target.closest('.tl-del');
+                if (!del) return;
+                e.stopPropagation();
+                this._eliminarMensaje(del.dataset.delMsg);
+            });
+        }
+    },
+
+    async _eliminarMensaje(id) {
+        if (!id) return;
+        const ok = await Modal.confirm({ title: 'Eliminar del historial', message: 'Sacar este mensaje del historial del caso. Queda archivado en la base (soft delete), no se borra del todo.', confirmText: 'Eliminar', danger: true });
+        if (!ok) return;
+        const r = await API.deleteMensaje(id);
+        if (r) {
+            Toast.success('Mensaje eliminado');
+            await this._reloadCasoYFicha(this._casoActivoId);
+        } else {
+            Toast.error('No se pudo eliminar');
+        }
     },
 
     async _marcarAccionHecha() {
@@ -6946,7 +6978,11 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
 .tl-empty { text-align: center; color: var(--text-muted); margin: auto; padding: 40px; }
 .tl-empty-icon { font-size: 2.4rem; opacity: 0.5; margin-bottom: 10px; }
 .tl-date { text-align: center; font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin: 8px 0; }
-.tl-row { display: flex; }
+.tl-row { display: flex; position: relative; }
+.tl-del { position: absolute; top: 2px; right: 2px; z-index: 2; background: var(--bg-card); border: 1px solid var(--border); border-radius: 5px; width: 24px; height: 24px; font-size: 0.72rem; line-height: 1; cursor: pointer; opacity: 0; padding: 0; transition: opacity 150ms ease, border-color 150ms ease; }
+.tl-row.tl-out .tl-del { right: auto; left: 2px; }
+.tl-row:hover .tl-del { opacity: 0.55; }
+.tl-del:hover { opacity: 1; border-color: var(--color-error); }
 .tl-row.tl-in { justify-content: flex-start; }
 .tl-row.tl-out { justify-content: flex-end; }
 .tl-row.tl-mid, .tl-row.tl-sys { justify-content: center; }
