@@ -39,6 +39,9 @@ const InventarioModule = {
     _fisicoCurrentSesion: null,  // sesion object when viewing conteo
     _fisicoConteos: [],
     _fisicoShowDiffOnly: false,
+    _fisicoScope: 'todo',        // 'todo' | 'piezas' | 'materiales' — contar por partes
+    _fisicoCollapsed: {},        // { 'family|categoria': true } secciones plegadas
+    _fisicoCatMaps: null,        // { p: Map<id,rubro>, m: Map<id,clasif> } cache por render
     _fisicoSaveTimers: {},       // debounce timers per conteo id
 
     // Piezas state
@@ -839,6 +842,31 @@ const InventarioModule = {
                 .inv-diff-zero { color: #00CC88; font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.8rem; }
                 .inv-diff-nonzero { color: #E74C3C; font-weight: 700; font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.8rem; }
                 .inv-diff-pending { color: #555; font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.8rem; }
+                /* ─── Conteo físico: toolbar (contar por partes) + secciones ─── */
+                .inv-conteo-toolbar { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:10px; }
+                .inv-conteo-scope-label { font-family: var(--font-mono, 'Space Mono', monospace); font-size:0.66rem; color:#555; margin-right:2px; align-self:center; }
+                .inv-chip-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:1px; }
+                .inv-conteo-progress { display:flex; align-items:center; gap:10px; }
+                .inv-conteo-progress-txt { font-family: var(--font-mono, 'Space Mono', monospace); font-size:0.72rem; color:#888; }
+                .inv-conteo-progress-txt .mut { color:#555; }
+                .inv-conteo-bar { width:90px; height:5px; border-radius:3px; background:#1a1a1a; overflow:hidden; display:inline-block; }
+                .inv-conteo-bar > i { display:block; height:100%; background:#9B7DFF; transition: width 250ms ease; }
+                .inv-dif-pill { background:rgba(231,76,60,0.12); color:#E74C3C; font-family:var(--font-mono, 'Space Mono', monospace); font-size:0.68rem; font-weight:700; padding:3px 9px; border-radius:3px; border:1px solid transparent; cursor:pointer; transition: all 150ms; }
+                .inv-dif-pill:hover { border-color: rgba(231,76,60,0.5); }
+                .inv-dif-pill.active { background:#E74C3C; color:#0a0a0a; }
+                .inv-dif-pill.zero { background:rgba(255,255,255,0.04); color:#555; }
+                .inv-fisico-group > td { background:#141414; border-bottom:1px solid #222; padding:7px 12px; cursor:pointer; user-select:none; }
+                .inv-fisico-group:hover > td { background:#181818; }
+                .inv-fisico-group-chevron { color:#666; font-size:0.7rem; margin-right:7px; }
+                .inv-fisico-group-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:8px; vertical-align:1px; }
+                .inv-fisico-group-name { font-family: var(--font-mono, 'Space Mono', monospace); font-size:0.7rem; font-weight:700; letter-spacing:0.5px; color:#aaa; text-transform:uppercase; }
+                .inv-fisico-group-progress { float:right; font-family: var(--font-mono, 'Space Mono', monospace); font-size:0.66rem; color:#888; }
+                .inv-conteo-name-cell { white-space:normal; max-width:320px; }
+                .inv-esperado { font-family: var(--font-mono, 'Space Mono', monospace); color:#888; font-size:0.82rem; }
+                .inv-conteo-note-wrap { margin-top:4px; }
+                .inv-conteo-nota-inline { width:100%; max-width:260px; background:rgba(255,255,255,0.03); border:1px solid #262626; border-radius:3px; color:#aaa; font-family: var(--font-main, 'Outfit', sans-serif); font-size:0.74rem; padding:3px 7px; outline:none; }
+                .inv-conteo-nota-inline:focus { border-color:#9B7DFF; color:#ccc; }
+                .inv-conteo-nota-inline::placeholder { color:#555; }
                 .inv-btn-cerrar-sesion {
                     display: inline-flex;
                     align-items: center;
@@ -3501,10 +3529,6 @@ const InventarioModule = {
                     ${isCerrada ? '<span class="inv-badge inv-badge-ok" style="margin-left:6px">Cerrada</span>' : '<span class="inv-badge inv-badge-bajo" style="margin-left:6px">En curso</span>'}
                 </div>
                 <div style="display:flex; align-items:center; gap:12px">
-                    <label class="inv-fisico-toggle">
-                        <input type="checkbox" id="invFisicoToggleDiff" ${this._fisicoShowDiffOnly ? 'checked' : ''}>
-                        Solo diferencias
-                    </label>
                     ${!isCerrada && !this._isRO ? `
                     <button class="inv-btn-cerrar-sesion" id="invBtnCerrarSesion">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -3550,6 +3574,9 @@ const InventarioModule = {
             console.warn('[Inventario] Error loading conteo:', e);
             this._fisicoConteos = [];
         }
+
+        // Categorías para agrupar (rubro de piezas / clasificación de materiales) — cache idempotente
+        await this._ensureItemsCached();
 
         this._renderConteoTable();
     },
@@ -3600,108 +3627,205 @@ const InventarioModule = {
 
     _renderConteoTable() {
         const container = document.getElementById('invConteoMain');
-        const countEl = document.getElementById('invConteoCount');
         if (!container) return;
 
         const isCerrada = this._fisicoCurrentSesion?.estado === 'cerrada';
-        let data = [...this._fisicoConteos];
+        const all = this._fisicoConteos || [];
 
-        // Filter: show only diffs
-        if (this._fisicoShowDiffOnly) {
-            data = data.filter(c => c.stock_real != null && c.stock_real !== c.stock_teorico);
-        }
+        // Mapas de categoría (rubro de piezas / clasificación de materiales) para agrupar
+        this._fisicoCatMaps = {
+            p: new Map((this._allPiezas || []).map(x => [String(x.id), x.rubro || 'Sin rubro'])),
+            m: new Map((this._allMateriales || []).map(x => [String(x.id), x.clasificacion || 'Sin clasificación'])),
+        };
 
-        if (countEl) {
-            const total = this._fisicoConteos.length;
-            const counted = this._fisicoConteos.filter(c => c.stock_real != null).length;
-            const diffs = this._fisicoConteos.filter(c => c.stock_real != null && c.stock_real !== c.stock_teorico).length;
-            countEl.textContent = `${counted}/${total} contados - ${diffs} diferencia${diffs !== 1 ? 's' : ''}`;
-        }
+        // Conteo por familia (para los chips "contar por partes")
+        const nPiezas = all.filter(c => c.item_tipo === 'catalogo').length;
+        const nMat = all.filter(c => c.item_tipo === 'insumo').length;
+
+        // Scope activo
+        let scoped = all;
+        if (this._fisicoScope === 'piezas') scoped = all.filter(c => c.item_tipo === 'catalogo');
+        else if (this._fisicoScope === 'materiales') scoped = all.filter(c => c.item_tipo === 'insumo');
+
+        const scopeTotal = scoped.length;
+        const scopeCounted = scoped.filter(c => c.stock_real != null).length;
+        const scopeDifs = scoped.filter(c => c.stock_real != null && c.stock_real !== c.stock_teorico).length;
+        const pct = scopeTotal ? Math.round((scopeCounted / scopeTotal) * 100) : 0;
+
+        // Footer global (siempre refleja la sesión completa)
+        this._updateConteoCountDisplay();
+
+        // Filtro "solo diferencias" (pill)
+        const data = this._fisicoShowDiffOnly
+            ? scoped.filter(c => c.stock_real != null && c.stock_real !== c.stock_teorico)
+            : scoped;
+
+        const toolbar = `
+            <div class="inv-conteo-toolbar">
+                <div class="inv-chips">
+                    <span class="inv-conteo-scope-label">CONTAR:</span>
+                    <button class="inv-chip ${this._fisicoScope === 'todo' ? 'active' : ''}" data-scope="todo">Todo ${all.length}</button>
+                    <button class="inv-chip ${this._fisicoScope === 'piezas' ? 'active' : ''}" data-scope="piezas"><span class="inv-chip-dot" style="background:#9B7DFF"></span>Piezas ${nPiezas}</button>
+                    <button class="inv-chip ${this._fisicoScope === 'materiales' ? 'active' : ''}" data-scope="materiales"><span class="inv-chip-dot" style="background:#F28D15"></span>Materiales ${nMat}</button>
+                </div>
+                <div class="inv-conteo-progress">
+                    <span class="inv-conteo-progress-txt" id="invConteoScopeTxt">${scopeCounted}<span class="mut">/${scopeTotal}</span> contados</span>
+                    <span class="inv-conteo-bar"><i id="invConteoBar" style="width:${pct}%"></i></span>
+                    <button class="inv-dif-pill ${scopeDifs ? '' : 'zero'} ${this._fisicoShowDiffOnly ? 'active' : ''}" id="invConteoDifPill">${scopeDifs} dif</button>
+                </div>
+            </div>`;
 
         if (data.length === 0) {
-            container.innerHTML = `
+            container.innerHTML = toolbar + `
                 <div class="inv-empty">
                     <div class="inv-empty-icon">📋</div>
-                    <p>${this._fisicoShowDiffOnly ? 'No hay diferencias encontradas' : 'No hay items para contar'}</p>
+                    <p>${this._fisicoShowDiffOnly ? 'No hay diferencias en esta vista' : 'No hay ítems para contar'}</p>
                 </div>`;
+            this._attachConteoToolbarEvents(container);
             return;
         }
 
-        const rows = data.map(c => {
-            const tipoBadge = c.item_tipo === 'catalogo'
-                ? '<span class="inv-modal-item-tag" style="color:#9B7DFF; border-color:#9B7DFF">pieza</span>'
-                : '<span class="inv-modal-item-tag" style="color:#F28D15; border-color:#F28D15">material</span>';
-
-            const diff = c.stock_real != null ? (c.stock_real - c.stock_teorico) : null;
-            let diffHTML;
-            if (diff === null) {
-                diffHTML = '<span class="inv-diff-pending">---</span>';
-            } else if (diff === 0) {
-                diffHTML = '<span class="inv-diff-zero">0 &#10003;</span>';
-            } else {
-                const sign = diff > 0 ? '+' : '';
-                diffHTML = `<span class="inv-diff-nonzero">${sign}${diff}</span>`;
+        // Agrupar por sección (rubro / clasificación)
+        const groups = new Map();
+        data.forEach(c => {
+            const key = this._conteoKey(c);
+            if (!groups.has(key)) {
+                const family = c.item_tipo === 'catalogo' ? 'pieza' : 'material';
+                groups.set(key, { key, family, color: family === 'pieza' ? '#9B7DFF' : '#F28D15', name: key.split('|').slice(1).join('|'), items: [] });
             }
+            groups.get(key).items.push(c);
+        });
+        const orderedGroups = [...groups.values()].sort((a, b) => {
+            if (a.family !== b.family) return a.family === 'pieza' ? -1 : 1;
+            return normStr(a.name).localeCompare(normStr(b.name));
+        });
 
-            return `
-                <tr>
-                    <td class="inv-td">${tipoBadge}</td>
-                    <td class="inv-td"><span class="inv-td-code">${c.item_nombre ? '' : '---'}</span></td>
-                    <td class="inv-td inv-td-name">${c.item_nombre || 'ID: ' + c.item_id}</td>
-                    <td class="inv-td inv-td-code">${c.stock_teorico != null ? c.stock_teorico : '---'}</td>
-                    <td class="inv-td">
-                        <input type="number" class="inv-conteo-input" data-conteo-id="${c.id}" value="${c.stock_real != null ? c.stock_real : ''}"
-                            placeholder="---" step="any" min="0" ${isCerrada ? 'disabled' : ''}>
-                    </td>
-                    <td class="inv-td">${diffHTML}</td>
-                    <td class="inv-td">
-                        <input type="text" class="inv-conteo-notas" data-conteo-id="${c.id}" value="${c.notas || ''}"
-                            placeholder="Nota..." ${isCerrada ? 'disabled' : ''}>
+        let bodyRows = '';
+        orderedGroups.forEach(g => {
+            g.items.sort((a, b) => normStr(a.item_nombre || '').localeCompare(normStr(b.item_nombre || '')));
+            // Progreso real del grupo (sobre TODO el grupo, sin el filtro de diferencias)
+            const groupAll = all.filter(c => this._conteoKey(c) === g.key);
+            const gCounted = groupAll.filter(c => c.stock_real != null).length;
+            const gDone = groupAll.length > 0 && gCounted === groupAll.length;
+            const collapsed = !!this._fisicoCollapsed[g.key];
+            bodyRows += `
+                <tr class="inv-fisico-group" data-group-key="${escAttr(g.key)}">
+                    <td colspan="4">
+                        <span class="inv-fisico-group-chevron">${collapsed ? '&#9656;' : '&#9662;'}</span>
+                        <span class="inv-fisico-group-dot" style="background:${g.color}"></span>
+                        <span class="inv-fisico-group-name">${escHtml(g.name)}</span>
+                        <span class="inv-fisico-group-progress" data-group-progress="${escAttr(g.key)}" style="color:${gDone ? '#00CC88' : '#888'}">${gCounted}/${groupAll.length}</span>
                     </td>
                 </tr>`;
-        }).join('');
+            if (collapsed) return;
+            g.items.forEach(c => {
+                const teorico = c.stock_teorico != null ? c.stock_teorico : 0;
+                const hasNote = !!(c.notas && String(c.notas).trim());
+                const isDiff = c.stock_real != null && c.stock_real !== teorico;
+                const showNote = isDiff || hasNote;
+                bodyRows += `
+                    <tr>
+                        <td class="inv-td inv-conteo-name-cell">${escHtml(c.item_nombre || 'ID: ' + c.item_id)}
+                            <div class="inv-conteo-note-wrap" data-note-for="${c.id}" style="${showNote ? '' : 'display:none'}">
+                                <input type="text" class="inv-conteo-nota-inline" data-conteo-id="${c.id}" value="${escAttr(c.notas || '')}" placeholder="motivo (opcional)..." ${isCerrada ? 'disabled' : ''}>
+                            </div>
+                        </td>
+                        <td class="inv-td" style="text-align:right"><span class="inv-esperado">${teorico}</span></td>
+                        <td class="inv-td" style="text-align:right">
+                            <input type="number" class="inv-conteo-input" data-conteo-id="${c.id}" data-teorico="${teorico}" value="${c.stock_real != null ? c.stock_real : ''}"
+                                placeholder="—" step="any" min="0" ${isCerrada ? 'disabled' : ''}>
+                        </td>
+                        <td class="inv-td" style="text-align:right" data-dif-for="${c.id}">${this._difHTML(c.stock_real, teorico)}</td>
+                    </tr>`;
+            });
+        });
 
-        container.innerHTML = `
+        container.innerHTML = toolbar + `
             <div class="inv-table-wrapper">
                 <table class="inv-table">
                     <thead>
                         <tr>
-                            <th class="inv-th">TIPO</th>
-                            <th class="inv-th">CODIGO</th>
-                            <th class="inv-th">NOMBRE</th>
-                            <th class="inv-th">TEORICO</th>
-                            <th class="inv-th">REAL</th>
-                            <th class="inv-th">DIFERENCIA</th>
-                            <th class="inv-th">NOTAS</th>
+                            <th class="inv-th">ÍTEM</th>
+                            <th class="inv-th" style="text-align:right">ESPERADO</th>
+                            <th class="inv-th" style="text-align:right">CONTADO</th>
+                            <th class="inv-th" style="text-align:right">DIF</th>
                         </tr>
                     </thead>
-                    <tbody>${rows}</tbody>
+                    <tbody>${bodyRows}</tbody>
                 </table>
             </div>`;
 
-        // Auto-save inputs (debounce)
-        if (!isCerrada) {
-            container.querySelectorAll('.inv-conteo-input').forEach(inp => {
-                inp.addEventListener('input', () => {
-                    const conteoId = inp.dataset.conteoId;
-                    clearTimeout(this._fisicoSaveTimers[conteoId]);
-                    this._fisicoSaveTimers[conteoId] = setTimeout(() => {
-                        const val = inp.value.trim() === '' ? null : parseFloat(inp.value);
-                        this._saveConteoField(conteoId, 'stock_real', val);
-                    }, 500);
-                });
-            });
+        this._attachConteoToolbarEvents(container);
 
-            container.querySelectorAll('.inv-conteo-notas').forEach(inp => {
-                inp.addEventListener('input', () => {
-                    const conteoId = inp.dataset.conteoId;
-                    clearTimeout(this._fisicoSaveTimers['n_' + conteoId]);
-                    this._fisicoSaveTimers['n_' + conteoId] = setTimeout(() => {
-                        this._saveConteoField(conteoId, 'notas', inp.value.trim() || null);
-                    }, 500);
-                });
+        // Colapsar / expandir sección
+        container.querySelectorAll('.inv-fisico-group').forEach(row => {
+            row.addEventListener('click', () => {
+                const key = row.dataset.groupKey;
+                this._fisicoCollapsed[key] = !this._fisicoCollapsed[key];
+                this._renderConteoTable();
             });
-        }
+        });
+
+        if (isCerrada) return;
+
+        // Auto-guardado de "Contado" + feedback en vivo (diferencia + aparición de la nota)
+        container.querySelectorAll('.inv-conteo-input').forEach(inp => {
+            inp.addEventListener('input', () => {
+                const id = inp.dataset.conteoId;
+                const teorico = parseFloat(inp.dataset.teorico) || 0;
+                const real = inp.value.trim() === '' ? null : parseFloat(inp.value);
+                const difCell = container.querySelector(`[data-dif-for="${id}"]`);
+                if (difCell) difCell.innerHTML = this._difHTML(real, teorico);
+                const noteWrap = container.querySelector(`[data-note-for="${id}"]`);
+                if (noteWrap) {
+                    const noteInp = noteWrap.querySelector('input');
+                    const keep = (real != null && real !== teorico) || (noteInp && noteInp.value.trim());
+                    noteWrap.style.display = keep ? '' : 'none';
+                }
+                clearTimeout(this._fisicoSaveTimers[id]);
+                this._fisicoSaveTimers[id] = setTimeout(() => {
+                    this._saveConteoField(id, 'stock_real', real);
+                }, 500);
+            });
+        });
+
+        container.querySelectorAll('.inv-conteo-nota-inline').forEach(inp => {
+            inp.addEventListener('input', () => {
+                const id = inp.dataset.conteoId;
+                clearTimeout(this._fisicoSaveTimers['n_' + id]);
+                this._fisicoSaveTimers['n_' + id] = setTimeout(() => {
+                    this._saveConteoField(id, 'notas', inp.value.trim() || null);
+                }, 500);
+            });
+        });
+    },
+
+    // Clave de sección de una fila de conteo: 'pieza|<rubro>' o 'material|<clasificación>'
+    _conteoKey(c) {
+        const maps = this._fisicoCatMaps || {};
+        if (c.item_tipo === 'catalogo') return 'pieza|' + ((maps.p && maps.p.get(String(c.item_id))) || 'Sin rubro');
+        return 'material|' + ((maps.m && maps.m.get(String(c.item_id))) || 'Sin clasificación');
+    },
+
+    _difHTML(real, teorico) {
+        if (real == null) return '<span class="inv-diff-pending">—</span>';
+        const d = real - (teorico || 0);
+        if (d === 0) return '<span class="inv-diff-zero">0 &#10003;</span>';
+        return `<span class="inv-diff-nonzero">${d > 0 ? '+' : ''}${d}</span>`;
+    },
+
+    _attachConteoToolbarEvents(container) {
+        container.querySelectorAll('.inv-chip[data-scope]').forEach(chip => {
+            chip.addEventListener('click', () => {
+                this._fisicoScope = chip.dataset.scope;
+                this._renderConteoTable();
+            });
+        });
+        const pill = container.querySelector('#invConteoDifPill');
+        if (pill) pill.addEventListener('click', () => {
+            this._fisicoShowDiffOnly = !this._fisicoShowDiffOnly;
+            this._renderConteoTable();
+        });
     },
 
     async _saveConteoField(conteoId, field, value) {
@@ -3725,35 +3849,60 @@ const InventarioModule = {
     },
 
     _updateConteoCountDisplay() {
+        const all = this._fisicoConteos || [];
+
+        // Footer global (sesión completa)
         const countEl = document.getElementById('invConteoCount');
-        if (!countEl) return;
-        const total = this._fisicoConteos.length;
-        const counted = this._fisicoConteos.filter(c => c.stock_real != null).length;
-        const diffs = this._fisicoConteos.filter(c => c.stock_real != null && c.stock_real !== c.stock_teorico).length;
-        countEl.textContent = `${counted}/${total} contados - ${diffs} diferencia${diffs !== 1 ? 's' : ''}`;
+        if (countEl) {
+            const total = all.length;
+            const counted = all.filter(c => c.stock_real != null).length;
+            const diffs = all.filter(c => c.stock_real != null && c.stock_real !== c.stock_teorico).length;
+            countEl.textContent = `${counted}/${total} contados - ${diffs} diferencia${diffs !== 1 ? 's' : ''}`;
+        }
+
+        // Progreso del scope (toolbar) — en vivo, sin re-render
+        let scoped = all;
+        if (this._fisicoScope === 'piezas') scoped = all.filter(c => c.item_tipo === 'catalogo');
+        else if (this._fisicoScope === 'materiales') scoped = all.filter(c => c.item_tipo === 'insumo');
+        const sTotal = scoped.length;
+        const sCounted = scoped.filter(c => c.stock_real != null).length;
+        const sDifs = scoped.filter(c => c.stock_real != null && c.stock_real !== c.stock_teorico).length;
+        const txt = document.getElementById('invConteoScopeTxt');
+        if (txt) txt.innerHTML = `${sCounted}<span class="mut">/${sTotal}</span> contados`;
+        const bar = document.getElementById('invConteoBar');
+        if (bar) bar.style.width = (sTotal ? Math.round((sCounted / sTotal) * 100) : 0) + '%';
+        const pill = document.getElementById('invConteoDifPill');
+        if (pill) {
+            pill.textContent = `${sDifs} dif`;
+            pill.classList.toggle('zero', sDifs === 0 && !this._fisicoShowDiffOnly);
+        }
+
+        // Progreso por sección visible
+        if (this._fisicoCatMaps) {
+            document.querySelectorAll('[data-group-progress]').forEach(el => {
+                const key = el.dataset.groupProgress;
+                const groupAll = all.filter(c => this._conteoKey(c) === key);
+                const gc = groupAll.filter(c => c.stock_real != null).length;
+                el.textContent = `${gc}/${groupAll.length}`;
+                el.style.color = (groupAll.length > 0 && gc === groupAll.length) ? '#00CC88' : '#888';
+            });
+        }
     },
 
     _attachConteoEvents() {
-        // Back button
+        // Volver a la lista de sesiones
         const backBtn = document.getElementById('invFisicoBack');
         if (backBtn) {
             backBtn.addEventListener('click', () => {
                 this._fisicoCurrentSesion = null;
                 this._fisicoShowDiffOnly = false;
+                this._fisicoScope = 'todo';
+                this._fisicoCollapsed = {};
                 this._renderTabContent();
             });
         }
 
-        // Toggle diff only
-        const toggle = document.getElementById('invFisicoToggleDiff');
-        if (toggle) {
-            toggle.addEventListener('change', () => {
-                this._fisicoShowDiffOnly = toggle.checked;
-                this._renderConteoTable();
-            });
-        }
-
-        // Cerrar sesion
+        // Cerrar sesión
         const cerrarBtn = document.getElementById('invBtnCerrarSesion');
         if (cerrarBtn) {
             cerrarBtn.addEventListener('click', () => this._cerrarSesion());
@@ -3826,6 +3975,8 @@ const InventarioModule = {
             // Back to list
             this._fisicoCurrentSesion = null;
             this._fisicoShowDiffOnly = false;
+            this._fisicoScope = 'todo';
+            this._fisicoCollapsed = {};
             await this._renderTabContent();
         } catch (e) {
             console.error('[Inventario] Error cerrando sesion:', e);
