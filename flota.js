@@ -21,6 +21,7 @@ const FlotaModule = {
     _search: '',
     _salidas: [],          // salidas de hoy / en tránsito (read-only)
     _salidasOpen: true,
+    _vencOpen: null,       // strip de vencimientos: null = auto (abre si hay vencidos)
 
     _ESTADOS: [
         { v: 'disponible', label: 'Disponible', cls: 'ok' },
@@ -90,6 +91,8 @@ const FlotaModule = {
         } catch (e) {
             console.error('[Flota] load error:', e);
         }
+        // Strip de vencimientos: abre solo si hay algo vencido (respeta el toggle manual del user)
+        if (this._vencOpen === null) this._vencOpen = this._vencItems().some(x => x.venc.cls === 'venc');
         this._renderBody();
     },
 
@@ -98,6 +101,7 @@ const FlotaModule = {
         if (!c) return;
         const propioSel = this._filterPropio === null ? '' : (this._filterPropio ? 'mepex' : 'tercero');
         c.innerHTML = `
+            ${this._renderVencimientos()}
             ${this._renderSalidas()}
             <div class="flota-toolbar">
                 <div class="flota-toolbar-left">
@@ -138,6 +142,7 @@ const FlotaModule = {
             const sec = document.getElementById('flotaSalidas');
             if (sec) { sec.innerHTML = this._renderSalidasInner(); }
         });
+        this._attachVencEvents();
         this._attachTableEvents();
     },
 
@@ -449,6 +454,59 @@ const FlotaModule = {
     },
 
     // ─── Salidas de hoy (read-only) ───
+    // ─── Vencimientos (VTV / seguro / patente / service) a nivel módulo ───
+    _vencItems() {
+        return (this._mantAll || [])
+            .filter(m => m.fecha_proximo_vencimiento)
+            .map(m => ({ m, venc: this._venc(m.fecha_proximo_vencimiento) }))
+            .filter(x => x.venc && x.venc.cls !== 'ok')   // solo vencidos + próximos 30d
+            .sort((a, b) => a.m.fecha_proximo_vencimiento.localeCompare(b.m.fecha_proximo_vencimiento));
+    },
+
+    _renderVencimientos() {
+        return `<div class="flota-venc-strip" id="flotaVencStrip">${this._renderVencimientosInner()}</div>`;
+    },
+
+    _renderVencimientosInner() {
+        const items = this._vencItems();
+        const vencidos = items.filter(x => x.venc.cls === 'venc').length;
+        const porVencer = items.filter(x => x.venc.cls === 'warn').length;
+        const open = !!this._vencOpen;
+        const head = `
+            <div class="flota-venc-head" id="flotaVencToggle">
+                <div class="flota-venc-head-l">
+                    <span>🗓️ Vencimientos</span>
+                    ${vencidos ? `<span class="flota-venc-pill venc">${vencidos} vencido${vencidos !== 1 ? 's' : ''}</span>` : ''}
+                    ${porVencer ? `<span class="flota-venc-pill warn">${porVencer} por vencer</span>` : ''}
+                    ${(!vencidos && !porVencer) ? `<span class="flota-venc-pill ok">todo al día ✓</span>` : ''}
+                </div>
+                ${items.length ? `<span class="flota-venc-chev">${open ? '▾' : '▸'}</span>` : ''}
+            </div>`;
+        if (!open || items.length === 0) return head;
+        const cards = items.map(x => {
+            const m = x.m;
+            const vehName = this._vehiculos.find(v => String(v.id) === String(m.vehiculo_id))?.descripcion || m.vehiculo_label || 'Vehículo';
+            const tipo = m.tipo || m.nombre || 'Otro';
+            return `
+                <div class="flota-venc-card" data-veh-id="${this._escAttr(m.vehiculo_id)}">
+                    <span class="flota-venc-tipo">${this._esc(tipo)}</span>
+                    <span class="flota-venc-veh">${this._esc(vehName)}</span>
+                    <span class="flota-venc ${x.venc.cls}">${this._esc(x.venc.label)}</span>
+                </div>`;
+        }).join('');
+        return head + `<div class="flota-venc-grid">${cards}</div>`;
+    },
+
+    _attachVencEvents() {
+        document.getElementById('flotaVencToggle')?.addEventListener('click', () => {
+            this._vencOpen = !this._vencOpen;
+            const strip = document.getElementById('flotaVencStrip');
+            if (strip) { strip.innerHTML = this._renderVencimientosInner(); this._attachVencEvents(); }
+        });
+        document.querySelectorAll('.flota-venc-card').forEach(el =>
+            el.addEventListener('click', () => this._selectVehiculo(el.dataset.vehId)));
+    },
+
     _renderSalidas() {
         return `<div class="flota-salidas" id="flotaSalidas">${this._renderSalidasInner()}</div>`;
     },
@@ -619,6 +677,19 @@ const FlotaModule = {
             .flota-venc.warn{background:rgba(242,141,21,0.15);color:#F28D15;}
             .flota-venc.venc{background:rgba(255,68,68,0.15);color:#ff4444;}
             .flota-dim{color:var(--text-dim);}
+            .flota-venc-strip{margin-bottom:12px;}
+            .flota-venc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:11px 14px;cursor:pointer;}
+            .flota-venc-head-l{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-weight:500;}
+            .flota-venc-pill{font-family:var(--font-mono);font-size:0.68rem;font-weight:700;padding:2px 9px;border-radius:11px;white-space:nowrap;}
+            .flota-venc-pill.venc{background:rgba(255,68,68,0.15);color:#ff4444;}
+            .flota-venc-pill.warn{background:rgba(242,141,21,0.15);color:#F28D15;}
+            .flota-venc-pill.ok{background:rgba(0,204,136,0.15);color:#00CC88;}
+            .flota-venc-chev{color:var(--text-muted);font-size:0.8rem;}
+            .flota-venc-strip .flota-venc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-top:none;border-radius:0 0 10px 10px;padding:6px;margin-top:-1px;}
+            .flota-venc-card{display:flex;align-items:center;gap:9px;background:var(--bg,#0d0d0d);border:1px solid var(--border,#2a2a2a);border-radius:7px;padding:8px 11px;cursor:pointer;transition:border-color 150ms;}
+            .flota-venc-card:hover{border-color:var(--primary,#00A9C1);}
+            .flota-venc-tipo{font-size:0.6rem;font-family:var(--font-mono);color:var(--primary,#00A9C1);border:1px solid var(--border,#2a2a2a);border-radius:9px;padding:1px 7px;white-space:nowrap;}
+            .flota-venc-veh{flex:1;font-size:0.84rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
             .flota-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:18px;position:sticky;top:16px;}
             .flota-panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;}
             .flota-panel-title{font-size:1.1rem;font-weight:600;color:var(--text-primary);}
