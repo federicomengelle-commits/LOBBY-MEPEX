@@ -4012,6 +4012,7 @@ const API = {
         items = items.map(it => ({
             descripcion: String(it.descripcion || '').trim(),
             insumo_id: it.insumo_id || null,
+            catalogo_item_id: it.catalogo_item_id || null,
             cantidad: (it.cantidad === '' || it.cantidad == null) ? 1 : Number(it.cantidad),
             unidad: it.unidad || null,
         }));
@@ -4114,6 +4115,7 @@ const API = {
                     nombre: it.unidad ? `${it.descripcion} (${it.unidad})` : it.descripcion,
                     cantidad: (it.cantidad === '' || it.cantidad == null) ? null : Number(it.cantidad),
                     insumo_id: it.insumo_id ?? null,   // preserva el link resuelto en el pedido → recepción suma stock
+                    catalogo_item_id: it.catalogo_item_id ?? null,   // idem para piezas del catálogo
                     precio_unitario: null,
                     subtotal: null,
                     notas: null,
@@ -4260,11 +4262,13 @@ const API = {
             if (oc.stock_aplicado) return { error: 'Esta OC ya fue recibida (el stock ya se aplicó)' };
 
             const numeroOc = oc.numero_oc || ('#' + oc.id);
-            const conStock = items.filter(it => it.insumo_id && Number(it.cantidad_recibida) > 0);
+            const conStock = items.filter(it => (it.insumo_id || it.catalogo_item_id) && Number(it.cantidad_recibida) > 0);
 
-            // 1) Sumar stock de cada insumo (atómico)
+            // 1) Sumar stock a cada insumo o pieza del catálogo (atómico; la RPC ajustar_stock
+            //    es genérica por tabla y ya soporta insumos_base y catalogo_items).
             for (const it of conStock) {
-                await this.ajustarStock('insumos_base', it.insumo_id, Number(it.cantidad_recibida));
+                const tabla = it.insumo_id ? 'insumos_base' : 'catalogo_items';
+                await this.ajustarStock(tabla, it.insumo_id || it.catalogo_item_id, Number(it.cantidad_recibida));
             }
 
             // 2) Registrar el movimiento de inventario (entrada por compra) — auditable
@@ -4276,8 +4280,9 @@ const API = {
                     }).select('id').single();
                     if (mov?.id) {
                         await supabaseClient.from('inventario_movimiento_items').insert(conStock.map(it => ({
-                            movimiento_id: mov.id, direccion: 'entrada', item_tipo: 'insumo',
-                            item_id: it.insumo_id, item_nombre: it.nombre || null, cantidad: Number(it.cantidad_recibida),
+                            movimiento_id: mov.id, direccion: 'entrada',
+                            item_tipo: it.insumo_id ? 'insumo' : 'catalogo',
+                            item_id: it.insumo_id || it.catalogo_item_id, item_nombre: it.nombre || null, cantidad: Number(it.cantidad_recibida),
                         })));
                     }
                 } catch (e2) { console.warn('[API] recibirOrdenCompra movimiento:', e2.message); }
@@ -4289,6 +4294,7 @@ const API = {
                 await supabaseClient.from('compras_orden_items').update({
                     cantidad_recibida: (it.cantidad_recibida === '' || it.cantidad_recibida == null) ? null : Number(it.cantidad_recibida),
                     insumo_id: it.insumo_id ?? null,
+                    catalogo_item_id: it.catalogo_item_id ?? null,
                 }).eq('id', it.id);
             }
 

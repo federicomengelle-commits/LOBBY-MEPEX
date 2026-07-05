@@ -331,8 +331,9 @@ const ComprasModule = {
         }, 50);
     },
 
-    _openPedidoModal(prefill = {}) {
-        const insumoOpts = (this._insumos || []).map(i => `<option value="${this._escAttr(i.nombre || '')}">`).join('');
+    async _openPedidoModal(prefill = {}) {
+        await this._ensureInsumosLoaded();
+        const { options: invOpts, byName: invByName } = this._invRef();
         const projOpts = (this._projects || []).map(p => `<option value="${p.id}" ${prefill.proyecto_id === p.id ? 'selected' : ''}>${this._esc(p.name || p.nombre)}</option>`).join('');
         const catOpts = this._categoriasGasto.map(c => `<option value="${this._escAttr(c)}">${this._esc(c)}</option>`).join('');
         Modal.open({
@@ -345,7 +346,7 @@ const ComprasModule = {
                         <div class="cmp-ped-itemshead"><span>Ítem</span><span>Cant.</span><span>Unidad</span><span></span></div>
                         <div id="pedItemsList"></div>
                         <button type="button" class="cmp-ped-additem" id="pedAddItem">+ Agregar ítem</button>
-                        <datalist id="pedInsumos">${insumoOpts}</datalist>
+                        <datalist id="pedInsumos">${invOpts}</datalist>
                     </div>
                     <div>
                         <label class="form-label">Link de referencia (opcional)</label>
@@ -371,21 +372,19 @@ const ComprasModule = {
         });
         setTimeout(() => {
             let imput = 'proyecto', urgencia = 'normal';
-            const insumosMap = {};
-            (this._insumos || []).forEach(i => { insumosMap[(i.nombre || '').toLowerCase()] = i; });
             const itemsList = document.getElementById('pedItemsList');
             const addRow = () => {
                 const row = document.createElement('div');
                 row.className = 'cmp-ped-itemrow';
                 row.innerHTML = `
-                    <input list="pedInsumos" class="form-input ped-i-desc" placeholder="Insumo o qué necesitás">
+                    <input list="pedInsumos" class="form-input ped-i-desc" placeholder="Insumo, pieza o qué necesitás">
                     <input type="number" class="form-input ped-i-cant" placeholder="1" min="0" step="any" value="1">
                     <input class="form-input ped-i-unidad" placeholder="unidad">
                     <button type="button" class="ped-i-del" title="Quitar">×</button>`;
                 itemsList.appendChild(row);
                 row.querySelector('.ped-i-desc').addEventListener('input', (e) => {
-                    const ins = insumosMap[(e.target.value || '').trim().toLowerCase()];
-                    if (ins && ins.unidad) row.querySelector('.ped-i-unidad').value = ins.unidad;   // heredar unidad
+                    const ref = invByName[(e.target.value || '').trim().toLowerCase()];
+                    if (ref && ref.unidad) row.querySelector('.ped-i-unidad').value = ref.unidad;   // heredar unidad
                 });
                 row.querySelector('.ped-i-del').addEventListener('click', () => { if (itemsList.children.length > 1) row.remove(); });
             };
@@ -400,9 +399,11 @@ const ComprasModule = {
             document.getElementById('pedSave')?.addEventListener('click', async () => {
                 const items = [...itemsList.querySelectorAll('.cmp-ped-itemrow')].map(r => {
                     const desc = r.querySelector('.ped-i-desc').value.trim();
+                    const ref = invByName[desc.toLowerCase()] || {};
                     return {
                         descripcion: desc,
-                        insumo_id: (insumosMap[desc.toLowerCase()] || {}).id || null,
+                        insumo_id: ref.insumo_id || null,
+                        catalogo_item_id: ref.catalogo_item_id || null,
                         cantidad: r.querySelector('.ped-i-cant').value,
                         unidad: r.querySelector('.ped-i-unidad').value.trim() || null,
                     };
@@ -507,14 +508,44 @@ const ComprasModule = {
     _esc(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
     _escAttr(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); },
 
-    // Carga this._insumos on-demand (el tab Órdenes no los precarga; solo Pedidos lo hace hoy).
+    // Carga this._insumos + this._catalogoPiezas on-demand (un ítem de pedido/OC puede
+    // linkear a un insumo O a una pieza del catálogo → al recibir suma stock a la tabla
+    // correcta). El tab Órdenes no los precarga; solo Pedidos precarga insumos hoy.
     async _ensureInsumosLoaded() {
-        if (Array.isArray(this._insumos) && this._insumos.length) return this._insumos;
-        try {
-            const { data } = await supabaseClient.from('insumos_base').select('id, nombre, unidad').eq('_deleted', false).order('nombre');
-            this._insumos = data || [];
-        } catch (e) { console.warn('[Compras] ensureInsumosLoaded:', e.message); this._insumos = this._insumos || []; }
+        if (!(Array.isArray(this._insumos) && this._insumos.length)) {
+            try {
+                const { data } = await supabaseClient.from('insumos_base').select('id, nombre, unidad').eq('_deleted', false).order('nombre');
+                this._insumos = data || [];
+            } catch (e) { console.warn('[Compras] ensureInsumosLoaded (insumos):', e.message); this._insumos = this._insumos || []; }
+        }
+        if (!(Array.isArray(this._catalogoPiezas) && this._catalogoPiezas.length)) {
+            try {
+                const items = await API.getCatalogoItems();
+                // Piezas físicas del catálogo (excluye servicios; propio/subalquilado se compran para el parque).
+                this._catalogoPiezas = (items || []).filter(it => it && (it.nombre || '').trim() && it.tipo_receta !== 'servicio');
+            } catch (e) { console.warn('[Compras] ensureInsumosLoaded (piezas):', e.message); this._catalogoPiezas = this._catalogoPiezas || []; }
+        }
         return this._insumos;
+    },
+
+    // Datalist + mapa de resolución combinando insumos y piezas del catálogo.
+    // byName[nombre] = { insumo_id } | { catalogo_item_id } (+ unidad). Insumo tiene
+    // prioridad ante colisión de nombre (raro: materia prima vs producto terminado).
+    _invRef() {
+        const byName = {};
+        const norm = s => (s || '').trim().toLowerCase();
+        const opts = [];
+        (this._insumos || []).forEach(i => {
+            const k = norm(i.nombre); if (!k) return;
+            if (!byName[k]) byName[k] = { insumo_id: i.id, unidad: i.unidad || null };
+            opts.push(`<option value="${this._escAttr(i.nombre)}" label="insumo">`);
+        });
+        (this._catalogoPiezas || []).forEach(c => {
+            const k = norm(c.nombre); if (!k) return;
+            if (!byName[k]) byName[k] = { catalogo_item_id: c.id, unidad: c.unidad_medida || c.unidad || null };
+            opts.push(`<option value="${this._escAttr(c.nombre)}" label="pieza">`);
+        });
+        return { options: opts.join(''), byName };
     },
 
     _formatDate(d) {
@@ -1373,15 +1404,19 @@ const ComprasModule = {
         const items = this._ordenItems.filter(i => String(i.orden_id) === String(oc.id));
         if (!items.length) { Toast.warning('Esta OC no tiene items cargados — agregá al menos uno antes de recibir'); return; }
 
-        const insumoOpts = (this._insumos || []).map(i => `<option value="${this._escAttr(i.nombre || '')}" data-insumo-id="${i.id}">`).join('');
+        const { options: invOpts, byName: invByName } = this._invRef();
+        const nombreRef = (it) => {
+            if (it.insumo_id) return (this._insumos || []).find(i => String(i.id) === String(it.insumo_id))?.nombre || '';
+            if (it.catalogo_item_id) return (this._catalogoPiezas || []).find(c => String(c.id) === String(it.catalogo_item_id))?.nombre || '';
+            return '';
+        };
         const rows = items.map((it, idx) => {
-            const insumoActual = it.insumo_id ? (this._insumos || []).find(i => String(i.id) === String(it.insumo_id)) : null;
             return `
                 <tr data-recep-row="${idx}" data-item-id="${it.id}">
                     <td>${this._esc(it.nombre)}</td>
                     <td class="cmp-recep-cant-pedida">${it.cantidad ?? '—'}</td>
                     <td>
-                        <input list="cmpRecepInsumos" class="cmp-recep-insumo" placeholder="Buscar insumo…" value="${this._escAttr(insumoActual?.nombre || '')}">
+                        <input list="cmpRecepInsumos" class="cmp-recep-insumo" placeholder="Buscar insumo/pieza…" value="${this._escAttr(nombreRef(it))}">
                     </td>
                     <td>
                         <input type="number" class="cmp-recep-cant" min="0" step="any" value="${it.cantidad_recibida ?? it.cantidad ?? ''}">
@@ -1395,10 +1430,10 @@ const ComprasModule = {
             body: `
                 <div style="display:flex;flex-direction:column;gap:6px;">
                     <table class="cmp-recep-table">
-                        <thead><tr><th>Item</th><th>Cant. pedida</th><th>Insumo (stock)</th><th>Cant. recibida</th></tr></thead>
+                        <thead><tr><th>Item</th><th>Cant. pedida</th><th>Insumo/pieza (stock)</th><th>Cant. recibida</th></tr></thead>
                         <tbody>${rows}</tbody>
                     </table>
-                    <datalist id="cmpRecepInsumos">${insumoOpts}</datalist>
+                    <datalist id="cmpRecepInsumos">${invOpts}</datalist>
 
                     <div class="cmp-recep-seg" id="cmpRecepEstadoSeg">
                         <button type="button" class="on" data-rc="completa">✓ Recepción completa</button>
@@ -1414,8 +1449,6 @@ const ComprasModule = {
 
         setTimeout(() => {
             let recepcionEstado = 'completa';
-            const insumosByName = {};
-            (this._insumos || []).forEach(i => { insumosByName[(i.nombre || '').toLowerCase()] = i; });
 
             document.getElementById('cmpRecepEstadoSeg')?.addEventListener('click', (e) => {
                 const b = e.target.closest('button'); if (!b) return;
@@ -1430,12 +1463,13 @@ const ComprasModule = {
                     const insumoInput = row.querySelector('.cmp-recep-insumo');
                     const cantInput = row.querySelector('.cmp-recep-cant');
                     const nombreInsumo = (insumoInput?.value || '').trim();
-                    const matched = insumosByName[nombreInsumo.toLowerCase()];
+                    const ref = invByName[nombreInsumo.toLowerCase()] || {};
                     const itemId = row.dataset.itemId;
                     const item = items.find(i => String(i.id) === String(itemId));
                     return {
                         id: itemId,
-                        insumo_id: matched ? matched.id : null,
+                        insumo_id: ref.insumo_id || null,
+                        catalogo_item_id: ref.catalogo_item_id || null,
                         cantidad_recibida: cantInput?.value === '' ? null : Number(cantInput.value),
                         nombre: item?.nombre || null,
                     };
@@ -1584,7 +1618,7 @@ const ComprasModule = {
 
     async _showAddItemModal(oc) {
         await this._ensureInsumosLoaded();
-        const insumoOpts = (this._insumos || []).map(i => `<option value="${this._escAttr(i.nombre || '')}">`).join('');
+        const { options: invOpts, byName: invByName } = this._invRef();
         Modal.open({
             title: 'Agregar Item a OC',
             size: 'small',
@@ -1595,9 +1629,9 @@ const ComprasModule = {
                         <input type="text" id="cmpItemNombre" class="form-input" placeholder="Ej: Panel blanco 100x250" style="font-size:1rem;padding:12px;">
                     </div>
                     <div>
-                        <label class="form-label" style="font-size:1rem;">Insumo vinculado (opcional — para sumar stock al recibir)</label>
-                        <input type="text" id="cmpItemInsumo" list="cmpItemInsumos" class="form-input" placeholder="Buscar insumo…" style="font-size:1rem;padding:12px;">
-                        <datalist id="cmpItemInsumos">${insumoOpts}</datalist>
+                        <label class="form-label" style="font-size:1rem;">Insumo/pieza vinculada (opcional — para sumar stock al recibir)</label>
+                        <input type="text" id="cmpItemInsumo" list="cmpItemInsumos" class="form-input" placeholder="Buscar insumo/pieza…" style="font-size:1rem;padding:12px;">
+                        <datalist id="cmpItemInsumos">${invOpts}</datalist>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div>
@@ -1622,8 +1656,6 @@ const ComprasModule = {
         });
 
         setTimeout(() => {
-            const insumosByName = {};
-            (this._insumos || []).forEach(i => { insumosByName[(i.nombre || '').toLowerCase()] = i; });
             document.getElementById('cmpItemSave')?.addEventListener('click', async () => {
                 const nombre = document.getElementById('cmpItemNombre')?.value?.trim();
                 if (!nombre) { Toast.warning('Ingresá el nombre del item'); return; }
@@ -1632,13 +1664,14 @@ const ComprasModule = {
                 const precioUnit = parseFloat(document.getElementById('cmpItemPrecio')?.value) || 0;
                 const subtotal = cantidad * precioUnit;
                 const insumoNombre = (document.getElementById('cmpItemInsumo')?.value || '').trim();
-                const insumoMatch = insumoNombre ? insumosByName[insumoNombre.toLowerCase()] : null;
+                const ref = insumoNombre ? (invByName[insumoNombre.toLowerCase()] || {}) : {};
 
                 try {
                     await supabaseClient.from('compras_orden_items').insert({
                         orden_id: oc.id,
                         nombre,
-                        insumo_id: insumoMatch ? insumoMatch.id : null,
+                        insumo_id: ref.insumo_id || null,
+                        catalogo_item_id: ref.catalogo_item_id || null,
                         cantidad: cantidad || null,
                         precio_unitario: precioUnit || null,
                         subtotal: subtotal || null,
