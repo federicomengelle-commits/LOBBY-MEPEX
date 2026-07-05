@@ -9554,7 +9554,7 @@ const FinanzasModule = {
         const cuentaOpts = (this._cuentas||[]).map(c => `<option value="${c.id}">${escHtml(c.nombre)}</option>`).join('');
         const proyOpts = Object.keys(this._proyectosMap||{}).map(k => `<option value="${k}">${escHtml(this._proyectosMap[k])}</option>`).join('');
         if (!this._provVal) { try { this._provVal = await API.getProveedores(); } catch { this._provVal = []; } }
-        const provOpts = (this._provVal||[]).map(p => `<option value="${p.id}">${escHtml(p.nombre||p.razon_social||'—')}</option>`).join('');
+        const provOpts = (this._provVal||[]).map(p => `<option value="${p.id}">${escHtml(p.name||'—')}</option>`).join('');
         const today = new Date().toISOString().slice(0,10);
         const defCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
         const body = `
@@ -9658,7 +9658,7 @@ const FinanzasModule = {
     async _showEndosarModal(v) {
         if (v.sentido !== 'recibido' || v.estado !== 'en_cartera') { Toast.warning('Solo se endosan valores recibidos en cartera'); return; }
         if (!this._provVal) { try { this._provVal = await API.getProveedores(); } catch { this._provVal = []; } }
-        const provOpts = (this._provVal||[]).map(p => `<option value="${p.id}">${escHtml(p.nombre||p.razon_social||'—')}</option>`).join('');
+        const provOpts = (this._provVal||[]).map(p => `<option value="${p.id}">${escHtml(p.name||'—')}</option>`).join('');
         const catOpts = Object.entries(API.GASTO_DOMINIO).map(([k,m]) => `<option value="${k}" ${k==='proveedor'?'selected':''}>${escHtml(m.label)}</option>`).join('');
         const body = `
             <div style="display:flex;flex-direction:column;gap:12px;">
