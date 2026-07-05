@@ -816,10 +816,8 @@ const CRM = {
         const typeConfig = this._clientTypes.find(t => t.value === c.tipo);
         const estadoConfig = this._clientStates.find(s => s.value === (c.estado || 'activo'));
 
-        // Client projects
-        const clientProjects = this._projects.filter(p =>
-            p.clientName && c.name && p.clientName.toLowerCase() === c.name.toLowerCase()
-        );
+        // Client projects — match por clientId (FK real), no por nombre (mismo bug que _projectCount).
+        const clientProjects = this._projects.filter(p => p.clientId && String(p.clientId) === String(c.id));
 
         // Client cotizaciones
         const clientCots = this._cotizaciones.filter(cot =>
