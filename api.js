@@ -199,10 +199,8 @@ const API = {
         const q = normStr(query);
         return projects.filter(p =>
             normStr(p.name).includes(q) ||
-            normStr(p.clientName).includes(q) ||
-            normStr(p.eventName).includes(q) ||
-            normStr(p.status).includes(q) ||
-            normStr(p.type).includes(q)
+            normStr(p.estado).includes(q) ||
+            normStr(p.tipo).includes(q)
         );
     },
 
@@ -456,16 +454,16 @@ const API = {
                 label: c.name,
                 sublabel: c.rubro || '',
                 id: c.id,
-                route: `#ventas/ficha-cliente/${c.id}`
+                route: '#crm'
             }));
 
             (projects || []).forEach(p => results.push({
                 type: 'proyecto',
                 icon: '📋',
-                label: `${p.number ? '#' + p.number : ''} ${p.name}`.trim(),
-                sublabel: p.status || '',
+                label: p.name,
+                sublabel: p.estado || '',
                 id: p.id,
-                route: `#ventas/ficha-proyecto/${p.id}`
+                route: `#proyectos/${p.id}`
             }));
 
             (events || []).forEach(e => results.push({
@@ -474,7 +472,7 @@ const API = {
                 label: e.name,
                 sublabel: e.venue || '',
                 id: e.id,
-                route: `#eventos/ficha-evento/${e.id}`
+                route: `#eventos?id=${e.id}`
             }));
 
             return results;

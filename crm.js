@@ -916,7 +916,7 @@ const CRM = {
                             ${clientProjects.slice(0, 5).map(p => `
                                 <div class="crm-panel-list-item crm-panel-list-link" data-route="proyectos">
                                     <span class="crm-panel-list-detail">${p.name || '\u2014'}</span>
-                                    <span class="crm-badge-estado-sm">${p.status || '\u2014'}</span>
+                                    <span class="crm-badge-estado-sm">${p.estado || '\u2014'}</span>
                                 </div>
                             `).join('')}
                         </div>
