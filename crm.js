@@ -587,6 +587,11 @@ const CRM = {
         // Contactabilidad: gap real para la máquina de demanda (la mayoría no tiene tel/email).
         const _cliTel = this._clients.filter(c => c.phone && String(c.phone).trim()).length;
         const _cliMail = this._clients.filter(c => c.email && String(c.email).trim()).length;
+        // Salud de la base (docs/PLAN-BASE-CLIENTES.md): contactabilidad + facturables + leads/opt-out (se llenan al importar/enriquecer)
+        const _cliContact = this._clients.filter(c => (c.phone && String(c.phone).trim()) || (c.email && String(c.email).trim())).length;
+        const _cliCuit = this._clients.filter(c => c.cuit && String(c.cuit).trim()).length;
+        const _cliLeads = this._clients.filter(c => c.estadoComercial === 'lead').length;
+        const _cliOptout = this._clients.filter(c => c.optOut).length;
         const _canImport = typeof Auth !== 'undefined' && Auth.isAdminLevel && Auth.isAdminLevel();
         const kpisHtml = `
             ${_canImport ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -599,7 +604,13 @@ const CRM = {
             <div style="flex:1">${this._kpiCard('Clientes', this._clients.length, '#00A9C1')}</div>
             <div style="flex:1">${this._kpiCard('Con teléfono', _cliTel, '#00CC88')}</div>
             <div style="flex:1">${this._kpiCard('Con email', _cliMail, '#9B7DFF')}</div>
-        </div>`;
+        </div>
+            <div style="display:flex;gap:12px;margin-bottom:14px">
+                <div style="flex:1">${this._kpiCard('Contactables', _cliContact, '#00CC88')}</div>
+                <div style="flex:1">${this._kpiCard('Con CUIT', _cliCuit, '#4A90D9')}</div>
+                <div style="flex:1">${this._kpiCard('Leads', _cliLeads, '#F28D15')}</div>
+                <div style="flex:1">${this._kpiCard('Opt-out', _cliOptout, '#ff4444')}</div>
+            </div>`;
 
         if (this._filteredClients.length === 0) {
             return kpisHtml + `
