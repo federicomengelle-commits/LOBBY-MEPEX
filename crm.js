@@ -4667,6 +4667,8 @@ const CRM = {
             size: 'md',
             footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="cfSave">${isEdit ? 'Guardar cambios' : 'Crear caso'}</button>`,
         });
+        // Cursor listo en el título (UX: escribir de una).
+        setTimeout(() => instance.overlay.querySelector('#cfTitulo')?.focus(), 50);
         // Toggle del bloque "crear nuevo cliente" inline
         const cliSel = instance.overlay.querySelector('#cfCliente');
         const newCliBox = instance.overlay.querySelector('#cfNewClienteBox');
