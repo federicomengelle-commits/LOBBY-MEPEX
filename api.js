@@ -306,6 +306,11 @@ const API = {
                 rubro: p.rubro || '',
                 detalle: p.detalle || '',
                 domicilio: p.domicilio_comercial || '',
+                // Campos ricos (Fase 3b): estaban en la tabla pero el mapping los dropeaba.
+                email: p.email || '',
+                telefono: p.telefono || '',
+                contacto: p.contacto || '',
+                comprasProveedorId: p.compras_proveedor_id != null ? p.compras_proveedor_id : null,  // bridge a compras_proveedores (bigint)
             }));
 
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
@@ -331,6 +336,122 @@ const API = {
             console.warn('[API] Error creating proveedor:', e.message);
             return null;
         }
+    },
+
+    // ─── F1 · Motor de sugerencia de proveedores por ítem/rubro ──────────
+    // Sugiere proveedores (entidad `proveedor` UUID = canónica) para pedir presupuesto.
+    // Fuentes rankeadas, TODAS derivadas (sin mapa manual que mantener):
+    //   ① historial de compras — OCs que ya incluyeron este ítem → su proveedor  (+10)
+    //   ② link directo asignado — catalogo.proveedor_id_directo / insumos_base.proveedor por nombre  (+8)
+    //   ③ mismo rubro  (+3)
+    // La historia se enriquece sola con cada compra. Degrada limpio (no rompe si falta data).
+    // Devuelve [{...proveedor, _score, _reason}] ordenado por relevancia.
+    async getProveedoresSugeridos({ insumoId = null, catalogoItemId = null, rubro = null } = {}) {
+        try {
+            const provs = await this.getProveedores();
+            if (!provs || !provs.length) return [];
+            const byId = {};                 // uuid → proveedor
+            const byBigId = {};              // compras_proveedor_id (bigint) → proveedor
+            provs.forEach(p => {
+                byId[p.id] = p;
+                if (p.comprasProveedorId != null) byBigId[String(p.comprasProveedorId)] = p;
+            });
+            const score = {}, reason = {};
+            const bump = (uuid, pts, why) => {
+                if (!uuid || !byId[uuid]) return;
+                if (score[uuid] == null) { score[uuid] = 0; reason[uuid] = why; }  // la 1ª fuente (mayor prioridad) fija el motivo
+                score[uuid] += pts;
+            };
+            const bumpBig = (bigId, pts, why) => {
+                const p = bigId != null ? byBigId[String(bigId)] : null;
+                if (p) bump(p.id, pts, why);
+            };
+
+            let rubroTarget = rubro;
+
+            // ① historial + ② link directo + rubro del propio ítem
+            if (insumoId || catalogoItemId) {
+                const col = insumoId ? 'insumo_id' : 'catalogo_item_id';
+                const val = insumoId || catalogoItemId;
+                const { data: ordItems } = await supabaseClient.from('compras_orden_items')
+                    .select('orden_id').eq(col, val);
+                const ordenIds = [...new Set((ordItems || []).map(i => i.orden_id).filter(Boolean))];
+                if (ordenIds.length) {
+                    const { data: ords } = await supabaseClient.from('compras_ordenes')
+                        .select('proveedor_uuid, proveedor_id').in('id', ordenIds).eq('_deleted', false);
+                    (ords || []).forEach(o => {
+                        if (o.proveedor_uuid) bump(o.proveedor_uuid, 10, 'ya le compraste esto');
+                        else bumpBig(o.proveedor_id, 10, 'ya le compraste esto');
+                    });
+                }
+                if (catalogoItemId) {
+                    const { data: cat } = await supabaseClient.from('catalogo_items')
+                        .select('rubro, proveedor_id_directo').eq('id', catalogoItemId).maybeSingle();
+                    if (cat) {
+                        if (!rubroTarget) rubroTarget = cat.rubro || null;
+                        if (cat.proveedor_id_directo) bump(String(cat.proveedor_id_directo), 8, 'proveedor asignado');
+                    }
+                } else {
+                    const { data: ins } = await supabaseClient.from('insumos_base')
+                        .select('proveedor, categoria, clasificacion').eq('id', insumoId).maybeSingle();
+                    if (ins) {
+                        if (!rubroTarget) rubroTarget = ins.categoria || ins.clasificacion || null;
+                        // insumos_base.proveedor es texto libre y puede listar VARIOS ("Studio AB, Punta Color").
+                        const partes = (ins.proveedor || '').split(/[,;/]| y /i).map(s => s.trim()).filter(Boolean);
+                        partes.forEach(part => {
+                            const np = normStr(part);
+                            const m = provs.find(p => normStr(p.name) === np) ||
+                                      (np.length >= 4 ? provs.find(p => normStr(p.name).includes(np) || np.includes(normStr(p.name))) : null);
+                            if (m) bump(m.id, 8, 'proveedor asignado');
+                        });
+                    }
+                }
+            }
+
+            // ③ mismo rubro (match laxo, es solo una sugerencia)
+            if (rubroTarget) {
+                const rt = normStr(rubroTarget);
+                if (rt) provs.forEach(p => {
+                    const pr = normStr(p.rubro || '');
+                    if (pr && (pr === rt || pr.includes(rt) || rt.includes(pr))) bump(p.id, 3, `rubro ${p.rubro}`);
+                });
+            }
+
+            return Object.keys(score)
+                .map(uuid => ({ ...byId[uuid], _score: score[uuid], _reason: reason[uuid] }))
+                .sort((a, b) => b._score - a._score || (a.name || '').localeCompare(b.name || '', 'es'));
+        } catch (e) { console.warn('[API] getProveedoresSugeridos:', e.message); return []; }
+    },
+
+    // Unión de sugerencias sobre una lista de ítems [{insumo_id?, catalogo_item_id?}].
+    // Se queda con la mejor sugerencia por proveedor. Sirve para OC (varios ítems) y
+    // para "pedir precio" desde un ítem suelto (Inventario).
+    async getProveedoresSugeridosParaItems(items) {
+        try {
+            const linked = (items || []).filter(i => i && (i.insumo_id || i.catalogo_item_id));
+            if (!linked.length) return [];
+            const merged = {};   // uuid → mejor sugerencia
+            for (const it of linked) {
+                const sugs = await this.getProveedoresSugeridos({
+                    insumoId: it.insumo_id || null,
+                    catalogoItemId: it.insumo_id ? null : (it.catalogo_item_id || null),
+                });
+                sugs.forEach(s => {
+                    const cur = merged[s.id];
+                    if (!cur || s._score > cur._score) merged[s.id] = s;
+                });
+            }
+            return Object.values(merged).sort((a, b) => b._score - a._score || (a.name || '').localeCompare(b.name || '', 'es'));
+        } catch (e) { console.warn('[API] getProveedoresSugeridosParaItems:', e.message); return []; }
+    },
+
+    // Sugerencias para una OC entera. Si la OC no tiene ítems linkeados, devuelve [] (Fede elige a mano).
+    async getProveedoresSugeridosParaOC(ordenId) {
+        try {
+            const { data: items } = await supabaseClient.from('compras_orden_items')
+                .select('insumo_id, catalogo_item_id').eq('orden_id', ordenId);
+            return await this.getProveedoresSugeridosParaItems(items);
+        } catch (e) { console.warn('[API] getProveedoresSugeridosParaOC:', e.message); return []; }
     },
 
     // ─── Select Options (clasificacion/categoria config) ───
@@ -4145,6 +4266,32 @@ const API = {
         } catch (e) { console.warn('[API] createOrdenFromPedido:', e.message); return null; }
     },
 
+    // Crea una OC "suelta" (sin pedido previo) con sus ítems linkeados — usada por
+    // "Pedir precio" desde un ítem del inventario. Numera igual que createOrdenFromPedido.
+    async createOrden({ descripcion = null, items = [], proyecto_id = null, categoria_gasto = null, notas = null } = {}) {
+        try {
+            const { data: existing } = await supabaseClient.from('compras_ordenes').select('numero_oc');
+            const nums = (existing || []).map(o => parseInt((o.numero_oc || '').replace(/\D/g, ''))).filter(n => !isNaN(n));
+            const next = (nums.length ? Math.max(...nums) : 0) + 1;
+            const payload = {
+                numero_oc: 'OC-' + String(next).padStart(4, '0'),
+                descripcion, proyecto_id, categoria_gasto,
+                fecha: new Date().toISOString().split('T')[0],
+                estado: 'pendiente', notas, proveedor_id: null, monto_total: 0, _deleted: false,
+            };
+            const { data: row, error } = await supabaseClient.from('compras_ordenes').insert(payload).select('id, numero_oc').single();
+            if (error) throw error;
+            const ocItems = (items || []).filter(it => it && String(it.nombre || '').trim()).map(it => ({
+                orden_id: row.id, nombre: it.nombre,
+                cantidad: (it.cantidad === '' || it.cantidad == null) ? null : Number(it.cantidad),
+                insumo_id: it.insumo_id ?? null, catalogo_item_id: it.catalogo_item_id ?? null,
+                precio_unitario: null, subtotal: null, notas: null,
+            }));
+            if (ocItems.length) { try { await supabaseClient.from('compras_orden_items').insert(ocItems); } catch (e2) { console.warn('[API] createOrden items:', e2.message); } }
+            return row;
+        } catch (e) { console.warn('[API] createOrden:', e.message); return null; }
+    },
+
     async getPresupuestos(ordenId) {
         try {
             const { data, error } = await supabaseClient.from('compras_oc_presupuestos').select('*')
@@ -4158,6 +4305,7 @@ const API = {
         const payload = {
             orden_id: data.orden_id,
             proveedor_id: data.proveedor_id || null,
+            proveedor_uuid: data.proveedor_uuid || null,   // canónico (proveedor UUID) — compat con generarEgresoDeOC
             proveedor_nombre: data.proveedor_nombre || null,
             monto: Number(data.monto) || 0,
             link: data.link || null,
@@ -4169,6 +4317,15 @@ const API = {
             if (error) throw error;
             return row;
         } catch (e) { console.warn('[API] addPresupuesto:', e.message); return null; }
+    },
+
+    // Editar un presupuesto (p.ej. cargar el precio que contestó el proveedor a un "solicitado").
+    async updatePresupuesto(id, patch) {
+        try {
+            const { data, error } = await supabaseClient.from('compras_oc_presupuestos').update(patch).eq('id', id).select().maybeSingle();
+            if (error) throw error;
+            return data || true;
+        } catch (e) { console.warn('[API] updatePresupuesto:', e.message); return null; }
     },
 
     async deletePresupuesto(id) {

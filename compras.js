@@ -42,6 +42,9 @@ const ComprasModule = {
         const m = (location.hash || '').match(/[?&]tab=([^&]+)/);
         if (m && ['proveedores', 'pedidos', 'ordenes'].includes(m[1])) this._activeTab = m[1];
         if (this._activeTab === 'pagos') this._activeTab = 'ordenes';   // tab Pagos retirada → pagos se ven en Finanzas
+        // Deep-link &id=<ocId> (ej. desde "Pedir precio" de un ítem) → abre esa OC
+        const mId = (location.hash || '').match(/[?&]id=([^&]+)/);
+        if (mId && this._activeTab === 'ordenes') this._selectedOrdenId = mId[1];
 
         content.innerHTML = this._buildShell();
         this._attachTabEvents();
@@ -293,6 +296,294 @@ const ComprasModule = {
         const cc = document.getElementById('comprasContent');
         if (cc) cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
         await this._loadOrdenes();
+    },
+
+    // ══════════════════════════════════════════════════════════════
+    //  PEDIR PRECIO — arma el mensaje + copiar/mail a N proveedores +
+    //  registra el pedido como presupuesto "solicitado". v1 SIN envío
+    //  automático: copiás → pegás en Gmail (que autocompleta tus contactos);
+    //  el mailto: es atajo cuando el proveedor tiene mail cargado.
+    // ══════════════════════════════════════════════════════════════
+    _PP_TPL_KEY: 'mepex_plantilla_pedido_precio',
+    _pedirPrecioTpl() {
+        return localStorage.getItem(this._PP_TPL_KEY) ||
+            'Buenas, les escribo de MEPEX.\nNecesitaría cotización de:\n{ITEMS}\n¿Me pasan precio por unidad y por paquete/bulto, plazo de entrega y si hay descuento por cantidad? ¡Gracias!';
+    },
+    _pedidoItemsBlock(items) {
+        return (items || []).map(i => `• ${i.nombre}${i.cantidad ? ' ×' + i.cantidad : ''}`).join('\n') || '• (ítems a detallar)';
+    },
+    _buildPedidoMensaje(tpl, items) {
+        return (tpl || '').replace('{ITEMS}', this._pedidoItemsBlock(items));
+    },
+
+    // Entrada pública para otros módulos (Inventario): pedir precio de UN ítem suelto.
+    // tipo: 'insumo' | 'catalogo'. La OC se crea al registrar (arma el pedido por detrás).
+    async pedirPrecioDeItem({ tipo, id, nombre, cantidad = null }) {
+        if (!id) return;
+        const item = {
+            nombre: nombre || 'Ítem',
+            cantidad,
+            insumo_id: tipo === 'insumo' ? id : null,
+            catalogo_item_id: tipo === 'catalogo' ? id : null,
+        };
+        await this._openPedirPrecioModal({ standaloneItems: [item], titulo: nombre || 'Pedido de precio' });
+    },
+
+    // arg = una OC (desde su ficha) O { standaloneItems:[...], titulo } (desde un ítem).
+    async _openPedirPrecioModal(arg) {
+        let oc = null, items = [], titulo = '';
+        if (arg && arg.standaloneItems) {
+            items = arg.standaloneItems;
+            titulo = arg.titulo || 'Pedido de precio';
+        } else {
+            oc = arg;
+            items = this._ordenItems.filter(i => String(i.orden_id) === String(oc.id));
+            titulo = 'OC ' + (oc.numero_oc || '');
+        }
+        const [sug, todos] = await Promise.all([
+            oc ? API.getProveedoresSugeridosParaOC(oc.id) : API.getProveedoresSugeridosParaItems(items),
+            API.getProveedores(),
+        ]);
+        const sugById = {}; (sug || []).forEach(s => sugById[s.id] = s);
+        const provAll = (todos || []).slice().sort((a, b) => {
+            const sa = sugById[a.id] ? 1 : 0, sb = sugById[b.id] ? 1 : 0;
+            if (sa !== sb) return sb - sa;                                   // sugeridos primero
+            return (a.name || '').localeCompare(b.name || '', 'es');
+        });
+        this._ppState = { oc, items, provAll, sugById, checked: new Set(Object.keys(sugById)), itemsBlock: this._pedidoItemsBlock(items), titulo };
+        this._ensurePedirPrecioStyles();
+        const mensaje = this._buildPedidoMensaje(this._pedirPrecioTpl(), items);
+        const n = this._ppState.checked.size;
+
+        Modal.open({
+            title: `📧 Pedir precio — ${this._esc(titulo)}`,
+            size: 'lg',
+            body: `
+                <div class="pp-wrap">
+                    <div>
+                        <div class="pp-msg-head">
+                            <label class="form-label" style="margin:0;">Mensaje</label>
+                            <span>
+                                <button class="pp-linkbtn" id="ppTplSave" title="Guardar este texto como plantilla">guardar plantilla</button>
+                                <button class="pp-copy" id="ppCopy">📋 Copiar mensaje</button>
+                            </span>
+                        </div>
+                        <textarea id="ppMsg" class="form-input pp-textarea" rows="6">${this._esc(mensaje)}</textarea>
+                        <div class="pp-hint">Se usa igual para todos los proveedores (compiten por la misma OC). Editá lo que quieras.</div>
+                    </div>
+                    <div>
+                        <div class="pp-provs-head">
+                            <span>Proveedores <span class="pp-count" id="ppCount">(${n})</span></span>
+                            <input type="text" id="ppSearch" class="form-input pp-search" placeholder="Buscar por nombre o rubro…">
+                        </div>
+                        <div id="ppList" class="pp-list">${this._renderPPList('')}</div>
+                        ${sug.length === 0 ? '<div class="pp-hint" style="margin-top:6px;">Sin sugerencias automáticas para esta OC (poco historial/links) — elegí de la lista.</div>' : ''}
+                    </div>
+                </div>
+            `,
+            footer: `
+                <button class="btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn-primary" id="ppRegistrar">✓ Registrar pedido (<span id="ppGoN">${n}</span>)</button>
+            `,
+        });
+        setTimeout(() => this._attachPedirPrecioEvents(), 60);
+    },
+
+    _renderPPList(q) {
+        const st = this._ppState; if (!st) return '';
+        const nq = normStr(q || '');
+        const rows = st.provAll.filter(p => !nq || normStr(p.name).includes(nq) || normStr(p.rubro || '').includes(nq));
+        if (!rows.length) return '<div class="pp-empty">Sin proveedores</div>';
+        return rows.map(p => {
+            const sugd = st.sugById[p.id];
+            const checked = st.checked.has(p.id);
+            const mail = (p.email || '').trim();
+            const badge = sugd ? `<span class="pp-badge">${this._esc(this._ppReasonLabel(sugd._reason))}</span>` : '';
+            const contact = mail
+                ? `<button class="pp-mailbtn" data-pp-mail="${p.id}" title="Abrir mail con el mensaje">✉️ mail</button>`
+                : `<button class="pp-addmail" data-pp-addmail="${p.id}">+ cargar mail</button>`;
+            return `<label class="pp-row ${checked ? 'on' : ''}">
+                <input type="checkbox" class="pp-check" data-pp-check="${p.id}" ${checked ? 'checked' : ''}>
+                <span class="pp-name">${this._esc(p.name)}${p.rubro ? ` <span class="pp-rubro">${this._esc(p.rubro)}</span>` : ''}</span>
+                ${badge}
+                <span class="pp-contact">${contact}</span>
+            </label>`;
+        }).join('');
+    },
+    _ppReasonLabel(reason) {
+        if (!reason) return '';
+        if (reason.startsWith('ya le')) return '💬 ya le compraste';
+        if (reason.startsWith('proveedor asignado')) return '🔗 asignado';
+        if (reason.startsWith('rubro')) return '🏷️ ' + reason.replace('rubro ', '');
+        return reason;
+    },
+
+    _ppCurrentMsg() { return document.getElementById('ppMsg')?.value || ''; },
+    _ppSubject(oc) { return `MEPEX — Pedido de cotización${oc && oc.numero_oc ? ' (OC ' + oc.numero_oc + ')' : ''}`; },
+    // Copiar robusto para prod (http = contexto inseguro, sin navigator.clipboard).
+    // 1) API moderna (https)  2) execCommand sobre el textarea visible (dentro del click)
+    // 3) deja el mensaje seleccionado para Ctrl+C (garantía).
+    async _ppCopy(text) {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                Toast.success('Mensaje copiado — pegalo en Gmail/WhatsApp');
+                return;
+            }
+        } catch (_) { /* cae al fallback */ }
+        const ta = document.getElementById('ppMsg');
+        try {
+            if (ta) { ta.focus(); ta.select(); }
+            if (document.execCommand('copy')) { Toast.success('Mensaje copiado — pegalo en Gmail/WhatsApp'); return; }
+        } catch (_) { /* cae abajo */ }
+        if (ta) { ta.focus(); ta.select(); Toast.info('Apretá Ctrl+C para copiar el mensaje'); }
+        else Toast.error('No se pudo copiar');
+    },
+
+    _attachPedirPrecioEvents() {
+        const st = this._ppState; if (!st) return;
+        const updCount = () => {
+            const n = st.checked.size;
+            const c = document.getElementById('ppCount'); if (c) c.textContent = `(${n})`;
+            const g = document.getElementById('ppGoN'); if (g) g.textContent = n;
+        };
+        const list = document.getElementById('ppList');
+        const rerender = () => { const s = document.getElementById('ppSearch')?.value || ''; if (list) list.innerHTML = this._renderPPList(s); };
+
+        list?.addEventListener('change', (e) => {
+            const cb = e.target.closest('[data-pp-check]'); if (!cb) return;
+            const id = cb.dataset.ppCheck;
+            if (cb.checked) st.checked.add(id); else st.checked.delete(id);
+            cb.closest('.pp-row')?.classList.toggle('on', cb.checked);
+            updCount();
+        });
+        list?.addEventListener('click', async (e) => {
+            const mailBtn = e.target.closest('[data-pp-mail]');
+            if (mailBtn) {
+                e.preventDefault();
+                const p = st.provAll.find(x => x.id === mailBtn.dataset.ppMail);
+                if (p) window.location.href = `mailto:${encodeURIComponent(p.email)}?subject=${encodeURIComponent(this._ppSubject(st.oc))}&body=${encodeURIComponent(this._ppCurrentMsg())}`;
+                return;
+            }
+            const addBtn = e.target.closest('[data-pp-addmail]');
+            if (addBtn) {
+                e.preventDefault();
+                const id = addBtn.dataset.ppAddmail;
+                const val = prompt('Mail del proveedor:');
+                if (val == null || !val.trim()) return;
+                await this._saveProvEmail(id, val.trim());
+                const p = st.provAll.find(x => x.id === id); if (p) p.email = val.trim();
+                if (!st.checked.has(id)) st.checked.add(id);   // si cargó el mail, seguro lo quiere incluir
+                updCount(); rerender();
+            }
+        });
+        document.getElementById('ppSearch')?.addEventListener('input', rerender);
+        document.getElementById('ppCopy')?.addEventListener('click', () => this._ppCopy(this._ppCurrentMsg()));
+        document.getElementById('ppTplSave')?.addEventListener('click', () => {
+            const txt = this._ppCurrentMsg();
+            // re-inserta {ITEMS} si el bloque de ítems quedó intacto, para que la plantilla sea reusable
+            localStorage.setItem(this._PP_TPL_KEY, st.itemsBlock ? txt.split(st.itemsBlock).join('{ITEMS}') : txt);
+            Toast.success('Plantilla guardada');
+        });
+        document.getElementById('ppRegistrar')?.addEventListener('click', () => this._pedirPrecioRegistrar());
+    },
+
+    async _saveProvEmail(uuid, mail) {
+        try { await supabaseClient.from('proveedor').update({ email: mail }).eq('id', uuid); API.clearCache && API.clearCache(); return true; }
+        catch (e) { Toast.error('No se pudo guardar el mail'); return false; }
+    },
+
+    async _pedirPrecioRegistrar() {
+        const st = this._ppState; if (!st) return;
+        const chosen = st.provAll.filter(p => st.checked.has(p.id));
+        if (!chosen.length) { Toast.warning('Elegí al menos un proveedor'); return; }
+        // Si vino de un ítem (sin OC), creamos la OC por detrás con ese ítem.
+        let ocId = st.oc ? st.oc.id : null;
+        let ocNum = st.oc ? st.oc.numero_oc : null;
+        if (!ocId) {
+            const row = await API.createOrden({ descripcion: st.titulo, items: st.items });
+            if (!row) { Toast.error('No se pudo crear la orden de compra'); return; }
+            ocId = row.id; ocNum = row.numero_oc;
+        }
+        const hoy = new Date().toLocaleDateString('es-AR');
+        let ok = 0;
+        for (const p of chosen) {
+            const r = await API.addPresupuesto({
+                orden_id: ocId,
+                proveedor_uuid: p.id,
+                proveedor_id: p.comprasProveedorId || null,
+                proveedor_nombre: p.name,
+                monto: 0,
+                notas: `⏳ Precio solicitado ${hoy}`,
+            });
+            if (r) ok++;
+        }
+        Modal.close();
+        Toast.success(`${ok} pedido(s) registrado(s) en ${ocNum || 'la OC'} — cargá el precio cuando te contesten`);
+        if (st.oc) {
+            this._renderFichaOrden();
+        } else {
+            location.hash = '#compras?tab=ordenes&id=' + ocId;   // llevar a la OC recién creada (mismo patrón que los deep-links por href)
+        }
+    },
+
+    // Cargar el precio que contestó un proveedor a un presupuesto "solicitado".
+    _cargarPrecioModal(presuId) {
+        Modal.open({
+            title: 'Cargar precio cotizado',
+            size: 'sm',
+            body: `
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                    <div><label class="form-label">Monto ($)</label><input type="number" id="ppCargarMonto" class="form-input" placeholder="0" min="0" step="1" style="font-size:1rem;padding:10px;"></div>
+                    <div><label class="form-label">Link / nota (opcional)</label><input type="text" id="ppCargarLink" class="form-input" placeholder="Link del presupuesto, condiciones…"></div>
+                </div>
+            `,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn-primary" id="ppCargarSave">Guardar</button>`,
+        });
+        setTimeout(() => {
+            document.getElementById('ppCargarMonto')?.focus();
+            document.getElementById('ppCargarSave')?.addEventListener('click', async () => {
+                const monto = Number(document.getElementById('ppCargarMonto')?.value) || 0;
+                if (monto <= 0) { Toast.warning('Poné un monto'); return; }
+                const link = document.getElementById('ppCargarLink')?.value?.trim() || null;
+                const patch = { monto, notas: null };
+                if (link) patch.link = link;
+                await API.updatePresupuesto(presuId, patch);
+                Modal.close();
+                Toast.success('Precio cargado');
+                this._renderFichaOrden();
+            });
+        }, 60);
+    },
+
+    _ensurePedirPrecioStyles() {
+        if (document.getElementById('pp-styles')) return;
+        const s = document.createElement('style'); s.id = 'pp-styles';
+        s.textContent = `
+            .pp-wrap{display:flex;flex-direction:column;gap:18px;}
+            .pp-textarea{width:100%;font-family:var(--font-main);resize:vertical;line-height:1.5;}
+            .pp-msg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+            .pp-linkbtn{background:none;border:none;color:var(--text-muted);text-decoration:underline;font-size:.75rem;cursor:pointer;margin-right:8px;}
+            .pp-copy{background:rgba(0,169,193,.12);border:1px solid rgba(0,169,193,.4);color:var(--primary);border-radius:6px;padding:5px 12px;font-size:.8rem;cursor:pointer;font-family:var(--font-mono);}
+            .pp-hint{font-size:.75rem;color:var(--text-muted);margin-top:5px;}
+            .pp-provs-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;}
+            .pp-count{color:var(--primary);font-family:var(--font-mono);}
+            .pp-search{max-width:260px;padding:7px 10px;}
+            .pp-list{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;border:1px solid var(--border);border-radius:8px;padding:6px;}
+            .pp-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;margin:0;}
+            .pp-row:hover{background:rgba(255,255,255,.04);}
+            .pp-row.on{background:rgba(0,169,193,.10);}
+            .pp-check{accent-color:var(--primary);width:16px;height:16px;flex-shrink:0;}
+            .pp-name{font-weight:600;flex:1;min-width:0;}
+            .pp-rubro{font-size:.72rem;color:var(--text-muted);font-weight:400;}
+            .pp-badge{font-size:.7rem;color:var(--primary);background:rgba(0,169,193,.12);border-radius:10px;padding:2px 9px;font-family:var(--font-mono);white-space:nowrap;}
+            .pp-contact{flex-shrink:0;}
+            .pp-mailbtn{background:rgba(0,169,193,.10);border:1px solid rgba(0,169,193,.4);color:var(--primary);border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer;}
+            .pp-addmail{background:none;border:1px dashed rgba(0,169,193,.5);color:var(--primary);border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer;}
+            .pp-empty{padding:16px;text-align:center;color:var(--text-muted);}
+            .cmp-presu-cargar{background:rgba(242,141,21,.14);border:1px solid rgba(242,141,21,.5);color:var(--accent);border-radius:5px;padding:3px 10px;font-size:.75rem;cursor:pointer;font-family:var(--font-mono);white-space:nowrap;}
+        `;
+        document.head.appendChild(s);
     },
 
     _showPresupuestoModal(ordenId) {
@@ -1181,6 +1472,7 @@ const ComprasModule = {
         cc.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:300px;"><div class="spinner"></div></div>';
         await this._loadOrdenItems(oc.id);
         this._ensurePedidoStyles();
+        this._ensurePedirPrecioStyles();
         // Refrescar la OC desde DB: monto/proveedor pueden haber cambiado al elegir/borrar ganadora.
         try { const { data: fresh } = await supabaseClient.from('compras_ordenes').select('*').eq('id', oc.id).maybeSingle(); if (fresh) Object.assign(oc, fresh); } catch (_) { /* noop */ }
         const presupuestos = await API.getPresupuestos(oc.id);
@@ -1259,7 +1551,10 @@ const ComprasModule = {
                 <div class="cmp-section">
                     <h3 class="cmp-section-title">
                         Presupuestos de proveedor
-                        <button class="cmp-btn-add-sm" id="cmpAddPresu">+ Agregar</button>
+                        <span style="display:inline-flex;gap:8px;">
+                            <button class="cmp-btn-add-sm cmp-btn-pedir" id="cmpPedirPrecio">📧 Pedir precio</button>
+                            <button class="cmp-btn-add-sm" id="cmpAddPresu">+ Agregar</button>
+                        </span>
                     </h3>
                     ${presupuestos.length === 0
                         ? '<p class="cmp-empty-small">Sin presupuestos todavía. Agregá los que coticen y tildá la ganadora.</p>'
@@ -1271,7 +1566,7 @@ const ComprasModule = {
                                 ${pr.link ? ` <a href="${this._escAttr(pr.link)}" target="_blank" rel="noopener" class="cmp-presu-link">link ↗</a>` : ''}
                                 ${pr.notas ? `<div class="cmp-presu-notas">${this._esc(pr.notas)}</div>` : ''}
                             </div>
-                            <span class="cmp-presu-monto">${this._formatMoney(pr.monto)}</span>
+                            <span class="cmp-presu-monto">${Number(pr.monto) > 0 ? this._formatMoney(pr.monto) : `<button class="cmp-presu-cargar" data-presu-cargar="${pr.id}">💲 Cargar precio</button>`}</span>
                             <button class="cmp-presu-del" data-presu-del="${pr.id}" title="Quitar">×</button>
                         </div>`).join('')}
                     ${hasEgreso
@@ -1319,7 +1614,9 @@ const ComprasModule = {
         this._attachItemDeleteEvents(oc);
 
         // Presupuestos (5.B) + Generar egreso (5.C)
+        document.getElementById('cmpPedirPrecio')?.addEventListener('click', () => this._openPedirPrecioModal(oc));
         document.getElementById('cmpAddPresu')?.addEventListener('click', () => this._showPresupuestoModal(oc.id));
+        document.querySelectorAll('[data-presu-cargar]').forEach(b => b.addEventListener('click', () => this._cargarPrecioModal(b.dataset.presuCargar)));
         document.querySelectorAll('[data-presu-win]').forEach(b => b.addEventListener('click', async () => {
             await API.setGanadora(oc.id, b.dataset.presuWin);
             Toast.success('Ganadora elegida'); this._renderFichaOrden();

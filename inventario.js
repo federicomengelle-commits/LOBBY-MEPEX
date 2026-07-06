@@ -2176,6 +2176,18 @@ const InventarioModule = {
             });
         }
 
+        // Pedir precio a proveedores (Compras) — inyectado acá para no tocar los 2 builders de panel.
+        if (typeof ComprasModule !== 'undefined' && ComprasModule.pedirPrecioDeItem) {
+            const tipoCompra = type === 'pieza' ? 'catalogo' : 'insumo';
+            const pp = document.createElement('button');
+            pp.className = 'inv-btn-pedir';
+            pp.textContent = '📧 Pedir precio a proveedores';
+            pp.style.cssText = 'margin:6px 0 2px;padding:9px 14px;width:100%;border:1px solid rgba(0,169,193,.5);background:rgba(0,169,193,.12);color:#00A9C1;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:600;';
+            if (movBtn && movBtn.parentElement) movBtn.parentElement.insertBefore(pp, movBtn.nextSibling);
+            else inner.insertBefore(pp, inner.firstChild);
+            pp.addEventListener('click', () => ComprasModule.pedirPrecioDeItem({ tipo: tipoCompra, id: item.id, nombre: item.nombre }));
+        }
+
         // ESC to close
         if (this._panelEscHandler) document.removeEventListener('keydown', this._panelEscHandler);
         this._panelEscHandler = (e) => {
