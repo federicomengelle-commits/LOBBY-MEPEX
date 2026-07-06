@@ -687,6 +687,13 @@ const InventarioModule = {
                     font-weight: 700;
                     line-height: 1;
                 }
+                /* KPIs de cabecera (TODOS los tabs): fila compacta, NO bloques full-width apilados.
+                   (antes el flex vivía solo en _ensureEquiposStyles → no cargaba en el resto). */
+                .inv-kpis { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+                .inv-kpis .inv-dash-stat { flex: 1 1 150px; min-width: 150px; padding: 12px 16px; gap: 4px; }
+                .inv-kpis .inv-dash-stat-value { font-size: 1.5rem; }
+                .inv-kpis .inv-dash-stat-label { font-size: 0.72rem; }
+                .inv-kpis .inv-dash-stat-icon { font-size: 1.05rem; }
                 .inv-dash-section {
                     margin-bottom: 24px;
                 }
@@ -1202,8 +1209,9 @@ const InventarioModule = {
         return `
             <div class="inv-kpis">
                 ${this._kpiCard('invMtKpiTotal', 'Total materiales', '🪵', '#F28D15')}
-                ${this._kpiCard('invMtKpiBajoMin', 'Bajo el mínimo', '⚠️', '#00CC88')}
                 ${this._kpiCard('invMtKpiConStock', 'Con stock', '📦', '#00CC88')}
+                ${this._kpiCard('invMtKpiSinStock', 'Sin stock', '∅', '#888888')}
+                ${this._kpiCard('invMtKpiBajoMin', 'Bajo el mínimo', '⚠️', '#00CC88')}
             </div>
             <div class="inv-filters">
                 <div class="inv-filter-group">
@@ -1244,9 +1252,11 @@ const InventarioModule = {
         // material cruza su mínimo (se activa solo a medida que cargues stock/mínimos).
         const bajoMin = this._materiales.filter(m => m.stock != null && m.stock_minimo != null && Number(m.stock) < Number(m.stock_minimo)).length;
         const conStock = this._materiales.filter(m => Number(m.stock) > 0).length;
+        const sinStock = this._materiales.filter(m => !(Number(m.stock) > 0)).length;
         const tEl = document.getElementById('invMtKpiTotal'); if (tEl) tEl.textContent = this._materiales.length;
-        const bEl = document.getElementById('invMtKpiBajoMin'); if (bEl) { bEl.textContent = bajoMin; bEl.style.color = bajoMin > 0 ? '#E74C3C' : '#00CC88'; }
         const cEl = document.getElementById('invMtKpiConStock'); if (cEl) cEl.textContent = conStock;
+        const sEl = document.getElementById('invMtKpiSinStock'); if (sEl) sEl.textContent = sinStock;
+        const bEl = document.getElementById('invMtKpiBajoMin'); if (bEl) { bEl.textContent = bajoMin; bEl.style.color = bajoMin > 0 ? '#E74C3C' : '#00CC88'; }
         this._applyMaterialesFilters();
     },
 
@@ -1545,8 +1555,7 @@ const InventarioModule = {
         const style = document.createElement('style');
         style.id = 'inv-equipos-styles';
         style.textContent = `
-            .inv-kpis { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-            .inv-kpis .inv-dash-stat { flex: 1; min-width: 160px; }
+            /* .inv-kpis ahora es global (bloque principal) — se quitó de acá para que cargue en todos los tabs */
             .inv-eq-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
             .inv-eq-manifiesto-row {
                 display: flex; align-items: center; gap: 8px; padding: 6px 0;
