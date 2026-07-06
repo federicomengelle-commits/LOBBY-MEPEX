@@ -348,6 +348,7 @@ const ComprasModule = {
         const provAll = (todos || []).slice().sort((a, b) => {
             const sa = sugById[a.id] ? 1 : 0, sb = sugById[b.id] ? 1 : 0;
             if (sa !== sb) return sb - sa;                                   // sugeridos primero
+            if (sa) return (sugById[b.id]._score || 0) - (sugById[a.id]._score || 0);  // entre sugeridos: por relevancia
             return (a.name || '').localeCompare(b.name || '', 'es');
         });
         this._ppState = { oc, items, provAll, sugById, checked: new Set(Object.keys(sugById)), itemsBlock: this._pedidoItemsBlock(items), titulo };
