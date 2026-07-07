@@ -940,53 +940,43 @@ const RendimientoModule = {
         const rend = this._rend;
 
         if (!body) return;
+        // Desglose de costos por categoría (reusa la planilla ya cargada; carga si falta).
+        if (!Array.isArray(this._costos)) this._costos = await API.getEventoCostos(this._eventoId) || [];
+        const catRows = this.CATS.map(cat => ({ ...cat, tot: this._costos.filter(c => c.categoria === cat.id && c.estado !== 'anulado').reduce((s, c) => s + this._costoMonto(c), 0) }));
+        const maxCat = Math.max(1, ...catRows.map(c => c.tot), d.costos_directo || 0);
+        const cbar = v => Math.max(0, Math.min(100, v / maxCat * 100));
         body.innerHTML = `
-            <div class="rend-ganancia">
-                <div class="rend-kpis">
-                    <div class="rend-kpi" style="--k:var(--color-success)">
-                        <div class="rend-k-lbl">Cobrado</div>
-                        <div class="rend-k-val" style="color:var(--color-success)">${this._money(d.cobrado)}</div>
-                        <div class="rend-k-sub">ingresos confirmados · ${d.proyectos} proyecto(s)</div>
+            <div class="rend-g">
+                <div class="rend-gk">
+                    <div class="rend-gkc" style="--k:var(--color-success)"><div class="rend-gkl">Cobrado</div><div class="rend-gkv" style="color:var(--color-success)">${this._money(d.cobrado)}</div><div class="rend-gks">${d.proyectos} proyecto(s)</div></div>
+                    <div class="rend-gkc" style="--k:#4A90D9"><div class="rend-gkl">Facturado</div><div class="rend-gkv" style="color:#4A90D9">${this._money(d.facturado)}</div><div class="rend-gks">al cliente</div></div>
+                    <div class="rend-gkc" style="--k:var(--accent)"><div class="rend-gkl">Costos</div><div class="rend-gkv" style="color:var(--accent)">${this._money(d.costos)}</div><div class="rend-gks">${d.costos_directo > 0 ? 'planilla + Finanzas' : 'la planilla'}</div></div>
+                    <div class="rend-gkc" style="--k:#9B7DFF"><div class="rend-gkl">Materiales</div><div class="rend-gkv" style="color:#9B7DFF">${this._money(d.materiales)}</div><div class="rend-gks">consumidos</div></div>
+                    <div class="rend-gkc hero" style="--k:var(--primary)"><div class="rend-gkl">Ganancia neta</div><div class="rend-gkv" style="color:${ganancia >= 0 ? 'var(--primary)' : 'var(--color-error)'}">${this._money(ganancia)}</div><div class="rend-gks">${margen != null ? `<span class="rend-gbadge">margen ${margen}%</span>` : 'sin ingresos cobrados'}</div></div>
+                </div>
+
+                <div class="rend-g2">
+                    <div class="rend-gp">
+                        <div class="rend-gph">De dónde sale la ganancia</div>
+                        <div class="rend-wfr"><span class="rend-wfl">Cobrado</span><span class="rend-gbar"><i style="width:${pct(d.cobrado)}%;background:var(--color-success)"></i></span><span class="rend-wfa" style="color:var(--color-success)">+${this._money(d.cobrado)}</span></div>
+                        <div class="rend-wfr"><span class="rend-wfl">− Costos</span><span class="rend-gbar"><i style="width:${pct(d.costos)}%;background:var(--accent)"></i></span><span class="rend-wfa" style="color:var(--accent)">−${this._money(d.costos)}</span></div>
+                        <div class="rend-wfr"><span class="rend-wfl">− Materiales</span><span class="rend-gbar"><i style="width:${pct(d.materiales)}%;background:#9B7DFF"></i></span><span class="rend-wfa" style="color:#9B7DFF">−${this._money(d.materiales)}</span></div>
+                        <div class="rend-wfr tot"><span class="rend-wfl">= Ganancia neta</span><span class="rend-gbar"><i style="width:${pct(Math.max(ganancia, 0))}%;background:var(--primary)"></i></span><span class="rend-wfa" style="color:var(--primary);font-weight:700">${this._money(ganancia)}</span></div>
                     </div>
-                    <div class="rend-kpi" style="--k:#4A90D9">
-                        <div class="rend-k-lbl">Facturado</div>
-                        <div class="rend-k-val" style="color:#4A90D9">${this._money(d.facturado)}</div>
-                        <div class="rend-k-sub">emitido al cliente</div>
-                    </div>
-                    <div class="rend-kpi" style="--k:var(--accent)">
-                        <div class="rend-k-lbl">Costos del evento</div>
-                        <div class="rend-k-val" style="color:var(--accent)">${this._money(d.costos)}</div>
-                        <div class="rend-k-sub">${d.costos_directo > 0 ? `planilla ${this._money(d.costos_planilla)} + Finanzas ${this._money(d.costos_directo)}` : 'la planilla'}</div>
-                    </div>
-                    <div class="rend-kpi" style="--k:#9B7DFF">
-                        <div class="rend-k-lbl">Materiales</div>
-                        <div class="rend-k-val" style="color:#9B7DFF">${this._money(d.materiales)}</div>
-                        <div class="rend-k-sub">carga manual</div>
-                    </div>
-                    <div class="rend-kpi" style="--k:var(--primary)">
-                        <div class="rend-k-lbl">Ganancia neta</div>
-                        <div class="rend-k-val" style="color:${ganancia >= 0 ? 'var(--primary)' : 'var(--color-error)'}">${this._money(ganancia)}</div>
-                        <div class="rend-k-sub">${margen != null ? 'margen ' + margen + '% (s/cobrado)' : 'sin ingresos cobrados'}</div>
+                    <div class="rend-gp">
+                        <div class="rend-gph">Costos por categoría</div>
+                        ${catRows.map(c => `<div class="rend-cr ${c.tot ? '' : 'dim'}"><span class="rend-cico" style="background:${c.color}22;color:${c.color}">${c.ico}</span><span class="rend-cl">${c.label}</span><span class="rend-gbar sm"><i style="width:${cbar(c.tot)}%;background:${c.color}"></i></span><span class="rend-ca">${this._money(c.tot)}</span></div>`).join('')}
+                        ${d.costos_directo > 0 ? `<div class="rend-cr fin"><span class="rend-cico" style="background:#2a2a2a;color:#888">Σ</span><span class="rend-cl">Finanzas (directo)</span><span class="rend-gbar sm"><i style="width:${cbar(d.costos_directo)}%;background:#555"></i></span><span class="rend-ca">${this._money(d.costos_directo)}</span></div>` : ''}
+                        <div class="rend-cattot"><span>Total costos</span><span>${this._money(d.costos)}</span></div>
                     </div>
                 </div>
 
-                <div class="rend-waterfall">
-                    <h3>De dónde sale la ganancia</h3>
-                    <div class="rend-wf-row"><span class="rend-wf-lbl">Cobrado</span><div class="rend-wf-bar"><div class="rend-wf-fill" style="width:${pct(d.cobrado)}%;background:var(--color-success)"></div></div><span class="rend-wf-amt" style="color:var(--color-success)">+${this._money(d.cobrado)}</span></div>
-                    <div class="rend-wf-row"><span class="rend-wf-lbl">− Costos del evento</span><div class="rend-wf-bar"><div class="rend-wf-fill" style="width:${pct(d.costos)}%;background:var(--accent)"></div></div><span class="rend-wf-amt" style="color:var(--accent)">−${this._money(d.costos)}</span></div>
-                    <div class="rend-wf-row"><span class="rend-wf-lbl">− Materiales</span><div class="rend-wf-bar"><div class="rend-wf-fill" style="width:${pct(d.materiales)}%;background:#9B7DFF"></div></div><span class="rend-wf-amt" style="color:#9B7DFF">−${this._money(d.materiales)}</span></div>
-                    <div class="rend-wf-row rend-wf-total"><span class="rend-wf-lbl">= Ganancia neta</span><div class="rend-wf-bar"><div class="rend-wf-fill" style="width:${pct(Math.max(ganancia, 0))}%;background:var(--primary)"></div></div><span class="rend-wf-amt" style="color:var(--primary);font-weight:700">${this._money(ganancia)}</span></div>
-                    <p class="rend-note">Cobrado = ingresos confirmados de los proyectos del evento. Facturado = comprobantes emitidos al cliente (lado a lado, no se resta dos veces). Costos = la planilla + gastos imputados al evento desde Finanzas (egresos con este evento). Materiales = insumos consumidos (carga manual). Margen sobre Cobrado.</p>
-                </div>
-
-                <div class="rend-materiales">
-                    <h3>🧱 Materiales consumidos (costo informativo)</h3>
-                    <p class="rend-note" style="margin-top:0">Insumos/consumibles gastados en el evento (no la estructura OCTEXA, que se alquila y vuelve). Carga manual en v1.</p>
-                    <div class="rend-form-row">
-                        <div class="rend-fg"><label>Costo de materiales</label><input type="number" step="0.01" id="rendMatMonto" value="${rend?.materiales_manual ?? ''}"></div>
-                        <div class="rend-fg"><label>Notas</label><input type="text" id="rendMatNotas" value="${this._esc(rend?.materiales_notas || '')}"></div>
-                        <div class="rend-fg" style="justify-content:flex-end"><button class="rend-btn rend-btn-primary" id="rendMatSave">Guardar materiales</button></div>
-                    </div>
+                <div class="rend-mat2">
+                    <span class="rend-math">🧱 Materiales consumidos</span>
+                    <span class="rend-matn">insumos gastados (no OCTEXA)</span>
+                    <input type="number" step="0.01" id="rendMatMonto" class="rend-min" placeholder="Costo $" value="${rend?.materiales_manual ?? ''}">
+                    <input type="text" id="rendMatNotas" class="rend-min" style="flex:1;max-width:none" placeholder="Notas" value="${this._esc(rend?.materiales_notas || '')}">
+                    <button class="rend-btn rend-btn-primary" id="rendMatSave">Guardar</button>
                 </div>
             </div>`;
 
@@ -1134,21 +1124,37 @@ const RendimientoModule = {
         .rend-warn{font-size:.8rem;color:var(--accent);background:rgba(242,141,21,.08);border:1px solid rgba(242,141,21,.25);border-radius:6px;padding:9px 12px}
         .rend-cat-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
         .rend-cat-form{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;display:flex;flex-direction:column;gap:10px}
-        .rend-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
-        .rend-kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:16px;border-top:3px solid var(--k,var(--primary))}
-        .rend-k-lbl{font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
-        .rend-k-val{font-family:var(--font-mono);font-size:1.35rem;font-weight:700}
-        .rend-k-sub{font-size:.72rem;color:var(--text-dim);margin-top:4px}
-        .rend-waterfall,.rend-materiales{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:16px}
-        .rend-waterfall h3,.rend-materiales h3{font-size:.92rem;margin-bottom:14px;color:var(--text-primary)}
-        .rend-wf-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-        .rend-wf-lbl{width:180px;font-size:.84rem;color:var(--text-muted)}
-        .rend-wf-bar{flex:1;height:20px;border-radius:4px;background:rgba(255,255,255,.03);overflow:hidden}
-        .rend-wf-fill{height:100%;border-radius:4px;transition:width .3s}
-        .rend-wf-amt{width:130px;text-align:right;font-family:var(--font-mono);font-size:.85rem}
-        .rend-wf-total{margin-top:6px;padding-top:12px;border-top:1px solid var(--border)}
-        .rend-wf-total .rend-wf-lbl{color:var(--text-primary);font-weight:600}
-        .rend-note{font-size:.76rem;color:var(--text-dim);margin-top:12px;line-height:1.5}
+        /* Ganancia — dashboard compacto (rediseño 2026-07-07) */
+        .rend-gk{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
+        .rend-gkc{background:var(--bg-card);border:1px solid var(--border);border-radius:9px;padding:11px 13px;border-top:3px solid var(--k,var(--primary))}
+        .rend-gkc.hero{background:rgba(0,169,193,.05);border-color:rgba(0,169,193,.35)}
+        .rend-gkl{font-size:.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+        .rend-gkv{font-family:var(--font-mono);font-size:1.18rem;font-weight:700}
+        .rend-gkc.hero .rend-gkv{font-size:1.32rem}
+        .rend-gks{font-size:.68rem;color:var(--text-dim);margin-top:3px}
+        .rend-gbadge{background:rgba(0,169,193,.12);color:var(--primary);border-radius:20px;padding:1px 8px;font-size:.66rem;font-family:var(--font-mono)}
+        .rend-g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+        .rend-gp{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+        .rend-gph{font-size:.82rem;font-weight:600;color:var(--text-primary);margin-bottom:12px}
+        .rend-wfr{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+        .rend-wfl{width:120px;font-size:.78rem;color:var(--text-muted)}
+        .rend-gbar{flex:1;height:14px;background:rgba(255,255,255,.03);border-radius:3px;overflow:hidden}
+        .rend-gbar.sm{height:8px}
+        .rend-gbar i{display:block;height:100%;border-radius:3px;transition:width .3s}
+        .rend-wfa{width:100px;text-align:right;font-family:var(--font-mono);font-size:.78rem}
+        .rend-wfr.tot{margin-top:4px;padding-top:10px;border-top:1px solid var(--border)}
+        .rend-wfr.tot .rend-wfl{color:var(--text-primary);font-weight:600}
+        .rend-cr{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+        .rend-cico{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.8rem;flex-shrink:0}
+        .rend-cl{width:105px;font-size:.78rem;color:var(--text-primary)}
+        .rend-ca{width:88px;text-align:right;font-family:var(--font-mono);font-size:.76rem;color:var(--text-primary)}
+        .rend-cr.dim{opacity:.45}
+        .rend-cr.fin .rend-cl{color:var(--text-muted);font-style:italic}
+        .rend-cattot{display:flex;justify-content:space-between;margin-top:4px;padding-top:9px;border-top:1px solid var(--border);font-family:var(--font-mono);font-size:.82rem;font-weight:700;color:var(--accent)}
+        .rend-mat2{display:flex;align-items:center;gap:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 16px}
+        .rend-math{font-size:.82rem;font-weight:600;white-space:nowrap}
+        .rend-matn{font-size:.7rem;color:var(--text-dim);white-space:nowrap}
+        .rend-min{background:#0f0f0f;border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-size:.8rem;max-width:150px}
         `;
         const el = document.createElement('style');
         el.id = 'rend-styles';
