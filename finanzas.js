@@ -231,9 +231,9 @@ const FinanzasModule = {
             <style>
                 /* ─── Finanzas Module Styles ─── */
                 .fin-wrapper {
-                    padding: 24px 32px;
-                    max-width: 1400px;
-                    margin: 0 auto;
+                    /* full-width para igualar el margen lateral con el resto de módulos
+                       (el aire lo da .app-main). Antes: max-width 1400 + margin:auto → margen distinto. */
+                    padding: 24px 0;
                 }
                 .fin-toolbar {
                     display: flex;

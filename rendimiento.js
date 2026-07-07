@@ -1045,7 +1045,7 @@ const RendimientoModule = {
         if (this._stylesInjected) return;
         this._stylesInjected = true;
         const css = `
-        .rend-wrap{max-width:1180px;margin:0 auto;padding:0 4px 100px}
+        .rend-wrap{padding:0 0 100px}  /* full-width: margen lateral unificado vía .app-main (antes max-width 1180 + margin auto) */
         .rend-header{padding:8px 0 14px;border-bottom:1px solid var(--border);margin-bottom:16px}
         .rend-head-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px}
         .rend-title-row{display:flex;align-items:center;gap:10px}
