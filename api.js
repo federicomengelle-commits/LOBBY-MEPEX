@@ -6919,6 +6919,22 @@ const API = {
         return { pago_id: pago.id, egreso_id, comprobante_recibido_id };
     },
 
+    // ── Toggle "Pagado" del flow staging (2026-07-07): marca la línea pagada/pendiente
+    //    SIN crear egreso ni pago. La creación de egresos vive SOLO en el cierre (migración
+    //    única → imposible duplicar). Setea `estado` directo; como no hay pago, el trigger
+    //    trg_sync_costo_desde_pago no se dispara y no lo pisa. No toca monto_pagado (del trigger).
+    //    Bloquea si la línea ya está migrada (egreso_id) o anulada.
+    async marcarCostoPagado(costoId, pagado) {
+        const { data: c } = await supabaseClient.from('evento_costos').select('estado, egreso_id').eq('id', costoId).maybeSingle();
+        if (!c) return { error: 'línea no encontrada' };
+        if (c.egreso_id) return { error: 'ya migrada a Egresos' };
+        if (c.estado === 'anulado') return { error: 'línea anulada' };
+        const estado = pagado ? 'pagado' : 'pendiente';
+        const { error } = await supabaseClient.from('evento_costos').update({ estado }).eq('id', costoId);
+        if (error) throw error;
+        return { ok: true, estado };
+    },
+
     // ── Anular un pago (revierte la línea; el asiento NO se revierte solo — deuda §9.2) ──
     async anularPagoEvento(pagoId, { anularEgreso = true } = {}) {
         const { data: pago } = await supabaseClient.from('evento_costo_pagos').select('*').eq('id', pagoId).maybeSingle();

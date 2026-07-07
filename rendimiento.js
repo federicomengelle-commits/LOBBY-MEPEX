@@ -198,10 +198,43 @@ const RendimientoModule = {
     _costoMonto(c) { return Number(c.monto) || 0; },
 
     _buildPlanilla() {
-        const groups = this.CATS.map(cat => {
-            const rows = this._costos.filter(c => c.categoria === cat.id);
-            const subtotal = rows.reduce((s, c) => s + this._costoMonto(c), 0);
-            const pagado = rows.reduce((s, c) => s + (Number(c.monto_pagado) || 0), 0);
+        const active = (this._costos || []).filter(c => c.estado !== 'anulado');
+        const total = active.reduce((s, c) => s + this._costoMonto(c), 0);
+        // pagado/pendiente por ESTADO (flag), no por monto_pagado (que es del trigger de pagos).
+        const pagado = active.filter(c => c.estado === 'pagado').reduce((s, c) => s + this._costoMonto(c), 0);
+        const pendiente = total - pagado;
+        const previsto = active.reduce((s, c) => s + (Number(c.monto_previsto) || 0), 0);
+        const splitMax = Math.max(1, total);
+
+        const catData = this.CATS.map(cat => {
+            const rows = (this._costos || []).filter(c => c.categoria === cat.id);
+            const activos = rows.filter(c => c.estado !== 'anulado');
+            const subtotal = activos.reduce((s, c) => s + this._costoMonto(c), 0);
+            const pag = activos.filter(c => c.estado === 'pagado').reduce((s, c) => s + this._costoMonto(c), 0);
+            return { cat, rows, subtotal, pag, empty: rows.length === 0 };
+        });
+
+        const summary = `
+            <div class="rend-summary">
+                <div class="rend-sums">
+                    <div class="rend-sum"><div class="rend-sl">Total costos</div><div class="rend-sv">${this._money(total)}</div></div>
+                    <div class="rend-sum"><div class="rend-sl">Pagado</div><div class="rend-sv" style="color:var(--color-success)">${this._money(pagado)}</div></div>
+                    <div class="rend-sum"><div class="rend-sl">Pendiente</div><div class="rend-sv" style="color:var(--accent)">${this._money(pendiente)}</div></div>
+                    ${previsto > 0 ? `<div class="rend-sum"><div class="rend-sl">Previsto</div><div class="rend-sv" style="color:var(--text-muted)">${this._money(previsto)} <span style="font-size:.72rem;color:${total <= previsto ? 'var(--color-success)' : 'var(--accent)'}">Δ ${this._money(total - previsto)}</span></div></div>` : ''}
+                </div>
+                <div class="rend-split">${catData.filter(d => d.subtotal > 0).map(d => `<i style="width:${d.subtotal / splitMax * 100}%;background:${d.cat.color}" title="${d.cat.label}: ${this._money(d.subtotal)}"></i>`).join('')}</div>
+            </div>`;
+
+        const groups = catData.map(d => {
+            const { cat, rows, subtotal, pag, empty } = d;
+            if (empty) {
+                return `<div class="rend-empty2">
+                    <span class="rend-gico" style="background:${cat.color}22;color:${cat.color}">${cat.ico}</span>
+                    <b>${cat.label}</b><span class="rend-e2">sin ítems</span><span style="flex:1"></span>
+                    <button class="rend-addrow mini" data-add="${cat.id}">＋ agregar ${cat.label.toLowerCase()}</button>
+                    ${cat.id === 'jornal' ? `<button class="rend-addrow mini" data-sync-jornales="1" title="Traer asignaciones del evento" style="margin-left:10px">🔄 asignaciones</button>` : ''}
+                </div>`;
+            }
             const collapsed = this._collapsed.has(cat.id);
             return `
                 <div class="rend-group ${collapsed ? 'collapsed' : ''}" data-cat="${cat.id}">
@@ -211,20 +244,16 @@ const RendimientoModule = {
                         <span class="rend-gcount">${rows.length}</span>
                         <span style="flex:1"></span>
                         <span class="rend-gtot"><small>total</small> ${this._money(subtotal)}</span>
-                        ${pagado > 0 ? `<span class="rend-gpaid">pagado ${this._money(pagado)}</span>` : ''}
+                        ${pag > 0 ? `<span class="rend-gpaid">pagado ${this._money(pag)}</span>` : ''}
                         <span class="rend-chevron">${collapsed ? '▸' : '▾'}</span>
                     </div>
                     <div class="rend-group-body">
-                        ${rows.length ? this._buildTable(cat, rows) : '<div class="rend-noitems">Sin ítems en esta categoría.</div>'}
+                        ${this._buildTable(cat, rows)}
                         <button class="rend-addrow" data-add="${cat.id}">＋ agregar ${cat.label.toLowerCase()}</button>
-                        ${cat.id === 'jornal' ? `<button class="rend-addrow" data-sync-jornales="1" title="Trae las personas asignadas al Evento (por día) como jornales — preserva los montos editados y los que ya tienen pago" style="margin-left:8px;">🔄 Traer de asignaciones</button>` : ''}
+                        ${cat.id === 'jornal' ? `<button class="rend-addrow" data-sync-jornales="1" title="Trae las personas asignadas al Evento (por día) como jornales — preserva los montos editados" style="margin-left:8px;">🔄 Traer de asignaciones</button>` : ''}
                     </div>
                 </div>`;
         }).join('');
-
-        const total = this._costos.filter(c => c.estado !== 'anulado').reduce((s, c) => s + this._costoMonto(c), 0);
-        const pagado = this._costos.reduce((s, c) => s + (Number(c.monto_pagado) || 0), 0);
-        const previsto = this._costos.filter(c => c.estado !== 'anulado').reduce((s, c) => s + (Number(c.monto_previsto) || 0), 0);
 
         return `
             <div class="rend-planilla">
@@ -235,31 +264,23 @@ const RendimientoModule = {
                     <span style="flex:1"></span>
                     <button class="rend-btn rend-btn-ghost" id="rendBtnDuplicar">⎘ Duplicar planilla de otro evento</button>
                 </div>
+                ${summary}
                 ${groups}
-                <div class="rend-grand">
-                    <span class="rend-g-lbl">Total costos del evento</span>
-                    <span class="rend-g-val">${this._money(total)}</span>
-                    <span style="flex:1"></span>
-                    ${previsto > 0 ? `<span class="rend-g-sub" style="color:var(--text-muted)">previsto ${this._money(previsto)} · Δ ${this._money(total - previsto)}</span>` : ''}
-                    <span class="rend-g-sub rend-pag">pagado ${this._money(pagado)}</span>
-                    <span class="rend-g-sub rend-pend">pendiente ${this._money(total - pagado)}</span>
-                </div>
             </div>`;
     },
 
     _buildTable(cat, rows) {
         const isJornal = cat.id === 'jornal';
         const hasProv = cat.id === 'flete' || cat.id === 'proveedor';
+        const locked = !!this._rend?.cerrado_at;
         const head = isJornal
-            ? '<th class="rend-chk"></th><th>Persona</th><th>Fase</th><th class="rend-num">Días</th><th class="rend-num">Tarifa</th><th class="rend-num">Monto</th><th class="rend-num">Previsto</th><th>Estado</th><th></th>'
-            : `<th class="rend-chk"></th><th>Detalle</th>${hasProv ? '<th>Proveedor</th>' : ''}<th class="rend-num">Monto</th><th class="rend-num">Previsto</th><th>Estado</th><th></th>`;
+            ? '<th>Persona</th><th>Fase</th><th class="rend-num">Días</th><th class="rend-num">Tarifa</th><th class="rend-num">Monto</th><th>Estado</th><th></th>'
+            : `<th>Detalle</th>${hasProv ? '<th>Proveedor</th>' : ''}<th class="rend-num">Monto</th><th>Estado</th><th></th>`;
         const body = rows.map(c => {
             const anulado = c.estado === 'anulado';
             const pagado = c.estado === 'pagado';
-            const saldo = this._costoMonto(c) - (Number(c.monto_pagado) || 0);
-            const checkable = !pagado && !anulado && saldo > 0;
+            const migrado = !!c.egreso_id;
             const editado = c.monto_editado ? '<span class="rend-badge-edit" title="Tarifa/monto editado respecto del catálogo">editado</span>' : '';
-            const parcial = c.estado === 'parcial' ? `<div class="rend-adelanto">adelanto ${this._money(c.monto_pagado)}</div>` : '';
             let leadCells;
             if (isJornal) {
                 leadCells = `<td>${this._esc(c.persona_nombre || c.descripcion)} ${editado}</td>
@@ -269,17 +290,16 @@ const RendimientoModule = {
             } else {
                 leadCells = `<td>${this._esc(c.descripcion)} ${editado}</td>${hasProv ? `<td>${this._esc(c.proveedor_nombre || '—')}</td>` : ''}`;
             }
+            // Estado = toggle 1-click (Pendiente ⇄ Pagado). Migrada/anulada = candado (no editable).
+            let estadoCell;
+            if (anulado) estadoCell = `<span class="rend-estado rend-est-anulado">Anulado</span>`;
+            else if (migrado) estadoCell = `<span class="rend-estado rend-est-${c.estado}" title="Migrada a Egresos">🔒 ${this.EST_LABEL[c.estado] || c.estado}</span>`;
+            else estadoCell = `<button class="rend-esttog ${pagado ? 'on' : ''}" data-toggle-pago="${c.id}"${locked ? ' disabled' : ''} title="Click para marcar ${pagado ? 'pendiente' : 'pagado'}">${pagado ? '✓ Pagado' : '○ Pendiente'}</button>`;
             return `<tr class="rend-row ${anulado ? 'rend-anulada' : ''}" data-id="${c.id}">
-                <td class="rend-chk">${checkable ? `<input type="checkbox" class="rend-sel" data-id="${c.id}" ${this._selected.has(c.id) ? 'checked' : ''}>` : ''}</td>
                 ${leadCells}
                 <td class="rend-num rend-monto">${this._money(this._costoMonto(c))}</td>
-                <td class="rend-num rend-prev">${c.monto_previsto ? this._money(c.monto_previsto) : '—'}</td>
-                <td><span class="rend-estado rend-est-${c.estado}">${this.EST_LABEL[c.estado] || c.estado}</span>${parcial}</td>
-                <td class="rend-actions">
-                    ${(!pagado && !anulado) ? `<button class="rend-rowbtn rend-pay" data-pay="${c.id}">${c.estado === 'parcial' ? 'Pagar saldo' : 'Pagar'}</button>` : ''}
-                    ${(Number(c.monto_pagado) > 0) ? `<button class="rend-rowbtn" data-pagos="${c.id}">Pagos</button>` : ''}
-                    <button class="rend-rowbtn" data-edit="${c.id}">✎</button>
-                </td>
+                <td>${estadoCell}</td>
+                <td class="rend-actions">${(!anulado && !migrado && !locked) ? `<button class="rend-rowbtn" data-edit="${c.id}" title="Editar">✎</button>` : ''}</td>
             </tr>`;
         }).join('');
         return `<table class="rend-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
@@ -321,18 +341,17 @@ const RendimientoModule = {
             const c = this._costos.find(x => x.id === b.dataset.edit);
             if (c) this._openLineModal(c.categoria, c);
         }));
-        body.querySelectorAll('[data-pay]').forEach(b => b.addEventListener('click', () => {
-            const c = this._costos.find(x => x.id === b.dataset.pay);
-            if (c) this._openPayModal(c);
-        }));
-        body.querySelectorAll('[data-pagos]').forEach(b => b.addEventListener('click', () => {
-            const c = this._costos.find(x => x.id === b.dataset.pagos);
-            if (c) this._openPagosModal(c);
-        }));
-        body.querySelectorAll('.rend-sel').forEach(chk => chk.addEventListener('change', () => {
-            const id = chk.dataset.id;
-            if (chk.checked) this._selected.add(id); else this._selected.delete(id);
-            this._updatePaybar();
+        // Toggle Pendiente ⇄ Pagado (flag; NO crea egreso — eso pasa solo en el cierre).
+        body.querySelectorAll('[data-toggle-pago]').forEach(b => b.addEventListener('click', async () => {
+            const c = this._costos.find(x => x.id === b.dataset.togglePago);
+            if (!c) return;
+            const pagar = c.estado !== 'pagado';
+            b.disabled = true;
+            try {
+                const r = await API.marcarCostoPagado(c.id, pagar);
+                if (r && r.ok) { c.estado = r.estado; this._renderBody(); }
+                else { Toast.error(r?.error || 'No se pudo'); b.disabled = false; }
+            } catch (e) { Toast.error('Error: ' + (e.message || e)); b.disabled = false; }
         }));
     },
 
@@ -701,12 +720,16 @@ const RendimientoModule = {
 
     // ═══════════════════════════════════════════ CIERRE / MIGRACIÓN
     async _openCierreModal() {
-        const pendientes = (this._costos || []).filter(c => c.estado === 'pendiente' && !c.egreso_id);
+        const porMigrar = (this._costos || []).filter(c => c.estado !== 'anulado' && !c.egreso_id);
+        const pagadas = porMigrar.filter(c => c.estado === 'pagado');
+        const pendientes = porMigrar.filter(c => c.estado !== 'pagado');
         let sueltos = [];
         try { sueltos = await API.getEgresosSueltosEvento(this._eventoId); } catch (e) { console.warn('[Rendimiento] sueltos', e); }
         const catLabel = id => (this.CATS.find(c => c.id === id) || {}).label || id;
-        const lineOpts = pendientes.map(c => `<option value="${c.id}">${this._esc(catLabel(c.categoria))}: ${this._esc(c.descripcion)} · ${this._money(this._costoMonto(c))}</option>`).join('');
+        const lineOpts = porMigrar.map(c => `<option value="${c.id}">${this._esc(catLabel(c.categoria))}: ${this._esc(c.descripcion)} · ${this._money(this._costoMonto(c))}</option>`).join('');
         const cuentaOpts = (this._cuentas || []).map(c => `<option value="${c.id}" data-canal="${c.canal_default || 'oficial'}">${this._esc(c.nombre)}</option>`).join('');
+        const totalPag = pagadas.reduce((s, c) => s + this._costoMonto(c), 0);
+        const totalPend = pendientes.reduce((s, c) => s + this._costoMonto(c), 0);
 
         const conciliBlock = sueltos.length ? `
             <div class="rend-cierre-sec">
@@ -719,24 +742,23 @@ const RendimientoModule = {
                     </div>`).join('')}
             </div>` : '';
 
-        const migrarBlock = pendientes.length ? `
+        const migrarBlock = porMigrar.length ? `
             <div class="rend-cierre-sec">
-                <h4>Líneas a migrar a Egresos (${pendientes.length})</h4>
-                <p class="rend-cierre-hint">Marcá las que <b>ya se pagaron</b> en el evento (generan egreso + asiento). Las que dejes sin marcar quedan como egreso <b>pendiente de pago</b>.</p>
-                ${pendientes.map(c => `
-                    <label class="rend-cierre-line">
-                        <input type="checkbox" class="rend-mig" data-costo="${c.id}" checked>
-                        <span>${this._esc(catLabel(c.categoria))}: ${this._esc(c.descripcion)} · <b>${this._money(this._costoMonto(c))}</b></span>
-                    </label>`).join('')}
-                <div class="rend-form-row" style="margin-top:10px">
+                <h4>Se migran ${porMigrar.length} línea(s) a Egresos</h4>
+                <div class="rend-cierre-mig">
+                    <div class="rend-cmg ok">✓ <b>${pagadas.length}</b> pagada(s) → egreso <b>pagado</b>${totalPag ? ' · ' + this._money(totalPag) : ''}</div>
+                    <div class="rend-cmg pend">○ <b>${pendientes.length}</b> pendiente(s) → egreso <b>pendiente de pago</b>${totalPend ? ' · ' + this._money(totalPend) : ''}</div>
+                </div>
+                <p class="rend-cierre-hint">Los egresos se crean SOLO acá, una vez — nada se duplica (las ya migradas se saltean).</p>
+                ${pagadas.length ? `<div class="rend-form-row" style="margin-top:10px">
                     <div class="rend-fg"><label>Cuenta (para las pagadas)</label><select id="rendCierreCuenta"><option value="">— Sin cuenta —</option>${cuentaOpts}</select></div>
                     <div class="rend-fg"><label>Medio</label><select id="rendCierreMedio"><option value="transferencia">Transferencia</option><option value="efectivo">Efectivo</option><option value="cheque">Cheque</option><option value="mercadopago">MercadoPago</option></select></div>
-                </div>
+                </div>` : ''}
                 <div class="rend-form-row">
                     <div class="rend-fg"><label>Canal</label><select id="rendCierreCanal"><option value="oficial">Oficial</option><option value="interno">Interno</option></select></div>
                     <div class="rend-fg"><label>Fecha</label><input type="date" id="rendCierreFecha" value="${API._today()}"></div>
                 </div>
-            </div>` : '<div class="rend-cierre-sec"><p class="rend-cierre-hint">No hay líneas pendientes de migrar. Al cerrar, el evento queda marcado como conciliado.</p></div>';
+            </div>` : '<div class="rend-cierre-sec"><p class="rend-cierre-hint">No hay líneas para migrar. Al cerrar, el evento queda marcado como cerrado.</p></div>';
 
         Modal.open({
             title: '🔒 Cerrar evento y migrar a Egresos',
@@ -768,17 +790,14 @@ const RendimientoModule = {
                 catch (e) { console.error('[Rendimiento] conciliar', e); }
             }
 
-            // 2) Migración de las líneas NO conciliadas (pagada → egreso pagado; si no → pendiente)
+            // 2) Migración de las líneas NO conciliadas: pagada → egreso pagado; pendiente → egreso pendiente.
+            //    Única puerta de creación de egresos (egreso_id marca lo ya migrado → imposible duplicar).
             let ok = 0, fail = 0;
-            for (const chk of [...document.querySelectorAll('.rend-mig')]) {
-                const costoId = chk.dataset.costo;
-                if (conciliadas.has(costoId)) continue;
-                const costo = (this._costos || []).find(c => String(c.id) === String(costoId));
-                if (!costo) continue;
-                const saldo = this._costoMonto(costo) - (Number(costo.monto_pagado) || 0);
-                if (saldo <= 0) continue;
+            const porMigrar = (this._costos || []).filter(c => c.estado !== 'anulado' && !c.egreso_id);
+            for (const costo of porMigrar) {
+                if (conciliadas.has(String(costo.id))) continue;
                 try {
-                    if (chk.checked) await API.pagarCostoEvento({ costo, monto: saldo, fecha, medio, canal, cuenta_id, comprobante: null });
+                    if (costo.estado === 'pagado') await API.pagarCostoEvento({ costo, monto: this._costoMonto(costo), fecha, medio, canal, cuenta_id, comprobante: null });
                     else await API.migrarLineaPendiente(costo, { fecha, canal });
                     ok++;
                 } catch (e) { console.error('[Rendimiento] migrar', costo.id, e); fail++; }
@@ -1100,6 +1119,26 @@ const RendimientoModule = {
         .rend-pay{border-color:rgba(0,204,136,.4);color:var(--color-success)}
         .rend-addrow{display:block;width:100%;padding:9px 16px;background:transparent;border:none;border-top:1px dashed var(--border);color:var(--text-dim);font-family:var(--font-main);font-size:.8rem;cursor:pointer;text-align:left}
         .rend-addrow:hover{color:var(--primary);background:rgba(0,169,193,.03)}
+        /* ─── Rediseño Planilla 2026-07-07 ─── */
+        .rend-esttog{background:rgba(242,141,21,.10);border:1px solid rgba(242,141,21,.35);color:var(--accent);border-radius:20px;padding:3px 11px;font-size:.7rem;font-weight:600;cursor:pointer;white-space:nowrap;font-family:var(--font-main);transition:filter .15s}
+        .rend-esttog:hover:not(:disabled){filter:brightness(1.18)}
+        .rend-esttog.on{background:rgba(0,204,136,.12);border-color:rgba(0,204,136,.4);color:var(--color-success)}
+        .rend-esttog:disabled{opacity:.6;cursor:default}
+        .rend-summary{display:flex;align-items:center;gap:22px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px}
+        .rend-sums{display:flex;gap:26px;flex-wrap:wrap}
+        .rend-sl{font-size:.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+        .rend-sv{font-family:var(--font-mono);font-size:1.02rem;font-weight:700;color:var(--text-primary)}
+        .rend-split{flex:1;height:10px;border-radius:4px;overflow:hidden;display:flex;background:rgba(255,255,255,.04);min-width:120px}
+        .rend-split i{display:block;height:100%}
+        .rend-empty2{display:flex;align-items:center;gap:9px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:9px 14px;margin-bottom:8px}
+        .rend-empty2 b{font-size:.86rem;color:var(--text-primary)}
+        .rend-e2{font-size:.72rem;color:var(--text-dim);font-style:italic}
+        .rend-addrow.mini{display:inline-block;width:auto;padding:0;border:none;font-size:.74rem;color:var(--primary)}
+        .rend-addrow.mini:hover{background:transparent}
+        .rend-cierre-mig{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+        .rend-cmg{font-size:.82rem;padding:8px 12px;border-radius:8px;border:1px solid var(--border)}
+        .rend-cmg.ok{color:var(--color-success);background:rgba(0,204,136,.06);border-color:rgba(0,204,136,.25)}
+        .rend-cmg.pend{color:var(--accent);background:rgba(242,141,21,.06);border-color:rgba(242,141,21,.25)}
         .rend-grand{display:flex;align-items:center;gap:16px;padding:14px 18px;border:1px solid var(--border);border-radius:10px;background:linear-gradient(90deg,rgba(0,169,193,.06),transparent);margin-top:6px;flex-wrap:wrap}
         .rend-g-lbl{font-size:.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em}
         .rend-g-val{font-family:var(--font-mono);font-size:1.25rem;font-weight:700;color:var(--text-primary)}
