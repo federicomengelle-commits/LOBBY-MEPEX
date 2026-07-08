@@ -7144,14 +7144,23 @@ const API = {
     // ── Comparar eventos (ranking de márgenes, vista superadmin) ──
     async getRendimientoComparativa() {
         const evs = await this.getEventosLite();
-        const out = [];
-        for (const ev of evs) {
-            const d = await this.getRendimientoDashboard(ev.id);
-            if (!(d.cobrado || d.costos || d.materiales || d.facturado)) continue;
-            const ganancia = d.cobrado - d.costos - d.materiales;
-            out.push({ id: ev.id, nombre: ev.nombre, fecha: ev.fecha_evento_inicio, ...d, ganancia, margen: d.cobrado ? ganancia / d.cobrado : null });
-        }
-        out.sort((a, b) => (b.margen ?? -Infinity) - (a.margen ?? -Infinity));
+        // PARALELO (antes secuencial → spinner largo con varios eventos).
+        const results = await Promise.all((evs || []).map(async ev => {
+            try {
+                const d = await this.getRendimientoDashboard(ev.id);
+                if (!(d.cobrado || d.costos || d.materiales || d.facturado)) return null;
+                const ganancia = d.cobrado - d.costos - d.materiales;
+                return { id: ev.id, nombre: ev.nombre, fecha: ev.fecha_evento_inicio, ...d, ganancia, margen: d.cobrado ? ganancia / d.cobrado : null };
+            } catch (e) { console.warn('[API] comparativa ev', ev.id, e.message); return null; }
+        }));
+        const out = results.filter(Boolean);
+        // Ranking por margen; los sin cobrado (margen null) al final, entre sí por ganancia.
+        out.sort((a, b) => {
+            if (a.margen == null && b.margen == null) return (b.ganancia || 0) - (a.ganancia || 0);
+            if (a.margen == null) return 1;
+            if (b.margen == null) return -1;
+            return b.margen - a.margen;
+        });
         return out;
     },
 

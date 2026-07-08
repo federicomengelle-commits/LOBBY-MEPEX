@@ -1022,18 +1022,34 @@ const RendimientoModule = {
         });
         let data = [];
         try { data = await API.getRendimientoComparativa(); } catch (e) { console.warn(e); }
-        const rows = data.map((d, i) => `
-            <tr>
-                <td>${i + 1}</td>
+        const tot = data.reduce((a, d) => ({ cobrado: a.cobrado + (d.cobrado || 0), costos: a.costos + (d.costos || 0), materiales: a.materiales + (d.materiales || 0), ganancia: a.ganancia + (d.ganancia || 0) }), { cobrado: 0, costos: 0, materiales: 0, ganancia: 0 });
+        const totMargen = tot.cobrado ? Math.round(tot.ganancia / tot.cobrado * 100) : null;
+        const rows = data.map((d, i) => {
+            const m = d.margen != null ? Math.round(d.margen * 100) : null;
+            const marginCell = m != null
+                ? `<span class="rend-mbar"><i style="width:${Math.max(0, Math.min(100, m))}%;background:${m >= 0 ? 'var(--primary)' : 'var(--color-error)'}"></i></span><b style="color:${m >= 0 ? 'var(--primary)' : 'var(--color-error)'}">${m}%</b>`
+                : '<span class="rend-mnull">— sin cobrado</span>';
+            return `<tr>
+                <td class="rend-rank">${i + 1}</td>
                 <td>${this._esc(d.nombre)}</td>
                 <td class="rend-num" style="color:var(--color-success)">${this._money(d.cobrado)}</td>
                 <td class="rend-num" style="color:var(--accent)">${this._money(d.costos)}</td>
                 <td class="rend-num" style="color:#9B7DFF">${this._money(d.materiales)}</td>
                 <td class="rend-num" style="color:${d.ganancia >= 0 ? 'var(--primary)' : 'var(--color-error)'};font-weight:700">${this._money(d.ganancia)}</td>
-                <td class="rend-num">${d.margen != null ? Math.round(d.margen * 100) + '%' : '—'}</td>
-            </tr>`).join('');
-        const html = `<table class="rend-table"><thead><tr><th>#</th><th>Evento</th><th class="rend-num">Cobrado</th><th class="rend-num">Costos</th><th class="rend-num">Materiales</th><th class="rend-num">Ganancia</th><th class="rend-num">Margen</th></tr></thead>
-            <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">Sin eventos con actividad financiera</td></tr>'}</tbody></table>`;
+                <td class="rend-mcell">${marginCell}</td>
+            </tr>`;
+        }).join('');
+        const foot = data.length ? `<tr class="rend-comptot">
+            <td></td><td>TOTAL · ${data.length} evento(s)</td>
+            <td class="rend-num">${this._money(tot.cobrado)}</td>
+            <td class="rend-num">${this._money(tot.costos)}</td>
+            <td class="rend-num">${this._money(tot.materiales)}</td>
+            <td class="rend-num" style="font-weight:700;color:${tot.ganancia >= 0 ? 'var(--primary)' : 'var(--color-error)'}">${this._money(tot.ganancia)}</td>
+            <td class="rend-num">${totMargen != null ? totMargen + '%' : '—'}</td>
+        </tr>` : '';
+        const html = `<table class="rend-table rend-comptable"><thead><tr><th>#</th><th>Evento</th><th class="rend-num">Cobrado</th><th class="rend-num">Costos</th><th class="rend-num">Materiales</th><th class="rend-num">Ganancia</th><th>Margen (s/cobrado)</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:22px">Sin eventos con actividad financiera todavía</td></tr>'}</tbody>${foot ? '<tfoot>' + foot + '</tfoot>' : ''}</table>
+            <p style="margin-top:12px;font-size:.74rem;color:var(--text-dim);line-height:1.5">Ranking por <b>margen sobre lo cobrado</b>. Los eventos sin cobranza registrada quedan al final (margen no calculable). Cobrado = ingresos confirmados · Costos = planilla + Finanzas · Materiales = carga manual.</p>`;
         const box = document.getElementById('rendCompararBody');
         if (box) box.innerHTML = html;
     },
@@ -1139,6 +1155,15 @@ const RendimientoModule = {
         .rend-cmg{font-size:.82rem;padding:8px 12px;border-radius:8px;border:1px solid var(--border)}
         .rend-cmg.ok{color:var(--color-success);background:rgba(0,204,136,.06);border-color:rgba(0,204,136,.25)}
         .rend-cmg.pend{color:var(--accent);background:rgba(242,141,21,.06);border-color:rgba(242,141,21,.25)}
+        .rend-comptable td,.rend-comptable th{padding:9px 12px}
+        .rend-rank{font-family:var(--font-mono);color:var(--text-muted);text-align:center;width:32px}
+        .rend-mcell{min-width:150px;white-space:nowrap}
+        .rend-mbar{display:inline-block;width:66px;height:8px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden;vertical-align:middle;margin-right:8px}
+        .rend-mbar i{display:block;height:100%;border-radius:3px}
+        .rend-mcell b{font-family:var(--font-mono);font-size:.82rem}
+        .rend-mnull{font-size:.74rem;color:var(--text-dim);font-style:italic}
+        .rend-comptot td{border-top:2px solid var(--border)!important;font-family:var(--font-mono);color:var(--text-primary);padding-top:11px!important}
+        .rend-comptot td:nth-child(2){font-weight:700;font-family:var(--font-main)}
         .rend-grand{display:flex;align-items:center;gap:16px;padding:14px 18px;border:1px solid var(--border);border-radius:10px;background:linear-gradient(90deg,rgba(0,169,193,.06),transparent);margin-top:6px;flex-wrap:wrap}
         .rend-g-lbl{font-size:.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em}
         .rend-g-val{font-family:var(--font-mono);font-size:1.25rem;font-weight:700;color:var(--text-primary)}
