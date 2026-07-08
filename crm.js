@@ -1112,7 +1112,7 @@ const CRM = {
             // Eventos \u00FAnicos del cliente (v\u00EDa proyectos)
             const { data, error } = await supabaseClient
                 .from('proyectos')
-                .select('evento:eventos!evento_id(id, nombre, cliente_id, fecha_evento_inicio)')
+                .select('evento:eventos!evento_id(id, nombre, fecha_evento_inicio)')
                 .eq('cliente_id', client.id)
                 .eq('_deleted', false)
                 .not('evento_id', 'is', null);
