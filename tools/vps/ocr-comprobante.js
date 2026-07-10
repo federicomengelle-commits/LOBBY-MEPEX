@@ -42,9 +42,10 @@ Reglas: la LETRA del comprobante define el tipo (A→factura_a, B→factura_b, C
 async function callGemini(imagenB64, mimeType) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('Falta GEMINI_API_KEY');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
+  // Seguridad (4.4): la key va por header, no en el query string (evita que un log de URLs la filtre).
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const r = await fetch(url, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       contents: [{ parts: [{ text: buildPrompt() }, { inlineData: { mimeType, data: imagenB64 } }] }],
       generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },

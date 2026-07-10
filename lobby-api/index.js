@@ -29,7 +29,18 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 // Middleware
-app.use(cors());
+// Seguridad (4.1): CORS acotado al origin del lobby, no wildcard.
+// Todas las rutas mutantes van con Bearer JWT (no cookies), pero limitamos igual.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://195.200.1.250,http://localhost:3000')
+    .split(',').map(o => o.trim()).filter(Boolean);
+app.use(cors({
+    origin(origin, cb) {
+        // Sin origin (curl, health checks server-to-server) o en la allowlist → OK.
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        return cb(new Error('Origen no permitido por CORS'));
+    },
+    methods: ['GET', 'POST'],
+}));
 app.use(express.json());
 
 // ─── Auth middleware: verify superadmin ───
