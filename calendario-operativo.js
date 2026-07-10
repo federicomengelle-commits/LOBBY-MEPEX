@@ -364,7 +364,7 @@ const CalendarioOperativo = {
                             <h3 class="co-card-name">${ev.name}</h3>
                             <span class="co-card-phase co-card-phase-${phase.key}">${phase.label}</span>
                         </div>
-                        <div class="co-card-venue">${ev.venue}</div>
+                        <div class="co-card-venue">${escHtml(ev.venue)}</div>
                         <div class="co-card-dates">
                             <span>🔧 ${fmtRange(ev.setupDate, ev.setupEndDate)}</span>
                             <span>📅 ${fmtRange(ev.eventStartDate, ev.eventEndDate)}</span>
@@ -627,7 +627,7 @@ const CalendarioOperativo = {
                 <span class="co-event-count">${event.projectCount} proy.</span>
                 <div class="co-event-info">
                     <span class="co-event-name">${event.name}</span>
-                    <span class="co-event-sub"><span class="co-event-armado">🔧 ${armadoTime || 'Armado'}</span> · ${event.venue}</span>
+                    <span class="co-event-sub"><span class="co-event-armado">🔧 ${armadoTime || 'Armado'}</span> · ${escHtml(event.venue)}</span>
                 </div>
                 ${conflictBadge}
             </div>
@@ -973,7 +973,7 @@ const CalendarioOperativo = {
                 <button class="co-sp-close">✕</button>
                 <div class="co-sp-color-bar"></div>
                 <h2 class="co-sp-name">${event.name}</h2>
-                <div class="co-sp-venue">${event.venue || '—'} · ${linkEvento}</div>
+                <div class="co-sp-venue">${escHtml(event.venue || '—')} · ${linkEvento}</div>
                 <div class="co-sp-phases">
                     <div class="co-sp-phase" style="border-left-color:#00CC88;">
                         <div class="co-sp-phase-label">Armado</div>
@@ -1072,8 +1072,8 @@ const CalendarioOperativo = {
         // Projects — shape real del enrich 2.1: { nombre, estado, cliente:{ nombre_empresa } }
         const projectRows = (event.projects || []).map(p => `
             <tr>
-                <td>${p.cliente?.nombre_empresa || '—'}</td>
-                <td>${p.nombre || '—'}</td>
+                <td>${escHtml(p.cliente?.nombre_empresa || '—')}</td>
+                <td>${escHtml(p.nombre || '—')}</td>
                 <td>${p.estado || '—'}</td>
             </tr>
         `).join('');
@@ -1081,7 +1081,7 @@ const CalendarioOperativo = {
         const notasHTML = event.notasOperativas
             ? `<div class="co-sp-section">
                 <h3 class="co-sp-section-title">Notas operativas</h3>
-                <div class="co-sp-notes">${event.notasOperativas}</div>
+                <div class="co-sp-notes">${escHtml(event.notasOperativas)}</div>
                </div>`
             : '';
 
@@ -1163,7 +1163,7 @@ const CalendarioOperativo = {
         const peopleHTML = (list) => {
             if (!list.length) return '<div class="co-sp-jc-empty">Sin gente</div>';
             return [...list].sort((a, b) => (a.rol || 'zzz').localeCompare(b.rol || 'zzz'))
-                .map(a => `<div class="co-sp-jc-row"><span class="co-sp-jc-name">👤 ${this._personaNombre(a.persona)}</span>${a.rol ? `<span class="co-sp-jc-rol">${a.rol}</span>` : ''}</div>`).join('');
+                .map(a => `<div class="co-sp-jc-row"><span class="co-sp-jc-name">👤 ${escHtml(this._personaNombre(a.persona))}</span>${a.rol ? `<span class="co-sp-jc-rol">${escHtml(a.rol)}</span>` : ''}</div>`).join('');
         };
 
         const card = (j) => {
@@ -1366,7 +1366,7 @@ const CalendarioOperativo = {
             return `
                 <div class="co-sp-asig-item" style="border-left-color: ${estadoColor};">
                     <div class="co-sp-asig-head">
-                        <span class="co-sp-asig-nom">👤 ${nombre}</span>
+                        <span class="co-sp-asig-nom">👤 ${escHtml(nombre)}</span>
                         <span class="co-sp-asig-estado" style="color: ${estadoColor};">${a.estado}</span>
                     </div>
                     <div class="co-sp-asig-meta">
@@ -1432,7 +1432,7 @@ const CalendarioOperativo = {
             ? docs.map(d => `
                 <div class="co-sp-doc-item">
                     <span class="co-sp-doc-icon">${this._docIcon(d.tipo)}</span>
-                    <span class="co-sp-doc-name">${d.nombre || d.nombre_archivo || '—'}</span>
+                    <span class="co-sp-doc-name">${escHtml(d.nombre || d.nombre_archivo || '—')}</span>
                 </div>
             `).join('')
             : '<span class="co-sp-empty">Sin documentos</span>';
@@ -1483,7 +1483,7 @@ const CalendarioOperativo = {
             const icon = iconFor(h.accion);
             const timeAgo = this._timeAgo(h.createdAt);
             const d = h.detalle || {};
-            const metaHTML = d.nombre ? `<div class="co-sp-hist-meta">${d.nombre}</div>` : '';
+            const metaHTML = d.nombre ? `<div class="co-sp-hist-meta">${escHtml(d.nombre)}</div>` : '';
 
             return `
                 <div class="co-sp-hist-entry">
@@ -1538,7 +1538,7 @@ const CalendarioOperativo = {
 
         tooltip.innerHTML = `
             <div class="co-tt-name" style="color:${event.color}">${event.name}</div>
-            <div class="co-tt-venue">${event.venue}</div>
+            <div class="co-tt-venue">${escHtml(event.venue)}</div>
             <div class="co-tt-dates">
                 <span>Armado: ${fmtDate(event.setupDate)}–${fmtDate(event.setupEndDate)}</span>
                 <span>Evento: ${fmtDate(event.eventStartDate)}–${fmtDate(event.eventEndDate)}</span>

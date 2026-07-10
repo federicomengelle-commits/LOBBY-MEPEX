@@ -503,8 +503,8 @@ const AdminPanel = {
                                 return `
                                 <tr class="admpanel-user-row">
                                     <td><div class="admpanel-user-cell">
-                                        <span class="admpanel-user-avatar" style="background:${rc}20; color:${rc}; border:1px solid ${rc}40;">${u.initials || '??'}</span>
-                                        <span class="admpanel-user-name">${u.name || '—'}</span>
+                                        <span class="admpanel-user-avatar" style="background:${rc}20; color:${rc}; border:1px solid ${rc}40;">${escHtml(u.initials || '??')}</span>
+                                        <span class="admpanel-user-name">${escHtml(u.name || '—')}</span>
                                     </div></td>
                                     <td><span class="admpanel-role-badge" style="background:${rc}18; color:${rc}; border:1px solid ${rc}35;">${this._getRoleLabel(u.role)}</span></td>
                                     <td class="admpanel-cell-mono">${st.actions7 || 0}</td>
@@ -682,8 +682,8 @@ const AdminPanel = {
                         <tr class="admpanel-user-row">
                             <td>
                                 <div class="admpanel-user-cell">
-                                    <span class="admpanel-user-avatar" style="background:${roleColor}20; color:${roleColor}; border: 1px solid ${roleColor}40;">${u.initials || '??'}</span>
-                                    <span class="admpanel-user-name">${u.name || '—'}</span>
+                                    <span class="admpanel-user-avatar" style="background:${roleColor}20; color:${roleColor}; border: 1px solid ${roleColor}40;">${escHtml(u.initials || '??')}</span>
+                                    <span class="admpanel-user-name">${escHtml(u.name || '—')}</span>
                                 </div>
                             </td>
                             <td><span class="admpanel-role-badge" style="background:${roleColor}18; color:${roleColor}; border: 1px solid ${roleColor}35;">${this._getRoleLabel(u.role)}</span></td>
@@ -847,13 +847,13 @@ const AdminPanel = {
                         <tr class="admpanel-user-row ${u.active ? '' : 'inactive'}">
                             <td>
                                 <div class="admpanel-user-cell">
-                                    <span class="admpanel-user-avatar" style="background:${roleInfo.color}20; color:${roleInfo.color}; border: 1px solid ${roleInfo.color}40;">${u.initials || '??'}</span>
-                                    <span class="admpanel-user-name">${u.name || '—'}</span>
+                                    <span class="admpanel-user-avatar" style="background:${roleInfo.color}20; color:${roleInfo.color}; border: 1px solid ${roleInfo.color}40;">${escHtml(u.initials || '??')}</span>
+                                    <span class="admpanel-user-name">${escHtml(u.name || '—')}</span>
                                 </div>
                             </td>
-                            <td class="admpanel-cell-mono">${u.username || '—'}</td>
+                            <td class="admpanel-cell-mono">${escHtml(u.username || '—')}</td>
                             <td><span class="admpanel-role-badge" style="background:${roleInfo.color}18; color:${roleInfo.color}; border: 1px solid ${roleInfo.color}35;">${roleInfo.label}</span></td>
-                            <td class="admpanel-cell-muted">${u.telefono || '—'}</td>
+                            <td class="admpanel-cell-muted">${escHtml(u.telefono || '—')}</td>
                             <td>
                                 <span class="admpanel-status-badge ${u.active ? 'active' : 'inactive'}">
                                     <span class="admpanel-status-dot"></span>
@@ -865,7 +865,7 @@ const AdminPanel = {
                                     <button class="admpanel-action-btn" data-action="edit" data-uid="${u.id}" title="Editar usuario">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                                     </button>
-                                    <button class="admpanel-action-btn" data-action="resetpw" data-uid="${u.id}" data-name="${u.name}" title="Cambiar contraseña">
+                                    <button class="admpanel-action-btn" data-action="resetpw" data-uid="${u.id}" data-name="${escAttr(u.name)}" title="Cambiar contraseña">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
                                     </button>
                                     ${u.role !== 'superadmin' ? `
@@ -873,13 +873,13 @@ const AdminPanel = {
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
                                     </button>` : ''}
                                     ${!isSelf ? `
-                                    <button class="admpanel-action-btn" data-action="toggle" data-uid="${u.id}" data-name="${u.name}" data-active="${u.active}" title="${u.active ? 'Desactivar' : 'Activar'} usuario">
+                                    <button class="admpanel-action-btn" data-action="toggle" data-uid="${u.id}" data-name="${escAttr(u.name)}" data-active="${u.active}" title="${u.active ? 'Desactivar' : 'Activar'} usuario">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${u.active ? '#00CC88' : '#FF4757'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${u.active
                                             ? '<rect width="20" height="12" x="2" y="6" rx="6"/><circle cx="16" cy="12" r="3" fill="#00CC88"/>'
                                             : '<rect width="20" height="12" x="2" y="6" rx="6"/><circle cx="8" cy="12" r="3" fill="#FF4757"/>'
                                         }</svg>
                                     </button>
-                                    <button class="admpanel-action-btn admpanel-action-btn--danger" data-action="delete" data-uid="${u.id}" data-name="${u.name}" title="Eliminar usuario">
+                                    <button class="admpanel-action-btn admpanel-action-btn--danger" data-action="delete" data-uid="${u.id}" data-name="${escAttr(u.name)}" title="Eliminar usuario">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                                     </button>
                                     ` : '<span class="admpanel-cell-muted" style="font-size:0.7rem;">(tú)</span>'}
@@ -1084,11 +1084,11 @@ const AdminPanel = {
             <form id="admEditUserForm" class="adm-user-form">
                 <div class="adm-form-row">
                     <label class="adm-form-label">Username</label>
-                    <input type="text" class="input" value="${user.username}" disabled style="opacity:0.5;">
+                    <input type="text" class="input" value="${escAttr(user.username)}" disabled style="opacity:0.5;">
                 </div>
                 <div class="adm-form-row">
                     <label class="adm-form-label">Nombre completo *</label>
-                    <input type="text" class="input" id="admEditName" value="${user.name || ''}" required>
+                    <input type="text" class="input" id="admEditName" value="${escAttr(user.name || '')}" required>
                 </div>
                 <div class="adm-form-row">
                     <label class="adm-form-label">Iniciales</label>
@@ -1100,7 +1100,7 @@ const AdminPanel = {
                 </div>
                 <div class="adm-form-row">
                     <label class="adm-form-label">Teléfono</label>
-                    <input type="text" class="input" id="admEditTelefono" value="${user.telefono || ''}">
+                    <input type="text" class="input" id="admEditTelefono" value="${escAttr(user.telefono || '')}">
                 </div>
                 <div class="adm-form-row">
                     <label class="adm-form-label">Nueva contraseña</label>
@@ -1847,7 +1847,7 @@ const AdminPanel = {
 
     _renderLogsTab() {
         const userOptions = (this._logDistinctUsers || []).map(u =>
-            `<option value="${u.user_name}">${u.name}</option>`
+            `<option value="${escAttr(u.user_name)}">${escHtml(u.name)}</option>`
         ).join('');
         const moduleOptions = (this._logDistinctModules || []).map(m =>
             `<option value="${m}">${m}</option>`

@@ -966,7 +966,7 @@ const RRHHModule = {
         // Notas
         const raw = p._raw || p;
         body.innerHTML = `
-            <textarea class="hr-notas-ta" id="hrNotasTa" placeholder="Observaciones sobre la persona…">${raw.notas || ''}</textarea>
+            <textarea class="hr-notas-ta" id="hrNotasTa" placeholder="Observaciones sobre la persona…">${escHtml(raw.notas || '')}</textarea>
             <div style="display:flex;justify-content:flex-end;margin-top:10px;">
                 <button class="btn-primary" id="hrNotasSave" style="font-size:0.85rem;padding:8px 18px;">Guardar notas</button>
             </div>

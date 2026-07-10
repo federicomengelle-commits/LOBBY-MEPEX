@@ -814,7 +814,7 @@ const CostosModule = {
         return `
             <tr class="costos-table-row costos-listas-row" data-id="${it.id}">
                 <td><span class="td-mono">${it.codigo || '—'}</span></td>
-                <td><span class="td-primary">${it.nombre || '—'}</span></td>
+                <td><span class="td-primary">${escHtml(it.nombre || '—')}</span></td>
                 <td class="td-number">${sinPrecioBadge}<strong>${precioStr}</strong></td>
                 <td class="costos-listas-cell-estado"><span class="${actClass}">${actStr}</span></td>
                 <td class="costos-listas-cell-estado">
@@ -1350,7 +1350,7 @@ const CostosModule = {
                 : `<span class="badge badge-ghost">—</span>`;
             return `
             <tr class="costos-table-row" data-id="${item.id}">
-                <td><span class="td-primary">${item.nombre}</span></td>
+                <td><span class="td-primary">${escHtml(item.nombre)}</span></td>
                 <td><span class="td-mono">${item.codigo || '—'}</span></td>
                 <td>${this._qeCell('clasificacion', item.id, item.clasificacion, badgeFor(item.clasificacion, this._clasificacionColors))}</td>
                 <td>${this._qeCell('categoria', item.id, item.categoria, badgeFor(item.categoria, this._categoriaColors))}</td>
@@ -1358,7 +1358,7 @@ const CostosModule = {
                     ${item.moneda === 'USD' ? 'US$' : '$'}${API.formatCurrency(item.costoUnitario).replace('$', '')}<span class="cost-unit">/${item.unidadBase}</span>
                 </td>
                 <td>${item.moneda || '—'}</td>
-                <td>${item.proveedor || '—'}</td>
+                <td>${escHtml(item.proveedor || '—')}</td>
                 <td>${this._qeCell('tipoAmortizacion', item.id, item.tipoAmortizacion, tipoBadge)}</td>
                 <td class="td-number" title="${hasOverride ? 'VU override · default tipo: ' + (this._tiposAmortizacionMap[item.tipoAmortizacion]?.vida_util ?? '—') : 'Heredada del tipo'}"><span class="td-mono">${vuLabel}</span></td>
             </tr>
@@ -1483,7 +1483,7 @@ const CostosModule = {
         // legacy `costos-ficha-input` para que el querySelectorAll del save siga
         // matcheando sin tener que tocar _attachFichaEvents.
         const mkInput = (field, val, type, ph) =>
-            `<input class="costos-receta-config-input costos-ficha-input" data-field="${field}" type="${type || 'text'}" value="${val != null ? val : ''}" placeholder="${ph || ''}" spellcheck="false">`;
+            `<input class="costos-receta-config-input costos-ficha-input" data-field="${field}" type="${type || 'text'}" value="${escAttr(val != null ? val : '')}" placeholder="${escAttr(ph || '')}" spellcheck="false">`;
 
         const mkSelect = (field, options, val) =>
             `<select class="costos-receta-config-input costos-ficha-select" data-field="${field}" style="text-align:left; width:100%;">
@@ -1528,7 +1528,7 @@ const CostosModule = {
             <div class="costos-ficha">
                 <div class="costos-ficha-header">
                     <div class="costos-ficha-header-left">
-                        <h3 class="costos-ficha-title">${item.nombre}${clasifBadge}</h3>
+                        <h3 class="costos-ficha-title">${escHtml(item.nombre)}${clasifBadge}</h3>
                         ${item.codigo ? `<span class="costos-ficha-code">${item.codigo}</span>` : ''}
                     </div>
                     <button class="costos-ficha-close" id="costosFichaClose" title="Cerrar (ESC)">
@@ -1601,7 +1601,7 @@ const CostosModule = {
                         <div class="costos-receta-config-row">
                             <label class="costos-receta-config-label">Proveedor</label>
                             <div class="costos-receta-config-input-wrap" style="flex:1; min-width:0;">
-                                <input class="costos-receta-config-input costos-ficha-input" data-field="proveedor" type="text" value="${item.proveedor != null ? item.proveedor : ''}" placeholder="Buscar o escribir proveedor…" list="costosProveedoresList" spellcheck="false" autocomplete="off" style="text-align:left; width:100%;">
+                                <input class="costos-receta-config-input costos-ficha-input" data-field="proveedor" type="text" value="${escAttr(item.proveedor != null ? item.proveedor : '')}" placeholder="Buscar o escribir proveedor…" list="costosProveedoresList" spellcheck="false" autocomplete="off" style="text-align:left; width:100%;">
                             </div>
                         </div>
                         ${item.fechaUltimoPrecio ? `
@@ -1623,7 +1623,7 @@ const CostosModule = {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             Notas
                         </div>
-                        <textarea class="costos-receta-config-input costos-ficha-textarea" data-field="notas" placeholder="Observaciones…" style="width:100%; min-height:60px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;">${item.notas || ''}</textarea>
+                        <textarea class="costos-receta-config-input costos-ficha-textarea" data-field="notas" placeholder="Observaciones…" style="width:100%; min-height:60px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;">${escHtml(item.notas || '')}</textarea>
                     </div>
 
                     ${historialHtml}
@@ -1804,7 +1804,7 @@ const CostosModule = {
             deleteBtn.addEventListener('click', async () => {
                 const confirmed = await Modal.confirm({
                     title: 'Eliminar insumo',
-                    message: `¿Eliminar "${item.nombre}"? Esta acción se puede deshacer.`,
+                    message: `¿Eliminar "${escHtml(item.nombre)}"? Esta acción se puede deshacer.`,
                     danger: true,
                 });
                 if (!confirmed) return;
@@ -2081,7 +2081,7 @@ const CostosModule = {
             const costoPorUsoDisplay = costoPorUso > 0 ? API.formatCurrency(costoPorUso) : '—';
             return `
                 <tr class="costos-table-row costos-receta-row" data-id="${item.id}">
-                    <td><span class="td-primary">${item.nombre}</span></td>
+                    <td><span class="td-primary">${escHtml(item.nombre)}</span></td>
                     <td><span class="td-mono">${item.codigo || '—'}</span></td>
                     <td>${this._qeCell('rubro', item.id, item.rubro, this._badgeHtml('rubro', item.rubro))}</td>
                     <td style="text-align:center">${moDisplay}</td>
@@ -2176,7 +2176,7 @@ const CostosModule = {
                     <button class="costos-ficha-close" id="costosFichaClose" title="Cerrar (ESC)">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
-                    <input type="text" class="costos-receta-name-input" id="costosRecetaNombreEdit" data-field="nombre" value="${(item.nombre || '').replace(/"/g, '&quot;')}" placeholder="Nombre del item" spellcheck="false">
+                    <input type="text" class="costos-receta-name-input" id="costosRecetaNombreEdit" data-field="nombre" value="${escAttr(item.nombre || '')}" placeholder="Nombre del item" spellcheck="false">
                     <div class="costos-receta-meta-row">
                         <input type="text" class="costos-receta-code-input" id="costosRecetaCodigoEdit" data-field="codigo" value="${(item.codigo || '').replace(/"/g, '&quot;')}" placeholder="Código" spellcheck="false">
                         <input type="text" class="costos-receta-rubro-input" id="costosRecetaRubroEdit" data-field="rubro" value="${(item.rubro || '').replace(/"/g, '&quot;')}" placeholder="Rubro" list="costosRecetaRubrosList" spellcheck="false" autocomplete="off">
@@ -2479,7 +2479,7 @@ const CostosModule = {
                         : '<span class="costos-ghost-opt-type" style="color:var(--primary)" title="Insumo">🔹</span>';
                     const warn = o.sinVU ? '<span class="costos-ghost-opt-warn" title="Sin tipo de amortización: romperá el cálculo">⚠ sin VU</span>' : '';
                     return `<div class="costos-ghost-opt" data-kind="${o.kind}" data-id="${o.id}" data-unidad="${(o.unidad || '').replace(/"/g, '&quot;')}">
-                        <span style="display:flex;align-items:center;gap:7px;min-width:0;">${icon}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${o.nombre}</span>${o.codigo ? `<span class="costos-ghost-opt-meta">${o.codigo}</span>` : ''}${warn}</span>
+                        <span style="display:flex;align-items:center;gap:7px;min-width:0;">${icon}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(o.nombre)}</span>${o.codigo ? `<span class="costos-ghost-opt-meta">${escHtml(o.codigo)}</span>` : ''}${warn}</span>
                         <span class="costos-ghost-opt-meta">${o.meta}</span>
                     </div>`;
                 }).join('');
@@ -2502,7 +2502,7 @@ const CostosModule = {
             if (this._insumoSinVU(insumo)) {
                 const proceed = await Modal.confirm({
                     title: '⚠ Insumo sin amortización',
-                    message: `<p style="margin:0 0 8px 0"><strong>${insumo?.nombre}</strong> no tiene tipo de amortización ni VU override.</p>
+                    message: `<p style="margin:0 0 8px 0"><strong>${escHtml(insumo?.nombre)}</strong> no tiene tipo de amortización ni VU override.</p>
                               <p style="margin:0; color:var(--text-muted); font-size:13px;">La RPC no podrá amortizarlo y el costo por uso dará 0 o error. Recomendado: cargar tipo de amortización en Insumos antes.</p>`,
                     confirmText: 'Agregar igual', cancelText: 'Cancelar',
                 });
@@ -2578,7 +2578,7 @@ const CostosModule = {
                 <td>
                     <span class="costos-comp-name-cell">
                         ${chevron}
-                        <span class="${nameClass}" ${nameAttrs}>${c.nombre}</span>
+                        <span class="${nameClass}" ${nameAttrs}>${escHtml(c.nombre)}</span>
                         <span class="${badgeClass}" title="${badgeTitle}">${badge}</span>
                         ${paramBadge}
                         ${c.codigo ? `<span class="costos-comp-code">${c.codigo}</span>` : ''}
@@ -2608,7 +2608,7 @@ const CostosModule = {
                             <span class="costos-comp-subrow-cell">
                                 <span class="costos-comp-subrow-indent"></span>
                                 <span class="costos-comp-subrow-bullet">└</span>
-                                <span class="td-primary" style="opacity:.85">${sc.nombre}</span>
+                                <span class="td-primary" style="opacity:.85">${escHtml(sc.nombre)}</span>
                                 <span class="${sc.componenteType === 'item' ? 'costos-comp-type-badge costos-comp-type-receta' : 'costos-comp-type-badge'}" title="${sc.componenteType === 'item' ? 'Receta' : 'Insumo'}">${sc.componenteType === 'item' ? '⚛️' : '🔹'}</span>
                             </span>
                         </td>
@@ -2779,7 +2779,7 @@ const CostosModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     Notas
                 </div>
-                <textarea class="costos-receta-config-input" id="costosRecetaNotasEdit" data-field="notas" placeholder="Observaciones, contexto, alertas…" style="width:100%; min-height:50px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;">${notas}</textarea>
+                <textarea class="costos-receta-config-input" id="costosRecetaNotasEdit" data-field="notas" placeholder="Observaciones, contexto, alertas…" style="width:100%; min-height:50px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;">${escHtml(notas)}</textarea>
             </div>
         `;
     },
@@ -3189,7 +3189,7 @@ const CostosModule = {
             deleteBtn.addEventListener('click', async () => {
                 const confirmed = await Modal.confirm({
                     title: '🗑 Eliminar receta',
-                    message: `<p style="margin:0 0 8px">¿Eliminar <strong>${item.nombre}</strong> (${item.codigo || 'sin código'})?</p>
+                    message: `<p style="margin:0 0 8px">¿Eliminar <strong>${escHtml(item.nombre)}</strong> (${item.codigo || 'sin código'})?</p>
                               <p style="margin:0; color:var(--text-muted); font-size:13px;">Esta acción se puede deshacer con Ctrl+Z. Si esta receta es componente de otras, esas se rompen hasta que las arregles.</p>`,
                     confirmText: 'Eliminar',
                     cancelText: 'Cancelar',
@@ -3330,7 +3330,7 @@ const CostosModule = {
             const item = targets[i];
             const text = document.getElementById('costosRecalcAllText');
             const bar = document.getElementById('costosRecalcAllBar');
-            if (text) text.textContent = `Recalculando ${i + 1} de ${targets.length}: ${item.nombre}`;
+            if (text) text.textContent = `Recalculando ${i + 1} de ${targets.length}: ${escHtml(item.nombre)}`;
             if (bar) bar.style.width = `${Math.round((i / targets.length) * 100)}%`;
             const r = await API.recalcularRecetaRPC(item.id);
             if (r.ok) updated++; else failed++;
@@ -3502,7 +3502,7 @@ const CostosModule = {
                 : '';
             return `
             <div class="costos-add-insumo-row${sinVU ? ' costos-add-insumo-row--warn' : ''}" data-insumo-id="${i.id}" data-sin-vu="${sinVU ? '1' : '0'}">
-                <span class="costos-add-insumo-name">${i.nombre}${warnBadge}</span>
+                <span class="costos-add-insumo-name">${escHtml(i.nombre)}${warnBadge}</span>
                 <span class="costos-add-insumo-code">${i.codigo || ''}</span>
                 <span class="costos-add-insumo-cost">${API.formatCurrency(i.costoUnitario)}/${i.unidadBase}</span>
             </div>
@@ -3579,7 +3579,7 @@ const CostosModule = {
                     if (this._insumoSinVU(insumo)) {
                         const proceed = await Modal.confirm({
                             title: '⚠ Insumo sin amortización',
-                            message: `<p style="margin:0 0 8px 0"><strong>${insumo?.nombre}</strong> no tiene tipo de amortización asignado ni vida útil override.</p>
+                            message: `<p style="margin:0 0 8px 0"><strong>${escHtml(insumo?.nombre)}</strong> no tiene tipo de amortización asignado ni vida útil override.</p>
                                       <p style="margin:0; color:var(--text-muted); font-size:13px;">La RPC <code>calcular_receta</code> no podrá amortizar este componente y el costo por uso dará 0 o error. Recomendado: cargar tipo de amortización en el tab Insumos antes de continuar.</p>`,
                             confirmText: 'Agregar igual',
                             cancelText: 'Cancelar',
@@ -3615,7 +3615,7 @@ const CostosModule = {
 
         const itemsList = candidatos.map(i => `
             <div class="costos-add-insumo-row" data-child-id="${i.id}">
-                <span class="costos-add-insumo-name">${i.nombre}</span>
+                <span class="costos-add-insumo-name">${escHtml(i.nombre)}</span>
                 <span class="costos-add-insumo-code">${i.codigo || ''}</span>
                 <span class="costos-add-insumo-cost" title="Costo de fabricación (sin margen)">${API.formatCurrency(i.costoFabricacion || i.costoProduccion || 0)}</span>
             </div>
@@ -3742,7 +3742,7 @@ const CostosModule = {
 
         const itemsList = otherItems.map(i => `
             <div class="costos-add-insumo-row" data-item-id="${i.id}">
-                <span class="costos-add-insumo-name">${i.nombre}</span>
+                <span class="costos-add-insumo-name">${escHtml(i.nombre)}</span>
                 <span class="costos-add-insumo-code">${i.codigo || ''}</span>
                 <span class="costos-add-insumo-cost">${API.formatCurrency(i.costoProduccion)}</span>
             </div>
@@ -4131,9 +4131,9 @@ const CostosModule = {
             const displayVal = esPct ? Math.round(p.valor * 1000) / 10 : p.valor;
             return `
                 <div class="costos-params-row">
-                    <label class="costos-params-label" title="${p.descripcion || ''}">
+                    <label class="costos-params-label" title="${escAttr(p.descripcion || '')}">
                         <span class="costos-params-clave">${p.clave}</span>
-                        ${p.descripcion ? `<span class="costos-params-desc">${p.descripcion}</span>` : ''}
+                        ${p.descripcion ? `<span class="costos-params-desc">${escHtml(p.descripcion)}</span>` : ''}
                     </label>
                     <div class="costos-params-input-wrap">
                         <input class="costos-params-input"

@@ -2065,7 +2065,7 @@ const ContabilidadModule = {
                         <div class="cont-tree-n1-left">
                             <span class="cont-tree-arrow ${isExpanded1 ? 'expanded' : ''}">\u25B6</span>
                             <span class="cont-tree-n1-code">${grupo1.codigo}.</span>
-                            <span class="cont-tree-n1-name">${grupo1.nombre.toUpperCase()}</span>
+                            <span class="cont-tree-n1-name">${escHtml(grupo1.nombre.toUpperCase())}</span>
                         </div>
                         <span class="cont-tree-nature-badge">${grupo1.naturaleza || ''}</span>
                     </div>
@@ -2082,7 +2082,7 @@ const ContabilidadModule = {
                                 <div class="cont-tree-n2-left">
                                     <span class="cont-tree-arrow ${isExpanded2 ? 'expanded' : ''}">\u25B6</span>
                                     <span class="cont-tree-n2-code">${grupo2.codigo}</span>
-                                    <span class="cont-tree-n2-name">${grupo2.nombre}</span>
+                                    <span class="cont-tree-n2-name">${escHtml(grupo2.nombre)}</span>
                                 </div>
                                 <div class="cont-tree-n2-actions">
                                     ${!this._isRO ? `<button class="cont-tree-n2-add" data-add-to="${grupo2.codigo}" data-tipo="${grupo2.tipo}" data-naturaleza="${grupo2.naturaleza}">+ Subcuenta</button>` : ''}
@@ -2099,10 +2099,10 @@ const ContabilidadModule = {
                                 <div class="cont-tree-n3${inactiveClass}${activeRowClass}" data-cuenta-id="${cuenta.id}">
                                     <div class="cont-tree-n3-left">
                                         <span class="cont-tree-n3-code">${cuenta.codigo}</span>
-                                        <span class="cont-tree-n3-name">${cuenta.nombre}</span>
+                                        <span class="cont-tree-n3-name">${escHtml(cuenta.nombre)}</span>
                                     </div>
                                     <div class="cont-tree-n3-right">
-                                        ${cf ? `<span class="cont-tree-link-badge">\u26A1 ${cf.nombre}</span>` : ''}
+                                        ${cf ? `<span class="cont-tree-link-badge">\u26A1 ${escHtml(cf.nombre)}</span>` : ''}
                                     </div>
                                 </div>`;
                 }
@@ -2195,7 +2195,7 @@ const ContabilidadModule = {
                     <div class="cont-panel-color-bar"></div>
                     <button class="cont-panel-close" id="contPanelClose">&times;</button>
                     <div class="cont-panel-code">${cuenta.codigo}</div>
-                    <div class="cont-panel-name">${cuenta.nombre}</div>
+                    <div class="cont-panel-name">${escHtml(cuenta.nombre)}</div>
                 </div>
                 <div class="cont-panel-section">
                     <div class="cont-section-title">Clasificaci\u00f3n</div>
@@ -2219,14 +2219,14 @@ const ContabilidadModule = {
                     <div class="cont-info-grid">
                         <div class="cont-info-row">
                             <span class="cont-info-label">Cuenta</span>
-                            <span class="cont-info-value">${cf ? `<span class="cont-tree-link-badge">\u26A1 ${cf.nombre}</span>` : '<span style="color:#555">Sin vincular</span>'}</span>
+                            <span class="cont-info-value">${cf ? `<span class="cont-tree-link-badge">\u26A1 ${escHtml(cf.nombre)}</span>` : '<span style="color:#555">Sin vincular</span>'}</span>
                         </div>
                     </div>
                 </div>
                 ${cuenta.notas ? `
                 <div class="cont-panel-section">
                     <div class="cont-section-title">Notas</div>
-                    <div style="color:#ccc; font-size:0.85rem;">${cuenta.notas}</div>
+                    <div style="color:#ccc; font-size:0.85rem;">${escHtml(cuenta.notas)}</div>
                 </div>
                 ` : ''}
                 ${!this._isRO ? `
@@ -2263,7 +2263,7 @@ const ContabilidadModule = {
             const action = newState ? 'reactivar' : 'desactivar';
             const confirmed = await Modal.confirm({
                 title: `${newState ? 'Reactivar' : 'Desactivar'} cuenta`,
-                message: `\u00bfSeguro que quer\u00e9s ${action} <strong>"${cuenta.nombre}"</strong>?`,
+                message: `\u00bfSeguro que quer\u00e9s ${action} <strong>"${escHtml(cuenta.nombre)}"</strong>?`,
                 confirmText: newState ? 'Reactivar' : 'Desactivar',
                 danger: !newState,
             });
@@ -2341,16 +2341,16 @@ const ContabilidadModule = {
 
     _showEditCuentaModal(cuenta) {
         const cfOptions = this._cuentasFinancieras.map(cf =>
-            `<option value="${cf.id}" ${cuenta.cuenta_financiera_id === cf.id ? 'selected' : ''}>${cf.nombre} (${cf.tipo})</option>`
+            `<option value="${cf.id}" ${cuenta.cuenta_financiera_id === cf.id ? 'selected' : ''}>${escHtml(cf.nombre)} (${cf.tipo})</option>`
         ).join('');
 
         Modal.open({
-            title: `Editar \u2014 ${cuenta.codigo} ${cuenta.nombre}`,
+            title: `Editar \u2014 ${cuenta.codigo} ${escHtml(cuenta.nombre)}`,
             body: `
                 <form class="mepex-form" id="contEditForm">
                     <div class="form-group">
                         <label class="form-label">Nombre</label>
-                        <input type="text" class="form-control" name="nombre" value="${cuenta.nombre}" required>
+                        <input type="text" class="form-control" name="nombre" value="${escHtml(cuenta.nombre)}" required>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Vincular a cuenta financiera</label>
@@ -2361,7 +2361,7 @@ const ContabilidadModule = {
                     </div>
                     <div class="form-group">
                         <label class="form-label">Notas</label>
-                        <textarea class="form-control" name="notas" rows="3" placeholder="Observaciones...">${cuenta.notas || ''}</textarea>
+                        <textarea class="form-control" name="notas" rows="3" placeholder="Observaciones...">${escHtml(cuenta.notas || '')}</textarea>
                     </div>
                 </form>
             `,
@@ -2422,7 +2422,7 @@ const ContabilidadModule = {
         }
 
         const cfOptions = this._cuentasFinancieras.map(cf =>
-            `<option value="${cf.id}">${cf.nombre} (${cf.tipo})</option>`
+            `<option value="${cf.id}">${escHtml(cf.nombre)} (${cf.tipo})</option>`
         ).join('');
 
         const parentCuenta = this._planCuentas.find(c => c.codigo === codigoPadre);
@@ -2523,7 +2523,7 @@ const ContabilidadModule = {
         );
 
         const cfOptions = this._cuentasFinancieras.map(cf =>
-            `<option value="${cf.id}">${cf.nombre} (${cf.tipo})</option>`
+            `<option value="${cf.id}">${escHtml(cf.nombre)} (${cf.tipo})</option>`
         ).join('');
 
         let tableRows = '';
@@ -2532,13 +2532,13 @@ const ContabilidadModule = {
                 <tr>
                     <td>
                         <span style="font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.78rem; color: #888;">${cuenta.codigo}</span>
-                        &nbsp; ${cuenta.nombre}
+                        &nbsp; ${escHtml(cuenta.nombre)}
                     </td>
                     <td>
                         <select data-cuenta-id="${cuenta.id}">
                             <option value="">Sin vincular</option>
                             ${this._cuentasFinancieras.map(cf =>
-                                `<option value="${cf.id}" ${cuenta.cuenta_financiera_id === cf.id ? 'selected' : ''}>${cf.nombre} (${cf.tipo})</option>`
+                                `<option value="${cf.id}" ${cuenta.cuenta_financiera_id === cf.id ? 'selected' : ''}>${escHtml(cf.nombre)} (${cf.tipo})</option>`
                             ).join('')}
                         </select>
                     </td>
@@ -2794,7 +2794,7 @@ const ContabilidadModule = {
                         <span class="cont-asiento-arrow">\u25B6</span>
                         <span class="cont-asiento-num">#${asiento.numero || '\u2014'}</span>
                         <span class="cont-asiento-fecha">${fecha}</span>
-                        <span class="cont-asiento-concepto" title="${concepto}">${conceptoTrunc}</span>
+                        <span class="cont-asiento-concepto" title="${escHtml(concepto)}">${escHtml(conceptoTrunc)}</span>
                         <span class="cont-asiento-tipo ${tipoCls}">${tipoLabel}</span>
                         <span class="cont-asiento-monto">${this._formatMoney(asiento.total_debe)}</span>
                         <span class="cont-asiento-canal">${canalLabel}</span>
@@ -2854,7 +2854,7 @@ const ContabilidadModule = {
 
             rowsHtml += `
                 <tr>
-                    <td><span class="cont-lineas-cuenta-code">${codigo}</span> ${nombre}</td>
+                    <td><span class="cont-lineas-cuenta-code">${codigo}</span> ${escHtml(nombre)}</td>
                     <td>${debe > 0 ? this._formatMoney(debe) : ''}</td>
                     <td>${haber > 0 ? this._formatMoney(haber) : ''}</td>
                 </tr>
@@ -3078,7 +3078,7 @@ const ContabilidadModule = {
         if (!select) return;
 
         const optionsHtml = this._mayorCuentasLista.map(c =>
-            `<option value="${c.id}" ${this._mayorCuentaId === c.id ? 'selected' : ''}>${c.codigo} \u2014 ${c.nombre}</option>`
+            `<option value="${c.id}" ${this._mayorCuentaId === c.id ? 'selected' : ''}>${c.codigo} \u2014 ${escHtml(c.nombre)}</option>`
         ).join('');
         select.innerHTML = `<option value="">Seleccion\u00e1 una cuenta...</option>${optionsHtml}`;
     },
@@ -3215,7 +3215,7 @@ const ContabilidadModule = {
             <div class="cont-mayor-header">
                 <div>
                     <span class="cont-mayor-header-code">${cuenta.codigo}</span>
-                    <span class="cont-mayor-header-name">${cuenta.nombre}</span>
+                    <span class="cont-mayor-header-name">${escHtml(cuenta.nombre)}</span>
                 </div>
                 <div class="cont-mayor-header-meta">
                     <span class="cont-badge cont-badge-${cuenta.naturaleza || 'deudora'}">${natLabels[cuenta.naturaleza] || cuenta.naturaleza}</span>
@@ -3273,7 +3273,7 @@ const ContabilidadModule = {
                 <tr>
                     <td class="cont-mayor-fecha">${fecha}</td>
                     <td><span class="cont-mayor-asiento-link" data-goto-asiento="${asiento.id}">#${asiento.numero || '\u2014'}</span></td>
-                    <td class="cont-mayor-concepto" title="${concepto}">${conceptoTrunc}</td>
+                    <td class="cont-mayor-concepto" title="${escHtml(concepto)}">${escHtml(conceptoTrunc)}</td>
                     <td class="right${mov.debe > 0 ? ' cont-mayor-debe' : ''}">${mov.debe > 0 ? this._formatMoney(mov.debe) : ''}</td>
                     <td class="right${mov.haber > 0 ? ' cont-mayor-haber' : ''}">${mov.haber > 0 ? this._formatMoney(mov.haber) : ''}</td>
                     <td class="right${saldoColor}">${this._formatMoney(saldoRunning)}</td>
@@ -3399,7 +3399,7 @@ const ContabilidadModule = {
         const canalDefault = this._asientoCanal || (this._canalVista === 'total' ? 'oficial' : this._canalVista);
 
         const cuentaOptions = this._cuentasImputables.map(c =>
-            `<option value="${c.id}">${c.codigo} — ${c.nombre}</option>`
+            `<option value="${c.id}">${c.codigo} — ${escHtml(c.nombre)}</option>`
         ).join('');
 
         container.innerHTML = `
@@ -3549,7 +3549,7 @@ const ContabilidadModule = {
                 <tr>
                     <td><span class="cont-am-tbl-num">#${a.numero || '—'}</span></td>
                     <td><span class="cont-am-tbl-fecha">${fecha}</span></td>
-                    <td>${a.concepto || '—'}</td>
+                    <td>${escHtml(a.concepto || '—')}</td>
                     <td class="right">${this._formatMoney(a.total_debe || 0)}</td>
                     <td>
                         <span class="cont-asiento-canal">${(a.canal || 'oficial').toUpperCase()}</span>
@@ -4210,8 +4210,8 @@ const ContabilidadModule = {
                 <td class="mono">${fecha}</td>
                 <td>${tipo}</td>
                 <td class="mono">${numero}</td>
-                <td>${cliente}</td>
-                <td class="mono">${cuit}</td>
+                <td>${escHtml(cliente)}</td>
+                <td class="mono">${escHtml(cuit)}</td>
                 <td class="right">${neto !== null ? this._formatMoney(neto) : '\u2014'}</td>
                 <td class="right">${iva !== null ? this._formatMoney(iva) : '\u2014'}</td>
                 <td class="right">${this._formatMoney(total)}</td>
@@ -4298,7 +4298,7 @@ const ContabilidadModule = {
             else totIvaOficial += (iva || 0);
 
             const refChip = esAuxiliar && c.traido_por
-                ? `<div style="font-size:10px;color:#888;margin-top:2px;">ref. ${c.traido_por}</div>` : '';
+                ? `<div style="font-size:10px;color:#888;margin-top:2px;">ref. ${escHtml(c.traido_por)}</div>` : '';
 
             const origenBadge = esAuxiliar
                 ? '<span style="display:inline-block;padding:1px 6px;background:#9B7DFF;color:#000;border-radius:3px;font-size:9px;font-weight:700;margin-left:4px;letter-spacing:0.5px;">AUXILIAR</span>'
@@ -4308,8 +4308,8 @@ const ContabilidadModule = {
                 <td class="mono">${fecha}</td>
                 <td>${tipo}${esCF ? '<span class="cont-iva-cf-badge">CF</span>' : ''}${origenBadge}</td>
                 <td class="mono">${numero}</td>
-                <td>${proveedor}${refChip}</td>
-                <td class="mono">${cuit}</td>
+                <td>${escHtml(proveedor)}${refChip}</td>
+                <td class="mono">${escHtml(cuit)}</td>
                 <td class="right">${neto !== null ? this._formatMoney(neto) : '\u2014'}</td>
                 <td class="right">${iva !== null ? this._formatMoney(iva) : '\u2014'}</td>
                 <td class="right">${this._formatMoney(total)}</td>
@@ -4608,7 +4608,7 @@ const ContabilidadModule = {
 
         const buildRows = (items) => items.map(c => `
             <div class="cont-eerr-row">
-                <div><span class="cont-eerr-row-code">${c.codigo}</span><span class="cont-eerr-row-name">${c.nombre}</span></div>
+                <div><span class="cont-eerr-row-code">${c.codigo}</span><span class="cont-eerr-row-name">${escHtml(c.nombre)}</span></div>
                 <div class="cont-eerr-row-monto">${this._formatMoney(c.monto)}</div>
             </div>
         `).join('');
@@ -4813,7 +4813,7 @@ const ContabilidadModule = {
 
         const buildRows = (items) => items.map(c => `
             <div class="cont-eerr-row">
-                <div><span class="cont-eerr-row-code">${c.codigo}</span><span class="cont-eerr-row-name">${c.nombre}</span></div>
+                <div><span class="cont-eerr-row-code">${c.codigo}</span><span class="cont-eerr-row-name">${escHtml(c.nombre)}</span></div>
                 <div class="cont-eerr-row-monto">${this._formatMoney(c.saldo)}</div>
             </div>
         `).join('');
@@ -5233,7 +5233,7 @@ const ContabilidadModule = {
                 <tbody>
                     ${rows.map(r => {
                         const c = cuentasMap[r.cuenta_contable_id];
-                        const cuentaLabel = c ? `<strong>${c.codigo}</strong> · ${c.nombre}` : `<em style="color:var(--color-error);">cuenta no encontrada</em>`;
+                        const cuentaLabel = c ? `<strong>${c.codigo}</strong> · ${escHtml(c.nombre)}` : `<em style="color:var(--color-error);">cuenta no encontrada</em>`;
                         const esGenerico = !r.campo_origen || r.campo_origen === 'default';
                         const campo = esGenerico
                             ? `<span style="color:var(--text-muted); font-style:italic;">(genérico)</span>`
@@ -5252,7 +5252,7 @@ const ContabilidadModule = {
                                 <td style="padding:8px;">${cuentaLabel}</td>
                                 <td style="padding:8px; text-align:center; color:var(--text-muted);">${r.posicion || '—'}</td>
                                 <td style="padding:8px; text-align:center;">${r.activo ? '✓' : '✗'}</td>
-                                <td style="padding:8px; color:var(--text-muted); font-size:12px;">${r.descripcion || ''}</td>
+                                <td style="padding:8px; color:var(--text-muted); font-size:12px;">${escHtml(r.descripcion || '')}</td>
                                 <td style="padding:8px; text-align:right;">
                                     <button class="btn btn-ghost btn-sm" data-mapeo-edit="${r.id}">Editar</button>
                                     <button class="btn btn-ghost btn-sm" data-mapeo-del="${r.id}" style="color:var(--color-error);">×</button>
@@ -5312,7 +5312,7 @@ const ContabilidadModule = {
         const esEspecifico0 = campoSel0 === 'servicio' || campoSel0 === 'categoria';
 
         const cuentaOptions = (this._cuentasImputables || []).map(c =>
-            `<option value="${c.id}" ${String(c.id) === String(m.cuenta_contable_id) ? 'selected' : ''}>${c.codigo} · ${c.nombre}</option>`
+            `<option value="${c.id}" ${String(c.id) === String(m.cuenta_contable_id) ? 'selected' : ''}>${c.codigo} · ${escHtml(c.nombre)}</option>`
         ).join('');
 
         const instance = Modal.open({
@@ -5355,7 +5355,7 @@ const ContabilidadModule = {
                         </div>
                         <div>
                             <label style="display:block; font-size:12px; color:var(--text-muted); margin-bottom:4px;">Descripción</label>
-                            <input type="text" id="mapeoDesc" class="cont-form-input" value="${m.descripcion || ''}" placeholder="opcional — para distinguir reglas similares" style="width:100%;">
+                            <input type="text" id="mapeoDesc" class="cont-form-input" value="${escHtml(m.descripcion || '')}" placeholder="opcional — para distinguir reglas similares" style="width:100%;">
                         </div>
                     </div>
                     <div style="background:rgba(0,169,193,0.08); border-left:3px solid var(--primary); padding:10px 12px; font-size:12px; color:var(--text-muted); line-height:1.5;">
@@ -5625,7 +5625,7 @@ const ContabilidadModule = {
                             ${g.items.map(s => `
                                 <tr style="border-bottom:1px solid var(--border);" data-cuenta-id="${s.cuenta_id}">
                                     <td style="padding:6px 12px; color:var(--text-muted); font-family:var(--font-mono,'Space Mono',monospace); font-size:12px;">${s.codigo}</td>
-                                    <td style="padding:6px 12px;">${s.nombre}</td>
+                                    <td style="padding:6px 12px;">${escHtml(s.nombre)}</td>
                                     <td style="padding:6px 12px; text-align:right;">
                                         <input type="number" step="0.01" min="0"
                                             class="cont-form-input cont-apertura-monto"

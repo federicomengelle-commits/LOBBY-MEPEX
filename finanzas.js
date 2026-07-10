@@ -2260,7 +2260,7 @@ const FinanzasModule = {
                     <tbody>
                         ${this._cuentasFiltered.map(c => `
                             <tr class="fin-row ${this._activePanel === c.id ? 'active' : ''}" data-id="${c.id}">
-                                <td class="fin-td fin-td-name">${c.nombre}</td>
+                                <td class="fin-td fin-td-name">${escHtml(c.nombre)}</td>
                                 <td class="fin-td">${this._tipoBadge(c.tipo)}</td>
                                 <td class="fin-td">${c.entidad || '<span class="fin-td-muted">—</span>'}</td>
                                 <td class="fin-td">${this._canalBadge(c.canal_default)}</td>
@@ -2318,7 +2318,7 @@ const FinanzasModule = {
                 <div class="fin-panel-header">
                     <div class="fin-panel-color-bar" style="background:${cuenta.color || '#4A90D9'}"></div>
                     <button class="fin-panel-close" id="finPanelClose">&times;</button>
-                    <div class="fin-panel-name">${cuenta.nombre}</div>
+                    <div class="fin-panel-name">${escHtml(cuenta.nombre)}</div>
                     <div style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
                         ${this._tipoBadge(cuenta.tipo)}
                         ${this._canalBadge(cuenta.canal_default)}
@@ -2355,7 +2355,7 @@ const FinanzasModule = {
                 ${cuenta.notas ? `
                 <div class="fin-panel-section">
                     <div class="fin-section-title">Notas</div>
-                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${cuenta.notas}</div>
+                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${escHtml(cuenta.notas)}</div>
                 </div>
                 ` : ''}
 
@@ -2421,7 +2421,7 @@ const FinanzasModule = {
         document.getElementById('finPanelDeactivate')?.addEventListener('click', async () => {
             const ok = await Modal.confirm({
                 title: 'Desactivar cuenta',
-                message: `¿Seguro que querés desactivar <strong>"${cuenta.nombre}"</strong>?`,
+                message: `¿Seguro que querés desactivar <strong>"${escHtml(cuenta.nombre)}"</strong>?`,
                 confirmText: 'Desactivar',
                 cancelText: 'Cancelar',
             });
@@ -2435,7 +2435,7 @@ const FinanzasModule = {
         document.getElementById('finPanelDelete')?.addEventListener('click', async () => {
             const ok = await Modal.confirm({
                 title: 'Eliminar cuenta',
-                message: `¿Seguro que querés eliminar <strong>"${cuenta.nombre}"</strong>? Esta acción no se puede deshacer fácilmente.`,
+                message: `¿Seguro que querés eliminar <strong>"${escHtml(cuenta.nombre)}"</strong>? Esta acción no se puede deshacer fácilmente.`,
                 confirmText: 'Eliminar',
                 cancelText: 'Cancelar',
                 danger: true,
@@ -2491,7 +2491,7 @@ const FinanzasModule = {
                 <div class="fin-form-grid">
                     <div class="fin-form-group">
                         <label class="fin-form-label">Nombre *</label>
-                        <input type="text" class="fin-form-input" id="finFormNombre" value="${c.nombre || ''}" placeholder="Ej: Santander CC" autofocus>
+                        <input type="text" class="fin-form-input" id="finFormNombre" value="${escHtml(c.nombre || '')}" placeholder="Ej: Santander CC" autofocus>
                     </div>
                     <div class="fin-form-row">
                         <div class="fin-form-group">
@@ -2552,7 +2552,7 @@ const FinanzasModule = {
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
-                        <textarea class="fin-form-textarea" id="finFormNotas" placeholder="Notas internas…">${c.notas || ''}</textarea>
+                        <textarea class="fin-form-textarea" id="finFormNotas" placeholder="Notas internas…">${escHtml(c.notas || '')}</textarea>
                     </div>
                 </div>
             `,
@@ -2730,7 +2730,7 @@ const FinanzasModule = {
 
     _buildIngresosHTML() {
         const cuentasOpts = Object.values(this._cuentasMap)
-            .map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+            .map(c => `<option value="${c.id}">${escHtml(c.nombre)}</option>`).join('');
 
         return `
             <div class="fin-subtabs">
@@ -3030,7 +3030,7 @@ const FinanzasModule = {
                     dup.fecha = new Date().toISOString().slice(0, 10);
                     this._showIngresoModal(dup);
                 } else if (action === 'del') {
-                    const ok = await Confirm.delete(`el ingreso "${ingreso.concepto}" (${this._formatMoney(ingreso.monto)})`);
+                    const ok = await Confirm.delete(`el ingreso "${escHtml(ingreso.concepto)}" (${this._formatMoney(ingreso.monto)})`);
                     if (!ok) return;
                     try {
                         const { error } = await supabaseClient.from('ingresos')
@@ -3119,7 +3119,7 @@ const FinanzasModule = {
                 <div class="fin-panel-header">
                     <div class="fin-panel-color-bar" style="background:${cuentaColor}"></div>
                     <button class="fin-panel-close" id="finIngPanelClose">&times;</button>
-                    <div class="fin-panel-name">${ingreso.concepto}</div>
+                    <div class="fin-panel-name">${escHtml(ingreso.concepto)}</div>
                     <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
                         ${this._medioBadge(ingreso.medio)}
                         ${this._canalBadge(ingreso.canal)}
@@ -3163,7 +3163,7 @@ const FinanzasModule = {
                 ${ingreso.notas ? `
                 <div class="fin-panel-section">
                     <div class="fin-section-title">Notas</div>
-                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${ingreso.notas}</div>
+                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${escHtml(ingreso.notas)}</div>
                 </div>
                 ` : ''}
 
@@ -3212,7 +3212,7 @@ const FinanzasModule = {
         document.getElementById('finIngPanelAnular')?.addEventListener('click', async () => {
             const ok = await Modal.confirm({
                 title: 'Anular ingreso',
-                message: `¿Seguro que querés anular <strong>"${ingreso.concepto}"</strong> por ${this._formatMoney(ingreso.monto)}?`,
+                message: `¿Seguro que querés anular <strong>"${escHtml(ingreso.concepto)}"</strong> por ${this._formatMoney(ingreso.monto)}?`,
                 confirmText: 'Anular',
                 cancelText: 'Cancelar',
             });
@@ -3236,7 +3236,7 @@ const FinanzasModule = {
         document.getElementById('finIngPanelDelete')?.addEventListener('click', async () => {
             const ok = await Modal.confirm({
                 title: 'Eliminar ingreso',
-                message: `¿Seguro que querés eliminar <strong>"${ingreso.concepto}"</strong>?`,
+                message: `¿Seguro que querés eliminar <strong>"${escHtml(ingreso.concepto)}"</strong>?`,
                 confirmText: 'Eliminar',
                 cancelText: 'Cancelar',
                 danger: true,
@@ -3435,7 +3435,7 @@ const FinanzasModule = {
         // Cuentas
         const cuentasArr = Object.entries(this._cuentasMap);
         const cuentaOptions = cuentasArr.map(([id, c]) =>
-            `<option value="${id}" ${i.cuenta_id === id ? 'selected' : ''}>${c.nombre}</option>`
+            `<option value="${id}" ${i.cuenta_id === id ? 'selected' : ''}>${escHtml(c.nombre)}</option>`
         ).join('');
 
         Modal.open({
@@ -3456,7 +3456,7 @@ const FinanzasModule = {
                     ${this._renderMonedaFields('finIng', i)}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Concepto *</label>
-                        <input type="text" class="fin-form-input" id="finIngFormConcepto" value="${i.concepto || ''}" placeholder="Seña 40%, Parcial 1, Saldo…">
+                        <input type="text" class="fin-form-input" id="finIngFormConcepto" value="${escHtml(i.concepto || '')}" placeholder="Seña 40%, Parcial 1, Saldo…">
                     </div>
                     <div class="fin-form-row">
                         <div class="fin-form-group">
@@ -3548,7 +3548,7 @@ const FinanzasModule = {
                     ` : ''}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
-                        <textarea class="fin-form-textarea" id="finIngFormNotas" placeholder="Notas internas…">${i.notas || ''}</textarea>
+                        <textarea class="fin-form-textarea" id="finIngFormNotas" placeholder="Notas internas…">${escHtml(i.notas || '')}</textarea>
                     </div>
                 </div>
             `,
@@ -3669,7 +3669,7 @@ const FinanzasModule = {
 
     _buildEgresosHTML() {
         const cuentasOpts = Object.values(this._cuentasMap)
-            .map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+            .map(c => `<option value="${c.id}">${escHtml(c.nombre)}</option>`).join('');
         const catOpts = Object.entries(this._categoriaEgreso)
             .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
 
@@ -3943,7 +3943,7 @@ const FinanzasModule = {
                     dup.fecha = new Date().toISOString().slice(0, 10);
                     this._showEgresoModal(dup);
                 } else if (action === 'del') {
-                    const ok = await Confirm.delete(`el egreso "${egreso.concepto}" (${this._formatMoney(egreso.monto)})`);
+                    const ok = await Confirm.delete(`el egreso "${escHtml(egreso.concepto)}" (${this._formatMoney(egreso.monto)})`);
                     if (!ok) return;
                     try {
                         const { error } = await supabaseClient.from('egresos')
@@ -4024,7 +4024,7 @@ const FinanzasModule = {
                 <div class="fin-panel-header">
                     <div class="fin-panel-color-bar" style="background:${(this._categoriaEgreso[egreso.categoria] || {}).color || '#888'}"></div>
                     <button class="fin-panel-close" id="finEgrPanelClose">&times;</button>
-                    <div class="fin-panel-name">${egreso.concepto}</div>
+                    <div class="fin-panel-name">${escHtml(egreso.concepto)}</div>
                     <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
                         ${this._categoriaBadge(egreso.categoria)}
                         ${this._medioBadge(egreso.medio)}
@@ -4079,7 +4079,7 @@ const FinanzasModule = {
                         ${cfData.proveedor_cf ? `
                         <div class="fin-info-row">
                             <span class="fin-info-label">Proveedor</span>
-                            <span class="fin-info-value">${cfData.proveedor_cf}</span>
+                            <span class="fin-info-value">${escHtml(cfData.proveedor_cf)}</span>
                         </div>
                         ` : ''}
                         ${cfData.cuit_cf ? `
@@ -4109,7 +4109,7 @@ const FinanzasModule = {
                 ${!cfData && egreso.notas ? `
                 <div class="fin-panel-section">
                     <div class="fin-section-title">Notas</div>
-                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${egreso.notas}</div>
+                    <div style="color:#aaa; font-size:0.85rem; line-height:1.5; white-space:pre-wrap;">${escHtml(egreso.notas)}</div>
                 </div>
                 ` : ''}
 
@@ -4157,7 +4157,7 @@ const FinanzasModule = {
         document.getElementById('finEgrPanelAnular')?.addEventListener('click', async () => {
             const ok = await Modal.confirm({
                 title: 'Anular egreso',
-                message: `¿Seguro que querés anular <strong>"${egreso.concepto}"</strong> por ${this._formatMoney(egreso.monto)}?`,
+                message: `¿Seguro que querés anular <strong>"${escHtml(egreso.concepto)}"</strong> por ${this._formatMoney(egreso.monto)}?`,
                 confirmText: 'Anular',
                 cancelText: 'Cancelar',
             });
@@ -4177,7 +4177,7 @@ const FinanzasModule = {
         document.getElementById('finEgrPanelDelete')?.addEventListener('click', async () => {
             const ok = await Modal.confirm({
                 title: 'Eliminar egreso',
-                message: `¿Seguro que querés eliminar <strong>"${egreso.concepto}"</strong>?`,
+                message: `¿Seguro que querés eliminar <strong>"${escHtml(egreso.concepto)}"</strong>?`,
                 confirmText: 'Eliminar',
                 cancelText: 'Cancelar',
                 danger: true,
@@ -4233,7 +4233,7 @@ const FinanzasModule = {
 
         const cuentasArr = Object.entries(this._cuentasMap);
         const cuentaOptions = cuentasArr.map(([id, c]) =>
-            `<option value="${id}" ${e.cuenta_id === id ? 'selected' : ''}>${c.nombre}</option>`
+            `<option value="${id}" ${e.cuenta_id === id ? 'selected' : ''}>${escHtml(c.nombre)}</option>`
         ).join('');
 
         const catOptions = Object.entries(this._categoriaEgreso)
@@ -4277,7 +4277,7 @@ const FinanzasModule = {
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Concepto *</label>
-                        <input type="text" class="fin-form-input" id="finEgrFormConcepto" value="${e.concepto || ''}" placeholder="Descripción del pago">
+                        <input type="text" class="fin-form-input" id="finEgrFormConcepto" value="${escHtml(e.concepto || '')}" placeholder="Descripción del pago">
                     </div>
                     ${this._renderMonedaFields('finEgr', e)}
                     <div class="fin-form-row">
@@ -4385,7 +4385,7 @@ const FinanzasModule = {
                     ` : ''}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
-                        <textarea class="fin-form-textarea" id="finEgrFormNotas" placeholder="Notas internas…">${(!isCF && e.notas) ? e.notas : ''}</textarea>
+                        <textarea class="fin-form-textarea" id="finEgrFormNotas" placeholder="Notas internas…">${escHtml((!isCF && e.notas) ? e.notas : '')}</textarea>
                     </div>
                 </div>
             `,
@@ -4663,7 +4663,7 @@ const FinanzasModule = {
             <div class="fin-cuenta-header">
                 <div class="fin-cuenta-header-left">
                     <span class="fin-color-dot" style="background:${c.color || '#4A90D9'};width:14px;height:14px;"></span>
-                    <span class="fin-cuenta-header-name">${c.nombre}</span>
+                    <span class="fin-cuenta-header-name">${escHtml(c.nombre)}</span>
                     ${this._tipoBadge(c.tipo)}
                 </div>
                 <div class="fin-saldo-big" style="color:${saldoColor};">
@@ -4696,7 +4696,7 @@ const FinanzasModule = {
                                 return `
                                 <tr class="fin-row" style="cursor:default;">
                                     <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);font-size:0.78rem;">${this._formatDate(m.fecha)}</td>
-                                    <td class="fin-td fin-td-name">${m.concepto || '—'}</td>
+                                    <td class="fin-td fin-td-name">${escHtml(m.concepto || '—')}</td>
                                     <td class="fin-td fin-td-money fin-mov-entrada" style="text-align:right;">${isIn ? this._formatMoney(m.monto) : ''}</td>
                                     <td class="fin-td fin-td-money fin-mov-salida" style="text-align:right;">${!isIn ? this._formatMoney(m.monto) : ''}</td>
                                     <td class="fin-td fin-td-money" style="text-align:right;color:${balColor};">${this._formatMoney(bal)}</td>
@@ -4727,14 +4727,14 @@ const FinanzasModule = {
         }
 
         const opts = cuentasActivas.map(c =>
-            `<option value="${c.id}">${c.nombre}</option>`
+            `<option value="${c.id}">${escHtml(c.nombre)}</option>`
         ).join('');
 
         const today = new Date().toISOString().slice(0, 10);
 
         const cuentaMoneda = (id) => (cuentasActivas.find(c => c.id === id)?.moneda) || 'ARS';
         const optsConMoneda = cuentasActivas.map(c =>
-            `<option value="${c.id}" data-moneda="${c.moneda || 'ARS'}">${c.nombre} · ${c.moneda || 'ARS'}</option>`
+            `<option value="${c.id}" data-moneda="${c.moneda || 'ARS'}">${escHtml(c.nombre)} · ${c.moneda || 'ARS'}</option>`
         ).join('');
 
         Modal.open({
@@ -5051,7 +5051,7 @@ const FinanzasModule = {
                                 return `
                                 <tr>
                                     <td style="color:#555;">${item.orden}</td>
-                                    <td>${item.concepto}</td>
+                                    <td>${escHtml(item.concepto)}</td>
                                     <td style="text-align:right;font-family:var(--font-mono,'Space Mono',monospace);font-size:0.8rem;">${formatMontoCuota(item.monto, itemMoneda)}</td>
                                     <td style="font-size:0.78rem;color:#888;">${item.fecha_estimada ? this._formatDate(item.fecha_estimada) : '—'}</td>
                                     <td style="text-align:center;">${facCheck}</td>
@@ -5138,7 +5138,7 @@ const FinanzasModule = {
                 const plan = this._planes.find(p => p.id === planId);
                 const item = (plan?.plan_cobro_items || []).find(i => i.id === itemId);
                 if (!item) return;
-                const ok = await Confirm.delete(`la cuota "${item.concepto}" (${this._formatMoney(item.monto)})`);
+                const ok = await Confirm.delete(`la cuota "${escHtml(item.concepto)}" (${this._formatMoney(item.monto)})`);
                 if (!ok) return;
                 try {
                     await API.deletePlanCobroItem(itemId);
@@ -5164,7 +5164,7 @@ const FinanzasModule = {
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Concepto *</label>
-                            <input type="text" class="fin-form-input" id="ediCuotaConcepto" value="${(item.concepto || '').replace(/"/g, '&quot;')}">
+                            <input type="text" class="fin-form-input" id="ediCuotaConcepto" value="${escHtml(item.concepto || '')}">
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Orden</label>
@@ -5196,7 +5196,7 @@ const FinanzasModule = {
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
-                        <textarea class="fin-form-textarea" id="ediCuotaNotas">${item.notas || ''}</textarea>
+                        <textarea class="fin-form-textarea" id="ediCuotaNotas">${escHtml(item.notas || '')}</textarea>
                     </div>
                 </div>
             `,
@@ -5426,7 +5426,7 @@ const FinanzasModule = {
                 <div class="fin-form-grid">
                     <div class="fin-form-group">
                         <label class="fin-form-label">Cuota</label>
-                        <div style="padding:8px;background:#1a1a1a;border-radius:4px;font-size:0.85rem;">${cuota.concepto} · ${this._formatMoney(cuota.monto)}</div>
+                        <div style="padding:8px;background:#1a1a1a;border-radius:4px;font-size:0.85rem;">${escHtml(cuota.concepto)} · ${this._formatMoney(cuota.monto)}</div>
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Factura del proyecto *</label>
@@ -6523,7 +6523,7 @@ const FinanzasModule = {
                             <tr>
                                 <td>${r.fecha || '—'}</td>
                                 <td><span class="fin-chip fin-chip-${r.tabla}">${r.tipo}</span></td>
-                                <td>${r.concepto}</td>
+                                <td>${escHtml(r.concepto)}</td>
                                 <td style="text-align:right;"><span class="fin-moneda-chip" style="background:rgba(242,141,21,0.15); color:var(--accent); padding:2px 6px; border-radius:4px; font-size:11px;">${r.moneda}</span></td>
                                 <td style="text-align:right; font-variant-numeric: tabular-nums;">${r.monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                 <td style="text-align:right; color:var(--text-muted); font-variant-numeric: tabular-nums;">${r.cotizacion.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
@@ -6703,7 +6703,7 @@ const FinanzasModule = {
                             const rentColor = r.rent > 20 ? '#00CC88' : r.rent > 0 ? '#F28D15' : '#E84855';
                             const avance = r.presupuesto > 0 ? Math.round((r.cobrado / r.presupuesto) * 100) : null;
                             return `<tr class="fin-row" style="cursor:default;">
-                                <td class="fin-td fin-td-name">${r.nombre}</td>
+                                <td class="fin-td fin-td-name">${escHtml(r.nombre)}</td>
                                 <td class="fin-td fin-td-money" style="color:#4A90D9;">${r.presupuesto > 0 ? this._formatMoney(r.presupuesto) : '<span style="color:var(--text-dim)">—</span>'}</td>
                                 <td class="fin-td fin-td-money">${this._formatMoney(r.facturado)}</td>
                                 <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
@@ -6780,7 +6780,7 @@ const FinanzasModule = {
                         ${rows.map((r, i) => `
                             <tr class="fin-row" style="cursor:default;">
                                 <td class="fin-td" style="color:#555;">${i + 1}</td>
-                                <td class="fin-td fin-td-name">${r.nombre}</td>
+                                <td class="fin-td fin-td-name">${escHtml(r.nombre)}</td>
                                 <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
                                 <td class="fin-td fin-td-money" style="color:#E84855;">${r.costo > 0 ? this._formatMoney(r.costo) : '<span style="color:var(--text-dim)">—</span>'}</td>
                                 <td class="fin-td fin-td-money" style="color:${r.rent > 0 ? '#00CC88' : '#E84855'};">${r.rent}%</td>
@@ -9246,7 +9246,7 @@ const FinanzasModule = {
                         </div>
                         <div class="fin-info-row">
                             <span class="fin-info-label">Concepto</span>
-                            <span class="fin-info-value">${comp.concepto}</span>
+                            <span class="fin-info-value">${escHtml(comp.concepto)}</span>
                         </div>
                         <div class="fin-info-row">
                             <span class="fin-info-label">Proyecto</span>
@@ -9287,7 +9287,7 @@ const FinanzasModule = {
                 ${comp.notas ? `
                 <div class="fin-panel-section">
                     <div class="fin-section-title">Notas</div>
-                    <div style="color:#aaa;font-size:0.85rem;white-space:pre-wrap;">${comp.notas}</div>
+                    <div style="color:#aaa;font-size:0.85rem;white-space:pre-wrap;">${escHtml(comp.notas)}</div>
                 </div>
                 ` : ''}
 
@@ -9738,7 +9738,7 @@ const FinanzasModule = {
         ).join('');
 
         const egresoOpts = this._egresosLookup.map(e =>
-            `<option value="${e.id}" ${c.egreso_id === e.id ? 'selected' : ''}>${this._formatDate(e.fecha)} — ${e.concepto} (${this._formatMoney(e.monto)})</option>`
+            `<option value="${e.id}" ${c.egreso_id === e.id ? 'selected' : ''}>${this._formatDate(e.fecha)} — ${escHtml(e.concepto)} (${this._formatMoney(e.monto)})</option>`
         ).join('');
 
         Modal.open({
@@ -9772,7 +9772,7 @@ const FinanzasModule = {
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Concepto *</label>
-                        <input type="text" class="fin-form-input" id="finRecFormConcepto" value="${c.concepto || ''}" placeholder="Descripción del comprobante">
+                        <input type="text" class="fin-form-input" id="finRecFormConcepto" value="${escHtml(c.concepto || '')}" placeholder="Descripción del comprobante">
                     </div>
                     <div class="fin-form-row">
                         <div class="fin-form-group">
@@ -9833,7 +9833,7 @@ const FinanzasModule = {
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
-                        <textarea class="fin-form-textarea" id="finRecFormNotas" placeholder="Notas internas…">${c.notas || ''}</textarea>
+                        <textarea class="fin-form-textarea" id="finRecFormNotas" placeholder="Notas internas…">${escHtml(c.notas || '')}</textarea>
                     </div>
                 </div>
             `,
@@ -10266,7 +10266,7 @@ const FinanzasModule = {
 
         const cuentasArr = Object.entries(this._cuentasMap);
         const cuentaOpts = cuentasArr.map(([id, c]) =>
-            `<option value="${id}">${c.nombre}</option>`
+            `<option value="${id}">${escHtml(c.nombre)}</option>`
         ).join('');
 
         Modal.open({
@@ -10499,7 +10499,7 @@ const FinanzasModule = {
                             const cuentaName = this._cuentasMap[p.cuenta_sugerida_id]?.nombre || '—';
                             return `
                             <tr class="fin-row" data-id="${p.id}" style="cursor:pointer;">
-                                <td class="fin-td fin-td-name">${p.concepto}</td>
+                                <td class="fin-td fin-td-name">${escHtml(p.concepto)}</td>
                                 <td class="fin-td fin-td-money">${p.monto_estimado ? this._formatMoney(p.monto_estimado) : '—'}</td>
                                 <td class="fin-td"><span class="fin-freq-badge">${freqLabels[p.frecuencia] || p.frecuencia}</span></td>
                                 <td class="fin-td" style="font-family:var(--font-mono,'Space Mono',monospace);text-align:center;">${p.dia_mes || '—'}</td>
@@ -10534,7 +10534,7 @@ const FinanzasModule = {
             .join('');
 
         const cuentaOpts = Object.entries(this._cuentasMap).map(([id, c]) =>
-            `<option value="${id}" ${p.cuenta_sugerida_id === id ? 'selected' : ''}>${c.nombre}</option>`
+            `<option value="${id}" ${p.cuenta_sugerida_id === id ? 'selected' : ''}>${escHtml(c.nombre)}</option>`
         ).join('');
 
         Modal.open({
@@ -10544,7 +10544,7 @@ const FinanzasModule = {
                 <div class="fin-form-grid">
                     <div class="fin-form-group">
                         <label class="fin-form-label">Concepto *</label>
-                        <input type="text" class="fin-form-input" id="finPlantConcepto" value="${p.concepto || ''}" placeholder="Monotributo, IIBB, Alquiler oficina…">
+                        <input type="text" class="fin-form-input" id="finPlantConcepto" value="${escHtml(p.concepto || '')}" placeholder="Monotributo, IIBB, Alquiler oficina…">
                     </div>
                     <div class="fin-form-row">
                         <div class="fin-form-group">
@@ -10602,7 +10602,7 @@ const FinanzasModule = {
                     ` : ''}
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
-                        <textarea class="fin-form-textarea" id="finPlantNotas" placeholder="Notas internas…">${p.notas || ''}</textarea>
+                        <textarea class="fin-form-textarea" id="finPlantNotas" placeholder="Notas internas…">${escHtml(p.notas || '')}</textarea>
                     </div>
                 </div>
             `,
@@ -10656,7 +10656,7 @@ const FinanzasModule = {
         document.getElementById('finBtnDeletePlantilla')?.addEventListener('click', async () => {
             const ok = await Modal.confirm({
                 title: 'Eliminar plantilla',
-                message: `¿Eliminar "${plantilla.concepto}"?`,
+                message: `¿Eliminar "${escHtml(plantilla.concepto)}"?`,
                 confirmText: 'Eliminar', danger: true,
             });
             if (ok) {
@@ -10764,8 +10764,8 @@ const FinanzasModule = {
                     if (!data || !data.length) { dropdown.classList.remove('open'); return; }
 
                     dropdown.innerHTML = data.map(p => `
-                        <div class="fin-autocomplete-option" data-prov-id="${p.id}" data-prov-nombre="${p.nombre}" data-prov-rubro="${p.rubro || ''}">
-                            ${p.nombre}
+                        <div class="fin-autocomplete-option" data-prov-id="${p.id}" data-prov-nombre="${escAttr(p.nombre)}" data-prov-rubro="${escAttr(p.rubro || '')}">
+                            ${escHtml(p.nombre)}
                             ${p.rubro ? `<span class="fin-autocomplete-rubro">${p.rubro}</span>` : ''}
                         </div>
                     `).join('');
@@ -10977,7 +10977,7 @@ const FinanzasModule = {
                     <label>Cuenta bancaria</label>
                     <select id="concilCuenta">
                         <option value="">Seleccionar cuenta…</option>
-                        ${cuentasList.map(c => `<option value="${c.id}" ${c.id === selectedCuenta ? 'selected' : ''}>${c.nombre}</option>`).join('')}
+                        ${cuentasList.map(c => `<option value="${c.id}" ${c.id === selectedCuenta ? 'selected' : ''}>${escHtml(c.nombre)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="fin-concil-form-group">
@@ -11002,7 +11002,7 @@ const FinanzasModule = {
         const lineasHTML = this._concilLineas.map((l, i) => `
             <tr>
                 <td>${l.fecha ? new Date(l.fecha + 'T12:00:00').toLocaleDateString('es-AR') : '—'}</td>
-                <td>${l.descripcion || ''}</td>
+                <td>${escHtml(l.descripcion || '')}</td>
                 <td style="text-align:right; color:#E84855">${l.debito ? this._formatMoney(l.debito) : '—'}</td>
                 <td style="text-align:right; color:#00CC88">${l.credito ? this._formatMoney(l.credito) : '—'}</td>
                 <td><button class="fin-concil-lineas-table .btn-remove btn-remove" data-idx="${i}">✕</button></td>
@@ -11136,7 +11136,7 @@ const FinanzasModule = {
 
             rowsHTML += `
                 <div class="fin-concil-review-row ${matchClass}">
-                    <div>${fecha} ${linea.descripcion || ''} <span style="color:${linea.credito > 0 ? '#00CC88' : '#E84855'}; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; margin-left:8px">${tipo} ${this._formatMoney(monto)}</span></div>
+                    <div>${fecha} ${escHtml(linea.descripcion || '')} <span style="color:${linea.credito > 0 ? '#00CC88' : '#E84855'}; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; margin-left:8px">${tipo} ${this._formatMoney(monto)}</span></div>
                     <div><span class="match-badge ${badgeClass}">${badgeLabel}</span></div>
                     <div>${lobbyCol}</div>
                 </div>`;
@@ -11150,7 +11150,7 @@ const FinanzasModule = {
                 <div class="fin-concil-review-row match-lobby">
                     <div><span style="color:#555">Sin línea en extracto</span></div>
                     <div><span class="match-badge lobby">✗ Sin ext</span></div>
-                    <div>${fecha} ${mov.concepto || mov.descripcion || ''} <span style="color:${esIngreso ? '#00CC88' : '#E84855'}; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; margin-left:8px">${this._formatMoney(mov.monto)}</span> <button class="fin-concil-btn-sm" data-ignorar-lobby="${mov.id}">Ignorar</button></div>
+                    <div>${fecha} ${escHtml(mov.concepto || mov.descripcion || '')} <span style="color:${esIngreso ? '#00CC88' : '#E84855'}; font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; margin-left:8px">${this._formatMoney(mov.monto)}</span> <button class="fin-concil-btn-sm" data-ignorar-lobby="${mov.id}">Ignorar</button></div>
                 </div>`;
         }
 
@@ -11187,11 +11187,11 @@ const FinanzasModule = {
     _matchedLobbyLabel(linea) {
         if (linea.ingreso_id) {
             const ing = this._concilMovsLobby.find(m => m.id === linea.ingreso_id);
-            return ing ? `${ing.concepto || ing.descripcion || 'Ingreso'} — ${this._formatMoney(ing.monto)}` : 'Ingreso vinculado';
+            return ing ? `${escHtml(ing.concepto || ing.descripcion || 'Ingreso')} — ${this._formatMoney(ing.monto)}` : 'Ingreso vinculado';
         }
         if (linea.egreso_id) {
             const eg = this._concilMovsLobby.find(m => m.id === linea.egreso_id);
-            return eg ? `${eg.concepto || eg.descripcion || 'Egreso'} — ${this._formatMoney(eg.monto)}` : 'Egreso vinculado';
+            return eg ? `${escHtml(eg.concepto || eg.descripcion || 'Egreso')} — ${this._formatMoney(eg.monto)}` : 'Egreso vinculado';
         }
         return '—';
     },
@@ -11221,7 +11221,7 @@ const FinanzasModule = {
             </div>
             <div class="fin-concil-form-group" style="max-width:400px; margin-bottom:16px">
                 <label>Notas de conciliación</label>
-                <textarea id="concilNotas" rows="3" placeholder="Observaciones opcionales…">${this._conciliacionActiva.notas || ''}</textarea>
+                <textarea id="concilNotas" rows="3" placeholder="Observaciones opcionales…">${escHtml(this._conciliacionActiva.notas || '')}</textarea>
             </div>
             <div class="fin-concil-actions">
                 <button class="fin-concil-btn-sm" id="concilStep5Back">← Atrás</button>
@@ -11777,11 +11777,11 @@ const FinanzasModule = {
         const body = `
             <div style="display:flex; flex-direction:column; gap:12px;">
                 <div style="font-family:var(--font-mono,'Space Mono',monospace); font-size:0.78rem; color:#888; padding:10px; background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px">
-                    ${linea.fecha ? new Date(linea.fecha + 'T12:00:00').toLocaleDateString('es-AR') : ''} — ${linea.descripcion} — ${this._formatMoney(monto)}
+                    ${linea.fecha ? new Date(linea.fecha + 'T12:00:00').toLocaleDateString('es-AR') : ''} — ${escHtml(linea.descripcion)} — ${this._formatMoney(monto)}
                 </div>
                 <div class="fin-concil-form-group">
                     <label>Concepto</label>
-                    <input type="text" id="createFromExtConcepto" value="${linea.descripcion || ''}">
+                    <input type="text" id="createFromExtConcepto" value="${escHtml(linea.descripcion || '')}">
                 </div>
                 <div class="fin-concil-form-group">
                     <label>Monto</label>
@@ -11987,7 +11987,7 @@ const FinanzasModule = {
                             <td data-label="Fecha">${i.fecha || '—'}</td>
                             <td data-label="CUIT" style="font-family:var(--font-mono);font-size:11px;">${i.cuit || '—'}</td>
                             <td data-label="Razón social">${i.razon_social || '—'}</td>
-                            <td data-label="Descripción" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(i.descripcion || '').replace(/"/g, '&quot;')}">${i.descripcion || '—'}</td>
+                            <td data-label="Descripción" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(i.descripcion || '')}">${escHtml(i.descripcion || '—')}</td>
                             <td data-label="Referencia">${i.traido_por || '—'}</td>
                             <td data-label="Subtotal" class="num" style="font-family:var(--font-mono);">${fmt(i.subtotal)}</td>
                             <td data-label="IVA" class="num" style="font-family:var(--font-mono);color:#00A9C1;font-weight:600;">${fmt(i.iva_total)}</td>
@@ -12105,7 +12105,7 @@ const FinanzasModule = {
                     </div>
                     <div style="grid-column:1/-1;">
                         <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Descripción</label>
-                        <input type="text" id="ivarDesc" value="${v.descripcion.replace(/"/g, '&quot;')}" placeholder="Compra de electrodomésticos" class="fin-input">
+                        <input type="text" id="ivarDesc" value="${escAttr(v.descripcion || '')}" placeholder="Compra de electrodomésticos" class="fin-input">
                     </div>
                     <div>
                         <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Subtotal (sin IVA)</label>
@@ -12135,7 +12135,7 @@ const FinanzasModule = {
                     </div>
                     <div style="grid-column:1/-1;">
                         <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Notas</label>
-                        <textarea id="ivarNotas" rows="2" class="fin-input">${v.notas}</textarea>
+                        <textarea id="ivarNotas" rows="2" class="fin-input">${escHtml(v.notas)}</textarea>
                     </div>
                 </div>
             `,

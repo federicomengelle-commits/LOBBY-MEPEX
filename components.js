@@ -52,7 +52,7 @@ const Toast = {
         toast.className = `toast toast--${type}`;
         toast.innerHTML = `
             <span class="toast__icon">${this._icons[type] || this._icons.info}</span>
-            <span class="toast__msg">${message}</span>
+            <span class="toast__msg">${escHtml(message)}</span>
             <button class="toast__close" aria-label="Cerrar">&times;</button>
             <div class="toast__progress" style="animation-duration:${duration}ms"></div>
         `;
@@ -96,9 +96,9 @@ const Modal = {
 
         const sizeClass = `modal--${size}`;
         overlay.innerHTML = `
-            <div class="modal ${sizeClass}" role="dialog" aria-modal="true" aria-label="${title}">
+            <div class="modal ${sizeClass}" role="dialog" aria-modal="true" aria-label="${escAttr(title)}">
                 <div class="modal-header">
-                    <h3 class="modal-title">${title}</h3>
+                    <h3 class="modal-title">${escHtml(title)}</h3>
                     ${closable ? '<button class="modal-close" aria-label="Cerrar">&times;</button>' : ''}
                 </div>
                 <div class="modal-body">${body}</div>
@@ -227,7 +227,7 @@ const ContextMenu = {
             const disabledClass = item.disabled ? ' context-menu__item--disabled' : '';
             const el = document.createElement('button');
             el.className = `context-menu__item${dangerClass}${disabledClass}`;
-            el.innerHTML = `${item.icon ? `<span class="context-menu__icon">${item.icon}</span>` : ''}<span>${item.label}</span>`;
+            el.innerHTML = `${item.icon ? `<span class="context-menu__icon">${item.icon}</span>` : ''}<span>${escHtml(item.label)}</span>`;
 
             if (!item.disabled && item.action) {
                 el.addEventListener('click', (e) => {

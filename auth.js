@@ -200,6 +200,9 @@ const Auth = {
         try {
             const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
             if (error) return { success: false, error: error.message };
+            // Seguridad (7.4): revocar las demás sesiones activas tras cambiar la clave.
+            // 'others' mata refresh tokens de otros dispositivos y mantiene la sesión actual.
+            try { await supabaseClient.auth.signOut({ scope: 'others' }); } catch (_) { /* best-effort */ }
             return { success: true };
         } catch (e) {
             return { success: false, error: 'Error al cambiar contraseña' };
