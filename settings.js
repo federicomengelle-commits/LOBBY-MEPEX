@@ -101,6 +101,9 @@ const Settings = {
                                 <span class="settings-save-status" id="passwordSaveStatus"></span>
                             </div>
                         </form>
+                        <div class="settings-mfa-block" id="mfaSection" style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+                            <div class="form-hint">Cargando verificación en 2 pasos…</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -204,6 +207,106 @@ const Settings = {
             btn.textContent = 'Cambiar contraseña';
             setTimeout(() => { status.textContent = ''; }, 3000);
         });
+
+        // MFA (2FA): cargar estado y renderizar el bloque de activar/desactivar
+        this._loadMfaSection();
+    },
+
+    // ─── MFA (verificación en 2 pasos) en Mi Perfil ───
+    async _loadMfaSection() {
+        const el = document.getElementById('mfaSection');
+        if (!el) return;
+        const factors = await Auth.mfaListFactors();
+        const active = factors.verified.length > 0;
+        if (active) {
+            el.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <div style="font-weight:600; color:var(--color-success,#00CC88);">🔒 Verificación en 2 pasos activada</div>
+                        <div class="form-hint">Al iniciar sesión te pedimos un código de tu app de autenticación.</div>
+                    </div>
+                    <button class="btn btn-secondary" id="mfaDisableBtn">Desactivar</button>
+                </div>`;
+            document.getElementById('mfaDisableBtn')?.addEventListener('click', () => this._disableMfa(factors.verified));
+        } else {
+            el.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <div style="font-weight:600;">Verificación en 2 pasos (2FA)</div>
+                        <div class="form-hint">Suma una capa extra: además de la contraseña, un código de tu celular. Recomendado para admin/superadmin.</div>
+                    </div>
+                    <button class="btn btn-primary" id="mfaEnableBtn">Activar</button>
+                </div>`;
+            document.getElementById('mfaEnableBtn')?.addEventListener('click', () => this._startMfaEnroll());
+        }
+    },
+
+    async _startMfaEnroll() {
+        const res = await Auth.mfaEnrollStart();
+        if (!res.success) { Toast.error(res.error || 'No se pudo iniciar la activación'); return; }
+        const modal = Modal.open({
+            title: 'Activar verificación en 2 pasos',
+            size: 'sm',
+            body: `
+                <div style="text-align:center;">
+                    <p style="margin:0 0 10px; color:var(--text-muted); font-size:0.85rem;">1. Escaneá este código con Google Authenticator, Authy o similar.</p>
+                    <div id="mfaQrHolder" style="background:#fff; padding:10px; border-radius:8px; display:inline-block; min-width:180px; min-height:180px; line-height:0;"></div>
+                    <p style="margin:12px 0 3px; font-size:0.75rem; color:var(--text-muted);">¿No podés escanear? Cargá esta clave a mano:</p>
+                    <code style="font-size:0.78rem; word-break:break-all; color:var(--text-primary);">${escHtml(res.secret || '')}</code>
+                    <div class="form-field" style="margin-top:14px; text-align:left;">
+                        <label class="form-label">2. INGRESÁ EL CÓDIGO DE 6 DÍGITOS</label>
+                        <input type="text" class="form-input" id="mfaEnrollCode" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code">
+                    </div>
+                    <div id="mfaEnrollError" class="form-error" style="min-height:0; text-align:left;"></div>
+                </div>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="mfaEnrollVerifyBtn">Verificar y activar</button>`,
+        });
+        // Poblar el QR por JS (evita romper el atributo src con las comillas del data-URI)
+        const holder = document.getElementById('mfaQrHolder');
+        if (holder && res.qr) {
+            if (String(res.qr).trim().startsWith('<svg')) {
+                holder.innerHTML = res.qr;
+            } else {
+                const img = document.createElement('img');
+                img.src = res.qr;
+                img.alt = 'QR';
+                img.style.cssText = 'width:180px; height:180px;';
+                holder.appendChild(img);
+            }
+        }
+        document.getElementById('mfaEnrollVerifyBtn')?.addEventListener('click', async () => {
+            const code = (document.getElementById('mfaEnrollCode')?.value || '').replace(/\D/g, '');
+            const errEl = document.getElementById('mfaEnrollError');
+            if (code.length < 6) { if (errEl) errEl.textContent = 'Ingresá los 6 dígitos'; return; }
+            const btn = document.getElementById('mfaEnrollVerifyBtn');
+            btn.disabled = true; btn.textContent = 'Verificando…';
+            const v = await Auth.mfaEnrollVerify(res.factorId, code);
+            if (v.success) {
+                Modal.close(modal.id);
+                Toast.success('Verificación en 2 pasos activada');
+                this._loadMfaSection();
+            } else {
+                if (errEl) errEl.textContent = v.error || 'Código incorrecto';
+                btn.disabled = false; btn.textContent = 'Verificar y activar';
+            }
+        });
+    },
+
+    async _disableMfa(verifiedFactors) {
+        const ok = await Modal.confirm({
+            title: 'Desactivar verificación en 2 pasos',
+            message: 'Vas a quedar solo con usuario y contraseña. ¿Seguro?',
+            danger: true,
+        });
+        if (!ok) return;
+        let allOk = true;
+        for (const f of (verifiedFactors || [])) {
+            const r = await Auth.mfaUnenroll(f.id);
+            if (!r.success) allOk = false;
+        }
+        if (allOk) Toast.success('Verificación en 2 pasos desactivada');
+        else Toast.error('No se pudieron quitar todos los factores');
+        this._loadMfaSection();
     },
 
     // ═══════════════════════════════════════════

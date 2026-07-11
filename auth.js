@@ -9,6 +9,8 @@
 const Auth = {
     _profile: null, // cached profile after login
 
+    _mfaPending: false, // true mientras el login espera el código del 2º factor
+
     // ─── LOGIN (Supabase Auth) ───
     async login(username, password) {
         const email = username + '@mepex.local';
@@ -19,37 +21,106 @@ const Auth = {
             });
             if (error) return { success: false, error: 'Usuario o contraseña incorrectos' };
 
-            // Fetch profile from profiles table
-            const profile = await this._fetchProfile(data.user.id);
-            if (!profile) return { success: false, error: 'Perfil no encontrado. Contactá al administrador.' };
-
-            // Check if user is active
-            if (!profile.active) {
-                await supabaseClient.auth.signOut();
-                return { success: false, error: 'Tu cuenta está desactivada. Contactá al administrador.' };
+            // MFA (7.3): si el usuario tiene un 2º factor verificado, la sesión queda
+            // en aal1 y hay que pedir el código antes de completar el login.
+            if (await this._mfaChallengeNeeded()) {
+                return { success: false, mfaRequired: true };
             }
 
-            this._profile = profile;
-
-            // Audit log + heartbeat + update login metadata
-            if (typeof AuditLog !== 'undefined') {
-                AuditLog.record('login', 'sistema', 'Inició sesión');
-                AuditLog.startHeartbeat();
-            }
-            // Update last_login_at and last_device in profiles
-            try {
-                const device = typeof AuditLog !== 'undefined' ? AuditLog._parseDevice() : navigator.userAgent;
-                await supabaseClient.from('profiles').update({
-                    last_login_at: new Date().toISOString(),
-                    last_device: device,
-                }).eq('id', data.user.id);
-            } catch (e) { console.warn('[Auth] Could not update login metadata:', e.message); }
-
-            return { success: true, user: profile };
+            return await this._finishLogin(data.user.id);
         } catch (e) {
             console.error('[Auth] Login error:', e);
             return { success: false, error: 'Error de conexión. Intentá de nuevo.' };
         }
+    },
+
+    // ¿La sesión actual necesita verificar un 2º factor? (aal1 con aal2 pendiente).
+    async _mfaChallengeNeeded() {
+        try {
+            const { data } = await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();
+            return !!(data && data.currentLevel === 'aal1' && data.nextLevel === 'aal2');
+        } catch (_) { return false; }
+    },
+
+    // Completa el login tras verificar el código TOTP del 2º factor.
+    async completeMfa(code) {
+        try {
+            const cleaned = (code || '').replace(/\D/g, '');
+            const { data: factors, error: fErr } = await supabaseClient.auth.mfa.listFactors();
+            if (fErr) return { success: false, error: 'No se pudo verificar el código' };
+            const totp = (factors?.totp || []).find(f => f.status === 'verified');
+            if (!totp) return { success: false, error: 'No hay un factor de verificación activo' };
+            const { data: ch, error: cErr } = await supabaseClient.auth.mfa.challenge({ factorId: totp.id });
+            if (cErr) return { success: false, error: 'No se pudo iniciar la verificación' };
+            const { error: vErr } = await supabaseClient.auth.mfa.verify({ factorId: totp.id, challengeId: ch.id, code: cleaned });
+            if (vErr) return { success: false, error: 'Código incorrecto o vencido. Probá con el siguiente.' };
+            const { data: u } = await supabaseClient.auth.getUser();
+            return await this._finishLogin(u.user.id);
+        } catch (e) {
+            console.error('[Auth] MFA verify error:', e);
+            return { success: false, error: 'Error al verificar el código' };
+        }
+    },
+
+    // Pasos post-autenticación (perfil, activo, audit, heartbeat, metadata).
+    // Lo comparten el login normal y el login con MFA.
+    async _finishLogin(userId) {
+        const profile = await this._fetchProfile(userId);
+        if (!profile) return { success: false, error: 'Perfil no encontrado. Contactá al administrador.' };
+        if (!profile.active) {
+            await supabaseClient.auth.signOut();
+            return { success: false, error: 'Tu cuenta está desactivada. Contactá al administrador.' };
+        }
+        this._profile = profile;
+        if (typeof AuditLog !== 'undefined') {
+            AuditLog.record('login', 'sistema', 'Inició sesión');
+            AuditLog.startHeartbeat();
+        }
+        try {
+            const device = typeof AuditLog !== 'undefined' ? AuditLog._parseDevice() : navigator.userAgent;
+            await supabaseClient.from('profiles').update({
+                last_login_at: new Date().toISOString(),
+                last_device: device,
+            }).eq('id', userId);
+        } catch (e) { console.warn('[Auth] Could not update login metadata:', e.message); }
+        return { success: true, user: profile };
+    },
+
+    // ─── MFA (verificación en 2 pasos) — gestión desde Mi Perfil ───
+    async mfaListFactors() {
+        try {
+            const { data, error } = await supabaseClient.auth.mfa.listFactors();
+            if (error) return { verified: [], unverified: [] };
+            const all = data?.all || [];
+            return {
+                verified: all.filter(f => f.status === 'verified'),
+                unverified: all.filter(f => f.status === 'unverified'),
+            };
+        } catch (_) { return { verified: [], unverified: [] }; }
+    },
+    async mfaEnrollStart() {
+        try {
+            const { data, error } = await supabaseClient.auth.mfa.enroll({ factorType: 'totp' });
+            if (error) return { success: false, error: error.message };
+            return { success: true, factorId: data.id, qr: data.totp?.qr_code, secret: data.totp?.secret };
+        } catch (e) { return { success: false, error: e.message }; }
+    },
+    async mfaEnrollVerify(factorId, code) {
+        try {
+            const cleaned = (code || '').replace(/\D/g, '');
+            const { data: ch, error: cErr } = await supabaseClient.auth.mfa.challenge({ factorId });
+            if (cErr) return { success: false, error: cErr.message };
+            const { error: vErr } = await supabaseClient.auth.mfa.verify({ factorId, challengeId: ch.id, code: cleaned });
+            if (vErr) return { success: false, error: 'Código incorrecto. Probá de nuevo.' };
+            return { success: true };
+        } catch (e) { return { success: false, error: e.message }; }
+    },
+    async mfaUnenroll(factorId) {
+        try {
+            const { error } = await supabaseClient.auth.mfa.unenroll({ factorId });
+            if (error) return { success: false, error: error.message };
+            return { success: true };
+        } catch (e) { return { success: false, error: e.message }; }
     },
 
     // ─── LOGOUT ───
@@ -126,6 +197,10 @@ const Auth = {
         try {
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (!session) return false;
+
+            // MFA (7.3): si la sesión quedó en aal1 con un 2º factor sin verificar
+            // (password OK pero código pendiente), no restaurar → forzar el login completo.
+            if (await this._mfaChallengeNeeded()) return false;
 
             const profile = await this._fetchProfile(session.user.id);
             if (!profile) return false;
@@ -238,6 +313,7 @@ const Auth = {
 
     // ─── RENDER LOGIN SCREEN ───
     renderLogin() {
+        this._mfaPending = false;
         const app = document.getElementById('app');
         app.innerHTML = `
             <div class="login-screen">
@@ -268,6 +344,9 @@ const Auth = {
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            // Paso 2 (MFA): si estamos esperando el código, se procesa aparte.
+            if (Auth._mfaPending) { await Auth._submitMfaCode(); return; }
+
             const userId = document.getElementById('loginUser').value.trim().toLowerCase();
             const password = document.getElementById('loginPass').value;
             const errorEl = document.getElementById('loginError');
@@ -291,6 +370,8 @@ const Auth = {
                 const startModule = Auth.getStartModule();
                 const defaultRoute = Router.getDefaultRoute(Auth.getUser());
                 Router.navigate(startModule || defaultRoute);
+            } else if (result.mfaRequired) {
+                Auth._renderMfaStep();
             } else {
                 errorEl.textContent = result.error;
                 errorEl.style.display = 'block';
@@ -300,5 +381,48 @@ const Auth = {
                 document.getElementById('loginPass').focus();
             }
         });
+    },
+
+    // ─── MFA paso 2 en el login: pedir el código del autenticador ───
+    _renderMfaStep() {
+        this._mfaPending = true;
+        const form = document.getElementById('loginForm');
+        if (!form) return;
+        form.innerHTML = `
+            <div class="input-group">
+                <label for="loginMfaCode">C&Oacute;DIGO DE VERIFICACI&Oacute;N</label>
+                <input type="text" id="loginMfaCode" class="input" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6" autofocus>
+            </div>
+            <p class="text-muted" style="font-size:0.78rem; margin:-4px 0 6px;">Ingres&aacute; el c&oacute;digo de 6 d&iacute;gitos de tu app de autenticaci&oacute;n.</p>
+            <div id="loginError" class="login-error" style="display:none;"></div>
+            <button type="submit" class="btn btn-primary btn-lg login-btn" id="loginBtn">VERIFICAR</button>
+        `;
+        const el = document.getElementById('loginMfaCode');
+        if (el) el.focus();
+    },
+
+    async _submitMfaCode() {
+        const codeEl = document.getElementById('loginMfaCode');
+        const errorEl = document.getElementById('loginError');
+        const btn = document.getElementById('loginBtn');
+        const code = (codeEl?.value || '').replace(/\D/g, '');
+        if (code.length < 6) {
+            if (errorEl) { errorEl.textContent = 'Ingresá los 6 dígitos'; errorEl.style.display = 'block'; }
+            return;
+        }
+        if (btn) { btn.disabled = true; btn.textContent = 'VERIFICANDO...'; }
+        if (errorEl) errorEl.style.display = 'none';
+
+        const result = await Auth.completeMfa(code);
+        if (result.success) {
+            Auth._mfaPending = false;
+            const startModule = Auth.getStartModule();
+            const defaultRoute = Router.getDefaultRoute(Auth.getUser());
+            Router.navigate(startModule || defaultRoute);
+        } else {
+            if (errorEl) { errorEl.textContent = result.error; errorEl.style.display = 'block'; }
+            if (btn) { btn.disabled = false; btn.textContent = 'VERIFICAR'; }
+            if (codeEl) { codeEl.value = ''; codeEl.focus(); }
+        }
     },
 };
