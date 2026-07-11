@@ -11,8 +11,9 @@
    - Rate limit en el endpoint de OCR (IA cara).
 
    Requisitos en el VPS antes de reiniciar (ver deploy en README de la auditoría):
-   - Copiar auth-middleware.js (nuevo) a /home/mepex/api/.
+   - Copiar auth-middleware.js + ocr-comprobante.js + crm-digest.js a /home/mepex/api/.
    - En el .env del proxy: SUPABASE_URL + SUPABASE_ANON_KEY.
+   - Para IA con Claude (PII no entrena): MODEL_PROVIDER=claude + ANTHROPIC_API_KEY.
    ===================================================================== */
 
 require('dotenv').config();
@@ -46,6 +47,11 @@ const iaLimit = rateLimit({ windowMs: 60_000, max: 20 });
 // OCR de comprobante por IA — sesión válida + rate limit.
 app.post('/api/ocr/comprobante', iaLimit, requireAuth, require('./ocr-comprobante').handler);
 
+// CRM digest por IA (pegar WhatsApp/mail → JSON estructurado) — sesión válida + rate limit.
+// El front ya manda Bearer (API.crmDigest usa _authHeader); si falla cae al parser local.
+// Driver por env: MODEL_PROVIDER=claude + ANTHROPIC_API_KEY (PII no entrena) | gemini (free tier).
+app.post('/api/crm/digest', iaLimit, requireAuth, require('./crm-digest').handler);
+
 // ARCA — sesión válida; facturar además exige rol admin/finanzas.
 const arca = require('./arca-connector');
 app.get('/api/arca/status',    requireAuth, arca.statusHandler);
@@ -53,8 +59,9 @@ app.get('/api/arca/ultimo',    requireAuth, arca.ultimoHandler);
 app.get('/api/arca/padron',    requireAuth, arca.padronHandler);
 app.post('/api/arca/facturar', requireRole('superadmin', 'admin', 'finanzas'), arca.facturarHandler);
 
-// (Si algún día montás /api/crm/digest y /api/octexa/ask acá, van con iaLimit + requireAuth
-//  igual que OCR — y copiá crm-digest.js / octexa-ia.js a /home/mepex/api/ ANTES de reiniciar.)
+// (Si algún día montás /api/octexa/ask acá, va con iaLimit + requireAuth igual que OCR —
+//  y copiá octexa-ia.js a /home/mepex/api/ ANTES de reiniciar. Hoy queda afuera: el
+//  diseñador in-lobby está parkeado y OCTEXA vive en su propio repo.)
 
 // 404 para rutas no encontradas.
 app.use((req, res) => {
