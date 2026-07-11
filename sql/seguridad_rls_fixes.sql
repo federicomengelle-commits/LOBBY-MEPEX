@@ -70,16 +70,10 @@ COMMIT;
 --   FOR SELECT TO authenticated USING ( public.fn_is_admin() );
 
 
--- ─── PASO 2 · DECISIONES (no correr sin decidir) ───
-
--- 2.a — clientes legible por anon (PII: toda tu base de clientes).
---   Policy: clientes_rls_anon (SELECT TO anon USING(true)).
---   ¿El COTIZADOR lee `clientes` con la anon key? Si NO, descomentá:
--- DROP POLICY IF EXISTS "clientes_rls_anon" ON public.clientes;
---   (la app interna sigue leyendo clientes: los usuarios van logueados = authenticated.)
-
--- 2.b — encuestas_evento editable por anon (BOLA: sobrescribir cualquier encuesta).
---   Policy: encuestas_rls_anon_upd (UPDATE TO anon USING(true) WITH CHECK(true)).
---   Fix correcto = RPC SECURITY DEFINER que valide el token y quitar el UPDATE anon.
---   Requiere tocar encuesta.html. Lo hacemos juntos (esbozo del RPC en
---   sql/seguridad_rls_revision.sql PARTE 3). NO dropear suelto o rompés la encuesta.
+-- ─── PASO 2 · DECISIONES — ✅ RESUELTO 2026-07-11, NO usar este bloque ───
+-- Las 2 decisiones se cerraron: el cotizador NO usa la anon key (va por su
+-- server con service_role) y la encuesta pública se migró a RPCs SECURITY
+-- DEFINER (fn_encuesta_publica_get / fn_encuesta_publica_responder).
+-- ▶ El fix vive en:
+--   sql/seguridad_rls_paso2_encuesta_rpc.sql   (RPCs — correr ANTES del pull)
+--   sql/seguridad_rls_paso2b_drop_anon.sql     (drops anon — correr DESPUÉS del pull)

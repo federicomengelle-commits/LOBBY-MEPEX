@@ -239,18 +239,17 @@
             if (!token) { renderError('Falta el código de la encuesta en el link.'); return; }
 
             try {
-                // Sin joins a proyectos (RLS anon). Fallback a evento/cliente para encuestas viejas.
+                // Todo el acceso pasa por RPCs SECURITY DEFINER que validan el token
+                // server-side (anon ya no lee encuestas_evento/eventos/clientes directo).
+                // El RPC resuelve el fallback evento/cliente para encuestas viejas.
                 const { data: enc, error: encErr } = await supabaseClient
-                    .from('encuestas_evento')
-                    .select(`*, evento:eventos!evento_id(nombre), cliente:clientes!cliente_id(nombre_empresa, razon_social)`)
-                    .eq('token', token)
-                    .maybeSingle();
+                    .rpc('fn_encuesta_publica_get', { p_token: token });
                 if (encErr) throw encErr;
                 if (!enc) { renderError('El link de encuesta no es válido o ya expiró.'); return; }
                 if (enc.respondida_at) { renderThanks(enc.nps); return; }
 
-                const titulo = enc.titulo || enc.evento?.nombre || 'tu stand';
-                const subtitulo = enc.subtitulo || [enc.cliente?.nombre_empresa || enc.cliente?.razon_social].filter(Boolean).join('');
+                const titulo = enc.titulo || enc.evento_nombre || 'tu stand';
+                const subtitulo = enc.subtitulo || enc.cliente_nombre || '';
 
                 card.innerHTML = `
                     <svg class="card-wmk" viewBox="0 0 9024.99 9024.99" aria-hidden="true"><use href="#mepexIso"/></svg>
@@ -317,11 +316,14 @@
                     const comentario = document.getElementById('comentario').value.trim() || null;
                     const payloadResp = Object.keys(respuestas).length ? respuestas : null;
                     try {
-                        const { error } = await supabaseClient
-                            .from('encuestas_evento')
-                            .update({ nps: npsSelected, respuestas: payloadResp, comentario, respondida_at: new Date().toISOString() })
-                            .eq('token', token);
+                        const { data: res, error } = await supabaseClient
+                            .rpc('fn_encuesta_publica_responder', {
+                                p_token: token, p_nps: npsSelected,
+                                p_respuestas: payloadResp, p_comentario: comentario
+                            });
                         if (error) throw error;
+                        // 'ya_respondida' = alguien mandó antes (doble tab) → mostrar gracias igual.
+                        if (!res?.ok && res?.error !== 'ya_respondida') throw new Error(res?.error || 'rpc_fail');
                         renderThanks(npsSelected);
                     } catch (err) {
                         console.error(err);
