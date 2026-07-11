@@ -46,8 +46,12 @@
 'use strict';
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+// Acepta varios nombres para no depender de cómo esté escrito en el .env del proxy.
+const ANON_KEY = process.env.SUPABASE_ANON_KEY
+  || process.env.SUPABASE_SERVICE_KEY
+  || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+  || process.env.SUPABASE_SERVICE_KEY || '';
 
 if (!SUPABASE_URL || !ANON_KEY) {
   console.warn('[auth-middleware] ⚠️ Falta SUPABASE_URL o SUPABASE_ANON_KEY en el .env — la auth va a rechazar todo.');
