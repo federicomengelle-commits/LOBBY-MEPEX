@@ -1504,6 +1504,16 @@ const API = {
     // Llama al digest de IA del proxy. Devuelve el JSON estructurado (blueprint
     // §6) o null si el endpoint no está disponible/falla → el front usa el
     // parser local (modo manual sin IA).
+    // Header de autenticación para las llamadas al proxy VPS (facturación/IA).
+    // Manda el access_token de la sesión Supabase; si no hay sesión, va vacío
+    // (compatibilidad: mientras el proxy no exija auth, no cambia nada).
+    async _authHeader() {
+        try {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+        } catch (_) { return {}; }
+    },
+
     async crmDigest(texto, contexto = null) {
         if (!texto || !texto.trim()) return null;
         try {
@@ -1511,7 +1521,7 @@ const API = {
             const timer = setTimeout(() => ctrl.abort(), 35000);  // la IA puede tardar 10-25s (arranque en frío + JSON estructurado)
             const res = await fetch(this.CRM_DIGEST_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(await this._authHeader()) },
                 body: JSON.stringify({ texto, contexto }),
                 signal: ctrl.signal,
             });
@@ -6578,7 +6588,7 @@ const API = {
             const timer = setTimeout(() => ctrl.abort(), 45000); // la IA tarda 5-25s
             const res = await fetch('/api/ocr/comprobante', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(await this._authHeader()) },
                 body: JSON.stringify({ imagen: imagenB64, mimeType: mimeType || 'image/jpeg' }),
                 signal: ctrl.signal,
             });

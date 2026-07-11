@@ -7324,7 +7324,7 @@ const FinanzasModule = {
         const condSel = document.getElementById('finWizCondIva');
         if (statusEl) statusEl.innerHTML = '<span style="color:#888;">🔎 Buscando en AFIP…</span>';
         try {
-            const r = await fetch(`${this._VPS_URL}/api/arca/padron?cuit=${digits}`);
+            const r = await fetch(`${this._VPS_URL}/api/arca/padron?cuit=${digits}`, { headers: await API._authHeader() });
             const j = await r.json().catch(() => ({}));
             if (j && j.ok && j.nombre) {
                 if (nombreEl) nombreEl.value = j.nombre;
@@ -7849,7 +7849,7 @@ const FinanzasModule = {
         const pv = d.punto_venta || 5;
         const tipo = this._arcaCbteTipo(d.tipo);
         try {
-            const r = await fetch(`${this._VPS_URL}/api/arca/ultimo?pv=${pv}&tipo=${tipo}`);
+            const r = await fetch(`${this._VPS_URL}/api/arca/ultimo?pv=${pv}&tipo=${tipo}`, { headers: await API._authHeader() });
             const j = await r.json();
             if (!r.ok || !j.ok) throw new Error(j.error || 'sin respuesta');
             const nro = `${String(pv).padStart(5, '0')}-${String(j.proximo).padStart(8, '0')}`;
@@ -7903,7 +7903,7 @@ const FinanzasModule = {
             // Express proxy → ARCA (FECAESolicitar). Emite un comprobante fiscal REAL.
             const response = await fetch(`${this._VPS_URL}/api/arca/facturar`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(await API._authHeader()) },
                 body: JSON.stringify(payload),
             });
             const result = await response.json().catch(() => ({}));
@@ -8307,7 +8307,7 @@ const FinanzasModule = {
             cbtes_asoc: d.cbte_asoc || null,
         };
         const response = await fetch(`${this._VPS_URL}/api/arca/facturar`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+            method: 'POST', headers: { 'Content-Type': 'application/json', ...(await API._authHeader()) }, body: JSON.stringify(payload),
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
