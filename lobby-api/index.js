@@ -100,7 +100,23 @@ async function requireDeployAuth(req, res, next) {
     return requireSuperadmin(req, res, next);
 }
 
-app.post('/deploy', requireDeployAuth, (req, res) => {
+// Rate limit (auditoría B3): ventana fija por IP, sin deps. Frena la fuerza
+// bruta contra el DEPLOY_TOKEN estático (10 intentos/min alcanza de sobra:
+// el deploy legítimo se llama 1-2 veces por sesión).
+function rateLimit({ windowMs = 60_000, max = 10 } = {}) {
+    const hits = new Map();
+    return (req, res, next) => {
+        const now = Date.now();
+        if (hits.size > 1000) { for (const [k, v] of hits) if (now - v.start > windowMs) hits.delete(k); }
+        const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+        const rec = hits.get(ip);
+        if (!rec || now - rec.start > windowMs) { hits.set(ip, { start: now, n: 1 }); return next(); }
+        if (++rec.n > max) return res.status(429).json({ success: false, error: 'Demasiados intentos, esperá un minuto' });
+        next();
+    };
+}
+
+app.post('/deploy', rateLimit({ max: 10 }), requireDeployAuth, (req, res) => {
     execFile('git', ['pull', '--ff-only'], { cwd: REPO_DIR, timeout: 60000 }, (err, stdout, stderr) => {
         if (err) {
             console.error('[Deploy] Error:', stderr || err.message);
@@ -124,8 +140,8 @@ app.post('/admin/users/create', requireSuperadmin, async (req, res) => {
         return res.status(400).json({ success: false, error: 'Campos requeridos: username, password, name, initials, role' });
     }
 
-    if (password.length < 6) {
-        return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
+    if (password.length < 10) {
+        return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 10 caracteres' });
     }
 
     if (!/^[a-z0-9]+$/.test(username)) {
@@ -210,8 +226,8 @@ app.post('/admin/users/reset-password', requireSuperadmin, async (req, res) => {
         return res.status(400).json({ success: false, error: 'Campos requeridos: uid, newPassword' });
     }
 
-    if (newPassword.length < 6) {
-        return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 6 caracteres' });
+    if (newPassword.length < 10) {
+        return res.status(400).json({ success: false, error: 'La contraseña debe tener al menos 10 caracteres' });
     }
 
     try {

@@ -89,7 +89,7 @@ const Settings = {
                         <form class="settings-form" id="passwordForm">
                             <div class="form-field">
                                 <label class="form-label">NUEVA CONTRASEÑA</label>
-                                <input type="password" class="form-input" id="newPassword" placeholder="Mínimo 6 caracteres" minlength="6">
+                                <input type="password" class="form-input" id="newPassword" placeholder="Mínimo 10 caracteres" minlength="10">
                             </div>
                             <div class="form-field">
                                 <label class="form-label">CONFIRMAR CONTRASEÑA</label>
@@ -180,8 +180,8 @@ const Settings = {
 
             errorEl.textContent = '';
 
-            if (!newPass || newPass.length < 6) {
-                errorEl.textContent = 'La contraseña debe tener al menos 6 caracteres';
+            if (!newPass || newPass.length < 10) {
+                errorEl.textContent = 'La contraseña debe tener al menos 10 caracteres';
                 return;
             }
             if (newPass !== confirmPass) {

@@ -982,7 +982,7 @@ const AdminPanel = {
                 </div>
                 <div class="adm-form-row">
                     <label class="adm-form-label">Contraseña inicial *</label>
-                    <input type="password" class="input" id="admNewPassword" minlength="6" placeholder="Mínimo 6 caracteres" required>
+                    <input type="password" class="input" id="admNewPassword" minlength="10" placeholder="Mínimo 10 caracteres" required>
                 </div>
             </form>
         `;
@@ -1047,8 +1047,8 @@ const AdminPanel = {
             const role = document.getElementById('admNewRole').value;
             const telefono = document.getElementById('admNewTelefono').value.trim();
 
-            if (password.length < 6) {
-                Toast.error('La contraseña debe tener al menos 6 caracteres');
+            if (password.length < 10) {
+                Toast.error('La contraseña debe tener al menos 10 caracteres');
                 return;
             }
 
@@ -1104,7 +1104,7 @@ const AdminPanel = {
                 </div>
                 <div class="adm-form-row">
                     <label class="adm-form-label">Nueva contraseña</label>
-                    <input type="password" class="input" id="admEditPassword" placeholder="Dejar vacío para no cambiar" minlength="6">
+                    <input type="password" class="input" id="admEditPassword" placeholder="Dejar vacío para no cambiar" minlength="10">
                 </div>
             </form>
         `;
@@ -1131,8 +1131,8 @@ const AdminPanel = {
             };
             const newPassword = document.getElementById('admEditPassword').value;
 
-            if (newPassword && newPassword.length < 6) {
-                Toast.error('La contraseña debe tener al menos 6 caracteres');
+            if (newPassword && newPassword.length < 10) {
+                Toast.error('La contraseña debe tener al menos 10 caracteres');
                 return;
             }
 
@@ -1164,7 +1164,7 @@ const AdminPanel = {
                 <p style="color:var(--text-muted);margin:0 0 16px;">Cambiar contraseña de <strong>${name}</strong></p>
                 <div class="adm-form-row">
                     <label class="adm-form-label">Nueva contraseña *</label>
-                    <input type="password" class="input" id="admNewPw" minlength="6" placeholder="Mínimo 6 caracteres" required>
+                    <input type="password" class="input" id="admNewPw" minlength="10" placeholder="Mínimo 10 caracteres" required>
                 </div>
             </form>
         `;
@@ -1181,8 +1181,8 @@ const AdminPanel = {
 
         document.getElementById('admResetPwBtn').addEventListener('click', async () => {
             const pw = document.getElementById('admNewPw').value;
-            if (pw.length < 6) {
-                Toast.error('Mínimo 6 caracteres');
+            if (pw.length < 10) {
+                Toast.error('Mínimo 10 caracteres');
                 return;
             }
 

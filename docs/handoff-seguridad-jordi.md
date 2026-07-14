@@ -1,5 +1,9 @@
 # Handoff — Blindaje de seguridad LOBBY-MEPEX (auditoría JordiGPT)
 
+> ⚠️ **SUPERADO (2026-07-13): el estado vigente es `docs/cierre-auditoria-jordi.md`** — cuadro final
+> de los 46 chequeos con evidencia + pendientes + prompt de arranque. Este doc queda como histórico
+> de la sesión de blindaje 2026-07-11 (gotchas de infra siguen valiendo).
+
 > Sesión 2026-07-11. Se auditó la app contra los 2 checklists de JordiGPT (46 chequeos) y se
 > **cerró todo lo crítico, alto y medio**, deployado y verificado en prod. Este doc + la memoria
 > `project_auditoria_seguridad_jordi` + `docs/auditoria-seguridad-2026-07.md` = el contexto completo.
