@@ -9,7 +9,7 @@
 
 - **Todo lo CRÍTICO, ALTO y MEDIO está cerrado y verificado en prod.** No queda ningún agujero explotable conocido.
 - Score: de **~25/40** chequeos aplicables en verde (2026-07-10) a **~36/40** (2026-07-13).
-- Lo abierto es: el flip de la CSP a enforcing (hoy en Report-Only), la **adopción** del MFA (el mecanismo ya está live), 2 ítems de higiene (bucket `stands`, `npm audit`) y 2 deploys menores ya resueltos en código.
+- Lo abierto es: la **adopción** del MFA (el mecanismo ya está live), 2 ítems de higiene (bucket `stands`, `npm audit`) y 3 deploys ya resueltos en código: **CSP enforcing** (2026-07-14, ver M1) + lobby-api (B3/B6).
 
 ## Cuadro final de hallazgos
 
@@ -20,7 +20,7 @@
 | **C3** | Rotación de service_role + lpk_live (historial git) | ✅ **CERRADO** | Fede confirmó rotación/revocación (2026-07-11). Código actual limpio; residual histórico inofensivo |
 | **A1** | Sin rate limiting | ✅ **CERRADO** | `iaLimit` 20 req/min en endpoints IA del proxy; ARCA detrás de auth+rol; `/deploy` de lobby-api con 10 req/min (código 2026-07-13, ⏳ deploy). Recomendado: budget cap mensual en console.anthropic.com |
 | **A2** | Sin 2FA en admins | ✅ código / ⏳ **adopción** | MFA TOTP live (login + enrolamiento en Mi Perfil→Seguridad). **Falta activarlo en las cuentas** (Fede → después Lelean/Sofi). Futuro opcional: obligatorio para admin con gate AAL2 en finanzas |
-| **M1** | XSS interno + sin CSP | ✅ escapes / ⏳ **CSP enforcing** | Escape central (Toast/Modal/ContextMenu) + `escHtml` en los 6 módulos ofensores (live). CSP presente en **Report-Only** (verificado 2026-07-13) — falta juntar violaciones y flip |
+| **M1** | XSS interno + sin CSP | ✅ código / ⏳ **deploy nginx** | Escape central (Toast/Modal/ContextMenu) + `escHtml` en los 6 módulos ofensores (live). **CSP ENFORCING lista en el repo (2026-07-14)** — sin violaciones juntadas, se reemplazó por auditoría estática de recursos + test local sirviendo la app con la policy enforzada (boot completo + encuesta E2E contra el RPC real, **0 violaciones**). Fixes vs la Report-Only: `connect-src` corrige `api.dolarapi.com`→`dolarapi.com` (la URL real de api.js), `frame-src` suma Supabase + `blob:` (PDFs de cotización/acta en iframes que la policy vieja habría ROTO), `form-action 'self'`, script inline de `encuesta.html` externalizado a `encuesta.js` y hover inline de `router.js` pasado a CSS (script-src queda SIN 'unsafe-inline'). Falta solo el deploy del conf (paso 0 del handoff) |
 | **M2** | PII de clientes a Gemini free tier | ✅ **CERRADO** | `MODEL_PROVIDER=claude` en prod (2026-07-13): digest verificado corriendo en el VPS contra `claude-haiku-4-5` (no entrena, centavos). Gemini queda de fallback. Hardening opcional: validar el JSON de salida contra schema en el backend |
 | **M3** | RLS: policies anon peligrosas + tablas nuevas | ✅ **CERRADO** | PASO 1 (2026-07-11) + PASO 2 (encuesta→RPCs `SECURITY DEFINER`, 4 policies anon dropeadas). **Barrido anon 2026-07-13 sobre 18 tablas sensibles: 17 cerradas** (profiles, roles, personas, ingresos, egresos, asientos, comprobantes, crm_*, conformes, cotizaciones, tareas, cartera…). Única abierta: `catalogo_items` — **a propósito** (catálogo/precios para showroom/cotizador, sin PII; riesgo asumido, ver pendientes). PII operativa gateada solo por authenticated = decisión de diseño asumida (PARTE 4 opcional) |
 | **M4** | Sesiones no se revocan al cambiar password | ✅ **CERRADO** (principal) | `signOut({scope:'others'})` al cambiar pass (live). Residual menor: el reset por admin no revoca las sesiones del usuario reseteado → próxima charla |
@@ -40,9 +40,24 @@
 
 ## Pendientes (handoff próxima charla)
 
-### Lado Fede (una pasada de ~15 min + juntar CSP unos días)
+> **Update 2026-07-14:** la CSP enforcing quedó lista en el repo (ver M1) — el paso 8 (juntar
+> violaciones) ya NO hace falta. Se suma el **paso 0** (deploy del conf de nginx). El paso 1 se
+> verificó desde afuera ese día y **sigue pendiente**: 12 POSTs a `/lobby-api/deploy` sin token
+> → 12×401 y ningún 429 (el rate-limit nuevo no está corriendo).
 
-1. **Deploy de lobby-api** (trae B3 + B6 server-side): `~/pull-lobby.sh`, después
+### Lado Fede (una pasada de ~15 min)
+
+0. **Deploy CSP enforcing** (cierra M1, el último estructural): `~/pull-lobby.sh`, después
+   ```bash
+   sudo cp /home/mepex/lobby/tools/vps/nginx-mepex.conf /etc/nginx/sites-enabled/mepex
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+   (Recordar: `sites-enabled/mepex` es COPIA, no symlink; backups FUERA de `sites-enabled/`.)
+   Smoke: `curl -sI https://app.mepex.com.ar/ | grep -i content-security` debe decir
+   `Content-Security-Policy:` (sin `-Report-Only`). Después usar la app normal con F12 un rato
+   (PDFs, charts de Finanzas, Drive embed, acta de entrega) — si algo se bloquea, ahora se ve
+   como error rojo `Refused to…`; rollback = volver a copiar el conf anterior.
+1. **Deploy de lobby-api** (trae B3 + B6 server-side — verificado 2026-07-14 que AÚN NO corre): `~/pull-lobby.sh`, después
    `pm2 show lobby-api` (para ver el path real) → copiar `lobby-api/index.js` del repo ahí → `pm2 restart lobby-api`.
 2. **Supabase Dashboard** → Authentication → Sign In/Up → **Minimum password length = 10** (enforcement server-side del B6).
 3. **Activar MFA** en tu cuenta (Mi Perfil → Seguridad → QR con Google Authenticator). Después Lelean y Sofi. Red de seguridad: Dashboard → Authentication → Users → quitar factor.
@@ -63,26 +78,25 @@
    WHERE id = 'stands';
    ```
 7. **B5 — npm audit**: en el VPS, `cd` al dir de lobby-api (el de `pm2 show lobby-api`) y `npm audit --omit=dev`. Pegar el resultado en la próxima charla si hay highs.
-8. **CSP**: usar la app unos días con F12 abierto (sobre todo: generar PDFs, emitir factura, charts de Finanzas, embeds de Drive) y guardar/pegar las violaciones `[Report Only] Refused to…`.
+8. ~~**CSP**: juntar violaciones `[Report Only]`~~ — **YA NO HACE FALTA** (2026-07-14): el flip se hizo con auditoría estática + test local enforzado. Reemplazado por el paso 0.
 
 ### Próxima charla (Claude)
 
-- **CSP → enforcing**: con las violaciones de Fede, ajustar la policy en `tools/vps/nginx-mepex.conf`, cambiar `Content-Security-Policy-Report-Only` → `Content-Security-Policy`, deploy (recordar: `sites-enabled/mepex` es COPIA, no symlink; `cp` + `nginx -t && reload`). **Es el último ítem estructural del checklist.**
+- ~~**CSP → enforcing**~~ ✅ **HECHA en el repo (2026-07-14)** — falta solo el deploy de Fede (paso 0). Endurecimiento futuro opcional: sacar `'unsafe-eval'` de script-src (probar PDFs + charts con consola abierta después de unos días enforcing).
 - **M4 residual**: revocar sesiones del usuario al resetearle la password desde admin (investigar endpoint admin de GoTrue — no adivinar el SDK).
 - **Opcionales/endurecimiento** (si Jordi los pide): MFA obligatorio para admin + gate AAL2 en finanzas · PARTE 4 RLS (PII de RRHH gateada por `fn_role_can('rrhh',…)`) · revisar si el cotizador realmente lee `catalogo_items` con anon (si no, cerrarla también) · validar JSON del LLM contra schema en el backend · budget cap en console.anthropic.com.
 
 ### Prompt de arranque para la próxima charla
 
 ```
-Seguimos el cierre de seguridad de LOBBY-MEPEX (checklists JordiGPT). El estado completo
-está en docs/cierre-auditoria-jordi.md (cuadro final + pendientes) y la memoria
-project_auditoria_seguridad_jordi. Todo lo crítico/alto/medio está cerrado y verificado;
-queda el flip de la CSP a enforcing + los ítems menores del handoff.
+Seguimos el cierre de seguridad de LOBBY-MEPEX (checklists JordiGPT). Estado en
+docs/cierre-auditoria-jordi.md + memoria project_auditoria_seguridad_jordi.
+La CSP enforcing ya está en el repo (2026-07-14); quedan los deploys/pasos 0-7
+del handoff y el M4 residual.
 
 Al empezar: git fetch origin && git reset --hard origin/main.
 
-Te pego las violaciones CSP que junté estos días:
-<PEGAR ACÁ LAS LÍNEAS [Report Only] DE LA CONSOLA>
-
-Además hice del handoff: <marcar qué pasos 1-8 del doc quedaron hechos>
+Del handoff hice los pasos: <marcar 0-7; el 0 es el deploy de la CSP>
+Si algo se rompió con la CSP enforcing, pego acá los errores "Refused to…" de la consola:
+<PEGAR SI HAY>
 ```

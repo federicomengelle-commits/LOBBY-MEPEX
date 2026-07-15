@@ -364,12 +364,10 @@ const Router = {
                         </div>
                         ` : ''}
                         ${mod.connections && mod.connections.length > 0 ? `
+                        <style>.rt-conn-link:hover { border-color: ${catColor}40 !important; color: ${catColor} !important; }</style>
                         <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
                             ${mod.connections.map(c => `
-                                <a href="#${c.to}" style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); text-decoration: none; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; transition: all 250ms ease;"
-                                   onmouseover="this.style.borderColor='${catColor}40'; this.style.color='${catColor}'"
-                                   onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-dim)'"
-                                >
+                                <a href="#${c.to}" class="rt-conn-link" style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); text-decoration: none; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; transition: all 250ms ease;">
                                     ${c.label} →
                                 </a>
                             `).join('')}
