@@ -37,7 +37,11 @@ app.use(cors({
     origin(origin, cb) {
         // Sin origin (curl, health checks server-to-server) o en la allowlist → OK.
         if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        return cb(new Error('Origen no permitido por CORS'));
+        // Origin desconocido → cb(null,false), NUNCA cb(Error): un Error acá se
+        // convierte en 500 para TODOS los POST (los browsers mandan Origin en POST
+        // aunque sea same-origin). Negar los headers CORS alcanza: bloquea el
+        // cross-origin real y no rompe el request same-origin.
+        return cb(null, false);
     },
     methods: ['GET', 'POST'],
 }));

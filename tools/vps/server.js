@@ -31,7 +31,12 @@ app.use(cors({
   origin(origin, cb) {
     // Sin origin (curl / server-to-server) o en la allowlist → OK.
     if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    return cb(new Error('Origen no permitido por CORS'));
+    // Origin desconocido → NO tirar Error: los browsers mandan Origin en los POST
+    // aunque sean same-origin, y un Error acá 500-eaba TODOS los POST cuando la
+    // allowlist quedó vieja tras el cambio de dominio (bug 2026-07-15: facturar/
+    // digest/OCR caídos). cb(null,false) niega los headers CORS (bloquea cross-
+    // origin real) sin romper el request same-origin.
+    return cb(null, false);
   },
 }));
 app.use(express.json({ limit: '15mb' }));
