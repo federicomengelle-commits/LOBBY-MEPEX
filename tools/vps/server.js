@@ -25,7 +25,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // CORS acotado al origin del lobby (allowlist por env). Nunca wildcard.
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://195.200.1.250')
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'https://app.mepex.com.ar')
   .split(',').map(o => o.trim()).filter(Boolean);
 app.use(cors({
   origin(origin, cb) {

@@ -3271,7 +3271,9 @@ const API = {
     // ═══════════════════════════════════════════
     //  ADMIN — Lobby API (VPS endpoints)
     // ═══════════════════════════════════════════
-    _lobbyApiBase: 'http://195.200.1.250/lobby-api',
+    // Same-origin vía nginx (/lobby-api → 127.0.0.1:3002). Relativo = funciona en
+    // cualquier dominio y no rompe con HTTPS/CSP (antes apuntaba al IP viejo por http).
+    _lobbyApiBase: '/lobby-api',
 
     async _getAccessToken() {
         const { data: { session } } = await supabaseClient.auth.getSession();

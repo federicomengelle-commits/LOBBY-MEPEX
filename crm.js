@@ -494,7 +494,7 @@ const CRM = {
             case 'bandeja':       return { action: 'new-caso', label: 'Nuevo caso' };
             case 'pipeline':      return { action: 'new-caso', label: 'Nuevo caso' };
             case 'clientes':      return { action: 'new-cliente', label: 'Nuevo cliente' };
-            case 'cotizaciones':  return { action: 'open-cotizador', label: 'Abrir cotizador', url: 'http://195.200.1.250/cotizador/' };
+            case 'cotizaciones':  return { action: 'open-cotizador', label: 'Abrir cotizador', url: '/cotizador/' };
             case 'analitica':     return null; // sin botón
             default:              return null;
         }
@@ -522,7 +522,7 @@ const CRM = {
                     this._openNuevoCasoModal();
                     break;
                 case 'open-cotizador':
-                    window.open(btn.dataset.url || 'http://195.200.1.250/cotizador/', '_blank', 'noopener');
+                    window.open(btn.dataset.url || '/cotizador/', '_blank', 'noopener');
                     break;
                 case 'new-interaccion':
                     Toast.info('Abrí una cotización para registrar una interacción.');

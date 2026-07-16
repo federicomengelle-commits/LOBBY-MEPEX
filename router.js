@@ -69,7 +69,23 @@ const Router = {
     },
 
     async init() {
-        // Register routes
+        this._registerRoutes();
+
+        // Listen for hash changes
+        window.addEventListener('hashchange', () => this.handleRoute());
+
+        // Restore session before first route
+        await Auth.restoreSession();
+        this._ready = true;
+
+        // Initial route
+        this.handleRoute();
+    },
+
+    // Registro de rutas. Se llama en init() y DE NUEVO desde App.ensureAppLoaded()
+    // cuando terminan de cargar los scripts diferidos: los campos `obj` (teardown
+    // Fase 12.A) se evalúan acá, y en el boot pre-login esos globals aún no existen.
+    _registerRoutes() {
         this.routes = {
             'login':            { render: () => Auth.renderLogin(), requiresAuth: false },
             'lobby':            { render: () => Lobby.render(), requiresAuth: true },
@@ -81,7 +97,7 @@ const Router = {
 
             // ── Comercial ──
             'crm':              { render: () => CRM.render(), requiresAuth: true, module: 'crm', obj: typeof CRM !== 'undefined' ? CRM : null },
-            'cotizador':        { render: () => this._openExternal('http://195.200.1.250/cotizador/'), requiresAuth: true, module: 'cotizador' },
+            'cotizador':        { render: () => this._openExternal('/cotizador/'), requiresAuth: true, module: 'cotizador' },
             'catalogo':         { render: () => CatalogoModule.render(), requiresAuth: true, module: 'catalogo' },
             'stands':           { render: () => StandsModule.render(), requiresAuth: true, module: 'stands' },
             'disenador':        { render: () => DisenadorOctexa.render(), requiresAuth: true, module: 'disenador', superadminOnly: true },
@@ -118,16 +134,6 @@ const Router = {
                 adminOnly: true,
             },
         };
-
-        // Listen for hash changes
-        window.addEventListener('hashchange', () => this.handleRoute());
-
-        // Restore session before first route
-        await Auth.restoreSession();
-        this._ready = true;
-
-        // Initial route
-        this.handleRoute();
     },
 
     // ¿El usuario actual puede NAVEGAR a esta ruta? Mismo criterio que los guards
@@ -143,8 +149,22 @@ const Router = {
         return true;
     },
 
-    handleRoute() {
+    async handleRoute() {
         if (!this._ready) return; // wait for session restore
+
+        // ── Carga diferida (2026-07-15) ──
+        // El login solo carga el CORE (config/data/router/auth/audit-log/app);
+        // el resto de la app se inyecta acá la primera vez que un usuario
+        // AUTENTICADO navega. ensureAppLoaded() re-registra las rutas al final
+        // (los `obj` del teardown necesitan los globals ya cargados).
+        if (Auth.isAuthenticated() && typeof App !== 'undefined' && !App._appLoaded) {
+            try {
+                await App.ensureAppLoaded();
+            } catch (e) {
+                console.error('[Router] No se pudo cargar la app:', e);
+                return;
+            }
+        }
 
         // Track previous hash for _openExternal fallback
         const prevHash = this._currentHash || 'lobby';

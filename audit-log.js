@@ -22,7 +22,9 @@ const AuditLog = {
                 user_email: user?.email || null,
                 action,
                 module: module || null,
-                table_name: entityType || null,
+                // table_name es NOT NULL en prod — los eventos sin entidad (login/
+                // logout/denied) caían con 400. Fallback: módulo o 'sistema'.
+                table_name: entityType || module || 'sistema',
                 record_id: entityId || null,
                 details: detail ? { message: detail, device: this._parseDevice() } : { device: this._parseDevice() },
                 tipo: 'info',

@@ -22,6 +22,99 @@ const App = {
         return window.innerWidth <= 768;
     },
 
+    // ═══════════════════════════════════════════════════════════════
+    //  CARGA DIFERIDA (2026-07-15) — el login solo trae el CORE
+    //  (supabase/config/data/router/auth/audit-log/app); el resto de la
+    //  app (~45 scripts + libs CDN) se inyecta recién cuando hay un
+    //  usuario AUTENTICADO. Menos peso en el login y no se expone el
+    //  JS interno a quien no entró. Router.handleRoute() llama a
+    //  ensureAppLoaded() antes de rutear cualquier ruta protegida.
+    // ═══════════════════════════════════════════════════════════════
+    _appLoaded: false,
+    _appLoading: null,
+    _loadedScripts: new Set(),
+
+    // MISMO orden que tenía index.html — el orden IMPORTA (§5 CLAUDE.md).
+    // Al bumpear una versión ?v= de un módulo diferido, se bumpea ACÁ.
+    _APP_SCRIPTS: [
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+        'api.js?v=83',
+        'components.js?v=9',
+        'undo.js?v=3',
+        'alertas.js?v=8',
+        'badges.js?v=5',
+        'lobby.js?v=15',
+        'calendario-operativo.js?v=21',
+        'eventos.js?v=41',
+        'proyectos.js?v=6',
+        'proyecto-detalle.js?v=19',
+        'crm.js?v=34',
+        'catalogo.js?v=9',
+        'stands.js?v=3',
+        'compositor-piezas.js?v=2',
+        'compositor.js?v=18',
+        'tools/octexa/octexa-bom.js',
+        'tools/octexa/octexa-design.js',
+        'disenador.js?v=3',
+        'plano-pdf.js?v=9',
+        'remito-pdf.js?v=4',
+        'pedido-pdf.js?v=2',
+        'conforme-pdf.js?v=2',
+        'compras.js?v=17',
+        'inventario.js?v=19',
+        'locaciones.js?v=10',
+        'flota.js?v=8',
+        'rrhh.js?v=16',
+        'calculo-receta.js?v=1',
+        'costos.js?v=34',
+        'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
+        'contabilidad.js?v=16',
+        'finanzas.js?v=54',
+        'rendimiento.js?v=11',
+        'calendario-adm.js?v=2',
+        'carga-comprobante.js?v=4',
+        'pedido-compra.js?v=1',
+        'settings.js?v=9',
+        'admin-panel.js?v=15',
+        'importar-cotizacion.js?v=1',
+        'importar-contactos.js?v=1',
+        'modules.js?v=10',
+        'notifications.js?v=7',
+        'tareas.js?v=11',
+    ],
+
+    ensureAppLoaded() {
+        if (this._appLoaded) return Promise.resolve();
+        if (this._appLoading) return this._appLoading;
+        this._appLoading = (async () => {
+            // async=false → los <script> descargan en paralelo pero EJECUTAN
+            // en orden de inserción (mismo comportamiento que tenerlos en el HTML).
+            await Promise.all(this._APP_SCRIPTS.map(src => this._loadScript(src)));
+            // Re-registrar rutas: los `obj` del teardown (Fase 12.A) se evalúan
+            // al registrar, y en el boot pre-login los módulos no existían.
+            if (typeof Router !== 'undefined' && Router._registerRoutes) Router._registerRoutes();
+            this._appLoaded = true;
+        })();
+        // Si falla (ej. corte de red), permitir reintento en la próxima navegación
+        // — _loadedScripts evita re-ejecutar los que SÍ llegaron a cargar.
+        this._appLoading.catch(() => { this._appLoading = null; });
+        return this._appLoading;
+    },
+
+    _loadScript(src) {
+        if (this._loadedScripts.has(src)) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.async = false; // preserva el orden de ejecución
+            s.onload = () => { this._loadedScripts.add(src); resolve(); };
+            s.onerror = () => { s.remove(); reject(new Error('No se pudo cargar ' + src)); };
+            document.head.appendChild(s);
+        });
+    },
+
     // ─── INIT ───
     init() {
         // Tanda 4 — en mobile, sidebar arranca cerrado

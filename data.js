@@ -100,7 +100,7 @@ const Data = {
     quickActions: {
         superadmin: [
             { id: 'cargar-comprobante', icon: '📸', label: 'Cargar comprobante', action: 'cargar-comprobante' },
-            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
+            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: '/cotizador/' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
             { id: 'nuevo-proy', icon: '📋', label: 'Nuevo proyecto', action: 'navigate', route: 'proyectos' },
         ],
@@ -110,7 +110,7 @@ const Data = {
             { id: 'registrar-pago', icon: '📤', label: 'Registrar pago', action: 'registrar-pago' },
         ],
         venta: [
-            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: 'http://195.200.1.250/cotizador/' },
+            { id: 'nueva-cot', icon: '➕', label: 'Nueva cotización', action: 'external', url: '/cotizador/' },
             { id: 'nuevo-cli', icon: '👤', label: 'Nuevo cliente', action: 'navigate', route: 'crm' },
             { id: 'agendar-seguimiento', icon: '⏭', label: 'Agendar seguimiento', action: 'navigate', route: 'crm' },
         ],
@@ -176,7 +176,7 @@ const Data = {
             color: '#F28D15',
             order: 2,
             isExternal: true,
-            externalUrl: 'http://195.200.1.250/cotizador/',
+            externalUrl: '/cotizador/',
             sections: [],
             connections: [],
         },

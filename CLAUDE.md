@@ -184,26 +184,28 @@ LOBBY-MEPEX/
 └── *.md                    # Documentacion y blueprints (ver seccion 9)
 ```
 
-### Orden de carga de scripts (critico)
+### Carga de scripts — CORE + DIFERIDA (refactor 2026-07-15, crítico)
+
+**`index.html` solo carga el CORE** (lo mínimo para el login):
 ```
 1. Supabase SDK (CDN)
 2. config.js       → crea supabaseClient
-3. api.js          → usa supabaseClient
-4. data.js         → datos estaticos
-5. router.js       → usa Auth, App
-6. auth.js         → usa supabaseClient, Data
-7. components.js   → Toast, Modal, etc.
-8. sidebar-editor.js → SidebarEditor
-9. undo.js         → UndoManager, UndoUI, UndoHelpers
-10. lobby.js       → vista Lobby
-11. calendar.js    → calendario global
-12. calendario-operativo.js → timeline operativo
-13. eventos.js     → modulo Eventos
-14. settings.js    → perfil, admin usuarios
-15. admin-panel.js → panel de control
-16. modules.js     → renderer generico
-17. app.js         → bootstrap (App.init → Router.init)
+3. data.js         → datos estaticos (auth usa rolePermissions)
+4. router.js       → _registerRoutes + handleRoute (async, gate de carga)
+5. auth.js         → login/restoreSession/MFA
+6. audit-log.js    → AuditLog (login/logout logs)
+7. app.js          → App.init + LOADER (ensureAppLoaded/_APP_SCRIPTS)
 ```
+
+**El RESTO (~46 scripts: api.js, components.js, todos los módulos + jsPDF/Chart.js/qrcode)
+se inyecta recién con usuario autenticado** vía `App.ensureAppLoaded()` (llamado por
+`Router.handleRoute()` antes de rutear). Descarga paralela con `async=false` = ejecutan
+en orden de inserción. Al terminar re-llama `Router._registerRoutes()` (los `obj` del
+teardown Fase 12.A necesitan los globals ya cargados).
+
+**⚠️ REGLA: para bumpear la versión `?v=` de un módulo diferido, editar `App._APP_SCRIPTS`
+en `app.js` — index.html ya NO lista esos scripts.** El orden de la lista importa igual
+que antes (api → components → módulos → Chart.js antes de contabilidad/finanzas).
 
 ---
 
@@ -567,6 +569,8 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 ## 10. ESTADO ACTUAL
 
 > **Reorg capa operativa física = 100% CONSTRUIDA, PUSHEADA Y VERIFICADA EN PROD (A→F + corte destructivo).** Módulos **Taller y Logística DISUELTOS** (el **rol** taller se conserva): Taller→Proyectos(galpón read-only)+Tareas, Logística→Transporte en la ficha del Evento; redirects `#taller→#tareas`/`#logistica→#eventos`. `taller.js` borrado; `logistica.js` borrado; tablas legacy `cargas`/`logistica_*` NO dropeadas (inertes). **Verificado en prod 2026-06-26 via Chrome** (reorg estructural + rutinas end-to-end + botones; 8 rutinas reales sembradas vía app = 10 total; 0 errores). **🐞 fix:** `'flota'` faltaba en `tareas._MODULOS` → `tareas.js?v=9` (commit `104df77`), **⏳ Fede solo re-pullea** para tomarlo. Tracking: `PROGRESO.md` §sesiones 2026-06-24/25/25b/26 + `PLAN-MAESTRO §REORGANIZACIÓN…` + handoff `docs/reorg-capa-operativa-handoff.md`. Spec: `docs/capa-operativa-blueprint.md`. Pulidos opcionales (no funcionales): `sql/reorg_cleanup.sql` PARTE 1 (limpiar `roles.permissions` del DB) · PARTE 2 DROP legacy (comentada, "evitar romper").
+
+- **Sesión 2026-07-15 (Post-flip CSP: fix "crear cuenta" + barrido IP→dominio + CARGA DIFERIDA del JS) — PUSHEADO · ⏳ pull + re-copy nginx conf de Fede:** Fede reportó errores al crear usuario con la CSP ya enforcing en prod. **Causa raíz: `api.js._lobbyApiBase` hardcodeaba `http://195.200.1.250/lobby-api`** (CSP + mixed content lo bloqueaban desde `https://app.mepex.com.ar`) → **relativo `/lobby-api`** (same-origin vía nginx). **Barrido completo del IP viejo en el front:** cotizador → `/cotizador/` en `crm.js?v=34`/`data.js?v=27`/`router.js` + defaults `ALLOWED_ORIGINS` de `lobby-api/index.js` y `tools/vps/server.js` → dominio nuevo. **+ 🐞 `audit_log` 400:** `record()` mandaba `table_name:null` en login/logout/denied (NOT NULL en prod) → fallback `entityType || module || 'sistema'` (`audit-log.js?v=3`). **+ CSP:** `connect-src` suma cdnjs/jsdelivr (los `.js.map` que DevTools pide con F12 ensuciaban la consola de bloqueos). **+ CARGA DIFERIDA (recomendación del amigo de Fede): el login ya NO carga toda la app** — `index.html` quedó con 7 scripts CORE (supabase/config/data/router/auth/audit-log/app) y los ~46 restantes los inyecta `App.ensureAppLoaded()` recién con usuario autenticado (`Router.handleRoute()` gatea; re-registra rutas para el teardown 12.A; descarga paralela `async=false` = orden preservado; retry-safe). **⚠️ Versiones `?v=` de módulos diferidos ahora se bumpean en `App._APP_SCRIPTS` (app.js), NO en index.html — ver §5.** Verificado en local con la CSP enforcing exacta: login 7 scripts/globals internos ausentes/0 errores · loader 46 scripts en ~170ms · flujo completo simulado (auth stub → hashchange → carga sola → shell+lobby renderizan, `obj` teardown rebindeados) · 0 errores de consola. **⏳ Fede:** `~/pull-lobby.sh` + re-copiar el conf de nginx (`sudo cp /home/mepex/lobby/tools/vps/nginx-mepex.conf /etc/nginx/sites-enabled/mepex && sudo nginx -t && sudo systemctl reload nginx`) → probar crear usuario + login normal. Sigue pendiente el resto del handoff de seguridad (paso 1 deploy lobby-api, MFA, etc.).
 
 - **Sesión 2026-07-14 (Seguridad — CSP a ENFORCING, último ítem estructural del checklist JordiGPT) — LISTA EN REPO · ⏳ deploy nginx de Fede:** sin violaciones Report-Only para pegar → auditoría estática de recursos + test local con la policy enforzada (boot + encuesta E2E: 0 violaciones). 4 roturas cazadas antes del flip: `connect-src` con `api.dolarapi.com` (el código usa `dolarapi.com`) · `frame-src` sin Supabase (PDFs de Storage en iframes) ni `blob:` (visor del acta) · `encuesta.html` con script inline (página pública) → externalizado a **`encuesta.js?v=1`** · hover inline de `router.js` → CSS (`router.js?v=20`). `tools/vps/nginx-mepex.conf` = header enforcing + policy corregida + `form-action 'self'`; script-src SIN `'unsafe-inline'`. **Verificado además: el paso 1 del handoff (deploy lobby-api) NO está hecho** (12×401 sin 429 en `/lobby-api/deploy`). **⏳ Fede:** handoff pasos 0-7 de `docs/cierre-auditoria-jordi.md` (0 = pull + `cp` del conf + `nginx -t && reload` + smoke F12).
 

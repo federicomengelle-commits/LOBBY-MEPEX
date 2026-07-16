@@ -33,63 +33,17 @@
         </div>
     </div>
 
-    <!-- F.4 — jsPDF + autotable (export lista de precios) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-    <!-- Facturador ARCA — QR de AFIP en el PDF del comprobante (qrcodejs, cloudflare) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-    <!-- Scripts (order matters) -->
+    <!-- CORE (carga diferida 2026-07-15): el login solo trae esto.
+         El RESTO de la app (~45 scripts + jsPDF/Chart.js/qrcode) lo inyecta
+         App.ensureAppLoaded() (app.js) recién con usuario autenticado —
+         menos peso en el login y sin exponer el JS interno. La lista y el
+         ORDEN viven en App._APP_SCRIPTS: bumpear versiones AHÍ, no acá. -->
     <script src="config.js?v=4"></script>
-    <script src="api.js?v=82"></script>
-    <script src="data.js?v=26"></script>
-    <script src="router.js?v=20"></script>
+    <script src="data.js?v=27"></script>
+    <script src="router.js?v=21"></script>
     <script src="auth.js?v=7"></script>
-    <script src="audit-log.js?v=2"></script>
-    <script src="components.js?v=9"></script>
-    <script src="undo.js?v=3"></script>
-    <script src="alertas.js?v=8"></script>
-    <script src="badges.js?v=5"></script>
-    <script src="lobby.js?v=15"></script>
-    <script src="calendario-operativo.js?v=21"></script>
-    <script src="eventos.js?v=41"></script>
-    <script src="proyectos.js?v=6"></script>
-    <script src="proyecto-detalle.js?v=19"></script>
-    <script src="crm.js?v=33"></script>
-    <script src="catalogo.js?v=9"></script>
-    <script src="stands.js?v=3"></script>
-    <script src="compositor-piezas.js?v=2"></script>
-    <script src="compositor.js?v=18"></script>
-    <script src="tools/octexa/octexa-bom.js"></script>
-    <script src="tools/octexa/octexa-design.js"></script>
-    <script src="disenador.js?v=3"></script>
-    <script src="plano-pdf.js?v=9"></script>
-    <script src="remito-pdf.js?v=4"></script>
-    <script src="pedido-pdf.js?v=2"></script>
-    <script src="conforme-pdf.js?v=2"></script>
-    <!-- taller.js / logistica.js DESCONECTADOS (reorg C/D 2026-06-25): Taller→Proyectos(galpón)+Tareas, Logística→Transporte en el Evento. -->
-    <script src="compras.js?v=17"></script>
-    <script src="inventario.js?v=19"></script>
-    <script src="locaciones.js?v=10"></script>
-    <script src="flota.js?v=8"></script>
-    <script src="rrhh.js?v=16"></script>
-    <script src="calculo-receta.js?v=1"></script>
-    <script src="costos.js?v=34"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-    <script src="contabilidad.js?v=16"></script>
-    <script src="finanzas.js?v=54"></script>
-    <script src="rendimiento.js?v=11"></script>
-    <script src="calendario-adm.js?v=2"></script>
-    <script src="carga-comprobante.js?v=4"></script>
-    <script src="pedido-compra.js?v=1"></script>
-    <script src="settings.js?v=9"></script>
-    <script src="admin-panel.js?v=15"></script>
-    <script src="importar-cotizacion.js?v=1"></script>
-    <script src="importar-contactos.js?v=1"></script>
-    <script src="modules.js?v=10"></script>
-    <script src="notifications.js?v=7"></script>
-    <script src="tareas.js?v=11"></script>
-    <script src="app.js?v=12"></script>
+    <script src="audit-log.js?v=3"></script>
+    <script src="app.js?v=13"></script>
 </body>
 
 </html>

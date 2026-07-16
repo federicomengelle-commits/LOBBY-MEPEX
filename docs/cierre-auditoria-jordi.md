@@ -44,6 +44,13 @@
 > violaciones) ya NO hace falta. Se suma el **paso 0** (deploy del conf de nginx). El paso 1 se
 > verificó desde afuera ese día y **sigue pendiente**: 12 POSTs a `/lobby-api/deploy` sin token
 > → 12×401 y ningún 429 (el rate-limit nuevo no está corriendo).
+>
+> **Update 2026-07-15:** paso 0 ✅ HECHO por Fede (la CSP está enforcing en prod). El flip
+> destapó que "crear cuenta" pegaba al IP viejo por http (`api.js._lobbyApiBase`) → fix a
+> `/lobby-api` relativo + barrido IP→dominio + fix `audit_log` 400 + **carga diferida del JS**
+> (login = 7 scripts core). El conf de nginx cambió de nuevo (`connect-src` += cdnjs/jsdelivr
+> por los source maps de DevTools) → **repetir el paso 0** (re-copiar conf + reload) junto con
+> el pull del front.
 
 ### Lado Fede (una pasada de ~15 min)
 

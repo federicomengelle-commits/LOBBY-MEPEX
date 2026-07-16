@@ -128,7 +128,7 @@ const Modules = {
     ],
 
     // Form de cotización eliminado: las cotizaciones nacen en el cotizador
-    // externo (http://195.200.1.250/cotizador/), no en el LOBBY.
+    // externo (/cotizador/), no en el LOBBY.
 
     _getFormFields(type) {
         if (type === 'clients') return this._clientFormFields;

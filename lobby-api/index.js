@@ -31,7 +31,7 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 // Middleware
 // Seguridad (4.1): CORS acotado al origin del lobby, no wildcard.
 // Todas las rutas mutantes van con Bearer JWT (no cookies), pero limitamos igual.
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://195.200.1.250,http://localhost:3000')
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'https://app.mepex.com.ar,http://localhost:3000')
     .split(',').map(o => o.trim()).filter(Boolean);
 app.use(cors({
     origin(origin, cb) {
