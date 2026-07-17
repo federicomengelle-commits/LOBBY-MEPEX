@@ -102,9 +102,9 @@
    pm2 restart lobby-api
    ```
    Verificación (la puede correr Claude desde el Chrome de Fede): POST `/api/crm/digest` con token → JSON con `provider: claude` (ya no 500); 11 POSTs a `/lobby-api/deploy` sin token → el 11º da **429**.
-2. **Supabase Dashboard** → Authentication → Sign In/Up → **Minimum password length = 10** (enforcement server-side del B6).
+2. ~~**Supabase Dashboard** → Minimum password length = 10~~ ✅ **HECHO por Fede 2026-07-16** (B6 cerrado completo).
 3. **Activar MFA** en tu cuenta (Mi Perfil → Seguridad → QR con Google Authenticator). Después Lelean y Sofi. Red de seguridad: Dashboard → Authentication → Users → quitar factor.
-4. **Smokes logueado**: pegar WhatsApp en el CRM (debe volver `provider: claude`) · carga de comprobante por foto · abrir un link de encuesta real (ficha Proyecto → Entrega).
+4. ~~**Smokes logueado**~~ ✅ **HECHOS 2026-07-16 (Claude vía Chrome de Fede):** digest → `provider: claude` + `pide_cotizacion` · OCR con imagen real → `provider: claude`, leyó tipo/CUIT/neto/IVA/total exactos · encuesta real → renderiza "¡Gracias por el 10!" + review gating de Google OK bajo CSP enforcing (y el estado "link no válido" también).
 5. **M5 — verificar el trigger anti-escalada** (SQL Editor, solo lectura):
    ```sql
    SELECT tgname, tgenabled FROM pg_trigger WHERE tgname LIKE '%profiles_guard%';
