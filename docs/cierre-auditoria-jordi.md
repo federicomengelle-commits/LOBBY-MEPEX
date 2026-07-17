@@ -10,7 +10,7 @@
 - **Todo lo CRÍTICO, ALTO y MEDIO está cerrado y verificado en prod.** No queda ningún agujero explotable conocido.
 - Score: de **~25/40** chequeos aplicables en verde (2026-07-10) a **39/40** (2026-07-16, cierre completo:
   CSP enforcing · B3 429 · B4 bucket · B5 0 vulns · B6 Dashboard · M4 GoTrue · M5 trigger verificado · smokes IA/encuesta).
-- **Lo ÚNICO abierto: la adopción del MFA** (A2 — el mecanismo está live; falta activarlo en la cuenta de Fede y después Lelean/Sofi). Todo lo demás del checklist aplicable está cerrado con evidencia.
+- **Checklist COMPLETO (2026-07-17):** MFA activo en la cuenta de Fede (app + bonus Dashboard de Supabase). Lo único progresivo: replicar MFA en Lelean/Sofi. Todo lo demás cerrado con evidencia.
 
 ## Cuadro final de hallazgos
 
@@ -104,7 +104,7 @@
    ```
    Verificación (la puede correr Claude desde el Chrome de Fede): POST `/api/crm/digest` con token → JSON con `provider: claude` (ya no 500); 11 POSTs a `/lobby-api/deploy` sin token → el 11º da **429**.
 2. ~~**Supabase Dashboard** → Minimum password length = 10~~ ✅ **HECHO por Fede 2026-07-16** (B6 cerrado completo).
-3. **Activar MFA** en tu cuenta (Mi Perfil → Seguridad → QR con Google Authenticator). Después Lelean y Sofi. Red de seguridad: Dashboard → Authentication → Users → quitar factor.
+3. ~~**Activar MFA** en tu cuenta~~ ✅ **HECHO 2026-07-17** — factor TOTP `verified` en el usuario de Fede (verificado vía `mfa.listFactors()` en prod). **Bonus:** Fede también activó MFA en su **cuenta del Dashboard de Supabase** (protege el proyecto entero — hardening extra que no estaba en el checklist). Resta solo replicar en Lelean y Sofi (progresivo). Red de seguridad: Dashboard → Authentication → Users → quitar factor.
 4. ~~**Smokes logueado**~~ ✅ **HECHOS 2026-07-16 (Claude vía Chrome de Fede):** digest → `provider: claude` + `pide_cotizacion` · OCR con imagen real → `provider: claude`, leyó tipo/CUIT/neto/IVA/total exactos · encuesta real → renderiza "¡Gracias por el 10!" + review gating de Google OK bajo CSP enforcing (y el estado "link no válido" también).
 5. ~~**M5 — verificar el trigger anti-escalada**~~ ✅ **HECHO 2026-07-16**: trigger `profiles_guard` habilitado + RLS `true` en `profiles` y `roles`.
 6. ~~**B4 — bucket `stands`**~~ ✅ **HECHO 2026-07-16**: estaba NULL/NULL → UPDATE aplicado (15MB + jpeg/png/webp), confirmado por SELECT.
