@@ -8,8 +8,9 @@
 ## Resumen ejecutivo
 
 - **Todo lo CRÍTICO, ALTO y MEDIO está cerrado y verificado en prod.** No queda ningún agujero explotable conocido.
-- Score: de **~25/40** chequeos aplicables en verde (2026-07-10) a **~38/40** (2026-07-16: CSP enforcing en prod, B3 verificado con 429, B5 0 vulns, M4 completo).
-- Lo abierto (todo manual de Fede, ~10 min): **adopción** del MFA (el mecanismo ya está live), el toggle de password mínimo en el Dashboard (B6), y 2 verificaciones por SQL Editor (trigger M5, bucket `stands` B4).
+- Score: de **~25/40** chequeos aplicables en verde (2026-07-10) a **39/40** (2026-07-16, cierre completo:
+  CSP enforcing · B3 429 · B4 bucket · B5 0 vulns · B6 Dashboard · M4 GoTrue · M5 trigger verificado · smokes IA/encuesta).
+- **Lo ÚNICO abierto: la adopción del MFA** (A2 — el mecanismo está live; falta activarlo en la cuenta de Fede y después Lelean/Sofi). Todo lo demás del checklist aplicable está cerrado con evidencia.
 
 ## Cuadro final de hallazgos
 
@@ -24,11 +25,11 @@
 | **M2** | PII de clientes a Gemini free tier | ✅ **CERRADO** | `MODEL_PROVIDER=claude` en prod (2026-07-13): digest verificado corriendo en el VPS contra `claude-haiku-4-5` (no entrena, centavos). Gemini queda de fallback. Hardening opcional: validar el JSON de salida contra schema en el backend |
 | **M3** | RLS: policies anon peligrosas + tablas nuevas | ✅ **CERRADO** | PASO 1 (2026-07-11) + PASO 2 (encuesta→RPCs `SECURITY DEFINER`, 4 policies anon dropeadas). **Barrido anon 2026-07-13 sobre 18 tablas sensibles: 17 cerradas** (profiles, roles, personas, ingresos, egresos, asientos, comprobantes, crm_*, conformes, cotizaciones, tareas, cartera…). Única abierta: `catalogo_items` — **a propósito** (catálogo/precios para showroom/cotizador, sin PII; riesgo asumido, ver pendientes). PII operativa gateada solo por authenticated = decisión de diseño asumida (PARTE 4 opcional) |
 | **M4** | Sesiones no se revocan al cambiar password | ✅ **CERRADO** (completo) | `signOut({scope:'others'})` al cambiar pass (live). **Residual del reset-por-admin: cerrado por la plataforma (verificado 2026-07-15 contra la fuente):** GoTrue `v2.193.0` (la versión exacta del proyecto, `/auth/v1/health`) borra TODAS las sesiones del usuario cuando el admin cambia la password vía `PUT /admin/users/{id}` — `adminUserUpdate` → `UpdatePassword(tx, nil)` → `Logout(tx, user.ID)` = `DELETE FROM sessions WHERE user_id`. Es exactamente lo que hace `updateUserById(uid,{password})` en lobby-api. Sin código nuestro. (Residual estándar: el access token JWT vigente vive hasta expirar ~1h, igual que cualquier logout de Supabase.) |
-| **M5** | Escalada de rol — trigger `fn_profiles_guard` | ⏳ **VERIFICAR** (1 query) | Capa 2 corrida por Fede en prod (esperado OK). Query de verificación en Pendientes §5 |
+| **M5** | Escalada de rol — trigger `fn_profiles_guard` | ✅ **CERRADO + VERIFICADO** | Verificado por Fede en SQL Editor 2026-07-16: trigger `profiles_guard` habilitado + `relrowsecurity = true` en `profiles` y `roles` |
 | **B1** | CORS `*` en lobby-api | ✅ **CERRADO** | Allowlist por env en lobby-api y proxy |
 | **B2** | Gemini key en query string | ✅ **CERRADO** | Key al header `x-goog-api-key` en los 3 tools (ocr/crm deployados; octexa no montado) |
 | **B3** | `/deploy` sin rate-limit (fuerza bruta del token) | ✅ **CERRADO + VERIFICADO** | Rate-limit 10/min por IP en `lobby-api/index.js` — deployado y verificado en prod 2026-07-16 (10×401 → **429**) |
-| **B4** | Bucket `stands` sin límites MIME/size | ⏳ **VERIFICAR** | Query + ALTER listos en Pendientes §6 |
+| **B4** | Bucket `stands` sin límites MIME/size | ✅ **CERRADO + VERIFICADO** | Estaba NULL/NULL → UPDATE corrido por Fede 2026-07-16: `file_size_limit = 15728640` (15MB) + `allowed_mime_types = {image/jpeg,image/png,image/webp}`, confirmado por SELECT |
 | **B5** | `npm audit` sin correr en lobby-api | ✅ **CERRADO** | `npm audit --omit=dev` contra el `package-lock.json` del repo (2026-07-15): **0 vulnerabilidades**. (El VPS instala del mismo lockfile; re-correrlo ahí al redeployar es opcional.) |
 | **B6** | Password mínimo 6 caracteres | ✅ deployado / ⏳ **dashboard** | Mínimo 10 en `settings.js?v=9`, `admin-panel.js?v=15`, `lobby-api/index.js` — front y server deployados (2026-07-16). Falta SOLO: Supabase Dashboard → Authentication → Sign In/Up → Minimum password length = 10 |
 
@@ -105,21 +106,8 @@
 2. ~~**Supabase Dashboard** → Minimum password length = 10~~ ✅ **HECHO por Fede 2026-07-16** (B6 cerrado completo).
 3. **Activar MFA** en tu cuenta (Mi Perfil → Seguridad → QR con Google Authenticator). Después Lelean y Sofi. Red de seguridad: Dashboard → Authentication → Users → quitar factor.
 4. ~~**Smokes logueado**~~ ✅ **HECHOS 2026-07-16 (Claude vía Chrome de Fede):** digest → `provider: claude` + `pide_cotizacion` · OCR con imagen real → `provider: claude`, leyó tipo/CUIT/neto/IVA/total exactos · encuesta real → renderiza "¡Gracias por el 10!" + review gating de Google OK bajo CSP enforcing (y el estado "link no válido" también).
-5. **M5 — verificar el trigger anti-escalada** (SQL Editor, solo lectura):
-   ```sql
-   SELECT tgname, tgenabled FROM pg_trigger WHERE tgname LIKE '%profiles_guard%';
-   SELECT relname, relrowsecurity FROM pg_class WHERE relname IN ('profiles','roles');
-   ```
-   Esperado: 1 trigger habilitado + `relrowsecurity = true` en ambas. Si falta → correr `sql/rls_capa2_roles_profiles.sql`.
-6. **B4 — bucket `stands`** (SQL Editor):
-   ```sql
-   SELECT id, public, file_size_limit, allowed_mime_types FROM storage.buckets WHERE id = 'stands';
-   -- Si file_size_limit / allowed_mime_types están NULL:
-   UPDATE storage.buckets
-   SET file_size_limit = 15728640,  -- 15MB, igual que los demás buckets
-       allowed_mime_types = ARRAY['image/jpeg','image/png','image/webp']
-   WHERE id = 'stands';
-   ```
+5. ~~**M5 — verificar el trigger anti-escalada**~~ ✅ **HECHO 2026-07-16**: trigger `profiles_guard` habilitado + RLS `true` en `profiles` y `roles`.
+6. ~~**B4 — bucket `stands`**~~ ✅ **HECHO 2026-07-16**: estaba NULL/NULL → UPDATE aplicado (15MB + jpeg/png/webp), confirmado por SELECT.
 7. **B5 — npm audit**: en el VPS, `cd` al dir de lobby-api (el de `pm2 show lobby-api`) y `npm audit --omit=dev`. Pegar el resultado en la próxima charla si hay highs.
 8. ~~**CSP**: juntar violaciones `[Report Only]`~~ — **YA NO HACE FALTA** (2026-07-14): el flip se hizo con auditoría estática + test local enforzado. Reemplazado por el paso 0.
 
