@@ -39,7 +39,9 @@ app.use(cors({
     return cb(null, false);
   },
 }));
-app.use(express.json({ limit: '15mb' }));
+// verify captura el RAW body (req.rawBody) — lo necesita la firma HMAC del
+// webhook de WhatsApp (X-Hub-Signature-256). Inofensivo para el resto.
+app.use(express.json({ limit: '15mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 // Health check (abierto — usalo para uptime/monitor en vez de /api/arca/status).
 app.get('/health', (req, res) => {
@@ -63,6 +65,14 @@ app.get('/api/arca/status',    requireAuth, arca.statusHandler);
 app.get('/api/arca/ultimo',    requireAuth, arca.ultimoHandler);
 app.get('/api/arca/padron',    requireAuth, arca.padronHandler);
 app.post('/api/arca/facturar', requireRole('superadmin', 'admin', 'finanzas'), arca.facturarHandler);
+
+// WhatsApp Coexistence (CRM E4) — webhook de Meta. La ruta es PÚBLICA a propósito
+// (la llama Meta, no el front): la auth del POST es la firma X-Hub-Signature-256
+// validada adentro con WA_APP_SECRET; el GET exige WA_VERIFY_TOKEN. Sin esas env,
+// el módulo rechaza todo (no rompe el resto del server).
+const wa = require('./whatsapp-webhook');
+app.get('/api/whatsapp/webhook', wa.verifyHandler);
+app.post('/api/whatsapp/webhook', wa.eventsHandler);
 
 // (Si algún día montás /api/octexa/ask acá, va con iaLimit + requireAuth igual que OCR —
 //  y copiá octexa-ia.js a /home/mepex/api/ ANTES de reiniciar. Hoy queda afuera: el
