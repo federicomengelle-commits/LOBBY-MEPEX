@@ -520,6 +520,10 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 17. **Ser certero.** Si hay decisión clara, ejecutar; si hay duda real, preguntar una sola vez con opciones concretas. Nada de "¿querés que…?" cuando ya está acordado.
 18. **Plan first solo cuando aporta valor.** Si la tarea es chica y obvia, ejecutar directo. Plan extenso solo para refactors macro.
 
+### Método pro (consultoría Jordi, 2026-07-18)
+
+19. **Reviewers como subagentes ANTES de commitear.** Instalados en `.claude/agents/` (local, gitignored; genéricos de Jordi a nivel usuario `~/.claude/agents/`): `security-reviewer` (diff toca input/auth/endpoints/datos sensibles), `typescript-reviewer` (todo diff JS no trivial), `sql-reviewer` (TODO `sql/*.sql` nuevo antes de entregárselo a Fede). Findings CRITICAL/HIGH se arreglan antes del push. Originales + veredicto: `docs/jordi/`.
+
 ---
 
 ## 9. ARCHIVOS DE REFERENCIA
