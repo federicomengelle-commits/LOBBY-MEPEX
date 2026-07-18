@@ -30,6 +30,7 @@
         api_host: 'https://us.i.posthog.com',
         person_profiles: 'identified_only',
         capture_pageview: false, // SPA por hash → pageviews manuales abajo
+        capture_exceptions: true, // Error Tracking: excepciones JS no atrapadas → PostHog
     });
 
     // Identificar al usuario del lobby. Los scripts diferidos cargan solo

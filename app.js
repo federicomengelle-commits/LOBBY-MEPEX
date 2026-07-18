@@ -88,14 +88,14 @@ const App = {
         // que se pierde). array.full.js define window.posthog; posthog-init.js
         // (nuestro) hace init + identify + pageviews por hash.
         'https://us-assets.i.posthog.com/static/array.full.js',
-        'posthog-init.js?v=1',
+        'posthog-init.js?v=2',
     ],
 
     // Scripts OPCIONALES: si fallan (CDN caído, adblock) la app carga igual —
     // analytics/extras jamás pueden frenar el lobby.
     _OPTIONAL_SCRIPTS: new Set([
         'https://us-assets.i.posthog.com/static/array.full.js',
-        'posthog-init.js?v=1',
+        'posthog-init.js?v=2',
     ]),
 
     ensureAppLoaded() {
