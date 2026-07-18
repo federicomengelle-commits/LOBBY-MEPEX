@@ -611,7 +611,8 @@ const ComprasModule = {
                 if (!monto) { Toast.warning('Poné el monto'); return; }
                 const row = await API.addPresupuesto({
                     orden_id: ordenId,
-                    proveedor_id: provId || null,
+                    proveedor_uuid: provId || null,
+                    proveedor_id: this._provTrace(provId),
                     proveedor_nombre: provId ? null : nombre,
                     monto,
                     link: document.getElementById('presLink')?.value?.trim() || null,
@@ -850,10 +851,29 @@ const ComprasModule = {
         return '$' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     },
 
+    // Resuelve nombre por id UUID de `proveedor` o por el BIGINT legacy (traza compras_proveedor_id)
+    // — las OC/pagos viejos guardan el BIGINT y tienen que seguir mostrando el nombre.
     _getProveedorName(id) {
         if (!id) return '—';
-        const p = this._proveedores.find(x => String(x.id) === String(id));
+        const p = this._proveedores.find(x => String(x.id) === String(id)
+            || (x.compras_proveedor_id != null && String(x.compras_proveedor_id) === String(id)));
         return p ? (p.nombre || p.razon_social || '—') : '—';
+    },
+
+    // UUID del proveedor de una OC/presupuesto: prefiere proveedor_uuid; si solo hay BIGINT legacy, lo traduce.
+    _provUuid(entity) {
+        if (!entity) return '';
+        if (entity.proveedor_uuid) return entity.proveedor_uuid;
+        if (entity.proveedor_id == null) return '';
+        const p = this._proveedores.find(x => x.compras_proveedor_id != null && String(x.compras_proveedor_id) === String(entity.proveedor_id));
+        return p ? p.id : '';
+    },
+
+    // Traza inversa UUID→BIGINT legacy (para seguir poblando las columnas viejas mientras convivan).
+    _provTrace(uuid) {
+        if (!uuid) return null;
+        const p = this._proveedores.find(x => x.id === uuid);
+        return (p && p.compras_proveedor_id != null) ? p.compras_proveedor_id : null;
     },
 
     _getCalifAvg(p) {
@@ -914,63 +934,22 @@ const ComprasModule = {
     //  TAB: PROVEEDORES
     // ════════════════════════════════════════════════════
 
+    // 3b.2: fuente única = tabla `proveedor` (UUID). fase3b le agregó los mismos campos que
+    // usaba compras_proveedores (razon_social/contacto/telefono/email/notas/calif_*) → mismo shape.
     async _loadProveedores() {
         try {
             const { data, error } = await supabaseClient
-                .from('compras_proveedores')
+                .from('proveedor')
                 .select('*')
                 .eq('_deleted', false)
                 .order('nombre', { ascending: true });
             if (error) throw error;
             this._proveedores = data || [];
-
-            // Auto-migrar proveedores de tabla vieja si compras_proveedores está vacía
-            if (this._proveedores.length === 0 && !this._migrationAttempted) {
-                this._migrationAttempted = true;
-                await this._migrateOldProveedores();
-            }
         } catch (e) {
             console.warn('[Compras] Error loading proveedores:', e);
             this._proveedores = [];
         }
         this._renderProveedores();
-    },
-
-    async _migrateOldProveedores() {
-        try {
-            const { data: old, error } = await supabaseClient
-                .from('proveedor')
-                .select('*')
-                .eq('_deleted', false)
-                .order('nombre', { ascending: true });
-            if (error || !old || old.length === 0) return;
-
-            const rows = old.map(p => ({
-                nombre: p.nombre || '',
-                razon_social: null,
-                rubro: p.rubro || null,
-                contacto: p.detalle || null,
-                telefono: null,
-                email: null,
-                notas: p.domicilio_comercial ? `CUIT: ${p.cuit || '—'} | Domicilio: ${p.domicilio_comercial}` : (p.cuit ? `CUIT: ${p.cuit}` : null),
-                _deleted: false,
-            }));
-
-            const { error: insErr } = await supabaseClient.from('compras_proveedores').insert(rows);
-            if (insErr) throw insErr;
-
-            // Reload
-            const { data: fresh } = await supabaseClient
-                .from('compras_proveedores')
-                .select('*')
-                .eq('_deleted', false)
-                .order('nombre', { ascending: true });
-            this._proveedores = fresh || [];
-            Toast.info(`${rows.length} proveedores migrados desde la base anterior`);
-            console.log(`[Compras] Migrados ${rows.length} proveedores desde tabla 'proveedor'`);
-        } catch (e) {
-            console.warn('[Compras] Error migrando proveedores:', e);
-        }
     },
 
     _renderProveedores() {
@@ -1087,16 +1066,19 @@ const ComprasModule = {
         const p = this._proveedores.find(x => String(x.id) === String(this._selectedProveedorId));
         if (!p) { this._selectedProveedorId = null; this._renderProveedores(); return; }
 
-        // Load OC history for this provider
+        // Load OC history for this provider (por UUID; las OC viejas solo tienen el BIGINT legacy)
         let ocHistory = [];
         try {
-            const { data } = await supabaseClient
+            let q = supabaseClient
                 .from('compras_ordenes')
                 .select('*')
-                .eq('proveedor_id', p.id)
                 .eq('_deleted', false)
                 .order('fecha', { ascending: false })
                 .limit(10);
+            q = (p.compras_proveedor_id != null)
+                ? q.or(`proveedor_uuid.eq.${p.id},proveedor_id.eq.${p.compras_proveedor_id}`)
+                : q.eq('proveedor_uuid', p.id);
+            const { data } = await q;
             ocHistory = data || [];
         } catch (e) { /* continue */ }
 
@@ -1268,12 +1250,13 @@ const ComprasModule = {
 
                 try {
                     if (editId) {
-                        await supabaseClient.from('compras_proveedores').update(payload).eq('id', editId);
+                        await supabaseClient.from('proveedor').update(payload).eq('id', editId);
                         Toast.success('Proveedor actualizado');
                     } else {
-                        await supabaseClient.from('compras_proveedores').insert(payload);
+                        await supabaseClient.from('proveedor').insert(payload);
                         Toast.success('Proveedor creado');
                     }
+                    API.clearCache();   // los combos de Costos/Finanzas/Rendimiento cachean getProveedores()
                     Modal.close();
                     await this._loadProveedores();
                 } catch (e) {
@@ -1324,7 +1307,8 @@ const ComprasModule = {
                     calif_precio: parseInt(document.getElementById('cmpCalifPrecio')?.value) || 0,
                 };
                 try {
-                    await supabaseClient.from('compras_proveedores').update(payload).eq('id', prov.id);
+                    await supabaseClient.from('proveedor').update(payload).eq('id', prov.id);
+                    API.clearCache();
                     Toast.success('Calificación actualizada');
                     Modal.close();
                     await this._loadProveedores();
@@ -1337,10 +1321,11 @@ const ComprasModule = {
     },
 
     async _deleteProveedor(id) {
-        const ok = await Modal.confirm({ title: 'Eliminar proveedor', message: '¿Eliminar este proveedor?', danger: true });
+        const ok = await Modal.confirm({ title: 'Eliminar proveedor', message: '¿Eliminar este proveedor? La lista es compartida: también desaparece de los combos de Costos, Finanzas y Rendimiento.', danger: true });
         if (!ok) return;
         try {
-            await supabaseClient.from('compras_proveedores').update({ _deleted: true }).eq('id', id);
+            await supabaseClient.from('proveedor').update({ _deleted: true }).eq('id', id);
+            API.clearCache();
             Toast.success('Proveedor eliminado');
             this._selectedProveedorId = null;
             await this._loadProveedores();
@@ -1358,7 +1343,7 @@ const ComprasModule = {
         try {
             const [ordRes, provRes, evRes, projRes] = await Promise.all([
                 supabaseClient.from('compras_ordenes').select('*').eq('_deleted', false).order('fecha', { ascending: false }),
-                supabaseClient.from('compras_proveedores').select('id, nombre, razon_social').eq('_deleted', false).order('nombre'),
+                supabaseClient.from('proveedor').select('id, nombre, razon_social, compras_proveedor_id').eq('_deleted', false).order('nombre'),
                 API.getEvents(),
                 API.getProjects(),
             ]);
@@ -1437,7 +1422,7 @@ const ComprasModule = {
                                 return `
                                     <tr class="cmp-row" data-id="${oc.id}">
                                         <td class="cmp-mono">${oc.numero_oc || '—'}</td>
-                                        <td class="cmp-cell-name">${this._getProveedorName(oc.proveedor_id)}</td>
+                                        <td class="cmp-cell-name">${this._esc(this._getProveedorName(oc.proveedor_uuid || oc.proveedor_id))}</td>
                                         <td>${this._formatDate(oc.fecha)}</td>
                                         <td class="cmp-mono">${this._formatMoney(oc.monto_total)}</td>
                                         <td><span class="cmp-estado-tag" style="color:${estColor};border-color:${estColor}40;background:${estColor}15;">${this._getEstadoOCLabel(oc.estado)}</span></td>
@@ -1502,7 +1487,7 @@ const ComprasModule = {
                 <div class="cmp-ficha-header">
                     <div>
                         <h2 class="cmp-ficha-title">OC ${oc.numero_oc || '(sin número)'}</h2>
-                        <span class="cmp-field-value" style="color:var(--text-muted);">${this._getProveedorName(oc.proveedor_id)}</span>
+                        <span class="cmp-field-value" style="color:var(--text-muted);">${this._esc(this._getProveedorName(oc.proveedor_uuid || oc.proveedor_id))}</span>
                     </div>
                     <span class="cmp-estado-tag" style="color:${estColor};border-color:${estColor}40;background:${estColor}15;font-size:0.85rem;padding:6px 16px;">
                         ${this._getEstadoOCLabel(oc.estado)}
@@ -1563,7 +1548,7 @@ const ComprasModule = {
                         <div class="cmp-presu ${pr.es_ganadora ? 'win' : ''}">
                             <button class="cmp-presu-pick" data-presu-win="${pr.id}" title="Elegir ganadora"></button>
                             <div class="cmp-presu-main">
-                                <span class="cmp-presu-prov">${this._esc(pr.proveedor_nombre || this._getProveedorName(pr.proveedor_id))}${pr.es_ganadora ? ' <span class="cmp-presu-wintag">ganadora</span>' : ''}</span>
+                                <span class="cmp-presu-prov">${this._esc(pr.proveedor_nombre || this._getProveedorName(pr.proveedor_uuid || pr.proveedor_id))}${pr.es_ganadora ? ' <span class="cmp-presu-wintag">ganadora</span>' : ''}</span>
                                 ${pr.link ? ` <a href="${this._escAttr(pr.link)}" target="_blank" rel="noopener" class="cmp-presu-link">link ↗</a>` : ''}
                                 ${pr.notas ? `<div class="cmp-presu-notas">${this._esc(pr.notas)}</div>` : ''}
                             </div>
@@ -1828,7 +1813,7 @@ const ComprasModule = {
                             <label class="form-label">Proveedor</label>
                             <select id="cmpOCProv" class="form-input form-select" style="font-size:1rem;padding:12px;">
                                 <option value="">— Seleccionar —</option>
-                                ${this._proveedores.map(p => `<option value="${p.id}" ${item?.proveedor_id == p.id ? 'selected' : ''}>${p.nombre || p.razon_social}</option>`).join('')}
+                                ${this._proveedores.map(p => `<option value="${p.id}" ${this._provUuid(item) === p.id ? 'selected' : ''}>${this._esc(p.nombre || p.razon_social)}</option>`).join('')}
                             </select>
                         </div>
                     </div>
@@ -1883,7 +1868,8 @@ const ComprasModule = {
 
                 const payload = {
                     numero_oc: document.getElementById('cmpOCNum')?.value?.trim() || null,
-                    proveedor_id: provId,
+                    proveedor_uuid: provId,                       // fuente de verdad (UUID)
+                    proveedor_id: this._provTrace(provId),        // legacy BIGINT mientras conviva
                     evento_id: document.getElementById('cmpOCEvento')?.value || null,
                     proyecto_id: document.getElementById('cmpOCProyecto')?.value || null,
                     fecha: document.getElementById('cmpOCFecha')?.value || null,
@@ -2013,7 +1999,7 @@ const ComprasModule = {
         try {
             const [pagRes, provRes] = await Promise.all([
                 supabaseClient.from('compras_pagos').select('*').eq('_deleted', false).order('fecha_vencimiento', { ascending: true }),
-                supabaseClient.from('compras_proveedores').select('id, nombre, razon_social').eq('_deleted', false).order('nombre'),
+                supabaseClient.from('proveedor').select('id, nombre, razon_social, compras_proveedor_id').eq('_deleted', false).order('nombre'),
             ]);
             if (pagRes.error) throw pagRes.error;
             this._pagos = pagRes.data || [];
@@ -2099,7 +2085,7 @@ const ComprasModule = {
                                                   vencClass === 'cmp-proximo' ? '<span class="cmp-alert-tag cmp-proximo">Próximo</span>' : '';
                                 return `
                                     <tr class="${vencClass}">
-                                        <td class="cmp-cell-name">${this._getProveedorName(p.proveedor_id)}</td>
+                                        <td class="cmp-cell-name">${this._esc(this._getProveedorName(p.proveedor_id))}</td>
                                         <td>${p.concepto || '—'}</td>
                                         <td class="cmp-mono">${this._formatMoney(p.monto)}</td>
                                         <td>${this._formatDate(p.fecha_vencimiento)} ${vencLabel}</td>
@@ -2163,7 +2149,7 @@ const ComprasModule = {
                         <label class="form-label">Proveedor</label>
                         <select id="cmpPagoProv" class="form-input form-select" style="font-size:1rem;padding:12px;">
                             <option value="">— Seleccionar —</option>
-                            ${this._proveedores.map(p => `<option value="${p.id}">${p.nombre || p.razon_social}</option>`).join('')}
+                            ${this._proveedores.map(p => `<option value="${p.id}">${this._esc(p.nombre || p.razon_social)}</option>`).join('')}
                         </select>
                     </div>
                     <div>
@@ -2199,9 +2185,13 @@ const ComprasModule = {
                 if (!provId) { Toast.warning('Seleccioná un proveedor'); return; }
                 if (!monto) { Toast.warning('Ingresá el monto'); return; }
 
+                // compras_pagos.proveedor_id sigue siendo BIGINT (tabla retirada, sin par UUID) → traducir;
+                // un proveedor post-switch no tiene traza → bloquear en vez de guardar el pago sin proveedor.
+                const provTrace = this._provTrace(provId);
+                if (!provTrace) { Toast.warning('Este proveedor es nuevo y la tabla de Pagos es legacy — usá Finanzas para registrar el pago'); return; }
                 try {
                     await supabaseClient.from('compras_pagos').insert({
-                        proveedor_id: provId,
+                        proveedor_id: provTrace,
                         concepto: document.getElementById('cmpPagoConcepto')?.value?.trim() || null,
                         monto,
                         fecha_vencimiento: document.getElementById('cmpPagoVenc')?.value || null,

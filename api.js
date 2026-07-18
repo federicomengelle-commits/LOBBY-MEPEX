@@ -4349,13 +4349,22 @@ const API = {
         } catch (e) { console.warn('[API] deletePresupuesto:', e.message); return null; }
     },
 
-    // Sincroniza el cache de la OC (proveedor_id/monto_total) con la ganadora VIGENTE; si no hay, limpia.
+    // Sincroniza el cache de la OC (proveedor_uuid/proveedor_id/monto_total) con la ganadora VIGENTE; si no hay, limpia.
     async _recomputeOCGanadora(ordenId) {
         try {
             const { data: gan } = await supabaseClient.from('compras_oc_presupuestos')
-                .select('proveedor_id, monto').eq('orden_id', ordenId).eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
-            if (gan) await supabaseClient.from('compras_ordenes').update({ proveedor_id: gan.proveedor_id, monto_total: gan.monto }).eq('id', ordenId);
-            else await supabaseClient.from('compras_ordenes').update({ proveedor_id: null, monto_total: 0 }).eq('id', ordenId);
+                .select('proveedor_id, proveedor_uuid, monto').eq('orden_id', ordenId).eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
+            if (gan) {
+                // 3b.2: propagar también el UUID; si la ganadora vieja solo trae BIGINT, resolverlo por la traza.
+                let provUuid = gan.proveedor_uuid || null;
+                if (!provUuid && gan.proveedor_id != null) {
+                    const { data: p } = await supabaseClient.from('proveedor').select('id').eq('compras_proveedor_id', gan.proveedor_id).maybeSingle();
+                    provUuid = p?.id || null;
+                }
+                await supabaseClient.from('compras_ordenes').update({ proveedor_uuid: provUuid, proveedor_id: gan.proveedor_id ?? null, monto_total: gan.monto }).eq('id', ordenId);
+            } else {
+                await supabaseClient.from('compras_ordenes').update({ proveedor_uuid: null, proveedor_id: null, monto_total: 0 }).eq('id', ordenId);
+            }
         } catch (e) { console.warn('[API] _recomputeOCGanadora:', e.message); }
     },
 
