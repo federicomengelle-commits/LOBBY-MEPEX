@@ -83,7 +83,20 @@ const App = {
         'modules.js?v=10',
         'notifications.js?v=7',
         'tareas.js?v=11',
+        // PostHog Analytics (consultoría Jordi 2026-07-17) — al final a propósito:
+        // si el CDN de PostHog falla, la app ya cargó entera (analytics es lo único
+        // que se pierde). array.full.js define window.posthog; posthog-init.js
+        // (nuestro) hace init + identify + pageviews por hash.
+        'https://us-assets.i.posthog.com/static/array.full.js',
+        'posthog-init.js?v=1',
     ],
+
+    // Scripts OPCIONALES: si fallan (CDN caído, adblock) la app carga igual —
+    // analytics/extras jamás pueden frenar el lobby.
+    _OPTIONAL_SCRIPTS: new Set([
+        'https://us-assets.i.posthog.com/static/array.full.js',
+        'posthog-init.js?v=1',
+    ]),
 
     ensureAppLoaded() {
         if (this._appLoaded) return Promise.resolve();
@@ -91,7 +104,15 @@ const App = {
         this._appLoading = (async () => {
             // async=false → los <script> descargan en paralelo pero EJECUTAN
             // en orden de inserción (mismo comportamiento que tenerlos en el HTML).
-            await Promise.all(this._APP_SCRIPTS.map(src => this._loadScript(src)));
+            await Promise.all(this._APP_SCRIPTS.map(src =>
+                this._loadScript(src).catch(err => {
+                    if (this._OPTIONAL_SCRIPTS.has(src)) {
+                        console.warn('[App] Script opcional no cargó (sigo igual):', src, err.message);
+                        return;
+                    }
+                    throw err;
+                })
+            ));
             // Re-registrar rutas: los `obj` del teardown (Fase 12.A) se evalúan
             // al registrar, y en el boot pre-login los módulos no existían.
             if (typeof Router !== 'undefined' && Router._registerRoutes) Router._registerRoutes();

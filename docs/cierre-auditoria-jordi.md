@@ -8,7 +8,7 @@
 ## Resumen ejecutivo
 
 - **Todo lo CRÍTICO, ALTO y MEDIO está cerrado y verificado en prod.** No queda ningún agujero explotable conocido.
-- Score: de **~25/40** chequeos aplicables en verde (2026-07-10) a **39/40** (2026-07-16, cierre completo:
+- Score: de **~25/40** chequeos aplicables en verde (2026-07-10) a **40/40** (2026-07-17 — MFA activo en las cuentas de Fede: app + Dashboard Supabase + personal; replicarlo en Lelean/Sofi queda como mejora progresiva, no bloqueante. Resto del cierre 2026-07-16:
   CSP enforcing · B3 429 · B4 bucket · B5 0 vulns · B6 Dashboard · M4 GoTrue · M5 trigger verificado · smokes IA/encuesta).
 - **Checklist COMPLETO (2026-07-17):** MFA activo en la cuenta de Fede (app + bonus Dashboard de Supabase). Lo único progresivo: replicar MFA en Lelean/Sofi. Todo lo demás cerrado con evidencia.
 
@@ -20,7 +20,7 @@
 | **C2** | Todo por HTTP sin cifrar | ✅ **CERRADO** | `https://app.mepex.com.ar` (Let's Encrypt + hook de renovación). Verificado 2026-07-13: redirect **301** http→https, **HSTS** max-age=31536000 includeSubDomains |
 | **C3** | Rotación de service_role + lpk_live (historial git) | ✅ **CERRADO** | Fede confirmó rotación/revocación (2026-07-11). Código actual limpio; residual histórico inofensivo |
 | **A1** | Sin rate limiting | ✅ **CERRADO + VERIFICADO** | `iaLimit` 20 req/min en endpoints IA del proxy; ARCA detrás de auth+rol; `/deploy` de lobby-api con 10 req/min — **verificado en prod 2026-07-16: 10×401 → 429** desde el browser. Recomendado: budget cap mensual en console.anthropic.com |
-| **A2** | Sin 2FA en admins | ✅ código / ⏳ **adopción** | MFA TOTP live (login + enrolamiento en Mi Perfil→Seguridad). **Falta activarlo en las cuentas** (Fede → después Lelean/Sofi). Futuro opcional: obligatorio para admin con gate AAL2 en finanzas |
+| **A2** | Sin 2FA en admins | ✅ **CERRADO** | MFA TOTP live + **activo en Fede** (app verificado por `mfa.listFactors()` + bonus Dashboard de Supabase + cuenta personal, 2026-07-17). Replicar en Lelean/Sofi = progresivo. Futuro opcional: obligatorio para admin con gate AAL2 |
 | **M1** | XSS interno + sin CSP | ✅ **CERRADO** | Escape central (Toast/Modal/ContextMenu) + `escHtml` en los 6 módulos ofensores (live). **CSP ENFORCING deployada en prod (2026-07-15, verificada 2026-07-16)** — script-src SIN 'unsafe-inline' (script de `encuesta.html` externalizado a `encuesta.js`, hover inline de `router.js` a CSS), `frame-src` cubre PDFs (Supabase + blob), `form-action 'self'`, connect-src exacto (+cdnjs/jsdelivr solo por los source maps de DevTools). App en uso real bajo la policy sin violaciones. Endurecimiento futuro opcional: sacar `'unsafe-eval'` |
 | **M2** | PII de clientes a Gemini free tier | ✅ **CERRADO** | `MODEL_PROVIDER=claude` en prod (2026-07-13): digest verificado corriendo en el VPS contra `claude-haiku-4-5` (no entrena, centavos). Gemini queda de fallback. Hardening opcional: validar el JSON de salida contra schema en el backend |
 | **M3** | RLS: policies anon peligrosas + tablas nuevas | ✅ **CERRADO** | PASO 1 (2026-07-11) + PASO 2 (encuesta→RPCs `SECURITY DEFINER`, 4 policies anon dropeadas). **Barrido anon 2026-07-13 sobre 18 tablas sensibles: 17 cerradas** (profiles, roles, personas, ingresos, egresos, asientos, comprobantes, crm_*, conformes, cotizaciones, tareas, cartera…). Única abierta: `catalogo_items` — **a propósito** (catálogo/precios para showroom/cotizador, sin PII; riesgo asumido, ver pendientes). PII operativa gateada solo por authenticated = decisión de diseño asumida (PARTE 4 opcional) |
