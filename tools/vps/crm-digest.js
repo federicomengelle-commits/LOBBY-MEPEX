@@ -87,8 +87,23 @@ function extractJSON(s) {
   return null;
 }
 
-async function digest(texto, contexto) {
-  const prompt = buildPrompt(texto, contexto);
+// Modo 'resumen_caso' (ficha v3): recibe el historial YA estructurado del timeline y devuelve
+// un resumen ejecutivo del caso — no reparsea burbujas. El front cae al shape clásico si el
+// connector deployado todavía no soporta el mode (ignora `mode` y devuelve `resumen`).
+function buildPromptResumen(texto) {
+  return `Sos el asistente del CRM de MEPEX (montaje de stands para ferias, Argentina).
+Te paso el historial de un caso comercial (mensajes de WhatsApp/mail/Instagram/notas internas, ya ordenados). Devolvé EXCLUSIVAMENTE un objeto JSON válido (sin texto antes/después, sin \`\`\`), con este shape exacto:
+{
+  "resumen_caso": "3-4 frases en español rioplatense: qué pide el cliente, en qué está la negociación, y terminá SIEMPRE con qué nos toca hacer a nosotros (si hay algo pendiente nuestro).",
+  "temperatura_sugerida": "hot|warm|cold"
+}
+Reglas: concreto y sin vueltas, nombres y fechas solo si aparecen en el texto. NO inventes montos ni compromisos. Si el historial es muy corto, resumí lo que haya.
+--- HISTORIAL ---
+${texto}`;
+}
+
+async function digest(texto, contexto, mode) {
+  const prompt = mode === 'resumen_caso' ? buildPromptResumen(texto) : buildPrompt(texto, contexto);
   const raw = PROVIDER === 'claude' ? await callClaude(prompt) : await callGemini(prompt);
   const parsed = extractJSON(raw);
   if (!parsed) throw new Error('La IA no devolvió JSON parseable');
@@ -98,9 +113,9 @@ async function digest(texto, contexto) {
 // Handler Express
 async function handler(req, res) {
   try {
-    const { texto, contexto } = req.body || {};
+    const { texto, contexto, mode } = req.body || {};
     if (!texto || typeof texto !== 'string') return res.status(400).json({ error: 'falta "texto"' });
-    const result = await digest(texto, contexto);
+    const result = await digest(texto, contexto, mode);
     res.json({ ok: true, provider: PROVIDER, ...result });
   } catch (e) {
     console.error('[crm/digest]', e.message);
@@ -108,4 +123,4 @@ async function handler(req, res) {
   }
 }
 
-module.exports = { handler, digest, buildPrompt };
+module.exports = { handler, digest, buildPrompt, buildPromptResumen };

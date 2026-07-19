@@ -184,6 +184,10 @@ const CRM = {
         const user = Auth.getUser();
         if (!user) return Router.navigate('login');
 
+        // El router rutea acá cuando el hash es #crm (incluido el BACK del navegador desde
+        // #crm/caso/<id>): arrancar siempre sin ficha abierta — la ruta con id la re-abre vía renderCaso.
+        this._casoActivoId = null;
+
         this._injectStyles();
         if (!this._lightboxBound) {
             this._lightboxBound = true;
@@ -462,6 +466,7 @@ const CRM = {
         // Al cambiar de tab cerramos cualquier ficha full-screen abierta (caso o cliente)
         this._casoActivoId = null;
         this._clienteActivoId = null;
+        if (location.hash.startsWith('#crm/caso/')) history.pushState(null, '', '#crm');
         // Update tab buttons
         document.querySelectorAll('.crm-tab').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tab);
@@ -3550,7 +3555,7 @@ const CRM = {
     _grupoHtml(label, color, items, icon) {
         return `<div class="casos-grupo">
             <div class="casos-grupo-head"><span class="casos-grupo-dot" style="background:${color}"></span>${icon ? icon + ' ' : ''}${label}<span class="casos-grupo-n">${items.length}</span></div>
-            ${items.map(c => this._renderCasoRow(c)).join('')}
+            <div class="casos-grid">${items.map(c => this._renderCasoRow(c)).join('')}</div>
         </div>`;
     },
 
@@ -3559,7 +3564,7 @@ const CRM = {
         const open = this._casosPospuestosOpen;
         return `<div class="casos-grupo casos-pospuestos">
             <div class="casos-grupo-head casos-posp-head" id="casosPospToggle"><span class="casos-grupo-dot" style="background:#9B7DFF"></span>💤 Pospuestos<span class="casos-grupo-n">${items.length}</span><span class="casos-posp-caret">${open ? '▾' : '▸'}</span></div>
-            ${open ? items.map(c => this._renderCasoRow(c)).join('') : ''}
+            ${open ? `<div class="casos-grid">${items.map(c => this._renderCasoRow(c)).join('')}</div>` : ''}
         </div>`;
     },
 
@@ -3595,21 +3600,16 @@ const CRM = {
         if (!d) return '';
         return `https://wa.me/${d.length <= 10 ? ('54' + d) : d}`;
     },
-    // El presupuesto vinculado más reciente; si no hay, el monto estimado del caso.
+    // El presupuesto vinculado más reciente. SIN monto a la vista (preferencia de Fede:
+    // los importes viven en el PDF/ficha, no en la bandeja).
     _presupuestoChipHtml(caso) {
         const cots = this._cotizaciones.filter(c => c.casoId === caso.id);
-        if (cots.length) {
-            const cot = cots.slice().sort((a, b) =>
-                new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
-            const ec = this._cotEstados.find(e => e.value === cot.estado);
-            const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '';
-            const est = ec ? ` · <span style="color:${ec.color}">${ec.label}</span>` : '';
-            return `<span class="caso-chip-presu" data-cot-id="${cot.id}" title="Abrir cotización">📄 ${this._escHtml(cot.numero || 'COT')}${monto ? ' · ' + monto : ''}${est}</span>`;
-        }
-        if (caso.montoEstimado) {
-            return `<span class="caso-chip-estimado" title="Monto estimado del caso">~ $${caso.montoEstimado.toLocaleString('es-AR')}</span>`;
-        }
-        return '';
+        if (!cots.length) return '';
+        const cot = cots.slice().sort((a, b) =>
+            new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
+        const ec = this._cotEstados.find(e => e.value === cot.estado);
+        const est = ec ? ` · <span style="color:${ec.color}">${ec.label}</span>` : '';
+        return `<span class="caso-chip-presu" data-cot-id="${cot.id}" title="Abrir cotización">📄 ${this._escHtml(cot.numero || 'COT')}${est}</span>`;
     },
     _proximaAccionChipHtml(caso) {
         if (!caso.proximaAccion) return '';
@@ -3635,32 +3635,30 @@ const CRM = {
         if (c._esNuevo)      chips.push('<span class="caso-flag nuevo">nuevo</span>');
         const presu = this._presupuestoChipHtml(c);
         const accion = this._proximaAccionChipHtml(c);
-        const metaRow = (presu || accion) ? `<div class="caso-row-meta">${presu}${accion}</div>` : '';
-        // Acciones rápidas (visibles al hover). data-stop evita que el click abra la ficha.
+        // v3: CARD en grilla — cliente protagonista, acciones inline SIEMPRE visibles (chau hover-only).
+        // Se conservan clases/data-* de la v2 (caso-row, data-caso-id, data-act, data-stop) → misma delegación.
         const wa = this._waLinkForCaso(c);
         const acts = [];
-        if (wa) acts.push(`<a class="caso-act" data-stop="1" href="${wa}" target="_blank" rel="noopener" title="WhatsApp">💬</a>`);
-        acts.push(`<button class="caso-act" data-stop="1" data-act="agendar" title="Agendar acción">📅</button>`);
-        if (c._sinResponder) acts.push(`<button class="caso-act" data-stop="1" data-act="respondido" title="Marcar respondido">✓</button>`);
-        acts.push(`<button class="caso-act" data-stop="1" data-act="snooze" title="Posponer">💤</button>`);
-        acts.push(`<button class="caso-act" data-stop="1" data-act="linea" title="Clasificar línea">🏷️</button>`);
-        const rowCls = `caso-row${c._necesitaAccion ? ' caso-row--urge' : ''}${c._noLeido ? ' caso-row--noleido' : ''}`;
+        if (wa) acts.push(`<a class="caso-act caso-act-txt caso-act-wa" data-stop="1" href="${wa}" target="_blank" rel="noopener" title="Abrir WhatsApp del cliente">WhatsApp</a>`);
+        acts.push(`<button class="caso-act caso-act-txt caso-act-ag" data-stop="1" data-act="agendar" title="Agendar acción">Agendar</button>`);
+        if (c._sinResponder) acts.push(`<button class="caso-act caso-act-txt" data-stop="1" data-act="respondido" title="Marcar respondido">Respondido</button>`);
+        acts.push(`<button class="caso-act caso-act-txt" data-stop="1" data-act="snooze" title="Posponer">Posponer</button>`);
+        acts.push(`<button class="caso-act caso-act-txt" data-stop="1" data-act="linea" title="Clasificar línea">🏷️</button>`);
+        const avCol = this._avatarColor(cliente);
+        const rowCls = `caso-row caso-card${c._necesitaAccion ? ' caso-row--urge' : ''}${c._noLeido ? ' caso-row--noleido' : ''}`;
         return `<div class="${rowCls}" data-caso-id="${c.id}" style="border-left-color:${estadoCfg.color}">
-            <div class="caso-row-main">
-                <div class="caso-row-top">
-                    ${c._noLeido ? '<span class="caso-unread-dot" title="No leído"></span>' : ''}
-                    <span class="caso-row-titulo">${this._escHtml(c.titulo)}</span>
-                    <button class="caso-row-estado" data-stop="1" data-act="estado" style="background:${estadoCfg.color}1f;color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoCfg.label} <span class="caso-estado-caret">▾</span></button>
-                    ${chips.join('')}
+            <div class="caso-card-top">
+                ${c._noLeido ? '<span class="caso-unread-dot" title="No leído"></span>' : ''}
+                <span class="caso-card-av" style="background:${avCol}26;color:${avCol}">${this._escHtml(this._casoInitials(cliente))}</span>
+                <div class="caso-card-idwrap">
+                    <span class="caso-card-cliente">${this._escHtml(cliente)}</span>
+                    <span class="caso-card-titulo">${this._escHtml(c.titulo)}</span>
                 </div>
-                <div class="caso-row-sub">
-                    <span class="caso-row-cliente">${this._escHtml(cliente)}</span>
-                    <span class="caso-row-sep">·</span>
-                    <span class="caso-row-snippet">${canalCfg ? canalCfg.icon + ' ' : ''}${snippet}</span>
-                </div>
-                ${metaRow}
+                <button class="caso-row-estado" data-stop="1" data-act="estado" style="background:${estadoCfg.color}1f;color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoCfg.label} <span class="caso-estado-caret">▾</span></button>
             </div>
-            <div class="caso-row-right">
+            ${(chips.length || presu || accion) ? `<div class="caso-card-chips">${chips.join('')}${presu}${accion}</div>` : ''}
+            <div class="caso-card-snippet">${canalCfg ? canalCfg.icon + ' ' : ''}${snippet}</div>
+            <div class="caso-card-foot">
                 <div class="caso-row-actions">${acts.join('')}</div>
                 <div class="caso-row-stat">${aging}${this._ownerAvatar(c.ownerId)}</div>
             </div>
@@ -3927,6 +3925,21 @@ const CRM = {
         this._casoMensajes = await API.getCasoMensajes(id);
         this._closePanel();
         this._renderTabContent();
+        // Si el caso no existía (borrado/id viejo), _renderCasoFicha ya reseteó _casoActivoId y
+        // mostró la Bandeja → NO dejar la URL apuntando a una ficha fantasma.
+        if (this._casoActivoId !== id) {
+            if (location.hash.startsWith('#crm/caso/')) history.replaceState(null, '', '#crm');
+            Toast.warning('Ese caso ya no existe');
+            return;
+        }
+        // Ruta linkeable (#crm/caso/<id>) sin re-render del router: pushState NO dispara hashchange.
+        if (location.hash !== '#crm/caso/' + id) history.pushState(null, '', '#crm/caso/' + id);
+    },
+
+    // Entrada por ruta #crm/caso/<id> (deep-link desde notificaciones/tareas/WhatsApp).
+    async renderCaso(id) {
+        await this.render();
+        await this._openCaso(id);
     },
 
     _closeCaso() {
@@ -3934,6 +3947,7 @@ const CRM = {
         this._casoMensajes = [];
         this._pendingAdjuntos = [];
         this._renderTabContent();
+        if (location.hash.startsWith('#crm/caso/')) history.pushState(null, '', '#crm');
     },
 
     async _reloadCasoYFicha(id) {
@@ -3949,28 +3963,6 @@ const CRM = {
         this._renderTabContent();
     },
 
-    // Banda de presupuesto prominente arriba del timeline de la ficha (cotización más reciente).
-    _presupuestoStripHtml(cotsCaso) {
-        if (!cotsCaso || !cotsCaso.length) {
-            return `<div class="caso-presu-strip caso-presu-empty"><span class="cps-icon">📄</span><span class="cps-empty">Sin presupuesto vinculado</span></div>`;
-        }
-        const cot = cotsCaso.slice().sort((a, b) =>
-            new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
-        const ec = this._cotEstados.find(e => e.value === cot.estado);
-        const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '';
-        const more = cotsCaso.length > 1 ? `<span class="cps-more">+${cotsCaso.length - 1} más</span>` : '';
-        return `<div class="caso-presu-strip">
-            <span class="cps-icon">📄</span>
-            <div class="cps-main">
-                <span class="cps-num">${this._escHtml(cot.numero || 'COT')}</span>
-                ${monto ? `<span class="cps-monto">${monto}</span>` : ''}
-                ${ec ? `<span class="cps-estado" style="color:${ec.color}">${ec.label}</span>` : ''}
-                ${more}
-            </div>
-            <button class="cps-open" data-cot-id="${cot.id}">Abrir →</button>
-        </div>`;
-    },
-
     _renderCasoFicha() {
         const caso = this._casos.find(c => c.id === this._casoActivoId);
         if (!caso) { this._casoActivoId = null; return this._renderCasosBandeja(); }
@@ -3982,33 +3974,48 @@ const CRM = {
             + ['hot', 'warm', 'cold'].map(t => `<option value="${t}" ${caso.temperaturaManual && caso.temperatura === t ? 'selected' : ''}>${this._tempConfig[t].icon} ${this._tempConfig[t].label}</option>`).join('');
         const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
         const owner = this._getVendedorName(caso.ownerId);
-        const monto = caso.montoEstimado ? '$' + caso.montoEstimado.toLocaleString('es-AR') : '—';
         const lineaCfg = caso.linea ? this._lineaConfig(caso.linea) : null;
         const cotsCaso = this._cotizaciones.filter(c => c.casoId === caso.id);
         const accionVencida = !!(caso.proximaAccionFecha && new Date(caso.proximaAccionFecha).getTime() < Date.now());
         const accionFechaTxt = caso.proximaAccionFecha ? new Date(caso.proximaAccionFecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
         const estadoOpts = this._casoEstados.map(e => `<option value="${e.value}" ${e.value === caso.estado ? 'selected' : ''}>${e.label}</option>`).join('');
-        return `<div class="caso-ficha">
+        // v3: números del caso (sin montos — preferencia de Fede: los importes viven en el PDF)
+        const lastMsg = this._casoMensajes.length ? this._casoMensajes[this._casoMensajes.length - 1] : null;
+        const diasSinMov = this._getDaysSince(lastMsg ? lastMsg.fecha : caso.updatedAt);
+        const edad = this._getDaysSince(caso.createdAt);
+        const clienteNombre = cliente ? cliente.name : 'Sin cliente';
+        const avCol = this._avatarColor(clienteNombre);
+        const eventoChip = caso.eventoId
+            ? `<a class="caso-meta-chip caso-evento-link" href="#eventos?id=${caso.eventoId}" title="Abrir la ficha del evento">📅 ${this._escHtml(caso.eventoTexto || 'Evento')} →</a>`
+            : (caso.eventoTexto ? `<span class="caso-meta-chip">📅 ${this._escHtml(caso.eventoTexto)}</span>` : '');
+        return `<div class="caso-ficha caso-ficha-v3">
             <div class="caso-ficha-main">
-                <div class="caso-ficha-header">
-                    <button class="caso-back" id="casoBack">← Bandeja</button>
-                    <div class="caso-head-row">
-                        <h2 class="caso-titulo">${this._escHtml(caso.titulo)}</h2>
+                <div class="caso-ficha-header caso-h3" style="border-left:3px solid ${estadoCfg.color}">
+                    <div class="caso-h3-row1">
+                        <button class="caso-back-v3" id="casoBack" title="Volver a la bandeja"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+                        <span class="caso-h3-av" style="background:${avCol}26;color:${avCol}">${this._escHtml(this._casoInitials(clienteNombre))}</span>
+                        <div class="caso-h3-idwrap">
+                            <div class="caso-h3-line1">
+                                ${cliente ? `<a class="caso-h3-cliente caso-cliente-link" data-client-id="${cliente.id}">${this._escHtml(cliente.name)}</a>` : '<span class="caso-h3-cliente caso-h3-nocliente">Sin cliente</span>'}
+                                <select class="caso-estado-select" id="casoEstado" style="color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoOpts}</select>
+                                ${eventoChip}
+                            </div>
+                            <div class="caso-h3-line2">
+                                <span class="caso-h3-sub">${this._escHtml(caso.titulo)}</span>
+                                ${diasSinMov !== null ? `<span class="caso-h3-num" style="color:${this._getDaysColor(diasSinMov)}">${diasSinMov === 0 ? 'movido hoy' : diasSinMov + 'd sin movim.'}</span>` : ''}
+                                ${edad !== null ? `<span class="caso-h3-num">edad ${edad}d</span>` : ''}
+                                <button class="caso-meta-chip caso-linea-chip" id="casoLinea" title="Clasificar línea de negocio"${lineaCfg ? ` style="color:${lineaCfg.color};border-color:${lineaCfg.color}55"` : ''}>${lineaCfg ? lineaCfg.icon + ' ' + lineaCfg.label : '🏷️ Sin clasificar'}</button>
+                                <select class="caso-temp-select" id="casoTemp" style="color:${temp ? temp.color : '#888'}" title="Temperatura — Auto = por recencia: Hot ≤5d · Warm 6-12d · Cold >12d. Elegí una para fijarla.">${tempOpts}</select>
+                                <span class="caso-h3-num" title="Responsable">👤 ${this._escHtml(owner)}</span>
+                            </div>
+                        </div>
                         <div class="caso-head-actions">
                             ${caso.estado === 'ganado' && !caso.proyectoId ? '<button class="caso-conv-btn" id="casoConvertir">🏗️ Convertir a proyecto</button>' : ''}
-                            ${caso.proyectoId ? '<span class="caso-meta-chip">🏗️ Proyecto vinculado</span>' : ''}
+                            ${caso.proyectoId ? `<a class="caso-meta-chip" href="#proyectos/${caso.proyectoId}" title="Abrir el proyecto">🏗️ Proyecto →</a>` : ''}
+                            <button class="caso-icon-btn" id="casoAgendar" title="Agendar próxima acción / reunión">📅</button>
                             <button class="caso-icon-btn" id="casoEdit" title="Editar caso">✏️</button>
                             <button class="caso-icon-btn caso-del" id="casoDelete" title="Eliminar caso">🗑</button>
                         </div>
-                    </div>
-                    <div class="caso-head-meta">
-                        ${cliente ? `<a class="caso-meta-chip caso-cliente-link" data-client-id="${cliente.id}">🏢 ${this._escHtml(cliente.name)}</a>` : '<span class="caso-meta-chip">Sin cliente</span>'}
-                        ${caso.eventoTexto ? `<span class="caso-meta-chip">📅 ${this._escHtml(caso.eventoTexto)}</span>` : ''}
-                        <button class="caso-meta-chip caso-linea-chip" id="casoLinea" title="Clasificar línea de negocio"${lineaCfg ? ` style="color:${lineaCfg.color};border-color:${lineaCfg.color}55"` : ''}>${lineaCfg ? lineaCfg.icon + ' ' + lineaCfg.label : '🏷️ Sin clasificar'}</button>
-                        <select class="caso-temp-select" id="casoTemp" style="color:${temp ? temp.color : '#888'}" title="Temperatura — Auto = por recencia: Hot ≤5d · Warm 6-12d · Cold >12d. Elegí una para fijarla.">${tempOpts}</select>
-                        <span class="caso-meta-chip">💰 ${monto}</span>
-                        <span class="caso-meta-chip">👤 ${this._escHtml(owner)}</span>
-                        <select class="caso-estado-select" id="casoEstado" style="color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoOpts}</select>
                     </div>
                     <div class="caso-accion ${accionVencida ? 'vencida' : ''}">
                         ${caso.proximaAccion
@@ -4017,13 +4024,63 @@ const CRM = {
                             : `<span class="caso-accion-txt caso-accion-empty">Sin próxima acción agendada</span>
                                <button class="caso-accion-set" id="casoAccionSet">+ Agendar</button>`}
                     </div>
+                    ${this._resumenIaHtml(caso)}
                 </div>
-                ${this._presupuestoStripHtml(cotsCaso)}
                 <div class="caso-timeline" id="casoTimeline">${this._renderTimeline(this._casoMensajes)}</div>
                 <div id="casoComposer">${this._renderComposer()}</div>
             </div>
             <aside class="caso-ficha-aside">${this._renderCasoAside(caso, cliente, cotsCaso)}</aside>
         </div>`;
+    },
+
+    // ─── Resumen IA del caso (estilo Gemini: banda colapsada + desplegable con los últimos mensajes resumidos) ───
+    _resumenIaHtml(caso) {
+        const when = caso.resumenIaAt ? this._relTime(caso.resumenIaAt) : '';
+        const txt = caso.resumenIa
+            ? this._escHtml(caso.resumenIa)
+            : '<span class="caso-ia-empty">Sin resumen todavía — generalo con ↻</span>';
+        return `<div class="caso-ia">
+            <div class="caso-ia-head">
+                <span class="caso-ia-tag">IA</span>
+                <span class="caso-ia-txt">${txt}</span>
+                ${when ? `<span class="caso-ia-when">${when}</span>` : ''}
+                <button class="caso-ia-btn" id="casoIaRefresh" title="Regenerar el resumen del caso con IA">↻</button>
+                <button class="caso-ia-btn" id="casoIaToggle" title="Ver los últimos mensajes resumidos">▾</button>
+            </div>
+            <div class="caso-ia-desple" id="casoIaDesple" style="display:none">${this._iaDespleHtml()}</div>
+        </div>`;
+    },
+    _iaDespleHtml() {
+        const msgs = (this._casoMensajes || []).filter(m => m.canal !== 'sistema').slice(-6);
+        if (!msgs.length) return '<p class="aside-empty">Sin mensajes en el historial todavía.</p>';
+        return msgs.map(m => {
+            const cfg = this._canalConfig[m.canal] || this._canalConfig.nota;
+            const f = m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '';
+            const quien = m.direccion === 'entrante' ? 'Cliente' : (m.direccion === 'saliente' ? 'MEPEX' : (m.autor || 'Interno'));
+            const s = m.resumenIa || (m.contenido || '').slice(0, 160);
+            return `<div class="caso-ia-item">
+                <span class="caso-ia-item-meta"><span style="color:${cfg.color}">${cfg.icon}</span> ${f} · ${this._escHtml(quien)}</span>
+                <span class="caso-ia-item-txt">${this._escHtml(s)}</span>
+            </div>`;
+        }).join('');
+    },
+    _relTime(iso) {
+        const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+        if (mins < 60) return `hace ${Math.max(1, mins)} min`;
+        if (mins < 60 * 24) return `hace ${Math.round(mins / 60)} h`;
+        return `hace ${Math.round(mins / 60 / 24)} d`;
+    },
+    async _generarResumenIa() {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        if (!caso) return;
+        const btn = document.getElementById('casoIaRefresh');
+        if (btn) { btn.textContent = '…'; btn.disabled = true; }
+        const resumen = await API.generarResumenCaso(caso, this._casoMensajes);
+        if (resumen) { Toast.success('Resumen actualizado'); await this._reloadCasoYFicha(caso.id); }
+        else {
+            Toast.error('No se pudo generar el resumen (¿IA no disponible?)');
+            if (btn) { btn.textContent = '↻'; btn.disabled = false; }
+        }
     },
 
     _renderCasoAside(caso, cliente, cotsCaso) {
@@ -4042,21 +4099,106 @@ const CRM = {
         } else {
             contacto = `<div class="aside-block"><div class="aside-title">Contacto</div><p class="aside-empty">Caso sin cliente vinculado. Editá el caso para asociarlo.</p></div>`;
         }
-        const cotsHtml = cotsCaso.length ? cotsCaso.map(c => {
-            const ec = this._cotEstados.find(e => e.value === c.estado);
-            return `<div class="aside-cot"><span class="aside-cot-num">${this._escHtml(c.numero || 'COT')}</span><span class="aside-cot-est" style="color:${ec ? ec.color : '#888'}">${ec ? ec.label : c.estado}</span><span class="aside-cot-monto">${c.montoTotal ? '$' + c.montoTotal.toLocaleString('es-AR') : ''}</span></div>`;
-        }).join('') : '<p class="aside-empty">Sin cotizaciones vinculadas a este caso.</p>';
+        // v3: cotización más reciente con desplegable de ítems (SIN montos — los importes viven en el PDF)
+        let cotBlock;
+        if (!cotsCaso.length) {
+            cotBlock = `<div class="aside-block"><div class="aside-title">Cotización</div><p class="aside-empty">Sin cotizaciones vinculadas a este caso.</p></div>`;
+        } else {
+            const cot = cotsCaso.slice().sort((a, b) =>
+                new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
+            const ec = this._cotEstados.find(e => e.value === cot.estado);
+            const otras = cotsCaso.filter(c => c.id !== cot.id).map(c => {
+                const e2 = this._cotEstados.find(x => x.value === c.estado);
+                return `<div class="aside-cot aside-cot-otra" data-cot-id="${c.id}" title="Abrir cotización"><span class="aside-cot-num">${this._escHtml(c.numero || 'COT')}</span><span class="aside-cot-est" style="color:${e2 ? e2.color : '#888'}">${e2 ? e2.label : c.estado}</span></div>`;
+            }).join('');
+            cotBlock = `<div class="aside-block">
+                <div class="aside-title">Cotización</div>
+                <div class="aside-cot-v3">
+                    <span class="aside-cot-chip">${this._escHtml(cot.numero || 'COT')}</span>
+                    ${ec ? `<span class="aside-cot-est" style="color:${ec.color}">${ec.label}</span>` : ''}
+                    <button class="aside-cot-tgl" id="casoCotToggle" data-cot-id="${cot.id}">▾ ítems</button>
+                </div>
+                <div class="aside-cot-items" id="casoCotItems" style="display:none"></div>
+                <div class="aside-cot-btns">
+                    <button class="aside-btn" id="casoCotOpen" data-cot-id="${cot.id}">Abrir</button>
+                    ${cot.pdfUrl ? `<button class="aside-btn" id="casoCotPdf" data-pdf="${escAttr(cot.pdfUrl)}">PDF</button>` : ''}
+                </div>
+                ${otras}
+            </div>`;
+        }
+        // v3: Drive del caso — sin configurar = 1 solo botón; configurado = abrir + ⚙ discreto para cambiarla
+        const driveBlock = `<div class="aside-block"><div class="aside-title">Drive</div>
+            ${caso.driveFolderUrl
+                ? `<div class="aside-drive"><button class="aside-btn aside-btn-drive" id="casoDriveOpen">📁 Drive del caso</button><button class="aside-btn-mini" id="casoDriveCfg" title="Cambiar la carpeta">⚙</button></div>`
+                : `<button class="aside-btn" id="casoDriveCfg">Configurar Drive</button>
+                   <p class="aside-empty aside-drive-hint">Renders, planos y fotos del caso. El proyecto hereda la carpeta al ganar.</p>`}
+        </div>`;
         return `${contacto}
-            <div class="aside-block">
-                <div class="aside-title">Cotizaciones (${cotsCaso.length})</div>
-                ${cotsHtml}
-            </div>
+            ${cotBlock}
+            ${driveBlock}
             <div class="aside-block">
                 <div class="aside-title">Detalle</div>
                 ${caso.origen ? `<div class="aside-row"><span class="aside-k">Origen</span><span class="aside-v">${this._escHtml(caso.origen)}</span></div>` : ''}
                 <div class="aside-row"><span class="aside-k">Creado</span><span class="aside-v">${caso.createdAt ? new Date(caso.createdAt).toLocaleDateString('es-AR') : '—'}</span></div>
                 ${caso.motivoPerdida ? `<div class="aside-row"><span class="aside-k">Motivo pérdida</span><span class="aside-v">${this._escHtml(caso.motivoPerdida)}</span></div>` : ''}
             </div>`;
+    },
+
+    // ─── v3: ítems de la cotización (lazy, sin montos) + Drive ───
+    async _toggleCotItems(cotId) {
+        const box = document.getElementById('casoCotItems');
+        const tgl = document.getElementById('casoCotToggle');
+        if (!box) return;
+        if (box.style.display !== 'none') { box.style.display = 'none'; if (tgl) tgl.textContent = '▾ ítems'; return; }
+        box.style.display = '';
+        if (tgl) tgl.textContent = '▴ ítems';
+        if (!box.dataset.loaded) {
+            box.innerHTML = '<p class="aside-empty">Cargando…</p>';
+            const items = await API.getCotizacionItems(cotId);
+            box.dataset.loaded = '1';
+            if (!items.length) {
+                box.innerHTML = '<p class="aside-empty">Sin ítems estructurados (cotización anterior al contrato con el Cotizador). Velos en el PDF.</p>';
+                return;
+            }
+            const CAP = 6;
+            const row = it => `<div class="aside-cot-item"><span>${it.cantidad ? this._escHtml(String(it.cantidad)) + '× ' : ''}${this._escHtml(it.nombre || '')}</span></div>`;
+            const first = items.slice(0, CAP).map(row).join('');
+            const resto = items.slice(CAP);
+            box.innerHTML = first + (resto.length
+                ? `<button class="aside-cot-more" id="casoCotMore">ver ${resto.length} ítems más…</button><div id="casoCotResto" style="display:none">${resto.map(row).join('')}</div>`
+                : '');
+            const more = document.getElementById('casoCotMore');
+            if (more) more.addEventListener('click', () => { more.style.display = 'none'; const r = document.getElementById('casoCotResto'); if (r) r.style.display = ''; });
+        }
+    },
+    _extractDriveFolderId(url) {
+        if (!url) return null;
+        let m = url.match(/\/folders\/([\w-]+)/); if (m) return m[1];
+        m = url.match(/[?&]id=([\w-]+)/); if (m) return m[1];
+        return null;
+    },
+    _driveModal(caso) {
+        const inst = Modal.open({
+            title: caso.driveFolderUrl ? 'Cambiar carpeta de Drive' : 'Configurar Drive del caso',
+            size: 'small',
+            body: `<div style="display:flex;flex-direction:column;gap:10px;">
+                <label class="form-label">URL de la carpeta de Drive</label>
+                <input id="casoDriveUrl" class="form-input" placeholder="https://drive.google.com/drive/folders/…" value="${escAttr(caso.driveFolderUrl || '')}">
+                <span style="font-size:.75rem;color:var(--text-muted);">Compartila como "Cualquiera con el enlace" para que el equipo la vea. Al ganar el caso, el proyecto hereda esta carpeta.</span>
+            </div>`,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="casoDriveSave">Guardar</button>`,
+        });
+        setTimeout(() => {
+            document.getElementById('casoDriveSave')?.addEventListener('click', async () => {
+                const url = document.getElementById('casoDriveUrl')?.value?.trim() || null;
+                if (url && !/^https?:\/\//i.test(url)) { Toast.warning('Pegá una URL válida de Drive (https://…)'); return; }
+                const r = await API.updateCaso(caso.id, { driveFolderUrl: url, driveFolderId: this._extractDriveFolderId(url) });
+                if (!r) { Toast.error('No se pudo guardar el Drive (¿falta correr sql/crm_ficha_v3.sql?)'); return; }
+                Modal.close(inst?.id);
+                Toast.success(url ? 'Drive vinculado' : 'Drive desvinculado');
+                await this._reloadCasoYFicha(caso.id);
+            });
+        }, 80);
     },
 
     _renderTimeline(msgs) {
@@ -4506,8 +4648,6 @@ const CRM = {
         });
         const lineaBtn = document.getElementById('casoLinea');
         if (lineaBtn) lineaBtn.addEventListener('click', () => { const c = getCaso(); if (c) this._openLineaMenu(c, lineaBtn.getBoundingClientRect()); });
-        const presuOpen = document.querySelector('.cps-open');
-        if (presuOpen) presuOpen.addEventListener('click', () => this._openCotById(presuOpen.dataset.cotId));
         const edit = document.getElementById('casoEdit');
         if (edit) edit.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
         const del = document.getElementById('casoDelete');
@@ -4518,6 +4658,31 @@ const CRM = {
         if (setA) setA.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
         const conv = document.getElementById('casoConvertir');
         if (conv) conv.addEventListener('click', () => { const c = getCaso(); if (c) this._convertirCasoAProyecto(c); });
+        // ── v3: agendar (header) · resumen IA · cotización desplegable · Drive ──
+        const agendar = document.getElementById('casoAgendar');
+        if (agendar) agendar.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
+        const iaRef = document.getElementById('casoIaRefresh');
+        if (iaRef) iaRef.addEventListener('click', () => this._generarResumenIa());
+        const iaTgl = document.getElementById('casoIaToggle');
+        if (iaTgl) iaTgl.addEventListener('click', () => {
+            const d = document.getElementById('casoIaDesple');
+            if (!d) return;
+            const abierto = d.style.display !== 'none';
+            d.style.display = abierto ? 'none' : '';
+            iaTgl.textContent = abierto ? '▾' : '▴';
+        });
+        const cotTgl = document.getElementById('casoCotToggle');
+        if (cotTgl) cotTgl.addEventListener('click', () => this._toggleCotItems(cotTgl.dataset.cotId));
+        const cotOpen = document.getElementById('casoCotOpen');
+        if (cotOpen) cotOpen.addEventListener('click', () => this._openCotById(cotOpen.dataset.cotId));
+        const cotPdf = document.getElementById('casoCotPdf');
+        if (cotPdf) cotPdf.addEventListener('click', () => { const u = cotPdf.dataset.pdf; if (/^https?:\/\//i.test(u)) window.open(u, '_blank', 'noopener'); });
+        document.querySelectorAll('.aside-cot-otra').forEach(el =>
+            el.addEventListener('click', () => this._openCotById(el.dataset.cotId)));
+        const drvOpen = document.getElementById('casoDriveOpen');
+        if (drvOpen) drvOpen.addEventListener('click', () => { const c = getCaso(); if (c?.driveFolderUrl && /^https?:\/\//i.test(c.driveFolderUrl)) window.open(c.driveFolderUrl, '_blank', 'noopener'); });
+        const drvCfg = document.getElementById('casoDriveCfg');
+        if (drvCfg) drvCfg.addEventListener('click', () => { const c = getCaso(); if (c) this._driveModal(c); });
         const cli = document.querySelector('.caso-cliente-link');
         if (cli) cli.addEventListener('click', () => {
             const id = cli.dataset.clientId;
@@ -6774,6 +6939,69 @@ const CRM = {
     max-width: 400px;
     margin: 0;
 }
+
+/* ═══ BANDEJA v3 — cards en grilla (cliente protagonista + acciones inline) ═══ */
+.casos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.caso-row.caso-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 0 8px 8px 0; }
+.caso-card-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.caso-card-av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.8rem; flex-shrink: 0; }
+.caso-card-idwrap { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.caso-card-cliente { color: var(--text-primary); font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caso-card-titulo { color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caso-card-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.caso-card-snippet { color: var(--text-dim); font-size: 0.74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caso-card-foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid #1d1d1d; padding-top: 8px; }
+.caso-card-foot .caso-row-actions { display: flex; gap: 5px; opacity: 1; }
+.caso-card-foot .caso-row-stat { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.caso-act.caso-act-txt { width: auto; height: auto; padding: 3px 9px; font-size: 0.72rem; background: transparent; }
+.caso-act-wa { color: var(--color-success); }
+.caso-act-wa:hover { border-color: var(--color-success); color: var(--color-success); }
+.caso-act-ag { color: var(--primary); }
+
+/* ═══ FICHA DE CASO v3 — cabecera rica + resumen IA + aside ═══ */
+.caso-back-v3 { width: 30px; height: 30px; border-radius: 50%; background: transparent; border: 1px solid #2a2a2a; color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 150ms ease; }
+.caso-back-v3:hover { border-color: var(--primary); color: var(--primary); }
+.caso-h3 { background: #111; border: 1px solid #2a2a2a; border-radius: 0 8px 8px 0; padding: 13px 15px; }
+.caso-h3-row1 { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.caso-h3-av { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.85rem; flex-shrink: 0; }
+.caso-h3-idwrap { flex: 1; min-width: 0; }
+.caso-h3-line1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.caso-h3-cliente { color: var(--text-primary); font-size: 1.05rem; font-weight: 600; cursor: pointer; text-decoration: none; }
+.caso-h3-cliente:hover { color: var(--primary); }
+.caso-h3-nocliente { color: var(--text-dim); cursor: default; }
+.caso-h3-line2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.caso-h3-sub { color: var(--text-muted); font-size: 0.75rem; }
+.caso-h3-num { color: var(--text-muted); font-size: 0.72rem; font-family: var(--font-mono, 'Space Mono', monospace); }
+.caso-evento-link { text-decoration: none; }
+.caso-evento-link:hover { color: var(--primary); border-color: var(--primary); }
+.caso-ia { background: rgba(0, 169, 193, 0.06); border: 1px solid rgba(0, 169, 193, 0.25); border-radius: 8px; padding: 8px 11px; margin-top: 10px; }
+.caso-ia-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.caso-ia-tag { color: var(--primary); font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.62rem; letter-spacing: 0.5px; flex-shrink: 0; }
+.caso-ia-txt { color: #c8c8c8; font-size: 0.8rem; line-height: 1.45; flex: 1; min-width: 0; }
+.caso-ia-empty { color: var(--text-dim); font-style: italic; }
+.caso-ia-when { color: var(--text-dim); font-size: 0.65rem; flex-shrink: 0; }
+.caso-ia-btn { background: transparent; border: none; color: var(--primary); cursor: pointer; font-size: 0.85rem; padding: 2px 5px; border-radius: 4px; flex-shrink: 0; }
+.caso-ia-btn:hover { background: rgba(0, 169, 193, 0.12); }
+.caso-ia-desple { border-top: 1px solid rgba(0, 169, 193, 0.18); margin-top: 8px; padding-top: 8px; display: flex; flex-direction: column; gap: 7px; max-height: 45vh; overflow-y: auto; }
+.caso-ia-item { display: flex; flex-direction: column; gap: 1px; }
+.caso-ia-item-meta { color: var(--text-dim); font-size: 0.65rem; font-family: var(--font-mono, 'Space Mono', monospace); }
+.caso-ia-item-txt { color: #b8b8b8; font-size: 0.78rem; line-height: 1.4; }
+.aside-cot-v3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.aside-cot-chip { background: rgba(155, 125, 255, 0.1); border: 1px solid rgba(155, 125, 255, 0.35); color: #9B7DFF; font-size: 0.68rem; font-family: var(--font-mono, 'Space Mono', monospace); padding: 2px 8px; border-radius: 4px; }
+.aside-cot-tgl { margin-left: auto; background: transparent; border: none; color: #9B7DFF; font-size: 0.72rem; cursor: pointer; padding: 2px 4px; }
+.aside-cot-items { border-top: 1px solid #1d1d1d; margin-top: 7px; padding-top: 6px; }
+.aside-cot-item { color: #aaa; font-size: 0.75rem; padding: 2px 0; }
+.aside-cot-more { background: transparent; border: none; color: var(--primary); font-size: 0.7rem; cursor: pointer; padding: 3px 0; display: block; }
+.aside-cot-btns { display: flex; gap: 6px; margin-top: 8px; }
+.aside-btn { background: transparent; border: 1px solid #2a2a2a; color: var(--text-muted); font-size: 0.72rem; padding: 4px 10px; border-radius: 5px; cursor: pointer; transition: all 150ms ease; }
+.aside-btn:hover { border-color: var(--primary); color: var(--primary); }
+.aside-btn-drive { border-color: rgba(0, 169, 193, 0.35); color: var(--primary); }
+.aside-btn-mini { background: transparent; border: 1px solid #2a2a2a; color: var(--text-dim); font-size: 0.72rem; width: 26px; border-radius: 5px; cursor: pointer; }
+.aside-btn-mini:hover { color: var(--text-muted); border-color: #555; }
+.aside-drive { display: flex; gap: 6px; align-items: center; }
+.aside-drive-hint { margin-top: 6px; }
+.aside-cot-otra { cursor: pointer; margin-top: 6px; }
+.aside-cot-otra:hover .aside-cot-num { color: var(--primary); }
 
 /* ═══ TAB ANALÍTICA — Charts + Analytics ═══ */
 .ana-root { display: flex; flex-direction: column; gap: 16px; padding: 0; }

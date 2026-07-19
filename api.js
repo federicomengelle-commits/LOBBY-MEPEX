@@ -1180,6 +1180,10 @@ const API = {
             motivoPerdida: c.motivo_perdida || '',
             proyectoId: c.proyecto_id || null,
             linea: c.linea || null,   // 'stand' | 'expo' | null (sin clasificar)
+            driveFolderUrl: c.drive_folder_url || null,   // ficha v3 (sql/crm_ficha_v3.sql)
+            driveFolderId: c.drive_folder_id || null,
+            resumenIa: c.resumen_ia || '',
+            resumenIaAt: c.resumen_ia_at || null,
             createdAt: c.created_at,
             updatedAt: c.updated_at,
             createdBy: c.created_by || null,
@@ -1259,6 +1263,8 @@ const API = {
                 estado: 'estado', temperatura: 'temperatura', temperaturaManual: 'temperatura_manual', montoEstimado: 'monto_estimado', ownerId: 'owner_id',
                 origen: 'origen', proximaAccion: 'proxima_accion', proximaAccionFecha: 'proxima_accion_fecha',
                 motivoPerdida: 'motivo_perdida', proyectoId: 'proyecto_id', linea: 'linea',
+                driveFolderUrl: 'drive_folder_url', driveFolderId: 'drive_folder_id',
+                resumenIa: 'resumen_ia', resumenIaAt: 'resumen_ia_at',
             };
             const p = {};
             Object.keys(map).forEach(k => {
@@ -1514,7 +1520,7 @@ const API = {
         } catch (_) { return {}; }
     },
 
-    async crmDigest(texto, contexto = null) {
+    async crmDigest(texto, contexto = null, mode = null) {
         if (!texto || !texto.trim()) return null;
         try {
             const ctrl = new AbortController();
@@ -1522,7 +1528,7 @@ const API = {
             const res = await fetch(this.CRM_DIGEST_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(await this._authHeader()) },
-                body: JSON.stringify({ texto, contexto }),
+                body: JSON.stringify(mode ? { texto, contexto, mode } : { texto, contexto }),
                 signal: ctrl.signal,
             });
             clearTimeout(timer);
@@ -1537,6 +1543,40 @@ const API = {
             console.warn('[API] crmDigest no disponible:', e.message);
             return null;
         }
+    },
+
+    // ─── Ficha de caso v3 ──────────────────
+    // Ítems de una cotización (contrato Cotizador: tabla cotizacion_items, lectura sin montos en el CRM).
+    async getCotizacionItems(cotizacionId) {
+        if (!cotizacionId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('cotizacion_items')
+                .select('id, nombre, cantidad, rubro, posicion')
+                .eq('cotizacion_id', cotizacionId)
+                .order('posicion', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getCotizacionItems:', e.message); return []; }
+    },
+
+    // Resumen IA del CASO: arma el texto del timeline y pega al endpoint con mode 'resumen_caso'.
+    // Si el connector del VPS aún no soporta el mode, cae al campo `resumen` del shape clásico.
+    async generarResumenCaso(caso, mensajes) {
+        const msgs = (mensajes || []).slice(-30);
+        if (!msgs.length) return null;
+        const lineas = msgs.map(m => {
+            const f = m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '';
+            const dir = m.direccion === 'entrante' ? 'CLIENTE' : (m.direccion === 'saliente' ? 'MEPEX' : 'interno');
+            return `[${f}] ${m.canal}/${dir}${m.autor ? ' (' + m.autor + ')' : ''}: ${(m.resumenIa || m.contenido || '').slice(0, 300)}`;
+        });
+        const texto = `CASO: ${caso.titulo || ''}${caso.eventoTexto ? ' · Evento: ' + caso.eventoTexto : ''}\nESTADO: ${caso.estado}\nHISTORIAL:\n${lineas.join('\n')}`;
+        const res = await this.crmDigest(texto, null, 'resumen_caso');
+        if (!res) return null;
+        const resumen = res.resumen_caso || res.resumen || null;
+        if (!resumen) return null;
+        await this.updateCaso(caso.id, { resumenIa: resumen, resumenIaAt: new Date().toISOString() });
+        return resumen;
     },
 
     // ─── Projects by Client ──────────────────
