@@ -1,5 +1,10 @@
 # Handoff — Rediseño del FLUJO de mensajes de la Ficha de Caso (CRM v3)
 
+> **✅ EJECUTADO 2026-07-19 (commit `14d444b`).** Plan-first cumplido: diagramas + 2 mockups
+> full-screen → Fede eligió **M2 "Copiloto"** (con podas) → construido como **ficha v4**
+> (`crm.js?v=37` · `api.js?v=86` · connector con `mode:'redactar_respuesta'`). Detalle en
+> CLAUDE.md §10 sesión 2026-07-19. Queda como registro histórico del problema y los dealbreakers.
+
 > **2026-07-19.** La ficha de caso v3 está CONSTRUIDA y EN PROD (2 rondas), pero el flujo del
 > composer/mensajes NO es intuitivo y Fede frenó el código: **"antes de seguir tocando, planeamos
 > el flujo, aunque sea dibujado con flechitas y con ifs; 2-3 versiones; que lo pueda usar
