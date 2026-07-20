@@ -1560,20 +1560,39 @@ const API = {
         } catch (e) { console.warn('[API] getCotizacionItems:', e.message); return []; }
     },
 
-    // Resumen IA del CASO: arma el texto del timeline y pega al endpoint con mode 'resumen_caso'.
-    // Si el connector del VPS aún no soporta el mode, cae al campo `resumen` del shape clásico.
-    async generarResumenCaso(caso, mensajes) {
-        const msgs = (mensajes || []).slice(-30);
-        if (!msgs.length) return null;
-        const lineas = msgs.map(m => {
+    // Resumen IA del CASO — INCREMENTAL por diseño (regla de Fede 2026-07-19): lo resumido ya está
+    // resumido; cada actualización manda SOLO los mensajes nuevos desde resumenIaAt + el resumen actual,
+    // y la IA le SUMA frases (mode 'resumen_caso_inc'). Full re-read únicamente en el primer resumen
+    // o con opts.full (botón "rehacer de cero"). Ahorra tokens y no reescribe lo que ya estaba bien.
+    async generarResumenCaso(caso, mensajes, opts = {}) {
+        const all = (mensajes || []);
+        if (!all.length) return null;
+        let incremental = !opts.full && !!(caso.resumenIa && caso.resumenIaAt);
+        let base;
+        if (incremental) {
+            const nuevos = all.filter(m => m.fecha && new Date(m.fecha) > new Date(caso.resumenIaAt));
+            // Delta gigante (>30 nuevos): el cap dejaría mensajes afuera PARA SIEMPRE (resumenIaAt
+            // los saltea). Caso rarísimo → re-lectura completa, igual que el primer resumen.
+            if (nuevos.length > 30) { incremental = false; base = all.slice(-30); }
+            else base = nuevos;
+        } else {
+            base = all.slice(-30);
+        }
+        if (!base.length) return caso.resumenIa || null;  // nada nuevo → sin llamada, sin tocar fechas
+        const lineas = base.map(m => {
             const f = m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '';
             const dir = m.direccion === 'entrante' ? 'CLIENTE' : (m.direccion === 'saliente' ? 'MEPEX' : 'interno');
             return `[${f}] ${m.canal}/${dir}${m.autor ? ' (' + m.autor + ')' : ''}: ${(m.resumenIa || m.contenido || '').slice(0, 300)}`;
         });
-        const texto = `CASO: ${caso.titulo || ''}${caso.eventoTexto ? ' · Evento: ' + caso.eventoTexto : ''}\nESTADO: ${caso.estado}\nHISTORIAL:\n${lineas.join('\n')}`;
-        const res = await this.crmDigest(texto, null, 'resumen_caso');
+        const head = `CASO: ${caso.titulo || ''}${caso.eventoTexto ? ' · Evento: ' + caso.eventoTexto : ''}\nESTADO: ${caso.estado}`;
+        const texto = incremental
+            ? `${head}\nRESUMEN ACTUAL:\n${caso.resumenIa}\nMENSAJES NUEVOS:\n${lineas.join('\n')}`
+            : `${head}\nHISTORIAL:\n${lineas.join('\n')}`;
+        const res = await this.crmDigest(texto, null, incremental ? 'resumen_caso_inc' : 'resumen_caso');
         if (!res) return null;
-        const resumen = res.resumen_caso || res.resumen || null;
+        // Incremental SOLO acepta resumen_caso: si el connector del VPS es viejo (ignora el mode y
+        // devuelve el `resumen` cortito del shape clásico), NO pisar el resumen bueno con 2 líneas.
+        const resumen = incremental ? (res.resumen_caso || null) : (res.resumen_caso || res.resumen || null);
         if (!resumen) return null;
         await this.updateCaso(caso.id, { resumenIa: resumen, resumenIaAt: new Date().toISOString() });
         return resumen;

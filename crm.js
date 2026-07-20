@@ -4084,6 +4084,8 @@ const CRM = {
     _attachIaBandEvents() {
         const iaRef = document.getElementById('casoIaRefresh');
         if (iaRef) iaRef.addEventListener('click', () => this._generarResumenIa());
+        const iaFull = document.getElementById('casoIaFull');
+        if (iaFull) iaFull.addEventListener('click', () => this._generarResumenIa(true));
         const iaTgl = document.getElementById('casoIaToggle');
         if (iaTgl) iaTgl.addEventListener('click', () => {
             const d = document.getElementById('casoIaDesple');
@@ -4139,8 +4141,11 @@ const CRM = {
         // Arriba: el resumen COMPLETO (la banda colapsada lo recorta a 2 líneas). Abajo: últimos mensajes.
         const full = (caso && caso.resumenIa)
             ? `<div class="caso-ia-full">${this._escHtml(caso.resumenIa)}</div>` : '';
+        // Al pie: rehacer TODO el resumen (la excepción — el flujo normal es incremental).
+        const rehacer = (caso && caso.resumenIa)
+            ? '<button class="caso-ia-rehacer" id="casoIaFull" title="Re-lee todo el historial y arma el resumen de cero (el ↻ normal solo suma lo nuevo)">↻ Rehacer de cero</button>' : '';
         const msgs = (this._casoMensajes || []).filter(m => m.canal !== 'sistema').slice(-6);
-        if (!msgs.length) return full || '<p class="aside-empty">Sin mensajes en el historial todavía.</p>';
+        if (!msgs.length) return (full || '<p class="aside-empty">Sin mensajes en el historial todavía.</p>') + rehacer;
         return full + msgs.map(m => {
             const cfg = this._canalConfig[m.canal] || this._canalConfig.nota;
             const f = m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : '';
@@ -4150,7 +4155,7 @@ const CRM = {
                 <span class="caso-ia-item-meta"><span style="color:${cfg.color}">${this._canalSvg(m.canal) || cfg.icon}</span> ${f} · ${this._escHtml(quien)}</span>
                 <span class="caso-ia-item-txt">${this._escHtml(s)}</span>
             </div>`;
-        }).join('');
+        }).join('') + rehacer;
     },
     _relTime(iso) {
         const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -4158,14 +4163,23 @@ const CRM = {
         if (mins < 60 * 24) return `hace ${Math.round(mins / 60)} h`;
         return `hace ${Math.round(mins / 60 / 24)} d`;
     },
-    async _generarResumenIa() {
+    // ↻ manual = INCREMENTAL (busca lo nuevo y le suma frases al resumen hecho). full=true solo
+    // desde "rehacer de cero" (desplegable) — única vía que re-lee y reescribe todo.
+    async _generarResumenIa(full = false) {
         const caso = this._casos.find(c => c.id === this._casoActivoId);
         if (!caso) return;
         const btn = document.getElementById('casoIaRefresh');
         if (btn) { btn.textContent = '…'; btn.disabled = true; }
-        const resumen = await API.generarResumenCaso(caso, this._casoMensajes);
-        if (resumen) { this._iaAutoFailed = false; Toast.success('Resumen actualizado'); await this._reloadCasoYFicha(caso.id); }
-        else {
+        const previo = caso.resumenIa;
+        const resumen = await API.generarResumenCaso(caso, this._casoMensajes, { full });
+        if (resumen && resumen === previo && !full) {
+            Toast.info('El resumen ya está al día');
+            if (btn) { btn.textContent = '↻'; btn.disabled = false; }
+        } else if (resumen) {
+            this._iaAutoFailed = false;
+            Toast.success(full ? 'Resumen rehecho de cero' : 'Resumen actualizado');
+            await this._reloadCasoYFicha(caso.id);
+        } else {
             Toast.error('No se pudo generar el resumen (¿IA no disponible?)');
             if (btn) { btn.textContent = '↻'; btn.disabled = false; }
         }
@@ -7780,6 +7794,8 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
 .cop-ev-nom { display: block; font-size: 0.82rem; color: var(--text-primary); text-decoration: none; }
 a.cop-ev-nom:hover { color: var(--primary); }
 .cop-ev-cd { font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.7rem; color: var(--accent); margin-top: 4px; }
+.caso-ia-rehacer { align-self: flex-end; background: transparent; border: none; color: var(--text-dim); font-size: 0.68rem; cursor: pointer; padding: 2px 4px; font-family: var(--font-main); }
+.caso-ia-rehacer:hover { color: var(--primary); }
 
 /* Form (modal nuevo/editar caso) */
 .caso-form { display: flex; flex-direction: column; }

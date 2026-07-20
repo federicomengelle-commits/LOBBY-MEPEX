@@ -97,7 +97,7 @@ async function handler(req, res) {
     const { pregunta, cerebro, spec } = req.body || {};
     if (!pregunta || typeof pregunta !== 'string') return res.status(400).json({ error: 'falta "pregunta"' });
     const out = await ask(pregunta, cerebro, spec);
-    res.json({ ok: true, provider: PROVIDER, ...out });
+    res.json({ ok: true, provider: PROVIDER, model: PROVIDER === 'claude' ? CLAUDE_MODEL : GEMINI_MODEL, ...out });
   } catch (e) {
     console.error('[octexa/ask]', e.message);
     res.status(502).json({ ok: false, error: e.message });

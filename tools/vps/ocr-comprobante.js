@@ -101,7 +101,7 @@ async function handler(req, res) {
     const m = imagen.match(/^data:([^;]+);base64,(.*)$/);
     if (m) { mimeType = mimeType || m[1]; imagen = m[2]; }
     const result = await ocr(imagen, mimeType || 'image/jpeg');
-    res.json({ ok: true, provider: PROVIDER, ...result });
+    res.json({ ok: true, provider: PROVIDER, model: PROVIDER === 'claude' ? CLAUDE_MODEL : GEMINI_MODEL, ...result });
   } catch (e) {
     console.error('[ocr/comprobante]', e.message);
     res.status(502).json({ ok: false, error: e.message });
