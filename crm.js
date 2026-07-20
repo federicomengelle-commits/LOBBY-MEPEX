@@ -4237,10 +4237,12 @@ const CRM = {
         </div>`;
         // ── v4: COPILOTO — sugerencia heurística + redactar con IA + recordatorio 48h (reusa proximaAccion) ──
         const seg48on = caso.proximaAccion === this._SEG48;
+        // Sin conversación no hay de dónde redactar → botón apagado (no un error confuso al click).
+        const hayConvo = (this._casoMensajes || []).some(m => m.canal !== 'sistema');
         const copBlock = `<div class="aside-block aside-cop">
             <div class="aside-title aside-title-cop">✦ Copiloto</div>
             <div class="cop-sug">${this._escHtml(this._copSugerencia(caso))}</div>
-            <button class="cop-redactar" id="copRedactar">✍ Redactar respuesta</button>
+            <button class="cop-redactar" id="copRedactar" ${hayConvo ? '' : 'disabled title="Se activa cuando el caso tenga mensajes"'}>✍ Redactar respuesta</button>
             <label class="cop-48"><input type="checkbox" id="cop48h" ${seg48on ? 'checked' : ''}> Avisarme si no responde en 48 h</label>
         </div>`;
         // ── v4: EVENTO con countdown (fechas lazy si hay FK; texto pelado si es solo referencia) ──
@@ -4286,6 +4288,11 @@ const CRM = {
     async _redactarRespuesta() {
         const caso = this._casos.find(c => c.id === this._casoActivoId);
         if (!caso) return;
+        // Guard honesto: sin mensajes el problema NO es el connector — no hay conversación que retomar.
+        if (!(this._casoMensajes || []).some(m => m.canal !== 'sistema')) {
+            Toast.info('Todavía no hay conversación en el caso — el Copiloto redacta a partir de los mensajes');
+            return;
+        }
         const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
         const btn = document.getElementById('copRedactar');
         if (btn) { btn.disabled = true; btn.textContent = '… redactando'; }
