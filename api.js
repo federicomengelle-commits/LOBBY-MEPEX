@@ -1579,6 +1579,35 @@ const API = {
         return resumen;
     },
 
+    // Copiloto v4: la IA redacta un BORRADOR de respuesta al cliente desde el historial.
+    // Devuelve solo texto (o null); el humano lo edita y manda — jamás se envía solo.
+    async redactarRespuestaCaso(caso, mensajes, clienteNombre) {
+        const msgs = (mensajes || []).filter(m => m.canal !== 'sistema').slice(-20);
+        if (!msgs.length) return null;
+        const lineas = msgs.map(m => {
+            const f = m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '';
+            const dir = m.direccion === 'entrante' ? 'CLIENTE' : (m.direccion === 'saliente' ? 'MEPEX' : 'interno');
+            return `[${f}] ${m.canal}/${dir}${m.autor ? ' (' + m.autor + ')' : ''}: ${(m.resumenIa || m.contenido || '').slice(0, 300)}`;
+        });
+        const texto = `CASO: ${caso.titulo || ''}${caso.eventoTexto ? ' · Evento: ' + caso.eventoTexto : ''}\nCLIENTE: ${clienteNombre || 'sin nombre'}\nESTADO: ${caso.estado}\nHISTORIAL:\n${lineas.join('\n')}`;
+        const res = await this.crmDigest(texto, null, 'redactar_respuesta');
+        return (res && typeof res.respuesta_sugerida === 'string' && res.respuesta_sugerida.trim()) ? res.respuesta_sugerida.trim() : null;
+    },
+
+    // Copiloto v4: fechas del evento del caso (countdown). 1 query chica, lazy desde la ficha.
+    async getEventoFechas(eventoId) {
+        if (!eventoId) return null;
+        try {
+            const { data, error } = await supabaseClient
+                .from('eventos')
+                .select('id, nombre, fecha_armado_inicio, fecha_evento_inicio')
+                .eq('id', eventoId)
+                .maybeSingle();
+            if (error) throw error;
+            return data || null;
+        } catch (e) { console.warn('[API] getEventoFechas:', e.message); return null; }
+    },
+
     // ─── Projects by Client ──────────────────
     // Cambio de signature post-rename: ahora recibe uuid (cliente_id), no nombre.
     // Callers pendientes de migrar listados en TODO-POST-RENAME.md.

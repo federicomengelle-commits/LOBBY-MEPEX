@@ -69,8 +69,12 @@ const CRM = {
     _clienteActivoId: null,     // si hay ficha de cliente abierta (full-screen, refactor v2)
     _casoDrag: null,            // caso siendo arrastrado en el pipeline kanban
     _casoMensajes: [],          // timeline del caso activo
-    _composerCanal: 'nota',     // nota | whatsapp | email | llamada
+    _composerCanal: 'nota',     // nota | whatsapp | email | llamada (registro "algo pasó afuera")
     _composerDireccion: 'saliente',
+    _composerDestino: 'nota',   // v4: destino del composer principal — 'whatsapp' | 'nota'
+    _SEG48: 'Seguimiento — sin respuesta 48h',  // marker del toggle del Copiloto (reusa proximaAccion, sin DDL)
+    _iaAutoBusyIds: null,       // v4: lock del auto-resumen POR caso (evita descartar el de un caso B mientras corre el de A)
+    _iaAutoFailed: false,       // v4: la IA falló en esta visita — frena el auto (el ↻ manual lo resetea al andar)
     _pendingAdjuntos: [],       // imágenes pegadas pendientes de enviar
 
     // ─── Counts per tab ───
@@ -3934,12 +3938,18 @@ const CRM = {
     // ─── FICHA ───
     async _openCaso(id) {
         this._casoActivoId = id;
-        this._composerCanal = 'nota';
-        this._composerDireccion = 'saliente';
+        this._composerCanal = 'whatsapp';
+        this._composerDireccion = 'entrante';
         this._pendingAdjuntos = [];
+        this._iaAutoFailed = false;
         this._casoMensajes = await API.getCasoMensajes(id);
+        // v4: destino default del composer — WhatsApp si el cliente tiene teléfono, sino nota interna.
+        const casoPre = this._casos.find(c => c.id === id);
+        const cliPre = casoPre?.clienteId ? this._clients.find(c => c.id === casoPre.clienteId) : null;
+        this._composerDestino = (cliPre && cliPre.phone) ? 'whatsapp' : 'nota';
         this._closePanel();
         this._renderTabContent();
+        this._maybeAutoResumen();  // background, no bloquea el render
         // Si el caso no existía (borrado/id viejo), _renderCasoFicha ya reseteó _casoActivoId y
         // mostró la Bandeja → NO dejar la URL apuntando a una ficha fantasma.
         if (this._casoActivoId !== id) {
@@ -3971,11 +3981,14 @@ const CRM = {
         this._casoMsgMap = ids.length ? await API.getUltimosMensajesPorCaso(ids) : {};
         this._counts.casos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado)).length;
         this._updateTabCounts();
-        if (id) {
+        // Guard: si el usuario ya navegó a OTRO caso (el reload puede venir de un confirm/await largo),
+        // no pisar _casoMensajes con los del caso viejo — el render usaría el timeline equivocado.
+        if (id && this._casoActivoId === id) {
             this._casoMensajes = await API.getCasoMensajes(id);
             if (API.marcarCasoLeido) { API.marcarCasoLeido(id); this._lecturas[id] = new Date().toISOString(); }
         }
         this._renderTabContent();
+        if (id && this._casoActivoId === id) this._maybeAutoResumen();
     },
 
     _renderCasoFicha() {
@@ -4011,25 +4024,28 @@ const CRM = {
                         <span class="caso-h3-av" style="background:${avCol}26;color:${avCol}">${this._escHtml(this._casoInitials(clienteNombre))}</span>
                         <div class="caso-h3-idwrap">
                             <div class="caso-h3-line1">
-                                ${cliente ? `<a class="caso-h3-cliente caso-cliente-link" data-client-id="${cliente.id}">${this._escHtml(cliente.name)}</a>` : '<span class="caso-h3-cliente caso-h3-nocliente">Sin cliente</span>'}
+                                ${cliente ? `<a class="caso-h3-cliente caso-cliente-link" data-client-id="${cliente.id}" title="${escAttr(caso.titulo || '')}">${this._escHtml(cliente.name)}</a>` : `<span class="caso-h3-cliente caso-h3-nocliente" title="${escAttr(caso.titulo || '')}">Sin cliente</span>`}
                                 <select class="caso-estado-select" id="casoEstado" style="color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoOpts}</select>
-                                ${eventoChip}
+                                <select class="caso-temp-select" id="casoTemp" style="color:${temp ? temp.color : '#888'}" title="Temperatura — Auto = por recencia: Hot ≤5d · Warm 6-12d · Cold >12d. Elegí una para fijarla.">${tempOpts}</select>
                             </div>
                             <div class="caso-h3-line2">
-                                <span class="caso-h3-sub">${this._escHtml(caso.titulo)}</span>
-                                ${diasSinMov !== null ? `<span class="caso-h3-num" style="color:${this._getDaysColor(diasSinMov)}">${diasSinMov === 0 ? 'movido hoy' : diasSinMov + 'd sin movim.'}</span>` : ''}
-                                ${edad !== null ? `<span class="caso-h3-num">edad ${edad}d</span>` : ''}
+                                ${eventoChip}
                                 <button class="caso-meta-chip caso-linea-chip" id="casoLinea" title="Clasificar línea de negocio"${lineaCfg ? ` style="color:${lineaCfg.color};border-color:${lineaCfg.color}55"` : ''}>${lineaCfg ? lineaCfg.icon + ' ' + lineaCfg.label : '🏷️ Sin clasificar'}</button>
-                                <select class="caso-temp-select" id="casoTemp" style="color:${temp ? temp.color : '#888'}" title="Temperatura — Auto = por recencia: Hot ≤5d · Warm 6-12d · Cold >12d. Elegí una para fijarla.">${tempOpts}</select>
-                                <span class="caso-h3-num" title="Responsable">👤 ${this._escHtml(owner)}</span>
                             </div>
                         </div>
-                        <div class="caso-head-actions">
-                            ${caso.estado === 'ganado' && !caso.proyectoId ? '<button class="caso-conv-btn" id="casoConvertir">🏗️ Convertir a proyecto</button>' : ''}
-                            ${caso.proyectoId ? `<a class="caso-meta-chip" href="#proyectos/${caso.proyectoId}" title="Abrir el proyecto">🏗️ Proyecto →</a>` : ''}
-                            <button class="caso-icon-btn" id="casoAgendar" title="Agendar próxima acción / reunión">📅</button>
-                            <button class="caso-icon-btn" id="casoEdit" title="Editar caso">✏️</button>
-                            <button class="caso-icon-btn caso-del" id="casoDelete" title="Eliminar caso">🗑</button>
+                        <div class="caso-h3-right">
+                            <div class="caso-head-actions">
+                                ${caso.estado === 'ganado' && !caso.proyectoId ? '<button class="caso-conv-btn" id="casoConvertir">🏗️ Convertir a proyecto</button>' : ''}
+                                ${caso.proyectoId ? `<a class="caso-meta-chip" href="#proyectos/${caso.proyectoId}" title="Abrir el proyecto">🏗️ Proyecto →</a>` : ''}
+                                <button class="caso-icon-btn" id="casoAgendar" title="Agendar próxima acción / reunión">📅</button>
+                                <button class="caso-icon-btn" id="casoEdit" title="Editar caso">✏️</button>
+                                <button class="caso-icon-btn caso-del" id="casoDelete" title="Eliminar caso">🗑</button>
+                            </div>
+                            <div class="caso-h3-nums">
+                                ${diasSinMov !== null ? `<span class="caso-h3-num" style="color:${this._getDaysColor(diasSinMov)}">${diasSinMov === 0 ? 'movido hoy' : diasSinMov + 'd sin movim.'}</span>` : ''}
+                                ${edad !== null ? `<span class="caso-h3-num">edad ${edad}d</span>` : ''}
+                                <span class="caso-h3-num" title="Responsable">👤 ${this._escHtml(owner)}</span>
+                            </div>
                         </div>
                     </div>
                     ${caso.proximaAccion ? `<div class="caso-accion ${accionVencida ? 'vencida' : ''}">
@@ -4048,19 +4064,76 @@ const CRM = {
     // ─── Resumen IA del caso (estilo Gemini: banda colapsada + desplegable con los últimos mensajes resumidos) ───
     _resumenIaHtml(caso) {
         const when = caso.resumenIaAt ? this._relTime(caso.resumenIaAt) : '';
+        const hayMsgs = (this._casoMensajes || []).some(m => m.canal !== 'sistema');
         const txt = caso.resumenIa
             ? this._escHtml(caso.resumenIa)
-            : '<span class="caso-ia-empty">Sin resumen todavía — generalo con ↻</span>';
-        return `<div class="caso-ia">
+            : `<span class="caso-ia-empty">${hayMsgs ? 'Armando el resumen…' : 'El resumen se arma solo cuando haya mensajes.'}</span>`;
+        return `<div class="caso-ia" id="casoIaBand">
             <div class="caso-ia-head">
                 <span class="caso-ia-tag">IA</span>
                 <span class="caso-ia-txt">${txt}</span>
-                ${when ? `<span class="caso-ia-when">${when}</span>` : ''}
+                ${when ? `<span class="caso-ia-when">auto · ${when}</span>` : ''}
                 <button class="caso-ia-btn" id="casoIaRefresh" title="Regenerar el resumen del caso con IA">↻</button>
                 <button class="caso-ia-btn" id="casoIaToggle" title="Ver los últimos mensajes resumidos">▾</button>
             </div>
             <div class="caso-ia-desple" id="casoIaDesple" style="display:none">${this._iaDespleHtml(caso)}</div>
         </div>`;
+    },
+
+    // v4: listeners de la banda IA (se re-atan al swapear solo la banda tras el auto-resumen).
+    _attachIaBandEvents() {
+        const iaRef = document.getElementById('casoIaRefresh');
+        if (iaRef) iaRef.addEventListener('click', () => this._generarResumenIa());
+        const iaTgl = document.getElementById('casoIaToggle');
+        if (iaTgl) iaTgl.addEventListener('click', () => {
+            const d = document.getElementById('casoIaDesple');
+            if (!d) return;
+            const abierto = d.style.display !== 'none';
+            d.style.display = abierto ? 'none' : '';
+            iaTgl.textContent = abierto ? '▾' : '▴';
+        });
+    },
+
+    // v4: resumen AUTOMÁTICO — si hay mensajes más nuevos que el último resumen, regenerar
+    // en background y actualizar SOLO la banda (sin re-render de la ficha, no molesta al que escribe).
+    async _maybeAutoResumen() {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        if (!caso || this._iaAutoFailed) return;
+        if (!this._iaAutoBusyIds) this._iaAutoBusyIds = {};
+        if (this._iaAutoBusyIds[caso.id]) return;  // lock POR caso: abrir otro caso no descarta su propio auto
+        const mensajesSnap = this._casoMensajes;   // snapshot: si el usuario cambia de caso, no leer los de otro
+        const msgs = (mensajesSnap || []).filter(m => m.canal !== 'sistema' && m.fecha);
+        if (!msgs.length) return;
+        const lastMsg = msgs.reduce((mx, m) => (m.fecha > mx ? m.fecha : mx), msgs[0].fecha);
+        if (caso.resumenIaAt && new Date(caso.resumenIaAt) >= new Date(lastMsg)) return;
+        this._iaAutoBusyIds[caso.id] = true;
+        const btn = document.getElementById('casoIaRefresh');
+        if (btn) { btn.textContent = '…'; btn.disabled = true; }
+        try {
+            const resumen = await API.generarResumenCaso(caso, mensajesSnap);
+            if (!resumen) { this._iaAutoFailed = true; return; }  // IA caída: no martillar; el ↻ manual queda
+            caso.resumenIa = resumen;
+            caso.resumenIaAt = new Date().toISOString();
+            if (this._casoActivoId !== caso.id) return;  // se fue a otro caso mientras tanto — no tocar SU banda
+            const band = document.getElementById('casoIaBand');
+            if (band) {
+                const abierto = document.getElementById('casoIaDesple')?.style.display !== 'none';
+                band.outerHTML = this._resumenIaHtml(caso);
+                this._attachIaBandEvents();
+                if (abierto) {  // preservar el desplegable si estaba abierto
+                    const d = document.getElementById('casoIaDesple');
+                    const t = document.getElementById('casoIaToggle');
+                    if (d) d.style.display = '';
+                    if (t) t.textContent = '▴';
+                }
+            }
+        } finally {
+            delete this._iaAutoBusyIds[caso.id];
+            if (this._casoActivoId === caso.id) {  // no resetear el botón de OTRO caso
+                const b2 = document.getElementById('casoIaRefresh');
+                if (b2) { b2.textContent = '↻'; b2.disabled = false; }
+            }
+        }
     },
     _iaDespleHtml(caso) {
         // Arriba: el resumen COMPLETO (la banda colapsada lo recorta a 2 líneas). Abajo: últimos mensajes.
@@ -4091,7 +4164,7 @@ const CRM = {
         const btn = document.getElementById('casoIaRefresh');
         if (btn) { btn.textContent = '…'; btn.disabled = true; }
         const resumen = await API.generarResumenCaso(caso, this._casoMensajes);
-        if (resumen) { Toast.success('Resumen actualizado'); await this._reloadCasoYFicha(caso.id); }
+        if (resumen) { this._iaAutoFailed = false; Toast.success('Resumen actualizado'); await this._reloadCasoYFicha(caso.id); }
         else {
             Toast.error('No se pudo generar el resumen (¿IA no disponible?)');
             if (btn) { btn.textContent = '↻'; btn.disabled = false; }
@@ -4148,7 +4221,24 @@ const CRM = {
                 : `<button class="aside-btn" id="casoDriveCfg">Configurar Drive</button>
                    <p class="aside-empty aside-drive-hint">Renders, planos y fotos del caso. El proyecto hereda la carpeta al ganar.</p>`}
         </div>`;
+        // ── v4: COPILOTO — sugerencia heurística + redactar con IA + recordatorio 48h (reusa proximaAccion) ──
+        const seg48on = caso.proximaAccion === this._SEG48;
+        const copBlock = `<div class="aside-block aside-cop">
+            <div class="aside-title aside-title-cop">✦ Copiloto</div>
+            <div class="cop-sug">${this._escHtml(this._copSugerencia(caso))}</div>
+            <button class="cop-redactar" id="copRedactar">✍ Redactar respuesta</button>
+            <label class="cop-48"><input type="checkbox" id="cop48h" ${seg48on ? 'checked' : ''}> Avisarme si no responde en 48 h</label>
+        </div>`;
+        // ── v4: EVENTO con countdown (fechas lazy si hay FK; texto pelado si es solo referencia) ──
+        const eventoBlock = (caso.eventoId || caso.eventoTexto) ? `<div class="aside-block">
+            <div class="aside-title">Evento</div>
+            <div id="casoEventoCop">${caso.eventoId
+                ? '<p class="aside-empty">Cargando…</p>'
+                : `<div class="cop-ev-nom">📅 ${this._escHtml(caso.eventoTexto)}</div>`}</div>
+        </div>` : '';
         return `${contacto}
+            ${copBlock}
+            ${eventoBlock}
             ${cotBlock}
             ${driveBlock}
             <div class="aside-block">
@@ -4157,6 +4247,89 @@ const CRM = {
                 <div class="aside-row"><span class="aside-k">Creado</span><span class="aside-v">${caso.createdAt ? new Date(caso.createdAt).toLocaleDateString('es-AR') : '—'}</span></div>
                 ${caso.motivoPerdida ? `<div class="aside-row"><span class="aside-k">Motivo pérdida</span><span class="aside-v">${this._escHtml(caso.motivoPerdida)}</span></div>` : ''}
             </div>`;
+    },
+
+    // ─── v4: Copiloto — helpers ───
+    // Sugerencia heurística client-side (sin costo IA): lee último mensaje + estado + recencia.
+    _copSugerencia(caso) {
+        const msgs = (this._casoMensajes || []).filter(m => m.canal !== 'sistema');
+        const last = msgs[msgs.length - 1];
+        const dias = this._getDaysSince(last ? last.fecha : caso.createdAt) ?? 0;
+        if (last && last.direccion === 'entrante')
+            return dias <= 0 ? 'El cliente escribió hoy y está sin responder — contestale ahora.'
+                : `El cliente espera respuesta hace ${dias}d — priorizalo.`;
+        if (!msgs.length) return 'Sin mensajes todavía — arrancá la conversación.';
+        if (caso.estado === 'cotizado')
+            return dias >= 2 ? `Pasaron ${dias}d desde tu último mensaje sin respuesta — un recordatorio corto ayuda.`
+                : 'Cotización enviada — dale un día o reforzá con un detalle del stand.';
+        if (caso.estado === 'lead') return 'Caso nuevo: primer contacto pendiente. Pedile fechas y medidas.';
+        if (caso.estado === 'negociacion') return 'En negociación — resolvé lo abierto y cerrá fecha de armado.';
+        if (caso.estado === 'ganado') return caso.proyectoId ? 'Ganado y con proyecto — el hilo queda de historial.' : 'Ganado 🎉 — convertilo a proyecto para arrancar producción.';
+        return caso.proximaAccion ? `Próximo paso: ${caso.proximaAccion}` : 'Al día. Definí la próxima acción para no perderlo.';
+    },
+
+    // "Redactar respuesta": la IA arma un borrador desde el historial → queda en el composer, JAMÁS se manda solo.
+    async _redactarRespuesta() {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        if (!caso) return;
+        const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        const btn = document.getElementById('copRedactar');
+        if (btn) { btn.disabled = true; btn.textContent = '… redactando'; }
+        const borrador = await API.redactarRespuestaCaso(caso, this._casoMensajes, cliente ? (cliente.contactName || cliente.name) : '');
+        // Guard de staleness: la IA puede tardar ~30s — si el usuario ya está en OTRO caso,
+        // no tocar nada (el borrador era para el cliente de ESTE caso, jamás al composer de otro).
+        if (this._casoActivoId !== caso.id) return;
+        const btn2 = document.getElementById('copRedactar');
+        if (btn2) { btn2.disabled = false; btn2.textContent = '✍ Redactar respuesta'; }
+        if (!borrador) { Toast.error('IA no disponible (¿falta actualizar el connector del VPS?)'); return; }
+        if (cliente?.phone && this._composerDestino !== 'whatsapp') { this._composerDestino = 'whatsapp'; this._refreshComposer(); }
+        const ta = document.getElementById('cmpText');
+        if (ta) { ta.value = borrador; ta.focus(); ta.dispatchEvent(new Event('input')); }
+        Toast.success('Borrador listo — editalo y mandalo');
+    },
+
+    // Toggle 48h: setea proximaAccion con marker + fecha a +48h (cero DDL; alimenta la Bandeja y el strip).
+    async _toggle48h(on) {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        if (!caso) return;
+        if (on) {
+            if (caso.proximaAccion && caso.proximaAccion !== this._SEG48) {
+                const ok = await Modal.confirm({
+                    title: 'Reemplazar la próxima acción',
+                    message: `Ya hay una próxima acción ("${this._escHtml(caso.proximaAccion)}"). ¿La reemplazo por el seguimiento automático de 48 h?`,
+                    confirmText: 'Reemplazar',
+                });
+                if (!ok) { const chk = document.getElementById('cop48h'); if (chk) chk.checked = false; return; }
+            }
+            const fecha = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
+            await API.updateCaso(caso.id, { proximaAccion: this._SEG48, proximaAccionFecha: fecha });
+        } else {
+            if (caso.proximaAccion !== this._SEG48) return;  // no pisar una acción custom
+            await API.updateCaso(caso.id, { proximaAccion: null, proximaAccionFecha: null });
+        }
+        await this._reloadCasoYFicha(caso.id);
+    },
+
+    // Evento del caso: countdown simple (lazy — 1 query chica solo si la ficha tiene evento FK).
+    async _loadEventoCop(caso) {
+        if (!document.getElementById('casoEventoCop')) return;
+        const ev = await API.getEventoFechas(caso.eventoId);
+        // Re-query POST-await (un re-render pudo recrear el nodo) + guard de caso activo.
+        if (this._casoActivoId !== caso.id) return;
+        const box = document.getElementById('casoEventoCop');
+        if (!box) return;
+        if (!ev) { box.innerHTML = `<div class="cop-ev-nom">📅 ${this._escHtml(caso.eventoTexto || 'Evento')}</div>`; return; }
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const dEvento = ev.fecha_evento_inicio ? Math.ceil((new Date(ev.fecha_evento_inicio + 'T00:00:00') - hoy) / 86400000) : null;
+        const armado = ev.fecha_armado_inicio
+            ? new Date(ev.fecha_armado_inicio + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : null;
+        let cd = '';
+        if (dEvento !== null) {
+            cd = dEvento > 0 ? `faltan ${dEvento} días` : (dEvento === 0 ? 'ARRANCA HOY' : 'ya pasó');
+        }
+        box.innerHTML = `
+            <a class="cop-ev-nom" href="#eventos?id=${ev.id}" title="Abrir la ficha del evento">📅 ${this._escHtml(ev.nombre || caso.eventoTexto || 'Evento')} →</a>
+            ${(cd || armado) ? `<div class="cop-ev-cd">${cd}${armado && dEvento !== null && dEvento >= 0 ? ` · armado ${armado}` : ''}</div>` : ''}`;
     },
 
     // ─── v3: ítems de la cotización (lazy, sin montos) + Drive ───
@@ -4222,10 +4395,15 @@ const CRM = {
         }
         let html = '';
         let lastDate = '';
+        let prev = null;
         msgs.forEach(m => {
             const dk = m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
-            if (dk && dk !== lastDate) { html += `<div class="tl-date">${dk}</div>`; lastDate = dk; }
-            html += this._renderTimelineItem(m);
+            let newDay = false;
+            if (dk && dk !== lastDate) { html += `<div class="tl-date">${dk}</div>`; lastDate = dk; newDay = true; }
+            // v4: agrupar consecutivos del mismo canal+dirección (estilo WhatsApp) → fila "apretada"
+            const tight = !newDay && prev && prev.canal === m.canal && prev.direccion === m.direccion && m.canal !== 'sistema';
+            html += this._renderTimelineItem(m, tight);
+            prev = m;
         });
         return html;
     },
@@ -4258,10 +4436,11 @@ const CRM = {
         return (m && m.id) ? `<button class="tl-del" data-del-msg="${m.id}" title="Eliminar del historial" aria-label="Eliminar">🗑</button>` : '';
     },
 
-    _renderTimelineItem(m) {
+    _renderTimelineItem(m, tight = false) {
         const cfg = this._canalConfig[m.canal] || this._canalConfig.nota;
         const time = m.fecha ? new Date(m.fecha).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
         const side = m.direccion === 'saliente' ? 'out' : (m.direccion === 'entrante' ? 'in' : 'mid');
+        const tc = tight ? ' tl-tight' : '';
         const adj = this._renderAdjuntos(m.adjuntos);
         const resumen = m.resumenIa ? `<div class="tl-ia">🤖 ${this._escHtml(m.resumenIa)}</div>` : '';
         const contenido = this._escHtml(m.contenido || '').replace(/\n/g, '<br>');
@@ -4269,7 +4448,7 @@ const CRM = {
 
         if (m.canal === 'email') {
             const subject = m.metadata && m.metadata.subject ? this._escHtml(m.metadata.subject) : '';
-            return `<div class="tl-row tl-${side}">${this._tlDelBtn(m)}<div class="tl-card tl-email">
+            return `<div class="tl-row tl-${side}${tc}">${this._tlDelBtn(m)}<div class="tl-card tl-email">
                 <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${this._canalSvg('email')} Email ${side === 'in' ? '· recibido' : (side === 'out' ? '· enviado' : '')}</span><span class="tl-meta">${autor} · ${time}</span></div>
                 ${subject ? `<div class="tl-subject">${subject}</div>` : ''}
                 ${resumen}
@@ -4278,7 +4457,7 @@ const CRM = {
             </div></div>`;
         }
         if (m.canal === 'nota') {
-            return `<div class="tl-row tl-mid">${this._tlDelBtn(m)}<div class="tl-card tl-nota">
+            return `<div class="tl-row tl-mid${tc}">${this._tlDelBtn(m)}<div class="tl-card tl-nota">
                 <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${this._canalSvg('nota')} Nota interna</span><span class="tl-meta">${autor} · ${time}</span></div>
                 <div class="tl-body">${this._renderMenciones(contenido)}</div>
                 ${adj}
@@ -4286,7 +4465,7 @@ const CRM = {
         }
         if (m.canal === 'llamada' || m.canal === 'reunion') {
             const dur = m.metadata && m.metadata.duracion ? ` · ⏱ ${m.metadata.duracion} min` : '';
-            return `<div class="tl-row tl-mid">${this._tlDelBtn(m)}<div class="tl-card tl-call">
+            return `<div class="tl-row tl-mid${tc}">${this._tlDelBtn(m)}<div class="tl-card tl-call">
                 <div class="tl-head"><span class="tl-canal" style="color:${cfg.color}">${this._canalSvg(m.canal)} ${cfg.label}${dur}</span><span class="tl-meta">${autor} · ${time}</span></div>
                 ${resumen}
                 ${contenido ? `<div class="tl-body">${contenido}</div>` : ''}
@@ -4296,60 +4475,160 @@ const CRM = {
         if (m.canal === 'sistema') {
             return `<div class="tl-row tl-sys"><div class="tl-sys-line">${contenido} <span class="tl-meta">· ${time}</span></div></div>`;
         }
-        // whatsapp (burbuja)
-        return `<div class="tl-row tl-${side}">${this._tlDelBtn(m)}<div class="tl-bubble tl-wa-${side}">
+        // whatsapp (burbuja compacta v4: hora inline adentro, autor en tooltip — el lado ya dice quién)
+        return `<div class="tl-row tl-${side}${tc}">${this._tlDelBtn(m)}<div class="tl-bubble tl-wa-${side}" title="${escAttr(m.autor || '')}">
             ${resumen}
             ${contenido ? `<div class="tl-body">${contenido}</div>` : ''}
             ${adj}
-            <div class="tl-foot">${autor} · ${time}</div>
+            <span class="tl-time">${time}</span>
         </div></div>`;
     },
 
-    // ─── COMPOSER ───
+    // ─── COMPOSER v4 — "escribí y mandá" (WhatsApp real post-E4 / nota interna). El registro
+    // manual de lo que pasó afuera vive escondido en el menú ＋ (nunca como cara principal). ───
     _renderComposer() {
-        const canales = [
-            { id: 'nota', ...this._canalConfig.nota },
-            { id: 'whatsapp', ...this._canalConfig.whatsapp },
-            { id: 'email', ...this._canalConfig.email },
-            { id: 'llamada', ...this._canalConfig.llamada },
-        ];
-        const c = this._composerCanal;
-        const tabs = canales.map(x => `<button class="cmp-tab ${c === x.id ? 'active' : ''}" data-canal="${x.id}" style="${c === x.id ? `color:${x.color};border-color:${x.color}` : ''}">${this._canalSvg(x.id) || x.icon} ${x.label}</button>`).join('');
-        const showDir = (c === 'whatsapp' || c === 'email');
-        const dirToggle = showDir ? `<div class="cmp-dir">
-            <span class="cmp-dir-lbl">El mensaje lo mandó:</span>
-            <button class="cmp-dir-btn ${this._composerDireccion === 'entrante' ? 'active' : ''}" data-dir="entrante">el Cliente</button>
-            <button class="cmp-dir-btn ${this._composerDireccion === 'saliente' ? 'active' : ''}" data-dir="saliente">MEPEX</button>
-        </div>` : '';
-        let extra = '';
-        if (c === 'email') extra = `<input type="text" class="cmp-input" id="cmpSubject" placeholder="Asunto del mail">`;
-        if (c === 'llamada') extra = `<input type="number" min="0" class="cmp-input cmp-input-sm" id="cmpDur" placeholder="Duración (min)">`;
-        const placeholder = c === 'whatsapp'
-            ? 'Pegá acá lo que se habló por WhatsApp (una conversación entera y "Procesar con IA" la ordena sola)…'
-            : (c === 'llamada' ? 'Qué se habló en la llamada (queda en el historial para siempre)…'
-            : (c === 'nota' ? 'Nota interna. Usá @nombre para avisar a un compañero…'
-            : 'Pegá acá el contenido del mail…'));
-        const waBtn = c === 'whatsapp' ? `<button class="btn btn-ghost cmp-ia-btn" id="cmpProcesar">✨ Procesar con IA</button>` : '';
-        // Hasta que WhatsApp/Gmail entren solos (webhook E4 / Gmail E2), esto REGISTRA a mano lo que pasó.
-        const hint = c === 'nota'
-            ? 'La nota queda en el hilo del caso.'
-            : 'Todavía sin conexión automática: lo que pasó por este canal lo registrás acá y queda en el hilo del caso.';
-        return `<div class="cmp">
-            <div class="cmp-title">Registrar en el historial <span class="cmp-title-hint">· ${hint}</span></div>
-            <div class="cmp-tabs">${tabs}</div>
-            ${dirToggle}
-            ${extra}
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        const cliente = caso?.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        const tienePhone = !!(cliente && cliente.phone);
+        if (this._composerDestino === 'whatsapp' && !tienePhone) this._composerDestino = 'nota';
+        const d = this._composerDestino;
+        const wa = d === 'whatsapp';
+        const nombre = cliente ? (cliente.contactName || cliente.name || '').split(' ')[0] : '';
+        const frases = this._getFrases().slice(0, 4).map((f, i) =>
+            `<button class="cmp-frase" data-frase-idx="${i}" title="${escAttr(f)}">${this._escHtml(f.length > 30 ? f.slice(0, 29) + '…' : f)}</button>`).join('');
+        const destChip = wa
+            ? `<span style="color:#25D366">${this._canalSvg('whatsapp')}</span> WhatsApp <span class="cmp-dest-car">▾</span>`
+            : `<span style="color:#F28D15">${this._canalSvg('nota')}</span> Nota interna <span class="cmp-dest-car">▾</span>`;
+        const ph = wa
+            ? `Escribile a ${this._escAttrSafe(nombre || 'tu cliente')}…`
+            : 'Nota interna — @nombre avisa a un compañero…';
+        const hint = wa
+            ? 'Enter manda · queda en el hilo y se abre WhatsApp con el texto listo · ＋ adjunta o registra algo de afuera'
+            : 'Enter guarda la nota en el hilo · Shift+Enter salto de línea · ＋ adjunta o registra algo de afuera';
+        return `<div class="cmp cmp-v4">
+            <div class="cmp-frases">${frases}<button class="cmp-frase cmp-frase-edit" id="cmpFrasesEdit" title="Editar las frases hechas">✎</button></div>
             <div class="cmp-adjuntos" id="cmpAdjuntos"></div>
-            <textarea class="cmp-textarea" id="cmpText" placeholder="${placeholder}" rows="2"></textarea>
-            <div class="cmp-actions">
-                <button class="cmp-img-btn" id="cmpImgBtn" title="Adjuntar imagen / captura">📎 Imagen</button>
-                <span class="cmp-hint">Ctrl+Enter agrega · pegá una captura (Ctrl+V) y se adjunta</span>
-                <div class="cmp-spacer"></div>
-                ${waBtn}
-                <button class="btn btn-primary" id="cmpSend">Agregar al historial</button>
+            <div class="cmp-bar ${wa ? 'cmp-bar--wa' : 'cmp-bar--nota'}">
+                <button class="cmp-plus" id="cmpPlus" title="Adjuntar o registrar algo que pasó afuera">＋</button>
+                <textarea class="cmp-ta" id="cmpText" rows="1" placeholder="${ph}"></textarea>
+                <button class="cmp-dest ${wa ? 'cmp-dest--wa' : 'cmp-dest--nota'}" id="cmpDestino" title="Elegir a dónde va el mensaje">${destChip}</button>
+                <button class="cmp-send" id="cmpSend" title="Enviar (Enter)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></button>
             </div>
+            <div class="cmp-hintline">${hint}</div>
             <input type="file" id="cmpFile" accept="image/*" multiple style="display:none">
         </div>`;
+    },
+
+    // Placeholder seguro (va dentro de un atributo HTML).
+    _escAttrSafe(s) { return escAttr(String(s || '')); },
+
+    // ─── Frases hechas (patrón Finanzas: set editable en localStorage, tokens {nombre}/{cot}) ───
+    _FRASES_KEY: 'mepex_crm_frases_v1',
+    _getFrases() {
+        try {
+            const raw = localStorage.getItem(this._FRASES_KEY);
+            if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr) && arr.length) return arr; }
+        } catch (_) {}
+        return [
+            'Hola {nombre}! ¿Cómo estás? ¿Pudieron revisar la cotización?',
+            '¡Buenas! Te escribo de MEPEX por tu consulta del stand.',
+            'Te paso la cotización actualizada. Cualquier duda la vemos.',
+            '¿Cerramos la fecha de armado esta semana así llegamos cómodos?',
+        ];
+    },
+    _aplicarFrase(idx) {
+        const f = this._getFrases()[idx];
+        if (!f) return;
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        const cliente = caso?.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        const nombre = cliente ? ((cliente.contactName || cliente.name || '').split(' ')[0]) : '';
+        const cot = this._cotizaciones.filter(c => c.casoId === this._casoActivoId)
+            .sort((a, b) => new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
+        const texto = f.replaceAll('{nombre}', nombre || '').replaceAll('{cot}', cot?.numero || '').replace(/\s{2,}/g, ' ').trim();
+        const ta = document.getElementById('cmpText');
+        if (ta) { ta.value = texto; ta.focus(); ta.dispatchEvent(new Event('input')); }
+    },
+    _openFrasesModal() {
+        const inst = Modal.open({
+            title: 'Frases hechas',
+            size: 'small',
+            body: `<div style="display:flex;flex-direction:column;gap:8px;">
+                <span style="font-size:.78rem;color:var(--text-muted);">Una frase por línea. <code>{nombre}</code> se reemplaza por el contacto y <code>{cot}</code> por el número de cotización.</span>
+                <textarea id="frasesTa" class="cmp-textarea" rows="7">${this._escHtml(this._getFrases().join('\n'))}</textarea>
+            </div>`,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="frasesSave">Guardar</button>`,
+        });
+        setTimeout(() => {
+            document.getElementById('frasesSave')?.addEventListener('click', () => {
+                const arr = (document.getElementById('frasesTa')?.value || '').split('\n').map(s => s.trim()).filter(Boolean).slice(0, 8);
+                try { localStorage.setItem(this._FRASES_KEY, JSON.stringify(arr)); } catch (_) {}
+                Modal.close(inst?.id);
+                this._refreshComposer();
+                Toast.success('Frases guardadas');
+            });
+        }, 60);
+    },
+
+    // ─── Menú ＋ del composer: adjuntar (foto / COT PDF) + el registro manual, delicado al fondo ───
+    _openPlusMenu(rect) {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        const cot = this._cotizaciones.filter(c => c.casoId === this._casoActivoId)
+            .sort((a, b) => new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
+        const items = [
+            { icon: '📷', label: 'Foto o captura', action: () => document.getElementById('cmpFile')?.click() },
+        ];
+        if (cot && cot.pdfUrl) {
+            items.push({
+                icon: '📄', label: `Cotización ${cot.numero || ''} (link al PDF)`,
+                action: () => {
+                    const ta = document.getElementById('cmpText');
+                    if (!ta) return;
+                    ta.value = (ta.value ? ta.value.trimEnd() + '\n' : '') + cot.pdfUrl;
+                    ta.focus(); ta.dispatchEvent(new Event('input'));
+                },
+            });
+        }
+        if (caso && caso.driveFolderUrl) {
+            items.push({
+                icon: this._canalSvg('drive'), label: 'Link al Drive del caso',
+                action: () => {
+                    const ta = document.getElementById('cmpText');
+                    if (!ta) return;
+                    ta.value = (ta.value ? ta.value.trimEnd() + '\n' : '') + caso.driveFolderUrl;
+                    ta.focus(); ta.dispatchEvent(new Event('input'));
+                },
+            });
+        }
+        items.push({ divider: true });
+        items.push({ icon: '✍', label: 'Algo pasó afuera — registralo', action: () => this._openRegistrarModal() });
+        ContextMenu.show(rect.left, rect.top - 8, items);
+    },
+
+    _openDestinoMenu(rect) {
+        const caso = this._casos.find(c => c.id === this._casoActivoId);
+        const cliente = caso?.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        const items = [
+            {
+                icon: `<span style="color:#25D366">${this._canalSvg('whatsapp')}</span>`,
+                label: cliente?.phone ? 'WhatsApp — se manda al cliente' : 'WhatsApp (sin teléfono cargado)',
+                disabled: !cliente?.phone,
+                action: () => { this._setDestino('whatsapp'); },
+            },
+            {
+                icon: `<span style="color:#F28D15">${this._canalSvg('nota')}</span>`,
+                label: 'Nota interna — privada del equipo',
+                action: () => { this._setDestino('nota'); },
+            },
+        ];
+        ContextMenu.show(rect.left, rect.top - 8, items);
+    },
+    _setDestino(d) {
+        if (this._composerDestino === d) return;
+        const prev = document.getElementById('cmpText')?.value || '';
+        this._composerDestino = d;
+        this._refreshComposer();
+        const ta = document.getElementById('cmpText');
+        if (ta) { ta.value = prev; ta.dispatchEvent(new Event('input')); }
     },
 
     _refreshComposer() {
@@ -4360,13 +4639,16 @@ const CRM = {
         this._renderPendingAdjuntos();
     },
 
-    _renderPendingAdjuntos() {
-        const wrap = document.getElementById('cmpAdjuntos');
+    _renderPendingAdjuntos(targetId) {
+        // Sin target explícito: si el modal de registro está abierto, los adjuntos se ven AHÍ
+        // (el input file es compartido y su change-handler no sabe desde dónde lo dispararon).
+        if (!targetId) targetId = document.getElementById('regAdjuntos') ? 'regAdjuntos' : 'cmpAdjuntos';
+        const wrap = document.getElementById(targetId);
         if (!wrap) return;
         wrap.innerHTML = this._pendingAdjuntos.map((a, i) => `<div class="cmp-adj"><img src="${a.dataUrl}"><button class="cmp-adj-rm" data-idx="${i}">✕</button></div>`).join('');
         wrap.querySelectorAll('.cmp-adj-rm').forEach(btn => btn.addEventListener('click', () => {
             this._pendingAdjuntos.splice(parseInt(btn.dataset.idx, 10), 1);
-            this._renderPendingAdjuntos();
+            this._renderPendingAdjuntos(targetId);
         }));
     },
 
@@ -4399,21 +4681,12 @@ const CRM = {
     },
 
     _attachComposerEvents() {
-        document.querySelectorAll('.cmp-tab').forEach(b => b.addEventListener('click', () => {
-            const canal = b.dataset.canal;
-            if (canal === this._composerCanal) return;
-            const prev = document.getElementById('cmpText')?.value || '';
-            this._composerCanal = canal;
-            this._refreshComposer();
-            const ta = document.getElementById('cmpText'); if (ta) ta.value = prev;
-        }));
-        document.querySelectorAll('.cmp-dir-btn').forEach(b => b.addEventListener('click', () => {
-            this._composerDireccion = b.dataset.dir;
-            const prev = document.getElementById('cmpText')?.value || '';
-            this._refreshComposer();
-            const ta = document.getElementById('cmpText'); if (ta) ta.value = prev;
-        }));
         const ta = document.getElementById('cmpText');
+        // Autogrow del textarea (1 línea → crece hasta 120px).
+        if (ta) ta.addEventListener('input', () => {
+            ta.style.height = 'auto';
+            ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+        });
         if (ta) ta.addEventListener('paste', async (e) => {
             const items = (e.clipboardData && e.clipboardData.items) || [];
             let handled = false;
@@ -4426,61 +4699,185 @@ const CRM = {
             }
             if (handled) { e.preventDefault(); this._renderPendingAdjuntos(); Toast.info('Captura adjuntada'); }
         });
-        const imgBtn = document.getElementById('cmpImgBtn');
         const fileInput = document.getElementById('cmpFile');
-        if (imgBtn && fileInput) {
-            imgBtn.addEventListener('click', () => fileInput.click());
-            fileInput.addEventListener('change', async (e) => {
-                const files = Array.from(e.target.files || []);
-                for (const f of files) await this._addImageFile(f);
-                this._renderPendingAdjuntos();
-                e.target.value = '';
-            });
-        }
-        const proc = document.getElementById('cmpProcesar');
-        if (proc) proc.addEventListener('click', async () => { await this._procesarWhatsapp(document.getElementById('cmpText')?.value || ''); });
+        if (fileInput) fileInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files || []);
+            for (const f of files) await this._addImageFile(f);
+            this._renderPendingAdjuntos();
+            e.target.value = '';
+        });
+        const plus = document.getElementById('cmpPlus');
+        if (plus) plus.addEventListener('click', () => this._openPlusMenu(plus.getBoundingClientRect()));
+        const dest = document.getElementById('cmpDestino');
+        if (dest) dest.addEventListener('click', () => this._openDestinoMenu(dest.getBoundingClientRect()));
+        document.querySelectorAll('.cmp-frase[data-frase-idx]').forEach(b =>
+            b.addEventListener('click', () => this._aplicarFrase(parseInt(b.dataset.fraseIdx, 10))));
+        const frasesEdit = document.getElementById('cmpFrasesEdit');
+        if (frasesEdit) frasesEdit.addEventListener('click', () => this._openFrasesModal());
         const send = document.getElementById('cmpSend');
         if (send) send.addEventListener('click', () => this._sendComposer());
-        // Ctrl/Cmd + Enter guarda (flujo rápido de registro).
+        // Enter manda (Shift+Enter = salto de línea). Ctrl+Enter sigue andando por costumbre.
         if (ta) ta.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this._sendComposer(); }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this._sendComposer(); }
         });
     },
 
+    // v4: mandar de verdad — nota interna al hilo, o WhatsApp (queda en el hilo como saliente y
+    // se abre WhatsApp con el texto listo; cuando E4 fase 2 conecte la Cloud API, acá se enchufa el envío real).
     async _sendComposer() {
         const ta = document.getElementById('cmpText');
         const texto = (ta?.value || '').trim();
-        const canal = this._composerCanal;
+        const destino = this._composerDestino;
         if (!texto && !this._pendingAdjuntos.length) { Toast.warning('Escribí algo o adjuntá una imagen'); return; }
         const caso = this._casos.find(c => c.id === this._casoActivoId);
         if (!caso) return;
-        const direccion = (canal === 'nota') ? 'interna' : this._composerDireccion;
-        const metadata = {};
-        if (canal === 'email') { const s = document.getElementById('cmpSubject')?.value?.trim(); if (s) metadata.subject = s; }
-        if (canal === 'llamada') { const d = document.getElementById('cmpDur')?.value; if (d) metadata.duracion = parseInt(d, 10) || 0; }
+        const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        const user = Auth.getUser?.();
         const sendBtn = document.getElementById('cmpSend');
-        if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Guardando...'; }
+        if (sendBtn) sendBtn.disabled = true;
+        const esWa = destino === 'whatsapp';
         const msg = await API.createMensaje({
-            casoId: caso.id, clienteId: caso.clienteId, canal, direccion,
-            contenido: texto, metadata, adjuntos: this._pendingAdjuntos.slice(),
+            casoId: caso.id, clienteId: caso.clienteId,
+            canal: esWa ? 'whatsapp' : 'nota',
+            direccion: esWa ? 'saliente' : 'interna',
+            autor: user?.name || 'MEPEX',
+            contenido: texto, metadata: {}, adjuntos: this._pendingAdjuntos.slice(),
         });
         if (msg) {
-            if (canal === 'nota') this._notifyMenciones(texto, caso);
+            if (!esWa) this._notifyMenciones(texto, caso);
+            if (esWa && texto) {
+                const dig = (cliente?.phone || '').replace(/[^\d]/g, '');
+                if (dig) {
+                    const intl = dig.length <= 10 ? ('54' + dig) : dig;
+                    window.open(`https://wa.me/${intl}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+                } else {
+                    Toast.warning('El cliente no tiene teléfono cargado — quedó registrado en el hilo');
+                }
+            }
             this._pendingAdjuntos = [];
             await this._reloadCasoYFicha(caso.id);
             document.getElementById('cmpText')?.focus();
-            Toast.success('Guardado');
         } else {
             Toast.error('No se pudo guardar');
-            if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Guardar'; }
+            if (sendBtn) sendBtn.disabled = false;
         }
     },
 
+    // ─── "Algo pasó afuera" — el registro manual completo, ahora en modal (delicado, no protagonista).
+    // Mismo flujo de siempre: canal + quién lo mandó + Procesar con IA para WhatsApp pegado. ───
+    _openRegistrarModal() {
+        this._composerCanal = 'whatsapp';
+        this._composerDireccion = 'entrante';
+        const inst = Modal.open({
+            title: 'Registrar algo que pasó afuera',
+            size: 'lg',
+            body: `<div class="reg-wrap">
+                <p class="reg-intro">Una conversación de WhatsApp, un mail o una llamada que pasó fuera del sistema. Queda en el hilo del caso como si hubiera entrado sola.</p>
+                <div class="cmp-tabs" id="regTabs"></div>
+                <div class="cmp-dir" id="regDir" style="display:none">
+                    <span class="cmp-dir-lbl">El mensaje lo mandó:</span>
+                    <button class="cmp-dir-btn" data-dir="entrante">el Cliente</button>
+                    <button class="cmp-dir-btn" data-dir="saliente">MEPEX</button>
+                </div>
+                <input type="text" class="cmp-input" id="regSubject" placeholder="Asunto del mail" style="display:none">
+                <input type="number" min="0" class="cmp-input cmp-input-sm" id="regDur" placeholder="Duración (min)" style="display:none">
+                <div class="cmp-adjuntos" id="regAdjuntos"></div>
+                <textarea class="cmp-textarea" id="regText" rows="5"></textarea>
+                <div class="cmp-actions">
+                    <button class="cmp-img-btn" id="regImgBtn" title="Adjuntar imagen / captura">📎 Imagen</button>
+                    <span class="cmp-hint">Pegá una captura (Ctrl+V) y se adjunta</span>
+                </div>
+            </div>`,
+            footer: `<button class="btn-ghost" data-modal-close>Cancelar</button>
+                <button class="btn btn-ghost cmp-ia-btn" id="regProcesar" style="display:none">✨ Procesar con IA</button>
+                <button class="btn btn-primary" id="regSave">Agregar al hilo</button>`,
+        });
+        const $ = (sel) => inst.overlay.querySelector(sel);
+        const canales = [
+            { id: 'whatsapp', ...this._canalConfig.whatsapp },
+            { id: 'email', ...this._canalConfig.email },
+            { id: 'llamada', ...this._canalConfig.llamada },
+            { id: 'reunion', ...this._canalConfig.reunion },
+        ];
+        const paint = () => {
+            const c = this._composerCanal;
+            $('#regTabs').innerHTML = canales.map(x =>
+                `<button class="cmp-tab ${c === x.id ? 'active' : ''}" data-canal="${x.id}" style="${c === x.id ? `color:${x.color};border-color:${x.color}` : ''}">${this._canalSvg(x.id) || x.icon} ${x.label}</button>`).join('');
+            const showDir = (c === 'whatsapp' || c === 'email');
+            $('#regDir').style.display = showDir ? '' : 'none';
+            if (showDir) $('#regDir').querySelectorAll('.cmp-dir-btn').forEach(b =>
+                b.classList.toggle('active', b.dataset.dir === this._composerDireccion));
+            $('#regSubject').style.display = c === 'email' ? '' : 'none';
+            $('#regDur').style.display = c === 'llamada' ? '' : 'none';
+            $('#regProcesar').style.display = c === 'whatsapp' ? '' : 'none';
+            $('#regText').placeholder = c === 'whatsapp'
+                ? 'Pegá la conversación entera tal cual — "Procesar con IA" separa las burbujas y las ordena sola…'
+                : (c === 'llamada' ? 'Qué se habló en la llamada…'
+                : (c === 'reunion' ? 'Qué se habló en la reunión…' : 'Pegá el contenido del mail…'));
+            $('#regTabs').querySelectorAll('.cmp-tab').forEach(b => b.addEventListener('click', () => {
+                if (b.dataset.canal !== this._composerCanal) { this._composerCanal = b.dataset.canal; paint(); }
+            }));
+        };
+        // Los botones de dirección no se reconstruyen → listener UNA sola vez (paint solo togglea clases).
+        $('#regDir').querySelectorAll('.cmp-dir-btn').forEach(b => b.addEventListener('click', () => {
+            this._composerDireccion = b.dataset.dir; paint();
+        }));
+        paint();
+        this._renderPendingAdjuntos('regAdjuntos');
+        $('#regImgBtn').addEventListener('click', () => document.getElementById('cmpFile')?.click());
+        const regTa = $('#regText');
+        regTa.addEventListener('paste', async (e) => {
+            const items = (e.clipboardData && e.clipboardData.items) || [];
+            let handled = false;
+            for (const it of items) {
+                if (it.type && it.type.indexOf('image') === 0) {
+                    const f = it.getAsFile(); if (!f) continue;
+                    handled = true;
+                    await this._addImageFile(f);
+                }
+            }
+            if (handled) { e.preventDefault(); this._renderPendingAdjuntos('regAdjuntos'); Toast.info('Captura adjuntada'); }
+        });
+        $('#regProcesar').addEventListener('click', async () => {
+            // Spinner en el botón del modal; recién cerramos cuando el preview quedó abierto arriba
+            // (si falla, el modal sigue con el texto pegado — no se pierde nada).
+            const ok = await this._procesarWhatsapp(regTa.value || '', $('#regProcesar'));
+            if (ok) Modal.close(inst.id);
+        });
+        $('#regSave').addEventListener('click', async () => {
+            const texto = (regTa.value || '').trim();
+            if (!texto && !this._pendingAdjuntos.length) { Toast.warning('Escribí algo o adjuntá una imagen'); return; }
+            const caso = this._casos.find(c => c.id === this._casoActivoId);
+            if (!caso) return;
+            const c = this._composerCanal;
+            const direccion = (c === 'whatsapp' || c === 'email') ? this._composerDireccion : 'interna';
+            const metadata = {};
+            if (c === 'email') { const s = $('#regSubject').value.trim(); if (s) metadata.subject = s; }
+            if (c === 'llamada') { const d = $('#regDur').value; if (d) metadata.duracion = parseInt(d, 10) || 0; }
+            const btn = $('#regSave');
+            btn.disabled = true; btn.textContent = 'Guardando…';
+            const msg = await API.createMensaje({
+                casoId: caso.id, clienteId: caso.clienteId, canal: c, direccion,
+                contenido: texto, metadata, adjuntos: this._pendingAdjuntos.slice(),
+            });
+            if (msg) {
+                this._pendingAdjuntos = [];
+                Modal.close(inst.id);
+                await this._reloadCasoYFicha(caso.id);
+                Toast.success('Registrado en el hilo');
+            } else {
+                Toast.error('No se pudo guardar');
+                btn.disabled = false; btn.textContent = 'Agregar al hilo';
+            }
+        });
+    },
+
     // ─── WhatsApp pegado (digest IA + fallback local) ───
-    async _procesarWhatsapp(texto) {
+    // Devuelve true si abrió el preview (v4: el caller decide si cierra su modal). btn opcional para el spinner.
+    async _procesarWhatsapp(texto, btn) {
         texto = (texto || '').trim();
-        if (!texto) { Toast.warning('Pegá la conversación primero'); return; }
-        const btn = document.getElementById('cmpProcesar');
+        if (!texto) { Toast.warning('Pegá la conversación primero'); return false; }
+        btn = btn || document.getElementById('cmpProcesar');
         if (btn) { btn.disabled = true; btn.textContent = '✨ Procesando...'; }
         const contexto = { clientes: this._clients.slice(0, 40).map(c => ({ id: c.id, nombre: c.name })) };
         const res = await API.crmDigest(texto, contexto);
@@ -4493,10 +4890,12 @@ const CRM = {
                 fecha: m.fecha || '',
             }));
             this._showWhatsappPreview(res, true);
+            return true;
         } else {
             const parsed = this._localParseWhatsapp(texto);
-            if (!parsed.mensajes.length) { Toast.warning('No se detectaron mensajes. Probá el formato "Nombre: texto" por línea.'); return; }
+            if (!parsed.mensajes.length) { Toast.warning('No se detectaron mensajes. Probá el formato "Nombre: texto" por línea.'); return false; }
             this._showWhatsappPreview(parsed, false);
+            return true;
         }
     },
 
@@ -4681,16 +5080,14 @@ const CRM = {
         // ── v3: agendar (header) · resumen IA · cotización desplegable · Drive ──
         const agendar = document.getElementById('casoAgendar');
         if (agendar) agendar.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
-        const iaRef = document.getElementById('casoIaRefresh');
-        if (iaRef) iaRef.addEventListener('click', () => this._generarResumenIa());
-        const iaTgl = document.getElementById('casoIaToggle');
-        if (iaTgl) iaTgl.addEventListener('click', () => {
-            const d = document.getElementById('casoIaDesple');
-            if (!d) return;
-            const abierto = d.style.display !== 'none';
-            d.style.display = abierto ? 'none' : '';
-            iaTgl.textContent = abierto ? '▾' : '▴';
-        });
+        this._attachIaBandEvents();
+        // ── v4: Copiloto ──
+        const copRed = document.getElementById('copRedactar');
+        if (copRed) copRed.addEventListener('click', () => this._redactarRespuesta());
+        const cop48 = document.getElementById('cop48h');
+        if (cop48) cop48.addEventListener('change', () => this._toggle48h(cop48.checked));
+        const c0 = getCaso();
+        if (c0 && c0.eventoId && document.getElementById('casoEventoCop')) this._loadEventoCop(c0);
         const cotTgl = document.getElementById('casoCotToggle');
         if (cotTgl) cotTgl.addEventListener('click', () => this._toggleCotItems(cotTgl.dataset.cotId));
         const cotOpen = document.getElementById('casoCotOpen');
@@ -7266,8 +7663,11 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
 .caso-accion-done, .caso-accion-set { background: rgba(0,204,136,0.15); border: 1px solid rgba(0,204,136,0.35); color: #00CC88; border-radius: 5px; padding: 4px 12px; font-size: 0.76rem; cursor: pointer; flex-shrink: 0; }
 .caso-accion-set { background: rgba(0,169,193,0.12); border-color: rgba(0,169,193,0.3); color: var(--primary); }
 
-/* Timeline */
-.caso-timeline { flex: 1; overflow-y: auto; padding: 16px 4px; display: flex; flex-direction: column; gap: 10px; }
+/* Timeline (v4 compacto: gap 0 + márgenes por fila; consecutivos del mismo lado se aprietan) */
+.caso-timeline { flex: 1; overflow-y: auto; padding: 12px 4px; display: flex; flex-direction: column; gap: 0; }
+.caso-timeline .tl-row { margin-top: 8px; }
+.caso-timeline .tl-row.tl-tight { margin-top: 2px; }
+.tl-time { float: right; font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.62rem; color: var(--text-dim); margin: 4px 0 0 10px; }
 .tl-empty { text-align: center; color: var(--text-muted); margin: auto; padding: 40px; }
 .tl-empty-icon { font-size: 2.4rem; opacity: 0.5; margin-bottom: 10px; }
 .tl-date { text-align: center; font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin: 8px 0; }
@@ -7279,14 +7679,14 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
 .tl-row.tl-in { justify-content: flex-start; }
 .tl-row.tl-out { justify-content: flex-end; }
 .tl-row.tl-mid, .tl-row.tl-sys { justify-content: center; }
-.tl-bubble { max-width: 78%; padding: 9px 13px; border-radius: 12px; font-size: 0.86rem; }
-.tl-wa-in { background: var(--bg-card); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
-.tl-wa-out { background: rgba(37,211,102,0.14); border: 1px solid rgba(37,211,102,0.3); border-bottom-right-radius: 3px; }
-.tl-card { max-width: 88%; width: 100%; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; }
+.tl-bubble { max-width: 78%; padding: 5px 10px 4px; border-radius: 11px; font-size: 0.84rem; display: flow-root; }
+.tl-wa-in { background: var(--bg-card); border: 1px solid var(--border); border-top-left-radius: 4px; }
+.tl-wa-out { background: rgba(37,211,102,0.14); border: 1px solid rgba(37,211,102,0.3); border-top-right-radius: 4px; }
+.tl-card { max-width: 88%; width: 100%; background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px; padding: 6px 11px; }
 .tl-email { border-left: 3px solid #4A90D9; }
 .tl-nota { background: rgba(242,141,21,0.07); border-color: rgba(242,141,21,0.25); border-left: 3px solid #F28D15; }
 .tl-call { border-left: 3px solid #00CC88; }
-.tl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 5px; flex-wrap: wrap; }
+.tl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 3px; flex-wrap: wrap; }
 .tl-canal { font-size: 0.78rem; font-weight: 600; }
 .tl-meta { font-size: 0.7rem; color: var(--text-dim); }
 .tl-subject { font-weight: 600; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 4px; }
@@ -7336,6 +7736,50 @@ a.caso-cliente-link:hover { color: var(--primary); border-color: var(--primary);
 .cmp-img-btn:hover { border-color: var(--primary); color: var(--primary); }
 .cmp-hint { font-size: 0.7rem; color: var(--text-dim); }
 .cmp-ia-btn { font-size: 0.8rem; }
+
+/* ── Header v3.1: metadata a la derecha en 2 filas ── */
+.caso-h3-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+.caso-h3-nums { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ── Composer v4: barra única "escribí y mandá" ── */
+.cmp-v4 { border-top: 1px solid var(--border); padding-top: 9px; }
+.cmp-frases { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 7px; }
+.cmp-frase { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 3px 10px; color: var(--text-muted); font-size: 0.7rem; cursor: pointer; font-family: var(--font-main); transition: all 150ms ease; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-frase:hover { border-color: var(--primary); color: var(--primary); }
+.cmp-frase-edit { flex-shrink: 0; color: var(--text-dim); max-width: none; }
+.cmp-bar { display: flex; align-items: flex-end; gap: 7px; background: #0f0f0f; border: 1px solid var(--border); border-radius: 21px; padding: 5px 6px 5px 7px; transition: border-color 200ms ease; }
+.cmp-bar--wa { border-color: rgba(37,211,102,0.35); }
+.cmp-bar--wa:focus-within { border-color: rgba(37,211,102,0.6); }
+.cmp-bar--nota { border-color: rgba(242,141,21,0.3); }
+.cmp-bar--nota:focus-within { border-color: rgba(242,141,21,0.55); }
+.cmp-plus { width: 30px; height: 30px; border-radius: 50%; background: var(--bg-card); border: 1px solid var(--border); color: var(--primary); font-size: 1rem; line-height: 1; cursor: pointer; flex-shrink: 0; transition: all 150ms ease; }
+.cmp-plus:hover { border-color: var(--primary); box-shadow: var(--glow-sm); }
+.cmp-ta { flex: 1; background: transparent; border: none; resize: none; color: var(--text-primary); font-family: var(--font-main); font-size: 0.86rem; line-height: 1.4; padding: 6px 4px; min-height: 30px; max-height: 120px; overflow-y: auto; }
+.cmp-ta:focus { outline: none; }
+.cmp-dest { display: inline-flex; align-items: center; gap: 5px; border-radius: 13px; padding: 5px 10px; font-size: 0.72rem; cursor: pointer; font-family: var(--font-main); flex-shrink: 0; background: transparent; transition: all 150ms ease; }
+.cmp-dest--wa { color: #25D366; border: 1px solid rgba(37,211,102,0.35); background: rgba(37,211,102,0.08); }
+.cmp-dest--nota { color: #F28D15; border: 1px solid rgba(242,141,21,0.35); background: rgba(242,141,21,0.08); }
+.cmp-dest:hover { filter: brightness(1.15); }
+.cmp-dest-car { opacity: 0.7; font-size: 0.6rem; }
+.cmp-send { width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #04252c; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all 150ms ease; }
+.cmp-send:hover { box-shadow: 0 0 12px rgba(0,169,193,0.45); }
+.cmp-send:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.cmp-hintline { font-size: 0.66rem; color: var(--text-dim); margin-top: 6px; text-align: center; }
+.reg-wrap { display: flex; flex-direction: column; }
+.reg-intro { font-size: 0.78rem; color: var(--text-muted); margin: 0 0 10px; }
+
+/* ── Copiloto (aside) ── */
+.aside-cop { border-color: rgba(0,169,193,0.35); background: rgba(0,169,193,0.04); }
+.aside-title-cop { display: flex; align-items: center; gap: 5px; }
+.cop-sug { font-size: 0.8rem; color: #c8c8c8; line-height: 1.45; margin-bottom: 9px; }
+.cop-redactar { width: 100%; background: var(--primary); color: #04252c; border: none; border-radius: 7px; padding: 7px 10px; font-size: 0.78rem; font-weight: 600; font-family: var(--font-main); cursor: pointer; transition: all 150ms ease; }
+.cop-redactar:hover { box-shadow: 0 0 12px rgba(0,169,193,0.4); }
+.cop-redactar:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
+.cop-48 { display: flex; align-items: center; gap: 7px; font-size: 0.74rem; color: var(--text-muted); margin-top: 9px; padding-top: 8px; border-top: 1px solid rgba(0,169,193,0.15); cursor: pointer; }
+.cop-48 input { accent-color: var(--primary); cursor: pointer; }
+.cop-ev-nom { display: block; font-size: 0.82rem; color: var(--text-primary); text-decoration: none; }
+a.cop-ev-nom:hover { color: var(--primary); }
+.cop-ev-cd { font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.7rem; color: var(--accent); margin-top: 4px; }
 
 /* Form (modal nuevo/editar caso) */
 .caso-form { display: flex; flex-direction: column; }
