@@ -75,6 +75,7 @@ const CRM = {
     _SEG48: 'Seguimiento — sin respuesta 48h',  // marker del toggle del Copiloto (reusa proximaAccion, sin DDL)
     _iaAutoBusyIds: null,       // v4: lock del auto-resumen POR caso (evita descartar el de un caso B mientras corre el de A)
     _iaAutoFailed: false,       // v4: la IA falló en esta visita — frena el auto (el ↻ manual lo resetea al andar)
+    _frasesOpen: false,         // v4.1: respuestas frecuentes desplegadas (se ven enteras arriba del composer)
     _pendingAdjuntos: [],       // imágenes pegadas pendientes de enviar
 
     // ─── Counts per tab ───
@@ -972,12 +973,13 @@ const CRM = {
                     ${clientCots.length > 0 ? `
                         <div class="crm-panel-list">
                             ${clientCots.slice(0, 5).map(cot => {
-                                const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '';
+                                // Sin montos en las listas del CRM \u2014 los importes viven en el presupuesto.
+                                const ec = this._cotEstados.find(e => e.value === cot.estado);
                                 return `
                                     <div class="crm-panel-list-item">
-                                        <span class="crm-panel-list-code">${cot.numero || 'COT-???'}</span>
-                                        <span class="crm-panel-list-detail">${cot.nombreEvento || '\u2014'}</span>
-                                        ${monto ? `<span class="crm-panel-list-monto">${monto}</span>` : ''}
+                                        <span class="crm-panel-list-code">${this._escHtml(cot.numero || 'COT-???')}</span>
+                                        <span class="crm-panel-list-detail">${this._escHtml(cot.nombreEvento || '\u2014')}</span>
+                                        ${ec ? `<span class="aside-cot-est" style="color:${ec.color}">${ec.label}</span>` : ''}
                                     </div>
                                 `;
                             }).join('')}
@@ -3414,10 +3416,12 @@ const CRM = {
         return new Date(lastFecha).getTime() > new Date(lectura).getTime();
     },
 
-    _enrichCasos() {
+    // `todos=true` (pipeline): NO filtra ganado/perdido — el Kanban los tiene como columnas reales.
+    // El default (Bandeja) sigue mostrando solo los activos.
+    _enrichCasos(todos = false) {
         const now = Date.now();
-        const activos = this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado));
-        const enriched = activos.map(c => {
+        const base = todos ? this._casos.slice() : this._casos.filter(c => !['ganado', 'perdido'].includes(c.estado));
+        const enriched = base.map(c => {
             const last = this._casoMsgMap[c.id] || null;
             const lastFecha = last ? last.fecha : c.updatedAt;
             const days = this._getDaysSince(lastFecha);
@@ -3693,7 +3697,7 @@ const CRM = {
     },
 
     _pipelineColumnsHtml() {
-        let list = this._casos.slice();
+        let list = this._enrichCasos(true);  // el Kanban incluye Ganado/Perdido como columnas
         if (this._casosSearch) {
             const q = normStr(this._casosSearch);
             list = list.filter(c => normStr(c.titulo).includes(q) || normStr(this._casoClienteName(c)).includes(q));
@@ -3704,16 +3708,27 @@ const CRM = {
         return this._casoEstados.map(col => {
             const items = byEstado[col.value] || [];
             const cards = items.map(c => {
-                const last = this._casoMsgMap[c.id];
-                const days = this._getDaysSince(last ? last.fecha : c.updatedAt);
-                const dc = this._getDaysColor(days);
-                const monto = c.montoEstimado ? '$' + c.montoEstimado.toLocaleString('es-AR') : '';
+                const cliente = this._casoClienteName(c);
+                const avCol = this._avatarColor(cliente);
+                const dc = this._getDaysColor(c._days);
                 const lc = c.linea ? this._lineaConfig(c.linea) : null;
                 const lineaDot = lc ? `<span class="caso-pcard-linea" title="${this._escHtml(lc.label)}" style="background:${lc.color}"></span>` : '';
-                return `<div class="caso-pcard" data-caso-id="${c.id}" draggable="true">
-                    <div class="caso-pcard-top"><span class="caso-pcard-titulo">${this._escHtml(c.titulo)}</span>${lineaDot}</div>
-                    <div class="caso-pcard-cli">${this._escHtml(this._casoClienteName(c))}</div>
-                    <div class="caso-pcard-foot"><span>${monto}</span><span style="color:${dc}">${days === null ? '' : (days === 0 ? 'hoy' : days + 'd')}</span></div>
+                // v4.1: idioma Bandeja — cliente protagonista + avatar + chips urgencia + COT. SIN montos.
+                const chips = [];
+                if (c._sinResponder) chips.push('<span class="caso-flag sinresp">sin responder</span>');
+                if (c._enfriandose)  chips.push('<span class="caso-flag enfri">enfriándose</span>');
+                const presu = this._presupuestoChipHtml(c);
+                return `<div class="caso-pcard${c._necesitaAccion ? ' caso-pcard--urge' : ''}" data-caso-id="${c.id}" draggable="true">
+                    <div class="caso-pcard-top">
+                        <span class="caso-card-av caso-pcard-av" style="background:${avCol}26;color:${avCol}">${this._escHtml(this._casoInitials(cliente))}</span>
+                        <div class="caso-pcard-idwrap">
+                            <span class="caso-pcard-cli2">${this._escHtml(cliente)}</span>
+                            <span class="caso-pcard-tit2">${this._escHtml(c.titulo)}</span>
+                        </div>
+                        ${lineaDot}
+                    </div>
+                    ${(chips.length || presu) ? `<div class="caso-pcard-chips">${chips.join('')}${presu}</div>` : ''}
+                    <div class="caso-pcard-foot"><span style="color:${dc}">${c._days === null ? '' : (c._days === 0 ? 'hoy' : c._days + 'd')}</span>${this._ownerAvatar(c.ownerId)}</div>
                 </div>`;
             }).join('') || '<div class="caso-pcol-empty">—</div>';
             return `<div class="caso-pcol">
@@ -3942,6 +3957,7 @@ const CRM = {
         this._composerDireccion = 'entrante';
         this._pendingAdjuntos = [];
         this._iaAutoFailed = false;
+        this._frasesOpen = false;  // el panel de respuestas frecuentes no persiste entre casos
         this._casoMensajes = await API.getCasoMensajes(id);
         // v4: destino default del composer — WhatsApp si el cliente tiene teléfono, sino nota interna.
         const casoPre = this._casos.find(c => c.id === id);
@@ -4515,8 +4531,18 @@ const CRM = {
         const d = this._composerDestino;
         const wa = d === 'whatsapp';
         const nombre = cliente ? (cliente.contactName || cliente.name || '').split(' ')[0] : '';
-        const frases = this._getFrases().slice(0, 4).map((f, i) =>
-            `<button class="cmp-frase" data-frase-idx="${i}" title="${escAttr(f)}">${this._escHtml(f.length > 30 ? f.slice(0, 29) + '…' : f)}</button>`).join('');
+        // Respuestas frecuentes: chips truncados (cerrado) o panel desplegado hacia arriba con las
+        // respuestas ENTERAS (abierto). Elegir una la inserta y vuelve a cerrar.
+        const frasesArr = this._getFrases();
+        const frasesBlock = this._frasesOpen
+            ? `<div class="cmp-frases-full">
+                <div class="cmp-frases-full-head"><span>RESPUESTAS FRECUENTES</span>
+                    <span class="cmp-frases-full-btns"><button class="cmp-frase cmp-frase-edit" id="cmpFrasesEdit" title="Editar tus respuestas frecuentes">✎ Editar</button><button class="cmp-frase cmp-frase-edit" id="cmpFrasesTgl" title="Achicar">▾ Cerrar</button></span>
+                </div>
+                ${frasesArr.map((f, i) => `<button class="cmp-frase-fullrow" data-frase-idx="${i}" title="Usar esta respuesta">${this._escHtml(f)}</button>`).join('')}
+            </div>`
+            : `<div class="cmp-frases">${frasesArr.slice(0, 4).map((f, i) =>
+                `<button class="cmp-frase" data-frase-idx="${i}" title="${escAttr(f)}">${this._escHtml(f.length > 30 ? f.slice(0, 29) + '…' : f)}</button>`).join('')}<button class="cmp-frase cmp-frase-edit" id="cmpFrasesTgl" title="Ver las respuestas enteras">▴</button><button class="cmp-frase cmp-frase-edit" id="cmpFrasesEdit" title="Editar tus respuestas frecuentes">✎</button></div>`;
         const destChip = wa
             ? `<span style="color:#25D366">${this._canalSvg('whatsapp')}</span> WhatsApp <span class="cmp-dest-car">▾</span>`
             : `<span style="color:#F28D15">${this._canalSvg('nota')}</span> Nota interna <span class="cmp-dest-car">▾</span>`;
@@ -4527,7 +4553,7 @@ const CRM = {
             ? 'Enter manda · queda en el hilo y se abre WhatsApp con el texto listo · ＋ adjunta o registra algo de afuera'
             : 'Enter guarda la nota en el hilo · Shift+Enter salto de línea · ＋ adjunta o registra algo de afuera';
         return `<div class="cmp cmp-v4">
-            <div class="cmp-frases">${frases}<button class="cmp-frase cmp-frase-edit" id="cmpFrasesEdit" title="Editar las frases hechas">✎</button></div>
+            ${frasesBlock}
             <div class="cmp-adjuntos" id="cmpAdjuntos"></div>
             <div class="cmp-bar ${wa ? 'cmp-bar--wa' : 'cmp-bar--nota'}">
                 <button class="cmp-plus" id="cmpPlus" title="Adjuntar o registrar algo que pasó afuera">＋</button>
@@ -4566,26 +4592,50 @@ const CRM = {
         const cot = this._cotizaciones.filter(c => c.casoId === this._casoActivoId)
             .sort((a, b) => new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0];
         const texto = f.replaceAll('{nombre}', nombre || '').replaceAll('{cot}', cot?.numero || '').replace(/\s{2,}/g, ' ').trim();
+        if (this._frasesOpen) { this._frasesOpen = false; this._refreshComposer(); }  // elegiste → se cierra solo
         const ta = document.getElementById('cmpText');
         if (ta) { ta.value = texto; ta.focus(); ta.dispatchEvent(new Event('input')); }
     },
+    _toggleFrases() {
+        const prev = document.getElementById('cmpText')?.value || '';
+        this._frasesOpen = !this._frasesOpen;
+        this._refreshComposer();
+        const ta = document.getElementById('cmpText');
+        if (ta) { ta.value = prev; ta.dispatchEvent(new Event('input')); }
+    },
+    // Editor de respuestas frecuentes: una fila por respuesta (editar inline, sacar, agregar).
     _openFrasesModal() {
+        const rowHtml = (f) => `<div class="rf-row"><input type="text" class="crm-input rf-in" value="${escAttr(f)}" placeholder="Escribí la respuesta…"><button class="rf-del" title="Sacar esta respuesta">✕</button></div>`;
         const inst = Modal.open({
-            title: 'Frases hechas',
+            title: 'Respuestas frecuentes',
             size: 'small',
-            body: `<div style="display:flex;flex-direction:column;gap:8px;">
-                <span style="font-size:.78rem;color:var(--text-muted);">Una frase por línea. <code>{nombre}</code> se reemplaza por el contacto y <code>{cot}</code> por el número de cotización.</span>
-                <textarea id="frasesTa" class="cmp-textarea" rows="7">${this._escHtml(this._getFrases().join('\n'))}</textarea>
+            body: `<div class="rf-wrap">
+                <span class="rf-hint"><code>{nombre}</code> se reemplaza por el contacto del caso y <code>{cot}</code> por el número de cotización.</span>
+                <div class="rf-list" id="rfList">${this._getFrases().map(rowHtml).join('')}</div>
+                <button class="rf-add" id="rfAdd">＋ Agregar respuesta</button>
             </div>`,
             footer: `<button class="btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="frasesSave">Guardar</button>`,
         });
         setTimeout(() => {
+            const list = document.getElementById('rfList');
+            if (list) list.addEventListener('click', (e) => {
+                const del = e.target.closest('.rf-del');
+                if (del) del.closest('.rf-row')?.remove();
+            });
+            document.getElementById('rfAdd')?.addEventListener('click', () => {
+                if (!list) return;
+                if (list.querySelectorAll('.rf-row').length >= 8) { Toast.warning('Hasta 8 respuestas — sacá alguna para sumar otra'); return; }
+                list.insertAdjacentHTML('beforeend', rowHtml(''));
+                const inputs = list.querySelectorAll('.rf-in');
+                inputs[inputs.length - 1]?.focus();
+            });
             document.getElementById('frasesSave')?.addEventListener('click', () => {
-                const arr = (document.getElementById('frasesTa')?.value || '').split('\n').map(s => s.trim()).filter(Boolean).slice(0, 8);
+                const arr = Array.from(document.querySelectorAll('#rfList .rf-in'))
+                    .map(i => i.value.trim()).filter(Boolean).slice(0, 8);
                 try { localStorage.setItem(this._FRASES_KEY, JSON.stringify(arr)); } catch (_) {}
                 Modal.close(inst?.id);
                 this._refreshComposer();
-                Toast.success('Frases guardadas');
+                Toast.success('Respuestas guardadas');
             });
         }, 60);
     },
@@ -4731,10 +4781,12 @@ const CRM = {
         if (plus) plus.addEventListener('click', () => this._openPlusMenu(plus.getBoundingClientRect()));
         const dest = document.getElementById('cmpDestino');
         if (dest) dest.addEventListener('click', () => this._openDestinoMenu(dest.getBoundingClientRect()));
-        document.querySelectorAll('.cmp-frase[data-frase-idx]').forEach(b =>
+        document.querySelectorAll('#casoComposer [data-frase-idx]').forEach(b =>
             b.addEventListener('click', () => this._aplicarFrase(parseInt(b.dataset.fraseIdx, 10))));
         const frasesEdit = document.getElementById('cmpFrasesEdit');
         if (frasesEdit) frasesEdit.addEventListener('click', () => this._openFrasesModal());
+        const frasesTgl = document.getElementById('cmpFrasesTgl');
+        if (frasesTgl) frasesTgl.addEventListener('click', () => this._toggleFrases());
         const send = document.getElementById('cmpSend');
         if (send) send.addEventListener('click', () => this._sendComposer());
         // Enter manda (Shift+Enter = salto de línea). Ctrl+Enter sigue andando por costumbre.
@@ -5406,35 +5458,51 @@ const CRM = {
         const projs = this._projects.filter(p => p.clientName && c.name && p.clientName.toLowerCase() === c.name.toLowerCase());
         const contactos = this._clienteContactos || [];
         const wa = (() => { const d = (c.phone || '').replace(/[^\d]/g, ''); if (!d) return ''; return 'https://wa.me/' + (d.length <= 10 ? '54' + d : d); })();
+        // Sin montos en las listas (los importes viven en el presupuesto): a la derecha va la recencia.
         const casosHtml = casos.length ? casos.map(k => {
             const ec = this._casoEstados.find(e => e.value === k.estado) || this._casoEstados[0];
             const t = this._tempConfig[k.temperatura];
+            const dK = this._getDaysSince(k.updatedAt);
             return `<div class="caso-row" data-caso-id="${k.id}">
                 <div class="caso-row-temp">${t ? t.icon : '•'}</div>
                 <div class="caso-row-main"><div class="caso-row-top"><span class="caso-row-titulo">${this._escHtml(k.titulo)}</span><span class="caso-row-estado" style="background:${ec.color}1f;color:${ec.color}">${ec.label}</span></div></div>
-                <div class="caso-row-right">${k.montoEstimado ? '<span class="caso-row-owner">$' + k.montoEstimado.toLocaleString('es-AR') + '</span>' : ''}</div>
+                <div class="caso-row-right">${dK !== null ? `<span class="caso-h3-num" style="color:${this._getDaysColor(dK)}">${dK === 0 ? 'hoy' : dK + 'd'}</span>` : ''}</div>
             </div>`;
         }).join('') : '<p class="aside-empty" style="padding:16px">Sin casos todavía. Creá uno con "+ Nuevo caso".</p>';
-        const cotsHtml = cots.length ? cots.map(q => { const ec = this._cotEstados.find(e => e.value === q.estado); return `<div class="aside-cot"><span class="aside-cot-num">${this._escHtml(q.numero || 'COT')}</span><span class="aside-cot-est" style="color:${ec ? ec.color : '#888'}">${ec ? ec.label : q.estado}</span><span class="aside-cot-monto">${q.montoTotal ? '$' + q.montoTotal.toLocaleString('es-AR') : ''}</span></div>`; }).join('') : '<p class="aside-empty">Sin cotizaciones.</p>';
+        const cotsHtml = cots.length ? cots.map(q => { const ec = this._cotEstados.find(e => e.value === q.estado); return `<div class="aside-cot"><span class="aside-cot-num">${this._escHtml(q.numero || 'COT')}</span><span class="aside-cot-est" style="color:${ec ? ec.color : '#888'}">${ec ? ec.label : this._escHtml(q.estado || '')}</span></div>`; }).join('') : '<p class="aside-empty">Sin cotizaciones.</p>';
         const contactosHtml = contactos.length ? contactos.map(ct => `<div class="aside-row"><span class="aside-k">${this._escHtml(ct.nombre || '—')}${ct.cargo ? ' · ' + this._escHtml(ct.cargo) : ''}</span><span class="aside-v">${this._escHtml([...(ct.telefonos || []), ...(ct.emails || [])].join(' · '))}</span></div>`).join('') : '<p class="aside-empty">Sin contactos cargados.</p>';
         const user = Auth.getUser();
         const isReadOnly = user ? Data.isReadOnly(user.role, 'crm') : true;
+        // v4.1: header al idioma de la ficha de caso (back circular + avatar + chips) — todo igualito.
+        const avCol = this._avatarColor(c.name || '');
         return `<div class="caso-ficha">
             <div class="caso-ficha-main">
-                <div class="caso-ficha-header">
-                    <button class="caso-back" id="cliBack">← Clientes</button>
-                    <div class="caso-head-row">
-                        <h2 class="caso-titulo">${this._escHtml(c.name)}</h2>
-                        <div class="caso-head-actions">
-                            ${!isReadOnly ? `<button class="caso-conv-btn" id="cliNuevoCaso">+ Nuevo caso</button>` : ''}
-                            ${!isReadOnly ? `<button class="caso-icon-btn" id="cliEdit" title="Editar cliente">✏️</button>` : ''}
+                <div class="caso-ficha-header caso-h3" style="border-left:3px solid ${estadoCfg ? estadoCfg.color : '#00A9C1'}">
+                    <div class="caso-h3-row1">
+                        <button class="caso-back-v3" id="cliBack" title="Volver a Clientes"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+                        <span class="caso-h3-av" style="background:${avCol}26;color:${avCol}">${this._escHtml(this._casoInitials(c.name || ''))}</span>
+                        <div class="caso-h3-idwrap">
+                            <div class="caso-h3-line1">
+                                <span class="caso-h3-cliente">${this._escHtml(c.name)}</span>
+                                ${typeCfg ? `<span class="caso-meta-chip" style="color:${typeCfg.color}">${this._escHtml(c.tipo)}</span>` : ''}
+                                ${estadoCfg ? `<span class="caso-meta-chip" style="color:${estadoCfg.color};border-color:${estadoCfg.color}55">${estadoCfg.label}</span>` : ''}
+                            </div>
+                            <div class="caso-h3-line2">
+                                ${c.rubro ? `<span class="caso-meta-chip">${this._escHtml(c.rubro)}</span>` : ''}
+                                <span class="caso-meta-chip">📂 ${casosActivos.length} casos activos</span>
+                                ${wa ? `<a class="caso-meta-chip caso-evento-link" href="${wa}" target="_blank" rel="noopener" title="Abrir WhatsApp">💬 WhatsApp</a>` : ''}
+                            </div>
                         </div>
-                    </div>
-                    <div class="caso-head-meta">
-                        ${typeCfg ? `<span class="caso-meta-chip" style="color:${typeCfg.color}">${this._escHtml(c.tipo)}</span>` : ''}
-                        ${estadoCfg ? `<span class="caso-meta-chip" style="color:${estadoCfg.color}">${estadoCfg.label}</span>` : ''}
-                        ${c.rubro ? `<span class="caso-meta-chip">${this._escHtml(c.rubro)}</span>` : ''}
-                        <span class="caso-meta-chip">📂 ${casosActivos.length} casos activos</span>
+                        <div class="caso-h3-right">
+                            <div class="caso-head-actions">
+                                ${!isReadOnly ? `<button class="caso-conv-btn" id="cliNuevoCaso">+ Nuevo caso</button>` : ''}
+                                ${!isReadOnly ? `<button class="caso-icon-btn" id="cliEdit" title="Editar cliente">✏️</button>` : ''}
+                            </div>
+                            <div class="caso-h3-nums">
+                                <span class="caso-h3-num">${cots.length} cotiz.</span>
+                                <span class="caso-h3-num">${projs.length} proy.</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="caso-timeline" id="cliCasos">
@@ -5959,19 +6027,26 @@ const CRM = {
     justify-content: space-between;
     margin-bottom: 16px;
 }
+/* v4.1: mismo lenguaje que el back circular de las fichas — todo igualito */
 .crm-panel-close {
-    background: none;
-    border: none;
+    background: transparent;
+    border: 1px solid #2a2a2a;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    transition: all 200ms ease;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 150ms ease;
 }
 .crm-panel-close:hover {
-    color: var(--text-primary);
-    background: rgba(255,255,255,0.06);
+    color: var(--primary);
+    border-color: var(--primary);
 }
+.crm-panel-close svg { width: 15px; height: 15px; }
 .crm-panel-actions {
     display: flex;
     gap: 4px;
@@ -7803,6 +7878,33 @@ a.cop-ev-nom:hover { color: var(--primary); }
 .cop-ev-cd { font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.7rem; color: var(--accent); margin-top: 4px; }
 .caso-ia-rehacer { align-self: flex-end; background: transparent; border: none; color: var(--text-dim); font-size: 0.68rem; cursor: pointer; padding: 2px 4px; font-family: var(--font-main); }
 .caso-ia-rehacer:hover { color: var(--primary); }
+
+/* ── Respuestas frecuentes v4.1: panel desplegado con las respuestas enteras + editor por filas ── */
+.cmp-frases-full { background: var(--bg-card); border: 1px solid #2a2a2a; border-radius: 9px; padding: 9px 10px; margin-bottom: 7px; display: flex; flex-direction: column; gap: 5px; max-height: 38vh; overflow-y: auto; }
+.cmp-frases-full-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.6rem; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 2px; }
+.cmp-frases-full-btns { display: flex; gap: 5px; }
+.cmp-frase-fullrow { display: block; width: 100%; text-align: left; background: #0f0f0f; border: 1px solid #242424; border-radius: 7px; padding: 7px 10px; color: var(--text-primary); font-size: 0.79rem; line-height: 1.4; cursor: pointer; font-family: var(--font-main); white-space: normal; transition: all 150ms ease; }
+.cmp-frase-fullrow:hover { border-color: var(--primary); color: var(--primary); }
+.rf-wrap { display: flex; flex-direction: column; gap: 10px; }
+.rf-hint { font-size: 0.75rem; color: var(--text-muted); }
+.rf-list { display: flex; flex-direction: column; gap: 7px; }
+.rf-row { display: flex; align-items: center; gap: 7px; }
+.rf-in { flex: 1; }
+.rf-del { width: 30px; height: 30px; flex-shrink: 0; background: transparent; border: 1px solid #2a2a2a; border-radius: 6px; color: var(--text-dim); cursor: pointer; font-size: 0.72rem; transition: all 150ms ease; }
+.rf-del:hover { border-color: var(--color-error); color: var(--color-error); }
+.rf-add { align-self: flex-start; background: rgba(0,169,193,0.08); border: 1px solid rgba(0,169,193,0.3); color: var(--primary); border-radius: 6px; padding: 5px 12px; font-size: 0.76rem; cursor: pointer; font-family: var(--font-main); }
+.rf-add:hover { background: rgba(0,169,193,0.15); }
+
+/* ── Pipeline v4.1: cards en el idioma de la Bandeja (sin montos) ── */
+.caso-pcard-av { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.58rem; flex-shrink: 0; }
+.caso-pcard-idwrap { flex: 1; min-width: 0; }
+.caso-pcard-cli2 { display: block; font-weight: 600; font-size: 0.78rem; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caso-pcard-tit2 { display: block; font-size: 0.68rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
+.caso-pcard-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.caso-pcard-chips .caso-flag { font-size: 0.58rem; }
+.caso-pcard-chips .caso-chip-presu { font-size: 0.6rem; }
+.caso-pcard--urge { border-left: 2px solid #EF5350; }
+.caso-pcard .caso-pcard-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 7px; }
 
 /* Form (modal nuevo/editar caso) */
 .caso-form { display: flex; flex-direction: column; }
