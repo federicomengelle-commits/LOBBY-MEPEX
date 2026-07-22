@@ -778,21 +778,6 @@ const InventarioModule = {
                     align-items: center;
                     gap: 10px;
                 }
-                .inv-fisico-back {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 4px;
-                    background: none;
-                    border: 1px solid #2a2a2a;
-                    border-radius: 4px;
-                    color: #888;
-                    font-family: var(--font-mono, 'Space Mono', monospace);
-                    font-size: 0.75rem;
-                    padding: 5px 10px;
-                    cursor: pointer;
-                    transition: all 150ms;
-                }
-                .inv-fisico-back:hover { color: #E8E8E8; border-color: #9B7DFF; }
                 .inv-fisico-session-title {
                     font-family: var(--font-main, 'Outfit', sans-serif);
                     font-size: 1.05rem;
@@ -3652,7 +3637,7 @@ const InventarioModule = {
         return `
             <div class="inv-fisico-header">
                 <div class="inv-fisico-header-left">
-                    <button class="inv-fisico-back" id="invFisicoBack">&#8592; Volver</button>
+                    <button class="btn-back-circ" id="invFisicoBack" title="Volver" aria-label="Volver"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
                     <span class="inv-fisico-session-title">Sesion #${s.id} — ${locNombre} — ${fecha}</span>
                     ${isCerrada ? '<span class="inv-badge inv-badge-ok" style="margin-left:6px">Cerrada</span>' : '<span class="inv-badge inv-badge-bajo" style="margin-left:6px">En curso</span>'}
                 </div>

@@ -167,7 +167,7 @@ const ImportarCotizacion = {
         return `
             <div class="ic-page">
                 <div class="ic-head">
-                    <a href="#crm" class="ic-back">← CRM</a>
+                    <a href="#crm" class="btn-back-circ" title="Volver al CRM" aria-label="Volver al CRM"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></a>
                     <h1 class="ic-title">Importar items de cotización</h1>
                 </div>
                 <p class="ic-intro">Pegá el texto de la cotización (copiá del PDF del cotizador). Detecto espacios, rubros, ítems y el número de referencia, y los cargo en la cotización correspondiente como <code>cotizacion_items</code>.</p>
@@ -354,8 +354,6 @@ const ImportarCotizacion = {
         s.textContent = `
             .ic-page{max-width:1100px;margin:0 auto;padding:8px 4px}
             .ic-head{display:flex;align-items:center;gap:14px;margin-bottom:4px}
-            .ic-back{color:var(--text-muted);text-decoration:none;font-size:.85rem}
-            .ic-back:hover{color:var(--primary)}
             .ic-title{font-size:1.4rem;color:var(--primary);margin:0}
             .ic-intro{color:var(--text-muted);font-size:.85rem;margin:0 0 16px;max-width:780px}
             .ic-intro code{font-family:var(--font-mono);color:var(--text-primary);font-size:.8rem}

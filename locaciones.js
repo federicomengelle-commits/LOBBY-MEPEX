@@ -559,7 +559,7 @@ const LocacionesModule = {
         cc.innerHTML = `
             <div class="loc-ficha">
                 <div class="loc-ficha-top">
-                    <button class="loc-btn-back" id="locBack">← Volver a Lugares</button>
+                    <button class="btn-back-circ" id="locBack" title="Volver a Lugares" aria-label="Volver a Lugares"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
                     <div class="loc-ficha-actions">
                         <button class="loc-btn-edit" id="locEditLugar">Editar</button>
                         <button class="loc-btn-edit" id="locProgRutina">🔁 Programar rutina</button>

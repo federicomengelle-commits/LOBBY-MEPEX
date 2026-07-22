@@ -534,22 +534,6 @@ const FinanzasModule = {
                 }
 
                 /* ─── Movimientos (cuenta detail) ─── */
-                .fin-back-btn {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 6px 12px;
-                    border: 1px solid #2a2a2a;
-                    border-radius: 4px;
-                    background: transparent;
-                    color: #888;
-                    font-family: var(--font-mono, 'Space Mono', monospace);
-                    font-size: 0.75rem;
-                    cursor: pointer;
-                    transition: all 200ms ease;
-                    margin-bottom: 16px;
-                }
-                .fin-back-btn:hover { color: #E8E8E8; border-color: #4A90D9; }
                 .fin-cuenta-header {
                     display: flex;
                     align-items: center;
@@ -4659,7 +4643,7 @@ const FinanzasModule = {
         const saldoColor = saldo >= 0 ? '#00CC88' : '#E84855';
 
         container.innerHTML = `
-            <button class="fin-back-btn" id="finBackToCuentas">← Volver a cuentas</button>
+            <button class="btn-back-circ" id="finBackToCuentas" title="Volver a cuentas" aria-label="Volver a cuentas" style="margin-bottom:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
             <div class="fin-cuenta-header">
                 <div class="fin-cuenta-header-left">
                     <span class="fin-color-dot" style="background:${c.color || '#4A90D9'};width:14px;height:14px;"></span>
@@ -10947,7 +10931,7 @@ const FinanzasModule = {
             <div class="fin-body">
                 <div class="fin-main">
                     <div style="margin-bottom:12px">
-                        <button class="fin-concil-btn-sm" id="finConcilBack">← Volver a lista</button>
+                        <button class="btn-back-circ" id="finConcilBack" title="Volver a la lista" aria-label="Volver a la lista"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
                     </div>
                     <div class="fin-concil-step-bar">${stepBar}</div>
                     <div class="fin-concil-wizard" id="finConcilWizard">

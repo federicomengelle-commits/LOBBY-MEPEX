@@ -1085,10 +1085,7 @@ const ComprasModule = {
         cc.innerHTML = `
             <div class="cmp-ficha">
                 <div class="cmp-ficha-topbar">
-                    <button class="cmp-btn-back" id="cmpBack">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                        Volver
-                    </button>
+                    <button class="btn-back-circ" id="cmpBack" title="Volver" aria-label="Volver"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
                     <div class="cmp-ficha-actions">
                         <button class="cmp-btn-action" id="cmpEditProv">Editar</button>
                         <button class="cmp-btn-action cmp-btn-danger" id="cmpDeleteProv">Eliminar</button>
@@ -1473,10 +1470,7 @@ const ComprasModule = {
         cc.innerHTML = `
             <div class="cmp-ficha">
                 <div class="cmp-ficha-topbar">
-                    <button class="cmp-btn-back" id="cmpBack">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                        Volver
-                    </button>
+                    <button class="btn-back-circ" id="cmpBack" title="Volver" aria-label="Volver"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
                     <div class="cmp-ficha-actions">
                         ${oc.estado !== 'pagada' && nextEstado[oc.estado] ? `<button class="cmp-btn-action cmp-btn-advance" id="cmpAdvanceOC">${nextLabel[oc.estado]}</button>` : ''}
                         <button class="cmp-btn-action" id="cmpEditOC">Editar</button>
