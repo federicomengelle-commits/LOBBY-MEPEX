@@ -3387,7 +3387,9 @@ const FinanzasModule = {
     // ═══════════════════════════════════════════
 
     _showIngresoModal(ingreso = null) {
-        const isEdit = !!ingreso;
+        // Editar SOLO si viene un ingreso real (con id). "Cobrar cuota" y "Duplicar"
+        // pasan prefills SIN id → deben CREAR (antes: update con id="undefined" → 22P02).
+        const isEdit = !!(ingreso && ingreso.id);
         const title = isEdit ? 'Editar ingreso' : 'Nuevo ingreso';
         const i = ingreso || {};
 
@@ -4195,7 +4197,8 @@ const FinanzasModule = {
     // ═══════════════════════════════════════════
 
     _showEgresoModal(egreso = null) {
-        const isEdit = !!egreso;
+        // Ídem ingreso: "Duplicar" pasa un clon SIN id → debe CREAR, no editar.
+        const isEdit = !!(egreso && egreso.id);
         const title = isEdit ? 'Editar egreso' : 'Nuevo egreso';
         const e = egreso || {};
 
