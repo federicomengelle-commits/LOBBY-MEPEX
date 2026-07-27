@@ -698,7 +698,7 @@ const Tareas = {
             else if (act === 'eliminar') {
                 if (typeof Confirm !== 'undefined' && !(await Confirm.delete('esta tarea'))) return;
                 const rowId = t._claimId || (!t.es_derivada ? t.id : null);
-                if (rowId) await supabaseClient.from('tareas').update({ _deleted: true }).eq('id', rowId);
+                if (rowId) await UndoHelpers.deleteRecord('tareas', rowId, `Tarea "${t.titulo || ''}"`);
             }
             if (typeof Toast !== 'undefined' && act !== 'eliminar') Toast.success('Listo');
             await this._load(user);

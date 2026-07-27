@@ -845,8 +845,7 @@ const LocacionesModule = {
         const ok = await Modal.confirm({ title: 'Eliminar lugar', message: '¿Eliminar este lugar? Se puede recuperar luego.', danger: true });
         if (!ok) return;
         try {
-            const { error } = await supabaseClient.from('locaciones').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('locaciones', id, 'Lugar');
             Toast.success('Lugar eliminado');
             this._selectedLugarId = null;
             await this._loadLugares();
@@ -1087,8 +1086,7 @@ const LocacionesModule = {
         const ok = await Modal.confirm({ title: 'Eliminar documento', message: '¿Eliminar este documento?', danger: true });
         if (!ok) return;
         try {
-            const { error } = await supabaseClient.from('locaciones_documentos').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('locaciones_documentos', id, 'Documento del lugar');
             Toast.success('Documento eliminado');
             await this._loadDocumentacion();
         } catch (e) {

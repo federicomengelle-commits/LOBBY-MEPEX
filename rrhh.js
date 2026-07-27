@@ -1304,7 +1304,7 @@ const RRHHModule = {
         const ok = await Confirm.delete('este personal');
         if (!ok) return;
         try {
-            await supabaseClient.from('personas').update({ _deleted: true }).eq('id', id);
+            await UndoHelpers.deleteRecord('personas', id, 'Personal');
             Toast.success('Personal eliminado');
             this._selectedPersonId = null;
             await this._loadNomina();
@@ -1583,7 +1583,7 @@ const RRHHModule = {
         const ok = await Confirm.delete('este documento');
         if (!ok) return;
         try {
-            await supabaseClient.from('persona_documentos').update({ _deleted: true }).eq('id', id);
+            await UndoHelpers.deleteRecord('persona_documentos', id, 'Documento del personal');
             Toast.success('Documento eliminado');
             this._panelDocsFor = null;
             const docs = await this._loadPersonaDocs(p);
@@ -2138,7 +2138,7 @@ const RRHHModule = {
         const ok = await Confirm.delete('esta ausencia');
         if (!ok) return;
         try {
-            await supabaseClient.from('ausencias').update({ _deleted: true }).eq('id', id);
+            await UndoHelpers.deleteRecord('ausencias', id, 'Ausencia');
             Toast.success('Ausencia eliminada');
             await this._loadAusencias();
         } catch (e) {

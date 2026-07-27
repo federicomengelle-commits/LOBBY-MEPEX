@@ -40,9 +40,9 @@ const App = {
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
-        'api.js?v=87',
-        'components.js?v=9',
-        'undo.js?v=3',
+        'api.js?v=88',
+        'components.js?v=10',
+        'undo.js?v=4',
         'alertas.js?v=8',
         'badges.js?v=5',
         'lobby.js?v=15',
@@ -52,7 +52,7 @@ const App = {
         'proyecto-detalle.js?v=19',
         'crm.js?v=40',
         'catalogo.js?v=9',
-        'stands.js?v=4',
+        'stands.js?v=5',
         'compositor-piezas.js?v=2',
         'compositor.js?v=18',
         'tools/octexa/octexa-bom.js',
@@ -62,18 +62,18 @@ const App = {
         'remito-pdf.js?v=4',
         'pedido-pdf.js?v=2',
         'conforme-pdf.js?v=2',
-        'compras.js?v=19',
+        'compras.js?v=20',
         'inventario.js?v=20',
-        'locaciones.js?v=11',
+        'locaciones.js?v=12',
         'flota.js?v=8',
-        'rrhh.js?v=16',
+        'rrhh.js?v=17',
         'calculo-receta.js?v=1',
         'costos.js?v=34',
         'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
-        'contabilidad.js?v=16',
-        'finanzas.js?v=55',
+        'contabilidad.js?v=17',
+        'finanzas.js?v=56',
         'rendimiento.js?v=11',
-        'calendario-adm.js?v=2',
+        'calendario-adm.js?v=3',
         'carga-comprobante.js?v=4',
         'pedido-compra.js?v=1',
         'settings.js?v=9',
@@ -82,7 +82,7 @@ const App = {
         'importar-contactos.js?v=2',
         'modules.js?v=10',
         'notifications.js?v=7',
-        'tareas.js?v=11',
+        'tareas.js?v=12',
         // PostHog Analytics (consultoría Jordi 2026-07-17) — al final a propósito:
         // si el CDN de PostHog falla, la app ya cargó entera (analytics es lo único
         // que se pierde). array.full.js define window.posthog; posthog-init.js
@@ -637,8 +637,11 @@ const App = {
             this.closeDrawer();
         });
 
-        // Global keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
+        // Global keyboard shortcuts — handler nombrado y dedupe:
+        // renderShell puede re-correr (re-login en la misma pestaña) y un doble
+        // listener haría que un Ctrl+Z deshaga DOS acciones.
+        if (this._globalKeydownHandler) document.removeEventListener('keydown', this._globalKeydownHandler);
+        this._globalKeydownHandler = (e) => {
             // Ctrl+K → focus search (mobile: abrir overlay)
             if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
                 e.preventDefault();
@@ -654,21 +657,27 @@ const App = {
                 else if (this.searchOpen) this.closeSearch();
                 else if (this.drawerOpen) this.closeDrawer();
             }
+            // No interceptar Ctrl+Z/Y mientras se tipea en un campo: ahí manda
+            // el undo nativo del input, no el de la app (revertiría datos en la DB).
+            const tgt = e.target;
+            const typing = tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA'
+                || tgt.tagName === 'SELECT' || tgt.isContentEditable);
             // Ctrl+Z → undo
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey && !typing) {
                 if (UndoManager.canUndo()) {
                     e.preventDefault();
                     UndoManager.undo();
                 }
             }
             // Ctrl+Y / Ctrl+Shift+Z → redo
-            if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && (e.key === 'z' || e.key === 'Z')))) {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && (e.key === 'z' || e.key === 'Z'))) && !typing) {
                 if (UndoManager.canRedo()) {
                     e.preventDefault();
                     UndoManager.redo();
                 }
             }
-        });
+        };
+        document.addEventListener('keydown', this._globalKeydownHandler);
     },
 
     // ─── SIDEBAR TOGGLE ───

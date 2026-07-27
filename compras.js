@@ -1321,7 +1321,7 @@ const ComprasModule = {
         const ok = await Modal.confirm({ title: 'Eliminar proveedor', message: '¿Eliminar este proveedor? La lista es compartida: también desaparece de los combos de Costos, Finanzas y Rendimiento.', danger: true });
         if (!ok) return;
         try {
-            await supabaseClient.from('proveedor').update({ _deleted: true }).eq('id', id);
+            await UndoHelpers.deleteRecord('proveedor', id, 'Proveedor');
             API.clearCache();
             Toast.success('Proveedor eliminado');
             this._selectedProveedorId = null;
@@ -1975,7 +1975,7 @@ const ComprasModule = {
         const ok = await Modal.confirm({ title: 'Eliminar OC', message: '¿Eliminar esta orden de compra?', danger: true });
         if (!ok) return;
         try {
-            await supabaseClient.from('compras_ordenes').update({ _deleted: true }).eq('id', id);
+            await UndoHelpers.deleteRecord('compras_ordenes', id, 'Orden de compra');
             Toast.success('OC eliminada');
             this._selectedOrdenId = null;
             await this._loadOrdenes();
@@ -2123,7 +2123,7 @@ const ComprasModule = {
                 const ok = await Modal.confirm({ title: 'Eliminar pago', message: '¿Eliminar este registro de pago?', danger: true });
                 if (!ok) return;
                 try {
-                    await supabaseClient.from('compras_pagos').update({ _deleted: true }).eq('id', btn.dataset.delPagoId);
+                    await UndoHelpers.deleteRecord('compras_pagos', btn.dataset.delPagoId, 'Registro de pago');
                     Toast.success('Pago eliminado');
                     await this._loadPagos();
                 } catch (e) { Toast.error('Error al eliminar'); }

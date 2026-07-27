@@ -293,7 +293,7 @@ const CalendarioAdm = {
         const p = this._plantillas.find(x => x.id === id); if (!p) return;
         const ok = await Confirm.delete(`la plantilla "${p.concepto}"`);
         if (!ok) return;
-        try { await supabaseClient.from('vencimientos_recurrentes').update({ _deleted: true }).eq('id', id); Toast.success('Plantilla eliminada'); await this._reload(); }
+        try { await UndoHelpers.deleteRecord('vencimientos_recurrentes', id, `Plantilla "${p.concepto || ''}"`); Toast.success('Plantilla eliminada'); await this._reload(); }
         catch (e) { Toast.error('Error: ' + (e.message || e)); }
     },
 

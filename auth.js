@@ -131,6 +131,8 @@ const Auth = {
         }
         this._profile = null;
         if (typeof Badges !== 'undefined') Badges.stop();
+        // El historial de undo es del usuario que se va — no debe heredarlo el próximo login
+        if (typeof UndoManager !== 'undefined') UndoManager.clear();
         await supabaseClient.auth.signOut();
         Router.navigate('login');
     },

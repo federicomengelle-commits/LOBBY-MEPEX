@@ -475,9 +475,45 @@ const StandsModule = {
         const ok = await Confirm.delete(p.nombre || 'este prediseño');
         if (!ok) return;
         try {
+            // Compuesto: prediseño + sus componentes VIVOS (ids capturados para un undo exacto)
+            const { data: comps } = await supabaseClient.from('proyecto_componentes')
+                .select('id').eq('proyecto_id', p.id).eq('_deleted', false);
+            const compIds = (comps || []).map(c => c.id);
+
             const { error } = await supabaseClient.from('proyectos').update({ _deleted: true }).eq('id', p.id);
             if (error) throw error;
-            await supabaseClient.from('proyecto_componentes').update({ _deleted: true }).eq('proyecto_id', p.id);
+            if (compIds.length) {
+                const { error: e2 } = await supabaseClient.from('proyecto_componentes')
+                    .update({ _deleted: true }).in('id', compIds);
+                if (e2) throw e2;
+            }
+
+            if (typeof UndoManager !== 'undefined') UndoManager.push({
+                type: 'delete_record',
+                description: `Prediseño "${p.nombre || ''}"`,
+                meta: { table: 'proyectos', id: p.id, compIds },
+                undo: async () => {
+                    const { error: e } = await supabaseClient.from('proyectos').update({ _deleted: false }).eq('id', p.id);
+                    if (e) throw e;
+                    if (compIds.length) {
+                        const { error: e2 } = await supabaseClient.from('proyecto_componentes').update({ _deleted: false }).in('id', compIds);
+                        if (e2) throw e2;
+                    }
+                    AuditLog.log('proyectos', p.id, 'undo_delete', { restored: true, compIds });
+                    UndoHelpers._refreshView();
+                },
+                redo: async () => {
+                    const { error: e } = await supabaseClient.from('proyectos').update({ _deleted: true }).eq('id', p.id);
+                    if (e) throw e;
+                    if (compIds.length) {
+                        const { error: e2 } = await supabaseClient.from('proyecto_componentes').update({ _deleted: true }).in('id', compIds);
+                        if (e2) throw e2;
+                    }
+                    AuditLog.log('proyectos', p.id, 'redo_delete', { soft_deleted: true, compIds });
+                    UndoHelpers._refreshView();
+                }
+            });
+            AuditLog.log('proyectos', p.id, 'delete', { prediseno: true, compIds });
             Toast.success('Prediseño eliminado');
             this._fichaId = null;
             this._activeTab = 'buscar';

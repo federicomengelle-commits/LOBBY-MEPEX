@@ -2288,11 +2288,7 @@ const ContabilidadModule = {
             const confirmed = await Confirm.delete(cuenta.nombre);
             if (!confirmed) return;
             try {
-                const { error } = await supabaseClient
-                    .from('plan_cuentas')
-                    .update({ _deleted: true })
-                    .eq('id', cuenta.id);
-                if (error) throw error;
+                await UndoHelpers.deleteRecord('plan_cuentas', cuenta.id, `Cuenta ${cuenta.codigo || ''} ${cuenta.nombre || ''}`);
                 Toast.success('Cuenta eliminada');
                 this._closePanel();
                 await this._loadPlanCuentas();
@@ -5463,11 +5459,7 @@ const ContabilidadModule = {
 
     async _deleteMapeo(id) {
         try {
-            const { error } = await supabaseClient
-                .from('mapeo_cuentas')
-                .update({ _deleted: true })
-                .eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('mapeo_cuentas', id, 'Mapeo de cuentas');
             Toast.success('Mapeo eliminado');
             await this._loadMapeos();
             this._renderMapeosTable();

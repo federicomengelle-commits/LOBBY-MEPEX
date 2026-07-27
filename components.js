@@ -294,10 +294,12 @@ const ContextMenu = {
 
 // ─── CONFIRM (thin wrapper) ─────────────────────
 const Confirm = {
-    async delete(entityName) {
+    // opts.undoable: false = el flujo NO registra undo \u2192 no prometer Ctrl+Z
+    async delete(entityName, opts = {}) {
+        const undoable = opts.undoable !== false;
         return Modal.confirm({
             title: 'Confirmar eliminaci\u00f3n',
-            message: `\u00bfSeguro que quer\u00e9s eliminar <strong>"${entityName}"</strong>? Se puede deshacer con Ctrl+Z.`,
+            message: `\u00bfSeguro que quer\u00e9s eliminar <strong>"${escHtml(entityName)}"</strong>?${undoable ? ' Se puede deshacer con Ctrl+Z.' : ''}`,
             confirmText: 'Eliminar',
             cancelText: 'Cancelar',
             danger: true,

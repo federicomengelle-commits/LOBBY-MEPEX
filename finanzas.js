@@ -2631,11 +2631,7 @@ const FinanzasModule = {
 
     async _deleteCuenta(id) {
         try {
-            const { error } = await supabaseClient
-                .from('cuentas_financieras')
-                .update({ _deleted: true })
-                .eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('cuentas_financieras', id, 'Cuenta financiera');
             Toast.success('Cuenta eliminada');
             this._closePanel();
             await this._loadCuentas();
@@ -3014,7 +3010,7 @@ const FinanzasModule = {
                     dup.fecha = new Date().toISOString().slice(0, 10);
                     this._showIngresoModal(dup);
                 } else if (action === 'del') {
-                    const ok = await Confirm.delete(`el ingreso "${escHtml(ingreso.concepto)}" (${this._formatMoney(ingreso.monto)})`);
+                    const ok = await Confirm.delete(`el ingreso "${escHtml(ingreso.concepto)}" (${this._formatMoney(ingreso.monto)})`, { undoable: false });
                     if (!ok) return;
                     try {
                         const { error } = await supabaseClient.from('ingresos')
@@ -3927,7 +3923,7 @@ const FinanzasModule = {
                     dup.fecha = new Date().toISOString().slice(0, 10);
                     this._showEgresoModal(dup);
                 } else if (action === 'del') {
-                    const ok = await Confirm.delete(`el egreso "${escHtml(egreso.concepto)}" (${this._formatMoney(egreso.monto)})`);
+                    const ok = await Confirm.delete(`el egreso "${escHtml(egreso.concepto)}" (${this._formatMoney(egreso.monto)})`, { undoable: false });
                     if (!ok) return;
                     try {
                         const { error } = await supabaseClient.from('egresos')
@@ -5125,7 +5121,7 @@ const FinanzasModule = {
                 const ok = await Confirm.delete(`la cuota "${escHtml(item.concepto)}" (${this._formatMoney(item.monto)})`);
                 if (!ok) return;
                 try {
-                    await API.deletePlanCobroItem(itemId);
+                    await API.deletePlanCobroItem(itemId, `Cuota "${item.concepto || ''}" del plan`);
                     Toast.success('Cuota eliminada');
                     await this._loadPlanes();
                 } catch (e) {
@@ -9316,7 +9312,7 @@ const FinanzasModule = {
             });
             if (ok) {
                 try {
-                    await supabaseClient.from('comprobantes_recibidos').update({ _deleted: true }).eq('id', comp.id);
+                    await UndoHelpers.deleteRecord('comprobantes_recibidos', comp.id, 'Comprobante recibido');
                     Toast.success('Comprobante eliminado');
                     this._closePanel();
                     await this._loadFactRecibidos();
@@ -10645,7 +10641,7 @@ const FinanzasModule = {
             });
             if (ok) {
                 try {
-                    await supabaseClient.from('vencimientos_recurrentes').update({ _deleted: true }).eq('id', plantilla.id);
+                    await UndoHelpers.deleteRecord('vencimientos_recurrentes', plantilla.id, `Plantilla "${plantilla.concepto || ''}"`);
                     Toast.success('Plantilla eliminada');
                     Modal.closeAll();
                     await this._loadPlantillas();

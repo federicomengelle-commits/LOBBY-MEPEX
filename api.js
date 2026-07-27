@@ -1031,11 +1031,7 @@ const API = {
     async deleteEventDocumento(docId) {
         if (!docId) return null;
         try {
-            const { error } = await supabaseClient
-                .from('evento_documentos')
-                .update({ _deleted: true })
-                .eq('id', docId);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('evento_documentos', docId, 'Documento del evento');
             return true;
         } catch (e) {
             console.warn('[API] Error deleting event documento:', e.message);
@@ -1282,8 +1278,7 @@ const API = {
 
     async deleteCaso(id) {
         try {
-            const { error } = await supabaseClient.from('crm_casos').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('crm_casos', id, 'Caso del CRM');
             return true;
         } catch (e) { console.warn('[API] deleteCaso:', e.message); return null; }
     },
@@ -1460,8 +1455,7 @@ const API = {
 
     async deleteMensaje(id) {
         try {
-            const { error } = await supabaseClient.from('crm_mensajes').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('crm_mensajes', id, 'Mensaje del historial');
             return true;
         } catch (e) { console.warn('[API] deleteMensaje:', e.message); return null; }
     },
@@ -4064,9 +4058,7 @@ const API = {
 
     async deleteNovedad(id) {
         try {
-            const { error } = await supabaseClient
-                .from('proyecto_novedades').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('proyecto_novedades', id, 'Novedad del proyecto');
             return true;
         } catch (e) {
             console.warn('[API] Error deleteNovedad:', e.message);
@@ -4315,7 +4307,10 @@ const API = {
     },
 
     async deletePedido(id) {
-        return this.updatePedido(id, { _deleted: true });
+        try {
+            await UndoHelpers.deleteRecord('compras_pedidos', id, 'Pedido de compra');
+            return true;
+        } catch (e) { console.warn('[API] deletePedido:', e.message); return null; }
     },
 
     // ─── 5.B/5.C — OC desde pedido · presupuestos · ganadora · egreso ───
@@ -4994,9 +4989,7 @@ const API = {
 
     async deleteAsignacionEvento(id) {
         try {
-            const { error } = await supabaseClient
-                .from('asignaciones_evento').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('asignaciones_evento', id, 'Asignación de persona al evento');
             return true;
         } catch (e) {
             console.warn('[API] Error deleteAsignacionEvento:', e.message);
@@ -5163,9 +5156,7 @@ const API = {
 
     async deleteVehiculo(id) {
         try {
-            const { error } = await supabaseClient
-                .from('vehiculos').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('vehiculos', id, 'Vehículo');
             return true;
         } catch (e) {
             console.warn('[API] Error deleteVehiculo:', e.message);
@@ -5884,9 +5875,7 @@ const API = {
 
     async deleteMantenimiento(id) {
         try {
-            const { error } = await supabaseClient
-                .from('produccion_mantenimiento').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('produccion_mantenimiento', id, 'Item de mantenimiento');
             return true;
         } catch (e) {
             console.warn('[API] Error deleteMantenimiento:', e.message);
@@ -5996,11 +5985,10 @@ const API = {
     },
 
     async deleteComprobanteIvaRecovery(id) {
-        const { error } = await supabaseClient
-            .from('comprobantes_iva_recovery')
-            .update({ _deleted: true }).eq('id', id);
-        if (error) { console.warn('[API] deleteComprobanteIvaRecovery:', error.message); throw error; }
-        return true;
+        try {
+            await UndoHelpers.deleteRecord('comprobantes_iva_recovery', id, 'Registro auxiliar de IVA');
+            return true;
+        } catch (error) { console.warn('[API] deleteComprobanteIvaRecovery:', error.message); throw error; }
     },
 
     async getLibroIvaComprasExtendido({ periodo = null, origen = null } = {}) {
@@ -6087,9 +6075,48 @@ const API = {
     },
 
     async deletePlanCobro(id) {
+        // Compuesto: plan + sus cuotas VIVAS (snapshot de ids para un undo exacto)
+        const { data: items, error: itErr } = await supabaseClient.from('plan_cobro_items')
+            .select('id').eq('plan_cobro_id', id).eq('_deleted', false);
+        if (itErr) { console.warn('[API] deletePlanCobro:', itErr.message); throw itErr; }
+        const itemIds = (items || []).map(i => i.id);
+
         const { error } = await supabaseClient.from('plan_cobro')
             .update({ _deleted: true }).eq('id', id);
         if (error) { console.warn('[API] deletePlanCobro:', error.message); throw error; }
+
+        if (itemIds.length) {
+            const { error: e2 } = await supabaseClient.from('plan_cobro_items')
+                .update({ _deleted: true }).in('id', itemIds);
+            if (e2) { console.warn('[API] deletePlanCobro items:', e2.message); throw e2; }
+        }
+
+        if (typeof UndoManager !== 'undefined') UndoManager.push({
+            type: 'delete_record',
+            description: `Plan de cobro (${itemIds.length} cuota${itemIds.length === 1 ? '' : 's'})`,
+            meta: { table: 'plan_cobro', id, itemIds },
+            undo: async () => {
+                const { error: e } = await supabaseClient.from('plan_cobro').update({ _deleted: false }).eq('id', id);
+                if (e) throw e;
+                if (itemIds.length) {
+                    const { error: e2 } = await supabaseClient.from('plan_cobro_items').update({ _deleted: false }).in('id', itemIds);
+                    if (e2) throw e2;
+                }
+                AuditLog.log('plan_cobro', id, 'undo_delete', { restored: true, itemIds });
+                UndoHelpers._refreshView();
+            },
+            redo: async () => {
+                const { error: e } = await supabaseClient.from('plan_cobro').update({ _deleted: true }).eq('id', id);
+                if (e) throw e;
+                if (itemIds.length) {
+                    const { error: e2 } = await supabaseClient.from('plan_cobro_items').update({ _deleted: true }).in('id', itemIds);
+                    if (e2) throw e2;
+                }
+                AuditLog.log('plan_cobro', id, 'redo_delete', { soft_deleted: true, itemIds });
+                UndoHelpers._refreshView();
+            }
+        });
+        AuditLog.log('plan_cobro', id, 'delete', { itemIds });
         return true;
     },
 
@@ -6107,11 +6134,11 @@ const API = {
         return data;
     },
 
-    async deletePlanCobroItem(id) {
-        const { error } = await supabaseClient.from('plan_cobro_items')
-            .update({ _deleted: true }).eq('id', id);
-        if (error) { console.warn('[API] deletePlanCobroItem:', error.message); throw error; }
-        return true;
+    async deletePlanCobroItem(id, label) {
+        try {
+            await UndoHelpers.deleteRecord('plan_cobro_items', id, label || 'Cuota del plan');
+            return true;
+        } catch (error) { console.warn('[API] deletePlanCobroItem:', error.message); throw error; }
     },
 
     // Vincular cuota a una factura ya emitida (el trigger BEFORE marca como 'facturada')
@@ -6452,8 +6479,7 @@ const API = {
         if (error) throw error;
     },
     async deleteRendimientoCatalogoItem(id) {
-        const { error } = await supabaseClient.from('evento_costo_catalogo').update({ _deleted: true }).eq('id', id);
-        if (error) throw error;
+        await UndoHelpers.deleteRecord('evento_costo_catalogo', id, 'Ítem del catálogo de costos');
     },
 
     // ── Líneas de costo (la planilla) ──
@@ -7487,9 +7513,7 @@ const API = {
             if (refs && refs.length > 0) {
                 return 'No se puede eliminar: el equipo está dentro de un contenedor. Quitalo del manifiesto primero.';
             }
-            const { error } = await supabaseClient
-                .from('equipos').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('equipos', id, 'Equipo de inventario');
             return true;
         } catch (e) {
             console.warn('[API] deleteEquipo:', e.message);
@@ -7580,9 +7604,7 @@ const API = {
 
     async deleteManifiestoLinea(id) {
         try {
-            const { error } = await supabaseClient
-                .from('equipo_contenido').update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('equipo_contenido', id, 'Línea del manifiesto');
             return true;
         } catch (e) {
             console.warn('[API] deleteManifiestoLinea:', e.message);
@@ -7930,14 +7952,47 @@ const API = {
     async deleteTransporte(id) {
         if (!id) return null;
         try {
+            // Compuesto: transporte + sus ítems VIVOS (ids capturados para un undo exacto)
+            const { data: items } = await supabaseClient
+                .from('evento_transporte_items').select('id')
+                .eq('transporte_id', id).eq('_deleted', false);
+            const itemIds = (items || []).map(i => i.id);
+
             const { error } = await supabaseClient
                 .from('evento_transporte').update({ _deleted: true }).eq('id', id);
             if (error) throw error;
-            await supabaseClient
-                .from('evento_transporte_items')
-                .update({ _deleted: true })
-                .eq('transporte_id', id)
-                .eq('_deleted', false);
+            if (itemIds.length) {
+                const { error: e2 } = await supabaseClient
+                    .from('evento_transporte_items').update({ _deleted: true }).in('id', itemIds);
+                if (e2) throw e2;
+            }
+
+            if (typeof UndoManager !== 'undefined') UndoManager.push({
+                type: 'delete_record',
+                description: 'Transporte del evento',
+                meta: { table: 'evento_transporte', id, itemIds },
+                undo: async () => {
+                    const { error: e } = await supabaseClient.from('evento_transporte').update({ _deleted: false }).eq('id', id);
+                    if (e) throw e;
+                    if (itemIds.length) {
+                        const { error: e2 } = await supabaseClient.from('evento_transporte_items').update({ _deleted: false }).in('id', itemIds);
+                        if (e2) throw e2;
+                    }
+                    AuditLog.log('evento_transporte', id, 'undo_delete', { restored: true, itemIds });
+                    UndoHelpers._refreshView();
+                },
+                redo: async () => {
+                    const { error: e } = await supabaseClient.from('evento_transporte').update({ _deleted: true }).eq('id', id);
+                    if (e) throw e;
+                    if (itemIds.length) {
+                        const { error: e2 } = await supabaseClient.from('evento_transporte_items').update({ _deleted: true }).in('id', itemIds);
+                        if (e2) throw e2;
+                    }
+                    AuditLog.log('evento_transporte', id, 'redo_delete', { soft_deleted: true, itemIds });
+                    UndoHelpers._refreshView();
+                }
+            });
+            AuditLog.log('evento_transporte', id, 'delete', { itemIds });
             return true;
         } catch (e) {
             console.warn('[API] deleteTransporte:', e.message);
@@ -8060,8 +8115,7 @@ const API = {
     },
 
     async deleteRutina(id) {
-        const { error } = await supabaseClient.from('rutinas').update({ _deleted: true }).eq('id', id);
-        if (error) throw error;
+        await UndoHelpers.deleteRecord('rutinas', id, 'Rutina de mantenimiento');
     },
 
     // Marca la rutina como hecha y reprograma proxima_fecha (RPC SECURITY DEFINER).
@@ -8183,9 +8237,7 @@ const API = {
 
     async deleteConforme(id) {
         try {
-            const { error } = await supabaseClient.from('proyecto_conformes')
-                .update({ _deleted: true }).eq('id', id);
-            if (error) throw error;
+            await UndoHelpers.deleteRecord('proyecto_conformes', id, 'Conforme de entrega');
             return true;
         } catch (e) { console.warn('[API] deleteConforme:', e.message); return false; }
     },

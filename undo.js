@@ -155,7 +155,10 @@ const UndoUI = {
 
     init() {
         this._injectButtons();
-        UndoManager.onChange((state) => this._update(state));
+        // renderShell puede re-correr (re-login en la misma pestaña): no acumular listeners
+        if (this._changeHandler) UndoManager.removeListener(this._changeHandler);
+        this._changeHandler = (state) => this._update(state);
+        UndoManager.onChange(this._changeHandler);
     },
 
     _injectButtons() {
@@ -164,6 +167,8 @@ const UndoUI = {
             console.warn('[UndoUI] no se encontro .global-header-right');
             return;
         }
+
+        headerRight.querySelector('.undo-controls')?.remove();
 
         const container = document.createElement('div');
         container.className = 'undo-controls';
@@ -257,14 +262,16 @@ const UndoHelpers = {
             description: `${label}: "${oldValue || '(vacio)'}" -> "${newValue || '(vacio)'}"`,
             meta: { table, id, field, oldValue, newValue },
             undo: async () => {
-                await supabaseClient.from(table).update({ [field]: oldValue }).eq('id', id);
+                const { error: undoErr } = await supabaseClient.from(table).update({ [field]: oldValue }).eq('id', id);
+                if (undoErr) throw undoErr;
                 AuditLog.log(table, id, 'undo_update', { field, restored: oldValue });
                 if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
                     Modules.refreshCurrentView();
                 }
             },
             redo: async () => {
-                await supabaseClient.from(table).update({ [field]: newValue }).eq('id', id);
+                const { error: redoErr } = await supabaseClient.from(table).update({ [field]: newValue }).eq('id', id);
+                if (redoErr) throw redoErr;
                 AuditLog.log(table, id, 'redo_update', { field, applied: newValue });
                 if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
                     Modules.refreshCurrentView();
@@ -301,14 +308,16 @@ const UndoHelpers = {
             description: friendlyName || `Edito registro en ${table}`,
             meta: { table, id, oldValues, newValues },
             undo: async () => {
-                await supabaseClient.from(table).update(oldValues).eq('id', id);
+                const { error: undoErr } = await supabaseClient.from(table).update(oldValues).eq('id', id);
+                if (undoErr) throw undoErr;
                 AuditLog.log(table, id, 'undo_update', { restored: oldValues });
                 if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
                     Modules.refreshCurrentView();
                 }
             },
             redo: async () => {
-                await supabaseClient.from(table).update(newValues).eq('id', id);
+                const { error: redoErr } = await supabaseClient.from(table).update(newValues).eq('id', id);
+                if (redoErr) throw redoErr;
                 AuditLog.log(table, id, 'redo_update', { applied: newValues });
                 if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
                     Modules.refreshCurrentView();
@@ -336,14 +345,16 @@ const UndoHelpers = {
             description: friendlyName || `Creo registro en ${table}`,
             meta: { table, id: newId, values },
             undo: async () => {
-                await supabaseClient.from(table).update({ _deleted: true }).eq('id', newId);
+                const { error: undoErr } = await supabaseClient.from(table).update({ _deleted: true }).eq('id', newId);
+                if (undoErr) throw undoErr;
                 AuditLog.log(table, newId, 'undo_create', { soft_deleted: true });
                 if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
                     Modules.refreshCurrentView();
                 }
             },
             redo: async () => {
-                await supabaseClient.from(table).update({ _deleted: false }).eq('id', newId);
+                const { error: redoErr } = await supabaseClient.from(table).update({ _deleted: false }).eq('id', newId);
+                if (redoErr) throw redoErr;
                 AuditLog.log(table, newId, 'redo_create', { restored: true });
                 if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
                     Modules.refreshCurrentView();
@@ -367,32 +378,46 @@ const UndoHelpers = {
         if (error) throw error;
 
         const snapshot = { ...data };
+        const label = String(
+            friendlyName || snapshot.nombre || snapshot.nombre_empresa || snapshot.concepto
+            || snapshot.titulo || `registro de ${table}`
+        ).slice(0, 80);
 
         // Soft delete
-        await supabaseClient.from(table).update({ _deleted: true }).eq('id', id);
+        const { error: delErr } = await supabaseClient.from(table).update({ _deleted: true }).eq('id', id);
+        if (delErr) throw delErr;
 
         UndoManager.push({
             type: 'delete_record',
-            description: friendlyName || `Elimino registro de ${table}`,
+            description: label,
             meta: { table, id, snapshot },
             undo: async () => {
-                await supabaseClient.from(table).update({ _deleted: false }).eq('id', id);
+                const { error: undoErr } = await supabaseClient.from(table).update({ _deleted: false }).eq('id', id);
+                if (undoErr) throw undoErr;
                 AuditLog.log(table, id, 'undo_delete', { restored: true });
                 Toast.success('Registro restaurado');
-                if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
-                    Modules.refreshCurrentView();
-                }
+                UndoHelpers._refreshView();
             },
             redo: async () => {
-                await supabaseClient.from(table).update({ _deleted: true }).eq('id', id);
+                const { error: redoErr } = await supabaseClient.from(table).update({ _deleted: true }).eq('id', id);
+                if (redoErr) throw redoErr;
                 AuditLog.log(table, id, 'redo_delete', { soft_deleted: true });
-                if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
-                    Modules.refreshCurrentView();
-                }
+                UndoHelpers._refreshView();
             }
         });
 
         AuditLog.log(table, id, 'delete', { snapshot });
+    },
+
+    // Re-renderiza el módulo activo tras un undo/redo de borrado, sea genérico o custom.
+    _refreshView() {
+        try {
+            if (typeof Router !== 'undefined' && Router.handleRoute) {
+                Router.handleRoute().catch(e => console.warn('[UndoHelpers] refresh view:', e));
+            } else if (typeof Modules !== 'undefined' && Modules.refreshCurrentView) {
+                Modules.refreshCurrentView();
+            }
+        } catch (e) { console.warn('[UndoHelpers] refresh view:', e); }
     },
 
     // --- Cambiar estado (caso comun) ---
