@@ -121,6 +121,7 @@ const Router = {
 
             // ── Admin & Finanzas ──
             'ventas':           { render: () => VentasModule.render(), requiresAuth: true, module: 'ventas', adminOnly: true, obj: typeof VentasModule !== 'undefined' ? VentasModule : null },
+            'ventas/:id':       { render: (params) => VentaDetalle.render(params.id), requiresAuth: true, module: 'ventas', adminOnly: true, obj: typeof VentaDetalle !== 'undefined' ? VentaDetalle : null },
             'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
             'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas' },
             'rendimiento':      { render: () => RendimientoModule.render(), requiresAuth: true, module: 'rendimiento', adminOnly: true },

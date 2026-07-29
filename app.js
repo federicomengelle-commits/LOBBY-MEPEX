@@ -72,6 +72,7 @@ const App = {
         'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
         'contabilidad.js?v=17',
         'ventas.js?v=1',
+        'venta-detalle.js?v=1',
         'finanzas.js?v=57',
         'rendimiento.js?v=11',
         'calendario-adm.js?v=3',
