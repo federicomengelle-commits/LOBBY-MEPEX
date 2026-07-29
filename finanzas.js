@@ -2866,6 +2866,12 @@ const FinanzasModule = {
             .fin-row:hover .fin-actions-cell { opacity: 1; }
             .fin-inline-input { width:100%; background:#0a0a0a; border:1px solid #00A9C1; color:#E8E8E8; padding:4px 6px; border-radius:3px; font-size:0.85rem; font-family:inherit; }
 
+            /* Circuito de venta Fase 1 — chip de origen del plan de cobro.
+               Clases NUEVAS: no piso ninguna .fin-* existente. */
+            .fin-plan-origen { display:inline-block; margin-left:8px; padding:1px 7px; border:1px solid #2a2a2a; border-radius:3px; background:transparent; color:#888; font-family:var(--font-mono,'Space Mono',monospace); font-size:9px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; line-height:1.6; vertical-align:middle; }
+            .fin-plan-origen-venta { border-color:rgba(0,169,193,0.45); color:var(--primary,#00A9C1); background:rgba(0,169,193,0.10); cursor:pointer; transition: all 0.15s ease; }
+            .fin-plan-origen-venta:hover { background:rgba(0,169,193,0.20); box-shadow:0 0 12px rgba(0,169,193,0.2); }
+
             /* Visor central: el panel es un modal overlay (definido en el bloque base).
                En pantallas chicas, la card ocupa todo el ancho. */
             @media (max-width: 800px) {
@@ -4960,7 +4966,17 @@ const FinanzasModule = {
         }
 
         main.innerHTML = this._planes.map(plan => {
-            const proyName = this._proyectosMap[plan.proyecto_id] || 'Proyecto';
+            // Fallback del título: 'Proyecto' salvo que el plan cuelgue SOLO de una
+            // venta (circuito de venta Fase 1) — ahí decir "Proyecto" mentiría.
+            // Los planes viejos siempre tienen proyecto_id, así que no los toca.
+            const proyName = this._proyectosMap[plan.proyecto_id]
+                || (plan.venta_id && !plan.proyecto_id ? 'Venta' : 'Proyecto');
+
+            // Chip de origen: de qué cuelga este plan. "Venta" navega a la ficha;
+            // "Proyecto" es informativo y marca los planes de antes del circuito.
+            const origenChip = plan.venta_id
+                ? `<button type="button" class="fin-plan-origen fin-plan-origen-venta" data-plan-venta="${escAttr(plan.venta_id)}" title="Este plan cuelga de una venta — abrir la ficha">Venta</button>`
+                : `<span class="fin-plan-origen" title="Plan colgado de un proyecto">Proyecto</span>`;
             const items = (plan.plan_cobro_items || [])
                 .filter(i => !i._deleted)
                 .sort((a, b) => a.orden - b.orden);
@@ -4989,7 +5005,7 @@ const FinanzasModule = {
                 <div class="fin-plan-card" data-plan-id="${plan.id}">
                     <div class="fin-plan-header">
                         <div>
-                            <span class="fin-plan-proyecto">${proyName}</span>
+                            <span class="fin-plan-proyecto">${escHtml(proyName)}</span>${origenChip}
                             <span class="fin-plan-total"> — Total: ${formatMontoCuota(plan.total_plan, planMoneda)}${monedaChip}${totalEquivAR}</span>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center;">
@@ -5054,6 +5070,14 @@ const FinanzasModule = {
                 </div>
             `;
         }).join('');
+
+        // Chip de origen "Venta" → ficha de la venta. El chip "Proyecto" no navega.
+        main.querySelectorAll('.fin-plan-origen-venta[data-plan-venta]').forEach(chip => {
+            chip.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                Router.navigate('ventas/' + chip.dataset.planVenta);
+            });
+        });
 
         // Cobrar item buttons
         main.querySelectorAll('[data-cobrar-item]').forEach(btn => {

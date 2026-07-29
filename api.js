@@ -6014,13 +6014,17 @@ const API = {
     //  FASE C — Plan de pagos avanzado + cobros parciales
     // ───────────────────────────────────────────────
 
-    async getPlanesCobro({ proyectoId = null, cotizacionId = null } = {}) {
+    // `ventaId` (circuito de venta, Fase 1) es un filtro OPCIONAL más, al lado de
+    // los que ya estaban. Sin argumentos la query sale idéntica a antes: los
+    // planes viejos (venta_id NULL) siguen listándose igual.
+    async getPlanesCobro({ proyectoId = null, cotizacionId = null, ventaId = null } = {}) {
         let q = supabaseClient.from('plan_cobro')
             .select('*, plan_cobro_items(*)')
             .eq('_deleted', false)
             .order('created_at', { ascending: false });
         if (proyectoId)   q = q.eq('proyecto_id', proyectoId);
         if (cotizacionId) q = q.eq('cotizacion_id', cotizacionId);
+        if (ventaId)      q = q.eq('venta_id', ventaId);
         const { data, error } = await q;
         if (error) { console.warn('[API] getPlanesCobro:', error.message); return []; }
         return data || [];
@@ -6044,9 +6048,21 @@ const API = {
 
     // Fase G.5 — acepta moneda + cotizacion. Las cuotas las hereda automáticamente
     // el trigger fn_plan_cobro_item_snapshot_ars al INSERT (no hace falta pasarlas).
-    async createPlanCobro({ proyecto_id, cotizacion_id = null, total_plan, notas = null, moneda = 'ARS', cotizacion = 1, items = [] }) {
+    // Circuito de venta Fase 1: el plan puede colgar de una venta O de un proyecto.
+    // `venta_id` es opcional y por defecto NULL → los llamadores viejos, que pasan
+    // solo `proyecto_id`, insertan exactamente la misma fila que antes (la columna
+    // es nullable sin DEFAULT, así que mandar NULL explícito == omitirla).
+    async createPlanCobro({ proyecto_id = null, venta_id = null, cotizacion_id = null, total_plan, notas = null, moneda = 'ARS', cotizacion = 1, items = [] }) {
+        // ⚠️ OJO al colgar un plan SOLO de una venta (proyecto_id null): según el SQL
+        // del repo (sql/finanzas_fase4.sql:11) `plan_cobro.proyecto_id` sigue siendo
+        // NOT NULL y ninguna migración lo relajó — el INSERT lo rebota Postgres, no
+        // este guard. Relajar esa constraint es parte de D5 (docs/circuito-venta-
+        // blueprint.md §196), no de Fase 1. Hoy TODOS los llamadores pasan proyecto_id.
+        if (!proyecto_id && !venta_id) {
+            throw new Error('createPlanCobro: hace falta proyecto_id o venta_id');
+        }
         const { data: plan, error } = await supabaseClient.from('plan_cobro').insert({
-            proyecto_id, cotizacion_id, total_plan, notas,
+            proyecto_id, venta_id, cotizacion_id, total_plan, notas,
             moneda, cotizacion: Number(cotizacion) || 1,
         }).select().single();
         if (error) { console.warn('[API] createPlanCobro:', error.message); throw error; }
