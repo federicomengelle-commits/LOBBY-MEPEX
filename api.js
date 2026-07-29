@@ -8286,26 +8286,29 @@ const API = {
         const venta = await this.getVentaById(ventaId);
         if (!venta) return vacio;
 
-        const { data: planes } = await supabaseClient.from('plan_cobro')
+        const { data: planes, error: ePlanes } = await supabaseClient.from('plan_cobro')
             .select('id').eq('venta_id', ventaId).eq('_deleted', false);
+        if (ePlanes) { console.warn('[API] getVentaResumen (plan_cobro):', ePlanes.message); throw ePlanes; }
         const planIds = (planes || []).map(p => p.id);
         if (!planIds.length) {
             return { ...vacio, total: Number(venta.total) || 0,
                      saldo: Number(venta.total) || 0, canal: venta.canal_sugerido };
         }
 
-        const { data: cuotas } = await supabaseClient.from('plan_cobro_items')
+        const { data: cuotas, error: eCuotas } = await supabaseClient.from('plan_cobro_items')
             .select('id, orden, concepto, monto, monto_cobrado, estado, fecha_estimada, comprobante_venta_id')
             .in('plan_cobro_id', planIds).eq('_deleted', false)
             .order('orden', { ascending: true });
+        if (eCuotas) { console.warn('[API] getVentaResumen (plan_cobro_items):', eCuotas.message); throw eCuotas; }
         const items = cuotas || [];
 
         // Canal por cuota: sale del comprobante que la documenta (§5.1)
         const compIds = items.map(i => i.comprobante_venta_id).filter(Boolean);
         let canalPorComp = {};
         if (compIds.length) {
-            const { data: comps } = await supabaseClient.from('comprobantes')
+            const { data: comps, error: eComps } = await supabaseClient.from('comprobantes')
                 .select('id, canal').in('id', compIds).eq('_deleted', false);
+            if (eComps) { console.warn('[API] getVentaResumen (comprobantes):', eComps.message); throw eComps; }
             (comps || []).forEach(c => { canalPorComp[c.id] = c.canal; });
         }
         items.forEach(i => {
@@ -8404,10 +8407,17 @@ const API = {
         const r = await this.getVentaResumen(id);
         const facturasVivas = (r.cuotas || []).filter(c => c.comprobante_venta_id);
         if (facturasVivas.length) {
-            const { data: comps } = await supabaseClient.from('comprobantes')
+            const { data: comps, error: eComps } = await supabaseClient.from('comprobantes')
                 .select('id, numero, canal, estado')
                 .in('id', facturasVivas.map(c => c.comprobante_venta_id))
                 .eq('canal', 'oficial').eq('estado', 'emitida').eq('_deleted', false);
+            // Candado fiscal: si no se puede verificar, NO se deja anular (falla
+            // cerrado). Lo contrario dejaría pasar una venta con factura oficial
+            // viva sin nota de crédito por un simple timeout de red.
+            if (eComps) {
+                console.warn('[API] anularVenta:', eComps.message);
+                return { error: 'No se pudo verificar si hay comprobantes vivos. Reintentá.' };
+            }
             if ((comps || []).length) {
                 return { error: 'Hay ' + comps.length + ' factura(s) oficial(es) emitida(s). ' +
                                 'Emitir la nota de crédito antes de anular.',
@@ -8454,11 +8464,32 @@ const API = {
             notas: notas || `Generada desde el caso CRM "${caso.titulo}".`,
         });
 
-        await supabaseClient.from('crm_casos').update({ venta_id: venta.id }).eq('id', casoId);
-        if (caso.proyecto_id) {
-            await supabaseClient.from('proyectos').update({ venta_id: venta.id })
-                .eq('id', caso.proyecto_id);
+        // La venta YA existe acá: un fallo en estos dos updates no la deshace,
+        // solo deja el puntero inverso sin setear. Se avisa con link_parcial en
+        // vez de tirar todo abajo — el llamador decide si reintenta el link.
+        let linkParcial = false;
+        const linkErrores = [];
+
+        const { error: eCasoLink } = await supabaseClient.from('crm_casos')
+            .update({ venta_id: venta.id }).eq('id', casoId);
+        if (eCasoLink) {
+            console.warn('[API] crearVentaDesdeCaso (link crm_casos):', eCasoLink.message);
+            linkParcial = true;
+            linkErrores.push(`crm_casos: ${eCasoLink.message}`);
         }
-        return { venta_id: venta.id, venta };
+
+        if (caso.proyecto_id) {
+            const { error: eProyLink } = await supabaseClient.from('proyectos')
+                .update({ venta_id: venta.id }).eq('id', caso.proyecto_id);
+            if (eProyLink) {
+                console.warn('[API] crearVentaDesdeCaso (link proyectos):', eProyLink.message);
+                linkParcial = true;
+                linkErrores.push(`proyectos: ${eProyLink.message}`);
+            }
+        }
+
+        const result = { venta_id: venta.id, venta };
+        if (linkParcial) { result.link_parcial = true; result.link_parcial_detalle = linkErrores; }
+        return result;
     },
 };
