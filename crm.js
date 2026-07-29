@@ -66,6 +66,7 @@ const CRM = {
     _casosSoloMios: false,      // toggle: ver solo los casos donde soy owner
     _casosPospuestosOpen: false,// grupo "Pospuestos" colapsado/expandido
     _casoActivoId: null,        // si hay ficha de caso abierta (takeover de crm-main)
+    _creandoVenta: false,       // candado de creación de venta (sobrevive al cierre del modal)
     _clienteActivoId: null,     // si hay ficha de cliente abierta (full-screen, refactor v2)
     _casoDrag: null,            // caso siendo arrastrado en el pipeline kanban
     _casoMensajes: [],          // timeline del caso activo
@@ -4017,6 +4018,12 @@ const CRM = {
         const tempOpts = `<option value="auto" ${!caso.temperaturaManual ? 'selected' : ''}>↻ Auto · ${autoT.icon} ${autoT.label}</option>`
             + ['hot', 'warm', 'cold'].map(t => `<option value="${t}" ${caso.temperaturaManual && caso.temperatura === t ? 'selected' : ''}>${this._tempConfig[t].icon} ${this._tempConfig[t].label}</option>`).join('');
         const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+        // El rol `venta` tiene crm:write pero NO el módulo `ventas` (la venta es un acto
+        // administrativo). Sin este gate el botón aparece, el RLS rechaza el INSERT y el
+        // usuario ve un error de PostgREST que no dice nada. Mismo gotcha que rendimiento.
+        // Exige 'write', no solo acceso: mismo criterio que venta-detalle.js — con un
+        // futuro `ventas:read` (ver sin confirmar) el botón volvería a mentir.
+        const puedeVender = this._puedeVender();
         const owner = this._getVendedorName(caso.ownerId);
         const lineaCfg = caso.linea ? this._lineaConfig(caso.linea) : null;
         const cotsCaso = this._cotizaciones.filter(c => c.casoId === caso.id);
@@ -4051,7 +4058,9 @@ const CRM = {
                         </div>
                         <div class="caso-h3-right">
                             <div class="caso-head-actions">
-                                ${caso.estado === 'ganado' && !caso.proyectoId ? '<button class="caso-conv-btn" id="casoConvertir">🏗️ Convertir a proyecto</button>' : ''}
+                                ${['negociacion', 'ganado'].includes(caso.estado) && !caso.proyectoId ? '<button class="caso-conv-btn" id="casoConvertir" title="La carpeta de producción arranca en negociación — todavía no es una venta">🏗️ Crear proyecto</button>' : ''}
+                                ${caso.estado === 'ganado' && !caso.ventaId && puedeVender ? '<button class="caso-conv-btn caso-conv-venta" id="casoConfirmarVenta" title="Paso explícito: recién acá nace la venta">💵 Confirmar venta</button>' : ''}
+                                ${caso.ventaId && puedeVender ? `<button class="caso-meta-chip caso-venta-chip" id="casoVerVenta" data-venta="${escAttr(caso.ventaId)}" title="Abrir la venta">💵 Venta →</button>` : ''}
                                 ${caso.proyectoId ? `<a class="caso-meta-chip" href="#proyectos/${caso.proyectoId}" title="Abrir el proyecto">🏗️ Proyecto →</a>` : ''}
                                 <button class="caso-icon-btn" id="casoAgendar" title="Agendar próxima acción / reunión">📅</button>
                                 <button class="caso-icon-btn" id="casoEdit" title="Editar caso">✏️</button>
@@ -5150,6 +5159,10 @@ const CRM = {
         if (setA) setA.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
         const conv = document.getElementById('casoConvertir');
         if (conv) conv.addEventListener('click', () => { const c = getCaso(); if (c) this._convertirCasoAProyecto(c); });
+        const cv = document.getElementById('casoConfirmarVenta');
+        if (cv) cv.addEventListener('click', () => { const c = getCaso(); if (c) this._confirmarVentaDesdeCaso(c); });
+        const vv = document.getElementById('casoVerVenta');
+        if (vv) vv.addEventListener('click', () => { if (vv.dataset.venta) Router.navigate('ventas/' + vv.dataset.venta); });
         // ── v3: agendar (header) · resumen IA · cotización desplegable · Drive ──
         const agendar = document.getElementById('casoAgendar');
         if (agendar) agendar.addEventListener('click', () => { const c = getCaso(); if (c) this._openNuevoCasoModal(c); });
@@ -5547,11 +5560,126 @@ const CRM = {
             el.addEventListener('click', () => this._gotoCaso(el.dataset.casoId)));
     },
 
-    // ─── R3: convertir un caso ganado en proyecto (conexión con Operaciones/Finanzas) ───
+    // ─── Circuito de venta Fase 1: el gate explícito de "ganado" ───
+    // Ganar un caso NO crea la venta: la propone. Acá se muestra qué se va a crear
+    // ANTES de crear nada; sin este OK no hay venta ni deuda. (D4)
+    // Gate de permisos de la venta. 'write', no solo acceso (calco de venta-detalle.js).
+    _puedeVender() {
+        try {
+            return typeof Auth !== 'undefined' && typeof Auth.getAccessLevel === 'function' &&
+                   Auth.getAccessLevel('ventas') === 'write';
+        } catch (e) { return false; }
+    },
+
+    async _confirmarVentaDesdeCaso(caso) {
+        if (!caso) return;
+        if (caso.ventaId) { Toast.info('Este caso ya tiene una venta.'); return; }
+        // Segundo cerrojo del gate de permisos: el botón ya está gateado, pero el
+        // handler puede llegar por un render viejo en pantalla.
+        if (!this._puedeVender()) {
+            Toast.warning('No tenés acceso al módulo de Ventas.');
+            return;
+        }
+        // Candado a nivel MÓDULO, no del modal: el modal se puede cerrar (Cancelar/✕/Esc/
+        // backdrop) mientras el INSERT está en vuelo, y el botón del header sigue vivo
+        // hasta que el reload lo re-renderice → reabrir dispararía una segunda creación.
+        // El índice `uq_ventas_caso` la rechaza, pero el usuario vería un error mentiroso
+        // sobre una operación que sí funcionó.
+        if (this._creandoVenta) { Toast.info('Ya se está creando la venta de este caso…'); return; }
+
+        // Total sugerido: la cotización vinculada más reciente (mismo criterio que el aside).
+        const cotsCaso = (this._cotizaciones || []).filter(c => c.casoId === caso.id);
+        const cot = cotsCaso.slice().sort((a, b) =>
+            new Date(b.fechaEmision || b.createdAt || 0) - new Date(a.fechaEmision || a.createdAt || 0))[0] || null;
+        const totalSug = cot ? (Number(cot.montoTotal) || 0) : 0;
+        const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
+
+        const inst = Modal.open({
+            title: 'Confirmar venta',
+            body: `<div class="caso-venta-confirm">
+                <p class="cvc-intro">Se va a crear una venta en <strong>borrador</strong> con estos datos:</p>
+                <div class="cvc-row"><span class="cvc-k">Cliente</span><span class="cvc-v">${this._escHtml(cliente ? cliente.name : '— sin cliente —')}</span></div>
+                <div class="cvc-row"><span class="cvc-k">Cotización</span><span class="cvc-v">${this._escHtml(cot ? (cot.numero || 'COT') : 'ninguna vinculada')}</span></div>
+                <div class="cvc-row"><span class="cvc-k">Proyecto</span><span class="cvc-v">${caso.proyectoId ? 'se engancha a esta venta' : 'todavía sin crear'}</span></div>
+                <label class="form-label" for="vcTotal">Total de la venta</label>
+                <input type="number" id="vcTotal" class="form-input" value="${escAttr(String(totalSug))}" min="0" step="0.01">
+                <label class="form-label" for="vcCanal">Canal por defecto de las cuotas</label>
+                <select id="vcCanal" class="form-input">
+                    <option value="oficial">Oficial</option>
+                    <option value="interno">Interno</option>
+                </select>
+                <p class="cvc-nota">Queda en <strong>borrador</strong>: no hay deuda ni factura hasta confirmarla desde la ficha de la venta, cuando estén el cliente y el total.</p>
+            </div>`,
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="vcCrear">Crear venta</button>`,
+        });
+
+        const overlay = inst && inst.overlay;
+        const btn = overlay ? overlay.querySelector('#vcCrear') : null;
+        if (!btn) { console.warn('[CRM] _confirmarVentaDesdeCaso: no se pudo montar el modal'); return; }
+        const cancelBtn = overlay.querySelector('[data-modal-close]');
+
+        const rearmar = () => {
+            this._creandoVenta = false;
+            btn.disabled = false;
+            btn.textContent = 'Crear venta';
+            if (cancelBtn) cancelBtn.disabled = false;
+        };
+        btn.addEventListener('click', async () => {
+            if (this._creandoVenta) return;
+            this._creandoVenta = true;
+            btn.disabled = true;
+            btn.textContent = 'Creando…';
+            // Cancelar deshabilitado en vuelo: cerrar el modal NO aborta el INSERT, y
+            // dejarlo activo le promete al usuario algo que no puede cumplir.
+            if (cancelBtn) cancelBtn.disabled = true;
+
+            // `min="0"` del input es solo un hint: se puede tipear un negativo a mano.
+            const total = Math.max(0, Number(overlay.querySelector('#vcTotal')?.value) || 0);
+            const canal = overlay.querySelector('#vcCanal')?.value === 'interno' ? 'interno' : 'oficial';
+
+            // El try cubre SOLO la creación. Lo de abajo ya no puede decir "no se pudo crear".
+            let r;
+            try {
+                r = await API.crearVentaDesdeCaso(caso.id, {
+                    total, canal_sugerido: canal, cotizacion_id: cot ? cot.id : null,
+                });
+            } catch (e) {
+                console.warn('[CRM] crearVentaDesdeCaso:', e && e.message);
+                r = { error: 'No se pudo crear la venta' };
+            }
+            if (!r || r.error) { Toast.error((r && r.error) || 'No se pudo crear la venta'); rearmar(); return; }
+
+            // ── Desde acá la venta EXISTE. Nada de lo que siga puede negarlo. ──
+            Modal.close(inst.id);
+            this._creandoVenta = false;
+            // Si el puntero inverso falló se avisa fuerte en vez de cantar éxito: el caso
+            // queda sin linkear y el botón vuelve a aparecer.
+            if (r.link_parcial) {
+                console.warn('[CRM] crearVentaDesdeCaso link parcial:', r.link_parcial_detalle);
+                Toast.warning('Venta creada, pero quedó sin vincular al caso. Revisala en Ventas antes de crear otra.');
+            } else {
+                Toast.success('Venta creada en borrador');
+            }
+            try {
+                if (typeof AuditLog !== 'undefined') AuditLog.record('edit', 'crm', `Caso "${caso.titulo}": venta creada desde el caso`, 'crm_casos', caso.id);
+                await API.createMensaje({ casoId: caso.id, clienteId: caso.clienteId, canal: 'sistema', direccion: 'interna', contenido: 'Venta creada desde el caso.' });
+                // Guard post-await: pudo navegar a otro caso mientras se creaba.
+                if (this._casoActivoId === caso.id) await this._reloadCasoYFicha(caso.id);
+            } catch (e) {
+                console.warn('[CRM] post-creación de venta:', e && e.message);
+                Toast.warning('La venta se creó, pero no se pudo refrescar la ficha. Recargá la pantalla.');
+            }
+        });
+    },
+
+    // ─── R3: crear la carpeta de producción del caso (Operaciones) ───
+    // Desde `negociacion`: el proyecto nace ANTES de la venta — se arman muchas carpetas
+    // que nunca se concretan, y esas no tienen que ensuciar la contabilidad. Sigue
+    // ofrecido en `ganado` para que los casos ganados viejos no queden huérfanos.
     async _convertirCasoAProyecto(caso) {
         if (!caso) return;
         if (caso.proyectoId) { Toast.info('Este caso ya tiene un proyecto vinculado.'); return; }
-        const ok = await Modal.confirm({ title: 'Convertir a proyecto', message: `¿Crear un proyecto para <strong>"${this._escHtml(caso.titulo)}"</strong> y vincularlo al caso? El plan de cobro se arma desde Finanzas.`, confirmText: 'Crear proyecto' });
+        const ok = await Modal.confirm({ title: 'Crear proyecto', message: `¿Crear un proyecto para <strong>"${this._escHtml(caso.titulo)}"</strong> y vincularlo al caso? El plan de cobro se arma desde la venta.`, confirmText: 'Crear proyecto' });
         if (!ok) return;
         const cliente = caso.clienteId ? this._clients.find(c => c.id === caso.clienteId) : null;
         const proj = await API.createProject({
@@ -7716,6 +7844,16 @@ const CRM = {
 .caso-pcol-body.drop-over { background: rgba(0,169,193,0.08); outline: 1px dashed rgba(0,169,193,0.5); outline-offset: -3px; border-radius: 6px; }
 .caso-conv-btn { background: rgba(0,204,136,0.15); border: 1px solid rgba(0,204,136,0.4); color: #00CC88; border-radius: 6px; padding: 6px 12px; font-size: 0.78rem; cursor: pointer; font-family: var(--font-main); }
 .caso-conv-btn:hover { background: rgba(0,204,136,0.25); }
+/* Confirmar venta = el acto administrativo → turquesa de marca, no el verde de "producción" */
+.caso-conv-btn.caso-conv-venta { background: rgba(0,169,193,0.15); border-color: rgba(0,169,193,0.45); color: var(--primary); font-family: var(--font-mono); }
+.caso-conv-btn.caso-conv-venta:hover { background: rgba(0,169,193,0.28); box-shadow: var(--glow-sm); }
+.caso-venta-chip { cursor: pointer; font-family: var(--font-mono); }
+.caso-venta-confirm { display: flex; flex-direction: column; gap: 10px; }
+.caso-venta-confirm .cvc-intro { color: var(--text-muted); font-size: 0.84rem; margin: 0; }
+.caso-venta-confirm .cvc-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+.caso-venta-confirm .cvc-k { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.caso-venta-confirm .cvc-v { color: var(--text-primary); text-align: right; }
+.caso-venta-confirm .cvc-nota { color: var(--text-dim); font-size: 0.76rem; margin: 2px 0 0; line-height: 1.5; }
 .caso-pcard-top { display: flex; justify-content: space-between; gap: 6px; }
 .caso-pcard-titulo { font-size: 0.84rem; font-weight: 600; color: var(--text-primary); }
 .caso-pcard-cli { font-size: 0.76rem; color: var(--text-muted); margin: 4px 0; }
