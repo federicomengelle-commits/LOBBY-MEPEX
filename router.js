@@ -15,7 +15,8 @@ const Router = {
 
     // ─── Redirects: rutas viejas → nuevas ───
     _redirects: {
-        'ventas':          'crm',
+        // 'ventas' YA NO redirige al CRM: es un módulo propio (circuito de venta,
+        // Fase 1). Ver la ruta 'ventas' en _registerRoutes.
         'clientes':        'crm',
         'proveedores':     'compras',
         'produccion':      'tareas',    // reorg C: el viejo 'produccion' iba a 'taller' (disuelto) → directo a tareas (R1)
@@ -119,6 +120,7 @@ const Router = {
             'flota':            { render: () => FlotaModule.render(), requiresAuth: true, module: 'flota' },
 
             // ── Admin & Finanzas ──
+            'ventas':           { render: () => VentasModule.render(), requiresAuth: true, module: 'ventas', adminOnly: true, obj: typeof VentasModule !== 'undefined' ? VentasModule : null },
             'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
             'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas' },
             'rendimiento':      { render: () => RendimientoModule.render(), requiresAuth: true, module: 'rendimiento', adminOnly: true },

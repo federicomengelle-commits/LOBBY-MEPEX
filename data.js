@@ -19,8 +19,8 @@ const Data = {
     // pm: Meli, Leo — operativo + comercial en lectura
     // taller: Diego, Juan, Carlos, Willy — mínimo operativo
     rolePermissions: {
-        superadmin: ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm', 'admin-panel'],
-        admin:      ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
+        superadmin: ['crm', 'cotizador', 'catalogo', 'stands', 'disenador', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'ventas', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm', 'admin-panel'],
+        admin:      ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'rrhh', 'compras', 'inventario', 'locaciones', 'flota', 'ventas', 'finanzas', 'rendimiento', 'contabilidad', 'costos', 'calendario-adm'],
         venta:      ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos'],
         pm:         ['crm', 'cotizador', 'catalogo', 'stands', 'proyectos', 'eventos', 'compras', 'inventario', 'flota'],
         taller:     ['eventos', 'proyectos', 'inventario', 'locaciones', 'flota'], // reorg C/D 2026-06-25: módulos Taller y Logística DISUELTOS → el rol taller usa Proyectos (galpón, read-only) + Tareas; transporte vive en la ficha del Evento. +locaciones read-only (RLS taller/deposito).
@@ -89,7 +89,7 @@ const Data = {
             name: 'ADMIN & FINANZAS',
             icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',
             color: '#4A90D9',
-            moduleIds: ['rrhh', 'compras', 'finanzas', 'rendimiento', 'calendario-adm', 'contabilidad', 'costos'],
+            moduleIds: ['ventas', 'rrhh', 'compras', 'finanzas', 'rendimiento', 'calendario-adm', 'contabilidad', 'costos'],
         },
         // Categoría GLOBAL retirada del sidebar (2026-06-13): redundante con el
         // dropdown del nombre (Panel de Control) + la campana (Notificaciones).
@@ -407,6 +407,26 @@ const Data = {
         // ════════════════════════════════════════════
         //  ADMIN & FINANZAS
         // ════════════════════════════════════════════
+
+        ventas: {
+            id: 'ventas',
+            name: 'Ventas',
+            shortName: 'Ventas',
+            icon: '<svg viewBox="0 0 24 24"><path d="M3.5 10.5 12 4l8.5 6.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19Z" fill="#4A90D9"/><path d="M8.4 12.6h7.2v5.9H8.4Z" fill="#F3E2C7"/><path d="M9.9 15.1h4.2M9.9 17h2.6" stroke="#4A90D9" stroke-width="1.1" stroke-linecap="round"/><circle cx="17.2" cy="7.4" r="2.9" fill="#00A9C1"/><path d="m15.9 7.4 1 1 1.7-1.9" stroke="#012" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+            description: 'Cabecera del trato comercial: cliente, evento, total y estado. Puente entre el CRM y Finanzas.',
+            status: 'development',
+            color: '#4A90D9',
+            order: 11.5,
+            sections: [
+                { id: 'listado', name: 'Listado', icon: '🤝', description: 'Ventas por estado, cliente y evento', fields: [] },
+                { id: 'ficha', name: 'Ficha de venta', icon: '📄', description: 'Plan de cobro, facturado, cobrado y saldo', fields: [] },
+            ],
+            connections: [
+                { to: 'crm', label: 'Ver CRM', context: 'Caso comercial que originó la venta' },
+                { to: 'finanzas', label: 'Ver Finanzas', context: 'Plan de cobro y facturación' },
+                { to: 'proyectos', label: 'Ver Proyectos', context: 'Producción de lo vendido' },
+            ],
+        },
 
         finanzas: {
             id: 'finanzas',
