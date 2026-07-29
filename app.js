@@ -40,7 +40,7 @@ const App = {
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
-        'api.js?v=88',
+        'api.js?v=89',
         'components.js?v=10',
         'undo.js?v=4',
         'alertas.js?v=8',

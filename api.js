@@ -8241,4 +8241,224 @@ const API = {
             return true;
         } catch (e) { console.warn('[API] deleteConforme:', e.message); return false; }
     },
+
+    // ═══ CIRCUITO DE VENTA — FASE 1 ═══
+    //  La venta es la cabecera del trato: apunta cotización, cliente, evento y
+    //  proyectos. NO copia ítems. Ver docs/circuito-venta-blueprint.md
+
+    async getVentas({ estado = null, clienteId = null, eventoId = null,
+                      desde = null, hasta = null } = {}) {
+        let q = supabaseClient.from('ventas')
+            .select('*, cliente:clientes(id, nombre_empresa), evento:eventos(id,nombre)')
+            .eq('_deleted', false)
+            .order('fecha', { ascending: false });
+        if (estado)    q = q.eq('estado', estado);
+        if (clienteId) q = q.eq('cliente_id', clienteId);
+        if (eventoId)  q = q.eq('evento_id', eventoId);
+        if (desde)     q = q.gte('fecha', desde);
+        if (hasta)     q = q.lte('fecha', hasta);
+        const { data, error } = await q;
+        if (error) { console.warn('[API] getVentas:', error.message); return []; }
+        return data || [];
+    },
+
+    async getVentaById(id) {
+        if (!id) return null;
+        const { data, error } = await supabaseClient.from('ventas')
+            .select('*, cliente:clientes(id, nombre_empresa), evento:eventos(id,nombre)')
+            .eq('id', id).eq('_deleted', false).maybeSingle();
+        if (error) { console.warn('[API] getVentaById:', error.message); return null; }
+        return data;
+    },
+
+    async getVentasByCliente(clienteId) {
+        return this.getVentas({ clienteId });
+    },
+
+    // Derivados de la venta. NADA de esto se guarda: se calcula. (§5.1)
+    // ⚠️ `retenido` (creditos_fiscales) NO está en este contrato todavía: esa
+    // tabla es de Fase 2 y hoy no existe. Se suma ahí sin romper este shape.
+    async getVentaResumen(ventaId) {
+        const vacio = { total: 0, facturado: 0, cobrado: 0, saldo: 0,
+                        canal: 'oficial', senaCobrada: false, cuotas: [] };
+        if (!ventaId) return vacio;
+
+        const venta = await this.getVentaById(ventaId);
+        if (!venta) return vacio;
+
+        const { data: planes } = await supabaseClient.from('plan_cobro')
+            .select('id').eq('venta_id', ventaId).eq('_deleted', false);
+        const planIds = (planes || []).map(p => p.id);
+        if (!planIds.length) {
+            return { ...vacio, total: Number(venta.total) || 0,
+                     saldo: Number(venta.total) || 0, canal: venta.canal_sugerido };
+        }
+
+        const { data: cuotas } = await supabaseClient.from('plan_cobro_items')
+            .select('id, orden, concepto, monto, monto_cobrado, estado, fecha_estimada, comprobante_venta_id')
+            .in('plan_cobro_id', planIds).eq('_deleted', false)
+            .order('orden', { ascending: true });
+        const items = cuotas || [];
+
+        // Canal por cuota: sale del comprobante que la documenta (§5.1)
+        const compIds = items.map(i => i.comprobante_venta_id).filter(Boolean);
+        let canalPorComp = {};
+        if (compIds.length) {
+            const { data: comps } = await supabaseClient.from('comprobantes')
+                .select('id, canal').in('id', compIds).eq('_deleted', false);
+            (comps || []).forEach(c => { canalPorComp[c.id] = c.canal; });
+        }
+        items.forEach(i => {
+            i.canal = i.comprobante_venta_id
+                ? (canalPorComp[i.comprobante_venta_id] || venta.canal_sugerido)
+                : venta.canal_sugerido;
+        });
+
+        const total     = Number(venta.total) || 0;
+        const facturado = items.filter(i => i.comprobante_venta_id)
+                               .reduce((a, i) => a + (Number(i.monto) || 0), 0);
+        const cobrado   = items.reduce((a, i) => a + (Number(i.monto_cobrado) || 0), 0);
+
+        const canales = new Set(items.map(i => i.canal));
+        const canal = canales.size === 0 ? venta.canal_sugerido
+                    : canales.size > 1   ? 'mixta'
+                    : [...canales][0];
+
+        const primera = items[0] || null;
+        const senaCobrada = !!(primera && primera.estado === 'cobrado');
+
+        return { total, facturado, cobrado, saldo: total - cobrado,
+                 canal, senaCobrada, cuotas: items };
+    },
+
+    // ⚠️ NO numera acá. El número se consume al CONFIRMAR (ver confirmarVenta).
+    // La RPC corre en su propia transacción, así que numerar en el borrador deja
+    // un hueco permanente en la serie cada vez que se descarta uno.
+    async createVenta(payload = {}) {
+        const row = {
+            numero:         null,
+            fecha:          payload.fecha || this._today(),
+            cliente_id:     payload.cliente_id || null,
+            caso_id:        payload.caso_id || null,
+            cotizacion_id:  payload.cotizacion_id || null,
+            evento_id:      payload.evento_id || null,
+            total:          Number(payload.total) || 0,
+            moneda:         payload.moneda || 'ARS',
+            cotizacion:     Number(payload.cotizacion) || 1,
+            canal_sugerido: payload.canal_sugerido || 'oficial',
+            estado:         'borrador',
+            notas:          payload.notas || null,
+            created_by:     this._uid(),
+        };
+        const { data, error } = await supabaseClient.from('ventas')
+            .insert(row).select().single();
+        if (error) { console.warn('[API] createVenta:', error.message); throw error; }
+        AuditLog.record('create', 'ventas', 'Venta creada (borrador)', 'venta', data.id);
+        return data;
+    },
+
+    async updateVenta(id, patch) {
+        const { data, error } = await supabaseClient.from('ventas')
+            .update(patch).eq('id', id).select().single();
+        if (error) { console.warn('[API] updateVenta:', error.message); throw error; }
+        return data;
+    },
+
+    // Candado: sin cliente y sin total no se confirma (§5.2).
+    // Acá se consume el número: confirmar es el acto que cuenta (D4), así que la
+    // serie VTA no tiene huecos por borradores descartados.
+    async confirmarVenta(id) {
+        const v = await this.getVentaById(id);
+        if (!v) return { error: 'Venta no encontrada' };
+        if (v.estado !== 'borrador') return { error: `La venta no está en borrador (estado: ${v.estado})` };
+        if (!v.cliente_id) return { error: 'Falta el cliente' };
+        if (!(Number(v.total) > 0)) return { error: 'El total tiene que ser mayor a cero' };
+
+        let numero = v.numero;
+        if (!numero) {
+            const { data, error } = await supabaseClient.rpc('siguiente_numero_venta');
+            if (error) { console.warn('[API] siguiente_numero_venta:', error.message); throw error; }
+            numero = data;
+        }
+        // Compare-and-swap contra 'borrador': sin esto, dos clicks (o dos pestañas)
+        // que ganan la carrera antes de que resuelva el primer await numeran DOS
+        // veces y uno de los números VTA se pierde para siempre — el mismo hueco
+        // permanente que numerar-al-crear quería evitar, reaparecido acá.
+        const { data: venta, error: eUpd } = await supabaseClient.from('ventas')
+            .update({ estado: 'confirmada', numero }).eq('id', id).eq('estado', 'borrador')
+            .select().maybeSingle();
+        if (eUpd) { console.warn('[API] confirmarVenta:', eUpd.message); throw eUpd; }
+        if (!venta) return { error: 'La venta ya fue confirmada en otra pestaña o cambió de estado.' };
+        AuditLog.record('edit', 'ventas', `Venta ${numero} confirmada`, 'venta', id);
+        return { ok: true, venta };
+    },
+
+    // Candado: en Fase 1 no hay comprobantes propios todavía, pero el guard
+    // se escribe ya para que la Fase 3 solo tenga que sumar la NC. (§5.2, D12)
+    async anularVenta(id, motivo) {
+        if (!motivo || !motivo.trim()) return { error: 'Hace falta el motivo' };
+        const v = await this.getVentaById(id);
+        if (!v) return { error: 'Venta no encontrada' };
+        if (v.estado === 'anulada') return { error: 'La venta ya está anulada' };
+
+        const r = await this.getVentaResumen(id);
+        const facturasVivas = (r.cuotas || []).filter(c => c.comprobante_venta_id);
+        if (facturasVivas.length) {
+            const { data: comps } = await supabaseClient.from('comprobantes')
+                .select('id, numero, canal, estado')
+                .in('id', facturasVivas.map(c => c.comprobante_venta_id))
+                .eq('canal', 'oficial').eq('estado', 'emitida').eq('_deleted', false);
+            if ((comps || []).length) {
+                return { error: 'Hay ' + comps.length + ' factura(s) oficial(es) emitida(s). ' +
+                                'Emitir la nota de crédito antes de anular.',
+                         comprobantes: comps };
+            }
+        }
+        await this.updateVenta(id, { estado: 'anulada', motivo_anulacion: motivo.trim() });
+        // v.numero puede ser null: el diagrama de estados (§5.4) permite anular
+        // directo desde 'borrador', que nunca llegó a numerarse.
+        AuditLog.record('edit', 'ventas', `Venta ${v.numero || '(sin número)'} anulada: ${motivo}`, 'venta', id);
+        return { ok: true };
+    },
+
+    // Candado: solo se borra en 'borrador'. Una venta confirmada ya consumió un
+    // número de la serie VTA (§5.4, D4) — borrarla en vez de anularla deja el
+    // mismo hueco permanente que confirmarVenta/createVenta evitan a propósito.
+    async deleteVenta(id, label) {
+        const v = await this.getVentaById(id);
+        if (v && v.estado !== 'borrador') {
+            return { error: 'Solo se puede borrar una venta en borrador. Las confirmadas se anulan.' };
+        }
+        const r = await this.getVentaResumen(id);
+        if ((r.cuotas || []).some(c => c.comprobante_venta_id)) {
+            return { error: 'No se puede borrar una venta con comprobantes. Anulala.' };
+        }
+        await UndoHelpers.deleteRecord('ventas', id, label || 'Venta');
+        return { ok: true };
+    },
+
+    // El paso de confirmación de "ganado". NO se dispara solo. (D4)
+    // Crea la venta en borrador, la linkea al caso y engancha el proyecto si hay.
+    async crearVentaDesdeCaso(casoId, { total = null, canal_sugerido = 'oficial',
+                                        cotizacion_id = null, notas = null } = {}) {
+        const { data: caso, error: eCaso } = await supabaseClient.from('crm_casos')
+            .select('id, titulo, cliente_id, evento_id, proyecto_id, venta_id, estado')
+            .eq('id', casoId).maybeSingle();
+        if (eCaso) throw eCaso;
+        if (!caso) return { error: 'Caso no encontrado' };
+        if (caso.venta_id) return { error: 'Este caso ya tiene una venta', venta_id: caso.venta_id };
+
+        const venta = await this.createVenta({
+            cliente_id: caso.cliente_id, caso_id: caso.id, evento_id: caso.evento_id,
+            cotizacion_id, total: total || 0, canal_sugerido,
+            notas: notas || `Generada desde el caso CRM "${caso.titulo}".`,
+        });
+
+        await supabaseClient.from('crm_casos').update({ venta_id: venta.id }).eq('id', casoId);
+        if (caso.proyecto_id) {
+            await supabaseClient.from('proyectos').update({ venta_id: venta.id })
+                .eq('id', caso.proyecto_id);
+        }
+        return { venta_id: venta.id, venta };
+    },
 };
