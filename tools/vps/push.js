@@ -15,8 +15,13 @@
           VAPID_SUBJECT=mailto:federicomengelle@gmail.com
           SUPABASE_SERVICE_ROLE_KEY=...         # el envío necesita saltear RLS
      3. cd /home/mepex/api && npm install web-push
-     4. cp /home/mepex/lobby/tools/vps/{push.js,server.js} /home/mepex/api/
-     5. pm2 restart mepex-api
+     4. ⚠️ server.js del repo requiere SEIS módulos hermanos. Copiarlos TODOS o el
+        proceso entra en crash-loop y se cae también ARCA/CRM/OCR (pasó 2026-07-30:
+        faltaba whatsapp-webhook.js, que nunca se había deployado):
+          cd /home/mepex/lobby/tools/vps && cp server.js push.js auth-middleware.js \
+             arca-connector.js crm-digest.js ocr-comprobante.js whatsapp-webhook.js \
+             /home/mepex/api/
+     5. pm2 restart mepex-api  →  verificar con: curl -s https://app.mepex.com.ar/health
      6. La MISMA clave pública va en config.js del front (VAPID_PUBLIC_KEY).
         Si no coinciden, el navegador tira InvalidStateError al suscribir.
 
@@ -63,6 +68,14 @@ if (webpush && VAPID_PUBLIC && VAPID_PRIVATE && VAPID_SUBJECT) {
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
     console.warn('[push] ⚠️ falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY — no voy a poder leer suscripciones.');
+} else if (/^sb_publishable_/.test(SERVICE_KEY) || SERVICE_KEY === process.env.SUPABASE_ANON_KEY) {
+    // Pasó en el deploy 2026-07-30: el .env tenía SUPABASE_SERVICE_KEY con el valor
+    // de la clave PÚBLICA. Sin esta verificación el módulo arranca "bien" y después
+    // toda lectura de push_subscriptions devuelve 0 filas por RLS → el push no sale
+    // nunca y no hay ningún error que lo explique.
+    console.warn('[push] ⚠️ la clave de servicio parece ser la PÚBLICA (sb_publishable_…).');
+    console.warn('[push] ⚠️ Con esa clave las lecturas respetan RLS → el envío va a encontrar CERO suscripciones siempre.');
+    console.warn('[push] ⚠️ Cargá la service_role real (sb_secret_…) en SUPABASE_SERVICE_ROLE_KEY.');
 }
 
 // Roles válidos del sistema. `tarea_asignados.rol` y `tareas.target_role` son
