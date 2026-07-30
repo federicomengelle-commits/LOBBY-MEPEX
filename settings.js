@@ -116,66 +116,29 @@ const Settings = {
         this._attachProfileEvents(user);
     },
 
-    // ─── Push en este dispositivo (Etapa E5) ───
-    // El permiso del navegador SOLO se puede pedir tras un click, así que acá
-    // vive el botón. Cada navegador de cada dispositivo se suscribe por separado.
+    // ─── Puntero a Notificaciones (N3) ───
+    // El toggle y la lista de dispositivos se mudaron a #notificaciones, junto
+    // con las preferencias por categoría y canal (decisión D4). Acá queda solo
+    // el estado y un link, para que quien lo busque donde estaba lo encuentre.
     async _loadPushSection(user) {
         const el = document.getElementById('pushSection');
         if (!el) return;
         if (typeof PushCliente === 'undefined') { el.style.display = 'none'; return; }
 
         const d = await PushCliente.diagnostico();
-        const esSuper = user && user.role === 'superadmin';
-        const puedeAccionar = d.estado === 'activa' || d.estado === 'inactiva';
-
-        const boton = puedeAccionar
-            ? (d.activa
-                ? '<button type="button" class="btn btn-secondary btn-sm" id="pushToggle">Desactivar</button>'
-                : '<button type="button" class="btn btn-primary btn-sm" id="pushToggle">Activar notificaciones</button>')
-            : '';
-        const probar = (d.activa && esSuper)
-            ? '<button type="button" class="btn btn-ghost btn-sm" id="pushProbar">Probar</button>' : '';
-
         const color = d.activa ? '#00CC88' : (d.estado === 'bloqueada' ? '#ff4444' : 'var(--text-muted)');
 
         el.innerHTML = `
-            <label class="form-label">NOTIFICACIONES EN ESTE DISPOSITIVO</label>
+            <label class="form-label">NOTIFICACIONES</label>
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <span style="display:inline-flex; align-items:center; gap:6px; color:${color}; font-size:.84rem;">
                     <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
-                    ${d.activa ? 'Activadas' : 'Desactivadas'}
+                    ${d.activa ? 'Este aparato recibe notificaciones' : 'Este aparato no recibe notificaciones'}
                 </span>
-                ${boton}${probar}
+                <a href="#notificaciones" class="btn btn-ghost btn-sm">Configurar →</a>
             </div>
-            <div class="form-hint" style="margin-top:6px;">${d.motivo}</div>
-            ${d.estado === 'falta_instalar' ? `
-            <div class="form-hint" style="margin-top:6px; line-height:1.5;">
-                Safari → botón Compartir → <strong>Agregar a pantalla de inicio</strong> → abrir desde el ícono → volver acá.
-            </div>` : ''}
+            <div class="form-hint" style="margin-top:6px;">Elegí qué avisos querés y por dónde (campana o celular) en Notificaciones.</div>
         `;
-
-        document.getElementById('pushToggle')?.addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            btn.disabled = true;
-            const prev = btn.textContent;
-            btn.textContent = '…';
-            const r = d.activa ? await PushCliente.desactivar() : await PushCliente.activar();
-            if (typeof Toast !== 'undefined') {
-                if (r.ok) Toast.success(d.activa ? 'Notificaciones desactivadas' : 'Listo, este dispositivo va a recibir notificaciones');
-                else Toast.error(r.motivo || 'No se pudo cambiar');
-            }
-            btn.disabled = false; btn.textContent = prev;
-            await this._loadPushSection(user);
-        });
-
-        document.getElementById('pushProbar')?.addEventListener('click', async () => {
-            const r = await PushCliente.probar();
-            if (typeof Toast !== 'undefined') {
-                if (r.ok && r.enviados) Toast.success(`Push enviado a ${r.enviados} dispositivo(s)`);
-                else if (r.ok) Toast.warning('No hay dispositivos suscriptos todavía');
-                else Toast.error(r.motivo || 'No se pudo enviar');
-            }
-        });
     },
 
     // Helper: get modules the user can access (for start module selector)
@@ -406,6 +369,11 @@ const Settings = {
                 </div>
 
                 <div class="settings-section" style="max-width:680px">
+                    <div class="settings-section-title">Tus dispositivos</div>
+                    <div id="notifDevices"><div class="notif-page-empty">Cargando…</div></div>
+                </div>
+
+                <div class="settings-section" style="max-width:680px">
                     <div class="settings-section-title">Qué querés recibir y por dónde</div>
                     <div class="settings-toggle-list" id="notifPrefList">
                         <div class="settings-toggle-row notif-pref-head">
@@ -484,8 +452,106 @@ const Settings = {
             if (typeof Notifications !== 'undefined') Notifications.refresh();
         });
 
+        this._loadNotifDevices();
         this._loadNotifFeed();
         this._loadNotifPend();
+    },
+
+    // ─── Tus dispositivos (N3) ───
+    // El toggle vivía en Mi Perfil, lejos del resto de notificaciones. Acá
+    // además se ven TODOS los aparatos suscriptos, para poder bajar el celular
+    // viejo en vez de que le siga llegando para siempre.
+    async _loadNotifDevices() {
+        const el = document.getElementById('notifDevices');
+        if (!el) return;
+        if (typeof PushCliente === 'undefined') { el.closest('.settings-section')?.remove(); return; }
+
+        const d = await PushCliente.diagnostico();
+        const lista = d.activa || d.estado === 'inactiva' ? await PushCliente.listarDispositivos() : [];
+        const user = Auth.getUser?.();
+        const esSuper = user && user.role === 'superadmin';
+        const color = d.activa ? '#00CC88' : (d.estado === 'bloqueada' ? '#ff4444' : 'var(--text-muted)');
+        const puedeAccionar = d.estado === 'activa' || d.estado === 'inactiva';
+
+        const filas = lista.map(dev => `
+            <div class="notif-dev-row">
+                <span class="notif-dev-dot${dev.esEste ? ' on' : ''}"></span>
+                <div class="notif-dev-info">
+                    <span class="notif-dev-name">${Notifications._esc(dev.nombre)}${dev.esEste ? ' <span class="notif-dev-este">este aparato</span>' : ''}</span>
+                    <span class="notif-dev-meta">desde ${Notifications._esc(String(dev.creado || '').slice(0, 10))}</span>
+                </div>
+                <!-- va el id, NO el endpoint: el endpoint es la credencial con la
+                     que se le manda un push a ese aparato, y no tiene por qué
+                     quedar sentado en el DOM. Se resuelve del array del closure. -->
+                <button class="notif-dev-baja" data-id="${Notifications._escAttr(dev.id)}">Dar de baja</button>
+            </div>`).join('');
+
+        el.innerHTML = `
+            <div class="notif-dev-estado">
+                <span style="display:inline-flex;align-items:center;gap:6px;color:${color};font-size:.85rem;">
+                    <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
+                    ${d.activa ? 'Este aparato recibe notificaciones' : 'Este aparato no recibe notificaciones'}
+                </span>
+                ${puedeAccionar ? `<button class="btn ${d.activa ? 'btn-secondary' : 'btn-primary'} btn-sm" id="notifDevToggle">${d.activa ? 'Desactivar acá' : 'Activar acá'}</button>` : ''}
+                ${(d.activa && esSuper) ? '<button class="btn btn-ghost btn-sm" id="notifDevProbar">Probar</button>' : ''}
+            </div>
+            ${!d.activa ? `<p class="notif-page-hint" style="margin-top:8px">${Notifications._esc(d.motivo)}</p>` : ''}
+            ${d.estado === 'falta_instalar' ? `<p class="notif-page-hint">Safari → botón Compartir → <b>Agregar a pantalla de inicio</b> → abrir desde el ícono → volver acá.</p>` : ''}
+            ${filas ? `<div class="notif-dev-list">${filas}</div>` : ''}
+        `;
+
+        document.getElementById('notifDevToggle')?.addEventListener('click', async (e) => {
+            const b = e.currentTarget; b.disabled = true; const txt = b.textContent; b.textContent = '…';
+            const r = d.activa ? await PushCliente.desactivar() : await PushCliente.activar();
+            if (typeof Toast !== 'undefined') {
+                if (r.ok) Toast.success(d.activa ? 'Listo, este aparato ya no recibe' : 'Listo, este aparato va a recibir notificaciones');
+                else Toast.error(r.motivo || 'No se pudo cambiar');
+            }
+            b.disabled = false; b.textContent = txt;
+            this._loadNotifDevices();
+        });
+
+        document.getElementById('notifDevProbar')?.addEventListener('click', async () => {
+            const r = await PushCliente.probar();
+            if (typeof Toast !== 'undefined') {
+                if (r.ok && r.enviados) Toast.success(`Push enviado a ${r.enviados} dispositivo(s)`);
+                else if (r.ok) Toast.warning('No hay dispositivos suscriptos todavía');
+                else Toast.error(r.motivo || 'No se pudo enviar');
+            }
+        });
+
+        el.querySelectorAll('.notif-dev-baja').forEach(b => {
+            b.addEventListener('click', async () => {
+                const dev = lista.find(x => String(x.id) === b.dataset.id);
+                if (!dev) return;
+                b.disabled = true;   // antes del confirm: dos clicks rápidos disparaban dos DELETE
+                if (typeof Confirm !== 'undefined') {
+                    const ok = await Confirm.action('Dar de baja',
+                        `${dev.nombre} deja de recibir notificaciones. Se puede volver a activar desde ahí.`);
+                    if (!ok) { b.disabled = false; return; }
+                }
+                const r = await PushCliente.borrarDispositivo(dev.endpoint);
+                if (typeof Toast !== 'undefined') {
+                    if (r.ok) Toast.success('Dispositivo dado de baja');
+                    else Toast.error(r.motivo || 'No se pudo dar de baja');
+                }
+                this._loadNotifDevices();
+            });
+        });
+    },
+
+    // Agrupa por día: "Hoy" / "Ayer" / la fecha. Antes era una lista plana de 100.
+    _diaLabel(iso) {
+        if (!iso) return 'Sin fecha';
+        const d = String(iso).slice(0, 10);
+        const hoy = new Date().toISOString().slice(0, 10);
+        const ayer = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+        if (d === hoy) return 'Hoy';
+        if (d === ayer) return 'Ayer';
+        try {
+            return new Date(d + 'T12:00:00').toLocaleDateString('es-AR',
+                { day: '2-digit', month: 'long', year: 'numeric' });
+        } catch { return d; }
     },
 
     async _loadNotifFeed() {
@@ -496,19 +562,34 @@ const Settings = {
         const user = Auth.getUser?.();
         const uid = user?.uid || user?.id;
         if (!items.length) { el.innerHTML = '<div class="notif-page-empty">Sin novedades</div>'; return; }
+        let diaActual = null;
         el.innerHTML = items.map(n => {
-            const read = Array.isArray(n.leida_por) && n.leida_por.includes(uid);
-            const link = String(n.link || '').replace(/"/g, '&quot;');
-            return `
-                <button class="notif-page-row ${read ? 'read' : 'unread'}" data-id="${n.id}" data-link="${link}">
-                    <span class="notif-page-dot ${read ? '' : 'on'}"></span>
-                    <div class="notif-page-main">
-                        <div class="notif-page-title">${Notifications._esc(n.titulo || '')}</div>
-                        ${n.mensaje ? `<div class="notif-page-msg">${Notifications._esc(n.mensaje)}</div>` : ''}
-                        <div class="notif-page-meta">${Notifications._esc(n.tipo || '')} · ${Notifications._fmtRelative(n.created_at)}</div>
-                    </div>
-                </button>`;
+            const dia = this._diaLabel(n.created_at);
+            const head = dia !== diaActual ? `<div class="notif-page-dia">${dia}</div>` : '';
+            diaActual = dia;
+            return head + this._notifRowHTML(n, uid);
         }).join('');
+        this._attachNotifRows(el);
+    },
+
+    _notifRowHTML(n, uid) {
+        const read = Array.isArray(n.leida_por) && n.leida_por.includes(uid);
+        const cat = (typeof Notifications !== 'undefined') ? Notifications._catForTipo(n.tipo) : null;
+        // Se muestra la CATEGORÍA humana, no el `tipo` crudo de la base
+        // ("Compras y recepción" en vez de "oc_recepcion_incompleta").
+        const etiqueta = cat ? `${cat.icon} ${cat.label}` : (n.tipo || '');
+        return `
+            <button class="notif-page-row ${read ? 'read' : 'unread'}" data-id="${Notifications._escAttr(n.id)}" data-link="${Notifications._escAttr(n.link || '')}">
+                <span class="notif-page-dot ${read ? '' : 'on'}"></span>
+                <div class="notif-page-main">
+                    <div class="notif-page-title">${Notifications._esc(n.titulo || '')}</div>
+                    ${n.mensaje ? `<div class="notif-page-msg">${Notifications._esc(n.mensaje)}</div>` : ''}
+                    <div class="notif-page-meta">${Notifications._esc(etiqueta)} · ${Notifications._fmtRelative(n.created_at)}</div>
+                </div>
+            </button>`;
+    },
+
+    _attachNotifRows(el) {
         el.querySelectorAll('.notif-page-row').forEach(row => {
             row.addEventListener('click', async () => {
                 if (row.dataset.id) await Notifications.markRead(row.dataset.id);
@@ -559,6 +640,35 @@ const Settings = {
             @media (max-width: 560px) {
                 #notifPrefList .settings-toggle-row { grid-template-columns:1fr 54px 54px; }
             }
+            /* Tus dispositivos (N3) */
+            .notif-dev-estado { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+            .notif-dev-list { margin-top:12px; border-top:1px solid var(--border); }
+            .notif-dev-row { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid #1a1a1a; }
+            .notif-dev-row:last-child { border-bottom:none; }
+            .notif-dev-dot { width:7px; height:7px; border-radius:50%; background:#444; flex-shrink:0; }
+            .notif-dev-dot.on { background:#00CC88; box-shadow:0 0 6px rgba(0,204,136,.5); }
+            .notif-dev-info { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+            .notif-dev-name { font-size:0.84rem; color:var(--text-primary); }
+            .notif-dev-este {
+                font-family:var(--font-mono, monospace); font-size:0.56rem; color:#00CC88;
+                border:1px solid rgba(0,204,136,.4); border-radius:3px; padding:1px 5px;
+                text-transform:uppercase; letter-spacing:.5px; margin-left:4px;
+            }
+            .notif-dev-meta { font-family:var(--font-mono, monospace); font-size:0.62rem; color:var(--text-dim, #555); }
+            .notif-dev-baja {
+                background:transparent; border:1px solid var(--border); border-radius:4px;
+                color:var(--text-muted); font-size:0.7rem; padding:5px 9px; cursor:pointer;
+                min-height:32px; transition:all 180ms ease; flex-shrink:0;
+            }
+            .notif-dev-baja:hover:not(:disabled) { border-color:#ff4444; color:#ff6b6b; }
+            .notif-dev-baja:disabled { opacity:.5; cursor:default; }
+            /* Feed agrupado por día */
+            .notif-page-dia {
+                font-family:var(--font-mono, monospace); font-size:0.62rem;
+                color:var(--text-dim, #555); text-transform:uppercase; letter-spacing:.6px;
+                padding:14px 0 6px; border-bottom:1px solid #1a1a1a; margin-bottom:4px;
+            }
+            .notif-page-dia:first-child { padding-top:2px; }
             .notif-page-hint b { color:#aaa; }
             .notif-page-sec-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
             .notif-page-markall { background:transparent; border:1px solid rgba(0,169,193,.3); color:#00A9C1;

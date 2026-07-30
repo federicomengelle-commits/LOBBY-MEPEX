@@ -176,6 +176,96 @@ const PushCliente = {
         }
     },
 
+    // ─── Tus dispositivos (Etapa N3) ────────────────────────────────
+    // Una persona puede tener tres suscripciones (celu, compu del trabajo, compu
+    // de casa) y a todas les llega. Poder verlas y dar de baja la vieja evita
+    // el caso "cambié de teléfono y le sigue llegando al anterior".
+
+    /** Endpoint de ESTE navegador, para marcarlo en la lista. */
+    async endpointActual() {
+        if (!this.soportado()) return null;
+        try {
+            const reg = await navigator.serviceWorker.getRegistration();
+            const sub = reg ? await reg.pushManager.getSubscription() : null;
+            return sub ? sub.endpoint : null;
+        } catch (e) { return null; }
+    },
+
+    /** "Chrome en Windows" a partir del user agent. */
+    describirUA(ua) {
+        const s = String(ua || '');
+        if (!s) return 'Dispositivo desconocido';
+        let so = 'un dispositivo';
+        if (/iPhone/i.test(s)) so = 'iPhone';
+        else if (/iPad/i.test(s)) so = 'iPad';
+        else if (/Android/i.test(s)) so = 'Android';
+        else if (/Windows/i.test(s)) so = 'Windows';
+        else if (/Mac OS X|Macintosh/i.test(s)) so = 'Mac';
+        else if (/Linux/i.test(s)) so = 'Linux';
+        // El orden importa: Edge dice "Chrome" en su UA, y Chrome dice "Safari".
+        let nav = '';
+        if (/Edg\//i.test(s)) nav = 'Edge';
+        else if (/OPR\/|Opera/i.test(s)) nav = 'Opera';
+        else if (/Chrome\//i.test(s)) nav = 'Chrome';
+        else if (/Firefox\//i.test(s)) nav = 'Firefox';
+        else if (/Safari\//i.test(s)) nav = 'Safari';
+        return nav ? `${nav} en ${so}` : so;
+    },
+
+    /** Dispositivos suscriptos del usuario actual (la RLS acota a los propios). */
+    async listarDispositivos() {
+        const u = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null;
+        const uid = u?.uid || u?.id;
+        if (!uid) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('push_subscriptions')
+                .select('id, endpoint, user_agent, created_at')
+                .eq('user_id', uid)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            const actual = await this.endpointActual();
+            return (data || []).map(d => ({
+                id: d.id,
+                endpoint: d.endpoint,
+                creado: d.created_at,
+                nombre: this.describirUA(d.user_agent),
+                esEste: !!actual && d.endpoint === actual,
+            }));
+        } catch (e) {
+            console.warn('[push-cliente] no pude listar los dispositivos:', e.message);
+            return [];
+        }
+    },
+
+    /** Da de baja un dispositivo. Si es este, además desuscribe el navegador. */
+    async borrarDispositivo(endpoint) {
+        if (!endpoint) return { ok: false, motivo: 'falta el endpoint' };
+        const u = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null;
+        const uid = u?.uid || u?.id;
+        if (!uid) return { ok: false, motivo: 'sin sesión' };
+
+        // `endpointActual()` es del NAVEGADOR, no de la cuenta: en un equipo
+        // compartido la suscripción viva puede ser de otro usuario. Solo se
+        // desuscribe el navegador si además esa fila es de quien está logueado,
+        // si no se tumbaría el push de un compañero.
+        const actual = await this.endpointActual();
+        if (actual && actual === endpoint) {
+            const propios = await this.listarDispositivos();
+            if (propios.some(d => d.endpoint === endpoint)) return this.desactivar();
+        }
+
+        try {
+            const { error } = await supabaseClient
+                .from('push_subscriptions').delete()
+                .eq('endpoint', endpoint).eq('user_id', uid);
+            if (error) throw error;
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, motivo: e.message };
+        }
+    },
+
     /** Push de prueba al usuario logueado (solo superadmin — doc 02 §11.1). */
     async probar() {
         try {

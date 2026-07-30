@@ -9,14 +9,18 @@
 | **N0** · Auditoría del catálogo | ✅ hecha y verificada |
 | **N1** · Preferencias en la base | ✅ hecha · **migración YA APLICADA en prod** vía MCP |
 | **N2** · El push respeta las preferencias | ✅ hecha · ⏳ falta `cp push.js` al VPS + restart |
-| **N3** · Pantalla nueva | ⏸ pendiente (la matriz ya está; falta el rediseño con `pulir-pantallas`) |
+| **N3** · Pantalla nueva | ✅ estructura hecha · ⏳ falta la pasada estética con Fede (`pulir-pantallas`) |
 | **N4** · Campanita alineada | ⏸ pendiente |
 | **N5** · Matriz del Paso 9 | ⏸ pendiente |
 
-**Lo que falta que haga Fede para que N2 tome efecto:**
-```
-~/pull-lobby.sh && cp /home/mepex/lobby/tools/vps/push.js /home/mepex/api/ && pm2 restart mepex-api
-```
+**N2 ya está deployado** (Fede hizo el `cp push.js` + restart el 2026-07-30).
+
+**N3 — lo que quedó:** la pantalla `#notificaciones` pasó a tener tres bloques en el
+orden del plan: **Tus dispositivos** (el toggle se mudó de Mi Perfil y ahora lista
+TODOS los aparatos suscriptos, con "este aparato" marcado y botón de baja) ·
+**Qué querés recibir y por dónde** (la matriz) · **Actividad** (agrupada por día, con
+la categoría humana en vez del `tipo` crudo). En Mi Perfil quedó solo un puntero.
+Falta la pasada de diseño con Fede mirando el render.
 
 ### El hallazgo que solo apareció con acceso a la base
 
