@@ -16,6 +16,16 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="assets/mepex_iso.png">
 
+    <!-- PWA (Etapa E4) — sin la app instalada en la pantalla de inicio, en iPhone
+         NO llega ningún push. Requiere display:standalone en el manifest. -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#00A9C1">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MEPEX">
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+
     <!-- Supabase CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -38,7 +48,7 @@
          App.ensureAppLoaded() (app.js) recién con usuario autenticado —
          menos peso en el login y sin exponer el JS interno. La lista y el
          ORDEN viven en App._APP_SCRIPTS: bumpear versiones AHÍ, no acá. -->
-    <script src="config.js?v=4"></script>
+    <script src="config.js?v=5"></script>
     <script src="data.js?v=28"></script>
     <script src="router.js?v=24"></script>
     <script src="auth.js?v=8"></script>

@@ -39,6 +39,9 @@ const Notifications = {
         { key: 'inventario', label: 'Inventario y equipos', icon: '📦',
           desc: 'Stock que cruza el mínimo, equipos fuera de servicio',
           tipos: ['stock_minimo', 'equipo_fuera_servicio'] },
+        { key: 'tareas', label: 'Tareas', icon: '✅',
+          desc: 'Tareas que te asignan, avances y tareas completadas',
+          tipos: ['tarea_asignada', 'tarea_avance', 'tarea_completada'] },
     ],
 
     // ─── Lifecycle ────────────────────────────

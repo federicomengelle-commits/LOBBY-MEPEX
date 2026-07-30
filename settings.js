@@ -81,6 +81,10 @@ const Settings = {
                                 </select>
                                 <div class="form-hint">A qué sección ir al iniciar sesión</div>
                             </div>
+                            <div class="form-field" id="pushSection" style="margin-top:6px; padding-top:14px; border-top:1px solid var(--border);">
+                                <label class="form-label">NOTIFICACIONES EN ESTE DISPOSITIVO</label>
+                                <div class="form-hint">Verificando…</div>
+                            </div>
                         </div>
                     </div>
 
@@ -110,6 +114,68 @@ const Settings = {
         `;
 
         this._attachProfileEvents(user);
+    },
+
+    // ─── Push en este dispositivo (Etapa E5) ───
+    // El permiso del navegador SOLO se puede pedir tras un click, así que acá
+    // vive el botón. Cada navegador de cada dispositivo se suscribe por separado.
+    async _loadPushSection(user) {
+        const el = document.getElementById('pushSection');
+        if (!el) return;
+        if (typeof PushCliente === 'undefined') { el.style.display = 'none'; return; }
+
+        const d = await PushCliente.diagnostico();
+        const esSuper = user && user.role === 'superadmin';
+        const puedeAccionar = d.estado === 'activa' || d.estado === 'inactiva';
+
+        const boton = puedeAccionar
+            ? (d.activa
+                ? '<button type="button" class="btn btn-secondary btn-sm" id="pushToggle">Desactivar</button>'
+                : '<button type="button" class="btn btn-primary btn-sm" id="pushToggle">Activar notificaciones</button>')
+            : '';
+        const probar = (d.activa && esSuper)
+            ? '<button type="button" class="btn btn-ghost btn-sm" id="pushProbar">Probar</button>' : '';
+
+        const color = d.activa ? '#00CC88' : (d.estado === 'bloqueada' ? '#ff4444' : 'var(--text-muted)');
+
+        el.innerHTML = `
+            <label class="form-label">NOTIFICACIONES EN ESTE DISPOSITIVO</label>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="display:inline-flex; align-items:center; gap:6px; color:${color}; font-size:.84rem;">
+                    <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
+                    ${d.activa ? 'Activadas' : 'Desactivadas'}
+                </span>
+                ${boton}${probar}
+            </div>
+            <div class="form-hint" style="margin-top:6px;">${d.motivo}</div>
+            ${d.estado === 'falta_instalar' ? `
+            <div class="form-hint" style="margin-top:6px; line-height:1.5;">
+                Safari → botón Compartir → <strong>Agregar a pantalla de inicio</strong> → abrir desde el ícono → volver acá.
+            </div>` : ''}
+        `;
+
+        document.getElementById('pushToggle')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            const prev = btn.textContent;
+            btn.textContent = '…';
+            const r = d.activa ? await PushCliente.desactivar() : await PushCliente.activar();
+            if (typeof Toast !== 'undefined') {
+                if (r.ok) Toast.success(d.activa ? 'Notificaciones desactivadas' : 'Listo, este dispositivo va a recibir notificaciones');
+                else Toast.error(r.motivo || 'No se pudo cambiar');
+            }
+            btn.disabled = false; btn.textContent = prev;
+            await this._loadPushSection(user);
+        });
+
+        document.getElementById('pushProbar')?.addEventListener('click', async () => {
+            const r = await PushCliente.probar();
+            if (typeof Toast !== 'undefined') {
+                if (r.ok && r.enviados) Toast.success(`Push enviado a ${r.enviados} dispositivo(s)`);
+                else if (r.ok) Toast.warning('No hay dispositivos suscriptos todavía');
+                else Toast.error(r.motivo || 'No se pudo enviar');
+            }
+        });
     },
 
     // Helper: get modules the user can access (for start module selector)
@@ -210,6 +276,9 @@ const Settings = {
 
         // MFA (2FA): cargar estado y renderizar el bloque de activar/desactivar
         this._loadMfaSection();
+
+        // Push: estado de las notificaciones en ESTE dispositivo (Etapa E5).
+        this._loadPushSection(user);
     },
 
     // ─── MFA (verificación en 2 pasos) en Mi Perfil ───

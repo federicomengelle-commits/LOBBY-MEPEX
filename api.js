@@ -4178,6 +4178,195 @@ const API = {
         }
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  TAREAS v2 · destinatarios + notificación única + push   (Etapa E2)
+    // ═══════════════════════════════════════════════════════════════════
+    //  Spec: docs/jordi/01-INSTRUCCIONES-CLAUDE-MODULO-TAREAS.md §7.
+    //  Regla que manda: `notificar()` SIEMPRE escribe el in-app; el push es
+    //  ADICIONAL y condicional. Nunca al revés — no existe un push sin su
+    //  registro en la campanita.
+
+    /**
+     * Expande los roles y usuarios tagueados a la lista final de destinatarios.
+     * Doc 01 §7.2: expandir roles → sumar directos → deduplicar → excluir al
+     * creador → excluir inactivos.
+     * @returns {Promise<string[]>} user_ids únicos
+     */
+    async resolverDestinatarios({ roles = [], usuarios = [], excluir = null } = {}) {
+        const rolesLimpios = [...new Set((roles || []).filter(Boolean))];
+        const directos = [...new Set((usuarios || []).filter(Boolean))];
+        if (!rolesLimpios.length && !directos.length) return [];
+
+        const ids = new Set();
+        try {
+            // Una sola consulta para las dos vías (rol y persona).
+            const ors = [];
+            if (rolesLimpios.length) ors.push(`role.in.(${rolesLimpios.join(',')})`);
+            if (directos.length) ors.push(`id.in.(${directos.join(',')})`);
+            const { data, error } = await supabaseClient
+                .from('profiles').select('id, active').or(ors.join(','));
+            if (error) throw error;
+            (data || []).forEach(p => { if (p.active !== false) ids.add(p.id); });
+        } catch (e) {
+            console.warn('[API] resolverDestinatarios:', e.message);
+            // Degradado: al menos los tagueados directo. Mejor notificar de más
+            // que comerse el aviso entero por un fallo de red.
+            directos.forEach(id => ids.add(id));
+        }
+
+        if (excluir) ids.delete(excluir);   // el creador no se auto-notifica
+        return [...ids];
+    },
+
+    /**
+     * LA función de notificación (doc 01 §7.4). Una fila in-app por persona
+     * —así cada uno la marca leída por su cuenta— y push opcional.
+     * @returns {Promise<{inapp:number, push:object|null}>}
+     */
+    async notificar({ destinatarios = [], titulo, cuerpo = null, url = null,
+                      push = false, tipo = 'tarea_asignada', prioridad = 'normal',
+                      entidadTipo = null, entidadId = null } = {}) {
+        const ids = [...new Set((destinatarios || []).filter(Boolean))];
+        if (!ids.length || !titulo) return { inapp: 0, push: null };
+
+        // 1) IN-APP — siempre.
+        let inapp = 0;
+        try {
+            const filas = ids.map(uid => ({
+                tipo, titulo, mensaje: cuerpo,
+                target_user_id: uid, target_role: null,
+                entidad_tipo: entidadTipo, entidad_id: entidadId,
+                link: url, prioridad,
+            }));
+            const { data, error } = await supabaseClient
+                .from('notifications').insert(filas).select('id');
+            if (error) throw error;
+            inapp = (data || []).length;
+        } catch (e) {
+            console.warn('[API] notificar: falló el in-app:', e.message);
+        }
+
+        // 2) PUSH — adicional. Un fallo acá NUNCA puede voltear lo de arriba
+        //    ni la operación que disparó todo esto (doc 02 §7).
+        let pushRes = null;
+        if (push && entidadId) {
+            try { pushRes = await this.pushNotificarTarea(entidadId, tipo); }
+            catch (e) { console.warn('[API] notificar: el push falló, el in-app quedó igual:', e.message); }
+        }
+        return { inapp, push: pushRes };
+    },
+
+    // El endpoint recibe el ID de la tarea, NO la lista de destinatarios: los
+    // re-resuelve server-side. Así nadie puede usarlo para mandarle push a quien
+    // se le antoje (ver docs/jordi/03-PLAN-EJECUCION-TAREAS-PUSH.md §E6).
+    PUSH_TAREA_URL: '/api/push/tarea',
+
+    async pushNotificarTarea(tareaId, motivo = 'tarea_asignada') {
+        if (!tareaId) return null;
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 12000);
+            const res = await fetch(this.PUSH_TAREA_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(await this._authHeader()) },
+                body: JSON.stringify({ tareaId, motivo }),
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+        } catch (e) {
+            // Esperado mientras el connector no esté deployado en el VPS.
+            console.warn('[API] push no disponible (la tarea se guardó igual):', e.message);
+            return null;
+        }
+    },
+
+    // ─── Asignados de una tarea (tabla `tarea_asignados`, Etapa E1) ───
+
+    /** Asignados de N tareas de una: { tareaId: {roles:[], usuarios:[]} } */
+    async getTareaAsignadosBulk(tareaIds = []) {
+        const ids = [...new Set((tareaIds || []).filter(Boolean))];
+        const out = {};
+        if (!ids.length) return out;
+        try {
+            const { data, error } = await supabaseClient
+                .from('tarea_asignados').select('tarea_id, tipo, rol, usuario_id').in('tarea_id', ids);
+            if (error) throw error;
+            (data || []).forEach(a => {
+                if (!out[a.tarea_id]) out[a.tarea_id] = { roles: [], usuarios: [] };
+                if (a.rol) out[a.tarea_id].roles.push(a.rol);
+                else if (a.usuario_id) out[a.tarea_id].usuarios.push(a.usuario_id);
+            });
+        } catch (e) {
+            // Sin la tabla (SQL E1 no corrido) el módulo sigue andando sin chips.
+            console.warn('[API] getTareaAsignadosBulk:', e.message);
+        }
+        return out;
+    },
+
+    /**
+     * Sincroniza los asignados de una tarea al set que se le pasa.
+     * Devuelve QUÉ se agregó — es lo que permite la idempotencia del doc 01 §7.5
+     * ("se agrega un destinatario nuevo → se notifica SOLO al nuevo").
+     */
+    async setTareaAsignados(tareaId, { roles = [], usuarios = [] } = {}) {
+        const res = { ok: true, agregadosRoles: [], agregadosUsuarios: [] };
+        if (!tareaId) return { ...res, ok: false };
+        try {
+            const { data: actuales, error: e1 } = await supabaseClient
+                .from('tarea_asignados').select('id, rol, usuario_id').eq('tarea_id', tareaId);
+            if (e1) throw e1;
+
+            const rolesAct = new Set((actuales || []).filter(a => a.rol).map(a => a.rol));
+            const usrAct   = new Set((actuales || []).filter(a => a.usuario_id).map(a => a.usuario_id));
+            const rolesNew = new Set((roles || []).filter(Boolean));
+            const usrNew   = new Set((usuarios || []).filter(Boolean));
+
+            res.agregadosRoles    = [...rolesNew].filter(r => !rolesAct.has(r));
+            res.agregadosUsuarios = [...usrNew].filter(u => !usrAct.has(u));
+
+            const aBorrar = (actuales || []).filter(a =>
+                (a.rol && !rolesNew.has(a.rol)) || (a.usuario_id && !usrNew.has(a.usuario_id)));
+            if (aBorrar.length) {
+                const { error } = await supabaseClient
+                    .from('tarea_asignados').delete().in('id', aBorrar.map(a => a.id));
+                if (error) throw error;
+            }
+
+            const aInsertar = [
+                ...res.agregadosRoles.map(rol => ({ tarea_id: tareaId, tipo: 'rol', rol })),
+                ...res.agregadosUsuarios.map(usuario_id => ({ tarea_id: tareaId, tipo: 'usuario', usuario_id })),
+            ];
+            if (aInsertar.length) {
+                const { error } = await supabaseClient.from('tarea_asignados').insert(aInsertar);
+                if (error) throw error;
+            }
+        } catch (e) {
+            console.warn('[API] setTareaAsignados:', e.message);
+            res.ok = false; res.error = e.message;
+        }
+        return res;
+    },
+
+    /** Historial de estados de una tarea (tabla `tarea_actividad`, Etapa E1). */
+    async getTareaActividad(tareaId, limit = 30) {
+        if (!tareaId) return [];
+        try {
+            const { data, error } = await supabaseClient
+                .from('tarea_actividad')
+                .select('id, actor_id, estado_desde, estado_hasta, comentario, created_at')
+                .eq('tarea_id', tareaId)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            if (error) throw error;
+            return data || [];
+        } catch (e) {
+            console.warn('[API] getTareaActividad:', e.message);
+            return [];
+        }
+    },
+
     // #5 — Notifica UNA sola vez los pagos a proveedores recién vencidos (además del puntito).
     // Race-safe: el UPDATE ... RETURNING claimea atómicamente cada fila (notif_vencido_at pasa
     // de NULL a now()) → dos navegadores no duplican el aviso. Requiere la columna

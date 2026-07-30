@@ -66,6 +66,18 @@ app.get('/api/arca/ultimo',    requireAuth, arca.ultimoHandler);
 app.get('/api/arca/padron',    requireAuth, arca.padronHandler);
 app.post('/api/arca/facturar', requireRole('superadmin', 'admin', 'finanzas'), arca.facturarHandler);
 
+// Web Push VAPID (Tareas · Etapas E5/E6). Todo detrás de requireAuth: el user_id
+// de la suscripción sale de la SESIÓN, nunca del body (doc 02 §13). /test solo
+// superadmin (es un disparador de notificaciones). Rate limit bajo: son endpoints
+// que en uso normal se llaman una vez por dispositivo.
+const push = require('./push');
+const pushLimit = rateLimit({ windowMs: 60_000, max: 30 });
+app.get ('/api/push/estado',      requireAuth, push.estadoHandler);
+app.post('/api/push/suscribir',   pushLimit, requireAuth, push.suscribirHandler);
+app.post('/api/push/desuscribir', pushLimit, requireAuth, push.desuscribirHandler);
+app.post('/api/push/test',        pushLimit, requireRole('superadmin'), push.testHandler);
+app.post('/api/push/tarea',       pushLimit, requireAuth, push.tareaHandler);
+
 // WhatsApp Coexistence (CRM E4) — webhook de Meta. La ruta es PÚBLICA a propósito
 // (la llama Meta, no el front): la auth del POST es la firma X-Hub-Signature-256
 // validada adentro con WA_APP_SECRET; el GET exige WA_VERIFY_TOKEN. Sin esas env,

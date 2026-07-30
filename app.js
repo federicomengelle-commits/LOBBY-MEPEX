@@ -40,7 +40,7 @@ const App = {
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js',
         'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
-        'api.js?v=91',
+        'api.js?v=92',
         'components.js?v=10',
         'undo.js?v=4',
         'alertas.js?v=8',
@@ -78,13 +78,14 @@ const App = {
         'calendario-adm.js?v=3',
         'carga-comprobante.js?v=4',
         'pedido-compra.js?v=1',
-        'settings.js?v=9',
+        'push-cliente.js?v=1',
+        'settings.js?v=10',
         'admin-panel.js?v=15',
         'importar-cotizacion.js?v=2',
         'importar-contactos.js?v=2',
         'modules.js?v=10',
-        'notifications.js?v=7',
-        'tareas.js?v=12',
+        'notifications.js?v=8',
+        'tareas.js?v=13',
         // PostHog Analytics (consultoría Jordi 2026-07-17) — al final a propósito:
         // si el CDN de PostHog falla, la app ya cargó entera (analytics es lo único
         // que se pierde). array.full.js define window.posthog; posthog-init.js
