@@ -68,6 +68,10 @@ if (webpush && VAPID_PUBLIC && VAPID_PRIVATE && VAPID_SUBJECT) {
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
     console.warn('[push] ⚠️ falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY — no voy a poder leer suscripciones.');
+} else if (/^eyJ/.test(SERVICE_KEY)) {
+    console.warn('[push] ⚠️ la clave de servicio está en formato LEGACY (eyJ…, un JWT).');
+    console.warn('[push] ⚠️ Supabase deshabilitó las claves legacy: hay que crear una secret key');
+    console.warn('[push] ⚠️ nueva (sb_secret_…) en Project Settings → API Keys → Secret keys.');
 } else if (/^sb_publishable_/.test(SERVICE_KEY) || SERVICE_KEY === process.env.SUPABASE_ANON_KEY) {
     // Pasó en el deploy 2026-07-30: el .env tenía SUPABASE_SERVICE_KEY con el valor
     // de la clave PÚBLICA. Sin esta verificación el módulo arranca "bien" y después
@@ -383,6 +387,39 @@ function estadoHandler(req, res) {
         publicKeyPreview: VAPID_PUBLIC ? VAPID_PUBLIC.slice(0, 12) + '…' : null,
     });
 }
+
+// ─── Auto-diagnóstico al arrancar ───────────────────────────────────
+// Las dos fallas que costaron el deploy del 2026-07-30 —la tabla sin crear y una
+// clave de servicio que no saltea RLS— no dan ninguna señal hasta que alguien
+// intenta suscribirse, y las dos terminan en el mismo cartel genérico del front.
+// Una sola request al boot las separa y las nombra.
+async function autodiagnostico() {
+    if (!vapidListo) return;                      // ya avisó por otro lado
+    if (!SUPABASE_URL || !SERVICE_KEY) return;    // ídem
+    try {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/push_subscriptions?select=id&limit=1`, {
+            headers: sbHeaders(),
+        });
+        if (r.ok) { console.log('[push] ✓ listo (VAPID + acceso a push_subscriptions OK)'); return; }
+        const txt = await r.text().catch(() => '');
+        if (/Legacy API keys are disabled/i.test(txt)) {
+            console.warn('[push] ⚠️ la clave de servicio es LEGACY y Supabase las deshabilitó.');
+            console.warn('[push] ⚠️ Creá una secret key nueva (sb_secret_…) en Settings → API Keys.');
+        } else if (/PGRST205|schema cache/i.test(txt)) {
+            console.warn('[push] ⚠️ la tabla push_subscriptions NO existe.');
+            console.warn('[push] ⚠️ Correr sql/push_subscriptions.sql en el proyecto correcto.');
+        } else if (r.status === 401 || r.status === 403) {
+            console.warn('[push] ⚠️ la clave de servicio no tiene permiso (HTTP ' + r.status + ').');
+            console.warn('[push] ⚠️ Tiene que ser la secret key (sb_secret_…), no la publishable.');
+        } else {
+            console.warn('[push] ⚠️ no puedo leer push_subscriptions:', r.status, txt.slice(0, 200));
+        }
+    } catch (e) {
+        console.warn('[push] ⚠️ el autodiagnóstico falló:', e.message);
+    }
+}
+// Fire and forget: si esto se cuelga, el server tiene que arrancar igual.
+autodiagnostico();
 
 module.exports = {
     suscribirHandler,
