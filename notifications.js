@@ -334,12 +334,16 @@ const Notifications = {
         this._attachDropdownEvents();
     },
 
+    // N4 · "Avisos" (pasó algo, se marca leído) vs "Pendientes" (está trabado
+    // ahora, es estado vivo y no se marca leído). Antes decía "Novedades" y
+    // "Pendientes", dos palabras que suenan a lo mismo y no dejaban ver que son
+    // cosas distintas. Los empty states de cada una terminan de explicarlo.
     _renderTabsInner() {
         const pend = this._pendientesCount();
         const novActive = this._activeTab === 'novedades';
         return `
-            <button class="notif-tab ${novActive ? 'active' : ''}" data-tab="novedades">Novedades${this._unread > 0 ? ` <span class="notif-tab-count">${this._unread}</span>` : ''}</button>
-            <button class="notif-tab ${!novActive ? 'active' : ''}" data-tab="pendientes">Pendientes${pend > 0 ? ` <span class="notif-tab-count">${pend}</span>` : ''}</button>
+            <button class="notif-tab ${novActive ? 'active' : ''}" data-tab="novedades" title="Cosas que pasaron">Avisos${this._unread > 0 ? ` <span class="notif-tab-count">${this._unread}</span>` : ''}</button>
+            <button class="notif-tab ${!novActive ? 'active' : ''}" data-tab="pendientes" title="Cosas que siguen trabadas">Pendientes${pend > 0 ? ` <span class="notif-tab-count">${pend}</span>` : ''}</button>
         `;
     },
 
@@ -350,6 +354,9 @@ const Notifications = {
             <div class="notif-dropdown-header">
                 <span class="notif-dropdown-title">Notificaciones</span>
                 ${showMark ? '<button class="notif-mark-all" id="notifMarkAll">Marcar todas leídas</button>' : ''}
+                <button class="notif-cog" id="notifCog" title="Elegir qué recibís y por dónde" aria-label="Preferencias de notificación">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10.6 3V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 16 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09A1.65 1.65 0 0 0 21 10.6H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
             </div>
             <div class="notif-tabs" id="notifTabs">${this._renderTabsInner()}</div>
             <div class="notif-dropdown-body" id="notifDropdownBody">
@@ -383,7 +390,11 @@ const Notifications = {
             const markAllBtn = header.querySelector('#notifMarkAll');
             const showMark = novActive && this._unread > 0;
             if (showMark && !markAllBtn) {
-                header.insertAdjacentHTML('beforeend', '<button class="notif-mark-all" id="notifMarkAll">Marcar todas leídas</button>');
+                const html = '<button class="notif-mark-all" id="notifMarkAll">Marcar todas leídas</button>';
+                const cog = header.querySelector('#notifCog');
+                // Antes del engranaje: si no, el botón se cuela a la derecha de él.
+                if (cog) cog.insertAdjacentHTML('beforebegin', html);
+                else header.insertAdjacentHTML('beforeend', html);
                 document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
             } else if (!showMark && markAllBtn) {
                 markAllBtn.remove();
@@ -398,7 +409,8 @@ const Notifications = {
             return `
                 <div class="notif-empty">
                     <div class="notif-empty-icon">🔕</div>
-                    <p>Sin novedades</p>
+                    <p>Sin avisos nuevos</p>
+                    <span class="notif-empty-hint">Acá aparece lo que pasó: tareas que te asignan, remitos firmados, aprobaciones.</span>
                 </div>
             `;
         }
@@ -408,14 +420,19 @@ const Notifications = {
             const isRead = this._isReadBy(n, uid);
             const prioCls = n.prioridad && n.prioridad !== 'normal' ? `notif-prio-${n.prioridad}` : '';
             const fecha = this._fmtRelative(n.created_at);
+            // N4 · misma etiqueta que la pantalla de Notificaciones: la categoría
+            // humana, no el `tipo` crudo de la base. Antes acá decía
+            // "oc_recepcion_incompleta" y en la pantalla "Compras y recepción".
+            const cat = this._catForTipo(n.tipo);
+            const etiqueta = cat ? `${cat.icon} ${cat.label}` : (n.tipo || '');
             return `
-                <button class="notif-item ${isRead ? 'read' : 'unread'} ${prioCls}" data-id="${n.id}" data-link="${this._escAttr(n.link || '')}">
+                <button class="notif-item ${isRead ? 'read' : 'unread'} ${prioCls}" data-id="${this._escAttr(n.id)}" data-link="${this._escAttr(n.link || '')}">
                     ${!isRead ? '<span class="notif-dot"></span>' : '<span class="notif-dot-placeholder"></span>'}
                     <div class="notif-item-body">
                         <div class="notif-item-title">${this._esc(n.titulo || '')}</div>
                         ${n.mensaje ? `<div class="notif-item-msg">${this._esc(n.mensaje)}</div>` : ''}
                         <div class="notif-item-meta">
-                            <span class="notif-item-tipo">${this._esc(n.tipo || '')}</span>
+                            <span class="notif-item-tipo">${this._esc(etiqueta)}</span>
                             <span class="notif-item-date">${fecha}</span>
                         </div>
                     </div>
@@ -432,6 +449,7 @@ const Notifications = {
                 <div class="notif-empty">
                     <div class="notif-empty-icon">✅</div>
                     <p>Sin pendientes</p>
+                    <span class="notif-empty-hint">Acá aparece lo que está trabado y necesita que alguien lo mueva. No se marca leído: se va solo cuando se resuelve.</span>
                 </div>
             `;
         }
@@ -459,6 +477,7 @@ const Notifications = {
         this._attachTabEvents();
         document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
         document.getElementById('notifSeeAll')?.addEventListener('click', (e) => { e.stopPropagation(); this._goToCenter(); });
+        document.getElementById('notifCog')?.addEventListener('click', (e) => { e.stopPropagation(); this._goToCenter(); });
         this._attachItemEvents();
     },
 
@@ -561,6 +580,7 @@ const Notifications = {
         this._attachTabEvents();
         document.getElementById('notifMarkAll')?.addEventListener('click', () => this.markAllRead());
         document.getElementById('notifSeeAll')?.addEventListener('click', (e) => { e.stopPropagation(); this._goToCenter(); });
+        document.getElementById('notifCog')?.addEventListener('click', (e) => { e.stopPropagation(); this._goToCenter(); });
         sheet.querySelectorAll('.notif-item').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -683,6 +703,18 @@ const Notifications = {
                 transition: background 200ms ease;
             }
             .notif-mark-all:hover { background: rgba(0, 169, 193, 0.1); }
+            /* N4 — acceso directo a las preferencias desde la campana */
+            .notif-cog {
+                background: transparent; border: none; color: #666; cursor: pointer;
+                padding: 3px; border-radius: 4px; display: inline-flex; align-items: center;
+                transition: color 200ms ease, background 200ms ease;
+            }
+            .notif-cog:hover { color: #00A9C1; background: rgba(0, 169, 193, 0.1); }
+            .notif-empty-hint {
+                font-family: var(--font-main, 'Outfit', sans-serif);
+                font-size: 0.72rem; color: #4a4a4a; line-height: 1.45;
+                max-width: 250px; display: block;
+            }
             /* Tabs (Novedades / Pendientes) */
             .notif-tabs {
                 display: flex; gap: 0;

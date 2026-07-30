@@ -10,8 +10,14 @@
 | **N1** · Preferencias en la base | ✅ hecha · **migración YA APLICADA en prod** vía MCP |
 | **N2** · El push respeta las preferencias | ✅ hecha · ⏳ falta `cp push.js` al VPS + restart |
 | **N3** · Pantalla nueva | ✅ estructura hecha · ⏳ falta la pasada estética con Fede (`pulir-pantallas`) |
-| **N4** · Campanita alineada | ⏸ pendiente |
-| **N5** · Matriz del Paso 9 | ⏸ pendiente |
+| **N4** · Campanita alineada | ✅ hecha |
+| **N5** · Matriz del Paso 9 | ⏸ **espera que Fede tilde la tabla** (§E7 del plan de tareas) |
+
+**N4 — lo que quedó:** las pestañas pasaron a **Avisos** (pasó algo, se marca leído) y
+**Pendientes** (sigue trabado, se va solo al resolverse); antes eran "Novedades" y
+"Pendientes", dos palabras que suenan igual y tapaban que son cosas distintas. Los
+estados vacíos de cada una lo explican en una línea. Los items muestran la categoría
+humana igual que la pantalla, y hay un engranaje que lleva a las preferencias.
 
 **N2 ya está deployado** (Fede hizo el `cp push.js` + restart el 2026-07-30).
 

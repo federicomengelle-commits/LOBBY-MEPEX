@@ -84,7 +84,7 @@ const App = {
         'importar-cotizacion.js?v=2',
         'importar-contactos.js?v=2',
         'modules.js?v=10',
-        'notifications.js?v=10',
+        'notifications.js?v=11',
         'tareas.js?v=13',
         // PostHog Analytics (consultoría Jordi 2026-07-17) — al final a propósito:
         // si el CDN de PostHog falla, la app ya cargó entera (analytics es lo único
