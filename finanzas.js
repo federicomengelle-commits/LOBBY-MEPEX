@@ -4966,11 +4966,11 @@ const FinanzasModule = {
         }
 
         main.innerHTML = this._planes.map(plan => {
-            // Fallback del título: 'Proyecto' salvo que el plan cuelgue SOLO de una
-            // venta (circuito de venta Fase 1) — ahí decir "Proyecto" mentiría.
-            // Los planes viejos siempre tienen proyecto_id, así que no los toca.
-            const proyName = this._proyectosMap[plan.proyecto_id]
-                || (plan.venta_id && !plan.proyecto_id ? 'Venta' : 'Proyecto');
+            // El fallback NO puede repetir el chip de origen que va pegado al lado
+            // (que ya dice VENTA o PROYECTO, en mayúsculas por CSS): el header
+            // leía "VentaVENTA" en un plan colgado de una venta, y "ProyectoPROYECTO"
+            // en uno cuyo proyecto no está en el map. Con proyecto conocido no cambia.
+            const proyName = this._proyectosMap[plan.proyecto_id] || 'Plan de cobro';
 
             // Chip de origen: de qué cuelga este plan. "Venta" navega a la ficha;
             // "Proyecto" es informativo y marca los planes de antes del circuito.
@@ -5405,16 +5405,40 @@ const FinanzasModule = {
         const cuota = (plan.plan_cobro_items || []).find(i => i.id === cuotaId);
         if (!cuota) return;
 
-        // Buscar facturas del mismo proyecto sin vincular
-        const { data: comprobantes, error } = await supabaseClient
+        // Facturas candidatas para esta cuota.
+        //
+        // ⚠️ Desde el circuito de venta (Fase 1) un plan puede colgar SOLO de una
+        // venta, y ahí `plan.proyecto_id` es NULL. En PostgREST `.eq(col, null)`
+        // se serializa como `col=eq.null` y NO matchea nada (ni siquiera las filas
+        // con NULL) → TODO plan de venta caía en el toast de "no hay facturas".
+        // Con venta se filtra por el cliente de la venta; si no se puede resolver,
+        // se muestran todas y el usuario elige — filtrar por null sería mostrar
+        // cero, que es peor.
+        let alcance = 'proyecto';
+        let q = supabaseClient
             .from('comprobantes')
             .select('id, fecha, tipo, punto_venta, numero, total, cliente_id')
-            .eq('proyecto_id', plan.proyecto_id)
-            .eq('_deleted', false)
-            .order('fecha', { ascending: false });
+            .eq('_deleted', false);
+
+        if (plan.proyecto_id) {
+            q = q.eq('proyecto_id', plan.proyecto_id);
+        } else if (plan.venta_id) {
+            const venta = await API.getVentaById(plan.venta_id);   // devuelve null si falla
+            if (venta && venta.cliente_id) {
+                q = q.eq('cliente_id', venta.cliente_id);
+                alcance = 'cliente';
+            } else {
+                alcance = 'todas';
+            }
+        } else {
+            alcance = 'todas';
+        }
+
+        const { data: comprobantes, error } = await q.order('fecha', { ascending: false });
 
         if (error || !comprobantes?.length) {
-            Toast.warning('No hay facturas del proyecto disponibles. Emití una factura primero.');
+            const de = alcance === 'proyecto' ? ' del proyecto' : alcance === 'cliente' ? ' del cliente' : '';
+            Toast.warning(`No hay facturas${de} disponibles. Emití una factura primero.`);
             return;
         }
 
@@ -5436,7 +5460,7 @@ const FinanzasModule = {
                         <div style="padding:8px;background:#1a1a1a;border-radius:4px;font-size:0.85rem;">${escHtml(cuota.concepto)} · ${this._formatMoney(cuota.monto)}</div>
                     </div>
                     <div class="fin-form-group">
-                        <label class="fin-form-label">Factura del proyecto *</label>
+                        <label class="fin-form-label">${alcance === 'proyecto' ? 'Factura del proyecto' : alcance === 'cliente' ? 'Factura del cliente' : 'Factura'} *</label>
                         <select class="fin-form-select" id="finCuotaFactSel">${opts}</select>
                     </div>
                     <div style="font-size:11px;color:#888;line-height:1.4;">
