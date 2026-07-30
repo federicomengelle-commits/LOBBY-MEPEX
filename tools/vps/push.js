@@ -68,10 +68,6 @@ if (webpush && VAPID_PUBLIC && VAPID_PRIVATE && VAPID_SUBJECT) {
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
     console.warn('[push] ⚠️ falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY — no voy a poder leer suscripciones.');
-} else if (/^eyJ/.test(SERVICE_KEY)) {
-    console.warn('[push] ⚠️ la clave de servicio está en formato LEGACY (eyJ…, un JWT).');
-    console.warn('[push] ⚠️ Supabase deshabilitó las claves legacy: hay que crear una secret key');
-    console.warn('[push] ⚠️ nueva (sb_secret_…) en Project Settings → API Keys → Secret keys.');
 } else if (/^sb_publishable_/.test(SERVICE_KEY) || SERVICE_KEY === process.env.SUPABASE_ANON_KEY) {
     // Pasó en el deploy 2026-07-30: el .env tenía SUPABASE_SERVICE_KEY con el valor
     // de la clave PÚBLICA. Sin esta verificación el módulo arranca "bien" y después
@@ -81,6 +77,9 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
     console.warn('[push] ⚠️ Con esa clave las lecturas respetan RLS → el envío va a encontrar CERO suscripciones siempre.');
     console.warn('[push] ⚠️ Cargá la service_role real (sb_secret_…) en SUPABASE_SERVICE_ROLE_KEY.');
 }
+// NO se chequea acá el formato legacy (eyJ…, JWT): esas claves funcionan o no
+// según estén habilitadas en el proyecto, y eso no se puede saber mirando el
+// string. Lo resuelve el autodiagnóstico del final, que hace una request real.
 
 // Roles válidos del sistema. `tarea_asignados.rol` y `tareas.target_role` son
 // columnas `text` libres, y estos valores terminan CONCATENADOS en un filtro
