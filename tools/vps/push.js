@@ -146,6 +146,44 @@ async function sbDelete(path) {
     return true;
 }
 
+// ─── Preferencias de canal por usuario (Etapa N2) ───────────────────
+// Tabla `notificacion_prefs` (user_id, categoria, in_app, push). La AUSENCIA de
+// fila = el default de la categoría en el catálogo del front.
+async function filtrarPorPreferencia(userIds, categoria, pushPorDefecto) {
+    const ids = soloUuids(userIds);
+    if (!ids.length) return ids;
+    // El CHECK de la base ya acota el formato, pero esto se concatena en un
+    // filtro PostgREST que corre con service key: se valida igual.
+    if (!/^[a-z_]{1,40}$/.test(String(categoria || ''))) return ids;
+    try {
+        const lista = ids.map(i => `"${i}"`).join(',');
+        const prefs = await sbGet(
+            `notificacion_prefs?user_id=in.(${lista})` +
+            `&categoria=eq.${encodeURIComponent(categoria)}&select=user_id,push`
+        );
+        const elegido = new Map((prefs || []).map(p => [p.user_id, p.push === true]));
+        return ids.filter(id => (elegido.has(id) ? elegido.get(id) : pushPorDefecto));
+    } catch (e) {
+        // Ante la duda, mandar. Los únicos push que existen hoy son de tareas
+        // URGENTES: perder uno cuesta más que uno de más.
+        console.error('[push] no pude leer las preferencias, mando a todos:', e.message);
+        return ids;
+    }
+}
+
+// Horario de silencio (decisión D3): 21:00–07:00 hora de Buenos Aires.
+// Lo urgente lo atraviesa; el resto espera a la mañana. Hoy el único push que
+// existe es el de tarea urgente, así que esto todavía no descarta nada — queda
+// puesto para cuando la matriz del Paso 9 sume avisos no urgentes.
+function enHorarioDeSilencio() {
+    try {
+        const h = Number(new Intl.DateTimeFormat('es-AR', {
+            timeZone: 'America/Argentina/Buenos_Aires', hour: 'numeric', hour12: false,
+        }).format(new Date()));
+        return h >= 21 || h < 7;
+    } catch (e) { return false; }   // si falla el cálculo, no retener
+}
+
 // ─── Envío ──────────────────────────────────────────────────────────
 /**
  * Manda un push a TODOS los dispositivos de una lista de usuarios.
@@ -155,6 +193,10 @@ async function sbDelete(path) {
 async function enviarPush(userIds, payload) {
     const ids = soloUuids(userIds);
     if (!vapidListo || !ids.length) return { enviados: 0, fallidos: 0, limpiados: 0 };
+
+    if (!payload.urgent && enHorarioDeSilencio()) {
+        return { enviados: 0, fallidos: 0, limpiados: 0, retenido: 'horario de silencio (21-07)' };
+    }
 
     const lista = ids.map(id => `"${id}"`).join(',');
     const subs = await sbGet(
@@ -360,7 +402,16 @@ async function tareaHandler(req, res) {
 
         if (!destinatarios.length) return res.json({ ok: true, enviados: 0, motivo: 'sin destinatarios' });
 
-        const r = await enviarPush(destinatarios, {
+        // Respetar la columna "Celular" de la categoría Tareas (Etapa N2).
+        // pushPorDefecto=true porque el catálogo del front la marca `pushDefault`:
+        // el push ya está racionado por el check Urgente, no hace falta que
+        // además cada uno lo prenda a mano.
+        const quierenPush = await filtrarPorPreferencia(destinatarios, 'tareas', true);
+        if (!quierenPush.length) {
+            return res.json({ ok: true, enviados: 0, motivo: 'todos los destinatarios tienen el push de tareas apagado' });
+        }
+
+        const r = await enviarPush(quierenPush, {
             title: 'Tarea urgente',
             // Solo el título de la tarea: se lee desde la pantalla bloqueada.
             body: String(tarea.titulo || '').slice(0, 120),
@@ -369,7 +420,12 @@ async function tareaHandler(req, res) {
             urgent: true,
             tipo: 'tarea_asignada',
         });
-        return res.json({ ok: true, destinatarios: destinatarios.length, ...r });
+        return res.json({
+            ok: true,
+            destinatarios: destinatarios.length,
+            con_push_activo: quierenPush.length,
+            ...r,
+        });
     } catch (e) {
         console.error('[push] tarea:', e.message);
         return res.status(500).json({ ok: false, error: 'No se pudo enviar el push' });

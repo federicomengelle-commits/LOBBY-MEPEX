@@ -32,17 +32,57 @@ const Notifications = {
           tipos: ['asignacion_pendiente_aprobacion', 'asignacion_aprobada'] },
         { key: 'taller', label: 'Taller y producción', icon: '🔧',
           desc: 'Novedades de obra, stands listos, pase a taller',
-          tipos: ['novedad_para_taller', 'proyecto_listo', 'proyecto_en_taller'] },
+          tipos: ['novedad_para_taller', 'proyecto_listo', 'proyecto_a_taller'] },
         { key: 'compras', label: 'Compras y recepción', icon: '🛒',
           desc: 'Pedidos de compra, órdenes incompletas, pagos a proveedores vencidos',
           tipos: ['pedido_compra', 'oc_recepcion_incompleta', 'pago_proveedor_vencido'] },
         { key: 'inventario', label: 'Inventario y equipos', icon: '📦',
           desc: 'Stock que cruza el mínimo, equipos fuera de servicio',
           tipos: ['stock_minimo', 'equipo_fuera_servicio'] },
+        { key: 'comercial', label: 'Comercial', icon: '💬',
+          desc: 'Menciones en casos del CRM',
+          tipos: ['mencion'] },
+        { key: 'eventos', label: 'Eventos', icon: '📅',
+          desc: 'Encuestas de satisfacción respondidas por el cliente',
+          tipos: ['encuesta_respondida'] },
+        // pushDefault: el push ya está racionado por el check "Urgente" de la tarea
+        // (doc 01 §7.1), así que esta categoría nace con el celular habilitado —
+        // si naciera apagada, el push urgente no le llegaría a nadie hasta que
+        // cada uno lo prendiera a mano. El resto arranca solo en campanita.
         { key: 'tareas', label: 'Tareas', icon: '✅',
           desc: 'Tareas que te asignan, avances y tareas completadas',
+          pushDefault: true,
           tipos: ['tarea_asignada', 'tarea_avance', 'tarea_completada'] },
     ],
+
+    // ⚠️ AL AGREGAR UN AVISO NUEVO, sumá su `tipo` acá arriba o nadie va a poder
+    // silenciarlo. Ojo con los emisores que NO están en el JS: hay tres triggers
+    // en Postgres que escriben en `notifications` y no se ven con un grep del repo
+    // (`trg_encuesta_notif_fn` → encuesta_respondida, `trg_notif_stock_minimo_fn`
+    // → stock_minimo, `trg_notif_equipo_estado_fn` → equipo_fuera_servicio).
+    // Para listarlos:
+    //   SELECT proname FROM pg_proc WHERE pronamespace='public'::regnamespace
+    //     AND pg_get_functiondef(oid) ILIKE '%INSERT INTO%notifications%';
+    //
+    // Tipos que NO van al catálogo a propósito:
+    //   - 'test' → el push de prueba del superadmin, no es un aviso real.
+    _TIPOS_IGNORADOS: ['test'],
+    _driftAvisado: new Set(),
+
+    // El catálogo es una lista a mano y ya se desfasó una vez (había un
+    // `proyecto_en_taller` que el código nunca emitió, y `mencion` sin categoría).
+    // Esto lo grita en consola la primera vez que aparece un tipo sin catalogar,
+    // en vez de esperar a que alguien note que un switch no hace nada.
+    _chequearDrift(items) {
+        (items || []).forEach(n => {
+            const t = n && n.tipo;
+            if (!t || this._driftAvisado.has(t)) return;
+            if (this._TIPOS_IGNORADOS.includes(t)) return;
+            if (this._catForTipo(t)) return;
+            this._driftAvisado.add(t);
+            console.warn(`[Notifications] el tipo '${t}' no está en ninguna categoría de TIPO_CATALOG → nadie lo puede silenciar. Agregalo en notifications.js.`);
+        });
+    },
 
     // ─── Lifecycle ────────────────────────────
     async init() {
@@ -50,6 +90,9 @@ const Notifications = {
         this._initialized = true;
 
         this._injectStyles();
+        // Las preferencias PRIMERO: el refresh filtra por ellas. Si esto falla,
+        // loadPrefs deja _prefsReady en false y se sigue con las locales.
+        await this.loadPrefs();
         await this.refresh();
 
         // Polling cada 30s + refresh al recuperar foco
@@ -76,11 +119,35 @@ const Notifications = {
         });
     },
 
+    /**
+     * Devuelve la campana al estado "recién abierta", sin usuario.
+     * La llama `Auth.logout()`. Sin esto, un re-login en la MISMA pestaña
+     * (tablet compartida del taller, compu de oficina) heredaba las preferencias
+     * del usuario anterior: `_initialized` bloqueaba un segundo `init()`, así que
+     * `loadPrefs()` no volvía a correr y la campanita del nuevo usuario se
+     * filtraba con la configuración del que se fue — y peor, al tocar un switch
+     * se guardaba bajo SU id un valor heredado del otro.
+     * (Mismo problema que `auth.js` ya resolvía para UndoManager.)
+     */
+    reset() {
+        if (this._pollHandle) { clearInterval(this._pollHandle); this._pollHandle = null; }
+        this._initialized = false;
+        this._prefs = {};
+        this._prefsReady = false;
+        this._items = [];
+        this._unread = 0;
+        this._open = false;
+        this._activeTab = 'novedades';
+        this._driftAvisado = new Set();
+        document.getElementById('notifMobileSheet')?.remove();
+    },
+
     // ─── Refresh data ─────────────────────────
     async refresh() {
         if (!Auth.getUser?.()) return;
         try {
             this._items = await API.getNotifications({ limit: this.LIMIT, includeRead: true });
+            this._chequearDrift(this._items);
             const user = Auth.getUser();
             const uid = user.uid || user.id;
             this._unread = this._items.filter(n => !this._isReadBy(n, uid) && !this.isMuted(n.tipo)).length;
@@ -116,9 +183,108 @@ const Notifications = {
         return this._pendientes().length;
     },
 
-    // ─── Preferencias: silenciar tipos (por usuario, localStorage) ──
-    // Silenciar = ocultar ese tipo de aviso de la campana (Novedades). Los
-    // pendientes (estado vivo) y los dots del menú NO se ven afectados.
+    // ═══ Preferencias por usuario y canal (Etapa N1) ═══════════════
+    // Antes: silenciar sí/no, en el localStorage de CADA navegador — lo que
+    // apagabas en la compu no aplicaba en el celular. Ahora viven en la tabla
+    // `notificacion_prefs` (una fila por usuario+categoría, con `in_app` y
+    // `push`) y te siguen entre dispositivos.
+    //
+    // Silenciar la campanita NO afecta a los pendientes (estado vivo del motor
+    // `Alertas`) ni a los puntitos del menú: son otra cosa y no se silencian.
+    //
+    // REGLA DE SEGURIDAD DE ESTE BLOQUE: si la base no responde, se cae al
+    // localStorage de siempre, y ante la duda se MUESTRA el aviso en vez de
+    // ocultarlo. Una campanita de más molesta; una de menos hace perder trabajo.
+    _prefs: {},          // categoria → { in_app, push }
+    _prefsReady: false,  // false = todavía manda el localStorage
+
+    _pushDefault(catKey) {
+        const cat = this.TIPO_CATALOG.find(c => c.key === catKey);
+        return !!(cat && cat.pushDefault);
+    },
+
+    /** Preferencia efectiva de una categoría. Sin fila en la base = defaults. */
+    getPref(catKey) {
+        const p = this._prefs[catKey];
+        if (p) return p;
+        // Si todavía no cargaron las de la cuenta, respetar lo local.
+        const silenciadaLocal = !this._prefsReady && this.isCatMuted(catKey);
+        return { in_app: !silenciadaLocal, push: this._pushDefault(catKey) };
+    },
+
+    /** Trae las preferencias del usuario. Degrada a localStorage si falla. */
+    async loadPrefs() {
+        const u = Auth.getUser?.();
+        const uid = u?.uid || u?.id;
+        if (!uid) return;
+        try {
+            const { data, error } = await supabaseClient
+                .from('notificacion_prefs').select('categoria, in_app, push').eq('user_id', uid);
+            if (error) throw error;
+            this._prefs = {};
+            (data || []).forEach(r => { this._prefs[r.categoria] = { in_app: r.in_app, push: r.push }; });
+            // _prefsReady se prende DESPUÉS de migrar: si se prendiera antes, un
+            // click en un switch durante esa ventana leería un estado que la
+            // migración está por reescribir, y una de las dos escrituras se pierde.
+            await this._migrarPrefsLocales(uid, data || []);
+            this._prefsReady = true;
+        } catch (e) {
+            this._prefsReady = false;   // isMuted() vuelve a leer localStorage
+            console.warn('[Notifications] no pude leer tus preferencias, uso las de este navegador:', e.message);
+        }
+    },
+
+    // Una sola vez por usuario: lo que ya tenía silenciado en ESTE navegador se
+    // sube a su cuenta. Solo corre si no tiene ninguna fila todavía, así no pisa
+    // lo que haya configurado desde otro dispositivo.
+    async _migrarPrefsLocales(uid, filas) {
+        if (filas.length) return;
+        const validas = this.getMutedCats().filter(k => this.TIPO_CATALOG.some(c => c.key === k));
+        if (!validas.length) return;
+        try {
+            const rows = validas.map(k => ({ user_id: uid, categoria: k, in_app: false, push: this._pushDefault(k) }));
+            const { error } = await supabaseClient
+                .from('notificacion_prefs').upsert(rows, { onConflict: 'user_id,categoria' });
+            if (error) throw error;
+            validas.forEach(k => { this._prefs[k] = { in_app: false, push: this._pushDefault(k) }; });
+            console.log('[Notifications] preferencias de este navegador migradas a tu cuenta:', validas.join(', '));
+        } catch (e) {
+            console.warn('[Notifications] no pude migrar las preferencias locales:', e.message);
+        }
+    },
+
+    /**
+     * Cambia un canal de una categoría. `canal` = 'in_app' | 'push'.
+     * @returns {Promise<boolean>} false si no se pudo guardar (la UI debe revertir)
+     */
+    async setPref(catKey, canal, valor) {
+        if (canal !== 'in_app' && canal !== 'push') return false;
+        const u = Auth.getUser?.();
+        const uid = u?.uid || u?.id;
+        if (!uid) return false;
+
+        const actual = this.getPref(catKey);
+        const fila = { user_id: uid, categoria: catKey, in_app: actual.in_app, push: actual.push };
+        fila[canal] = !!valor;
+
+        try {
+            const { error } = await supabaseClient
+                .from('notificacion_prefs').upsert(fila, { onConflict: 'user_id,categoria' });
+            if (error) throw error;
+            this._prefs[catKey] = { in_app: fila.in_app, push: fila.push };
+            this._prefsReady = true;
+            // Espejo local: si mañana la base no responde al arrancar, el fallback
+            // ya sabe lo mismo que la cuenta.
+            this.setCatMuted(catKey, fila.in_app === false, true);
+            this.refresh();
+            return true;
+        } catch (e) {
+            console.warn('[Notifications] no pude guardar la preferencia:', e.message);
+            return false;
+        }
+    },
+
+    // ─── Espejo en localStorage (fallback si la base no responde) ───
     _muteKey() {
         const u = Auth.getUser?.();
         const uid = u?.uid || u?.id || 'anon';
@@ -129,18 +295,19 @@ const Notifications = {
         catch { return []; }
     },
     isCatMuted(key) { return this.getMutedCats().includes(key); },
-    setCatMuted(key, muted) {
+    setCatMuted(key, muted, silencioso = false) {
         const set = new Set(this.getMutedCats());
         if (muted) set.add(key); else set.delete(key);
         localStorage.setItem(this._muteKey(), JSON.stringify([...set]));
-        this.refresh();   // re-evaluar no-leídas + repintar campana
+        if (!silencioso) this.refresh();   // re-evaluar no-leídas + repintar campana
     },
     _catForTipo(tipo) {
         return this.TIPO_CATALOG.find(c => c.tipos.includes(tipo));
     },
     isMuted(tipo) {
         const cat = this._catForTipo(tipo);
-        return cat ? this.isCatMuted(cat.key) : false;
+        if (!cat) return false;   // sin categoría → no se oculta (ante la duda, mostrar)
+        return this.getPref(cat.key).in_app === false;
     },
 
     // ─── Bell render (en header) ──────────────

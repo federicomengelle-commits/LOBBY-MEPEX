@@ -133,6 +133,10 @@ const Auth = {
         if (typeof Badges !== 'undefined') Badges.stop();
         // El historial de undo es del usuario que se va — no debe heredarlo el próximo login
         if (typeof UndoManager !== 'undefined') UndoManager.clear();
+        // Ídem la campanita: sus preferencias y avisos son del que se va. Sin esto,
+        // un re-login en la misma pestaña filtraba las notificaciones del nuevo
+        // usuario con la configuración del anterior (tablet compartida del taller).
+        if (typeof Notifications !== 'undefined' && Notifications.reset) Notifications.reset();
         await supabaseClient.auth.signOut();
         Router.navigate('login');
     },

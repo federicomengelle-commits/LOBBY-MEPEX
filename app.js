@@ -79,12 +79,12 @@ const App = {
         'carga-comprobante.js?v=4',
         'pedido-compra.js?v=1',
         'push-cliente.js?v=1',
-        'settings.js?v=10',
+        'settings.js?v=12',
         'admin-panel.js?v=15',
         'importar-cotizacion.js?v=2',
         'importar-contactos.js?v=2',
         'modules.js?v=10',
-        'notifications.js?v=8',
+        'notifications.js?v=10',
         'tareas.js?v=13',
         // PostHog Analytics (consultoría Jordi 2026-07-17) — al final a propósito:
         // si el CDN de PostHog falla, la app ya cargó entera (analytics es lo único

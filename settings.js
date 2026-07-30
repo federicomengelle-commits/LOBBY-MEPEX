@@ -381,15 +381,10 @@ const Settings = {
     // ═══════════════════════════════════════════
     //  NOTIFICACIONES (#notificaciones)
     // ═══════════════════════════════════════════
-    _getNotifPrefs() {
-        try {
-            return JSON.parse(localStorage.getItem('notification_prefs_v2') || '{}');
-        } catch { return {}; }
-    },
-
-    _setNotifPrefs(prefs) {
-        localStorage.setItem('notification_prefs_v2', JSON.stringify(prefs));
-    },
+    // (Acá vivían _getNotifPrefs/_setNotifPrefs sobre la clave localStorage
+    //  `notification_prefs_v2`. Eran código muerto de una versión anterior: los
+    //  toggles de esta pantalla llaman a Notifications.setCatMuted(), que escribe
+    //  en `mepex_notif_mute_<uid>`. Borradas 2026-07-30, cero llamadores.)
 
     renderNotifications() {
         const user = Auth.getUser();
@@ -411,9 +406,16 @@ const Settings = {
                 </div>
 
                 <div class="settings-section" style="max-width:680px">
-                    <div class="settings-section-title">Preferencias — silenciar avisos</div>
+                    <div class="settings-section-title">Qué querés recibir y por dónde</div>
                     <div class="settings-toggle-list" id="notifPrefList">
-                        ${cats.map(c => `
+                        <div class="settings-toggle-row notif-pref-head">
+                            <div class="settings-toggle-info"><span class="settings-toggle-desc">Categoría</span></div>
+                            <span class="notif-pref-canal">🔔<br>Campana</span>
+                            <span class="notif-pref-canal">📱<br>Celular</span>
+                        </div>
+                        ${cats.map(c => {
+                            const p = Notifications.getPref(c.key);
+                            return `
                             <div class="settings-toggle-row">
                                 <div class="settings-toggle-info">
                                     <span class="settings-toggle-icon">${c.icon}</span>
@@ -423,13 +425,17 @@ const Settings = {
                                     </div>
                                 </div>
                                 <label class="settings-switch">
-                                    <input type="checkbox" data-cat="${c.key}" ${!Notifications.isCatMuted(c.key) ? 'checked' : ''}>
+                                    <input type="checkbox" data-cat="${c.key}" data-canal="in_app" ${p.in_app ? 'checked' : ''}>
                                     <span class="settings-switch-slider"></span>
                                 </label>
-                            </div>
-                        `).join('')}
+                                <label class="settings-switch">
+                                    <input type="checkbox" data-cat="${c.key}" data-canal="push" ${p.push ? 'checked' : ''}>
+                                    <span class="settings-switch-slider"></span>
+                                </label>
+                            </div>`;
+                        }).join('')}
                     </div>
-                    <p class="notif-page-hint">Apagar un aviso lo oculta de tu campana. Los <b>pendientes</b> (estado vivo) y los puntitos del menú no se ven afectados.</p>
+                    <p class="notif-page-hint">Se guarda en tu cuenta, así que vale para todos tus dispositivos. El <b>celular</b> además necesita que hayas activado las notificaciones en ese aparato (Mi Perfil). Los <b>pendientes</b> (estado vivo) y los puntitos del menú no se silencian.</p>
                 </div>
 
                 <div class="settings-section" style="max-width:680px">
@@ -447,11 +453,28 @@ const Settings = {
             </div>
         `;
 
-        // Toggles de silenciado (checked = recibir; apagado = silenciar)
+        // Matriz categoría × canal. Optimista: si la base rechaza, se revierte
+        // el switch y se avisa — no se puede dejar al usuario creyendo que apagó
+        // algo que sigue sonándole.
         content.querySelectorAll('#notifPrefList input[data-cat]').forEach(input => {
-            input.addEventListener('change', () => {
-                Notifications.setCatMuted(input.dataset.cat, !input.checked);
-                this._loadNotifFeed();
+            input.addEventListener('change', async () => {
+                const { cat, canal } = input.dataset;
+                const deseado = input.checked;
+                // Se bloquea la FILA entera, no solo este switch: `setPref` escribe
+                // la fila completa (in_app + push), así que dos clicks casi
+                // simultáneos en la misma categoría hacían que el segundo leyera el
+                // cache viejo y pisara lo que acababa de guardar el primero — sin
+                // error, con los dos switches en pantalla mostrando lo que no es.
+                const fila = [...content.querySelectorAll(`#notifPrefList input[data-cat="${cat}"]`)];
+                fila.forEach(i => { i.disabled = true; });
+                const ok = await Notifications.setPref(cat, canal, deseado);
+                fila.forEach(i => { i.disabled = false; });
+                if (!ok) {
+                    input.checked = !deseado;
+                    if (typeof Toast !== 'undefined') Toast.error('No se pudo guardar la preferencia');
+                    return;
+                }
+                if (canal === 'in_app') this._loadNotifFeed();
             });
         });
 
@@ -521,6 +544,21 @@ const Settings = {
         s.id = 'notif-page-styles';
         s.textContent = `
             .notif-page-hint { font-size:0.78rem; color:#888; margin-top:12px; line-height:1.5; }
+            /* Matriz categoría × canal (N1). Grid de 3 columnas: info | campana | celular */
+            #notifPrefList .settings-toggle-row {
+                display:grid; grid-template-columns:1fr 68px 68px; align-items:center; gap:8px;
+            }
+            #notifPrefList .settings-toggle-info { min-width:0; }
+            #notifPrefList .settings-switch { justify-self:center; }
+            .notif-pref-head { border-bottom:1px solid var(--border); padding-bottom:6px; }
+            .notif-pref-canal {
+                justify-self:center; text-align:center; line-height:1.25;
+                font-family:var(--font-mono, monospace); font-size:0.58rem;
+                color:var(--text-dim, #555); text-transform:uppercase; letter-spacing:0.5px;
+            }
+            @media (max-width: 560px) {
+                #notifPrefList .settings-toggle-row { grid-template-columns:1fr 54px 54px; }
+            }
             .notif-page-hint b { color:#aaa; }
             .notif-page-sec-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; }
             .notif-page-markall { background:transparent; border:1px solid rgba(0,169,193,.3); color:#00A9C1;
