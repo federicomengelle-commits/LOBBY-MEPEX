@@ -1,5 +1,21 @@
 # Circuito de venta — Fase 2: retenciones, percepciones y recibo de cobranza
 
+> **ESTADO al 2026-07-31**
+> - **Task 0** ✅ — no hay trigger de asientos sobre `comprobantes`; el cuerpo de
+>   `fn_asiento_auto_ingreso` en prod coincidía con el que asumía el plan.
+>   Foto del antes: **15 asientos · debe = haber = 18.984.910 · 21 ingresos**.
+> - **Task 1** ✅ — `sql/ventas_fase2_creditos_fiscales.sql` **aplicado en prod y
+>   verificado con cleanup exacto**. Escenario 1 (inercia) y 5 (retención)
+>   probados, más el de cobranza multi-factura con IVA.
+>   Correcciones al plan: las cuentas van **1.1.11 a 1.1.14** (1.1.10 está
+>   ocupado) con `orden` **121-124** (la convención es correlativa al código, no
+>   111-114). El trigger sacaba el IVA sólo de `ingresos.comprobante_id` y había
+>   que sumarle el fallback por `cobro_aplicaciones`, si no el caso central de la
+>   fase posteaba sin IVA.
+> - **Task 2** ✅ — API en `api.js?v=96`.
+> - **Restan Tasks 3 a 6**: `cobranza.js`, `creditos-fiscales.js`, percepciones en
+>   el modal de comprobante recibido, y la matriz de simulación.
+
 > **Para quien ejecute:** usar `superpowers:subagent-driven-development`. Los pasos usan checkbox (`- [ ]`).
 > **Antes de la primera línea de código, invocar `anthropic-skills:lobby-module-builder`.**
 

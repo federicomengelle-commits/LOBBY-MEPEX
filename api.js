@@ -6808,6 +6808,308 @@ const API = {
         return data || [];
     },
 
+    // ═══════════════════════════════════════════════════════════════
+    //  CIRCUITO DE VENTA · FASE 2 — Créditos fiscales y cobranza
+    // ═══════════════════════════════════════════════════════════════
+    //  Spec: docs/circuito-venta-blueprint.md §8
+    //  SQL:  sql/ventas_fase2_creditos_fiscales.sql (aplicado en prod 2026-07-31)
+    //
+    //  Una RETENCIÓN es plata que el cliente no nos depositó porque se la
+    //  deposita a la AFIP en nuestro nombre; no se perdió, es un crédito contra
+    //  el impuesto que vamos a pagar. Una PERCEPCIÓN es lo mismo del otro lado:
+    //  nos la agrega el proveedor adentro de su factura de compra. Misma
+    //  naturaleza contable y mismo libro → una sola tabla.
+
+    /**
+     * Importe válido, o null. Esta función existe por una razón concreta:
+     * `Number('1.000')` en JavaScript da **1**, no mil, porque interpreta el
+     * punto como decimal. Y toda la app formatea plata en es-AR ($68.000), así
+     * que un importe con separador de miles llegando como string es cuestión de
+     * tiempo. El candado de la cobranza comparaba dos importes entre sí, o sea
+     * que dos valores mal parseados IGUAL cuadraban: se habría registrado un
+     * cobro de $1 en lugar de $1.000 sin un solo error.
+     *
+     * Por eso acá se RECHAZA lo ambiguo en vez de adivinar: el que formatea es
+     * el formulario, la API recibe números. Un string con 3 decimales
+     * ('1.000', '12.345') no pasa — no hay importe con milésimas.
+     */
+    _monto(v) {
+        if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+        if (typeof v !== 'string') return null;
+        const s = v.trim();
+        if (!/^-?\d+(\.\d{1,2})?$/.test(s)) return null;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : null;
+    },
+
+    async getCreditosFiscales({ periodo = null, tipo = null, impuesto = null,
+                                estado = null, canal = null,
+                                desde = null, hasta = null } = {}) {
+        try {
+            let q = supabaseClient.from('creditos_fiscales').select('*')
+                .eq('_deleted', false)
+                .order('fecha', { ascending: false });
+            if (periodo)  q = q.eq('periodo', periodo);
+            if (tipo)     q = q.eq('tipo', tipo);
+            if (impuesto) q = q.eq('impuesto', impuesto);
+            if (estado)   q = q.eq('estado', estado);
+            if (canal)    q = q.eq('canal', canal);
+            if (desde)    q = q.gte('fecha', desde);
+            if (hasta)    q = q.lte('fecha', hasta);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getCreditosFiscales:', e.message); return []; }
+    },
+
+    /** Agregado por período desde la view (la que alimenta la DDJJ). */
+    async getCreditosPorPeriodo(periodo = null) {
+        try {
+            let q = supabaseClient.from('v_creditos_fiscales_periodo').select('*');
+            if (periodo) q = q.eq('periodo', periodo);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        } catch (e) { console.warn('[API] getCreditosPorPeriodo:', e.message); return []; }
+    },
+
+    /**
+     * Alta suelta de un crédito fiscal.
+     *
+     * ⚠️ Para una RETENCIÓN de un cobro que ya está confirmado, esto va a
+     * rebotar: el candado `trg_cf_bloquear_si_confirmado` lo impide, porque el
+     * asiento de ese cobro ya se posteó y nadie lo resincroniza. El camino es
+     * anular el cobro y volver a registrarlo con la retención adentro.
+     */
+    async createCreditoFiscal(payload) {
+        try {
+            // Mismo saneo que la cobranza: acá el monto NO se cruza contra nada,
+            // así que un '1.500' mal parseado ($1,50) entraría al libro sin que
+            // nada lo delate.
+            const monto = this._monto(payload.monto);
+            if (monto === null || monto <= 0) {
+                return { error: `Importe inválido: "${payload.monto}".` };
+            }
+            const fecha = payload.fecha || new Date().toISOString().split('T')[0];
+            const periodo = payload.periodo || String(fecha).slice(0, 7);
+            if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo)) {
+                return { error: `Período inválido: "${periodo}". Se espera AAAA-MM.` };
+            }
+            const row = {
+                ...payload,
+                monto, fecha, periodo,
+                base_imponible: this._monto(payload.base_imponible),
+                alicuota: this._monto(payload.alicuota),
+                created_by: this._uid(),
+            };
+            const { data, error } = await supabaseClient
+                .from('creditos_fiscales').insert([row]).select().single();
+            if (error) throw error;
+            return data;
+        } catch (e) {
+            console.warn('[API] createCreditoFiscal:', e.message);
+            return { error: e.message };
+        }
+    },
+
+    async updateCreditoFiscal(id, patch) {
+        try {
+            const { error } = await supabaseClient
+                .from('creditos_fiscales').update(patch).eq('id', id);
+            if (error) throw error;
+            return true;
+        } catch (e) {
+            console.warn('[API] updateCreditoFiscal:', e.message);
+            return { error: e.message };
+        }
+    },
+
+    async deleteCreditoFiscal(id, label = 'Elimino credito fiscal') {
+        try {
+            await UndoHelpers.deleteRecord('creditos_fiscales', id, label);
+            return true;
+        } catch (e) {
+            console.warn('[API] deleteCreditoFiscal:', e.message);
+            return { error: e.message };
+        }
+    },
+
+    /** Marcar como computados en una DDJJ (individual o en lote). */
+    async marcarCreditosComputados(ids, computado = true) {
+        const lista = (ids || []).filter(Boolean);
+        if (!lista.length) return { ok: true, actualizados: 0 };
+        try {
+            // `.select()` para saber cuántas filas se tocaron DE VERDAD: sin eso
+            // se reportaba la cantidad pedida, así que "5 marcados" salía igual
+            // aunque la RLS o un id inexistente hubieran dejado todo como estaba.
+            const { data, error } = await supabaseClient.from('creditos_fiscales')
+                .update({ estado: computado ? 'computado' : 'pendiente' })
+                .in('id', lista)
+                .select('id');
+            if (error) throw error;
+            const actualizados = (data || []).length;
+            return { ok: true, actualizados, pedidos: lista.length };
+        } catch (e) {
+            console.warn('[API] marcarCreditosComputados:', e.message);
+            return { ok: false, error: e.message };
+        }
+    },
+
+    /**
+     * EL RECIBO DE COBRANZA. Un pago que se aplica a N facturas y se compone de
+     * N medios, uno de los cuales pueden ser las retenciones que nos practicaron.
+     *
+     * ⚠️ EL ORDEN NO ES DECORATIVO — es lo que hace que el asiento salga bien:
+     *   1. validar que Σ aplicado = lo que entró + Σ retenido
+     *   2. INSERT del ingreso en 'pendiente'   → el trigger NO dispara
+     *   3. INSERT de las retenciones
+     *   4. INSERT de las aplicaciones          → el trigger sincroniza las cuotas
+     *   5. UPDATE del ingreso a 'confirmado'   → RECIÉN ACÁ se arma el asiento,
+     *                                            y ya ve las retenciones
+     * Si se confirmara primero, el asiento se postearía sin las retenciones y
+     * después no hay forma de resincronizarlo.
+     *
+     * Si algo falla entre el 2 y el 5, el ingreso queda en 'pendiente' y SIN
+     * asiento: es un estado válido y visible, no un asiento a medias. Por eso
+     * se devuelve `ingreso_id` junto con el error, para que la UI pueda ofrecer
+     * reintentar o borrarlo.
+     *
+     * `monto` del ingreso = lo que ENTRÓ a la cuenta, no lo facturado. Es un
+     * movimiento de tesorería y el saldo del banco tiene que seguir cuadrando.
+     *
+     * NO toca `registrarCobro` ni `crearValorRecibido`: son caminos aparte que
+     * siguen funcionando igual.
+     */
+    async registrarCobranza({
+        cliente_id = null, fecha = null, canal = 'oficial', cuenta_id = null,
+        medio = 'transferencia', concepto = null, notas = null,
+        proyecto_id = null, evento_id = null,
+        monto_efectivo = 0, aplicaciones = [], retenciones = [],
+    } = {}) {
+        // ─── El candado ───
+        // Un descuadre acá deja el asiento roto, así que se valida el FORMATO de
+        // cada importe además de la suma: comparar dos números mal parseados
+        // entre sí cuadra igual y no sirve de nada.
+        const apl = [];
+        for (const a of (aplicaciones || [])) {
+            if (!a || !a.comprobante_id) return { error: 'Hay una fila de aplicación sin factura.' };
+            const m = this._monto(a.monto_aplicado);
+            if (m === null) return { error: `Importe aplicado inválido: "${a.monto_aplicado}".` };
+            if (m <= 0) return { error: 'Los importes aplicados tienen que ser mayores a cero.' };
+            apl.push({ ...a, monto_aplicado: m });
+        }
+        const ret = [];
+        for (const r of (retenciones || [])) {
+            if (!r) continue;
+            const m = this._monto(r.monto);
+            if (m === null) return { error: `Importe de retención inválido: "${r.monto}".` };
+            if (m <= 0) return { error: 'Las retenciones tienen que ser mayores a cero.' };
+            if (r.impuesto === 'iibb' && !String(r.jurisdiccion || '').trim()) {
+                return { error: 'Una retención de IIBB necesita su jurisdicción.' };
+            }
+            ret.push({ ...r, monto: m });
+        }
+
+        const efectivo = this._monto(monto_efectivo);
+        if (efectivo === null) return { error: `Importe cobrado inválido: "${monto_efectivo}".` };
+        // Sin este chequeo, un efectivo NEGATIVO pasaba con sólo compensarlo con
+        // una retención más grande: el asiento salía con la línea de banco en
+        // negativo —acreditando plata que nunca salió— contra un crédito fiscal
+        // inflado, listo para computarse contra una DDJJ real.
+        if (efectivo < 0) return { error: 'El importe cobrado no puede ser negativo.' };
+
+        const totalAplicado = apl.reduce((s, a) => s + a.monto_aplicado, 0);
+        const totalRetenido = ret.reduce((s, r) => s + r.monto, 0);
+
+        if (!apl.length) return { error: 'No hay ninguna factura aplicada.' };
+        if (efectivo === 0 && !totalRetenido) return { error: 'La cobranza no tiene importe.' };
+        if (Math.abs(totalAplicado - (efectivo + totalRetenido)) > 0.01) {
+            return {
+                error: `No cuadra: aplicado ${totalAplicado.toFixed(2)} vs cobrado ${(efectivo + totalRetenido).toFixed(2)}.`,
+            };
+        }
+        // La cuenta se exige SIEMPRE (salvo cheque), no sólo cuando entra plata.
+        // El trigger la necesita para encontrar la contrapartida de tesorería: sin
+        // ella hace RAISE NOTICE y sale sin postear, que no es una excepción — o
+        // sea que la cobranza "salía bien" y NO generaba asiento. Pasaba justo en
+        // el caso más retención-intensiva: la cobranza 100% retenida.
+        if (!cuenta_id && medio !== 'cheque') {
+            return { error: 'Falta la cuenta donde entró la plata.' };
+        }
+
+        const hoy = fecha || new Date().toISOString().split('T')[0];
+        let ingresoId = null;
+
+        try {
+            // 2) el cobro nace pendiente
+            const { data: ing, error: e1 } = await supabaseClient.from('ingresos').insert([{
+                fecha: hoy,
+                concepto: concepto || 'Cobranza',
+                monto: efectivo,
+                medio, canal,
+                cuenta_id: cuenta_id || null,
+                cliente_id: cliente_id || null,
+                proyecto_id: proyecto_id || null,
+                evento_id: evento_id || null,
+                notas: notas || null,
+                estado: 'pendiente',
+                created_by: this._uid(),
+            }]).select('id').single();
+            if (e1) throw e1;
+            ingresoId = ing.id;
+
+            // 3) las retenciones, ANTES de confirmar
+            let creditoIds = [];
+            if (ret.length) {
+                const filas = ret.map(r => ({
+                    tipo: 'retencion',
+                    impuesto: r.impuesto,
+                    jurisdiccion: r.jurisdiccion || null,
+                    origen_ingreso_id: ingresoId,
+                    cliente_id: cliente_id || null,
+                    numero_certificado: r.numero_certificado || null,
+                    fecha: r.fecha || hoy,
+                    periodo: String(r.fecha || hoy).slice(0, 7),
+                    // Si vinieran mal, van en null en vez de NaN (que al
+                    // serializar a JSON se vuelve null igual, pero en silencio).
+                    // No participan de la suma validada: son el rastro para la DDJJ.
+                    base_imponible: this._monto(r.base_imponible),
+                    alicuota: this._monto(r.alicuota),
+                    monto: r.monto,   // ya validado arriba
+                    archivo_url: r.archivo_url || null,
+                    canal,
+                    created_by: this._uid(),
+                }));
+                const { data: creds, error: e2 } = await supabaseClient
+                    .from('creditos_fiscales').insert(filas).select('id');
+                if (e2) throw e2;
+                creditoIds = (creds || []).map(c => c.id);
+            }
+
+            // 4) las aplicaciones (el trigger de la base sincroniza las cuotas)
+            const aplicadas = await this.aplicarCobro(ingresoId, apl);
+
+            // 5) recién ahora se confirma → se arma el asiento, con retenciones
+            const { error: e3 } = await supabaseClient.from('ingresos')
+                .update({ estado: 'confirmado' }).eq('id', ingresoId);
+            if (e3) throw e3;
+
+            return {
+                ingreso_id: ingresoId,
+                credito_ids: creditoIds,
+                aplicacion_ids: (aplicadas || []).map(a => a.id),
+                total_aplicado: totalAplicado,
+                total_retenido: totalRetenido,
+            };
+        } catch (e) {
+            console.warn('[API] registrarCobranza:', e.message);
+            // El ingreso queda en 'pendiente' y sin asiento. Se devuelve el id
+            // para que la UI ofrezca reintentar o borrarlo, en vez de dejar un
+            // huérfano invisible.
+            return { error: e.message, ingreso_id: ingresoId };
+        }
+    },
+
     // ───────────────────────────────────────────────
     //  FASE E — Multi-moneda (ARS / USD / EUR)
     //  Snapshot de cotización por movimiento.
