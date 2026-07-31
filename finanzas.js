@@ -1948,6 +1948,18 @@ const FinanzasModule = {
                     container.innerHTML = this._buildFactRecibidosHTML();
                     await this._loadFactRecibidos();
                     this._attachFactRecibidosEvents();
+                } else if (this._factSubtab === 'creditos') {
+                    // El libro vive en su propio módulo; acá sólo se monta debajo
+                    // de la barra de subtabs (Fase 2, Task 4).
+                    container.innerHTML = this._buildFactSubtabs() + '<div id="finCredFiscHost"></div>';
+                    container.querySelectorAll('[data-facttab]').forEach(btn =>
+                        btn.addEventListener('click', () => { this._factSubtab = btn.dataset.facttab; this._renderTabContent(); }));
+                    if (typeof CreditosFiscales !== 'undefined') {
+                        await CreditosFiscales.renderInto(document.getElementById('finCredFiscHost'));
+                    } else {
+                        document.getElementById('finCredFiscHost').innerHTML =
+                            '<div style="padding:24px;text-align:center;color:var(--text-muted,#888)">El módulo de créditos fiscales no está cargado.</div>';
+                    }
                 } else {
                     container.innerHTML = this._buildFactEmitidosHTML();
                     await this._loadFactEmitidos();
@@ -2728,6 +2740,7 @@ const FinanzasModule = {
                     Nuevo ingreso
                 </button>
                 <button class="fin-btn-new" id="finBtnCargarCompIng" style="background:rgba(155,125,255,.12);border-color:#9B7DFF;color:#9B7DFF">📸 Cargar comprobante</button>
+                <button class="fin-btn-new" id="finBtnCobranza" title="Un cobro aplicado a una o varias facturas, con las retenciones que le practicaron">🧾 Registrar cobranza</button>
                 ` : ''}
             </div>
             <div class="fin-filters">
@@ -5941,6 +5954,21 @@ const FinanzasModule = {
 
         // New button
         document.getElementById('finBtnNewIngreso')?.addEventListener('click', () => this._showIngresoModal());
+        // Circuito de venta · Fase 2: el recibo de cobranza vive en su propio
+        // módulo (cobranza.js) para no seguir engordando finanzas.js.
+        document.getElementById('finBtnCobranza')?.addEventListener('click', () => {
+            if (typeof Cobranza === 'undefined') return Toast.error('El módulo de cobranza no está cargado.');
+            // `.catch()` en las dos promesas: sin eso, un fallo al abrir el modal
+            // o al refrescar la lista queda como rechazo sin manejar.
+            Cobranza.abrir({
+                onGuardado: () => Promise.resolve(this._loadIngresos?.())
+                    .then(() => this.render?.())
+                    .catch(e => console.warn('[Finanzas] refresco post-cobranza:', e.message)),
+            }).catch(e => {
+                console.warn('[Finanzas] abrir cobranza:', e.message);
+                Toast.error('No se pudo abrir la cobranza');
+            });
+        });
         document.getElementById('finBtnCargarCompIng')?.addEventListener('click', () => { if (typeof CargaComprobante !== 'undefined') CargaComprobante.open(); });
 
         // Filters
@@ -7133,6 +7161,7 @@ const FinanzasModule = {
                 <div class="fin-subtabs">
                     <button class="fin-subtab ${act('emitidos')}" data-facttab="emitidos">Emitidos</button>
                     <button class="fin-subtab ${act('recibidos')}" data-facttab="recibidos">Recibidos</button>
+                    <button class="fin-subtab ${act('creditos')}" data-facttab="creditos" title="Retenciones y percepciones a favor">Créditos fiscales</button>
                 </div>
                 <span class="fin-fact-sep" aria-hidden="true">│</span>
                 <div class="fin-subtabs fin-fact-actions">
@@ -9761,6 +9790,79 @@ const FinanzasModule = {
             </div>` });
     },
 
+    /**
+     * Refleja las percepciones del comprobante en el libro de créditos fiscales.
+     *
+     * Sirve igual para el alta y para la edición: por cada impuesto, si hay
+     * importe crea o actualiza su fila, y si quedó vacío da de baja la que
+     * hubiera. Sin esto, editar un comprobante dejaría el libro contando una
+     * percepción que ya no existe.
+     *
+     * NO pisa una fila ya marcada como `computado`: si esa percepción ya se usó
+     * en una DDJJ presentada, cambiarla por atrás desalinearía la declaración
+     * con el libro. En ese caso avisa y no toca nada.
+     */
+    async _syncPercepciones(comprobanteId, { percIva, percIibb, percJuris, fecha, canal, esAlta = false }) {
+        // En un alta sin percepciones no hay nada que sincronizar ni nada previo
+        // que dar de baja: se evita una consulta en cada guardado. En una EDICIÓN
+        // sí hay que entrar aunque vengan vacías, porque puede haber filas viejas
+        // que dar de baja.
+        if (esAlta && !percIva && !percIibb) return;
+        try {
+            const { data: existentes, error } = await supabaseClient
+                .from('creditos_fiscales')
+                .select('id, impuesto, monto, estado')
+                .eq('origen_comprobante_id', comprobanteId)
+                .eq('tipo', 'percepcion')
+                .eq('_deleted', false);
+            if (error) throw error;
+
+            const porImpuesto = new Map((existentes || []).map(r => [r.impuesto, r]));
+            const deseado = [
+                { impuesto: 'iva',  monto: percIva,  jurisdiccion: null },
+                { impuesto: 'iibb', monto: percIibb, jurisdiccion: percJuris },
+            ];
+            let bloqueadas = 0;
+
+            for (const d of deseado) {
+                const actual = porImpuesto.get(d.impuesto);
+                const monto = Number(d.monto) || 0;
+
+                if (actual && actual.estado === 'computado') {
+                    if (Math.abs(Number(actual.monto) - monto) > 0.01) bloqueadas++;
+                    continue;
+                }
+                if (monto > 0) {
+                    const fila = {
+                        tipo: 'percepcion', impuesto: d.impuesto,
+                        jurisdiccion: d.jurisdiccion || null,
+                        origen_comprobante_id: comprobanteId,
+                        fecha, periodo: String(fecha || '').slice(0, 7),
+                        monto, canal: canal || 'oficial',
+                    };
+                    if (actual) {
+                        const { error: e2 } = await supabaseClient.from('creditos_fiscales')
+                            .update(fila).eq('id', actual.id);
+                        if (e2) throw e2;
+                    } else {
+                        const r = await API.createCreditoFiscal(fila);
+                        if (r && r.error) throw new Error(r.error);
+                    }
+                } else if (actual) {
+                    const { error: e3 } = await supabaseClient.from('creditos_fiscales')
+                        .update({ _deleted: true }).eq('id', actual.id);
+                    if (e3) throw e3;
+                }
+            }
+            if (bloqueadas) {
+                Toast.warning('Una percepción ya computada en una DDJJ no se modificó. Revisala en el libro.');
+            }
+        } catch (e) {
+            console.warn('[Finanzas] _syncPercepciones:', e.message);
+            Toast.warning('El comprobante se guardó, pero no pude actualizar el libro de créditos fiscales.');
+        }
+    },
+
     _showRecibidoModal(comp = null) {
         const isEdit = !!comp;
         const title = isEdit ? 'Editar comprobante recibido' : 'Nuevo comprobante recibido';
@@ -9836,6 +9938,23 @@ const FinanzasModule = {
                         </div>
                     </div>
                     ${this._renderMonedaFields('finRec', c)}
+                    <!-- Circuito de venta · Fase 2: la percepción viene ADENTRO de la
+                         factura del proveedor, así que se carga acá. Vacío = nada
+                         cambia respecto de como venía funcionando. -->
+                    <div class="fin-form-row">
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Percepción IVA</label>
+                            <input type="number" class="fin-form-input" id="finRecFormPercIva" value="${c.percepcion_iva || ''}" step="0.01" placeholder="—">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Percepción IIBB</label>
+                            <input type="number" class="fin-form-input" id="finRecFormPercIibb" value="${c.percepcion_iibb || ''}" step="0.01" placeholder="—">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Jurisdicción (IIBB)</label>
+                            <input type="text" class="fin-form-input" id="finRecFormPercJuris" value="${escAttr(c.percepcion_jurisdiccion || '')}" placeholder="Provincia">
+                        </div>
+                    </div>
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Categoría *</label>
@@ -9906,7 +10025,18 @@ const FinanzasModule = {
         // Multi-moneda: el campo base de monto es Total (no Monto)
         this._attachMonedaListeners('finRec', 'finRecFormTotal');
 
-        document.getElementById('finBtnSaveRecibido')?.addEventListener('click', async () => {
+        document.getElementById('finBtnSaveRecibido')?.addEventListener('click', async (ev) => {
+            // Candado de reentrancia. `_syncPercepciones` lee y después escribe sin
+            // transacción, y `creditos_fiscales` no tiene UNIQUE por
+            // (comprobante, impuesto): dos clicks seguidos veían las dos el estado
+            // "todavía sin percepción" e insertaban las dos, inflando el libro que
+            // se le exporta al contador.
+            const btnSave = ev.currentTarget;
+            if (btnSave.dataset.guardando === '1') return;
+            btnSave.dataset.guardando = '1';
+            btnSave.disabled = true;
+            const soltar = () => { btnSave.dataset.guardando = ''; btnSave.disabled = false; };
+
             const fecha = document.getElementById('finRecFormFecha')?.value;
             const tipo = document.getElementById('finRecFormTipo')?.value;
             const numero = document.getElementById('finRecFormNumero')?.value.trim() || null;
@@ -9927,9 +10057,19 @@ const FinanzasModule = {
             const monedaData = this._readMonedaFields('finRec');
             if (!fecha || !tipo || !concepto || !total || isNaN(total) || !categoria) {
                 Toast.warning('Fecha, tipo, concepto, total y categoría son obligatorios');
-                return;
+                soltar(); return;
             }
-            if (monedaData.error) { Toast.warning(monedaData.error); return; }
+            if (monedaData.error) { Toast.warning(monedaData.error); soltar(); return; }
+
+            // Fase 2 · percepciones. Si los tres quedan vacíos, van null y el
+            // comportamiento es el de siempre.
+            const percIva = parseFloat(document.getElementById('finRecFormPercIva')?.value) || null;
+            const percIibb = parseFloat(document.getElementById('finRecFormPercIibb')?.value) || null;
+            const percJuris = document.getElementById('finRecFormPercJuris')?.value.trim() || null;
+            if (percIibb && !percJuris) {
+                Toast.warning('Una percepción de IIBB necesita su jurisdicción');
+                soltar(); return;
+            }
 
             const payload = {
                 fecha, tipo, numero, proveedor_nombre, cuit,
@@ -9937,18 +10077,29 @@ const FinanzasModule = {
                 proyecto_id, evento_id, egreso_id, archivo_url, notas,
                 moneda: monedaData.moneda,
                 cotizacion: monedaData.cotizacion,
+                percepcion_iva: percIva,
+                percepcion_iibb: percIibb,
+                percepcion_jurisdiccion: percJuris,
             };
 
             try {
+                let compId = isEdit ? comp.id : null;
                 if (isEdit) {
                     const { error } = await supabaseClient.from('comprobantes_recibidos').update(payload).eq('id', comp.id);
                     if (error) throw error;
                     Toast.success('Comprobante actualizado');
                 } else {
                     payload.created_by = Auth.getUser()?.uid || null;
-                    const { error } = await supabaseClient.from('comprobantes_recibidos').insert([payload]);
+                    const { data: nuevo, error } = await supabaseClient
+                        .from('comprobantes_recibidos').insert([payload]).select('id').single();
                     if (error) throw error;
+                    compId = nuevo?.id || null;
                     Toast.success('Comprobante registrado');
+                }
+                // El libro de créditos fiscales se sincroniza DESPUÉS de guardar:
+                // si falla, el comprobante ya quedó bien y se avisa aparte.
+                if (compId) {
+                    await this._syncPercepciones(compId, { percIva, percIibb, percJuris, fecha, canal, esAlta: !isEdit });
                 }
                 Modal.closeAll();
                 await this._loadFactRecibidos();
@@ -9956,6 +10107,8 @@ const FinanzasModule = {
             } catch (e) {
                 console.error('[Finanzas] Error guardando comprobante recibido:', e);
                 Toast.error('Error al guardar: ' + (e.message || e));
+            } finally {
+                soltar();
             }
         });
     },
