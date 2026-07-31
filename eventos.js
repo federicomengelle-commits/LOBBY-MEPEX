@@ -2773,18 +2773,45 @@ const EventosModule = {
                 return;
             }
 
+            // Este formulario tiene CUATRO inputs (armado · inicio · fin · desarme).
+            // Sólo puede escribir eso.
+            //
+            // ⚠️ Antes mandaba además `setupEndDate: sSetup.date` (o sea, el fin del
+            // armado igualado al inicio) y `setupTimeClose`/`teardownTimeClose` en
+            // vacío, tres campos que NO están en el formulario. La fuente de verdad de
+            // esos campos es `evento_jornadas`: el trigger `fn_evento_jornadas_sync`
+            // recalcula fechas y horas de cada fase con el MIN/MAX de sus jornadas.
+            // Resultado: guardar acá —aunque sólo se tocara una hora— colapsaba un
+            // armado de varios días a uno solo y borraba la hora de cierre que el
+            // trigger había calculado, sin avisar. Al cierre de 2026-07-30 eso afectaba
+            // a 5 de los 7 eventos vivos, todos con armado multi-día.
+            //
+            // Un formulario no escribe lo que no pregunta. Los campos derivados se
+            // omiten del payload y quedan como estaban (updateEvent sólo pisa las
+            // claves presentes; `undefined` no viaja).
+            //
+            // El fin del armado es el único con matiz: si el evento NO tiene ventana
+            // multi-día, seguir igualándolo al inicio es lo correcto —y es lo que
+            // hacía hasta ahora— porque si no, al mover la fecha el fin queda
+            // congelado en la vieja y el rango sale al revés (fin < inicio). Si en
+            // cambio ya hay una ventana de varios días, esa la puso el trigger desde
+            // las jornadas y no se toca.
+            const armadoEsMultiDia = !!ev.setupEndDate && ev.setupEndDate !== ev.setupDate;
+            //
+            // PENDIENTE de raíz: para un evento CON jornadas, editar fechas acá igual
+            // discrepa con ellas hasta que alguien toque una jornada y el trigger
+            // reimponga las suyas. La sección debería ser de sólo lectura en ese caso
+            // — decisión de producto, no se toca acá.
             const update = {
                 setupDate: sSetup.date,
-                setupEndDate: sSetup.date,
+                setupEndDate: armadoEsMultiDia ? undefined : sSetup.date,
                 eventStartDate: sEvStart.date,
                 eventEndDate: sEvEnd.date,
                 teardownDate: sTeardown.date,
                 setupTimeOpen: sSetup.time,
-                setupTimeClose: '',
                 eventTimeOpen: sEvStart.time,
                 eventTimeClose: sEvEnd.time,
                 teardownTimeOpen: sTeardown.time,
-                teardownTimeClose: '',
             };
             const teardownEndDate = sTeardown.date;
 

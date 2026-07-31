@@ -849,14 +849,21 @@ const API = {
     /**
      * Campos de fecha cuyo cambio se avisa a la gente que arma y desarma.
      *
-     * ⚠️ SÓLO LOS DE INICIO, a propósito. `eventos.js` (`_saveSection` de la
-     * sección "fechas", ~línea 2778) manda SIEMPRE `setupEndDate: sSetup.date`
-     * —el mismo valor que el inicio— así que `fecha_armado_fin` se reescribe en
-     * cada guardado de esa sección aunque el usuario sólo haya tocado una hora.
-     * Vigilar los `_fin` haría que cualquier evento con armado de varios días
-     * dispare un falso "cambió el fin del armado" cada vez que alguien guarda.
-     * Hoy esos campos no son editables de verdad desde la UI: no tiene sentido
-     * avisar sobre un dato que el formulario pisa solo. Cuando lo sean, se suman.
+     * ⚠️ SÓLO LOS DE INICIO, y por dos razones distintas según el evento:
+     *   · Evento CON ventana multi-día: la fuente de verdad es `evento_jornadas` y
+     *     quien escribe `fecha_armado_fin` es el trigger `fn_evento_jornadas_sync`
+     *     (MIN/MAX de las jornadas). Del lado de la base, nunca por `updateEvent`.
+     *   · Evento de un solo día: `eventos.js` sí manda el fin, pero como espejo
+     *     exacto del inicio. Vigilarlo daría dos etiquetas ("cambió la fecha de
+     *     armado" y "cambió el fin") para una sola edición.
+     * En los dos casos, vigilar el `_fin` suma ruido y no información.
+     *
+     * Los dos `_inicio` sí llegan siempre: la sección "Fechas y horarios" del panel
+     * los tiene como input (`setupDate` y `teardownDate`).
+     *
+     * Corolario para cuando se toque esto: un cambio de fecha hecho desde las
+     * JORNADAS no dispara este aviso, porque el trigger no pasa por la API. Si se
+     * quiere cubrir ese camino, hay que avisar desde el propio trigger.
      */
     _CAMPOS_FECHA_EVENTO: {
         fecha_armado_inicio:  'la fecha de armado',
