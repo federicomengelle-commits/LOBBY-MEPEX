@@ -44,8 +44,41 @@ Se auditó contra prod (REST + curl) todo lo que figuraba como "⛔/⏳ pendient
 ## ⏳ LO QUE FALTA — lo real, ordenado
 
 ### 🔴 ESTA SEMANA / LA ENTRANTE — compromisos con fecha (Fede 2026-07-22)
+
+> **⚡ 30 SEGUNDOS, DESBLOQUEA LO QUE YA ESTÁ CONSTRUIDO (verificado pendiente 2026-07-31):** el pull está hecho,
+> pero falta copiar el connector de push. Sin esto los 7 avisos de la matriz del Paso 9 llegan a la campanita
+> y **no al celular** — el endpoint `/api/push/aviso` responde 404 en prod.
+> ```bash
+> cp /home/mepex/lobby/tools/vps/push.js /home/mepex/api/ && pm2 restart mepex-api
+> ```
+
 1. **WhatsApp E4 — sesión "con celu" · SÍ O SÍ semana del 27/07.** Fede se trae el celu de la oficina un día y lo devuelve al otro; en el medio lo dejamos conectado y andando. Todo listo: runbook `docs/whatsapp-coexistence-runbook.md` (deploy webhook VPS + `WA_VERIFY_TOKEN` → app Meta + App Secret → Business Verification con constancia AFIP → conectar número → smoke contra `wa_eventos`). Traer: celu con WhatsApp Business App ≥2.24.17 + constancia AFIP + 30-45 min.
 2. **iPlan (destraba Gmail E2) — Fede llama lunes 28 o martes 29, desde casa.** Pedido concreto al partner: destrabar la política org de GCP para poder crear un proyecto con **Gmail API + service account con domain-wide delegation** (`gmail.readonly`). Sin tarjeta. Al destrabarse: ingesta de mails al timeline del CRM + peinada automática de la base de clientes.
+
+### 🟥 POSTA A POSTA — LLENAR EL CATÁLOGO DE ÍTEMS (Fede, 2026-07-25)
+> **Lo marcó Fede como importante de verdad, dos veces.** Es el cuello de botella de TODO lo comercial:
+> hoy el catálogo tiene ~226 ítems pero **muy pocos con `precio_alquiler > 0` y `es_cotizable = true`**
+> (el handoff del cotizador habla de ~9). Sin esto, ni el cotizador ni la fórmula de precio por m²
+> pueden pararse en datos reales — todo queda a ojo.
+
+**Qué hay que hacer (lo laburamos JUNTOS, no es tarea suelta):**
+1. **Ampliar `insumos_base`** — cargar los insumos que hoy faltan, con costo unitario, tipo de amortización y vida útil.
+2. **Ampliar `catalogo_items`** — armar los ítems que se cotizan de verdad, con su **receta** (`receta_componentes`)
+   bien hecha: paneles, vitrinas, tarimas (4 / 8 / 30 cm), pisos, puertas, depósitos, iluminación especial
+   por metro lineal, tiras de LED, estanterías, cenefas, tótems, cielorrasos de perfilería, etc.
+3. **Ponerles precio** — margen por ítem donde haga falta, marcar `es_cotizable`.
+4. **Claude arma el SQL de carga masiva** cuando la lista esté cerrada, para que entren derecho a la base
+   (insumos + ítems + recetas), en vez de cargarlos a mano de a uno.
+
+**Consigna al equipo (la redactamos y la manda Fede):** pedirles a **los diseñadores, a Lelean y a Noé**
+que propongan módulos e ítems para sumar a la lista de alquiler. Objetivo doble: (a) sale la lista completa
+de verdad, con lo que cada uno sabe que se vende; (b) **se comprometen** y empiezan a completarla ellos.
+Fede quiere ver las ideas de todos.
+
+**Contexto vivo:** este pedido salió de la sesión de diseño de la **fórmula de precio por m²** (ver
+`docs/superpowers/specs/` cuando se escriba el spec). El cerebro OCTEXA (`docs/octexa/SISTEMA-OCTEXA-fuente-de-verdad.md`)
+ya tiene la geometría modular resuelta (grilla 990/495 mm, escalera de alturas, vitrinas, cenefas) y
+**el BOM de cada componente ya existe como receta en Costos** — falta el ensamblaje a nivel stand y los precios.
 
 ### 🔨 PRÓXIMO LABURO GRANDE (mío) — E4 fase 2: el CRM se vuelve chat real
 Apenas el número quede conectado (sesión celu), los WhatsApp entrantes empiezan a caer CRUDOS en la tabla `wa_eventos`. La fase 2 los convierte en el CRM vivo:
@@ -61,12 +94,22 @@ Apenas el número quede conectado (sesión celu), los WhatsApp entrantes empieza
 - **Carga de datos operativa:** jornal diario por persona en RRHH → Nómina (campo ya existe; sin el valor, el "Traer de asignaciones" de Rendimiento trae $0). La puede hacer Lelean.
 - **Session Replay de PostHog** (opcional, 2 min): activarlo en PostHog Settings cuando quieras ver sesiones grabadas — el código ya lo banca.
 
+### 🤝 VENTAS FASE 2 — lo que queda se hace CON Fede (2026-07-31)
+El circuito está entero y verificado a nivel base de datos; lo que falta necesita sesión logueada o criterio visual.
+- **Task 6 — matriz de 13 escenarios por UI.** Escribe en la contabilidad de producción: se corre con vos mirando y con cleanup exacto contra la foto (`15 asientos · debe = haber = 18.984.910 · 21 ingresos · 0 cobro_aplicaciones · 0 creditos_fiscales`, más los buckets residuales de `saldos_mensuales` de las cuentas 1.1.11-1.1.14).
+- **Pulido visual de `cobranza.js` y `creditos-fiscales.js`** (método `pulir-pantallas`). La lógica está entera, el look se decide con el render a la vista. Ojo: la grilla de retenciones ya tiene 8 columnas y el modal es `lg` — probablemente pida reacomodo.
+- **Pasada estética de `#notificaciones`** (viene del rework anterior, mismo criterio).
+
 ### 🗓️ Decisiones pendientes (solo Fede)
+- **🔐 Acotar el bucket `comprobantes` a Finanzas** — `sql/storage_comprobantes_scope_finanzas.sql` **escrito, revisado y NO aplicado**. Hoy da SELECT a cualquier logueado: la RLS de `creditos_fiscales` protege **la fila, no el archivo**, así que alguien de taller/pm/venta puede listar `retenciones/` desde la consola y firmarse las URLs (CUIT del cliente + importes retenidos). Es el criterio de Fase 13 ("el front gatea por rol"), que alcanzaba cuando ahí sólo había fotos de facturas. Verificado que **ningún** módulo fuera de Finanzas toca el bucket → acotarlo no rompe nada. **Claude lo corre por MCP apenas des el OK.**
+- **RLS de `eventos`** — hoy `USING(true)` para cualquier autenticado: cualquiera edita o borra cualquier evento. Desentona con la matriz `fn_role_can` del resto, pero define quién escribe eventos y eso lo decidís vos. **Ojo al cambiarla:** `API.notifyArmadoProximo` hace UPDATE sobre `eventos` desde el cliente y necesita seguir pudiendo escribir sus dos columnas de claim.
+- **Desactivar las claves legacy de Supabase** — la anon legacy sigue viva y probada. Antes de apagarla hay que confirmar que el `.env` de `cotizador-api` no la use (el cotizador comparte la misma Supabase y su front no lleva key, habla por su backend). Es del VPS y del dashboard.
 - **Fecha de la ronda de testeo del equipo.** Kit 100% listo en `docs/testeo/` (instructivos por rol + WhatsApps + PDFs + `qa-precheck.md`); largarla = mandar los WhatsApp + crear el grupo. **Sugerencia:** semana del **03/08**, ya con WhatsApp conectado al CRM (la sesión celu es la semana anterior).
 - **claude-mem:** el piloto de 1 semana vence ~25/07. ¿Sigue o se apaga en LOBBY? (`"enabledPlugins": {"claude-mem@thedotmack": false}` en `.claude/settings.local.json` si molesta).
 - **DROPs destructivos diferidos** (cuando haya semanas de uso sin ruido — sugerencia: post-ronda): DROP `compras_proveedores`/`compras_pagos` legacy · retiro legacy de `cargas` · `reorg_cleanup.sql` PARTE 1 (limpieza `roles.permissions`) y PARTE 2 (DROP tablas reorg).
 
 ### 🟡 Backlog técnico a demanda (mío, sin fecha)
+- **📋 TRIAGE DE LA AUDITORÍA INTEGRAL `docs/auditoria-2026-07-31/`** — 9 archivos (resumen ejecutivo + plan de corrección + ideas + 6 detalles por dominio), producidos por una charla paralela el 31/07 y **todavía sin integrar acá**. Antes de tomar nada de ahí como cierto: la lección del repo es que los reportes de agentes traen falsos positivos, así que **verificar cada hallazgo contra el código real y contra prod** antes de "arreglarlo". El primer paso es leer `00-RESUMEN-EJECUTIVO.md` y `01-PLAN-CORRECCION.md` y repartir: qué entra acá como pendiente real, qué ya está hecho, y qué es ruido.
 - **Finanzas Fase 5 — conciliación bancaria CSV** (Galicia/MercadoPago): la última pata gorda de Finanzas. Matching automático extracto↔movimientos (hoy es manual).
 - **Triage de la ronda de testeo** → arreglar lo que el equipo cace → pulido dirigido con criterio real.
 - **🧠 CEREBRO MEPEX** (idea grande de Fede, registrada 2026-07-18 — madurar): historial IA de cada proyecto al cerrarse → memoria organizacional consultable que aprende el método MEPEX. Piezas que ya existen: resumen IA por caso + migración caso→proyecto + cerebro OCTEXA. Camino: (1) hook de cierre → retrospectiva IA en DB; (2) corpus consultable; (3) alimenta respuestas del CRM/estimaciones/onboarding; (4) agentes con humano en el loop. SIEMPRE humanos decidiendo.
@@ -75,6 +118,8 @@ Apenas el número quede conectado (sesión celu), los WhatsApp entrantes empieza
 - **Aire lateral global** — falta SOLO validación visual de Fede (ya está en prod).
 - **Conforme de devolución** (v2 del conforme de entrega — el `tipo` ya lo soporta).
 - **Pulido Eventos restante:** editar jornadas · modal transporte legacy · docs (menor, entra en el pulido post-ronda).
+- **Eventos — la sección "Fechas" debería ser de sólo lectura si el evento tiene jornadas.** Hoy editarla discrepa con `evento_jornadas` (la fuente de verdad) hasta que alguien toca una jornada y el trigger reimpone las suyas. Es **decisión de producto**: lo razonable es mostrar las fechas derivadas y un link a "Jornadas y personal". Quedó anotado en `eventos.js` (`_saveSection`, sección `fechas`).
+- **Barrido de `_esc` caseros por módulo** — la lección de `Tareas._esc()` (no escapaba comillas dentro de atributos) puede tener hermanos. Comparar cada helper propio contra el `escHtml`/`escAttr` global. **Ya salieron dos de este palo el 31/07** en `finanzas.js` (`archivo_url` crudo en un `href` y sin escapar en un `value`), así que la veta existe.
 - **Cotizador → leer `cotizacion_items` estructurada** en el lobby (en vez de parsear el texto del PDF) — cuando el refactor del cotizador se asiente.
 - **Notificaciones #7 egresos-alerta** — descartada por ruidosa; retomar solo si Fede la pide.
 - **Activación real Finanzas 2027** (enero): cargar saldos de apertura + bloquear ejercicio (pantalla + RPC ya en prod, en pausa a propósito).
