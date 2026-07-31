@@ -77,6 +77,9 @@ app.post('/api/push/suscribir',   pushLimit, requireAuth, push.suscribirHandler)
 app.post('/api/push/desuscribir', pushLimit, requireAuth, push.desuscribirHandler);
 app.post('/api/push/test',        pushLimit, requireRole('superadmin'), push.testHandler);
 app.post('/api/push/tarea',       pushLimit, requireAuth, push.tareaHandler);
+// Avisos que no son tareas (matriz del Paso 9). Recibe IDs de filas de
+// `notifications` ya escritas; el contenido y el destinatario salen de la base.
+app.post('/api/push/aviso',       pushLimit, requireAuth, push.avisoHandler);
 
 // WhatsApp Coexistence (CRM E4) — webhook de Meta. La ruta es PÚBLICA a propósito
 // (la llama Meta, no el front): la auth del POST es la firma X-Hub-Signature-256

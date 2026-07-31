@@ -438,6 +438,127 @@ async function tareaHandler(req, res) {
     }
 }
 
+// ─── Push de avisos que NO son tareas (matriz del Paso 9) ───────────
+//
+// El endpoint de tareas re-resuelve destinatarios A PARTIR DE UNA TAREA, así que
+// no sirve para un evento. Éste hace lo mismo pero a partir del SUCESO: recibe
+// `{tipo, entidadTipo, entidadId}` y busca él mismo, con la service key, los
+// avisos recién escritos para ese suceso.
+//
+// ⚠️ POR QUÉ NO RECIBE IDs DE `notifications` (que fue el primer diseño):
+//   para mandarlos, el cliente tendría que poder VERLOS, y eso sólo funcionaba
+//   porque la policy de SELECT de `notifications` estaba abierta de más
+//   (`OR target_role IS NULL` suelto → cualquiera leía los avisos de todos).
+//   Esa policy se cerró en `sql/notificaciones_rls_fix.sql`, y con ella el
+//   `.select('id')` del INSERT devuelve sólo lo que el actor puede ver — que,
+//   como el actor está excluido de sus propios avisos, es NADA. Un endpoint que
+//   dependía de un agujero de RLS para funcionar habría dejado de andar en
+//   silencio al taparlo. Con el suceso como referencia, la RLS no interviene:
+//   el connector lee con service key, igual que el de tareas.
+//
+// Por qué no se puede abusar aunque no verifiquemos autoría (la tabla no tiene
+// `created_by`):
+//   1. El contenido y los destinatarios salen de la base, nunca del body.
+//   2. Sólo avisos RECIENTES (ventana de 2 min): un suceso viejo no se redispara.
+//   3. Un suceso se pushea UNA sola vez (marcado ANTES de cualquier `await`).
+//   4. Sólo tipos del allowlist: un `caso_nuevo` no hace vibrar ningún teléfono.
+// El peor caso para quien adivine un UUID de evento es que salga un push que
+// iba a salir igual, a la misma gente, con el mismo texto.
+const TIPOS_PUSHEABLES = {
+    // tipo → categoría del catálogo (notifications.js TIPO_CATALOG), para poder
+    // respetar la columna "Celular" de las preferencias de cada uno.
+    // ⚠️ Si agregás un tipo acá, tiene que existir en el catálogo del front con
+    //    esa misma categoría, o la preferencia del usuario no se va a poder aplicar.
+    evento_armado_proximo: 'eventos',
+    evento_fecha_cambiada: 'eventos',
+    evento_solapamiento:   'eventos',
+};
+const VENTANA_FRESCURA_MS = 2 * 60_000;
+const sucesosYaPusheados = new Set();
+
+async function avisoHandler(req, res) {
+    try {
+        if (!vapidListo) return res.status(503).json({ ok: false, error: 'VAPID no configurado' });
+
+        const { tipo, entidadId } = req.body || {};
+        const categoria = TIPOS_PUSHEABLES[tipo];
+        if (!categoria) return res.status(400).json({ ok: false, error: 'tipo no pusheable' });
+        if (!RE_UUID.test(String(entidadId))) {
+            return res.status(400).json({ ok: false, error: 'entidadId inválido' });
+        }
+
+        // El horario de silencio se mira ANTES de marcar el suceso como pusheado.
+        // Si no, el aviso quedaría consumido sin haberse entregado nunca: no hay
+        // cola que lo reintente a la mañana (decisión D3 — sólo una tarea urgente
+        // atraviesa la noche).
+        if (enHorarioDeSilencio()) {
+            return res.json({ ok: true, enviados: 0, motivo: 'horario de silencio (21-07)' });
+        }
+
+        // Marca sincrónica, sin ningún `await` entre el chequeo y la marca: dos
+        // requests en paralelo no pueden pasar las dos. (El cooldown de tareas
+        // ya usa este patrón; la primera versión de esto lo rompía con un await
+        // en el medio y permitía el zumbido doble.)
+        const clave = `${tipo}:${entidadId}`;
+        if (sucesosYaPusheados.has(clave)) {
+            return res.json({ ok: true, enviados: 0, motivo: 'ya se pusheó este suceso' });
+        }
+        sucesosYaPusheados.add(clave);
+        if (sucesosYaPusheados.size > 5000) sucesosYaPusheados.clear();
+
+        const desde = new Date(Date.now() - VENTANA_FRESCURA_MS).toISOString();
+        const filas = await sbGet(
+            `notifications?tipo=eq.${encodeURIComponent(tipo)}` +
+            `&entidad_id=eq.${encodeURIComponent(entidadId)}` +
+            `&created_at=gte.${encodeURIComponent(desde)}` +
+            `&select=id,titulo,mensaje,target_user_id,link&order=created_at.desc&limit=50`
+        );
+        if (!filas || !filas.length) {
+            return res.json({ ok: true, enviados: 0, motivo: 'sin avisos recientes para ese suceso' });
+        }
+
+        // Todas las filas de un mismo suceso vienen del mismo `notificar()`, así
+        // que comparten título, mensaje y link: se manda UN push a la lista
+        // entera de destinatarios. La primera versión llamaba a las preferencias
+        // y al envío una vez por fila — dos round-trips por persona para nada.
+        const base = filas[0];
+        const destinatarios = soloUuids(filas.map(f => f.target_user_id));
+        if (!destinatarios.length) return res.json({ ok: true, enviados: 0, motivo: 'sin destinatarios' });
+
+        // pushPorDefecto = true: son avisos raros y operativos (se movió una fecha,
+        // se pisan dos armados, arranca el armado). Pedirle a cada uno que los
+        // prenda a mano equivale a que no lleguen nunca. Se apagan desde la
+        // pantalla de notificaciones.
+        const quieren = await filtrarPorPreferencia(destinatarios, categoria, true);
+        if (!quieren.length) {
+            return res.json({ ok: true, enviados: 0, motivo: 'todos lo tienen apagado para el celular' });
+        }
+
+        const r = await enviarPush(quieren, {
+            title: String(base.titulo || 'MEPEX').slice(0, 90),
+            body: String(base.mensaje || '').slice(0, 120),
+            // Sólo rutas internas: el service worker revalida same-origin igual,
+            // pero no hace falta darle la chance.
+            url: typeof base.link === 'string' && base.link.startsWith('#') ? `/${base.link}` : '/#lobby',
+            tag: `aviso-${tipo}-${entidadId}`,
+            // urgent: false → RESPETA el horario de silencio en `enviarPush`. Acá
+            // ya sabemos que no estamos en él, pero se deja explícito porque
+            // además baja la urgencia del envío y el TTL.
+            urgent: false,
+            tipo,
+        });
+        return res.json({
+            ok: true,
+            destinatarios: destinatarios.length,
+            con_push_activo: quieren.length,
+            ...r,
+        });
+    } catch (e) {
+        console.error('[push] aviso:', e.message);
+        return res.status(500).json({ ok: false, error: 'No se pudo enviar el push' });
+    }
+}
+
 // GET /api/push/estado — diagnóstico rápido sin exponer secretos.
 function estadoHandler(req, res) {
     res.json({
@@ -487,6 +608,7 @@ module.exports = {
     desuscribirHandler,
     testHandler,
     tareaHandler,
+    avisoHandler,
     estadoHandler,
     enviarPush,
     resolverDestinatariosTarea,

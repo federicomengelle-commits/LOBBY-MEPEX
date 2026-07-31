@@ -924,6 +924,7 @@ const API = {
             titulo: `Cambió ${cambios.join(' y ')} de ${nombre}`,
             cuerpo: nuevoInicio ? `Armado: ${fmt(nuevoInicio)}${nuevoFin ? ` → ${fmt(nuevoFin)}` : ''}.` : null,
             url: '#eventos', prioridad: 'alta',
+            push: true,   // matriz fila 8: rompe la planificación de quien ya se organizó
             entidadTipo: 'evento', entidadId: id,
         });
 
@@ -957,6 +958,7 @@ const API = {
                 titulo: `Armados superpuestos: ${nombre}`,
                 cuerpo: `Se pisa con ${pisados.map(o => o.nombre || 'otro evento').join(', ')}.`,
                 url: '#eventos', prioridad: 'alta',
+                push: true,   // matriz fila 15: dos armados a la vez es gente y camión que no alcanzan
                 entidadTipo: 'evento', entidadId: id,
             });
         } catch (e) {
@@ -4329,10 +4331,18 @@ const API = {
             return null;
         }
         try {
-            const { data: row, error } = await supabaseClient
-                .from('notifications').insert(payload).select().single();
+            // Sin `.select()`: Postgres filtra el RETURNING de un INSERT por la
+            // policy de SELECT, y quien emite un aviso casi nunca es su
+            // destinatario → el RETURNING vuelve vacío, `.single()` tira "no rows"
+            // y esto devolvía null como si hubiera fallado, con la fila
+            // perfectamente insertada. Eso ya le pasaba a pm y a taller cada vez
+            // que mandaban un pedido de compra (va a `targetRole: 'admin'`, que
+            // ellos no pueden releer): veían "No se pudo enviar el pedido" y el
+            // pedido había llegado igual. Nadie usa la fila devuelta.
+            const { error } = await supabaseClient
+                .from('notifications').insert(payload);
             if (error) throw error;
-            return row;
+            return true;
         } catch (e) {
             console.warn('[API] Error createNotification:', e.message);
             return null;
@@ -4403,10 +4413,13 @@ const API = {
                 entidad_tipo: entidadTipo, entidad_id: entidadId,
                 link: url, prioridad,
             }));
-            const { data, error } = await supabaseClient
-                .from('notifications').insert(filas).select('id');
+            // Igual que en createNotification: sin `.select()`. El emisor está
+            // excluido de sus propios avisos, así que el RETURNING le volvía
+            // vacío y `inapp` contaba 0 con las filas ya escritas.
+            const { error } = await supabaseClient
+                .from('notifications').insert(filas);
             if (error) throw error;
-            inapp = (data || []).length;
+            inapp = filas.length;
         } catch (e) {
             console.warn('[API] notificar: falló el in-app:', e.message);
         }
@@ -4419,6 +4432,46 @@ const API = {
             catch (e) { console.warn('[API] notificar: el push falló, el in-app quedó igual:', e.message); }
         }
         return { inapp, push: pushRes };
+    },
+
+    PUSH_AVISO_URL: '/api/push/aviso',
+
+    /**
+     * Push de avisos que NO son tareas (matriz del Paso 9).
+     *
+     * Manda la REFERENCIA DEL SUCESO (tipo + entidad), no los avisos: el connector
+     * busca él mismo con service key los que se escribieron recién para ese suceso
+     * y saca de ahí el título, el cuerpo y los destinatarios. Mismo criterio que
+     * `/api/push/tarea`, que recibe un tareaId y re-resuelve.
+     *
+     * La primera versión mandaba los IDs de las filas de `notifications`, y para
+     * eso el cliente tenía que poder verlas — cosa que sólo pasaba porque la RLS
+     * de esa tabla estaba abierta de más. Al cerrarla
+     * (`sql/notificaciones_rls_fix.sql`) ese diseño habría dejado de funcionar en
+     * silencio, porque el actor está excluido de sus propios avisos y el
+     * `.select()` del INSERT le habría devuelto cero filas.
+     *
+     * Si el connector todavía no está deployado esto tira 404 y no pasa nada: el
+     * aviso ya está en la campanita, que es el canal que siempre tiene que salir.
+     */
+    async pushNotificarAviso({ tipo, entidadId } = {}) {
+        if (!tipo || !entidadId) return null;
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 12000);
+            const res = await fetch(this.PUSH_AVISO_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(await this._authHeader()) },
+                body: JSON.stringify({ tipo, entidadId }),
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (e) {
+            console.warn('[API] pushNotificarAviso:', e.message);
+            return null;
+        }
     },
 
     // El endpoint recibe el ID de la tarea, NO la lista de destinatarios: los
@@ -4587,11 +4640,11 @@ const API = {
      * escribe una fila por cada una — así cada uno lo marca leído por su cuenta.
      * Quien disparó la acción no se auto-notifica.
      *
-     * NO acepta `push` a propósito: el único camino de push que existe hoy es
-     * `/api/push/tarea`, que server-side re-resuelve destinatarios A PARTIR DE
-     * UNA TAREA. Pasarle un evento o una cotización lo haría rebotar. Un flag
-     * que no hace lo que promete es el mismo bug que un switch que no silencia
-     * nada; cuando exista el endpoint genérico se suma acá.
+     * `push: true` manda además al celular, vía `/api/push/aviso` (el connector
+     * lee el contenido y el destinatario de la base, no del body). Sólo funciona
+     * para los tipos del allowlist del connector; para el resto no pasa nada.
+     * Respeta el horario de silencio 21-07: lo único que lo atraviesa es una
+     * tarea marcada urgente.
      *
      * `excluirActor` (default true) saca de la lista a quien está logueado. Eso es
      * lo correcto cuando el aviso nace de una acción suya —no tiene sentido
@@ -4606,17 +4659,30 @@ const API = {
      */
     async avisar({ roles = [], usuarios = [], tipo, titulo, cuerpo = null,
                    url = null, prioridad = 'normal', excluirActor = true,
-                   entidadTipo = null, entidadId = null } = {}) {
+                   push = false, entidadTipo = null, entidadId = null } = {}) {
         if (!tipo || !titulo) return { inapp: 0, push: null };
         try {
             const user = Auth?.getUser?.();
             const uid = excluirActor ? (user?.uid || user?.id || null) : null;
             const destinatarios = await this.resolverDestinatarios({ roles, usuarios, excluir: uid });
             if (!destinatarios.length) return { inapp: 0, push: null };
-            return await this.notificar({
+            // `push: false` al notificar: ese flag es el camino de TAREAS, que
+            // re-resuelve destinatarios a partir de una tarea y acá rebotaría.
+            const res = await this.notificar({
                 destinatarios, tipo, titulo, cuerpo, url, prioridad,
                 entidadTipo, entidadId, push: false,
             });
+            // El push va DESPUÉS, aparte y SIN `await`: la campanita ya quedó
+            // escrita, que es lo que no se puede perder.
+            //
+            // Sin el fire-and-forget, esos hasta 12 s de red quedaban ADENTRO del
+            // bucle de `notifyArmadoProximo`, que corre en segundo plano y ya
+            // consumió el claim de cada evento: si esa pestaña se cerraba a mitad
+            // del bucle, los eventos que faltaban perdían el aviso para siempre.
+            if (push && entidadId) {
+                this.pushNotificarAviso({ tipo, entidadId }).catch(() => {});
+            }
+            return res;
         } catch (e) {
             console.warn('[API] avisar:', e.message);
             return { inapp: 0, push: null };
@@ -4677,6 +4743,10 @@ const API = {
                         cuerpo: ev.predio ? `En ${ev.predio}.` : null,
                         url: `#eventos`,
                         prioridad: hito.dias <= 2 ? 'alta' : 'normal',
+                        // Push SOLO en el hito de 2 días (matriz fila 7). El de 7 días
+                        // es para planificar y alcanza con la campanita; el de 2 es el
+                        // que cambia lo que hacés mañana.
+                        push: hito.dias <= 2,
                         // Barrido de fondo: el que está logueado no es el autor de nada,
                         // es el que tenía la pestaña abierta. Excluirlo le comería el
                         // aviso de su propio evento — y el claim ya no vuelve a salir.
