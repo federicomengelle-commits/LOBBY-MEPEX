@@ -42,6 +42,7 @@ const Alertas = {
         locaciones: ['superadmin', 'admin'],
         'calendario-adm': ['superadmin', 'admin'],
         tareas:     ['superadmin', 'admin', 'pm', 'taller', 'venta'],
+        finanzas:   ['superadmin', 'admin'],   // cobranzas vencidas (fila 19 del Paso 9) — plata, no sale del círculo admin
     },
 
     // ─── Lifecycle ───
@@ -188,6 +189,13 @@ const Alertas = {
 
         // Eventos: armado ≤7 días sin proyectos/stands vinculados
         async eventos() {
+            // Fila 7 de la matriz del Paso 9 — "faltan X días para el armado" → pm+taller.
+            // Va acá y no en un job porque este motor ya corre cada 5 min; el aviso se
+            // manda UNA vez gracias al claim atómico server-side (eventos.notif_armado_*).
+            // Antes del `return []` de abajo a propósito: si hoy no hay ningún evento
+            // dentro de la ventana de la alerta, el aviso de los 7 días igual tiene que salir.
+            if (typeof API !== 'undefined' && API.notifyArmadoProximo) API.notifyArmadoProximo().catch(() => {});
+
             const { data: eventos, error } = await supabaseClient
                 .from('eventos').select('id').eq('_deleted', false)
                 .gte('fecha_armado_inicio', Alertas._dateOffset(0))
@@ -389,31 +397,103 @@ const Alertas = {
             }];
         },
 
-        // Tareas: rutinas de mantenimiento VENCIDAS (Fase F) → badge en Centro de Tareas.
-        // Ruteo igual al generador de tareas.js: admin-level ve todas; el resto sólo
-        // las de su rol/responsable (sin rol/responsable → admin). Tolera tabla ausente.
+        // Tareas: rutinas de mantenimiento VENCIDAS (Fase F) + tareas abiertas que
+        // vencen hoy o ya vencieron (filas 5 y 6 de la matriz del Paso 9).
+        //
+        // Por qué las tareas vencidas son ALERTA y no notificación: "está vencida" es
+        // un estado que sigue siendo verdad mañana y pasado. Como fila de
+        // `notifications` reaparecería sin leer en cada recálculo — que es el motivo
+        // por el que la decisión D2 del rework dejó las dos pestañas separadas.
         async tareas(user) {
-            const { data, error } = await supabaseClient
-                .from('rutinas').select('id, target_role, responsable_id, proxima_fecha')
-                .eq('_deleted', false).eq('activa', true)
-                .lt('proxima_fecha', Alertas._dateOffset(0));
-            if (error || !data || !data.length) return [];
+            const items = [];
             const role = user?.role;
             const uid = user?.uid || user?.id;
             const adminLevel = ['superadmin', 'admin'].includes(role);
-            const mine = data.filter(r => {
-                if (adminLevel) return true;
-                if (r.responsable_id && r.responsable_id === uid) return true;
-                const tr = r.target_role || (r.responsable_id ? null : 'admin');
-                return !!tr && tr === role;
-            });
-            if (!mine.length) return [];
-            return [{
-                moduleId: 'tareas', tipo: 'rutina_vencida', key: 'tareas_rutinas_vencidas',
-                severidad: 'danger', icon: '🔁',
-                titulo: `${mine.length} ${Alertas._plural(mine.length, 'rutina')} ${Alertas._plural(mine.length, 'vencida', 'vencidas')}`,
-                detalle: 'Mantenimiento recurrente atrasado', link: '#tareas', count: mine.length,
-            }];
+
+            // ─── Rutinas de mantenimiento vencidas (Fase F) ───
+            // Ruteo igual al generador de tareas.js: admin-level ve todas; el resto
+            // sólo las de su rol/responsable (sin rol/responsable → admin).
+            try {
+                const { data, error } = await supabaseClient
+                    .from('rutinas').select('id, target_role, responsable_id, proxima_fecha')
+                    .eq('_deleted', false).eq('activa', true)
+                    .lt('proxima_fecha', Alertas._dateOffset(0));
+                if (!error && data && data.length) {
+                    const mine = data.filter(r => {
+                        if (adminLevel) return true;
+                        if (r.responsable_id && r.responsable_id === uid) return true;
+                        const tr = r.target_role || (r.responsable_id ? null : 'admin');
+                        return !!tr && tr === role;
+                    });
+                    if (mine.length) items.push({
+                        moduleId: 'tareas', tipo: 'rutina_vencida', key: 'tareas_rutinas_vencidas',
+                        severidad: 'danger', icon: '🔁',
+                        titulo: `${mine.length} ${Alertas._plural(mine.length, 'rutina')} ${Alertas._plural(mine.length, 'vencida', 'vencidas')}`,
+                        detalle: 'Mantenimiento recurrente atrasado', link: '#tareas', count: mine.length,
+                    });
+                }
+            } catch (e) { console.warn('[Alertas] tareas/rutinas:', e.message); }
+
+            // ─── Filas 5 y 6: tareas abiertas vencidas o que vencen hoy ───
+            // No hace falta filtrar por rol acá: la RLS de `tareas` (Etapa E1) ya acota
+            // server-side lo que cada uno puede leer, así que lo que vuelve ES lo suyo.
+            // Ojo: las derivadas NO son filas hasta que alguien las claimea, así que
+            // esto cuenta sólo las reales — que son justamente las que tienen dueño.
+            try {
+                const hoy = Alertas._dateOffset(0);
+                const { data, error } = await supabaseClient
+                    .from('tareas').select('id, fecha_limite')
+                    .eq('_deleted', false)
+                    .in('estado', ['pendiente', 'en_curso', 'bloqueada'])
+                    .not('fecha_limite', 'is', null)
+                    .lte('fecha_limite', hoy);
+                if (!error && data && data.length) {
+                    const vencidas = data.filter(t => t.fecha_limite < hoy).length;
+                    const vencenHoy = data.length - vencidas;
+                    if (vencidas) items.push({
+                        moduleId: 'tareas', tipo: 'tarea_vencida', key: 'tareas_vencidas',
+                        severidad: 'danger', icon: '⏰',
+                        titulo: `${vencidas} ${Alertas._plural(vencidas, 'tarea')} ${Alertas._plural(vencidas, 'vencida', 'vencidas')}`,
+                        detalle: 'Pasó la fecha límite y siguen abiertas', link: '#tareas', count: vencidas,
+                    });
+                    if (vencenHoy) items.push({
+                        moduleId: 'tareas', tipo: 'tarea_vence_hoy', key: 'tareas_vencen_hoy',
+                        severidad: 'warning', icon: '📌',
+                        titulo: `${vencenHoy} ${Alertas._plural(vencenHoy, 'tarea')} ${Alertas._plural(vencenHoy, 'vence', 'vencen')} hoy`,
+                        detalle: 'Cierran hoy', link: '#tareas', count: vencenHoy,
+                    });
+                }
+            } catch (e) { console.warn('[Alertas] tareas/vencimientos:', e.message); }
+
+            return items;
+        },
+
+        // Finanzas · fila 19: cuotas del plan de cobro vencidas y sin cobrar.
+        // El generador `compras` cubre el lado inverso (lo que le debemos al
+        // proveedor); esto es lo que nos deben a nosotros, que no tenía nada.
+        // ⚠️ La columna de vencimiento de plan_cobro_items es `fecha_estimada`,
+        //    NO `fecha_vencimiento` como en compras_pagos (verificado en prod).
+        async finanzas() {
+            try {
+                const hoy = Alertas._dateOffset(0);
+                const { data, error } = await supabaseClient
+                    .from('plan_cobro_items').select('id, monto, monto_cobrado')
+                    .eq('_deleted', false)
+                    .in('estado', ['pendiente', 'parcial', 'facturada', 'vencido'])
+                    .lt('fecha_estimada', hoy);
+                if (error || !data || !data.length) return [];
+                const pendiente = data.reduce(
+                    (s, c) => s + Math.max(0, Number(c.monto || 0) - Number(c.monto_cobrado || 0)), 0);
+                const monto = pendiente
+                    ? ` · $${pendiente.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                    : '';
+                return [{
+                    moduleId: 'finanzas', tipo: 'cobranza_vencida', key: 'finanzas_cobranzas_vencidas',
+                    severidad: 'danger', icon: '📉',
+                    titulo: `${data.length} ${Alertas._plural(data.length, 'cuota')} ${Alertas._plural(data.length, 'vencida', 'vencidas')}`,
+                    detalle: `Sin cobrar${monto}`, link: '#finanzas', count: data.length,
+                }];
+            } catch (e) { console.warn('[Alertas] finanzas:', e.message); return []; }
         },
     },
 };

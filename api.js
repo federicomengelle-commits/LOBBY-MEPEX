@@ -831,12 +831,129 @@ const API = {
             if (data.linkUrl !== undefined) payload.link_url = data.linkUrl || null;
             if (data.organizadorId !== undefined) payload.organizador_id = data.organizadorId || null;
             // priority/status: columnas removidas en el rename, se ignoran silenciosamente.
+
+            // Filas 8 y 15 de la matriz del Paso 9. El "antes" se lee SÓLO si el patch
+            // toca fechas: cambiar el color o una nota no paga ninguna query de más.
+            const antes = await this._fechasAntesDeEditar(id, payload);
+
             await UndoHelpers.updateRecord('eventos', id, payload, `Edito evento: ${data.name || ''}`);
             this.clearCache();
+            if (antes) this._avisarCambioDeFechas(id, antes, payload).catch(() => {});
             return true;
         } catch (e) {
             console.warn('[API] Error updating event:', e.message);
             return null;
+        }
+    },
+
+    /**
+     * Campos de fecha cuyo cambio se avisa a la gente que arma y desarma.
+     *
+     * ⚠️ SÓLO LOS DE INICIO, a propósito. `eventos.js` (`_saveSection` de la
+     * sección "fechas", ~línea 2778) manda SIEMPRE `setupEndDate: sSetup.date`
+     * —el mismo valor que el inicio— así que `fecha_armado_fin` se reescribe en
+     * cada guardado de esa sección aunque el usuario sólo haya tocado una hora.
+     * Vigilar los `_fin` haría que cualquier evento con armado de varios días
+     * dispare un falso "cambió el fin del armado" cada vez que alguien guarda.
+     * Hoy esos campos no son editables de verdad desde la UI: no tiene sentido
+     * avisar sobre un dato que el formulario pisa solo. Cuando lo sean, se suman.
+     */
+    _CAMPOS_FECHA_EVENTO: {
+        fecha_armado_inicio:  'la fecha de armado',
+        fecha_desarme_inicio: 'la fecha de desarme',
+    },
+
+    /** Lo que hay que leer: los vigilados para comparar + los `_fin` para el solape. */
+    _COLUMNAS_FECHA_EVENTO: ['fecha_armado_inicio', 'fecha_armado_fin',
+                             'fecha_desarme_inicio', 'fecha_desarme_fin'],
+
+    /** Foto de las fechas antes del UPDATE. Devuelve null si el patch no las toca. */
+    async _fechasAntesDeEditar(id, payload) {
+        const vigilados = Object.keys(this._CAMPOS_FECHA_EVENTO);
+        if (!vigilados.some(c => payload[c] !== undefined)) return null;
+        try {
+            const { data, error } = await supabaseClient
+                .from('eventos').select(`nombre, ${this._COLUMNAS_FECHA_EVENTO.join(', ')}`)
+                .eq('id', id).single();
+            if (error) throw error;
+            return data || null;
+        } catch (e) {
+            // Sin el "antes" no se puede saber QUÉ cambió, así que no se avisa.
+            // Preferible callar a mandar un aviso que no sabe lo que dice.
+            console.warn('[API] _fechasAntesDeEditar:', e.message);
+            return null;
+        }
+    },
+
+    /**
+     * Fila 8 (cambió una fecha) + fila 15 (el armado nuevo se pisa con otro).
+     *
+     * Van juntas porque nacen del mismo acto: alguien movió una fecha. Avisar el
+     * solapamiento en el momento del cambio —y no cuando alguien abre el panel—
+     * es lo que evita que el mismo pisón se anuncie una y otra vez.
+     *
+     * ⚠️ NO usa eventos.js `_detectConflicts`: ese busca PERSONAS doble-asignadas
+     * y sólo entre eventos con el caché de equipo cargado (lo dice su propio
+     * comentario). Para "dos armados encima" hace falta preguntarle a la base.
+     */
+    async _avisarCambioDeFechas(id, antes, payload) {
+        const cambios = Object.entries(this._CAMPOS_FECHA_EVENTO)
+            .filter(([campo]) => payload[campo] !== undefined
+                              && (payload[campo] || null) !== (antes[campo] || null))
+            .map(([, label]) => label);
+        if (!cambios.length) return;
+
+        const nombre = antes.nombre || 'un evento';
+        const fmt = (f) => f ? new Date(f + 'T00:00:00').toLocaleDateString('es-AR',
+                        { day: 'numeric', month: 'short' }) : 'sin fecha';
+        const nuevoInicio = payload.fecha_armado_inicio !== undefined
+            ? payload.fecha_armado_inicio : antes.fecha_armado_inicio;
+        const nuevoFin = payload.fecha_armado_fin !== undefined
+            ? payload.fecha_armado_fin : antes.fecha_armado_fin;
+
+        await this.avisar({
+            roles: ['pm', 'taller'],
+            tipo: 'evento_fecha_cambiada',
+            titulo: `Cambió ${cambios.join(' y ')} de ${nombre}`,
+            cuerpo: nuevoInicio ? `Armado: ${fmt(nuevoInicio)}${nuevoFin ? ` → ${fmt(nuevoFin)}` : ''}.` : null,
+            url: '#eventos', prioridad: 'alta',
+            entidadTipo: 'evento', entidadId: id,
+        });
+
+        // ─── Fila 15: ¿el armado quedó encima del de otro evento? ───
+        if (!nuevoInicio) return;
+        const iniMs = new Date(nuevoInicio + 'T00:00:00').getTime();
+        const finMs = new Date((nuevoFin || nuevoInicio) + 'T00:00:00').getTime();
+        try {
+            // Ventana acotada: sin coalesce en el filtro de PostgREST, se traen los
+            // candidatos cercanos y el solape se calcula acá. Con la cantidad de
+            // eventos que maneja MEPEX esto son unas pocas filas.
+            const margen = 21 * 86400000;
+            const { data, error } = await supabaseClient
+                .from('eventos').select('id, nombre, fecha_armado_inicio, fecha_armado_fin')
+                .eq('_deleted', false).neq('id', id)
+                .not('fecha_armado_inicio', 'is', null)
+                .gte('fecha_armado_inicio', new Date(iniMs - margen).toISOString().split('T')[0])
+                .lte('fecha_armado_inicio', new Date(finMs + margen).toISOString().split('T')[0]);
+            if (error) throw error;
+
+            const pisados = (data || []).filter(o => {
+                const oIni = new Date(o.fecha_armado_inicio + 'T00:00:00').getTime();
+                const oFin = new Date((o.fecha_armado_fin || o.fecha_armado_inicio) + 'T00:00:00').getTime();
+                return iniMs <= oFin && finMs >= oIni;
+            });
+            if (!pisados.length) return;
+
+            await this.avisar({
+                roles: ['pm', 'superadmin'],
+                tipo: 'evento_solapamiento',
+                titulo: `Armados superpuestos: ${nombre}`,
+                cuerpo: `Se pisa con ${pisados.map(o => o.nombre || 'otro evento').join(', ')}.`,
+                url: '#eventos', prioridad: 'alta',
+                entidadTipo: 'evento', entidadId: id,
+            });
+        } catch (e) {
+            console.warn('[API] _avisarCambioDeFechas/solapamiento:', e.message);
         }
     },
 
@@ -1249,6 +1366,15 @@ const API = {
             };
             const { data: row, error } = await supabaseClient.from('crm_casos').insert(payload).select().single();
             if (error) throw error;
+            // Fila 11 de la matriz del Paso 9 → venta. Si lo carga la propia
+            // vendedora no le llega nada: `avisar` excluye a quien disparó la
+            // acción, que es exactamente lo que hace que esto no sea ruido.
+            this.avisar({
+                roles: ['venta'], tipo: 'caso_nuevo',
+                titulo: `Caso nuevo: ${payload.titulo}`,
+                cuerpo: payload.evento_texto || null,
+                url: `#crm`, entidadTipo: 'caso', entidadId: row.id,
+            }).catch(() => {});
             return this._mapCaso(row);
         } catch (e) { console.warn('[API] createCaso:', e.message); return null; }
     },
@@ -2831,6 +2957,26 @@ const API = {
         try {
             await UndoHelpers.changeStatus('cotizaciones', id, nuevoEstado, 'Cotizacion');
             this.clearCache();
+            // Fila 10 de la matriz del Paso 9 → venta + superadmin. Sólo al aprobar:
+            // es el único cambio de estado que le cambia el día a alguien.
+            // Sin monto a propósito — los importes viven en el presupuesto, no en un aviso.
+            if (nuevoEstado === 'aprobada') {
+                (async () => {
+                    // Si la lectura falla se avisa igual, sin número: el hecho
+                    // importa más que la etiqueta. Pero se mira el error para no
+                    // confundir "falló la query" con "no tenía número".
+                    const { data: cot, error } = await supabaseClient
+                        .from('cotizaciones').select('numero').eq('id', id).single();
+                    if (error) console.warn('[API] cotizacion_aprobada, sin número:', error.message);
+                    await this.avisar({
+                        roles: ['venta', 'superadmin'],
+                        tipo: 'cotizacion_aprobada',
+                        titulo: `Presupuesto aprobado${cot?.numero ? `: ${cot.numero}` : ''}`,
+                        url: '#crm', prioridad: 'alta',
+                        entidadTipo: 'cotizacion', entidadId: id,
+                    });
+                })().catch(() => {});
+            }
             return true;
         } catch (e) {
             console.warn('[API] Error updating cotizacion estado:', e.message);
@@ -4409,6 +4555,137 @@ const API = {
         } catch (e) { console.warn('[API] notifyPagosVencidos:', e.message); return 0; }
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  MATRIZ DEL PASO 9 — avisos por suceso        (E7 / N5, 2026-07-30)
+    // ═══════════════════════════════════════════════════════════════════
+    //  Matriz: docs/jordi/03-PLAN-EJECUCION-TAREAS-PUSH.md §E7.
+    //
+    //  QUÉ VA ACÁ Y QUÉ NO. El sistema tiene tres mecanismos y la diferencia
+    //  importa:
+    //    · `notifications` (esto)  → "PASÓ algo", hecho puntual, se marca leído.
+    //    · `alertas.js`            → "esto ESTÁ trabado ahora", estado vivo que
+    //                                se recalcula solo cada 5 min.
+    //    · `tareas.js._gen*`       → algo que alguien tiene que agarrar y hacer.
+    //  Las filas de la matriz que son estado vivo (tarea vencida, cobranza
+    //  vencida, lead sin respuesta) NO van acá: como fila de `notifications`
+    //  reaparecerían sin leer en cada recálculo, que es justo lo que la
+    //  decisión D2 del rework quiso evitar. Viven en alertas.js.
+    //
+    //  ⚠️ TIPO NUEVO = ENTRADA NUEVA EN `Notifications.TIPO_CATALOG`
+    //  (notifications.js). Si no, nadie lo puede silenciar y el drift lo grita
+    //  en consola recién cuando ya está en producción.
+
+    /**
+     * Aviso a un rol entero (o a personas sueltas). Resuelve el rol a cabezas y
+     * escribe una fila por cada una — así cada uno lo marca leído por su cuenta.
+     * Quien disparó la acción no se auto-notifica.
+     *
+     * NO acepta `push` a propósito: el único camino de push que existe hoy es
+     * `/api/push/tarea`, que server-side re-resuelve destinatarios A PARTIR DE
+     * UNA TAREA. Pasarle un evento o una cotización lo haría rebotar. Un flag
+     * que no hace lo que promete es el mismo bug que un switch que no silencia
+     * nada; cuando exista el endpoint genérico se suma acá.
+     *
+     * `excluirActor` (default true) saca de la lista a quien está logueado. Eso es
+     * lo correcto cuando el aviso nace de una acción suya —no tiene sentido
+     * notificarte lo que acabás de hacer— pero es un ERROR en los barridos de
+     * fondo: ahí el usuario logueado es simplemente el que tenía la pestaña
+     * abierta cuando corrió el motor, no el autor de nada. Si un PM es quien
+     * gatilla el barrido, excluirlo le come justo el aviso de SU evento, y el
+     * claim ya se consumió, así que no vuelve a salir nunca. Esos llamadores
+     * tienen que pasar `excluirActor: false`.
+     *
+     * Nunca tira: un aviso que falla no puede voltear la operación que lo disparó.
+     */
+    async avisar({ roles = [], usuarios = [], tipo, titulo, cuerpo = null,
+                   url = null, prioridad = 'normal', excluirActor = true,
+                   entidadTipo = null, entidadId = null } = {}) {
+        if (!tipo || !titulo) return { inapp: 0, push: null };
+        try {
+            const user = Auth?.getUser?.();
+            const uid = excluirActor ? (user?.uid || user?.id || null) : null;
+            const destinatarios = await this.resolverDestinatarios({ roles, usuarios, excluir: uid });
+            if (!destinatarios.length) return { inapp: 0, push: null };
+            return await this.notificar({
+                destinatarios, tipo, titulo, cuerpo, url, prioridad,
+                entidadTipo, entidadId, push: false,
+            });
+        } catch (e) {
+            console.warn('[API] avisar:', e.message);
+            return { inapp: 0, push: null };
+        }
+    },
+
+    /**
+     * Fila 7 — "faltan X días para el armado" → pm + taller.
+     *
+     * Dos hitos independientes (7 y 2 días), cada uno con su columna de claim.
+     * Son independientes a propósito: un evento cargado con 3 días de
+     * anticipación —justo cuando más importa avisar— tiene que poder disparar
+     * el hito final aunque el primero nunca haya salido.
+     *
+     * Claim atómico calcado de notifyPagosVencidos: el `UPDATE ... RETURNING`
+     * se lleva la fila de forma indivisible, así cuatro navegadores con la app
+     * abierta no mandan cuatro veces el mismo aviso.
+     *
+     * El texto usa los días REALES que faltan, no el número del hito: el evento
+     * a 3 días entra por la ventana de 7 y decir "faltan 7 días" sería mentir.
+     *
+     * Requiere eventos.notif_armado_{7d,2d}_at (sql/notif_matriz_paso9.sql);
+     * sin esas columnas el UPDATE falla y la función sale en silencio.
+     */
+    async notifyArmadoProximo() {
+        const hoy = new Date().toISOString().split('T')[0];
+        const enDias = (n) => {
+            const d = new Date();
+            d.setDate(d.getDate() + n);
+            return d.toISOString().split('T')[0];
+        };
+        let total = 0;
+
+        for (const hito of [{ dias: 7, col: 'notif_armado_7d_at' },
+                            { dias: 2, col: 'notif_armado_2d_at' }]) {
+            try {
+                const { data: claimed, error } = await supabaseClient
+                    .from('eventos')
+                    .update({ [hito.col]: new Date().toISOString() })
+                    .eq('_deleted', false)
+                    .is(hito.col, null)
+                    .gte('fecha_armado_inicio', hoy)
+                    .lte('fecha_armado_inicio', enDias(hito.dias))
+                    .select('id, nombre, predio, fecha_armado_inicio');
+                if (error) continue;
+
+                for (const ev of (claimed || [])) {
+                    const faltan = Math.max(0, Math.round(
+                        (new Date(ev.fecha_armado_inicio + 'T00:00:00') - new Date(hoy + 'T00:00:00'))
+                        / 86400000));
+                    const cuando = faltan === 0 ? 'hoy'
+                                 : faltan === 1 ? 'mañana'
+                                 : `en ${faltan} días`;
+                    await this.avisar({
+                        roles: ['pm', 'taller'],
+                        tipo: 'evento_armado_proximo',
+                        titulo: `Armado ${cuando}: ${ev.nombre || 'evento'}`,
+                        cuerpo: ev.predio ? `En ${ev.predio}.` : null,
+                        url: `#eventos`,
+                        prioridad: hito.dias <= 2 ? 'alta' : 'normal',
+                        // Barrido de fondo: el que está logueado no es el autor de nada,
+                        // es el que tenía la pestaña abierta. Excluirlo le comería el
+                        // aviso de su propio evento — y el claim ya no vuelve a salir.
+                        excluirActor: false,
+                        entidadTipo: 'evento',
+                        entidadId: ev.id,
+                    });
+                    total++;
+                }
+            } catch (e) {
+                console.warn('[API] notifyArmadoProximo:', e.message);
+            }
+        }
+        return total;
+    },
+
     // ═════════════════════════════════════════════════════════════
     //  FASE 5 — Compras: PEDIDOS (paso 1 del doble paso)
     //  El taller (o cualquiera) crea un pedido simple "hay que comprar
@@ -4541,6 +4818,20 @@ const API = {
             };
             const { data: row, error } = await supabaseClient.from('compras_ordenes').insert(payload).select('id, numero_oc').single();
             if (error) throw error;
+            // Fila 13 de la matriz del Paso 9 → admin.
+            this.avisar({
+                // `superadmin` explícito: resolverDestinatarios matchea el rol literal
+                // (`role.in.(admin)`), no hay jerarquía — sin esto Fede no se entera.
+                roles: ['admin', 'superadmin'], tipo: 'oc_generada',
+                titulo: `Orden de compra ${row.numero_oc || 'nueva'}`,
+                cuerpo: pedido.descripcion || null,
+                // entidadId se OMITE a propósito: compras_ordenes.id es BIGINT y
+                // notifications.entidad_id es UUID. Mandarlo aborta el INSERT entero
+                // —es una sola sentencia para todos los destinatarios— y el aviso se
+                // pierde sin ruido, porque notificar() traga el error en su catch.
+                // Mismo caso que compras_pagos en notifyPagosVencidos. El link alcanza.
+                url: '#compras', entidadTipo: 'orden_compra',
+            }).catch(() => {});
             await this.setPedidoEstado(pedido.id, 'en_compra', row.id);
             // Copiar los ítems del pedido a la OC (compras_orden_items → sección "Items de la Orden")
             const items = (Array.isArray(pedido.items) && pedido.items.length)
@@ -4578,6 +4869,21 @@ const API = {
             };
             const { data: row, error } = await supabaseClient.from('compras_ordenes').insert(payload).select('id, numero_oc').single();
             if (error) throw error;
+            // Fila 13 de la matriz del Paso 9 → admin. Mismo aviso que el alta
+            // desde un pedido: para quien lo recibe es el mismo hecho.
+            this.avisar({
+                // `superadmin` explícito: resolverDestinatarios matchea el rol literal
+                // (`role.in.(admin)`), no hay jerarquía — sin esto Fede no se entera.
+                roles: ['admin', 'superadmin'], tipo: 'oc_generada',
+                titulo: `Orden de compra ${row.numero_oc || 'nueva'}`,
+                cuerpo: descripcion || null,
+                // entidadId se OMITE a propósito: compras_ordenes.id es BIGINT y
+                // notifications.entidad_id es UUID. Mandarlo aborta el INSERT entero
+                // —es una sola sentencia para todos los destinatarios— y el aviso se
+                // pierde sin ruido, porque notificar() traga el error en su catch.
+                // Mismo caso que compras_pagos en notifyPagosVencidos. El link alcanza.
+                url: '#compras', entidadTipo: 'orden_compra',
+            }).catch(() => {});
             const ocItems = (items || []).filter(it => it && String(it.nombre || '').trim()).map(it => ({
                 orden_id: row.id, nombre: it.nombre,
                 cantidad: (it.cantidad === '' || it.cantidad == null) ? null : Number(it.cantidad),

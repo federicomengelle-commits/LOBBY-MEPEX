@@ -7956,6 +7956,22 @@ const FinanzasModule = {
 
             Toast.success(`✓ Emitido — CAE ${result.cae}`);
 
+            // Fila 18 de la matriz del Paso 9 → admin.
+            // Sólo en la emisión de a una: el lote de Recurrentes puede sacar diez
+            // facturas de un saque y son diez avisos por un solo acto deliberado que
+            // la persona ya está mirando en pantalla.
+            if (typeof API !== 'undefined' && API.avisar) {
+                API.avisar({
+                    // `superadmin` explícito: resolverDestinatarios matchea el rol
+                    // literal, no hay jerarquía de roles.
+                    roles: ['admin', 'superadmin'],
+                    tipo: 'factura_emitida',
+                    titulo: `Comprobante emitido${comp.numero ? ` ${comp.numero}` : ''}`,
+                    cuerpo: result.receptor_nombre || null,
+                    url: '#finanzas', entidadTipo: 'comprobante', entidadId: comp.id || null,
+                }).catch(() => {});
+            }
+
             // PDF automático (descarga) + pantalla de éxito con opción de cobro
             try { await this._generarFacturaPDF(comp); } catch (e) { console.warn('[Finanzas] PDF:', e.message); }
             this._renderEmitSuccess(comp);
