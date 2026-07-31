@@ -52,6 +52,11 @@ const Cobranza = {
             title: 'Registrar cobranza',
             size: 'lg',   // los tamaños reales son sm/md/lg (style.css .modal--*)
             body: '<div id="cobranzaHost"></div>',
+            // Cerrar sin guardar (X, Escape, click afuera) después de adjuntar
+            // dejaba el certificado en el bucket para siempre. Tras un guardado
+            // exitoso `_retenciones` queda vacío, así que esto no borra nada
+            // que se haya llegado a registrar.
+            onClose: () => this._limpiarCertificadosHuerfanos(),
         });
         this._modalId = inst && inst.id;
         this._onGuardado = onGuardado;
@@ -68,6 +73,11 @@ const Cobranza = {
         if (onGuardado) this._onGuardado = onGuardado;
         this._clienteId = clienteId;
         this._aplic = {};
+        // Cambiar de cliente descarta las retenciones cargadas. Los certificados
+        // que YA terminaron de subir no los limpiaba nadie —el handler de subida
+        // sólo cubre la fila que estaba en vuelo— y quedaban en el bucket sin
+        // ninguna fila que los referencie.
+        this._limpiarCertificadosHuerfanos();
         this._retenciones = [];
         this._guardando = false;
         this._injectStyles();
@@ -236,6 +246,67 @@ const Cobranza = {
         </div>`;
     },
 
+    /**
+     * Fila nueva de la grilla. El `_uid` es lo importante: la subida del
+     * certificado es asincrónica y, mientras está en vuelo, borrar una fila de
+     * arriba corre todos los índices. Con `data-i` el archivo terminaba pegado a
+     * la retención equivocada.
+     */
+    _nuevaRetencion() {
+        const uid = (window.crypto && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : ('r' + Date.now() + '-' + Math.random().toString(36).slice(2));
+        return {
+            _uid: uid,
+            impuesto: 'ganancias', jurisdiccion: '', numero_certificado: '',
+            base_imponible: '', alicuota: '', monto: '', _manual: false,
+            archivo_url: null, _archivoNombre: null, _subiendo: false,
+        };
+    },
+
+    /**
+     * Congela la grilla mientras la cobranza está en vuelo.
+     *
+     * Deshabilitar sólo el botón y el selector de cliente dejaba la grilla viva:
+     * en los dos `await` de `_guardar` alguien podía tocar "✕" y **borrar del
+     * bucket el certificado cuyo path ya viaja en el payload**. La retención
+     * quedaba guardada con un `archivo_url` que no apunta a nada, el clip del
+     * libro aparecía igual, y no se enteraba nadie hasta la DDJJ. Es el caso
+     * simétrico del guard de `_subiendo`: aquél cubre subir-mientras-se-guarda,
+     * éste cubre borrar-mientras-se-guarda.
+     */
+    _setRetencionesEnabled(on) {
+        const bloque = this._contenedor && this._contenedor.querySelector('#cobBloqueRet');
+        if (!bloque) return;
+        bloque.querySelectorAll('input, select, button').forEach(el => { el.disabled = !on; });
+    },
+
+    /**
+     * Saca del bucket los certificados que se subieron y nunca se guardaron.
+     *
+     * Sólo se llama cuando se descartan las retenciones sin registrarlas
+     * (cambio de cliente, cierre del modal). Depende de una invariante: después
+     * de un guardado exitoso `_retenciones` se vacía, así que acá nunca hay
+     * paths que ya estén referenciados por una fila de `creditos_fiscales`.
+     */
+    _limpiarCertificadosHuerfanos() {
+        for (const r of (this._retenciones || [])) {
+            if (r && r.archivo_url) API.borrarCertificadoRetencion(r.archivo_url);
+        }
+    },
+
+    _celdaAdjunto(r) {
+        if (r._subiendo) return `<span class="cob-sub">Subiendo…</span>`;
+        if (r.archivo_url) {
+            const nombre = String(r._archivoNombre || 'certificado');
+            const corto = nombre.length > 18 ? nombre.slice(0, 15) + '…' : nombre;
+            return `<span class="cob-file-chip" title="${escAttr(nombre)}">📎 ${escHtml(corto)}
+                <button type="button" class="cob-file-del" data-uid="${escAttr(r._uid)}" title="Quitar">✕</button></span>`;
+        }
+        return `<label class="cob-btn-mini cob-file-lbl">Adjuntar
+            <input type="file" class="cob-ret-file" data-uid="${escAttr(r._uid)}" accept=".pdf,application/pdf,image/*" hidden></label>`;
+    },
+
     _bloqueRetenciones() {
         const filas = this._retenciones.map((r, i) => {
             const esIibb = r.impuesto === 'iibb';
@@ -251,6 +322,7 @@ const Cobranza = {
                 <td class="cob-num"><input type="text" inputmode="decimal" class="cob-input cob-input-num cob-ret-base" data-i="${i}" value="${escAttr(String(r.base_imponible || ''))}" placeholder="0"></td>
                 <td class="cob-num"><input type="text" inputmode="decimal" class="cob-input cob-input-num cob-ret-alic" data-i="${i}" value="${escAttr(String(r.alicuota || ''))}" placeholder="%"></td>
                 <td class="cob-num"><input type="text" inputmode="decimal" class="cob-input cob-input-num cob-ret-monto ${r._manual ? 'cob-manual' : ''}" data-i="${i}" value="${escAttr(String(r.monto || ''))}" placeholder="0" title="${r._manual ? 'Importe cargado a mano: no se recalcula' : 'Se calcula de base × alícuota'}"></td>
+                <td>${this._celdaAdjunto(r)}</td>
                 <td><button type="button" class="cob-btn-mini cob-ret-del" data-i="${i}">✕</button></td>
             </tr>`;
         }).join('');
@@ -261,7 +333,7 @@ const Cobranza = {
             </div>
             ${this._retenciones.length ? `
             <table class="cob-tabla">
-                <thead><tr><th>Impuesto</th><th>Jurisdicción</th><th>Certificado</th><th class="cob-num">Base</th><th class="cob-num">Alícuota</th><th class="cob-num">Importe</th><th></th></tr></thead>
+                <thead><tr><th>Impuesto</th><th>Jurisdicción</th><th>Certificado</th><th class="cob-num">Base</th><th class="cob-num">Alícuota</th><th class="cob-num">Importe</th><th>Adjunto</th><th></th></tr></thead>
                 <tbody>${filas}</tbody>
             </table>` : '<div class="cob-vacio">Sin retenciones.</div>'}
             <button type="button" id="cobRetAdd" class="cob-btn-mini">+ Agregar retención</button>
@@ -275,6 +347,7 @@ const Cobranza = {
             <div class="cob-candado-linea"><span>Entró a la cuenta</span><b id="cobTotEfec">$0</b></div>
             <div class="cob-candado-linea"><span>Retenido</span><b id="cobTotRet">$0</b></div>
             <div class="cob-candado-dif" id="cobDif"></div>
+            <div class="cob-candado-nota" id="cobSubiendo" hidden>Esperá: se está subiendo un certificado…</div>
             <div class="cob-acciones">
                 <button type="button" id="cobGuardar" class="cob-btn-primary" disabled>Registrar cobranza</button>
             </div>
@@ -320,8 +393,7 @@ const Cobranza = {
 
         const add = c.querySelector('#cobRetAdd');
         if (add) add.addEventListener('click', () => {
-            this._retenciones.push({ impuesto: 'ganancias', jurisdiccion: '', numero_certificado: '',
-                                     base_imponible: '', alicuota: '', monto: '', _manual: false });
+            this._retenciones.push(this._nuevaRetencion());
             this._repintarRetenciones();
         });
 
@@ -381,7 +453,63 @@ const Cobranza = {
             this._recalc();
         }));
         c.querySelectorAll('.cob-ret-del').forEach(el => el.addEventListener('click', (e) => {
-            this._retenciones.splice(Number(e.target.dataset.i), 1);
+            if (this._guardando) return;   // ver _setRetencionesEnabled
+            const [fuera] = this._retenciones.splice(Number(e.target.dataset.i), 1);
+            // El certificado ya subido de una fila borrada no lo referencia nadie
+            // (las filas recién se guardan al registrar la cobranza): se saca del
+            // bucket en vez de quedar como basura.
+            if (fuera && fuera.archivo_url) API.borrarCertificadoRetencion(fuera.archivo_url);
+            this._repintarRetenciones();
+        }));
+
+        // ── Adjuntar el certificado ──
+        c.querySelectorAll('.cob-ret-file').forEach(el => el.addEventListener('change', async (e) => {
+            const input = e.target;
+            const uid = input.dataset.uid;
+            const file = input.files && input.files[0];
+            input.value = '';   // permite volver a elegir el MISMO archivo tras un error
+            if (!file) return;
+
+            // Siempre por `_uid`, nunca por índice: ver el comentario de _nuevaRetencion.
+            const buscar = () => this._retenciones.find(r => r._uid === uid);
+            const inicial = buscar();
+            if (!inicial) return;
+            inicial._subiendo = true;
+            inicial._archivoNombre = file.name;
+            this._repintarRetenciones();
+
+            try {
+                const path = await API.uploadCertificadoRetencion(file);
+                const r = buscar();
+                if (!r) {
+                    // Borraron la fila —o se cambió de cliente— mientras subía:
+                    // el archivo quedó sin dueño.
+                    API.borrarCertificadoRetencion(path);
+                    return;
+                }
+                r.archivo_url = path;
+                r._subiendo = false;
+            } catch (err) {
+                console.warn('[Cobranza] adjuntar certificado:', err.message);
+                const r = buscar();
+                // Si la fila ya no está, el error es de algo que el usuario
+                // descartó: avisarlo sólo confunde.
+                if (r) {
+                    r._subiendo = false; r._archivoNombre = null;
+                    Toast.error(err.message || 'No pude subir el certificado.');
+                }
+            } finally {
+                this._repintarRetenciones();
+            }
+        }));
+
+        c.querySelectorAll('.cob-file-del').forEach(el => el.addEventListener('click', (e) => {
+            if (this._guardando) return;   // ver _setRetencionesEnabled
+            const uid = e.currentTarget.dataset.uid;
+            const r = this._retenciones.find(x => x._uid === uid);
+            if (!r) return;
+            if (r.archivo_url) API.borrarCertificadoRetencion(r.archivo_url);
+            r.archivo_url = null; r._archivoNombre = null; r._subiendo = false;
             this._repintarRetenciones();
         }));
     },
@@ -395,8 +523,7 @@ const Cobranza = {
         bloque.outerHTML = this._bloqueRetenciones();
         const add = c.querySelector('#cobRetAdd');
         if (add) add.addEventListener('click', () => {
-            this._retenciones.push({ impuesto: 'ganancias', jurisdiccion: '', numero_certificado: '',
-                                     base_imponible: '', alicuota: '', monto: '', _manual: false });
+            this._retenciones.push(this._nuevaRetencion());
             this._repintarRetenciones();
         });
         this._attachRetencionEvents();
@@ -460,8 +587,15 @@ const Cobranza = {
                     : `Sobran ${this._money(-dif)} respecto de lo aplicado.`;
             }
         }
+        // Guardar con una subida en vuelo congelaba el payload ANTES de que
+        // llegara el path: la cobranza se registraba bien y la retención quedaba
+        // sin su certificado, sin ningún aviso. El botón espera.
+        const subiendo = this._retenciones.some(r => r._subiendo);
+        const nota = c.querySelector('#cobSubiendo');
+        if (nota) nota.hidden = !subiendo;
+
         const btn = c.querySelector('#cobGuardar');
-        if (btn) btn.disabled = !cuadra || this._guardando;
+        if (btn) btn.disabled = !cuadra || this._guardando || subiendo;
     },
 
     // ─── Guardar ─────────────────────────────────────────────────
@@ -470,6 +604,12 @@ const Cobranza = {
         const c = this._contenedor;
         const t = this._totales();
         if (t.hayInvalido) return Toast.error('Revisá los importes.');
+        // El botón ya está deshabilitado en ese caso; esto es el cinturón, porque
+        // el costo de perderlo es un certificado que nadie va a echar de menos
+        // hasta la DDJJ.
+        if (this._retenciones.some(r => r._subiendo)) {
+            return Toast.error('Esperá a que termine de subirse el certificado.');
+        }
 
         // ── Foto COMPLETA del formulario antes del primer await ──
         // Todo lo que se lea después del await sale del estado compartido, y el
@@ -501,6 +641,7 @@ const Cobranza = {
         // dejaba abierta la puerta de arriba.
         const cli = c.querySelector('#cobCliente');
         if (cli) cli.disabled = true;
+        this._setRetencionesEnabled(false);
         this._recalc();
 
         try {
@@ -545,6 +686,9 @@ const Cobranza = {
                         base_imponible: r.base_imponible || null,
                         alicuota: r.alicuota || null,
                         monto: r.monto,
+                        // Path del bucket privado `comprobantes`, no una URL: el
+                        // libro lo resuelve con signed URL al abrirlo.
+                        archivo_url: r.archivo_url || null,
                     })),
             });
 
@@ -556,6 +700,11 @@ const Cobranza = {
             }
 
             Toast.success('Cobranza registrada');
+            // A partir de acá los certificados YA los referencia `creditos_fiscales`.
+            // Vaciar el array sostiene la invariante de `_limpiarCertificadosHuerfanos`:
+            // sin esto, el `onClose` del modal borraría del bucket los archivos
+            // de la cobranza recién registrada.
+            this._retenciones = [];
             if (this._modalId) Modal.close(this._modalId);
             if (typeof this._onGuardado === 'function') this._onGuardado(res);
         } catch (e) {
@@ -565,6 +714,7 @@ const Cobranza = {
             this._guardando = false;
             const cliEl = this._contenedor && this._contenedor.querySelector('#cobCliente');
             if (cliEl) cliEl.disabled = false;
+            this._setRetencionesEnabled(true);
             this._recalc();
         }
     },
@@ -609,6 +759,11 @@ const Cobranza = {
         .cob-candado-linea{display:flex;justify-content:space-between;font-size:.85rem;padding:3px 0;color:var(--text-muted,#888)}
         .cob-candado-linea b{font-family:var(--font-mono,'Space Mono',monospace);color:var(--text-primary,#E8E8E8)}
         .cob-candado-dif{margin-top:8px;padding:7px 10px;border-radius:4px;font-size:.82rem;text-align:center}
+        .cob-candado-nota{margin-top:6px;font-size:.75rem;text-align:center;color:var(--accent,#F28D15)}
+        .cob-file-lbl{display:inline-block;margin-top:0}
+        .cob-file-chip{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;color:var(--text-muted,#888);background:rgba(255,255,255,.04);border-radius:4px;padding:3px 6px;max-width:150px}
+        .cob-file-del{background:none;border:none;color:var(--text-dim,#555);cursor:pointer;font-size:.72rem;padding:0 2px}
+        .cob-file-del:hover{color:var(--color-error,#ff4444)}
         .cob-bien{background:rgba(0,204,136,.12);color:var(--color-success,#00CC88)}
         .cob-mal{background:rgba(255,68,68,.10);color:var(--color-error,#ff4444)}
         .cob-neutro{background:rgba(255,255,255,.04);color:var(--text-muted,#888)}

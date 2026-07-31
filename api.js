@@ -7646,6 +7646,82 @@ const API = {
         catch (e) { return null; }
     },
 
+    /**
+     * Varias signed URLs en UNA llamada. Para listados con adjuntos: resolverlas
+     * de a una son N requests, y resolverlas al hacer click no sirve, porque
+     * después de un `await` el `window.open` ya no cuenta como gesto del usuario
+     * y el browser lo bloquea.
+     *
+     * Devuelve un objeto `{ path: signedUrl }`; los paths que fallan quedan afuera.
+     */
+    async getComprobantesSignedUrls(paths = [], expiresInSec = 3600) {
+        const limpios = [...new Set((paths || []).filter(p => p && typeof p === 'string'))];
+        if (!limpios.length) return {};
+        try {
+            const { data, error } = await supabaseClient.storage.from('comprobantes')
+                .createSignedUrls(limpios, expiresInSec);
+            if (error) throw error;
+            const out = {};
+            for (const r of (data || [])) {
+                if (r && r.path && r.signedUrl && !r.error) out[r.path] = r.signedUrl;
+            }
+            return out;
+        } catch (e) { console.warn('[API] getComprobantesSignedUrls:', e.message); return {}; }
+    },
+
+    /**
+     * Certificado de retención → mismo bucket privado `comprobantes`, bajo el
+     * prefijo `retenciones/` para no mezclarse con las fotos de los comprobantes
+     * recibidos.
+     *
+     * A diferencia de `uploadComprobante`, ésta TIRA el error en vez de devolver
+     * null: el archivo es el respaldo de un crédito fiscal, y un null silencioso
+     * dejaría la retención guardada "con adjunto" según la pantalla y sin nada
+     * atrás. Devuelve el PATH (no una URL): el bucket es privado y se lee con
+     * signed URL.
+     */
+    async uploadCertificadoRetencion(file) {
+        if (!file) throw new Error('No hay archivo.');
+        if (file.size > 15 * 1024 * 1024) throw new Error('El archivo pesa más de 15 MB.');
+
+        // El bucket valida el mime del lado del servidor contra su allowlist: si
+        // le mandamos uno que no está, rebota con un error críptico. Se resuelve
+        // acá, con el tipo que declara el archivo o —cuando el browser no lo
+        // informa, típico del HEIC del iPhone— derivándolo de la extensión.
+        const MIME = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+                       png: 'image/png', webp: 'image/webp', heic: 'image/heic' };
+        // `'sin-extension'.split('.').pop()` devuelve el nombre ENTERO, no ''.
+        // Sin este lastIndexOf, un archivo sin punto terminaba guardado como
+        // `certificado.sinex` y no lo abría nadie.
+        const nombre = String(file.name || '');
+        const punto = nombre.lastIndexOf('.');
+        const ext = punto > -1
+            ? nombre.slice(punto + 1).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5)
+            : '';
+        const declarado = String(file.type || '').toLowerCase();
+        const mime = Object.values(MIME).includes(declarado) ? declarado : MIME[ext];
+        if (!mime) throw new Error('Sólo se puede adjuntar un PDF o una imagen.');
+
+        // La extensión del path sale del MIME ya resuelto, NO del nombre: el
+        // nombre lo elige el usuario y sólo sirve para adivinar el tipo cuando
+        // el browser no lo declara.
+        const EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png',
+                      'image/webp': 'webp', 'image/heic': 'heic' };
+        const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('r' + Date.now());
+        const path = `retenciones/${id}/certificado.${EXT[mime]}`;
+        const { error } = await supabaseClient.storage.from('comprobantes')
+            .upload(path, file, { contentType: mime, upsert: false, cacheControl: '3600' });
+        if (error) throw error;
+        return path;
+    },
+
+    /** Saca del bucket un certificado que quedó sin dueño (fila borrada antes de guardar). */
+    async borrarCertificadoRetencion(path) {
+        if (!path) return;
+        try { await supabaseClient.storage.from('comprobantes').remove([path]); }
+        catch (e) { console.warn('[API] borrarCertificadoRetencion:', e.message); }
+    },
+
     // ═══ FASE 3a — CIRCUITO ÚNICO DE GASTO ═══
     // Mapa único de categoría de dominio → cuentas. Consolida las 4 traducciones que
     // vivían sueltas (RENDIMIENTO_CAT_TO_*, _CAT_TO_EGRESO del OCR, hardcodes): un gasto

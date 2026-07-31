@@ -20,6 +20,7 @@ const CreditosFiscales = {
     _reqId: 0,
     _items: [],
     _sel: new Set(),
+    _urls: {},                  // path del bucket -> signed URL, resuelto al pintar
     _filtros: { periodo: '', tipo: '', impuesto: '', estado: '' },
 
     IMPUESTO_LABEL: { ganancias: 'Ganancias', iva: 'IVA', iibb: 'IIBB', suss: 'SUSS' },
@@ -33,8 +34,16 @@ const CreditosFiscales = {
 
         if (!this._filtros.periodo) this._filtros.periodo = new Date().toISOString().slice(0, 7);
 
+        // El estado se asigna DESPUÉS del guard, no antes.
+        // Asignar `this._items` y después chequear el token frena el repintado
+        // pero no la asignación: con dos cambios de filtro seguidos, la
+        // respuesta VIEJA (más filas, más lenta) llegaba última y dejaba
+        // `_items` con datos que no son los que se ven. `_exportar()` lee ese
+        // estado, no el DOM → el CSV que abre el contador podía no coincidir
+        // con el período en pantalla.
+        let items = [];
         try {
-            this._items = await API.getCreditosFiscales({
+            items = await API.getCreditosFiscales({
                 periodo: this._filtros.periodo || null,
                 tipo: this._filtros.tipo || null,
                 impuesto: this._filtros.impuesto || null,
@@ -42,10 +51,15 @@ const CreditosFiscales = {
             });
         } catch (e) {
             console.warn('[CreditosFiscales]', e.message);
-            this._items = [];
+            items = [];
         }
         if (token !== this._reqId) return;
 
+        const urls = await this._resolverAdjuntos(items);
+        if (token !== this._reqId) return;
+
+        this._items = items;
+        this._urls = urls;
         this._sel.clear();
         container.innerHTML = this._buildHTML();
         this._attachEvents();
@@ -117,7 +131,9 @@ const CreditosFiscales = {
         if (!this._items.length) {
             return `<div class="cfi-vacio">No hay créditos fiscales en este período.</div>`;
         }
-        const filas = this._items.map(r => `
+        const filas = this._items.map(r => {
+            const adj = this._adjuntoHref(r.archivo_url);
+            return `
             <tr data-id="${escAttr(r.id)}">
                 <td><input type="checkbox" class="cfi-check" data-id="${escAttr(r.id)}"></td>
                 <td>${escHtml(this._fecha(r.fecha))}</td>
@@ -130,10 +146,11 @@ const CreditosFiscales = {
                 <td>${r.estado === 'computado'
                         ? '<span class="cfi-estado cfi-ok">Computado</span>'
                         : '<span class="cfi-estado cfi-pend">Sin computar</span>'}</td>
-                <td>${this._safeUrl(r.archivo_url)
-                        ? `<a href="${escAttr(this._safeUrl(r.archivo_url))}" target="_blank" rel="noopener" title="Ver certificado">📎</a>`
+                <td>${adj
+                        ? `<a href="${escAttr(adj)}" target="_blank" rel="noopener" title="Ver certificado">📎</a>`
                         : ''}</td>
-            </tr>`).join('');
+            </tr>`;
+        }).join('');
         return `
         <table class="cfi-tabla">
             <thead><tr>
@@ -224,11 +241,14 @@ const CreditosFiscales = {
             return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
         };
         const num = (v) => (v == null ? '' : String(v).replace('.', ','));
-        const cab = ['Fecha', 'Periodo', 'Tipo', 'Impuesto', 'Jurisdiccion', 'Certificado', 'Base', 'Alicuota', 'Importe', 'Estado', 'Canal'];
+        // "Adjunto" va en el CSV porque es lo accionable antes de una DDJJ: el
+        // que arma la declaración necesita ver de un vistazo qué retenciones
+        // están sin su certificado, y eso no se ve en una columna de importes.
+        const cab = ['Fecha', 'Periodo', 'Tipo', 'Impuesto', 'Jurisdiccion', 'Certificado', 'Base', 'Alicuota', 'Importe', 'Estado', 'Canal', 'Adjunto'];
         const filas = this._items.map(r => [
             r.fecha, r.periodo, r.tipo, r.impuesto, r.jurisdiccion || '',
             r.numero_certificado || '', num(r.base_imponible), num(r.alicuota), num(r.monto),
-            r.estado, r.canal,
+            r.estado, r.canal, r.archivo_url ? 'Si' : 'No',
         ].map(esc).join(';'));
         // BOM para que Excel abra los acentos bien.
         const csv = '﻿' + [cab.join(';'), ...filas].join('\r\n');
@@ -256,6 +276,36 @@ const CreditosFiscales = {
         if (!u) return null;
         const s = String(u).trim();
         return /^https?:\/\//i.test(s) ? s : null;
+    },
+
+    /**
+     * Resuelve los adjuntos ANTES de pintar, todos en una sola llamada.
+     *
+     * El bucket `comprobantes` es privado, así que el clip necesita una signed
+     * URL. Resolverla recién al hacer click no sirve: después de un `await`, el
+     * `window.open` ya no cuenta como gesto del usuario y el browser lo bloquea.
+     * Con las URLs ya resueltas, el clip vuelve a ser un `<a href>` común.
+     */
+    async _resolverAdjuntos(items) {
+        const paths = (items || [])
+            .map(r => r.archivo_url)
+            // Las absolutas (cargadas a mano en su momento) ya sirven tal cual.
+            .filter(u => u && !this._safeUrl(u));
+        if (!paths.length) return {};
+        return await API.getComprobantesSignedUrls(paths);
+    },
+
+    /**
+     * Las dos formas que puede tener `archivo_url` conviven: una URL http(s)
+     * absoluta, o el path del bucket privado —que es lo que sube el recibo de
+     * cobranza—. Todo lo demás no se linkea: `escAttr` no valida esquema, así
+     * que un `javascript:` guardado a mano llegaría intacto al href.
+     */
+    _adjuntoHref(u) {
+        if (!u) return null;
+        const directa = this._safeUrl(u);
+        if (directa) return directa;
+        return this._safeUrl(this._urls[u]);
     },
 
     _money(n) { return '$' + (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 }); },

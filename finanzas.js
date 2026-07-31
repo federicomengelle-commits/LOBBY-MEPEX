@@ -9094,6 +9094,39 @@ const FinanzasModule = {
         `;
     },
 
+    /** Sólo http/https en un href. Mismo criterio que `creditos-fiscales.js`. */
+    _safeUrl(u) {
+        if (!u) return null;
+        const s = String(u).trim();
+        return /^https?:\/\//i.test(s) ? s : null;
+    },
+
+    /**
+     * `comprobantes_recibidos.archivo_url` guarda DOS cosas distintas: el path
+     * del bucket privado (lo que sube la carga por foto/IA) o una URL pegada a
+     * mano en el campo de texto del modal. Acá se resuelven las dos.
+     *
+     * Antes el valor iba CRUDO al href: un path daba un link roto —relativo, 404—
+     * y un `javascript:` guardado a mano ejecutaba al click. En el panel ni
+     * siquiera pasaba por `escAttr`, así que un valor con comillas se salía del
+     * atributo.
+     */
+    _adjuntoHrefRec(u) {
+        if (!u) return null;
+        const directa = this._safeUrl(u);
+        if (directa) return directa;
+        return this._safeUrl((this._recUrls || {})[u]);
+    },
+
+    /** Firma los adjuntos del listado de una, antes de pintar (ver el comentario de creditos-fiscales.js). */
+    async _resolverAdjuntosRec() {
+        const paths = (this._factRecibidos || [])
+            .map(c => c.archivo_url)
+            .filter(u => u && !this._safeUrl(u));
+        if (!paths.length) return {};
+        return await API.getComprobantesSignedUrls(paths);
+    },
+
     async _loadFactRecibidos() {
         try {
             let query = supabaseClient
@@ -9112,6 +9145,7 @@ const FinanzasModule = {
             console.error('[Finanzas] Error cargando comprobantes recibidos:', e);
             this._factRecibidos = [];
         }
+        this._recUrls = await this._resolverAdjuntosRec();
         this._applyFactRecibidosFilter();
         this._renderFactRecibidosTable();
         this._renderFactRecKPIs();
@@ -9246,7 +9280,7 @@ const FinanzasModule = {
                                 <td class="fin-td"><span class="fin-cat-badge-rec" style="background:${catInfo.color}18;color:${catInfo.color};">${catInfo.label}</span></td>
                                 <td class="fin-td fin-td-money">${this._formatMoney(c.total)}</td>
                                 <td class="fin-td">${this._pagoDotRec(c.egreso_id)}</td>
-                                <td class="fin-td" style="text-align:center;">${c.archivo_url ? `<a href="${escAttr(c.archivo_url)}" target="_blank" rel="noopener" class="fin-row-dl fin-rec-clip" title="Ver adjunto" aria-label="Ver adjunto"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></a>` : ''}</td>
+                                <td class="fin-td" style="text-align:center;">${this._adjuntoHrefRec(c.archivo_url) ? `<a href="${escAttr(this._adjuntoHrefRec(c.archivo_url))}" target="_blank" rel="noopener" class="fin-row-dl fin-rec-clip" title="Ver adjunto" aria-label="Ver adjunto"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></a>` : ''}</td>
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -9353,10 +9387,10 @@ const FinanzasModule = {
                     </div>
                 </div>
 
-                ${comp.archivo_url ? `
+                ${this._adjuntoHrefRec(comp.archivo_url) ? `
                 <div class="fin-panel-section">
                     <div class="fin-section-title">Archivo</div>
-                    <a href="${comp.archivo_url}" target="_blank" class="fin-file-link">📎 Ver / Descargar archivo</a>
+                    <a href="${escAttr(this._adjuntoHrefRec(comp.archivo_url))}" target="_blank" rel="noopener" class="fin-file-link">📎 Ver / Descargar archivo</a>
                 </div>
                 ` : ''}
 
@@ -9802,7 +9836,7 @@ const FinanzasModule = {
      * en una DDJJ presentada, cambiarla por atrás desalinearía la declaración
      * con el libro. En ese caso avisa y no toca nada.
      */
-    async _syncPercepciones(comprobanteId, { percIva, percIibb, percJuris, fecha, canal, esAlta = false }) {
+    async _syncPercepciones(comprobanteId, { percIva, percIibb, percJuris, fecha, canal, archivoUrl = null, esAlta = false }) {
         // En un alta sin percepciones no hay nada que sincronizar ni nada previo
         // que dar de baja: se evita una consulta en cada guardado. En una EDICIÓN
         // sí hay que entrar aunque vengan vacías, porque puede haber filas viejas
@@ -9839,6 +9873,10 @@ const FinanzasModule = {
                         origen_comprobante_id: comprobanteId,
                         fecha, periodo: String(fecha || '').slice(0, 7),
                         monto, canal: canal || 'oficial',
+                        // El respaldo de una percepción ES la factura de compra
+                        // donde vino: se hereda su archivo en vez de pedir que
+                        // se suba el mismo PDF dos veces.
+                        archivo_url: archivoUrl || null,
                     };
                     if (actual) {
                         const { error: e2 } = await supabaseClient.from('creditos_fiscales')
@@ -9995,7 +10033,7 @@ const FinanzasModule = {
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">URL archivo (Google Drive, link directo…)</label>
-                        <input type="text" class="fin-form-input" id="finRecFormArchivo" value="${c.archivo_url || ''}" placeholder="https://drive.google.com/...">
+                        <input type="text" class="fin-form-input" id="finRecFormArchivo" value="${escAttr(c.archivo_url || '')}" placeholder="https://drive.google.com/...">
                     </div>
                     <div class="fin-form-group">
                         <label class="fin-form-label">Notas</label>
@@ -10099,7 +10137,7 @@ const FinanzasModule = {
                 // El libro de créditos fiscales se sincroniza DESPUÉS de guardar:
                 // si falla, el comprobante ya quedó bien y se avisa aparte.
                 if (compId) {
-                    await this._syncPercepciones(compId, { percIva, percIibb, percJuris, fecha, canal, esAlta: !isEdit });
+                    await this._syncPercepciones(compId, { percIva, percIibb, percJuris, fecha, canal, archivoUrl: archivo_url, esAlta: !isEdit });
                 }
                 Modal.closeAll();
                 await this._loadFactRecibidos();
