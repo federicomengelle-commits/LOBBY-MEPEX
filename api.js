@@ -4084,10 +4084,18 @@ const API = {
                 ? ['superadmin', 'admin']
                 : [user.role];
             const roleFilters = visibleRoles.map(r => `target_role.eq.${r}`).join(',');
+            // ⚠️ El "para todos" es target_user_id NULL **y** target_role NULL.
+            // Antes alcanzaba con `target_role.is.null`, y eso funcionó mientras
+            // todos los avisos se escribían por rol. Con el fan-out (E2) cada
+            // notificación personal se guarda como (target_user_id: alguien,
+            // target_role: null) → esa condición matcheaba para CUALQUIERA y
+            // todos veían los avisos de todos (bug real, 2026-07-30: un solo
+            // movimiento de tarjeta le apareció 6 veces a Fede, eran las de sus
+            // 6 compañeros).
             const { data, error } = await supabaseClient
                 .from('notifications')
                 .select('*')
-                .or(`target_user_id.eq.${uid},${roleFilters},target_role.is.null`)
+                .or(`target_user_id.eq.${uid},${roleFilters},and(target_user_id.is.null,target_role.is.null)`)
                 .order('created_at', { ascending: false })
                 .limit(limit);
             if (error) throw error;
@@ -4214,7 +4222,11 @@ const API = {
             directos.forEach(id => ids.add(id));
         }
 
-        if (excluir) ids.delete(excluir);   // el creador no se auto-notifica
+        // El creador no se auto-notifica (doc 01 §7.2 regla 4) — PERO si se puso
+        // a sí mismo en la lista de personas, eso es un acto deliberado y se
+        // respeta. La regla existe para que no te llegue todo lo que cargás por
+        // haber tagueado a tu propio rol, no para impedirte asignarte algo.
+        if (excluir && !directos.includes(excluir)) ids.delete(excluir);
         return [...ids];
     },
 

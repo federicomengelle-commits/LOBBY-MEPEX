@@ -172,16 +172,18 @@ async function filtrarPorPreferencia(userIds, categoria, pushPorDefecto) {
 }
 
 // Horario de silencio (decisión D3): 21:00–07:00 hora de Buenos Aires.
-// Lo urgente lo atraviesa; el resto espera a la mañana. Hoy el único push que
-// existe es el de tarea urgente, así que esto todavía no descarta nada — queda
-// puesto para cuando la matriz del Paso 9 sume avisos no urgentes.
+// Lo urgente y los diagnósticos lo atraviesan; el resto espera a la mañana.
+//
+// ⚠️ SE CALCULA CON OFFSET FIJO, NO CON Intl. Argentina no tiene horario de
+// verano desde 2009, así que siempre es UTC-3. La versión con
+// `Intl.DateTimeFormat(..., {timeZone:'America/Argentina/Buenos_Aires'})` es
+// correcta en teoría pero **falla callada en un Node compilado con small-icu**:
+// ignora el timeZone y devuelve UTC. A las 20:55 de Buenos Aires (23:55 UTC)
+// eso daba "estamos en horario de silencio" y retenía pushes que tenían que
+// salir, sin ningún error (bug real, 2026-07-30).
 function enHorarioDeSilencio() {
-    try {
-        const h = Number(new Intl.DateTimeFormat('es-AR', {
-            timeZone: 'America/Argentina/Buenos_Aires', hour: 'numeric', hour12: false,
-        }).format(new Date()));
-        return h >= 21 || h < 7;
-    } catch (e) { return false; }   // si falla el cálculo, no retener
+    const h = new Date(Date.now() - 3 * 3600 * 1000).getUTCHours();
+    return h >= 21 || h < 7;
 }
 
 // ─── Envío ──────────────────────────────────────────────────────────
@@ -190,11 +192,11 @@ function enHorarioDeSilencio() {
  * Limpia sola las suscripciones muertas (404/410): si no se borran, la tabla se
  * llena de basura y cada envío se vuelve más lento (doc 02 §7).
  */
-async function enviarPush(userIds, payload) {
+async function enviarPush(userIds, payload, { ignorarSilencio = false } = {}) {
     const ids = soloUuids(userIds);
     if (!vapidListo || !ids.length) return { enviados: 0, fallidos: 0, limpiados: 0 };
 
-    if (!payload.urgent && enHorarioDeSilencio()) {
+    if (!ignorarSilencio && !payload.urgent && enHorarioDeSilencio()) {
         return { enviados: 0, fallidos: 0, limpiados: 0, retenido: 'horario de silencio (21-07)' };
     }
 
@@ -333,6 +335,10 @@ async function desuscribirHandler(req, res) {
 async function testHandler(req, res) {
     try {
         if (!vapidListo) return res.status(503).json({ ok: false, error: 'VAPID no configurado en el servidor' });
+        // ignorarSilencio: es un diagnóstico. Si el horario de silencio lo
+        // retuviera, el botón "Probar" no haría nada a la noche y el usuario
+        // leería "no hay dispositivos suscriptos" — mintiéndole justo cuando
+        // está tratando de averiguar si el push funciona.
         const r = await enviarPush([req.user.id], {
             title: 'MEPEX · prueba',
             body: 'Si ves esto, el push está andando.',
@@ -340,7 +346,7 @@ async function testHandler(req, res) {
             tag: 'push-test',
             urgent: false,
             tipo: 'test',
-        });
+        }, { ignorarSilencio: true });
         return res.json({ ok: true, ...r });
     } catch (e) {
         console.error('[push] test:', e.message);

@@ -513,10 +513,21 @@ const Settings = {
 
         document.getElementById('notifDevProbar')?.addEventListener('click', async () => {
             const r = await PushCliente.probar();
-            if (typeof Toast !== 'undefined') {
-                if (r.ok && r.enviados) Toast.success(`Push enviado a ${r.enviados} dispositivo(s)`);
-                else if (r.ok) Toast.warning('No hay dispositivos suscriptos todavía');
-                else Toast.error(r.motivo || 'No se pudo enviar');
+            if (typeof Toast === 'undefined') return;
+            // El servidor puede devolver ok:true con enviados:0 por varios motivos
+            // distintos. Decir siempre "no hay dispositivos suscriptos" es mentir
+            // en tres de los cuatro casos, y justo cuando alguien está tratando
+            // de averiguar por qué no le llega nada.
+            if (!r.ok) { Toast.error(r.motivo || 'No se pudo enviar'); return; }
+            if (r.enviados) {
+                Toast.success(`Push enviado a ${r.enviados} dispositivo(s)`
+                    + (r.limpiados ? ` · ${r.limpiados} suscripción(es) vencida(s) limpiada(s)` : ''));
+            } else if (r.retenido) {
+                Toast.warning('Retenido: ' + r.retenido);
+            } else if (r.fallidos) {
+                Toast.error(`El envío falló en ${r.fallidos} dispositivo(s) — mirá los logs del servidor`);
+            } else {
+                Toast.warning('No hay dispositivos suscriptos todavía');
             }
         });
 

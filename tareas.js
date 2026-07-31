@@ -1167,14 +1167,27 @@ const Tareas = {
         }
     },
 
-    // Avance y completadas → in-app al superadmin, SIN push (doc 01 §7.3).
+    /**
+     * Avance y completadas → in-app, SIN push (doc 01 §7.3).
+     *
+     * ⚠️ Le avisa a QUIEN DELEGÓ LA TAREA, no "a todos los superadmin".
+     * El doc de Jordi dice "el super_admin recibe los avances" asumiendo que el
+     * super_admin es una persona (Fede). En este sistema hay SIETE, así que esa
+     * lectura literal mandaba 6 notificaciones por cada tarjeta arrastrada — a
+     * gente que no tiene nada que ver con esa tarea (bug real, 2026-07-30).
+     * El que quiere enterarse de que una tarea avanzó es el que la creó.
+     */
     async _notificarAvance(user, t, desde, hasta) {
         if (typeof API === 'undefined' || !API.notificar) return;
         const uid = user.uid || user.id;
         const quien = user.name || this._profiles[uid] || 'Alguien';
         const completada = hasta === 'hecha';
         try {
-            const dest = await API.resolverDestinatarios({ roles: ['superadmin'], excluir: uid });
+            // El creador de la fila real (una derivada sin claim no tiene creador).
+            const fila = this._manual.find(m => m.id === (t._claimId || t.id));
+            const creador = (fila && fila.created_by) || t.created_by || null;
+            if (!creador || creador === uid) return;   // se movió su propia tarea
+            const dest = await API.resolverDestinatarios({ usuarios: [creador], excluir: uid });
             if (!dest.length) return;
             await API.notificar({
                 destinatarios: dest,
