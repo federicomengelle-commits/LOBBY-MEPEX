@@ -6,6 +6,21 @@
 > Última consolidación: **2026-07-22 (revisada integral con Fede)** — se verificó ítem por ítem contra prod,
 > se movió TODO lo cerrado a PROGRESO y este archivo quedó solo con pendientes REALES.
 
+## 🎯 EL ORDEN LO DICTA OTRO ARCHIVO — leer PRIMERO `docs/PUESTA-A-PUNTO-2027.md`
+
+> **Desde 2026-08-01, este archivo dejó de ser el que manda el ORDEN.** Sigue siendo el **inventario** de
+> pendientes (sirve para saber qué existe y qué no), pero la **secuencia para llegar a producción real** la fija
+> **`docs/PUESTA-A-PUNTO-2027.md`** (+ `docs/puesta-a-punto.html`, el mismo camino dibujado y brandeado).
+>
+> Ese plan tiene **8 etapas**, fecha dura **1/1/2027** (con 5 meses de rampa desde agosto) y **4 gates de orden
+> que rompen DATOS si se cruzan al revés**.
+>
+> ⛔ **El gate más importante: el motor de costos sano (etapa 1) va ANTES de la carga masiva del catálogo (etapa 2).**
+> Ordenar el trabajo por esfuerzo/impacto y arrancar cargando ítems —que es lo que este archivo invita a hacer—
+> es exactamente el error que ese gate previene: hoy hay 4 motores de costeo y la cascada usa el equivocado.
+
+---
+
 ## 📐 Premisa de tracking (máxima)
 - **PLAN SUPERIOR** (este archivo) = todo lo que falta, ordenado por prioridad. Se **descuenta** acá a medida que se cierra (lo cerrado se registra al detalle en PROGRESO y se PODA de acá — nada se pierde, se muda).
 - **PROGRESO.md — ETAPA II** = el registro al detalle de lo hecho, entradas `[E2]`.
@@ -109,7 +124,7 @@ El circuito está entero y verificado a nivel base de datos; lo que falta necesi
 - **DROPs destructivos diferidos** (cuando haya semanas de uso sin ruido — sugerencia: post-ronda): DROP `compras_proveedores`/`compras_pagos` legacy · retiro legacy de `cargas` · `reorg_cleanup.sql` PARTE 1 (limpieza `roles.permissions`) y PARTE 2 (DROP tablas reorg).
 
 ### 🟡 Backlog técnico a demanda (mío, sin fecha)
-- **📋 TRIAGE DE LA AUDITORÍA INTEGRAL `docs/auditoria-2026-07-31/`** — 9 archivos (resumen ejecutivo + plan de corrección + ideas + 6 detalles por dominio), producidos por una charla paralela el 31/07 y **todavía sin integrar acá**. Antes de tomar nada de ahí como cierto: la lección del repo es que los reportes de agentes traen falsos positivos, así que **verificar cada hallazgo contra el código real y contra prod** antes de "arreglarlo". El primer paso es leer `00-RESUMEN-EJECUTIVO.md` y `01-PLAN-CORRECCION.md` y repartir: qué entra acá como pendiente real, qué ya está hecho, y qué es ruido.
+- **📋 AUDITORÍA INTEGRAL `docs/auditoria-2026-07-31/` — ✅ YA INTEGRADA (2026-08-01)** en `docs/PUESTA-A-PUNTO-2027.md`: sus 60 ítems se repartieron entre la **etapa 0** (los 8 que hacen que el sistema mienta o esté abierto), la **etapa 1** (el motor de costos) y la **etapa 7** (las costuras de plata), y sus ~70 ideas quedan en `06-DECISIONES.md` esperando que Fede marque. El tracker vivo de ejecución es **`docs/auditoria-2026-07-31/05-EJECUCION.md`** (estados + bitácora), no este archivo. **Sigue valiendo la cautela de siempre:** los reportes de agentes traen falsos positivos → verificar cada hallazgo contra el código real y contra prod antes de "arreglarlo".
 - **Finanzas Fase 5 — conciliación bancaria CSV** (Galicia/MercadoPago): la última pata gorda de Finanzas. Matching automático extracto↔movimientos (hoy es manual).
 - **Triage de la ronda de testeo** → arreglar lo que el equipo cace → pulido dirigido con criterio real.
 - **🧠 CEREBRO MEPEX** (idea grande de Fede, registrada 2026-07-18 — madurar): historial IA de cada proyecto al cerrarse → memoria organizacional consultable que aprende el método MEPEX. Piezas que ya existen: resumen IA por caso + migración caso→proyecto + cerebro OCTEXA. Camino: (1) hook de cierre → retrospectiva IA en DB; (2) corpus consultable; (3) alimenta respuestas del CRM/estimaciones/onboarding; (4) agentes con humano en el loop. SIEMPRE humanos decidiendo.
