@@ -26,6 +26,19 @@ window.escHtml = function (s) {
 };
 window.escAttr = window.escHtml;
 
+// safeUrl: valida el ESQUEMA antes de meter una URL de la DB en un href.
+// escAttr evita romper el atributo, pero NO impide `javascript:...` — un link
+// guardado por cualquier logueado ejecutaría al click (T4.11/A28, auditoría
+// 31/07). Solo http/https; cualquier otra cosa → null y el caller decide el
+// fallback. Promovido desde venta-detalle.js/creditos-fiscales.js, que ahora
+// delegan acá.
+// USO: `const u = safeUrl(x); u ? \`<a href="${escAttr(u)}">…\` : '…'`
+window.safeUrl = function (u) {
+    if (!u) return null;
+    const s = String(u).trim();
+    return /^https?:\/\//i.test(s) ? s : null;
+};
+
 // ─────────────────────────────────────────────────────────────────────
 //  FECHAS LOCALES — Argentina es UTC-3 SIEMPRE, y eso rompe dos cosas:
 //

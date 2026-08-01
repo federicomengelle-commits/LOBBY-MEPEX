@@ -401,11 +401,8 @@ const VentaDetalle = {
     },
 
     // Solo http/https: un `javascript:` en pdf_url sería XSS servido desde la base.
-    _safeUrl(u) {
-        if (!u) return null;
-        const s = String(u).trim();
-        return /^https?:\/\//i.test(s) ? s : null;
-    },
+    // T4.11: delega en el global de components.js (mismo comportamiento).
+    _safeUrl(u) { return safeUrl(u); },
 
     // Permiso para las acciones de LA VENTA (confirmar / anular): módulo 'ventas',
     // que es el que gobierna el RLS de la tabla `ventas` (sql/ventas_fase1.sql §4).

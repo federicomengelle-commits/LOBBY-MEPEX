@@ -271,12 +271,11 @@ const CreditosFiscales = {
      * sin allowlist, así que cualquiera con permiso de escritura en finanzas
      * puede setear ese campo desde la consola y esperar a que otro admin abra el
      * libro y clickee el clip.
+     *
+     * T4.11: la implementación ahora es el global `safeUrl` de components.js
+     * (promovido desde acá y venta-detalle.js — eran copias idénticas).
      */
-    _safeUrl(u) {
-        if (!u) return null;
-        const s = String(u).trim();
-        return /^https?:\/\//i.test(s) ? s : null;
-    },
+    _safeUrl(u) { return safeUrl(u); },
 
     /**
      * Resuelve los adjuntos ANTES de pintar, todos en una sola llamada.

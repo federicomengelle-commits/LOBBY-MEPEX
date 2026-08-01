@@ -1291,10 +1291,14 @@ const CRM = {
         };
     },
 
+    // T4.12/F5: delega en el escHtml global (components.js), que escapa TAMBIÉN
+    // comillas. La versión vieja (textContent→innerHTML) NO las escapaba, y este
+    // helper se interpola en ~23 atributos (value=, title=, alt=) → un cliente
+    // guardado como `" onfocus=alert(1) autofocus x="` rompía el value del form.
+    // Escapar más caracteres no cambia nada en contexto de texto (las entidades
+    // renderizan igual); en atributos, cierra el vector.
     _escHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+        return escHtml(str);
     },
 
 
@@ -2887,19 +2891,23 @@ const CRM = {
         }
 
         // PDF buttons
+        // T4.11: pdf_url la escribe la app Cotizador (sin garant\u00eda de formato) \u2014
+        // iba CRUDA al src del iframe y a window.open. safeUrl + escAttr, mismo
+        // patr\u00f3n que venta-detalle.
+        const cotPdf = safeUrl(cot.pdfUrl);
         const pdfInline = document.getElementById('cotBtnPdfInline');
-        if (pdfInline && cot.pdfUrl) {
+        if (pdfInline && cotPdf) {
             pdfInline.addEventListener('click', () => {
                 Modal.open({
                     title: `PDF \u2014 ${cot.numero || ''}`,
-                    body: `<iframe src="${cot.pdfUrl}" style="width:100%; height:70vh; border:none; border-radius:6px;"></iframe>`,
+                    body: `<iframe src="${escAttr(cotPdf)}" style="width:100%; height:70vh; border:none; border-radius:6px;"></iframe>`,
                     size: 'lg',
                 });
             });
         }
         const pdfNew = document.getElementById('cotBtnPdfNew');
-        if (pdfNew && cot.pdfUrl) {
-            pdfNew.addEventListener('click', () => window.open(cot.pdfUrl, '_blank', 'noopener'));
+        if (pdfNew && cotPdf) {
+            pdfNew.addEventListener('click', () => window.open(cotPdf, '_blank', 'noopener'));
         }
 
         // Project link
@@ -4458,7 +4466,10 @@ const CRM = {
         if (!adjuntos || !adjuntos.length) return '';
         const imgs = adjuntos.filter(a => a && a.dataUrl);
         if (!imgs.length) return '';
-        return `<div class="tl-adjuntos">${imgs.map(a => `<a href="${a.dataUrl}" class="tl-adj" data-src="${a.dataUrl}" title="Ampliar"><img src="${a.dataUrl}" alt="${this._escHtml(a.nombre || 'imagen')}" loading="lazy"></a>`).join('')}</div>`;
+        // T4.11: escAttr en el dataUrl (viene de la DB — una comilla rompía el atributo).
+        // No pasa por safeUrl a propósito: acá el esquema legítimo es `data:` y la
+        // navegación top-frame a data: ya la bloquea el browser (ver _openLightbox).
+        return `<div class="tl-adjuntos">${imgs.map(a => `<a href="${escAttr(a.dataUrl)}" class="tl-adj" data-src="${escAttr(a.dataUrl)}" title="Ampliar"><img src="${escAttr(a.dataUrl)}" alt="${this._escHtml(a.nombre || 'imagen')}" loading="lazy"></a>`).join('')}</div>`;
     },
 
     // Lightbox para ver capturas en grande (Chrome bloquea navegar a un data: URL → overlay propio).
@@ -4466,7 +4477,9 @@ const CRM = {
         if (!src) return;
         const ov = document.createElement('div');
         ov.className = 'crm-lightbox';
-        ov.innerHTML = `<img src="${src}" alt=""><button class="crm-lightbox-x" aria-label="Cerrar">✕</button>`;
+        // T4.11: `src` vuelve de `dataset.src` DECODIFICADO (el escAttr del render
+        // protege aquel atributo, no este innerHTML nuevo) → re-escapar siempre.
+        ov.innerHTML = `<img src="${escAttr(src)}" alt=""><button class="crm-lightbox-x" aria-label="Cerrar">✕</button>`;
         const esc = (e) => { if (e.key === 'Escape') { ov.remove(); document.removeEventListener('keydown', esc); } };
         ov.addEventListener('click', () => { ov.remove(); document.removeEventListener('keydown', esc); });
         document.addEventListener('keydown', esc);

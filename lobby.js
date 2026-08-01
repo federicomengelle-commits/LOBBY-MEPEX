@@ -997,7 +997,7 @@ const HomeModule = {
             let checks = {}; try { checks = await API.getChecklistsBulk(data.map(p => p.id)) || {}; } catch (e) {}
             return data.slice(0, 6).map(p => {
                 const cs = checks[p.id] || [], done = cs.filter(c => c.checked).length, tot = cs.length;
-                const planos = p.drive_folder_url ? `<a class="home-bigbtn home-bigbtn-sec" href="${this._esc(p.drive_folder_url)}" target="_blank" rel="noopener">Planos</a>` : '';
+                const planos = safeUrl(p.drive_folder_url) ? `<a class="home-bigbtn home-bigbtn-sec" href="${this._esc(safeUrl(p.drive_folder_url))}" target="_blank" rel="noopener">Planos</a>` : '';
                 // T3.14/M43: "Seguir armando" iba a data-nav="taller" (ruta muerta que
                 // redirige a #tareas genérico y pierde el stand) → directo a la ficha
                 // del proyecto, tab Producción (checklist del galpón).

@@ -956,7 +956,7 @@ const LocacionesModule = {
                                             ${venc.label ? `<span class="loc-venc-badge ${venc.class}">${venc.label}</span>` : '<span class="loc-venc-ok">Vigente</span>'}
                                         </td>
                                         <td>
-                                            ${d.archivo_url ? `<a href="${this._escAttr(d.archivo_url)}" target="_blank" rel="noopener" class="loc-link-archivo">Ver archivo</a>` : '<span class="loc-no-file">Sin archivo</span>'}
+                                            ${safeUrl(d.archivo_url) ? `<a href="${this._escAttr(safeUrl(d.archivo_url))}" target="_blank" rel="noopener" class="loc-link-archivo">Ver archivo</a>` : '<span class="loc-no-file">Sin archivo</span>'}
                                         </td>
                                         <td class="loc-cell-actions">
                                             <button class="loc-btn-icon loc-edit-doc" data-id="${d.id}" title="Editar">✏️</button>

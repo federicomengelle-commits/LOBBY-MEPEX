@@ -2287,10 +2287,11 @@ const Modules = {
                     case 'stands':
                         return `<td class="td-number">${e.completedStands || 0}/${e.totalStands || 0}</td>`;
                     case 'archivos': {
+                        // T4.11/A28: iban CRUDAS al href (ni escape ni esquema) — XSS almacenado
                         const links = [];
-                        if (e.manualUrl) links.push(`<a href="${e.manualUrl}" target="_blank" rel="noopener" class="mepex-file-link" title="Manual">📋</a>`);
-                        if (e.reglamentoUrl) links.push(`<a href="${e.reglamentoUrl}" target="_blank" rel="noopener" class="mepex-file-link" title="Reglamento">📜</a>`);
-                        if (e.planoUrl) links.push(`<a href="${e.planoUrl}" target="_blank" rel="noopener" class="mepex-file-link" title="Plano">🗺️</a>`);
+                        if (safeUrl(e.manualUrl)) links.push(`<a href="${escAttr(safeUrl(e.manualUrl))}" target="_blank" rel="noopener" class="mepex-file-link" title="Manual">📋</a>`);
+                        if (safeUrl(e.reglamentoUrl)) links.push(`<a href="${escAttr(safeUrl(e.reglamentoUrl))}" target="_blank" rel="noopener" class="mepex-file-link" title="Reglamento">📜</a>`);
+                        if (safeUrl(e.planoUrl)) links.push(`<a href="${escAttr(safeUrl(e.planoUrl))}" target="_blank" rel="noopener" class="mepex-file-link" title="Plano">🗺️</a>`);
                         return `<td>${links.length > 0 ? `<div class="mepex-file-links">${links.join('')}</div>` : '—'}</td>`;
                     }
                     default:
@@ -3102,11 +3103,11 @@ const Modules = {
                             <div class="ficha-pdf-section">
                                 <div class="ficha-section-title">Propuesta PDF</div>
                                 <div class="ficha-pdf-actions">
-                                    <button class="btn btn-primary btn-sm" id="fichaPdfPreview" data-url="${item.pdfUrl}">
+                                    <button class="btn btn-primary btn-sm" id="fichaPdfPreview" data-url="${escAttr(safeUrl(item.pdfUrl) || '')}">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                         Ver PDF
                                     </button>
-                                    <a href="${item.pdfUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+                                    <a href="${escAttr(safeUrl(item.pdfUrl) || '#')}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                                         Nueva pestaña
                                     </a>

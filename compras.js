@@ -212,7 +212,9 @@ const ComprasModule = {
                 actions += `<button class="cmp-ped-act ok" data-pact="comprado" data-id="${p.id}">✓ Comprado</button>`;
             }
             actions += `<button class="cmp-ped-act del" data-pact="del" data-id="${p.id}" title="Eliminar">🗑</button>`;
-            const linkHtml = p.link ? ` <a href="${this._escAttr(p.link)}" target="_blank" rel="noopener" class="cmp-ped-link">link ↗</a>` : '';
+            // T4.11: safeUrl valida el esquema (un `javascript:` tipeado en el pedido ejecutaría al click)
+            const linkUrl = safeUrl(p.link);
+            const linkHtml = linkUrl ? ` <a href="${this._escAttr(linkUrl)}" target="_blank" rel="noopener" class="cmp-ped-link">link ↗</a>` : '';
             return `
                 <tr class="${resuelto ? 'cmp-ped-row-dim' : ''}">
                     <td><span class="cmp-ped-desc">${tipoIcon} ${this._esc(p.descripcion || '—')}${linkHtml}</span> ${cant} ${urg}
@@ -1543,7 +1545,7 @@ const ComprasModule = {
                             <button class="cmp-presu-pick" data-presu-win="${pr.id}" title="Elegir ganadora"></button>
                             <div class="cmp-presu-main">
                                 <span class="cmp-presu-prov">${this._esc(pr.proveedor_nombre || this._getProveedorName(pr.proveedor_uuid || pr.proveedor_id))}${pr.es_ganadora ? ' <span class="cmp-presu-wintag">ganadora</span>' : ''}</span>
-                                ${pr.link ? ` <a href="${this._escAttr(pr.link)}" target="_blank" rel="noopener" class="cmp-presu-link">link ↗</a>` : ''}
+                                ${safeUrl(pr.link) ? ` <a href="${this._escAttr(safeUrl(pr.link))}" target="_blank" rel="noopener" class="cmp-presu-link">link ↗</a>` : ''}
                                 ${pr.notas ? `<div class="cmp-presu-notas">${this._esc(pr.notas)}</div>` : ''}
                             </div>
                             <span class="cmp-presu-monto">${Number(pr.monto) > 0 ? this._formatMoney(pr.monto) : `<button class="cmp-presu-cargar" data-presu-cargar="${pr.id}">💲 Cargar precio</button>`}</span>

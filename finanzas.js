@@ -9221,12 +9221,8 @@ const FinanzasModule = {
         `;
     },
 
-    /** Sólo http/https en un href. Mismo criterio que `creditos-fiscales.js`. */
-    _safeUrl(u) {
-        if (!u) return null;
-        const s = String(u).trim();
-        return /^https?:\/\//i.test(s) ? s : null;
-    },
+    /** Sólo http/https en un href. T4.11: delega en el global de components.js. */
+    _safeUrl(u) { return safeUrl(u); },
 
     /**
      * `comprobantes_recibidos.archivo_url` guarda DOS cosas distintas: el path
@@ -9947,7 +9943,7 @@ const FinanzasModule = {
                 ${row('Monto', this._formatMoney(v.monto))}
                 ${row('Vence', this._formatDate(v.fecha_cobro))}
                 ${v.fecha_realizado?row('Realizado', this._formatDate(v.fecha_realizado)):''}
-                ${url?`<div style="margin-top:12px;"><a href="${url}" target="_blank" rel="noopener" class="btn btn-ghost">📎 Ver comprobante</a></div>`:''}
+                ${url?`<div style="margin-top:12px;"><a href="${escAttr(url)}" target="_blank" rel="noopener" class="btn btn-ghost">📎 Ver comprobante</a></div>`:''}
             </div>` });
     },
 

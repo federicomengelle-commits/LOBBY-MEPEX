@@ -988,7 +988,7 @@ const ProyectoDetalle = {
                         <div class="pjd-drive-embed-wrap" id="pjdDriveEmbedWrap">
                             <iframe
                                 class="pjd-drive-iframe"
-                                src="${embedUrl}"
+                                src="${escAttr(embedUrl)}"
                                 title="Carpeta Drive"
                                 loading="lazy"
                                 referrerpolicy="no-referrer"

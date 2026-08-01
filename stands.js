@@ -329,7 +329,7 @@ const StandsModule = {
                         <div class="std-ficha-img">
                             ${p._img ? `<img src="${escAttr(p._img)}" alt="">` : `<div class="std-card-noimg std-noimg-lg">sin render</div>`}
                         </div>
-                        ${p.drive_folder_url ? `<a class="std-drive" href="${escAttr(p.drive_folder_url)}" target="_blank" rel="noopener">📁 Ver carpeta Drive (planos / renders)</a>` : ''}
+                        ${safeUrl(p.drive_folder_url) ? `<a class="std-drive" href="${escAttr(safeUrl(p.drive_folder_url))}" target="_blank" rel="noopener">📁 Ver carpeta Drive (planos / renders)</a>` : ''}
                     </div>
                     <div class="std-ficha-col-data">
                         <h1 class="std-ficha-name">${escHtml(p.nombre || 'Sin nombre')}</h1>

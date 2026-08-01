@@ -2356,7 +2356,7 @@ const EventosModule = {
                         ${generalDocs.map(d => `
                             <div class="ev-doc-row">
                                 <span class="ev-doc-icon">${this._getDocIcon(d.tipo)}</span>
-                                ${d.url ? `<a class="ev-doc-name ev-doc-link" href="${this._escAttr(d.url)}" target="_blank" rel="noopener">${d.nombre}</a>` : `<span class="ev-doc-name">${d.nombre}</span>`}
+                                ${safeUrl(d.url) ? `<a class="ev-doc-name ev-doc-link" href="${this._escAttr(safeUrl(d.url))}" target="_blank" rel="noopener">${this._esc(d.nombre)}</a>` : `<span class="ev-doc-name">${this._esc(d.nombre)}</span>`}
                                 <span class="ev-doc-type badge badge-ghost">${this._getDocTypeLabel(d.tipo)}</span>
                                 <button class="ev-doc-remove" data-remove-doc="${d.id}" title="Eliminar">&times;</button>
                             </div>
@@ -2388,7 +2388,7 @@ const EventosModule = {
                         ${seguros.map(d => `
                             <div class="ev-doc-row">
                                 <span class="ev-doc-icon">🛡️</span>
-                                ${d.url ? `<a class="ev-doc-name ev-doc-link" href="${this._escAttr(d.url)}" target="_blank" rel="noopener">${d.nombre}</a>` : `<span class="ev-doc-name">${d.nombre}</span>`}
+                                ${safeUrl(d.url) ? `<a class="ev-doc-name ev-doc-link" href="${this._escAttr(safeUrl(d.url))}" target="_blank" rel="noopener">${this._esc(d.nombre)}</a>` : `<span class="ev-doc-name">${this._esc(d.nombre)}</span>`}
                                 <button class="ev-doc-remove" data-remove-doc="${d.id}" title="Eliminar">&times;</button>
                             </div>
                         `).join('')}
