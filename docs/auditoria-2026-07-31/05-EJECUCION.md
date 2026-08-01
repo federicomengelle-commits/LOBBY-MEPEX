@@ -34,31 +34,31 @@
 | **T0.10** | **Las 4 policies de `storage.objects`** | SQL | ✅ | eran 1 en `objects` + 3 en `buckets`. anon fuera de comprobantes/remitos/stands |
 | **T0.11** | `pg_default_acl` de TABLAS/VIEWS también abre todo a `anon` | SQL | ⬜ | **decisión de Fede** — nuevo, salió de T0.1. Es la causa raíz del incidente de las 5 views (26/07). Cerrarlo toca el contrato del Cotizador |
 | **T0.12** | 4 funciones SECDEF de trigger sin `SET search_path` | SQL | ✅ | nuevo, salió de T0.2. Ahora **0** SECDEF sin search_path |
-| **T1** | nginx: `.git` + X-Forwarded-For + 16m + timeout 180s | config | 🟡 | **conf listo en el repo** · ⏳ falta el `cp` + reload de Fede |
+| **T1** | nginx: `.git` + X-Forwarded-For + 16m + timeout 180s | config | ✅ | deployado y verificado 2026-08-01: `.git/config`, `CLAUDE.md` y `tools/` pasaron de 200 a **404**; app, assets, sw.js, manifest, encuesta, cotizador y `.well-known` intactos |
 | **T2** | Deploy VPS (los 7 archivos juntos) | deploy | ⬜ | habilita `/api/push/aviso` |
 | **T3.1** | **`app.js?v=17`** en `index.html` | JS | ✅ | sin esto ningún bump de módulo diferido llega |
 | **T3.2** | Cascada de costos → RPC (`api.js:3874`) | JS | ✅ | eran **DOS** cascadas, no una. + el `if (r?.ok)` |
-| **T3.3** | Candado `monto_editado` del jornal | JS | ⬜ | **antes que T5.3** |
+| **T3.3** | Candado `monto_editado` del jornal | JS | ✅ | **T5.3 destrabado**. Además el sync recalculaba jornales YA PAGADOS |
 | **T3.4** | El taller puede tildar el checklist | JS | ✅ | RLS verificado: la escritura pasa |
-| **T3.5** | `pushDefault:true` en categoría `eventos` | JS | ⬜ | |
+| **T3.5** | `pushDefault:true` en categoría `eventos` | JS | ✅ | el server ya mandaba el push; la pantalla mostraba el switch apagado |
 | **T3.6** | Rol `venta` inexistente en los avisos | JS | ⬜ | **decisión de Fede**: ¿ampliar el aviso o darle el rol a Noe? |
-| **T3.7** | Alerta "proyecto trabado": estados legales | JS | ⬜ | |
-| **T3.8** | Catálogo: `novedad_proyecto` + `novedad_critica` | JS | ⬜ | |
+| **T3.7** | Alerta "proyecto trabado": estados legales | JS | ✅ | 7 de 8 estados eran ilegales → la alerta nunca se disparó |
+| **T3.8** | Catálogo: `novedad_proyecto` + `novedad_critica` | JS | ✅ | |
 | **T3.9** | Aviso de stock bajo también al taller | JS+SQL | ⬜ | |
 | **T3.10** | Reset del claim de armado al mover la fecha | JS | ⬜ | |
 | **T3.11** | Desarme multi-día + matar `ev_ext_` de localStorage | JS | ⬜ | |
 | **T3.12** | ARCA: error bloqueante si falla el INSERT del CAE | JS | ⬜ | |
 | **T3.13** | `requireRole` sin el rol `finanzas` inexistente | VPS | ⬜ | va con T2 |
 | **T3.14** | Lobby del taller: nav del bigcard + tiles clickeables | JS | ⬜ | |
-| **T3.15** | Ver el remito firmado (cablear `getRemitoSignedUrl`) | JS | ⬜ | |
+| **T3.15** | Ver el remito firmado (cablear `getRemitoSignedUrl`) | JS | ✅ | patrón open-then-fill por el bloqueador de popups |
 | **T3.16** | `updateParametroGlobal` devuelve la verdad | JS | ✅ | |
 | **T3.17** | `conciliado_por` con `.uid` en vez de `.id` | JS | ✅ | barrido: era el único caso vivo |
 | **T3.18** | `_recomputeOCGanadora`: no borrar ante error de lectura | JS | ⬜ | destructivo |
 | **T3.19** | Modal "Nueva tarea": `fecha_evento_inicio` | JS | ✅ | `eventos.fecha_inicio` no existe → 400 |
 | **T3.20** | Fechas UTC en `compras.js` y `locaciones.js` | JS | ⬜ | vencimientos un día antes |
-| **T3.21** | `API.ajustarStock`: el catch-all degrada a read-modify-write | JS | ⬜ | nuevo, salió de T0.1. Un 403 real cae al camino NO atómico en silencio. Copiar el chequeo `rpcMissing` de `inventario.js:2452` |
+| **T3.21** | `API.ajustarStock`: el catch-all degrada a read-modify-write | JS | ✅ | destapó un HIGH: `recibirOrdenCompra` podía **duplicar stock** al reintentar tras un fallo parcial. Arreglado en el mismo commit |
 | **T3.23** | Borrar `recalcularPrecioAlquiler` (0 callers) | JS | ⬜ | nuevo, salió de T3.2. ⚠️ **NO sacar `calculo-receta.js` del loader por separado**: van en el mismo commit o se rompe algo que ya no lo usa |
-| **T3.22** | `restoreSession` no chequea `active` | JS | ⬜ | nuevo, salió de T0.2. El login sí lo chequea (`auth.js:70`); una sesión ya abierta sobrevive a la baja. Post-T0.2 es cosmético (el RLS ya la vacía), pero deja al usuario mirando una app vacía sin decirle por qué |
+| **T3.22** | `restoreSession` no chequea `active` | JS | ✅ | salió de T0.2. El login sí lo chequea (`auth.js:70`); una sesión ya abierta sobrevive a la baja. Post-T0.2 es cosmético (el RLS ya la vacía), pero deja al usuario mirando una app vacía sin decirle por qué |
 | **T4.1** | **Cobranza + `monto_cobrado` (C3+C4 juntos)** | JS+SQL | ⬜ | ⚠️ **nunca por separado** |
 | **T4.2** | Candado de edición sobre movimientos contabilizados | JS+SQL | ⬜ | |
 | **T4.3** | `API.anularCobro` completo | JS | ⬜ | |
@@ -455,7 +455,8 @@ Y el comentario de `costos.js:4082`, que describe `costos_params_globales` como 
 | Fecha | Ítems tocados | Notas |
 |---|---|---|
 | 2026-07-31 | — | Auditoría entregada. Nada ejecutado todavía. |
-| 2026-08-01 | **⏳ LO QUE ESPERA A FEDE** | **(1)** `~/pull-lobby.sh` — trae `app.js?v=17` + api 98 / finanzas 64 / contabilidad 18 / proyecto-detalle 20 / tareas 15. **(2)** el `cp` del nginx + `nginx -t && reload` (T1). **(3)** decisiones: **T5.2** (borrar las 2 copias de la factura, $151.200 de IVA) → destraba el índice de T0.8 · **T0.9** (los huérfanos de $10,7M) · **T0.11** (default de anon para tablas/views) · **T3.6** (rol `venta` que no existe). **(4)** del Dashboard: T5.12 (revocar sesiones de las 4 bajas) y T5.13 (leaked password protection). **(5)** el smoke de Storage logueado: subir un comprobante, una imagen de stand y una foto de armado. **Aviso: el KPI "Saldo disponible" pasa a $8.199.900 — es correcto, ver T0.6.** |
+| 2026-08-01 | **T1 ✅ + T3.3·T3.5·T3.7·T3.8·T3.15·T3.21·T3.22 ✅** | Fede hizo el pull Y el `cp` del nginx: verificado que `/.git/config`, `/CLAUDE.md` y `/tools/vps/server.js` pasaron de 200 a 404, y que app/assets/sw.js/manifest/encuesta/cotizador/`.well-known` siguen sanos. Segundo lote de Tanda 3 en `e67de14`. El reviewer cazó 1 HIGH **causado por mi propio fix de T3.21**: `recibirOrdenCompra` quedaba con un modo de falla parcial que, con el reintento que ofrece la UI, **duplicaba stock**. Arreglado en el mismo commit. **T3.3 destraba T5.3.** |
+| 2026-08-01 | **⏳ LO QUE ESPERA A FEDE (actualizado)** | **(1)** `~/pull-lobby.sh` — trae `app.js?v=17` + api 98 / finanzas 64 / contabilidad 18 / proyecto-detalle 20 / tareas 15. **(2)** el `cp` del nginx + `nginx -t && reload` (T1). **(3)** decisiones: **T5.2** (borrar las 2 copias de la factura, $151.200 de IVA) → destraba el índice de T0.8 · **T0.9** (los huérfanos de $10,7M) · **T0.11** (default de anon para tablas/views) · **T3.6** (rol `venta` que no existe). **(4)** del Dashboard: T5.12 (revocar sesiones de las 4 bajas) y T5.13 (leaked password protection). **(5)** el smoke de Storage logueado: subir un comprobante, una imagen de stand y una foto de armado. **Aviso: el KPI "Saldo disponible" pasa a $8.199.900 — es correcto, ver T0.6.** |
 | 2026-08-01 | **T3.1·T3.2·T3.4·T3.16·T3.17·T3.19 ✅** | Primer lote de Tanda 3, commit `b276901`. typescript-reviewer APPROVE 0 C/H. Los 3 hallazgos que el plan no tenía: la cascada de costos eran **dos** y el conteo daba todo por exitoso con la RPC · `eventos.fecha_inicio` no existe (el desplegable del modal Nueva tarea estaba vacío) · el guard vestigial de `CalculoReceta`. Ítem nuevo: **T3.23**. |
 | 2026-08-01 | **T0.6·T0.7·T0.8(parcial)·T0.10·T0.12 ✅ + T1 listo** | Commit `1470745`. Ver el detalle de cada uno arriba. sql-reviewer: 4 de 6 archivos volvieron BLOCK y **los hallazgos eran reales todas las veces** — el más grave, que la Parte A de T0.2 sola habría **ascendido** a un taller dado de baja. Bug vivo encontrado de paso: el tab Mapeos no podía guardar un mapeo genérico de egreso (`contabilidad.js?v=18`). |
 | 2026-08-01 | **T0.3 + T0.4 + T0.5 ✅** | `sql/auditoria_t0_3_4_5_rls_pendientes.sql` aplicado + verificado (simulación de 4 usuarios, rollback, 0 residuo). sql-reviewer BLOCK → HIGH de idempotencia (13 `CREATE POLICY` con nombre nuevo sin su `DROP IF EXISTS`: el archivo no se podía re-correr) + MEDIUM en el rollback documentado (`cv_update` como `FOR ALL` habría reabierto el DELETE que T0.2 cerró). Hallazgo propio: en `audit_log` había **2 pares de policies anulándose entre sí** — cualquiera leía la auditoría de todos, y podía escribir entradas a nombre de otro. Sin JS, sin deploy. |
