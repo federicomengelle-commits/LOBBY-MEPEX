@@ -75,18 +75,18 @@ const ContabilidadModule = {
 
     // Libros IVA state
     _ivaSubtab: 'ventas',   // ventas | compras | posicion
-    _ivaPeriodo: new Date().toISOString().slice(0, 7), // YYYY-MM
+    _ivaPeriodo: mesLocal(), // YYYY-MM
     _ivaVentas: [],
     _ivaCompras: [],
     _ivaComprasOrigen: 'oficial',   // 'oficial' | 'virtual' | 'ambos' (Fase B — IVA recovery)
     _ivaComprasVirtual: [],         // facturas extracontables del periodo (cache)
 
     // Reportes state
-    _reportePeriodo: new Date().toISOString().slice(0, 7),
+    _reportePeriodo: mesLocal(),
     _reporteData: null,
 
     // Asiento manual state
-    _asientoFecha: new Date().toISOString().split('T')[0],
+    _asientoFecha: hoyLocal(),
     _asientoConcepto: '',
     _asientoCanal: null,
     _asientoNotas: '',
@@ -3752,7 +3752,7 @@ const ContabilidadModule = {
         // Populate form state
         this._asientoEditId = asiento.id;
         this._asientoEditNumero = asiento.numero;
-        this._asientoFecha = asiento.fecha || new Date().toISOString().split('T')[0];
+        this._asientoFecha = asiento.fecha || hoyLocal();
         this._asientoConcepto = asiento.concepto || '';
         this._asientoCanal = asiento.canal || 'oficial';
         this._asientoNotas = asiento.notas || '';
@@ -3805,7 +3805,7 @@ const ContabilidadModule = {
     },
 
     _resetFormulario() {
-        this._asientoFecha = new Date().toISOString().split('T')[0];
+        this._asientoFecha = hoyLocal();
         this._asientoConcepto = '';
         this._asientoCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
         this._asientoNotas = '';

@@ -32,7 +32,7 @@ const CreditosFiscales = {
         this._injectStyles();
         container.innerHTML = '<div class="cfi-loading">Cargando…</div>';
 
-        if (!this._filtros.periodo) this._filtros.periodo = new Date().toISOString().slice(0, 7);
+        if (!this._filtros.periodo) this._filtros.periodo = mesLocal();
 
         // El estado se asigna DESPUÉS del guard, no antes.
         // Asignar `this._items` y después chequear el token frena el repintado

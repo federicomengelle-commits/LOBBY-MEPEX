@@ -3026,7 +3026,7 @@ const FinanzasModule = {
                     delete dup.updated_at;
                     delete dup.created_by;
                     dup.concepto = (ingreso.concepto || '') + ' (copia)';
-                    dup.fecha = new Date().toISOString().slice(0, 10);
+                    dup.fecha = hoyLocal();
                     this._showIngresoModal(dup);
                 } else if (action === 'del') {
                     const ok = await Confirm.delete(`el ingreso "${escHtml(ingreso.concepto)}" (${this._formatMoney(ingreso.monto)})`, { undoable: false });
@@ -3412,7 +3412,7 @@ const FinanzasModule = {
         const title = isEdit ? 'Editar ingreso' : 'Nuevo ingreso';
         const i = ingreso || {};
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
         const defaultCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
 
         // Build proyecto options
@@ -3941,7 +3941,7 @@ const FinanzasModule = {
                     delete dup.updated_at;
                     delete dup.created_by;
                     dup.concepto = (egreso.concepto || '') + ' (copia)';
-                    dup.fecha = new Date().toISOString().slice(0, 10);
+                    dup.fecha = hoyLocal();
                     this._showEgresoModal(dup);
                 } else if (action === 'del') {
                     const ok = await Confirm.delete(`el egreso "${escHtml(egreso.concepto)}" (${this._formatMoney(egreso.monto)})`, { undoable: false });
@@ -4221,7 +4221,7 @@ const FinanzasModule = {
         const title = isEdit ? 'Editar egreso' : 'Nuevo egreso';
         const e = egreso || {};
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
         const defaultCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
         const cfData = (isEdit && e.categoria === 'credito_fiscal') ? this._parseCFData(e.notas) : null;
 
@@ -4732,7 +4732,7 @@ const FinanzasModule = {
             `<option value="${c.id}">${escHtml(c.nombre)}</option>`
         ).join('');
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
 
         const cuentaMoneda = (id) => (cuentasActivas.find(c => c.id === id)?.moneda) || 'ARS';
         const optsConMoneda = cuentasActivas.map(c =>
@@ -5819,7 +5819,7 @@ const FinanzasModule = {
 
         // ═══ Save ═══
         const slug = (proyNombre || 'proyecto').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-        const filename = `MEPEX_PLAN-${numero}_${slug}_${new Date().toISOString().slice(0, 10)}.pdf`;
+        const filename = `MEPEX_PLAN-${numero}_${slug}_${hoyLocal()}.pdf`;
         doc.save(filename);
         Toast.success('PDF generado');
     },
@@ -6150,8 +6150,8 @@ const FinanzasModule = {
 
         // Por pagar (vencimientos pendientes próx 30 días)
         try {
-            const in30 = new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10);
-            const today = now.toISOString().slice(0, 10);
+            const in30 = fechaISOLocal(new Date(now.getTime() + 30 * 86400000));
+            const today = fechaISOLocal(now);
             const { data } = await supabaseClient.from('vencimientos_generados').select('monto_estimado').eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', today).lte('fecha_vencimiento', in30);
             kpi.porPagar = (data || []).reduce((s, r) => s + (Number(r.monto_estimado) || 0), 0);
         } catch (_) {}
@@ -6369,8 +6369,8 @@ const FinanzasModule = {
         if (!container) return;
 
         const today = new Date();
-        const todayStr = today.toISOString().slice(0, 10);
-        const in7 = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+        const todayStr = fechaISOLocal(today);
+        const in7 = fechaISOLocal(new Date(today.getTime() + 7 * 86400000));
         const events = [];
 
         try {
@@ -6458,7 +6458,7 @@ const FinanzasModule = {
         if (this._repPeriodo === 'anio') {
             return { desde: `${y}-01-01`, hasta: `${y}-12-31` };
         }
-        return { desde: this._repDesde || `${y}-01-01`, hasta: this._repHasta || now.toISOString().slice(0, 10) };
+        return { desde: this._repDesde || `${y}-01-01`, hasta: this._repHasta || fechaISOLocal(now) };
     },
 
     async _loadReporteData() {
@@ -7027,7 +7027,7 @@ const FinanzasModule = {
 
         // Export
         document.getElementById('finRepExport')?.addEventListener('click', () => {
-            const filename = `finanzas_${this._repSubtab}_${new Date().toISOString().slice(0, 10)}.csv`;
+            const filename = `finanzas_${this._repSubtab}_${hoyLocal()}.csv`;
             this._exportCSV(this._lastReportData || [], filename);
         });
     },
@@ -7520,7 +7520,7 @@ const FinanzasModule = {
 
     _buildWizardStep2(d) {
         const tipo = d.tipo || 'factura_a';
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
         this._ensureWizardItemsStyles();
         if (!Array.isArray(d.items) || !d.items.length) {
             d.items = [{ desc: this._servicioLabel[d.servicio] || d.servicio || '', cant: 1, precio: '', alic: 21 }];
@@ -7583,7 +7583,7 @@ const FinanzasModule = {
         const cliDom = d._padronDomicilio || r.receptor_domicilio || '';
         const condRec = this._condIvaReceptor[d.cond_iva_receptor || r.cond_iva_receptor || (isA ? 1 : 5)] || '';
         const pv = String((comp ? comp.punto_venta : d.punto_venta) || 5).padStart(5, '0');
-        const fecha = comp ? this._formatDate(comp.fecha) : this._formatDate(new Date().toISOString().slice(0, 10));
+        const fecha = comp ? this._formatDate(comp.fecha) : this._formatDate(hoyLocal());
         const nroTxt = comp && comp.numero ? comp.numero : (proximo ? `<span id="finWizNro" style="color:#999;">consultando ARCA…</span>` : `${pv}-········`);
         const baseImp = isA ? (d.neto || 0) : (d.total || 0);
         const itemDet = `${escHtml(this._servicioLabel[d.servicio] || d.servicio || 'Servicios')}${d.descripcion ? ` — ${escHtml(d.descripcion)}` : ''}`;
@@ -7937,7 +7937,7 @@ const FinanzasModule = {
         }
 
         const d = this._factWizardData;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
         const uid = Auth.getUser()?.uid || null;
         const esC = d.tipo === 'factura_c';
 
@@ -8277,7 +8277,7 @@ const FinanzasModule = {
     // Único punto de verdad: lo usan tanto la emisión individual (_emitirComprobante)
     // como la emisión en lote (_arcaEmitirUno). `result` = respuesta de /api/arca/facturar.
     _buildComprobanteRecord(d, result, uid) {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
         const esC = d.tipo === 'factura_c';
         return {
             fecha: result.fecha || today,
@@ -8379,14 +8379,14 @@ const FinanzasModule = {
             neto, iva, total, iva_alicuota: alic,
             periodo_desde: range.desde,
             periodo_hasta: range.hasta,
-            vto_pago: new Date().toISOString().slice(0, 10),
+            vto_pago: hoyLocal(),
         };
     },
 
     // Emite UN comprobante en ARCA y lo guarda. Sin PDF ni pantalla de éxito (eso lo maneja el lote).
     async _arcaEmitirUno(d) {
         const uid = Auth.getUser()?.uid || null;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
         const payload = {
             tipo: d.tipo,
             punto_venta: d.punto_venta || 5,
@@ -9717,7 +9717,7 @@ const FinanzasModule = {
         const enC = this._valores.filter(v => v.estado === 'en_cartera');
         const aCobrar = enC.filter(v => v.sentido === 'recibido').reduce((s,v)=>s+Number(v.total_en_ars||v.monto||0),0);
         const aPagar = enC.filter(v => v.sentido === 'emitido').reduce((s,v)=>s+Number(v.total_en_ars||v.monto||0),0);
-        const hoy = new Date().toISOString().slice(0,10);
+        const hoy = hoyLocal();
         const venc = enC.filter(v => v.fecha_cobro && v.fecha_cobro < hoy).length;
         const k = (l,val,c) => `<div class="finval-kpi"><div class="finval-kpi-l">${l}</div><div class="finval-kpi-v" style="color:${c};">${val}</div></div>`;
         el.innerHTML = k('A cobrar (cartera)', this._formatMoney(aCobrar), '#00CC88')
@@ -9792,7 +9792,7 @@ const FinanzasModule = {
         const proyOpts = Object.keys(this._proyectosMap||{}).map(k => `<option value="${k}">${escHtml(this._proyectosMap[k])}</option>`).join('');
         if (!this._provVal) { try { this._provVal = await API.getProveedores(); } catch { this._provVal = []; } }
         const provOpts = (this._provVal||[]).map(p => `<option value="${p.id}">${escHtml(p.name||'—')}</option>`).join('');
-        const today = new Date().toISOString().slice(0,10);
+        const today = hoyLocal();
         const defCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
         const body = `
             <div style="display:flex;flex-direction:column;gap:12px;">
@@ -9870,7 +9870,7 @@ const FinanzasModule = {
     _showClearingModal(v, estado) {
         const cuentaOpts = (this._cuentas||[]).map(c => `<option value="${c.id}" ${v.cuenta_id===c.id?'selected':''}>${escHtml(c.nombre)}</option>`).join('');
         const titulo = estado === 'debitado' ? 'Debitar (sale del banco)' : 'Cobrar / Depositar (entra al banco)';
-        const today = new Date().toISOString().slice(0,10);
+        const today = hoyLocal();
         const body = `
             <div style="display:flex;flex-direction:column;gap:12px;">
                 <p style="color:var(--text-muted);font-size:.85rem;margin:0;">${escHtml(v.banco||'')} ${escHtml(v.numero||'')} · <b>${this._formatMoney(v.monto)}</b></p>
@@ -10032,7 +10032,7 @@ const FinanzasModule = {
         const isEdit = !!comp;
         const title = isEdit ? 'Editar comprobante recibido' : 'Nuevo comprobante recibido';
         const c = comp || {};
-        const today = new Date().toISOString().slice(0, 10);
+        const today = hoyLocal();
         const defaultCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
 
         const tipoOpts = Object.entries(this._tipoCompRecibed).map(([k, v]) =>
@@ -10684,7 +10684,7 @@ const FinanzasModule = {
                 return;
             }
 
-            const today = new Date().toISOString().slice(0, 10);
+            const today = hoyLocal();
 
             // categoria + canal de la plantilla (antes el canal estaba hardcodeado 'oficial')
             const rec = venc.data?.vencimientos_recurrentes || {};
@@ -10749,7 +10749,7 @@ const FinanzasModule = {
                     // Skip if in the past
                     if (targetDate < new Date(now.getFullYear(), now.getMonth(), 1)) continue;
 
-                    const fechaStr = targetDate.toISOString().slice(0, 10);
+                    const fechaStr = fechaISOLocal(targetDate);
 
                     // Check if already exists
                     const { data: existing } = await supabaseClient
@@ -11796,7 +11796,7 @@ const FinanzasModule = {
         const payload = {
             cuenta_id: concil.cuenta_id,
             periodo: concil.periodo,
-            fecha_conciliacion: new Date().toISOString().split('T')[0],
+            fecha_conciliacion: hoyLocal(),
             saldo_banco: saldoBanco,
             saldo_lobby: saldoLobby,
             diferencia: diferencia,
@@ -12391,7 +12391,7 @@ const FinanzasModule = {
                     delete dup.updated_at;
                     delete dup.created_by;
                     dup.descripcion = (item.descripcion || '') + ' (copia)';
-                    dup.fecha = new Date().toISOString().slice(0, 10);
+                    dup.fecha = hoyLocal();
                     this._showIvarModal(dup);
                 } else if (action === 'del') {
                     const ok = await Confirm.delete(`el registro de ${item.razon_social || 'sin nombre'} (IVA $${parseFloat(item.iva_total || 0).toLocaleString('es-AR')})`);
@@ -12437,7 +12437,7 @@ const FinanzasModule = {
 
     _showIvarModal(item = null) {
         const isEdit = !!item;
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = hoyLocal();
         const v = {
             fecha:        item?.fecha || hoy,
             cuit:         item?.cuit || '',

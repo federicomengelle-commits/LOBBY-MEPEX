@@ -536,7 +536,7 @@ const API = {
                     .from('eventos')
                     .select('*', { count: 'exact', head: true })
                     .eq('_deleted', false)
-                    .gte('fecha_evento_inicio', new Date().toISOString().split('T')[0]),
+                    .gte('fecha_evento_inicio', hoyLocal()),
             ]);
 
             const activeProjects = projects.data ? projects.data.length : 0;
@@ -844,7 +844,7 @@ const API = {
             if (antes && payload.fecha_armado_inicio !== undefined
                 && (payload.fecha_armado_inicio || null) !== (antes.fecha_armado_inicio || null)
                 && payload.fecha_armado_inicio
-                && payload.fecha_armado_inicio > (typeof hoyLocal === 'function' ? hoyLocal() : new Date().toISOString().split('T')[0])) {
+                && payload.fecha_armado_inicio > hoyLocal()) {
                 payload.notif_armado_7d_at = null;
                 payload.notif_armado_2d_at = null;
             }
@@ -954,8 +954,8 @@ const API = {
                 .from('eventos').select('id, nombre, fecha_armado_inicio, fecha_armado_fin')
                 .eq('_deleted', false).neq('id', id)
                 .not('fecha_armado_inicio', 'is', null)
-                .gte('fecha_armado_inicio', new Date(iniMs - margen).toISOString().split('T')[0])
-                .lte('fecha_armado_inicio', new Date(finMs + margen).toISOString().split('T')[0]);
+                .gte('fecha_armado_inicio', fechaISOLocal(new Date(iniMs - margen)))
+                .lte('fecha_armado_inicio', fechaISOLocal(new Date(finMs + margen)));
             if (error) throw error;
 
             const pisados = (data || []).filter(o => {
@@ -4591,7 +4591,7 @@ const API = {
     // compras_pagos.notif_vencido_at (sql/notif_operativas.sql); si no existe, sale limpio.
     async notifyPagosVencidos() {
         try {
-            const hoy = new Date().toISOString().split('T')[0];
+            const hoy = hoyLocal();
             const { data: claimed, error } = await supabaseClient
                 .from('compras_pagos')
                 .update({ notif_vencido_at: new Date().toISOString() })
@@ -4708,11 +4708,11 @@ const API = {
      * sin esas columnas el UPDATE falla y la función sale en silencio.
      */
     async notifyArmadoProximo() {
-        const hoy = new Date().toISOString().split('T')[0];
+        const hoy = hoyLocal();
         const enDias = (n) => {
             const d = new Date();
             d.setDate(d.getDate() + n);
-            return d.toISOString().split('T')[0];
+            return fechaISOLocal(d);
         };
         let total = 0;
 
@@ -4886,7 +4886,7 @@ const API = {
                 cantidad: pedido.cantidad ?? null,
                 proyecto_id: pedido.proyecto_id || null,
                 categoria_gasto: pedido.categoria_gasto || null,
-                fecha: new Date().toISOString().split('T')[0],
+                fecha: hoyLocal(),
                 estado: 'pendiente',
                 notas: pedido.nota || null,
                 proveedor_id: null,
@@ -4941,7 +4941,7 @@ const API = {
             const payload = {
                 numero_oc: 'OC-' + String(next).padStart(4, '0'),
                 descripcion, proyecto_id, categoria_gasto,
-                fecha: new Date().toISOString().split('T')[0],
+                fecha: hoyLocal(),
                 estado: 'pendiente', notas, proveedor_id: null, monto_total: 0, _deleted: false,
             };
             const { data: row, error } = await supabaseClient.from('compras_ordenes').insert(payload).select('id, numero_oc').single();
@@ -5963,8 +5963,8 @@ const API = {
         hoy.setHours(0, 0, 0, 0);
         const hasta = new Date(hoy);
         hasta.setDate(hasta.getDate() + days);
-        const desdeStr = hoy.toISOString().slice(0, 10);
-        const hastaStr = hasta.toISOString().slice(0, 10);
+        const desdeStr = fechaISOLocal(hoy);
+        const hastaStr = fechaISOLocal(hasta);
         return this.getCargas({ desde: desdeStr, hasta: hastaStr });
     },
 
@@ -6921,7 +6921,7 @@ const API = {
             if (monto === null || monto <= 0) {
                 return { error: `Importe inválido: "${payload.monto}".` };
             }
-            const fecha = payload.fecha || new Date().toISOString().split('T')[0];
+            const fecha = payload.fecha || hoyLocal();
             const periodo = payload.periodo || String(fecha).slice(0, 7);
             if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo)) {
                 return { error: `Período inválido: "${periodo}". Se espera AAAA-MM.` };
@@ -7068,7 +7068,7 @@ const API = {
             return { error: 'Falta la cuenta donde entró la plata.' };
         }
 
-        const hoy = fecha || new Date().toISOString().split('T')[0];
+        const hoy = fecha || hoyLocal();
         let ingresoId = null;
 
         try {
@@ -7373,7 +7373,7 @@ const API = {
     RENDIMIENTO_CAT_LABEL: { jornal: 'Jornal', flete: 'Flete', proveedor: 'Proveedor', seguro: 'Seguro', comida: 'Comida' },
 
     _uid() { const u = (typeof Auth !== 'undefined' && Auth.getUser) ? Auth.getUser() : null; return u?.uid || u?.id || null; },
-    _today() { return new Date().toISOString().split('T')[0]; },
+    _today() { return hoyLocal(); },
 
     // ── Eventos (selector liviano) ──
     async getEventosLite() {
@@ -8805,7 +8805,7 @@ const API = {
     // "Qué sale hoy del depósito": transportes de HOY o en tránsito (fecha pasada sin
     // remito firmado). Enriquecidos + con nombre del evento. Ordenados por fecha/hora.
     async getSalidasHoy() {
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = hoyLocal();
         try {
             // Traemos todas las salidas con fecha <= hoy y filtramos en JS:
             // se muestran las de HOY (cualquiera) + las pasadas en tránsito (sin remito firmado).
@@ -9138,7 +9138,7 @@ const API = {
     // Marca la rutina como hecha y reprograma proxima_fecha (RPC SECURITY DEFINER).
     async avanzarRutina(rutinaId, fecha) {
         try {
-            const f = fecha || new Date().toISOString().split('T')[0];
+            const f = fecha || hoyLocal();
             const { error } = await supabaseClient
                 .rpc('fn_avanzar_rutina', { p_rutina_id: rutinaId, p_fecha: f });
             if (error) throw error;

@@ -225,7 +225,7 @@ const ImportarContactos = {
         const rows = (this._parsed && this._parsed.rows) || [];
         if (!rows.length) return;
         const origen = document.getElementById('icOrigen')?.value || 'import';
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = hoyLocal();
         const btn = document.getElementById('icImport');
         btn.disabled = true; btn.textContent = 'Importando…';
 

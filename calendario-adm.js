@@ -35,7 +35,7 @@ const CalendarioAdm = {
     _cat(v) { return this._CATS.find(c => c.v === v) || { v: v || 'otro', l: v || 'Otro', c: '#888' }; },
     _esc(s) { return window.escHtml ? window.escHtml(s) : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
     _money(n) { return '$' + Math.round(Number(n) || 0).toLocaleString('es-AR'); },
-    _today() { return new Date().toISOString().slice(0, 10); },
+    _today() { return hoyLocal(); },
 
     async render() {
         const user = Auth.getUser();
@@ -98,7 +98,7 @@ const CalendarioAdm = {
         const p = n => String(n).padStart(2, '0');
         const mDesde = `${this._year}-${p(this._month + 1)}-01`;
         const mHasta = `${this._year}-${p(this._month + 1)}-${p(new Date(this._year, this._month + 1, 0).getDate())}`;
-        const today = this._today(), in60 = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+        const today = this._today(), in60 = fechaISOLocal(new Date(Date.now() + 60 * 86400000));
         const sel = 'id,concepto,monto_estimado,fecha_vencimiento,estado,egreso_id, rec:vencimientos_recurrentes!recurrente_id(categoria_egreso)';
         try {
             const [plant, gen, prox, ctas] = await Promise.all([
@@ -309,7 +309,7 @@ const CalendarioAdm = {
                 for (let offset = 0; offset <= 2; offset++) {
                     const target = new Date(now.getFullYear(), now.getMonth() + offset * interval, Math.min(p.dia_mes || 1, 28));
                     if (target < new Date(now.getFullYear(), now.getMonth(), 1)) continue;
-                    const fechaStr = target.toISOString().slice(0, 10);
+                    const fechaStr = fechaISOLocal(target);
                     const { data: ex } = await supabaseClient.from('vencimientos_generados').select('id').eq('recurrente_id', p.id).eq('fecha_vencimiento', fechaStr).eq('_deleted', false).limit(1);
                     if (ex && ex.length) continue;
                     const { error } = await supabaseClient.from('vencimientos_generados').insert([{ recurrente_id: p.id, fecha_vencimiento: fechaStr, concepto: p.concepto, monto_estimado: p.monto_estimado }]);

@@ -415,7 +415,7 @@ const AdminPanel = {
         const dailyMap = {};
         const days14 = [];
         for (let i = 13; i >= 0; i--) {
-            const k = new Date(now - i * 86400000).toISOString().split('T')[0];
+            const k = fechaISOLocal(new Date(now - i * 86400000));
             dailyMap[k] = 0; days14.push(k);
         }
         logs.forEach(l => {
@@ -426,7 +426,7 @@ const AdminPanel = {
             if (t >= d7) u.actions7++;
             if (!u.lastActivity || t > u.lastActivity) u.lastActivity = t;
             if (l.module) u.modules[l.module] = (u.modules[l.module] || 0) + 1;
-            const k = new Date(l.created_at).toISOString().split('T')[0];
+            const k = fechaISOLocal(new Date(l.created_at));
             u.days.add(k);
             if (k in dailyMap) dailyMap[k]++;
         });

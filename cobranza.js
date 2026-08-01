@@ -229,7 +229,7 @@ const Cobranza = {
             <div class="cob-grid3">
                 <div>
                     <label class="cob-label">Fecha</label>
-                    <input type="date" id="cobFecha" class="cob-input" value="${new Date().toISOString().split('T')[0]}">
+                    <input type="date" id="cobFecha" class="cob-input" value="${hoyLocal()}">
                 </div>
                 <div>
                     <label class="cob-label">Canal</label>

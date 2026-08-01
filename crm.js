@@ -3220,7 +3220,7 @@ const CRM = {
         const groups = {};
         filtered.forEach(entry => {
             const d = new Date(entry.createdAt);
-            const key = d.toISOString().split('T')[0];
+            const key = fechaISOLocal(d);
             if (!groups[key]) groups[key] = [];
             groups[key].push(entry);
         });
@@ -3257,9 +3257,9 @@ const CRM = {
                 const yesterday = new Date(today);
                 yesterday.setDate(yesterday.getDate() - 1);
                 let dateLabel;
-                if (dateKey === today.toISOString().split('T')[0]) {
+                if (dateKey === fechaISOLocal(today)) {
                     dateLabel = 'Hoy';
-                } else if (dateKey === yesterday.toISOString().split('T')[0]) {
+                } else if (dateKey === fechaISOLocal(yesterday)) {
                     dateLabel = 'Ayer';
                 } else {
                     dateLabel = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -5275,7 +5275,7 @@ const CRM = {
         if (curOrigen && !origenList.includes(curOrigen)) {
             origenOpts += `<option value="${this._escHtml(curOrigen)}" selected>${this._escHtml(curOrigen)}</option>`;
         }
-        const accionFecha = caso.proximaAccionFecha ? new Date(caso.proximaAccionFecha).toISOString().slice(0, 10) : '';
+        const accionFecha = caso.proximaAccionFecha ? fechaISOLocal(new Date(caso.proximaAccionFecha)) : '';
         return `<div class="caso-form">
             <label class="caso-f-label">Título *</label>
             <input type="text" class="crm-input" id="cfTitulo" value="${this._escHtml(caso.titulo || '')}" placeholder="Ej. Expomedical 2026 — stand 6×4">

@@ -468,8 +468,8 @@ const HomeModule = {
     // El lobby muestra SIEMPRE la vista oficial (el toggle Oficial/Interno vive solo
     // en Finanzas; acá distorsionaba). El canal interno se consulta desde Finanzas.
     _canal() { return 'oficial'; },
-    _todayStr(now) { return now.toISOString().slice(0, 10); },
-    _offsetStr(now, days) { return new Date(now.getTime() + days * 86400000).toISOString().slice(0, 10); },
+    _todayStr(now) { return fechaISOLocal(now); },
+    _offsetStr(now, days) { return fechaISOLocal(new Date(now.getTime() + days * 86400000)); },
     _monthRange(now) {
         const y = now.getFullYear(), m = now.getMonth(), p = n => String(n).padStart(2, '0');
         return { desde: `${y}-${p(m + 1)}-01`, hasta: `${y}-${p(m + 1)}-${p(new Date(y, m + 1, 0).getDate())}` };
@@ -640,7 +640,7 @@ const HomeModule = {
         'kpi-presupuestos': async function (ctx) {
             const cots = await this._memo(ctx, 'cots', () => API.getCotizaciones()) || [];
             const { desde, hasta } = this._monthRange(ctx.now);
-            const mes = cots.filter(c => { const f = (c.fechaEmision || c.createdAt || '').slice(0, 10); return f >= desde && f <= hasta; });
+            const mes = cots.filter(c => { const f = c.fechaEmision ? String(c.fechaEmision).slice(0, 10) : (c.createdAt ? fechaISOLocal(new Date(c.createdAt)) : ''); return f >= desde && f <= hasta; });
             const env = mes.filter(c => ['enviada', 'en_negociacion', 'aprobada', 'rechazada'].includes(c.estado)).length;
             const won = mes.filter(c => c.estado === 'aprobada').length;
             const conv = env ? Math.round(won / env * 100) : 0;
@@ -675,7 +675,7 @@ const HomeModule = {
         'kpi-cotiz-semana': async function (ctx) {
             const cots = (await this._memo(ctx, 'cots', () => API.getCotizaciones()) || []).filter(c => c.vendedorId === ctx.userId);
             const wk = this._offsetStr(ctx.now, -7), today = this._todayStr(ctx.now);
-            const n = cots.filter(c => { const f = (c.fechaEmision || c.createdAt || '').slice(0, 10); return f >= wk && f <= today && ['enviada', 'en_negociacion', 'aprobada', 'rechazada'].includes(c.estado); }).length;
+            const n = cots.filter(c => { const f = c.fechaEmision ? String(c.fechaEmision).slice(0, 10) : (c.createdAt ? fechaISOLocal(new Date(c.createdAt)) : ''); return f >= wk && f <= today && ['enviada', 'en_negociacion', 'aprobada', 'rechazada'].includes(c.estado); }).length;
             return this._kpiBody(String(n), 'enviadas (7 días)');
         },
         'kpi-acciones-hoy': async function (ctx) {

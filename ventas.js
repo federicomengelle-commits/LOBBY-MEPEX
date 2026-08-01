@@ -222,7 +222,7 @@ const VentasModule = {
         const box = document.getElementById('ventasKPIs');
         if (!box) return;
 
-        const ym = new Date().toISOString().slice(0, 7);
+        const ym = mesLocal();
         const vivas = this._ventas.filter(v => v.estado !== 'anulada');
         const delMes = vivas.filter(v => String(v.fecha || '').slice(0, 7) === ym);
         const confirmadas = this._ventas.filter(v => v.estado === 'confirmada' || v.estado === 'en_curso');
@@ -399,7 +399,7 @@ const VentasModule = {
             if (eventos) this._eventos = eventos;
         }
 
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = hoyLocal();
         const cliOpts = ['<option value="">— elegir cliente —</option>'].concat(
             this._clients.map(c => `<option value="${escAttr(c.id)}"${c.id === prefill.cliente_id ? ' selected' : ''}>${escHtml(c.name || '(sin nombre)')}</option>`)
         ).join('');

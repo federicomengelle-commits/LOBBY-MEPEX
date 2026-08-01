@@ -635,7 +635,7 @@ const ProyectoDetalle = {
             const groups = [];
             const idx = {};
             items.forEach(a => {
-                const key = (a.created_at || '').slice(0, 10);
+                const key = a.created_at ? (fechaISOLocal(new Date(a.created_at)) || String(a.created_at).slice(0, 10)) : '';
                 if (!(key in idx)) { idx[key] = groups.length; groups.push({ key, items: [] }); }
                 groups[idx[key]].items.push(a);
             });
@@ -1665,7 +1665,7 @@ const ProyectoDetalle = {
         });
         if (!blob) { Toast.error('No se pudo generar el acta'); return; }
         const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x';
-        const fecha = (c.firmado_at ? new Date(c.firmado_at) : new Date()).toISOString().split('T')[0];
+        const fecha = fechaISOLocal((c.firmado_at ? new Date(c.firmado_at) : new Date()));
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = `MEPEX_CONFORME_${slug(p.nombre)}_${fecha}.pdf`;
@@ -1692,7 +1692,7 @@ const ProyectoDetalle = {
         });
         if (!blob) { Toast.error('No se pudo generar el acta'); return; }
         const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'x';
-        const fecha = (c.firmado_at ? new Date(c.firmado_at) : new Date()).toISOString().split('T')[0];
+        const fecha = fechaISOLocal((c.firmado_at ? new Date(c.firmado_at) : new Date()));
         const dlName = `MEPEX_CONFORME_${slug(p.nombre)}_${fecha}.pdf`;
         const url = URL.createObjectURL(blob);
         const inst = Modal.open({

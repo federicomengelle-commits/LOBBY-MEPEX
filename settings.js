@@ -554,9 +554,12 @@ const Settings = {
     // Agrupa por día: "Hoy" / "Ayer" / la fecha. Antes era una lista plana de 100.
     _diaLabel(iso) {
         if (!iso) return 'Sin fecha';
-        const d = String(iso).slice(0, 10);
-        const hoy = new Date().toISOString().slice(0, 10);
-        const ayer = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+        // `created_at` es timestamptz: cortarlo con slice da el día en UTC, y acá se
+        // compara contra fechas LOCALES. Con las bases mezcladas, toda notificación
+        // creada después de las 21:00 se agrupaba bajo la fecha de MAÑANA.
+        const d = fechaISOLocal(new Date(iso)) || String(iso).slice(0, 10);
+        const hoy = hoyLocal();
+        const ayer = fechaISOLocal(new Date(Date.now() - 864e5));
         if (d === hoy) return 'Hoy';
         if (d === ayer) return 'Ayer';
         try {

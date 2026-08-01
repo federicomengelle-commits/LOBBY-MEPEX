@@ -577,7 +577,7 @@ const RRHHModule = {
             const tope = fin < yEnd ? fin : yEnd;
             let guard = 0;
             while (d <= tope && guard < 400) {
-                map[a.persona_id].dias.add(d.toISOString().slice(0, 10));
+                map[a.persona_id].dias.add(fechaISOLocal(d));
                 d.setDate(d.getDate() + 1);
                 guard++;
             }
@@ -1008,7 +1008,7 @@ const RRHHModule = {
         if (!body) return;
         const t = this._trabAnio[p.id];
         const vivos = (asigs || []).filter(a => a.estado !== 'cancelada');
-        const hoy = new Date().toISOString().slice(0, 10);
+        const hoy = hoyLocal();
         // fechas TIMESTAMPTZ → normalizo a YYYY-MM-DD para comparar
         const fdia = (a) => String(a.fecha_fin || a.fecha_inicio || '').slice(0, 10);
         const futuras = vivos.filter(a => fdia(a) >= hoy);

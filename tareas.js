@@ -436,7 +436,7 @@ const Tareas = {
         catch (e) { console.warn(`[Tareas] generador ${mod}:`, e.message); return []; }
     },
 
-    _today() { return new Date().toISOString().split('T')[0]; },
+    _today() { return hoyLocal(); },
     // OJO: el truco textContent→innerHTML escapa & < > pero NO comillas, así que
     // servía para contenido pero NO dentro de un atributo (`title="${...}"`,
     // `value="${...}"`) — ahí un `"` en el dato cierra el atributo y deja inyectar
@@ -476,8 +476,8 @@ const Tareas = {
                 .eq('_deleted', false).eq('checked', false)
                 .in('proyecto_id', proys.map(p => p.id));
             if (!items) return [];
-            const hoy = new Date().toISOString().split('T')[0];
-            const en3 = new Date(Date.now() + 3 * 864e5).toISOString().split('T')[0];
+            const hoy = hoyLocal();
+            const en3 = fechaISOLocal(new Date(Date.now() + 3 * 864e5));
             return items.slice(0, 300).map(it => {
                 const p = byId[it.proyecto_id] || {};
                 const fl = armadoByEv[p.evento_id] || null;
@@ -516,8 +516,8 @@ const Tareas = {
         },
         async rrhh() {
             const out = [];
-            const hoy = new Date().toISOString().split('T')[0];
-            const en30 = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
+            const hoy = hoyLocal();
+            const en30 = fechaISOLocal(new Date(Date.now() + 30 * 864e5));
             try {
                 const { data: docs } = await supabaseClient
                     .from('persona_documentos').select('id, persona_id, tipo, fecha_vencimiento')
@@ -552,8 +552,8 @@ const Tareas = {
             return out;
         },
         async crm() {
-            const hoy = new Date().toISOString().split('T')[0];
-            const en7 = new Date(Date.now() + 7 * 864e5).toISOString().split('T')[0];
+            const hoy = hoyLocal();
+            const en7 = fechaISOLocal(new Date(Date.now() + 7 * 864e5));
             const { data } = await supabaseClient
                 .from('cotizaciones').select('id, numero, nombre_evento, fecha_evento, estado, vendedor_id')
                 .eq('_deleted', false).in('estado', ['enviada', 'en_negociacion', 'borrador'])
@@ -566,8 +566,8 @@ const Tareas = {
             }));
         },
         async eventos() {
-            const hoy = new Date().toISOString().split('T')[0];
-            const en7 = new Date(Date.now() + 7 * 864e5).toISOString().split('T')[0];
+            const hoy = hoyLocal();
+            const en7 = fechaISOLocal(new Date(Date.now() + 7 * 864e5));
             const { data: evs } = await supabaseClient
                 .from('eventos').select('id, nombre, fecha_armado_inicio')
                 .eq('_deleted', false).gte('fecha_armado_inicio', hoy).lte('fecha_armado_inicio', en7);
@@ -599,7 +599,7 @@ const Tareas = {
                 }));
         },
         async locaciones() {
-            const en30 = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
+            const en30 = fechaISOLocal(new Date(Date.now() + 30 * 864e5));
             const { data } = await supabaseClient
                 .from('locaciones_documentos').select('id, nombre, tipo_doc, fecha_vencimiento')
                 .eq('_deleted', false).not('fecha_vencimiento', 'is', null).lte('fecha_vencimiento', en30);
@@ -626,8 +626,8 @@ const Tareas = {
         async flota() {
             // VTV / seguro / service vencido o ≤15 días → tarea claimeable (admin+taller).
             // El vencimiento ya era alerta pasiva; acá se vuelve accionable.
-            const hoy = new Date().toISOString().split('T')[0];
-            const en15 = new Date(Date.now() + 15 * 864e5).toISOString().split('T')[0];
+            const hoy = hoyLocal();
+            const en15 = fechaISOLocal(new Date(Date.now() + 15 * 864e5));
             const { data } = await supabaseClient
                 .from('produccion_mantenimiento')
                 .select('id, vehiculo_id, tipo, nombre, fecha_proximo_vencimiento')
@@ -665,7 +665,7 @@ const Tareas = {
             const role = user.role;
             const uid = user.uid || user.id;
             const adminLevel = ['superadmin', 'admin'].includes(role);
-            const hoy = new Date().toISOString().split('T')[0];
+            const hoy = hoyLocal();
             return due.filter(r => {
                 if (adminLevel) return true;
                 if (r.responsable_id && r.responsable_id === uid) return true;
@@ -747,7 +747,7 @@ const Tareas = {
 
     _group(tasks) {
         const hoy = this._today();
-        const en7 = new Date(Date.now() + 7 * 864e5).toISOString().split('T')[0];
+        const en7 = fechaISOLocal(new Date(Date.now() + 7 * 864e5));
         const g = { vencidas: [], hoy: [], semana: [], sinfecha: [] };
         tasks.forEach(t => {
             if (!t.fecha_limite) g.sinfecha.push(t);

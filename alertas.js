@@ -121,7 +121,7 @@ const Alertas = {
     _dateOffset(days) {
         const d = new Date();
         d.setDate(d.getDate() + days);
-        return d.toISOString().split('T')[0];
+        return fechaISOLocal(d);
     },
     _plural(n, sing, plur) { return n === 1 ? sing : (plur || sing + 's'); },
 

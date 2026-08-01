@@ -2030,7 +2030,7 @@ const EventosModule = {
         const blob = await PedidoPDF.generate({ evento: this._evToPdfEvento(ev), proveedor: prov });
         if (!blob) { Toast.error('No se pudo generar el pedido'); return; }
 
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = hoyLocal();
         this._downloadBlob(blob, `MEPEX_PEDIDO_${this._subalqSlug(prov.proveedor)}_${this._subalqSlug(ev.name)}_${fecha}.pdf`);
         Toast.success('Pedido generado');
     },
@@ -2046,7 +2046,7 @@ const EventosModule = {
         const blob = await PedidoPDF.generateBatch({ evento: this._evToPdfEvento(ev), proveedores: provs });
         if (!blob) { Toast.error('No se pudieron generar los pedidos'); return; }
 
-        const fecha = new Date().toISOString().split('T')[0];
+        const fecha = hoyLocal();
         this._downloadBlob(blob, `MEPEX_PEDIDOS_${this._subalqSlug(ev.name)}_${fecha}.pdf`);
         Toast.success(`${provs.length} pedido${provs.length === 1 ? '' : 's'} generado${provs.length === 1 ? '' : 's'}`);
     },

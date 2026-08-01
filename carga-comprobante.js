@@ -31,7 +31,7 @@ const CargaComprobante = {
     _CAT_TO_EGRESO: { material: 'proveedor', servicio: 'servicio', alquiler: 'alquiler', credito_fiscal: 'credito_fiscal', logistica: 'logistica', otro: 'otro' },
 
     _esc(s) { return window.escHtml ? window.escHtml(s) : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); },
-    _today() { return new Date().toISOString().slice(0, 10); },
+    _today() { return hoyLocal(); },
 
     open() {
         const user = Auth.getUser();

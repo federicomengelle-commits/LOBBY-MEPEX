@@ -39,11 +39,18 @@ window.escAttr = window.escHtml;
 //  Usar SIEMPRE estos dos en vez de los de arriba. (Auditoría T3.20.)
 // ─────────────────────────────────────────────────────────────────────
 
-// 'YYYY-MM-DD' de HOY según el reloj del que mira la pantalla.
-window.hoyLocal = function () {
-    const d = new Date();
+// Un Date → 'YYYY-MM-DD' con el día LOCAL (no el UTC).
+window.fechaISOLocal = function (d) {
+    if (!(d instanceof Date) || isNaN(d)) return null;
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+// 'YYYY-MM-DD' de HOY según el reloj del que mira la pantalla.
+window.hoyLocal = function () { return window.fechaISOLocal(new Date()); };
+
+// 'YYYY-MM' del mes actual. Con `toISOString()` el 31 a las 22:00 devolvía el
+// mes SIGUIENTE — o sea, un comprobante archivado en el período equivocado.
+window.mesLocal = function () { return window.hoyLocal().slice(0, 7); };
 
 // Convierte 'YYYY-MM-DD' (o un ISO completo) a un Date a medianoche LOCAL.
 // Devuelve null si no se puede parsear, para que el que llama decida.
