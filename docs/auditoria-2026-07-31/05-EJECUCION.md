@@ -36,10 +36,10 @@
 | **T0.12** | 4 funciones SECDEF de trigger sin `SET search_path` | SQL | ✅ | nuevo, salió de T0.2. Ahora **0** SECDEF sin search_path |
 | **T1** | nginx: `.git` + X-Forwarded-For + 16m + timeout 180s | config | 🟡 | **conf listo en el repo** · ⏳ falta el `cp` + reload de Fede |
 | **T2** | Deploy VPS (los 7 archivos juntos) | deploy | ⬜ | habilita `/api/push/aviso` |
-| **T3.1** | **`app.js?v=17`** en `index.html` | JS | ⬜ | 1 línea, alto impacto |
-| **T3.2** | Cascada de costos → RPC (`api.js:3874`) | JS | ⬜ | 1 línea |
+| **T3.1** | **`app.js?v=17`** en `index.html` | JS | ✅ | sin esto ningún bump de módulo diferido llega |
+| **T3.2** | Cascada de costos → RPC (`api.js:3874`) | JS | ✅ | eran **DOS** cascadas, no una. + el `if (r?.ok)` |
 | **T3.3** | Candado `monto_editado` del jornal | JS | ⬜ | **antes que T5.3** |
-| **T3.4** | El taller puede tildar el checklist | JS | ⬜ | 2 líneas |
+| **T3.4** | El taller puede tildar el checklist | JS | ✅ | RLS verificado: la escritura pasa |
 | **T3.5** | `pushDefault:true` en categoría `eventos` | JS | ⬜ | |
 | **T3.6** | Rol `venta` inexistente en los avisos | JS | ⬜ | **decisión de Fede**: ¿ampliar el aviso o darle el rol a Noe? |
 | **T3.7** | Alerta "proyecto trabado": estados legales | JS | ⬜ | |
@@ -51,12 +51,13 @@
 | **T3.13** | `requireRole` sin el rol `finanzas` inexistente | VPS | ⬜ | va con T2 |
 | **T3.14** | Lobby del taller: nav del bigcard + tiles clickeables | JS | ⬜ | |
 | **T3.15** | Ver el remito firmado (cablear `getRemitoSignedUrl`) | JS | ⬜ | |
-| **T3.16** | `updateParametroGlobal` devuelve la verdad | JS | ⬜ | |
-| **T3.17** | `conciliado_por` con `.uid` en vez de `.id` | JS | ⬜ | conciliación 100% rota |
+| **T3.16** | `updateParametroGlobal` devuelve la verdad | JS | ✅ | |
+| **T3.17** | `conciliado_por` con `.uid` en vez de `.id` | JS | ✅ | barrido: era el único caso vivo |
 | **T3.18** | `_recomputeOCGanadora`: no borrar ante error de lectura | JS | ⬜ | destructivo |
-| **T3.19** | Modal "Nueva tarea": `fecha_evento_inicio` | JS | ⬜ | 1 línea |
+| **T3.19** | Modal "Nueva tarea": `fecha_evento_inicio` | JS | ✅ | `eventos.fecha_inicio` no existe → 400 |
 | **T3.20** | Fechas UTC en `compras.js` y `locaciones.js` | JS | ⬜ | vencimientos un día antes |
 | **T3.21** | `API.ajustarStock`: el catch-all degrada a read-modify-write | JS | ⬜ | nuevo, salió de T0.1. Un 403 real cae al camino NO atómico en silencio. Copiar el chequeo `rpcMissing` de `inventario.js:2452` |
+| **T3.23** | Borrar `recalcularPrecioAlquiler` (0 callers) | JS | ⬜ | nuevo, salió de T3.2. ⚠️ **NO sacar `calculo-receta.js` del loader por separado**: van en el mismo commit o se rompe algo que ya no lo usa |
 | **T3.22** | `restoreSession` no chequea `active` | JS | ⬜ | nuevo, salió de T0.2. El login sí lo chequea (`auth.js:70`); una sesión ya abierta sobrevive a la baja. Post-T0.2 es cosmético (el RLS ya la vacía), pero deja al usuario mirando una app vacía sin decirle por qué |
 | **T4.1** | **Cobranza + `monto_cobrado` (C3+C4 juntos)** | JS+SQL | ⬜ | ⚠️ **nunca por separado** |
 | **T4.2** | Candado de edición sobre movimientos contabilizados | JS+SQL | ⬜ | |
@@ -413,6 +414,13 @@ fetch('/api/push/aviso',{method:'POST',headers:{'Content-Type':'application/json
 Ver `01-PLAN-CORRECCION.md` §Tanda 3 para la tabla completa con archivo:línea.
 **Orden sugerido:** T3.1 primero (para que lo demás llegue), después los de 1 línea, después el resto.
 
+### ✅ Primer lote hecho 2026-08-01 — commit `b276901` · typescript-reviewer: APPROVE, 0 CRITICAL/HIGH
+**T3.1 · T3.2 · T3.4 · T3.16 · T3.17 · T3.19.** Cosas que salieron distintas del plan:
+- **T3.2 eran DOS cascadas, no una.** La segunda (`recalcularPorInsumo`, la que dispara al cambiar el costo de un insumo) tenía el mismo motor viejo. Y el cambio no era "una línea": la RPC devuelve `{ok,…}` en vez de un booleano, así que el `if (r)` del conteo daba **todo por exitoso**. De paso se sacó el guard `if (!window.CalculoReceta) return`, que quedó vestigial y era una mina para el día que alguien saque ese script "muerto" del loader (→ **T3.23**).
+- **T3.19**: el plan decía "fecha_evento_inicio" sin más. El bug concreto: `tareas.js` pedía `eventos.fecha_inicio`, **columna que no existe** → 400 y desplegable de eventos siempre vacío.
+- **T3.17**: barrido de las 9 lecturas de `getUser()` en `finanzas.js` — las otras 8 ya usaban `.uid`; era la única desviación.
+- **T3.4**: antes de tocar la UI se verificó que el RLS de `taller_proyecto_checklist` deja escribir al taller (`FOR ALL USING(true)`), que el guard de listeners no protegía nada más, y que `setEstadoTaller` está escrito **a propósito** para que lo llame el taller (`reorg_a_nav_roles_rls.sql:98`).
+
 **T3.6 necesita una decisión de Fede antes de tocarlo:** el aviso de lead nuevo apunta al rol `venta` y **no existe ningún perfil con ese rol** (Noe es `admin`). Dos salidas:
 - **(a)** `roles: ['venta','admin']` → llega a Noe **y a los 4 admin** (Lelean, Sofi también)
 - **(b)** darle el rol `venta` a Noe → **cambia sus permisos** en toda la app
@@ -447,6 +455,9 @@ Y el comentario de `costos.js:4082`, que describe `costos_params_globales` como 
 | Fecha | Ítems tocados | Notas |
 |---|---|---|
 | 2026-07-31 | — | Auditoría entregada. Nada ejecutado todavía. |
+| 2026-08-01 | **⏳ LO QUE ESPERA A FEDE** | **(1)** `~/pull-lobby.sh` — trae `app.js?v=17` + api 98 / finanzas 64 / contabilidad 18 / proyecto-detalle 20 / tareas 15. **(2)** el `cp` del nginx + `nginx -t && reload` (T1). **(3)** decisiones: **T5.2** (borrar las 2 copias de la factura, $151.200 de IVA) → destraba el índice de T0.8 · **T0.9** (los huérfanos de $10,7M) · **T0.11** (default de anon para tablas/views) · **T3.6** (rol `venta` que no existe). **(4)** del Dashboard: T5.12 (revocar sesiones de las 4 bajas) y T5.13 (leaked password protection). **(5)** el smoke de Storage logueado: subir un comprobante, una imagen de stand y una foto de armado. **Aviso: el KPI "Saldo disponible" pasa a $8.199.900 — es correcto, ver T0.6.** |
+| 2026-08-01 | **T3.1·T3.2·T3.4·T3.16·T3.17·T3.19 ✅** | Primer lote de Tanda 3, commit `b276901`. typescript-reviewer APPROVE 0 C/H. Los 3 hallazgos que el plan no tenía: la cascada de costos eran **dos** y el conteo daba todo por exitoso con la RPC · `eventos.fecha_inicio` no existe (el desplegable del modal Nueva tarea estaba vacío) · el guard vestigial de `CalculoReceta`. Ítem nuevo: **T3.23**. |
+| 2026-08-01 | **T0.6·T0.7·T0.8(parcial)·T0.10·T0.12 ✅ + T1 listo** | Commit `1470745`. Ver el detalle de cada uno arriba. sql-reviewer: 4 de 6 archivos volvieron BLOCK y **los hallazgos eran reales todas las veces** — el más grave, que la Parte A de T0.2 sola habría **ascendido** a un taller dado de baja. Bug vivo encontrado de paso: el tab Mapeos no podía guardar un mapeo genérico de egreso (`contabilidad.js?v=18`). |
 | 2026-08-01 | **T0.3 + T0.4 + T0.5 ✅** | `sql/auditoria_t0_3_4_5_rls_pendientes.sql` aplicado + verificado (simulación de 4 usuarios, rollback, 0 residuo). sql-reviewer BLOCK → HIGH de idempotencia (13 `CREATE POLICY` con nombre nuevo sin su `DROP IF EXISTS`: el archivo no se podía re-correr) + MEDIUM en el rollback documentado (`cv_update` como `FOR ALL` habría reabierto el DELETE que T0.2 cerró). Hallazgo propio: en `audit_log` había **2 pares de policies anulándose entre sí** — cualquiera leía la auditoría de todos, y podía escribir entradas a nombre de otro. Sin JS, sin deploy. |
 | 2026-08-01 | **T0.2 ✅** | `sql/auditoria_t0_2_active_desactiva.sql` aplicado + verificado (simulación de 6 usuarios contra prod, con rollback). sql-reviewer BLOCK → 1 CRITICAL: la Parte A **sola** habría ascendido a un `taller` dado de baja a acceso total de proyectos y locaciones (`NULL IS DISTINCT FROM 'taller'` = true) → se sumaron las Partes C y D en la misma transacción. Alcance final: 5 funciones + 22 policies + 5 funciones de tareas. Ítems nuevos: **T0.12** (4 SECDEF de trigger sin search_path), **T3.22** (restoreSession), **T5.12** (revocar sesiones), **T5.13** (leaked password protection), y una nota en **T4.8** (`cotizacion_propuestas` con RLS y cero policies). Linter: **0 ERRORs**. Sin JS, sin deploy. |
 | 2026-08-01 | **T0.1 ✅** | `sql/auditoria_t0_1_revoke_rpc_anon.sql` aplicado a prod + verificado (SQL, curl con anon key, y simulación de los 5 roles con rollback). sql-reviewer BLOCK → 2 HIGH arreglados antes de correr: el guard tenía que cubrir `compras` (si no, PM no recibía OCs) y faltaba cerrar el `pg_default_acl` que reconcede a anon cada función nueva. Salieron 2 ítems nuevos: **T0.11** (mismo default, pero de tablas/views — decisión de Fede) y **T3.21** (el catch-all de `API.ajustarStock`). Sin JS, sin deploy. |
