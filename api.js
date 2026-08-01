@@ -836,6 +836,19 @@ const API = {
             // toca fechas: cambiar el color o una nota no paga ninguna query de más.
             const antes = await this._fechasAntesDeEditar(id, payload);
 
+            // Si el armado se movió y la fecha nueva todavía no llegó, hay que
+            // reabrir el claim del aviso "faltan 7/2 días". Esas dos columnas son
+            // un sello de una sola vez: sin resetearlas, mover un armado de ayer a
+            // dentro de un mes deja el aviso QUEMADO PARA SIEMPRE — nadie se entera
+            // de que ese armado se viene. Auditoría T3.10/A17.
+            if (antes && payload.fecha_armado_inicio !== undefined
+                && (payload.fecha_armado_inicio || null) !== (antes.fecha_armado_inicio || null)
+                && payload.fecha_armado_inicio
+                && payload.fecha_armado_inicio > (typeof hoyLocal === 'function' ? hoyLocal() : new Date().toISOString().split('T')[0])) {
+                payload.notif_armado_7d_at = null;
+                payload.notif_armado_2d_at = null;
+            }
+
             await UndoHelpers.updateRecord('eventos', id, payload, `Edito evento: ${data.name || ''}`);
             this.clearCache();
             if (antes) this._avisarCambioDeFechas(id, antes, payload).catch(() => {});
@@ -3685,47 +3698,13 @@ const API = {
         }
     },
 
-    // ─── Recalcular precio_alquiler de un item usando el motor ────
-    // Requiere que window.CalculoReceta este cargado.
-    // Para componentes tipo 'item' usa costoFabricacion (cost completo sin margen),
-    // que para subalquilados equivale a costoMP. Fallback a costoProduccion (legacy).
-    async recalcularPrecioAlquiler(item) {
-        if (!window.CalculoReceta) {
-            console.warn('[API] CalculoReceta no cargado');
-            return null;
-        }
-        try {
-            const componentes = await this.getRecetaComponentes(item.id);
-            const insumos = await this.getInsumos();
-            const items = await this.getCatalogoItems();
-            const compsConCosto = componentes.map(c => {
-                let costoUnit = 0;
-                if (c.componenteType === 'insumo') {
-                    const ins = insumos?.find(i => String(i.id) === String(c.componenteId));
-                    if (ins) costoUnit = ins.costoUnitario || 0;
-                } else if (c.componenteType === 'item') {
-                    const sub = items?.find(i => String(i.id) === String(c.componenteId));
-                    if (sub) costoUnit = sub.costoFabricacion || sub.costoProduccion || 0;
-                }
-                return { cantidad: c.cantidad, costoUnit };
-            });
-            const params = await this.getParametrosGlobalesMap();
-            const r = window.CalculoReceta.calcular(item, compsConCosto, params);
-            await this.updateCatalogoItem(item.id, {
-                costoProduccion: r.costoMP,
-                costoManoObra: r.costoManoObra,
-                costoIndirectos: r.costoIndirectos,
-                costoFabricacion: r.costoFabricacion,
-                costoPorUso: r.costoPorUso,
-                precioAlquiler: r.precioAlquiler,
-                ultimaRecalculacion: new Date().toISOString(),
-            });
-            return r;
-        } catch (e) {
-            console.warn('[API] Error recalculando precio alquiler:', e.message);
-            return null;
-        }
-    },
+    // (Aca vivia `recalcularPrecioAlquiler`, el motor de costos en JS. Quedo sin
+    //  llamadores al pasar las DOS cascadas a la RPC `calcular_receta` (T3.2), que
+    //  es la fuente de verdad: aquel ignoraba la regla 1:N del VU de armado y el
+    //  % de desperdicio, y no escribia snapshots. Con el se va el ultimo uso de
+    //  `window.CalculoReceta` en la app -> `calculo-receta.js` sale del loader.
+    //  Los archivos NO se borran: `calculo-receta-tests.html` los sigue usando y
+    //  quedan como referencia del modelo viejo. Auditoria T3.23.)
 
     // ═══════════════════════════════════════════
     // COSTOS FASE 3 — BOM jerárquico + recálculo en cascada
@@ -5041,8 +5020,17 @@ const API = {
     // Sincroniza el cache de la OC (proveedor_uuid/proveedor_id/monto_total) con la ganadora VIGENTE; si no hay, limpia.
     async _recomputeOCGanadora(ordenId) {
         try {
-            const { data: gan } = await supabaseClient.from('compras_oc_presupuestos')
+            const { data: gan, error: errGan } = await supabaseClient.from('compras_oc_presupuestos')
                 .select('proveedor_id, proveedor_uuid, monto').eq('orden_id', ordenId).eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
+            // ⚠️ Si la LECTURA falla, `gan` viene undefined — igual que "no hay ganadora".
+            // Sin este chequeo, un timeout o un blip de red caía por el `else` y le
+            // BORRABA a la OC el proveedor y el monto_total (los ponía en null / 0).
+            // Un error de lectura no puede provocar una escritura destructiva.
+            // Auditoría T3.18.
+            if (errGan) {
+                console.warn('[API] _recomputeOCGanadora: no se pudo leer la ganadora, no se toca la OC:', errGan.message);
+                return;
+            }
             if (gan) {
                 // 3b.2: propagar también el UUID; si la ganadora vieja solo trae BIGINT, resolverlo por la traza.
                 let provUuid = gan.proveedor_uuid || null;

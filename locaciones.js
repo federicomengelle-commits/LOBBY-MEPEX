@@ -412,7 +412,11 @@ const LocacionesModule = {
         if (!fecha) return { class: '', label: '' };
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const d = new Date(fecha);
+        // `new Date('2026-08-15')` se parsea como medianoche UTC → en Argentina
+        // (UTC-3) cae el 14 a las 21:00, y el `setHours(0,0,0,0)` lo terminaba de
+        // anclar al 14. Todo vencía UN DÍA ANTES. Auditoría T3.20.
+        const d = (typeof fechaLocal === 'function' ? fechaLocal(fecha) : new Date(fecha));
+        if (!d) return { class: '', label: '' };
         d.setHours(0, 0, 0, 0);
         const diffDays = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
         if (diffDays < 0) return { class: 'loc-vencido', label: 'Vencido' };

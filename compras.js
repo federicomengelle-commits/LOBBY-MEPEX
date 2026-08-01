@@ -1837,7 +1837,7 @@ const ComprasModule = {
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div>
                             <label class="form-label">Fecha</label>
-                            <input type="date" id="cmpOCFecha" class="form-input" value="${item?.fecha || new Date().toISOString().split('T')[0]}" style="font-size:1rem;padding:12px;">
+                            <input type="date" id="cmpOCFecha" class="form-input" value="${item?.fecha || hoyLocal()}" style="font-size:1rem;padding:12px;">
                         </div>
                         <div>
                             <label class="form-label">Estado</label>
@@ -2117,7 +2117,7 @@ const ComprasModule = {
                 try {
                     await supabaseClient.from('compras_pagos').update({
                         estado: 'pagado',
-                        fecha_pago: new Date().toISOString().split('T')[0],
+                        fecha_pago: hoyLocal(),
                     }).eq('id', id);
                     Toast.success('Pago registrado');
                     await this._loadPagos();

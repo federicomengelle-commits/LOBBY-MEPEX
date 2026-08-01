@@ -7980,10 +7980,19 @@ const FinanzasModule = {
             const record = this._buildComprobanteRecord(d, result, uid);
 
             const { data: inserted, error } = await supabaseClient.from('comprobantes').insert([record]).select().single();
-            if (error) { console.warn('[Finanzas] Error guardando comprobante:', error); }
             const comp = inserted || { ...record, id: null };
 
-            Toast.success(`✓ Emitido — CAE ${result.cae}`);
+            if (error) {
+                // ⚠️ ARCA YA EMITIÓ. El CAE existe, el número se consumió y la
+                // obligación fiscal está tomada — lo único que falló es guardarlo acá.
+                // Antes esto era un `console.warn` y la pantalla decía "✓ Emitido":
+                // la factura quedaba emitida en AFIP y sin rastro en el sistema.
+                // Auditoría T3.12/C5.
+                this._stashComprobanteSinGuardar(record, error);
+                this._modalCaeSinGuardar();
+            } else {
+                Toast.success(`✓ Emitido — CAE ${result.cae}`);
+            }
 
             // Fila 18 de la matriz del Paso 9 → admin.
             // Sólo en la emisión de a una: el lote de Recurrentes puede sacar diez
@@ -7995,8 +8004,17 @@ const FinanzasModule = {
                     // literal, no hay jerarquía de roles.
                     roles: ['admin', 'superadmin'],
                     tipo: 'factura_emitida',
-                    titulo: `Comprobante emitido${comp.numero ? ` ${comp.numero}` : ''}`,
-                    cuerpo: result.receptor_nombre || null,
+                    // Si el INSERT falló, este aviso es la ÚNICA huella que sobrevive a
+                    // cerrar el modal o la pestaña: la campanita persiste en la base.
+                    // Sin esto, un CAE real de ARCA quedaba sólo en un localStorage que
+                    // nadie sabe mirar. Auditoría T3.12.
+                    titulo: error
+                        ? `⚠️ Comprobante emitido SIN guardar${comp.numero ? ` ${comp.numero}` : ''} — CAE ${result.cae}`
+                        : `Comprobante emitido${comp.numero ? ` ${comp.numero}` : ''}`,
+                    cuerpo: error
+                        ? `${result.receptor_nombre || ''} — ARCA lo emitió pero no se pudo guardar. NO reemitir; reintentá el guardado desde Finanzas → Facturación.`.trim()
+                        : (result.receptor_nombre || null),
+                    prioridad: error ? 'alta' : undefined,
                     url: '#finanzas', entidadTipo: 'comprobante', entidadId: comp.id || null,
                 }).catch(() => {});
             }
@@ -8392,8 +8410,105 @@ const FinanzasModule = {
         result.cond_iva_receptor = payload.cond_iva_receptor;
         const record = this._buildComprobanteRecord(d, result, uid);
         const { data: inserted, error } = await supabaseClient.from('comprobantes').insert([record]).select().single();
-        if (error) console.warn('[Lote] guardar comprobante:', error);
-        return inserted || { ...record, id: null };
+        if (error) {
+            // Mismo caso que en la emisión de a una (T3.12): el CAE ya existe en
+            // ARCA. Se guarda en el rescate para poder reintentar el INSERT, y se
+            // devuelve marcado para que la fila del lote NO se pinte como "✓ CAE".
+            console.warn('[Lote] guardar comprobante:', error);
+            this._stashComprobanteSinGuardar(record, error);
+            return { ...record, id: null, _sinGuardar: true };
+        }
+        return inserted;
+    },
+
+    // ─── Rescate de comprobantes con CAE que no se pudieron guardar (T3.12) ───
+    // La obligación fiscal ya está tomada en ARCA; lo único que falta es la fila
+    // local. Se guardan en localStorage para que un reintento no dependa de que
+    // la persona no cierre la pestaña.
+    _RESCATE_KEY: 'mepex_comprobantes_sin_guardar',
+
+    _stashComprobanteSinGuardar(record, error) {
+        try {
+            const prev = JSON.parse(localStorage.getItem(this._RESCATE_KEY) || '[]');
+            prev.push({ record, error: error?.message || String(error), at: new Date().toISOString() });
+            localStorage.setItem(this._RESCATE_KEY, JSON.stringify(prev));
+        } catch (e) { console.warn('[Finanzas] no se pudo guardar el rescate:', e.message); }
+    },
+
+    _leerRescate() {
+        try { return JSON.parse(localStorage.getItem(this._RESCATE_KEY) || '[]'); } catch { return []; }
+    },
+
+    // Reintenta el INSERT de todos los pendientes. Saca de la lista sólo los que
+    // entran (o los que ya existen: el índice único de T0.8 los rebota con 23505,
+    // que acá significa "ya estaba guardado", no un error).
+    async _reintentarGuardadoCae() {
+        const pend = this._leerRescate();
+        if (!pend.length) { Toast.info('No hay comprobantes pendientes de guardar'); return true; }
+        const quedan = [];
+        let ok = 0;
+        for (const p of pend) {
+            // try/catch por ítem: si el insert RECHAZA (blip de red — justo la clase
+            // de falla que nos trajo hasta acá) sin esto se cortaba el for, no se
+            // persistía el progreso y el click no daba ninguna señal.
+            try {
+                const { error } = await supabaseClient.from('comprobantes').insert([p.record]);
+                // 23505 = choca con el índice único de T0.8 → ya estaba guardado.
+                if (!error || error.code === '23505') ok++; else quedan.push(p);
+            } catch (e) {
+                console.warn('[Finanzas] reintento de guardado falló:', e.message);
+                quedan.push(p);
+            }
+        }
+        try { localStorage.setItem(this._RESCATE_KEY, JSON.stringify(quedan)); } catch { /* noop */ }
+        if (quedan.length) Toast.error(`Se guardaron ${ok}. Quedan ${quedan.length} sin guardar.`);
+        else Toast.success(`Listo — ${ok} comprobante(s) guardado(s)`);
+        return quedan.length === 0;
+    },
+
+    // Muestra TODOS los pendientes del rescate, no sólo el último. La llaman los
+    // dos caminos: la emisión de a una y —una sola vez, al final— la del lote.
+    // (Un modal por factura en un lote de diez sería inusable.)
+    _modalCaeSinGuardar() {
+        const pend = this._leerRescate();
+        if (!pend.length) return;
+        const filas = pend.map(p => `
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;font-family:var(--font-mono);font-size:0.82rem;line-height:1.7;">
+                <div>Número &nbsp;<b>${escHtml(p.record?.numero || '—')}</b></div>
+                <div>CAE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>${escHtml(p.record?.cae || '—')}</b></div>
+                <div>Vence &nbsp;&nbsp;&nbsp;${escHtml(p.record?.cae_vencimiento || '—')}</div>
+                <div>Total &nbsp;&nbsp;&nbsp;<b>${this._formatMoney(p.record?.total)}</b></div>
+                <div style="color:var(--text-dim);font-size:0.72rem;margin-top:4px;">${escHtml(p.error || '')}</div>
+            </div>`).join('');
+        const inst = Modal.open({
+            title: pend.length === 1
+                ? '⚠️ La factura se emitió, pero NO se guardó'
+                : `⚠️ ${pend.length} facturas se emitieron pero NO se guardaron`,
+            size: 'md',
+            body: `
+                <p style="margin:0 0 12px;color:var(--text-primary);line-height:1.55;">
+                    ARCA aceptó ${pend.length === 1 ? 'el comprobante' : 'los comprobantes'}:
+                    <b>el CAE ya existe y el número se consumió</b>. Lo que falló fue guardarlo
+                    en el sistema. <b>No ${pend.length === 1 ? 'la vuelvas' : 'las vuelvas'} a emitir</b> —
+                    ${pend.length === 1 ? 'duplicarías la factura' : 'duplicarías las facturas'} en AFIP.
+                </p>
+                ${filas}
+                <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">
+                    Quedó anotado en este navegador y también te llega a la campanita.
+                    Anotá el CAE por las dudas.
+                </p>`,
+            footer: `
+                <button class="btn btn-ghost" data-modal-close>Cerrar</button>
+                <button class="btn btn-primary" id="finCaeRetry">Reintentar guardado</button>`,
+        });
+        document.getElementById('finCaeRetry')?.addEventListener('click', async () => {
+            try {
+                const listo = await this._reintentarGuardadoCae();
+                if (listo) Modal.close(inst?.id);
+            } catch (e) {
+                Toast.error('No se pudo reintentar: ' + (e.message || e));
+            }
+        });
     },
 
     _ensureLoteStyles() {
@@ -8535,6 +8650,9 @@ const FinanzasModule = {
     // Estado de la fila del lote, con dot de color (mismo lenguaje que _estadoDotComp de Emitidos).
     _loteEstadoHTML(r) {
         if (r.status === 'emitting') return '<span class="fin-lote-est" style="color:#F28D15;"><span class="fin-lote-estdot pulse" style="background:#F28D15;"></span>Emitiendo…</span>';
+        // El CAE salió pero la fila local no se guardó (T3.12): no se puede pintar
+        // como ✓, porque la obligación en AFIP está tomada y el sistema no la tiene.
+        if (r.status === 'ok' && r.comp?._sinGuardar) return `<span class="fin-lote-est" style="color:#F28D15;font-weight:700;cursor:help;" title="ARCA emitió el comprobante (CAE ${escAttr(r.comp?.cae || '')}) pero no se pudo guardar en el sistema. NO reemitir. Al terminar el lote se abre el aviso para reintentar el guardado."><span class="fin-lote-estdot" style="background:#F28D15;"></span>⚠ CAE sin guardar</span>`;
         if (r.status === 'ok') return `<span class="fin-lote-est" style="color:#00CC88;font-weight:700;"><span class="fin-lote-estdot" style="background:#00CC88;"></span>✓ ${escHtml(r.comp?.numero || 'CAE')}</span>`;
         if (r.status === 'error') return `<span class="fin-lote-est" style="color:#ff4444;font-weight:700;cursor:help;" title="${escAttr(r.error || '')}"><span class="fin-lote-estdot" style="background:#ff4444;"></span>Error</span>`;
         return '<span class="fin-lote-est" style="color:#888;"><span class="fin-lote-estdot" style="background:#888;"></span>Lista</span>';
@@ -8676,8 +8794,17 @@ const FinanzasModule = {
         this._loteEmitting = false;
         await this._loadFactEmitidos();   // refresca la fuente: los nuevos ya están en Emitidos
         this._renderLoteTable();
-        if (fail === 0) Toast.success(`✓ ${done} comprobante(s) emitido(s) en ARCA`);
-        else Toast.warning(`${done} emitido(s), ${fail} con error — revisá las filas en rojo`);
+        // Los CAE que ARCA emitió pero no se pudieron guardar acá NO son "✓ emitido":
+        // contarlos como éxito era justo lo que hacía invisible el problema.
+        // El modal se abre UNA sola vez al final, con todos los pendientes juntos —
+        // uno por factura en un lote de diez sería inusable. Auditoría T3.12.
+        const sinGuardar = this._loteRows.filter(r => r.status === 'ok' && r.comp?._sinGuardar).length;
+        if (fail === 0 && !sinGuardar) Toast.success(`✓ ${done} comprobante(s) emitido(s) en ARCA`);
+        else if (fail) Toast.warning(`${done} emitido(s), ${fail} con error — revisá las filas en rojo`);
+        if (sinGuardar) {
+            Toast.error(`${sinGuardar} comprobante(s) se emitieron en ARCA pero NO se guardaron`);
+            this._modalCaeSinGuardar();
+        }
     },
 
     // ═══════════════════════════════════════════

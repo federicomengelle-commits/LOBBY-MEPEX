@@ -26,6 +26,34 @@ window.escHtml = function (s) {
 };
 window.escAttr = window.escHtml;
 
+// ─────────────────────────────────────────────────────────────────────
+//  FECHAS LOCALES — Argentina es UTC-3 SIEMPRE, y eso rompe dos cosas:
+//
+//  1) `new Date().toISOString().split('T')[0]` no es "hoy": es hoy EN UTC.
+//     Entre las 21:00 y medianoche devuelve el día SIGUIENTE. Una OC cargada
+//     a las 22:00 nacía fechada mañana.
+//  2) `new Date('2026-08-15')` (fecha sola, sin hora) se parsea como
+//     medianoche UTC → acá cae el 14 a las 21:00. Cualquier cuenta de
+//     "faltan N días" da uno de menos y los vencimientos avisan un día antes.
+//
+//  Usar SIEMPRE estos dos en vez de los de arriba. (Auditoría T3.20.)
+// ─────────────────────────────────────────────────────────────────────
+
+// 'YYYY-MM-DD' de HOY según el reloj del que mira la pantalla.
+window.hoyLocal = function () {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// Convierte 'YYYY-MM-DD' (o un ISO completo) a un Date a medianoche LOCAL.
+// Devuelve null si no se puede parsear, para que el que llama decida.
+window.fechaLocal = function (s) {
+    if (!s) return null;
+    const [y, m, d] = String(s).slice(0, 10).split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+};
+
 // ─── TOAST ──────────────────────────────────────
 const Toast = {
     _container: null,

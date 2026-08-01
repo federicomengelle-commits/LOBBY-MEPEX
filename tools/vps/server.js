@@ -64,7 +64,10 @@ const arca = require('./arca-connector');
 app.get('/api/arca/status',    requireAuth, arca.statusHandler);
 app.get('/api/arca/ultimo',    requireAuth, arca.ultimoHandler);
 app.get('/api/arca/padron',    requireAuth, arca.padronHandler);
-app.post('/api/arca/facturar', requireRole('superadmin', 'admin', 'finanzas'), arca.facturarHandler);
+// 'finanzas' NO es un rol: los roles del sistema son superadmin | admin | pm |
+// taller | venta. Nombrarlo acá no ampliaba nada (nadie lo tiene) pero sugería
+// que existe un rol de finanzas y que alguien más podía facturar. Auditoría T3.13.
+app.post('/api/arca/facturar', requireRole('superadmin', 'admin'), arca.facturarHandler);
 
 // Web Push VAPID (Tareas · Etapas E5/E6). Todo detrás de requireAuth: el user_id
 // de la suscripción sale de la SESIÓN, nunca del body (doc 02 §13). /test solo
