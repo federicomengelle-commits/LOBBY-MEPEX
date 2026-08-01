@@ -1578,8 +1578,12 @@ const Tareas = {
         if (!sel) return;
         try {
             const { data, error } = await supabaseClient
-                .from('eventos').select('id, nombre, fecha_inicio')
-                .order('fecha_inicio', { ascending: false }).limit(80);
+                // `eventos` NO tiene `fecha_inicio`: la columna es `fecha_evento_inicio`
+                // (las otras consultas de este mismo archivo usan `fecha_armado_inicio`).
+                // Con el nombre viejo, PostgREST devolvía 400 y el desplegable de
+                // eventos del modal "Nueva tarea" quedaba SIEMPRE vacío. Auditoría T3.19.
+                .from('eventos').select('id, nombre, fecha_evento_inicio')
+                .order('fecha_evento_inicio', { ascending: false }).limit(80);
             if (error) throw error;
             if (miToken !== this._modalToken) return;          // se abrió otro modal
             const actual = document.getElementById('ntEvento');

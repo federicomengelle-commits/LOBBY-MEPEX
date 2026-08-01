@@ -11674,7 +11674,12 @@ const FinanzasModule = {
             saldo_lobby: saldoLobby,
             diferencia: diferencia,
             estado: concil.estado || 'en_proceso',
-            conciliado_por: user?.id || null,
+            // `.uid` (UUID de auth), NO `.id` (que es el username, ej. "fede").
+            // `conciliaciones.conciliado_por` es uuid → con `.id` el INSERT moría
+            // con "invalid input syntax for type uuid" y la conciliación bancaria
+            // no funcionaba NUNCA. Mismo bug que el del conforme de entrega
+            // (2026-06-27). Auditoría T3.17.
+            conciliado_por: user?.uid || null,
             notas: concil.notas || null,
         };
 

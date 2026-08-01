@@ -3662,11 +3662,21 @@ const API = {
 
     async updateParametroGlobal(clave, valor) {
         try {
-            const { error } = await supabaseClient
+            // Auditoría T3.16/M62: sin `.select()`, un UPDATE que no matchea NINGUNA
+            // fila devuelve error=null → esta función respondía `true` y el que
+            // llamaba mostraba "guardado". Le pasa a toda clave que todavía no
+            // exista en la tabla (`proxima_revision_lista` es el caso vivo): se
+            // perdía en cada intento, en silencio y para siempre.
+            const { data, error } = await supabaseClient
                 .from('parametros_globales')
                 .update({ valor })
-                .eq('clave', clave);
+                .eq('clave', clave)
+                .select('clave');
             if (error) throw error;
+            if (!data || data.length === 0) {
+                console.warn('[API] updateParametroGlobal: no existe la clave', clave);
+                return false;
+            }
             if (this._cache['parametros_globales']) delete this._cache['parametros_globales'];
             return true;
         } catch (e) {
@@ -3818,10 +3828,11 @@ const API = {
     // opts.onProgress(current, total, itemName) — callback opcional.
     // Returns { ok, total, updated, failed }
     async recalcularEnCascada(recetaIdInicial, opts = {}) {
-        if (!window.CalculoReceta) {
-            console.warn('[API] CalculoReceta no cargado');
-            return { ok: false, total: 0, updated: 0, failed: 0 };
-        }
+        // (Acá había un guard `if (!window.CalculoReceta) return` que quedó
+        //  vestigial al pasar la cascada a la RPC (T3.2): ya no se usa el motor
+        //  JS, así que exigirlo era una trampa — el día que alguien saque
+        //  `calculo-receta.js` del loader por "muerto", la cascada se caía en
+        //  silencio con un warning que miente.)
 
         // 1. Conjunto afectado = receta inicial + todos sus ascendientes
         const affected = new Set([String(recetaIdInicial)]);
@@ -3871,8 +3882,15 @@ const API = {
                 const item = (items || []).find(it => String(it.id) === id);
                 if (!item) { failed++; continue; }
                 if (onProgress) onProgress(i + 1, ordered.length, item.nombre);
-                const r = await this.recalcularPrecioAlquiler(item);
-                if (r) updated++; else failed++;
+                // Auditoría T3.2/C15: la cascada usaba `recalcularPrecioAlquiler`, el
+                // motor VIEJO en JS — ignora la regla 1:N del VU de armado, ignora el
+                // % de desperdicio y no escribe snapshots. O sea: recalcular un item a
+                // mano (que sí usa la RPC) y recalcularlo en cascada daban NÚMEROS
+                // DISTINTOS. La fuente de verdad es `calcular_receta` en Postgres.
+                // Ojo: la RPC devuelve {ok, ...}, no un booleano → hay que mirar .ok,
+                // si no todo cuenta como éxito.
+                const r = await this.recalcularRecetaRPC(item.id);
+                if (r?.ok) updated++; else failed++;
             } catch (e) {
                 console.warn('[API] Error recalculando en cascada item', id, ':', e.message);
                 failed++;
@@ -3930,8 +3948,11 @@ const API = {
                 const item = (items || []).find(it => String(it.id) === id);
                 if (!item) { failed++; continue; }
                 if (onProgress) onProgress(i + 1, ordered.length, item.nombre);
-                const r = await this.recalcularPrecioAlquiler(item);
-                if (r) updated++; else failed++;
+                // Mismo cambio que la cascada de arriba (T3.2/C15). El plan de la
+                // auditoría marcaba sólo una de las dos; esta —la que dispara al
+                // cambiar el costo de un INSUMO— tenía el mismo motor viejo.
+                const r = await this.recalcularRecetaRPC(item.id);
+                if (r?.ok) updated++; else failed++;
             } catch (e) {
                 console.warn('[API] Error recalculando por insumo, item', id, ':', e.message);
                 failed++;

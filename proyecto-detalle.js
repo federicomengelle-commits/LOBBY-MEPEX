@@ -737,7 +737,12 @@ const ProyectoDetalle = {
         const pct = total ? Math.round((done / total) * 100) : 0;
         const allDone = total > 0 && done === total;
         // El taller puede tildar; oficina también salvo que sea read-only.
-        const canEdit = !this._isRO;
+        // ⚠️ El comentario decía esto desde siempre, pero la línea hacía lo
+        // contrario: el rol `taller` ES read-only en proyectos
+        // (Data.readOnlyPermissions), así que el checklist le salía deshabilitado
+        // y "Marcar listo" no se le habilitaba NUNCA. Mismo patrón que ya se usa
+        // acá al lado para las fotos del armado. Auditoría T3.4/C8.
+        const canEdit = !this._isRO || this._isTaller;
 
         const estadoTaller = this._project.estado_taller || 'pendiente';
         const cfg = this._cicloEstados[estadoTaller] || this._cicloEstados.pendiente;
@@ -777,7 +782,10 @@ const ProyectoDetalle = {
         this._ensureFotos(); // fuera del guard de RO: el taller (RO) igual sube fotos
         const container = document.getElementById('pjdContent');
         if (!container) return;
-        if (this._isRO) return;
+        // El taller es RO en proyectos, pero SÍ tilda su propio checklist (T3.4):
+        // sin esta excepción el checkbox se renderizaba habilitado y no pasaba nada
+        // al clickearlo, porque nunca se le enganchaba el listener.
+        if (this._isRO && !this._isTaller) return;
         container.querySelectorAll('input[data-check-id]').forEach(cb => {
             cb.addEventListener('change', (e) => {
                 const id = e.target.dataset.checkId;
