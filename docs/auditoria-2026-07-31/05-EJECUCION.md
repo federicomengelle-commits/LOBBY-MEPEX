@@ -24,17 +24,17 @@
 |---|---|---|---|---|
 | **T0.1** | REVOKE de las ~20 RPC expuestas a `anon` | SQL | ✅ | aplicado + verificado 2026-08-01. Sumó la causa raíz (`pg_default_acl`) |
 | **T0.2** | `profiles.active=false` desactiva de verdad | SQL | ✅ | aplicado + verificado 2026-08-01. Alcance real: 5 funciones **+ 22 policies + 5 funciones de tareas** |
-| **T0.3** | RLS de `ausencias` · `persona_documentos` · `vacaciones_saldos` | SQL | ⬜ | riesgo cero |
-| **T0.4** | `cartera_valores` a la matriz de roles | SQL | ⬜ | |
-| **T0.5** | Policies de `audit_log` y `audit_logs` | SQL | ⬜ | |
-| **T0.6** | **Arrastre de `saldos_mensuales` + backfill** | SQL | ⬜ | los $3,2M |
-| **T0.7** | Mapeo genérico de egresos (fallback inalcanzable) | SQL | ⬜ | |
-| **T0.8** | Índices únicos en comprobantes (emitidos y recibidos) | SQL | ⬜ | **limpiar duplicados antes** |
+| **T0.3** | RLS de `ausencias` · `persona_documentos` · `vacaciones_saldos` | SQL | ✅ | aplicado + verificado 2026-08-01 |
+| **T0.4** | `cartera_valores` a la matriz de roles | SQL | ✅ | ídem |
+| **T0.5** | Policies de `audit_log` y `audit_logs` | SQL | ✅ | ídem. Había **2 pares de policies que se anulaban entre sí** |
+| **T0.6** | **Arrastre de `saldos_mensuales` + backfill** | SQL | ✅ | los $3,2M aparecieron. KPI $4.999.900 → **$8.199.900** |
+| **T0.7** | Mapeo genérico de egresos (fallback inalcanzable) | SQL | ✅ | + blindaje del default + **bug vivo del tab Mapeos** (`contabilidad.js?v=18`) |
+| **T0.8** | Índices únicos en comprobantes (emitidos y recibidos) | SQL | 🟡 | **emitidos ✅** (2 índices). Recibidos ⛔ **espera T5.2** (3 copias de la misma factura) |
 | **T0.9** | FK de `plan_cobro.proyecto_id` + huérfanos de $10,7M | SQL | ⬜ | **decidir con Fede primero** |
-| **T0.10** | **Las 4 policies de `storage.objects`** | SQL | ⬜ | + crear las de `stands` |
+| **T0.10** | **Las 4 policies de `storage.objects`** | SQL | ✅ | eran 1 en `objects` + 3 en `buckets`. anon fuera de comprobantes/remitos/stands |
 | **T0.11** | `pg_default_acl` de TABLAS/VIEWS también abre todo a `anon` | SQL | ⬜ | **decisión de Fede** — nuevo, salió de T0.1. Es la causa raíz del incidente de las 5 views (26/07). Cerrarlo toca el contrato del Cotizador |
-| **T0.12** | 4 funciones SECDEF de trigger sin `SET search_path` | SQL | ⬜ | nuevo, salió de T0.2. `handle_new_user` · `fn_audit_asientos` · `trigger_log_proyecto_actividad` · `trigger_cotizacion_aprobada_crea_proyecto`. Bajo, pero es el warning `function_search_path_mutable` sobre funciones que corren como owner |
-| **T1** | nginx: `.git` + X-Forwarded-For + 16m + timeout 180s | config | ⬜ | una sola copia |
+| **T0.12** | 4 funciones SECDEF de trigger sin `SET search_path` | SQL | ✅ | nuevo, salió de T0.2. Ahora **0** SECDEF sin search_path |
+| **T1** | nginx: `.git` + X-Forwarded-For + 16m + timeout 180s | config | 🟡 | **conf listo en el repo** · ⏳ falta el `cp` + reload de Fede |
 | **T2** | Deploy VPS (los 7 archivos juntos) | deploy | ⬜ | habilita `/api/push/aviso` |
 | **T3.1** | **`app.js?v=17`** en `index.html` | JS | ⬜ | 1 línea, alto impacto |
 | **T3.2** | Cascada de costos → RPC (`api.js:3874`) | JS | ⬜ | 1 línea |
@@ -187,6 +187,34 @@ CREATE POLICY ... FOR INSERT TO authenticated WITH CHECK (true);
 -- audit_log: SELECT → USING (fn_is_admin()); y sacar la policy permisiva de INSERT
 ```
 
+### T0.3 + T0.4 + T0.5 — ✅ HECHO 2026-08-01
+Archivo único: **`sql/auditoria_t0_3_4_5_rls_pendientes.sql`** · aplicado a prod por MCP · sql-reviewer: BLOCK con 1 HIGH (idempotencia) + 1 MEDIUM, arreglados antes de correr.
+Van juntas porque son el mismo movimiento: policies `USING(true)` que pasan a la matriz.
+
+**T0.3 — las 3 de RRHH.** El plan decía "nadie las lee fuera de `rrhh.js`". Son **tres** consumidores: `rrhh.js`, `alertas.js:38` y `tareas.js:257`. Los dos últimos ya gatean la fuente a `['superadmin','admin']`, que es exactamente lo que da `fn_role_can('rrhh',…)` → la conclusión del plan (riesgo cero) se sostiene, pero por verificación, no por suerte.
+
+**T0.4 — `cartera_valores`.** Confirmado que era la única tabla financiera fuera de la matriz. Lo grave no era la lectura sino el INSERT: dispara `fn_asiento_auto_valor`, o sea **cualquier logueado podía meter un asiento contable**.
+
+**T0.5 — auditoría. Acá había algo peor de lo que decía el plan: dos pares de policies que se anulaban entre sí.** Como las PERMISSIVE se combinan con OR:
+- `audit_log_read_authenticated USING(true)` anulaba a `audit_log_select_admin` → **cualquiera leía quién hizo qué en todos los módulos**.
+- `audit_log_insert_authenticated WITH CHECK(true)` anulaba a la de "own logs" → **cualquiera podía escribir una entrada a nombre de otro**. En un log que existe para atribuir responsabilidad, eso lo invalida entero.
+
+Antes de tocar el INSERT verifiqué los ~30 `AuditLog.record()`/`.log()`: todos corren con usuario logueado y mandan `user_id: user?.uid`. El de logout (`auth.js:129`) se dispara **antes** del `signOut()` y lee el perfil de memoria antes de nulearlo. Y los 4 lectores de `audit_log` en `audit-log.js` (`getHistory`/`getUserActivity`/`getRecentActivity`/`revertFromHistory`) **no los llama nadie** — código muerto del undo legacy. `audit_log` sigue siendo append-only (sin UPDATE ni DELETE).
+
+**Verificación — simulación de 4 usuarios contra prod (rollback, 0 residuo):**
+
+| usuario | ausencias | persona_doc | vac_saldos | cartera | audit_log | INSERT de su propio log |
+|---|---|---|---|---|---|---|
+| Fede (superadmin) | 0 | 0 | 2 | 6 | 272 | OK |
+| Sofi (admin) | 0 | 0 | 2 | 6 | 272 | OK |
+| Meli (pm) | **0** | **0** | **0** | **0** | **0** | OK |
+| Taller | **0** | **0** | **0** | **0** | **0** | OK |
+
+Todos pueden seguir **escribiendo** su propia entrada de auditoría (así funciona el log); ninguno de los dos no-admin puede **leer** nada de lo cerrado. Los admin, igual que antes.
+Más: 0 policies abiertas restantes en las 6 tablas · `audit_log` sigue sin UPDATE/DELETE · conteo final 4/4/4/4/2/2.
+
+*(Observación de datos, no bug: `ausencias` y `persona_documentos` están **vacías** — los tabs de RRHH v2 existen pero nunca se cargó nada. Relevante para T5.x cuando se cargue el personal.)*
+
 ### T0.6 · El arrastre de `saldos_mensuales` ⚠️ *los $3,2M*
 En `fn_refresh_saldo_periodo`, reemplazar la lectura del mes literal anterior por:
 ```sql
@@ -248,6 +276,60 @@ Antes devuelve los 5 archivos; después tiene que devolver `[]`.
 
 ---
 
+### T0.6 · Arrastre de saldos — ✅ HECHO 2026-08-01
+Archivo: **`sql/auditoria_t0_6_arrastre_saldos.sql`** · sql-reviewer: APPROVE, 0 CRITICAL/HIGH.
+El bug: el arrastre buscaba **el mes literalmente anterior**, y las filas de `saldos_mensuales` sólo se crean cuando hay movimiento → una caja que no se toca un mes deja un hueco, el mes siguiente arranca de 0 y **el acumulado desaparece**. Sin error ni warning.
+`1.1.01 Efectivo (mano)/interno` ahora: abr 3.200.000 → may 3.200.000 → **jul arranca de 3.200.000 y cierra en 8.200.000** (antes arrancaba de 0).
+Verificación estructural: **0 arrastres rotos** (`saldo_anterior` = `saldo_final` del anterior en toda la tabla) y **0 series desalineadas contra el libro diario**.
+Desvío del plan: el backfill NO usa `fn_refresh_saldo_cascada` desde '2026-01' como decía el snippet — eso fabricaría filas en cero para todos los meses previos al primer movimiento de cada cuenta. Se recorren las filas que ya existen, en orden. Mismo resultado, sin inventar nada.
+👉 **Nadie corra el snippet viejo de memoria más adelante.**
+
+### T0.7 · Mapeo genérico de egresos — ✅ HECHO 2026-08-01
+Archivo: **`sql/auditoria_t0_7_mapeo_default_egreso.sql`** · sql-reviewer: BLOCK con 2 HIGH, arreglados.
+Confirmado: `campo_origen` es `NOT NULL`, así que la rama de fallback `OR campo_origen IS NULL` **era inalcanzable por schema**. Parecía una red y no lo era.
+**Prueba funcional (con rollback):** desactivé el mapeo de `servicio`, pagué un egreso de esa categoría → **el asiento se generó igual, balanceado, apuntando a 5.2.11 Gastos varios**. Antes no se habría generado ninguno.
+Extras sobre el plan:
+- El default quedó **blindado por trigger** (no se puede desactivar, borrar **ni convertir en específico** — este último era el HIGH del reviewer: desde el tab Mapeos se podía cambiar la "Regla de match" y hacer desaparecer el default sin desactivar nada) + índice único para que no haya dos. Cambiar la cuenta destino sí se puede. Las 3 formas de voltearlo dan 23514; el cambio de cuenta pasa.
+- `RAISE WARNING` cuando gana el genérico: si no, un asiento con la cuenta equivocada es indistinguible de uno correcto.
+- 🐞 **Bug vivo encontrado de paso:** `contabilidad.js _saveMapeo()` armaba el mapeo genérico de EGRESO con `campo_origen: null` — y la columna es NOT NULL. O sea **guardar un mapeo genérico de egreso desde el tab Mapeos fallaba siempre**, desde antes de esta migración (la rama de ingreso sí mandaba `'default'`; era una asimetría en el mismo `switch`). → **`contabilidad.js?v=18`**, requiere pull.
+
+### T0.8 · Índices únicos — 🟡 PARCIAL 2026-08-01
+Archivo: **`sql/auditoria_t0_8_12_indices_y_search_path.sql`** · sql-reviewer: BLOCK con 1 HIGH, resuelto verificando.
+**Hechos:** `ux_comprobantes_pv_tipo_numero` y `ux_comprobantes_cae` sobre emitidos (0 duplicados, se crearon limpios). El de (pv, tipo, numero) incluye `tipo` a propósito: hay dos filas legítimas con `numero='00005-00000002'` (una `factura_b`, otra `nota_credito_b`) — AFIP numera por (PtoVta, CbteTipo).
+**⛔ Falta el de RECIBIDOS: depende de T5.2.** Los 3 duplicados están identificados con nombre y apellido:
+
+| id | cargado | categoría | egreso_id |
+|---|---|---|---|
+| `dfcf79f7…` | 20/06 18:11 | servicio | — |
+| `a91fcaef…` | 20/06 18:12 | material | — |
+| `eab7d116…` | 21/06 02:24 | material | **141a2c79…** ← el bueno |
+
+Mismo importe los tres (neto 360.000 / IVA 75.600 / total 435.600) y cada uno con su archivo en Storage: son 3 intentos de la misma carga por OCR. Sólo el tercero generó asiento. Los otros dos **no** afectan la contabilidad, pero **sí entran al Libro IVA Compras** (`v_libro_iva_compras_extendido` lee la tabla, no los asientos) → **$151.200 de crédito fiscal inventado**.
+El plan de 4 pasos (mirar → soft-delete de los 2 → índice → confirmar que el Libro IVA baja $151.200) está escrito y comentado al pie del SQL. **No lo ejecuté: es borrado de datos fiscales.**
+
+### T0.10 · Storage — ✅ HECHO 2026-08-01 · EL CRÍTICO
+Archivo: **`sql/auditoria_t0_10_storage_policies.sql`** · sql-reviewer: BLOCK con 1 HIGH, arreglado.
+**Corrección al plan:** no eran 4 policies de `storage.objects`. Era **1 en `objects`** (`allow-service-uploads`, FOR ALL TO public USING true → cualquiera con la anon key hacía cualquier cosa en cualquier bucket) **+ 3 en `storage.buckets`** que dejaban **crear y modificar buckets** a cualquiera.
+
+| bucket, con la anon key y sin sesión | antes | ahora |
+|---|---|---|
+| comprobantes (facturas de proveedores) | 5 archivos | **0** |
+| remitos (firmados) | 3 | **0** |
+| stands | 1 | **0** |
+| cotizaciones-pdf *(Cotizador)* | 25 | **25** ✔ |
+| propuestas-pdf *(Cotizador)* | 5 | **5** ✔ |
+
+Subir a `comprobantes` con la anon key: **HTTP 400**. Los 3 roles logueados (superadmin/pm/taller) leen y escriben igual que antes.
+**Decisión conservadora con los 2 buckets del Cotizador:** `stands`, `cotizaciones-pdf` y `propuestas-pdf` no tenían policies propias — vivían de la policy abierta. A `stands` se le hicieron las suyas; a los 2 del Cotizador se les preservó **exactamente** lo que tenían (anon+authenticated), sólo que acotado a esos buckets. Son `public=true`, así que en confidencialidad no se pierde nada, y romper la generación de PDFs de presupuestos de noche era peor. 👉 Apretar esto va con **T4.8**.
+*(Dato del reviewer: el repo local del Cotizador escribe con **service key** server-side, así que esa policy probablemente ni haga falta — pero no se puede confirmar qué versión corre el VPS.)*
+El archivo **se audita a sí mismo** antes de commitear (un `DROP POLICY IF EXISTS` con el nombre mal escrito es un no-op silencioso, y `allow-aññ-uploads` tiene una ñ). Si no matchea, aborta todo.
+
+### T0.12 · search_path — ✅ HECHO 2026-08-01
+Mismo archivo que T0.8. Las 4 SECDEF de trigger que no lo tenían ahora lo tienen (`ALTER FUNCTION … SET`, sin reescribir cuerpos). Ahora hay **0** SECURITY DEFINER sin `search_path`.
+Antes de aplicar se verificó lo que importaba: **`pgcrypto` y `uuid-ossp` están instaladas en el schema `extensions`**, así que una llamada sin calificar a `crypt()`/`uuid_generate_v4()` habría dejado de resolver — y `fn_audit_asientos` dispara en todo INSERT/UPDATE/DELETE de `asientos`, o sea habría tirado abajo cada ingreso y egreso que se confirme. Regex sobre las 4 definiciones: ninguna las llama.
+
+---
+
 ## TANDA 1 · nginx
 
 Editar `tools/vps/nginx-mepex.conf` y después:
@@ -266,6 +348,42 @@ sudo nginx -t && sudo systemctl reload nginx
 ```bash
 curl -sI https://app.mepex.com.ar/.git/config | head -1        # debe dar 404
 grep -n 'X-Forwarded-For' /etc/nginx/sites-enabled/mepex       # debe aparecer
+```
+
+---
+
+### 🟡 ESTADO 2026-08-01 · el conf ya está editado en el repo, falta deployarlo
+
+**Medido contra prod ANTES de tocar nada** (o sea: esto es lo que hoy baja cualquiera):
+
+| URL | hoy |
+|---|---|
+| `/.git/config` · `/.git/HEAD` | **200** — el historial es clonable |
+| `/CLAUDE.md` | **200**, 199 KB |
+| `/sql/finanzas_fase1.sql` | **200** |
+| `/tools/vps/server.js` | **200** — el código del proxy |
+| `/tools/vps/nginx-mepex.conf` | **200** — la config de nginx, servida por nginx |
+| `/lobby-api/index.js` | 404 ✔ (va al proxy, no al disco) |
+
+**Dos correcciones al plan, las dos importantes:**
+
+1. **`lobby-api` NO va en el deny.** El plan lo listaba, pero `/lobby-api/` es un `proxy_pass` vivo al :3002 — es por donde se crean los usuarios. En nginx las `location` **regex le ganan a las de prefijo**, así que una regex que lo matchee lo mata. Y no hace falta: ya da 404 porque esa ruta nunca toca el disco.
+2. **`/.well-known/` queda exento** (`~ /\.(?!well-known)`). Sin esa exclusión, el deny de "todo lo que empiece con punto" también tapa el challenge de Let's Encrypt y puede romper la renovación del certificado.
+
+También se sacó `memory/` de la lista: esa carpeta no existe en el repo (vive en `~/.claude`).
+
+Los 4 cambios quedaron en `tools/vps/nginx-mepex.conf`: los 3 bloques de deny, `client_max_body_size 16m` y `proxy_read_timeout 180s`. El `X-Forwarded-For` ya estaba desde el commit `443aa3f`.
+
+**⏳ Falta que Fede corra:**
+```bash
+~/pull-lobby.sh
+sudo cp /home/mepex/lobby/tools/vps/nginx-mepex.conf /etc/nginx/sites-enabled/mepex
+sudo nginx -t && sudo systemctl reload nginx
+```
+Y después verificar (los 3 primeros tienen que pasar de 200 a 404, y los 2 últimos seguir en 200):
+```bash
+for P in /.git/config /CLAUDE.md /tools/vps/server.js / /assets/logo_full.png; do
+  printf "%-28s " "$P"; curl -s -o /dev/null -w "%{http_code}\n" "https://app.mepex.com.ar$P"; done
 ```
 
 ---
@@ -329,5 +447,6 @@ Y el comentario de `costos.js:4082`, que describe `costos_params_globales` como 
 | Fecha | Ítems tocados | Notas |
 |---|---|---|
 | 2026-07-31 | — | Auditoría entregada. Nada ejecutado todavía. |
+| 2026-08-01 | **T0.3 + T0.4 + T0.5 ✅** | `sql/auditoria_t0_3_4_5_rls_pendientes.sql` aplicado + verificado (simulación de 4 usuarios, rollback, 0 residuo). sql-reviewer BLOCK → HIGH de idempotencia (13 `CREATE POLICY` con nombre nuevo sin su `DROP IF EXISTS`: el archivo no se podía re-correr) + MEDIUM en el rollback documentado (`cv_update` como `FOR ALL` habría reabierto el DELETE que T0.2 cerró). Hallazgo propio: en `audit_log` había **2 pares de policies anulándose entre sí** — cualquiera leía la auditoría de todos, y podía escribir entradas a nombre de otro. Sin JS, sin deploy. |
 | 2026-08-01 | **T0.2 ✅** | `sql/auditoria_t0_2_active_desactiva.sql` aplicado + verificado (simulación de 6 usuarios contra prod, con rollback). sql-reviewer BLOCK → 1 CRITICAL: la Parte A **sola** habría ascendido a un `taller` dado de baja a acceso total de proyectos y locaciones (`NULL IS DISTINCT FROM 'taller'` = true) → se sumaron las Partes C y D en la misma transacción. Alcance final: 5 funciones + 22 policies + 5 funciones de tareas. Ítems nuevos: **T0.12** (4 SECDEF de trigger sin search_path), **T3.22** (restoreSession), **T5.12** (revocar sesiones), **T5.13** (leaked password protection), y una nota en **T4.8** (`cotizacion_propuestas` con RLS y cero policies). Linter: **0 ERRORs**. Sin JS, sin deploy. |
 | 2026-08-01 | **T0.1 ✅** | `sql/auditoria_t0_1_revoke_rpc_anon.sql` aplicado a prod + verificado (SQL, curl con anon key, y simulación de los 5 roles con rollback). sql-reviewer BLOCK → 2 HIGH arreglados antes de correr: el guard tenía que cubrir `compras` (si no, PM no recibía OCs) y faltaba cerrar el `pg_default_acl` que reconcede a anon cada función nueva. Salieron 2 ítems nuevos: **T0.11** (mismo default, pero de tablas/views — decisión de Fede) y **T3.21** (el catch-all de `API.ajustarStock`). Sin JS, sin deploy. |

@@ -5402,14 +5402,17 @@ const ContabilidadModule = {
         //   ingreso específico → campo='servicio'  + valor=SRV-*
         //   ingreso genérico   → campo='default'   + valor='default'
         //   egreso  específico → campo='categoria' + valor=categoría
-        //   egreso  genérico   → campo=NULL        + valor=NULL
+        //   egreso  genérico   → campo='default'   + valor='default'
+        // El genérico de egreso mandaba NULL/NULL, y `mapeo_cuentas.campo_origen`
+        // es NOT NULL → guardar un mapeo genérico de egreso fallaba SIEMPRE con el
+        // error crudo de Postgres. Las dos ramas van iguales (auditoría T0.7).
         let campo, valor;
         if (tipo === 'ingreso') {
             if (campoRaw === 'servicio') { campo = 'servicio'; valor = valorRaw || null; }
             else                         { campo = 'default';  valor = 'default'; }
         } else {
             if (campoRaw === 'categoria') { campo = 'categoria'; valor = valorRaw || null; }
-            else                          { campo = null;        valor = null; }
+            else                          { campo = 'default';   valor = 'default'; }
         }
         // posicion (text NOT NULL) = lado donde cae la cuenta mapeada. Los triggers
         // hoy lo hardcodean; lo dejamos coherente: ingreso→haber, egreso→debe.

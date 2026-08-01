@@ -70,7 +70,7 @@ const App = {
         'calculo-receta.js?v=1',
         'costos.js?v=34',
         'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
-        'contabilidad.js?v=17',
+        'contabilidad.js?v=18',
         'ventas.js?v=1',
         'venta-detalle.js?v=2',
         'cobranza.js?v=2',
