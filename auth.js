@@ -211,6 +211,16 @@ const Auth = {
             const profile = await this._fetchProfile(session.user.id);
             if (!profile) return false;
 
+            // El login (`_finishLogin`) chequea `active`, pero restoreSession no lo
+            // hacía: una sesión YA ABIERTA sobrevivía a la baja para siempre. Desde
+            // T0.2 el RLS igual le devuelve todo vacío, así que sin esto el usuario
+            // se queda mirando una app en blanco sin que nadie le diga por qué.
+            // Auditoría T3.22.
+            if (!profile.active) {
+                await supabaseClient.auth.signOut();
+                return false;
+            }
+
             this._profile = profile;
 
             // Start heartbeat on session restore

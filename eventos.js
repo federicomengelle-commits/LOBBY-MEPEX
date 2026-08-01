@@ -1620,8 +1620,12 @@ const EventosModule = {
                 return `<li>${ico} ${this._escAttr(i._label)}${cant}${det}</li>`;
             }).join('');
 
+            // El chip "firmado" ahora ABRE la foto del remito. Era un span muerto:
+            // una vez subida la foto firmada no se podía volver a ver nunca más,
+            // aunque `API.getRemitoSignedUrl` existía hace meses sin que la llamara
+            // nadie. Auditoría T3.15/A20.
             const remitoTxt = t.remito_firmado_url
-                ? '<span class="ev-trans-remito ok" title="Remito firmado">● firmado</span>'
+                ? `<span class="ev-trans-remito ok clickable" data-trans-ver-firmado="${this._escAttr(t.remito_firmado_url)}" title="Ver la foto del remito firmado">● firmado</span>`
                 : (t.remito_pdf_url ? '<span class="ev-trans-remito gen" title="Remito generado">● generado</span>' : '<span class="ev-trans-remito none" title="Sin remito">● s/remito</span>');
 
             return `
@@ -1675,6 +1679,8 @@ const EventosModule = {
                 .ev-trans-remito.ok { color:#00CC88; }
                 .ev-trans-remito.gen { color:#00A9C1; }
                 .ev-trans-remito.none { color:#666; }
+                .ev-trans-remito.clickable { cursor:pointer; }
+                .ev-trans-remito.clickable:hover { text-decoration:underline; }
                 .ev-trans-actions { display:flex; gap:2px; }
             </style>
             <div class="ev-panel-section" id="evSecTransporte">
@@ -1748,8 +1754,29 @@ const EventosModule = {
             btn.addEventListener('click', () => this._subirRemitoFirmado(btn.dataset.transFirmado, eventoId));
         });
 
+        document.querySelectorAll('[data-trans-ver-firmado]').forEach(el => {
+            el.addEventListener('click', () => this._verRemitoFirmado(el.dataset.transVerFirmado));
+        });
+
         document.querySelector(`[data-trans-remito-evento="${eventoId}"]`)
             ?.addEventListener('click', () => this._generarRemitoEvento(eventoId));
+    },
+
+    // Abre la foto del remito firmado (bucket privado → signed URL).
+    // ⚠️ La pestaña se abre ANTES del await, a propósito: resolver la signed URL
+    //    lleva un await, y para cuando vuelve el `window.open` ya no cuenta como
+    //    gesto del usuario → lo bloquea el navegador. Misma lección que el clip de
+    //    los comprobantes (sesión 2026-07-31b).
+    async _verRemitoFirmado(path) {
+        if (!path) return;
+        const win = window.open('', '_blank');
+        const url = await API.getRemitoSignedUrl(path);
+        if (!url) {
+            if (win) win.close();
+            Toast.error('No se pudo abrir el remito firmado');
+            return;
+        }
+        if (win) win.location.href = url; else window.open(url, '_blank');
     },
 
     async _generarRemitoTransporte(transId, eventoId) {

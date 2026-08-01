@@ -32,7 +32,11 @@ const Notifications = {
           tipos: ['asignacion_pendiente_aprobacion', 'asignacion_aprobada'] },
         { key: 'taller', label: 'Taller y producción', icon: '🔧',
           desc: 'Novedades de obra, stands listos, pase a taller',
-          tipos: ['novedad_para_taller', 'proyecto_listo', 'proyecto_a_taller'] },
+          // `novedad_proyecto` y `novedad_critica` (los emite api.js:4172) estaban
+          // fuera del catálogo: llegaban con la etiqueta cruda y NO se podían
+          // silenciar desde #notificaciones. Auditoría T3.8/A31.
+          tipos: ['novedad_para_taller', 'novedad_proyecto', 'novedad_critica',
+                  'proyecto_listo', 'proyecto_a_taller'] },
         { key: 'compras', label: 'Compras y recepción', icon: '🛒',
           desc: 'Pedidos de compra, órdenes generadas o incompletas, pagos a proveedores vencidos',
           tipos: ['pedido_compra', 'oc_generada', 'oc_recepcion_incompleta', 'pago_proveedor_vencido'] },
@@ -44,6 +48,12 @@ const Notifications = {
           tipos: ['mencion', 'caso_nuevo', 'cotizacion_aprobada'] },
         { key: 'eventos', label: 'Eventos', icon: '📅',
           desc: 'Armados que se vienen, cambios de fecha, solapamientos y encuestas respondidas',
+          // pushDefault, misma lógica que 'tareas': estos tres —armado a 7/2 días,
+          // fecha cambiada, solapamiento— son justo los que valen una vibración en el
+          // celular. Naciendo apagada, el push salía con el switch de Celular en OFF
+          // en la pantalla de preferencias: el aviso más urgente del sistema no le
+          // llegaba a nadie hasta que cada uno lo prendiera a mano. Auditoría T3.5/C13.
+          pushDefault: true,
           tipos: ['encuesta_respondida', 'evento_armado_proximo', 'evento_fecha_cambiada',
                   'evento_solapamiento'] },
         { key: 'finanzas', label: 'Finanzas', icon: '💰',

@@ -1769,7 +1769,14 @@ const ComprasModule = {
                 });
 
                 if (result && result.ok) {
-                    Toast.success(`Recepción registrada${result.aplicados ? ` — stock actualizado en ${result.aplicados} insumo(s)` : ''}`);
+                    if (result.fallidos && result.fallidos.length) {
+                        // La recepción se registró igual (eso es lo que evita duplicar stock
+                        // al reintentar), pero estos no se pudieron sumar → hay que ajustarlos
+                        // a mano en Inventario. Warning, no success: no es un "todo bien".
+                        Toast.warning(`Recepción registrada, pero NO se pudo sumar el stock de: ${result.fallidos.join(', ')}. Ajustalo a mano en Inventario.`);
+                    } else {
+                        Toast.success(`Recepción registrada${result.aplicados ? ` — stock actualizado en ${result.aplicados} insumo(s)` : ''}`);
+                    }
                     Modal.close();
                     oc.estado = 'recibida';
                     await this._loadOrdenItems(oc.id);

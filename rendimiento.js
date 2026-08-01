@@ -482,14 +482,22 @@ const RendimientoModule = {
                 payload.dias = parseFloat(document.getElementById('rendLineDias')?.value) || 0;
                 payload.tarifa = parseFloat(document.getElementById('rendLineTarifa')?.value) || 0;
                 payload.monto = Math.round(payload.dias * payload.tarifa * 100) / 100;
-                if (catItem && Number(catItem.tarifa_default) !== payload.tarifa) editado = true;
+                // `monto_editado` significa "esto lo puso una persona, el sync no lo pise"
+                // (`syncJornalesEvento` respeta la tarifa sólo si la bandera está en true).
+                // Antes se comparaba contra `catItem.tarifa_default` y encima gateado por
+                // `if (catItem)`: un jornal SIN ítem de catálogo —el caso normal— nunca
+                // marcaba la bandera, así que el primer sync posterior le reescribía la
+                // tarifa tipeada a mano. Auditoría T3.3/C7.
+                if (!isEdit || Number(costo?.tarifa) !== payload.tarifa) editado = true;
             } else {
                 if (hasProv) payload.proveedor_id = document.getElementById('rendLineProv')?.value || null;
                 payload.monto = parseFloat(document.getElementById('rendLineMonto')?.value) || 0;
                 if (!payload.monto) { Toast.warning('El monto es obligatorio'); return; }
-                if (catItem && Number(catItem.tarifa_default) !== payload.monto) editado = true;
+                if (!isEdit || Number(costo?.monto) !== payload.monto) editado = true;
             }
-            payload.monto_editado = editado;
+            // Nunca degradar: si la línea ya estaba marcada como editada a mano, volver a
+            // guardarla sin tocar el importe NO la desprotege.
+            payload.monto_editado = editado || !!costo?.monto_editado;
 
             try {
                 if (isEdit) {

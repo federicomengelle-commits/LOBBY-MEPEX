@@ -172,7 +172,14 @@ const Alertas = {
                 .from('proyectos')
                 .select('id, updated_at, created_at')
                 .eq('_deleted', false)
-                .in('estado', ['en_proceso', 'en_produccion', 'pendiente', 'en_preparacion', 'En proceso', 'En producción', 'Pendiente', 'En preparación']);
+                // El CHECK de `proyectos.estado` sólo admite
+                // por_iniciar | en_proceso | en_taller | finalizado | rechazado.
+                // Acá se filtraba por 8 valores de los cuales **7 son ilegales**
+                // ('en_produccion', 'pendiente', 'en_preparacion' y las 4 versiones
+                // con mayúscula) → el único legal era 'en_proceso', que hoy no lo usa
+                // ningún proyecto: la alerta "proyecto trabado" nunca se disparó.
+                // Auditoría T3.7/A30.
+                .in('estado', ['por_iniciar', 'en_proceso', 'en_taller']);
             if (error || !data) return [];
             const trabados = data.filter(p => {
                 const ts = p.updated_at || p.created_at;

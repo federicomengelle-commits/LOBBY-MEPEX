@@ -5125,16 +5125,25 @@ const API = {
     // Ajuste atómico de stock (RPC ajustar_stock + fallback read-modify-write).
     // Reusa la MISMA vía que Inventario (columna real 'stock', no 'stock_actual').
     async ajustarStock(tabla, id, delta) {
-        try {
-            const { data, error } = await supabaseClient.rpc('ajustar_stock', { p_tabla: tabla, p_id: id, p_delta: delta });
-            if (error) throw error;
-            return data;
-        } catch (e) {
-            const { data: row } = await supabaseClient.from(tabla).select('stock').eq('id', id).maybeSingle();
-            const nuevo = (Number(row?.stock) || 0) + Number(delta);
-            await supabaseClient.from(tabla).update({ stock: nuevo }).eq('id', id);
-            return nuevo;
-        }
+        const { data, error } = await supabaseClient.rpc('ajustar_stock', { p_tabla: tabla, p_id: id, p_delta: delta });
+        if (!error) return data;
+        // Este catch atrapaba CUALQUIER error y caía al read-modify-write, que es
+        // justo la race condition que la RPC existe para evitar — así que un 403 de
+        // permisos (o cualquier otro error real) se convertía en una escritura NO
+        // atómica, exitosa y silenciosa. Sólo se degrada si la RPC todavía no existe
+        // en la base; el resto se propaga. Mismo chequeo que inventario.js:2452.
+        // Auditoría T3.21.
+        const code = error.code || '';
+        const msg = (error.message || '').toLowerCase();
+        const rpcMissing = code === 'PGRST202' || code === '42883'
+            || msg.includes('could not find the function') || msg.includes('does not exist');
+        if (!rpcMissing) throw error;
+        const { data: row, error: readErr } = await supabaseClient.from(tabla).select('stock').eq('id', id).maybeSingle();
+        if (readErr) throw readErr;
+        const nuevo = (Number(row?.stock) || 0) + Number(delta);
+        const { error: updErr } = await supabaseClient.from(tabla).update({ stock: nuevo }).eq('id', id);
+        if (updErr) throw updErr;
+        return nuevo;
     },
 
     // SEAM Compras→Stock: recibe una OC → suma stock de los insumos + registra el
@@ -5153,9 +5162,22 @@ const API = {
 
             // 1) Sumar stock a cada insumo o pieza del catálogo (atómico; la RPC ajustar_stock
             //    es genérica por tabla y ya soporta insumos_base y catalogo_items).
+            // ⚠️ NUNCA abortar el loop a mitad de camino. Desde que `ajustarStock` propaga
+            //    los errores reales (T3.21), un fallo en el ítem 2 de 3 dejaría el ítem 1 ya
+            //    sumado, la OC SIN marcar `stock_aplicado`, y el botón "Confirmar recepción"
+            //    habilitado de nuevo (compras.js) → el reintento volvía a sumar el ítem 1.
+            //    Duplicar stock en silencio es peor que una recepción incompleta avisada:
+            //    se sigue con los demás, se marca la OC igual (eso es lo que corta la
+            //    duplicación) y se devuelven los que fallaron para ajustarlos a mano.
+            const fallidos = [];
             for (const it of conStock) {
                 const tabla = it.insumo_id ? 'insumos_base' : 'catalogo_items';
-                await this.ajustarStock(tabla, it.insumo_id || it.catalogo_item_id, Number(it.cantidad_recibida));
+                try {
+                    await this.ajustarStock(tabla, it.insumo_id || it.catalogo_item_id, Number(it.cantidad_recibida));
+                } catch (eStock) {
+                    console.warn('[API] recibirOrdenCompra stock:', it.nombre || it.id, eStock.message);
+                    fallidos.push(it.nombre || `ítem #${it.id}`);
+                }
             }
 
             // 2) Registrar el movimiento de inventario (entrada por compra) — auditable
@@ -5208,7 +5230,7 @@ const API = {
                 });
             }
 
-            return { ok: true, aplicados: conStock.length };
+            return { ok: true, aplicados: conStock.length - fallidos.length, fallidos };
         } catch (e) { console.warn('[API] recibirOrdenCompra:', e.message); return { error: e.message }; }
     },
 
@@ -7520,12 +7542,20 @@ const API = {
             existing.forEach(c => { exMap[keyOf(c.persona_id, c.fase)] = c; });
             let created = 0, updated = 0, removed = 0;
             const seen = new Set();
+            // Una línea con plata ya movida NO se toca: ni tarifa, ni días, ni monto.
+            // El guard existía sólo en el loop de borrado de abajo, así que el sync
+            // igual recalculaba el importe de un jornal YA PAGADO — y ahí el número de
+            // Rendimiento dejaba de coincidir con el egreso que se emitió. Auditoría T3.3.
+            const conPlata = (c) => (parseFloat(c.monto_pagado) || 0) > 0
+                || c.estado === 'pagado' || c.estado === 'parcial' || !!c.egreso_id;
             for (const l of lines) {
                 const k = keyOf(l.persona_id, l.fase);
                 seen.add(k);
                 const rate = rates[String(l.persona_id)] || 0;
                 const row = exMap[k];
-                if (row) {
+                if (row && conPlata(row)) {
+                    continue;                       // intocable
+                } else if (row) {
                     const tarifa = row.monto_editado ? (parseFloat(row.tarifa) || 0) : rate;
                     await this.updateEventoCosto(row.id, {
                         dias: l.dias, tarifa,
@@ -7545,8 +7575,7 @@ const API = {
             }
             for (const c of existing) {
                 const k = keyOf(c.persona_id, c.fase);
-                const hasPago = (parseFloat(c.monto_pagado) || 0) > 0 || c.estado === 'pagado' || c.estado === 'parcial';
-                if (!seen.has(k) && !hasPago) { await this.deleteEventoCosto(c.id); removed++; }
+                if (!seen.has(k) && !conPlata(c)) { await this.deleteEventoCosto(c.id); removed++; }
             }
             return { ok: true, created, updated, removed };
         } catch (e) {
