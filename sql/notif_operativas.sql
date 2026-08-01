@@ -18,6 +18,9 @@
 
 -- ─────────────────────────────────────────────
 -- #4 · Stock que cruza el mínimo → push admin
+-- ⚠️ SUPERADA por sql/auditoria_t3_9_stock_bajo_taller.sql (T3.9/A32):
+--    la versión en prod inserta DOS filas (admin + taller). Este INSERT único
+--    ya NO refleja prod — no copiar de acá.
 -- Dispara SÓLO en el cruce hacia abajo (antes ≥ mínimo, ahora < mínimo), así
 -- un insumo que ya estaba bajo no re-notifica en cada salida. La alerta pasiva
 -- (puntito) sigue existiendo aparte en alertas.js; esto es el ping inmediato.

@@ -2002,6 +2002,11 @@ const API = {
             if (data.pctDesperdicioOverride !== undefined && data.pctDesperdicioOverride !== null && data.pctDesperdicioOverride !== '') {
                 payload.pct_desperdicio_override = Number(data.pctDesperdicioOverride);
             }
+            // T3.9: umbral del aviso de stock bajo (NULL = sin alerta; el trigger
+            // trg_notif_stock_minimo_fn recién puede disparar cuando esto tiene valor)
+            if (data.stockMinimo !== undefined && data.stockMinimo !== null && data.stockMinimo !== '') {
+                payload.stock_minimo = Number(data.stockMinimo);
+            }
             const result = await UndoHelpers.createRecord('insumos_base', payload, `Nuevo insumo: ${data.nombre || ''}`);
             this.clearCache();
             return result || true;
@@ -2032,6 +2037,10 @@ const API = {
             }
             if (data.pctDesperdicioOverride !== undefined) {
                 payload.pct_desperdicio_override = (data.pctDesperdicioOverride === '' || data.pctDesperdicioOverride === null) ? null : Number(data.pctDesperdicioOverride);
+            }
+            // T3.9: stock mínimo editable desde el panel de Insumos (vacío → null = sin alerta)
+            if (data.stockMinimo !== undefined) {
+                payload.stock_minimo = (data.stockMinimo === '' || data.stockMinimo === null) ? null : Number(data.stockMinimo);
             }
             payload.updated_at = new Date().toISOString();
             await UndoHelpers.updateRecord('insumos_base', id, payload, 'Edito insumo');

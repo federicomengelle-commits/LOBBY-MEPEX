@@ -1604,6 +1604,16 @@ const CostosModule = {
                                 <input class="costos-receta-config-input costos-ficha-input" data-field="proveedor" type="text" value="${escAttr(item.proveedor != null ? item.proveedor : '')}" placeholder="Buscar o escribir proveedor…" list="costosProveedoresList" spellcheck="false" autocomplete="off" style="text-align:left; width:100%;">
                             </div>
                         </div>
+                        <!-- T3.9/A32: umbral del aviso de stock bajo. Era una columna sin NINGÚN
+                             escritor en la app (el trigger existía pero no había forma de cargarla)
+                             → la carga de T5.4 se hace acá. Vacío = sin alerta (null, no 0). -->
+                        <div class="costos-receta-config-row">
+                            <label class="costos-receta-config-label">Stock mínimo</label>
+                            <div class="costos-receta-config-input-wrap">
+                                ${mkInput('stockMinimo', item.stock_minimo, 'number', 'Sin alerta')}
+                                <span class="costos-receta-config-suffix">/${item.unidadBase}</span>
+                            </div>
+                        </div>
                         ${item.fechaUltimoPrecio ? `
                             <div class="costos-receta-config-row">
                                 <label class="costos-receta-config-label">Último precio</label>
@@ -1758,13 +1768,14 @@ const CostosModule = {
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
                 const data = {};
-                const overrideFields = new Set(['vidaUtilOverride', 'pctReacondOverride', 'pctDesperdicioOverride']);
+                // Numéricos anulables: vacío → null (NO 0). Los overrides de amortización
+                // + stock mínimo (T3.9: null = sin alerta; 0 sería "avisar bajo 0", nunca).
+                const nullableNumFields = new Set(['vidaUtilOverride', 'pctReacondOverride', 'pctDesperdicioOverride', 'stockMinimo']);
                 document.querySelectorAll('.costos-ficha-input, .costos-ficha-select, .costos-ficha-textarea').forEach(el => {
                     const field = el.dataset.field;
                     if (!field) return;
                     const raw = el.value;
-                    if (overrideFields.has(field)) {
-                        // Override vacío → null (NO 0). Caso contrario → número.
+                    if (nullableNumFields.has(field)) {
                         data[field] = (raw === '' || raw == null) ? null : Number(raw);
                     } else if (el.type === 'number') {
                         data[field] = parseFloat(raw) || 0;
@@ -1832,6 +1843,7 @@ const CostosModule = {
             { key: 'costoUnitario', label: 'Costo unitario', type: 'number', placeholder: '0.00' },
             { key: 'moneda', label: 'Moneda', type: 'select', options: ['USD', 'ARS'] },
             { key: 'unidadBase', label: 'Unidad', type: 'select', options: ['unidad', 'metro', 'm²', 'kg', 'litro', 'hora', 'día', 'viaje', 'rollo', 'balde'] },
+            { key: 'stockMinimo', label: 'Stock mínimo', type: 'number', placeholder: 'Vacío = sin alerta' },
             { key: 'proveedor', label: 'Proveedor', type: 'text', placeholder: 'Buscar o escribir proveedor…', list: 'costosProveedoresList' },
             { key: 'tipoAmortizacion', label: 'Tipo amortización', type: 'select', required: true, options: tipoOpts },
         ];

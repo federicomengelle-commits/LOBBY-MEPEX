@@ -37,7 +37,7 @@ const Alertas = {
         flota:      ['superadmin', 'admin', 'pm', 'taller'],
         compras:    ['superadmin', 'admin'],
         rrhh:       ['superadmin', 'admin'],
-        inventario: ['superadmin', 'admin'],
+        inventario: ['superadmin', 'admin', 'taller'],  // T3.9/A32: stock bajo también al galpón (matriz Paso 9 fila 14; el trigger de notifications ya les inserta su fila)
         equipos:    ['superadmin', 'admin', 'taller'],   // equipos fuera de servicio / en reparación (Inventario · 5º tab) — el taller los usa
         locaciones: ['superadmin', 'admin'],
         'calendario-adm': ['superadmin', 'admin'],

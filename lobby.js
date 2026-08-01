@@ -131,8 +131,9 @@ const HomeModule = {
         'equipo-eventos':    { title: 'Equipo de mis eventos',      icon: '👷', accent: '#00CC88' },
 
         // ── Taller (tiles grandes + cards grandes) ──
-        'tile-armar-hoy':    { title: 'Para armar hoy',   icon: '🔨', accent: '#F28D15' },
-        'tile-stands-taller':{ title: 'Stands en el taller', icon: '🏗️', accent: '#00A9C1' },
+        // T3.14/M44: nav = a dónde lleva el click del tile (antes no eran clickeables)
+        'tile-armar-hoy':    { title: 'Para armar hoy',   icon: '🔨', accent: '#F28D15', nav: 'eventos' },
+        'tile-stands-taller':{ title: 'Stands en el taller', icon: '🏗️', accent: '#00A9C1', nav: 'proyectos' },
         'para-hacer':        { title: 'Para hacer',       icon: '✅', accent: '#00CC88' },
     },
 
@@ -321,8 +322,10 @@ const HomeModule = {
 
     _tileBig(key, ctx) {
         const def = this._resolve(key);
+        // T3.14/M44: si el widget declara `nav`, el tile entero navega (delegado
+        // al listener global de [data-nav]).
         return `
-            <div class="home-tilebig" data-widget="${key}" style="--accent:${def.accent}">
+            <div class="home-tilebig" data-widget="${key}"${def.nav ? ` data-nav="${this._esc(def.nav)}"` : ''} style="--accent:${def.accent}">
                 <span class="home-tilebig-icon">${def.icon}</span>
                 <div class="home-tilebig-body" id="home-w-${key}">
                     <div class="home-skel home-skel-big"></div>
@@ -600,7 +603,9 @@ const HomeModule = {
         return this._memo(ctx, 'colaTaller', async () => {
             const db = this._db(); if (!db) return [];
             const { data } = await db.from('proyectos')
-                .select('id,nombre,estado_taller,completitud_pct,responsable_id,drive_folder_url, cliente:clientes!cliente_id(nombre_empresa), evento:eventos!evento_id(nombre)')
+                // evento_id como columna escalar A PROPÓSITO: el embed !evento_id NO la
+                // incluye solo, y tile-armar-hoy filtra por ella (T3.14).
+                .select('id,nombre,estado_taller,completitud_pct,responsable_id,drive_folder_url,evento_id, cliente:clientes!cliente_id(nombre_empresa), evento:eventos!evento_id(nombre)')
                 .eq('_deleted', false).eq('estado', 'en_taller').or('estado_taller.is.null,estado_taller.neq.cerrado');
             return data || [];
         });
@@ -969,9 +974,17 @@ const HomeModule = {
         },
         // ── Taller (tiles grandes + cards grandes) ──
         'tile-armar-hoy': async function (ctx) {
-            const evs = await this._memo(ctx, 'events', () => API.getEvents()) || [];
+            // T3.14/M44: solo los armados de SUS stands (eventos de la cola del
+            // taller), no los de toda la empresa — y contando la ventana completa
+            // del armado (multi-día), no solo el día que arranca.
+            const [evs, cola] = await Promise.all([
+                this._memo(ctx, 'events', () => API.getEvents()),
+                this._colaTaller(ctx),
+            ]);
+            const evIds = new Set((cola || []).map(p => p.evento_id).filter(Boolean));
             const today = this._todayStr(ctx.now);
-            const n = evs.filter(e => e.setupDate === today).length;
+            const n = (evs || []).filter(e => evIds.has(e.id) &&
+                e.setupDate && e.setupDate <= today && today <= (e.setupEndDate || e.setupDate)).length;
             return `<div class="home-tilebig-num">${n}</div><div class="home-tilebig-label">${n === 1 ? 'armado hoy' : 'armados hoy'}</div>`;
         },
         'tile-stands-taller': async function (ctx) {
@@ -985,8 +998,11 @@ const HomeModule = {
             return data.slice(0, 6).map(p => {
                 const cs = checks[p.id] || [], done = cs.filter(c => c.checked).length, tot = cs.length;
                 const planos = p.drive_folder_url ? `<a class="home-bigbtn home-bigbtn-sec" href="${this._esc(p.drive_folder_url)}" target="_blank" rel="noopener">Planos</a>` : '';
-                return `<div class="home-bigcard"><div class="home-bigcard-top"><div class="home-bigcard-title">${this._esc(p.nombre)}</div>${this._etBadge(p.estado_taller)}</div><div class="home-bigcard-sub">${this._esc(p.cliente?.nombre_empresa || p.evento?.nombre || '')}</div>${tot ? `<div class="home-bigcard-prog">${done} de ${tot} pasos</div>${this._bar(Math.round(done / tot * 100))}` : ''}<div class="home-bigcard-actions"><a class="home-bigbtn" data-nav="taller">Seguir armando</a>${planos}</div></div>`;
-            }).join('');
+                // T3.14/M43: "Seguir armando" iba a data-nav="taller" (ruta muerta que
+                // redirige a #tareas genérico y pierde el stand) → directo a la ficha
+                // del proyecto, tab Producción (checklist del galpón).
+                return `<div class="home-bigcard"><div class="home-bigcard-top"><div class="home-bigcard-title">${this._esc(p.nombre)}</div>${this._etBadge(p.estado_taller)}</div><div class="home-bigcard-sub">${this._esc(p.cliente?.nombre_empresa || p.evento?.nombre || '')}</div>${tot ? `<div class="home-bigcard-prog">${done} de ${tot} pasos</div>${this._bar(Math.round(done / tot * 100))}` : ''}<div class="home-bigcard-actions"><a class="home-bigbtn" data-nav="proyectos/${this._esc(p.id)}?tab=produccion">Seguir armando</a>${planos}</div></div>`;
+            }).join('') + (data.length > 6 ? this._more(`Ver los ${data.length}`, 'proyectos') : '');
         },
     },
 
@@ -1055,6 +1071,8 @@ const HomeModule = {
         /* Taller — tiles grandes */
         .home-tiles2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
         .home-tilebig { display:flex; align-items:center; gap:18px; background:var(--bg-card,#111); border:1px solid var(--border,#2a2a2a); border-left:4px solid var(--accent,#00A9C1); border-radius:14px; padding:24px 26px; min-height:120px; }
+        .home-tilebig[data-nav] { cursor:pointer; transition:border-color 250ms ease, box-shadow 250ms ease; }
+        .home-tilebig[data-nav]:hover { border-color:var(--accent,#00A9C1); box-shadow:var(--glow-sm, 0 0 12px rgba(0,169,193,0.2)); }
         .home-tilebig-icon { font-size:2.4rem; line-height:1; }
         .home-tilebig-num { font-family:var(--font-mono,'Space Mono',monospace); font-size:3rem; font-weight:700; color:var(--text-primary,#E8E8E8); line-height:1; }
         .home-tilebig-label { font-size:1.05rem; font-weight:600; color:var(--text-muted,#888); margin-top:6px; }

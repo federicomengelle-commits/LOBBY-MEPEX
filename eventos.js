@@ -344,6 +344,7 @@ const EventosModule = {
     // ═══════════════════════════════════════════
 
     async _loadEvents() {
+        this._purgeLocalExt();   // T3.11: matar el legacy ev_ext_ que tapaba fecha_desarme_fin
         let events = null;
         try {
             const [evs, venues] = await Promise.all([
@@ -358,20 +359,21 @@ const EventosModule = {
         }
 
         if (events && events.length > 0) {
+            // T3.11: acá había un merge de localStorage (`ev_ext_`) que traía el
+            // teardownEndDate guardado por navegador y PISABA la columna real
+            // `fecha_desarme_fin` que mantiene el trigger de jornadas → dos personas
+            // mirando el mismo evento veían fechas distintas. La fuente es la DB.
             this._events = events.map((e, i) => {
-                // Merge localStorage extensions PRIMERO (trae teardownEndDate) para
-                // que el estado derivado pueda usar la fecha real de fin de desarme.
-                const merged = { ...e, ...this._getLocalData(e.id) };
                 const norm = this._normalizeStatus(e.status || e.estado);
                 return {
-                    ...merged,
+                    ...e,
                     color: e.color || this._palette[i % this._palette.length],
                     // Estado AUTO-derivado de las fechas (hoy vs armado/desarme).
                     // 'rechazado' es decisión manual → se respeta, no se pisa.
-                    estado: norm === 'rechazado' ? 'rechazado' : this._deriveEstado(merged),
+                    estado: norm === 'rechazado' ? 'rechazado' : this._deriveEstado(e),
                     estadoManual: norm,
                     notas: e.notas || '',
-                    organizadorNombre: this._orgMap ? (this._orgMap[String(merged.organizadorId)] || null) : null,
+                    organizadorNombre: this._orgMap ? (this._orgMap[String(e.organizadorId)] || null) : null,
                 };
             });
         } else {
@@ -432,19 +434,18 @@ const EventosModule = {
         return opt ? opt.color : '#666';
     },
 
-    // ─── localStorage extensions ───
-    _getLocalData(eventId) {
+    // ─── Limpieza del legacy ev_ext_ (T3.11) ───
+    // Esas claves guardaban teardownEndDate de cuando `fecha_desarme_fin` no
+    // existía en el schema. Hoy la columna existe (la sincroniza el trigger de
+    // jornadas desde evento_jornadas) y el merge que las leía pisaba el valor
+    // real → se dejó de leer y de escribir. Este barrido borra las claves
+    // viejas de cada navegador; es idempotente y corre en cada load.
+    _purgeLocalExt() {
         try {
-            const raw = localStorage.getItem(`ev_ext_${eventId}`);
-            return raw ? JSON.parse(raw) : {};
-        } catch { return {}; }
-    },
-
-    _saveLocalData(eventId, data) {
-        try {
-            const existing = this._getLocalData(eventId);
-            const merged = { ...existing, ...data };
-            localStorage.setItem(`ev_ext_${eventId}`, JSON.stringify(merged));
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith('ev_ext_')) localStorage.removeItem(k);
+            }
         } catch { /* */ }
     },
 
@@ -2817,13 +2818,16 @@ const EventosModule = {
             // omiten del payload y quedan como estaban (updateEvent sólo pisa las
             // claves presentes; `undefined` no viaja).
             //
-            // El fin del armado es el único con matiz: si el evento NO tiene ventana
-            // multi-día, seguir igualándolo al inicio es lo correcto —y es lo que
-            // hacía hasta ahora— porque si no, al mover la fecha el fin queda
-            // congelado en la vieja y el rango sale al revés (fin < inicio). Si en
-            // cambio ya hay una ventana de varios días, esa la puso el trigger desde
-            // las jornadas y no se toca.
+            // El fin del armado —y desde T3.11 también el del desarme— tiene un
+            // matiz: si el evento NO tiene ventana multi-día, seguir igualando el
+            // fin al inicio es lo correcto —y es lo que hacía hasta ahora— porque
+            // si no, al mover la fecha el fin queda congelado en la vieja y el
+            // rango sale al revés (fin < inicio). Si en cambio ya hay una ventana
+            // de varios días, esa la puso el trigger desde las jornadas y no se
+            // toca. (Antes el fin del desarme ni siquiera iba a la DB: se guardaba
+            // en localStorage `ev_ext_` y tapaba la columna real — T3.11/A18.)
             const armadoEsMultiDia = !!ev.setupEndDate && ev.setupEndDate !== ev.setupDate;
+            const desarmeEsMultiDia = !!ev.teardownEndDate && ev.teardownEndDate !== ev.teardownDate;
             //
             // PENDIENTE de raíz: para un evento CON jornadas, editar fechas acá igual
             // discrepa con ellas hasta que alguien toque una jornada y el trigger
@@ -2835,12 +2839,12 @@ const EventosModule = {
                 eventStartDate: sEvStart.date,
                 eventEndDate: sEvEnd.date,
                 teardownDate: sTeardown.date,
+                teardownEndDate: desarmeEsMultiDia ? undefined : sTeardown.date,
                 setupTimeOpen: sSetup.time,
                 eventTimeOpen: sEvStart.time,
                 eventTimeClose: sEvEnd.time,
                 teardownTimeOpen: sTeardown.time,
             };
-            const teardownEndDate = sTeardown.date;
 
             // Update via API
             const result = await API.updateEvent(ev.id, update);
@@ -2852,10 +2856,11 @@ const EventosModule = {
                 //     anterior: { setup: ev.setupDate, event: ev.eventStartDate, teardown: ev.teardownDate },
                 //     nuevo: { setup: update.setupDate, event: update.eventStartDate, teardown: update.teardownDate },
                 // }, user).catch(() => {});
-                Object.assign(ev, update);
-                // Save teardownEndDate to localStorage (not in Supabase schema)
-                this._saveLocalData(ev.id, { teardownEndDate });
-                ev.teardownEndDate = teardownEndDate;
+                // Aplicar al objeto local SOLO lo que viajó. Los `undefined` son
+                // campos omitidos a propósito (fin real del armado/desarme multi-día);
+                // un Object.assign pelado los pisaría y colapsaría el rango en la
+                // vista hasta el próximo load.
+                Object.entries(update).forEach(([k, v]) => { if (v !== undefined) ev[k] = v; });
                 Toast.success('Fechas actualizadas');
             } else {
                 Toast.error('Error al guardar fechas');
@@ -3299,10 +3304,6 @@ const EventosModule = {
     async _deleteEvent(eventId) {
         const result = await API.deleteEvent(eventId);
         if (result) {
-            // Clean up localStorage residual (ev_ext_ teardown legacy; docs ahora en Supabase)
-            ['ev_ext_'].forEach(prefix => {
-                localStorage.removeItem(prefix + eventId);
-            });
             Toast.success('Evento eliminado');
             this._closePanel();
             await this._loadEvents();
@@ -3361,7 +3362,10 @@ const EventosModule = {
     _deriveEstado(e) {
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const start = this._parseEvDate(e.setupDate) || this._parseEvDate(e.eventStartDate);
-        const end = this._parseEvDate(e.teardownDate) || this._parseEvDate(e.teardownEndDate)
+        // T3.11: el fin real del ciclo es el FIN del desarme (multi-día);
+        // teardownDate es su inicio — con ese orden un evento en el 2º día de
+        // desarme figuraba "finalizado".
+        const end = this._parseEvDate(e.teardownEndDate) || this._parseEvDate(e.teardownDate)
             || this._parseEvDate(e.eventEndDate) || this._parseEvDate(e.setupDate) || start;
         if (!start && !end) return this._normalizeStatus(e.status || e.estado);
         if (start && today < start) return 'proximo';
@@ -3383,7 +3387,7 @@ const EventosModule = {
         }
         if (ev.estado === 'en_curso') return { text: 'en curso', color: '#00CC88' };
         if (ev.estado === 'finalizado') {
-            const desarme = this._parseEvDate(ev.teardownDate) || this._parseEvDate(ev.teardownEndDate)
+            const desarme = this._parseEvDate(ev.teardownEndDate) || this._parseEvDate(ev.teardownDate)
                 || this._parseEvDate(ev.eventEndDate);
             if (!desarme) return null;
             const d = Math.round((today - desarme) / 86400000);
