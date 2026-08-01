@@ -2,6 +2,7 @@
 
 > **Este es el archivo de trabajo.** Se lee al empezar cada sesión y se actualiza al terminar cada ítem.
 > El "por qué" de cada cosa está en `01-PLAN-CORRECCION.md` y la evidencia en los `04x`.
+> **Para retomar en una charla nueva: `07-HANDOFF.md`** — dónde quedó, qué sigue, y las trampas del repo que no hay que volver a descubrir.
 
 **Estado:** ⬜ pendiente · 🟡 en curso · ✅ hecho · ⏸️ diferido (con motivo) · ❌ descartado (con motivo)
 
