@@ -3027,8 +3027,19 @@ const FinanzasModule = {
                     delete dup.created_by;
                     dup.concepto = (ingreso.concepto || '') + ' (copia)';
                     dup.fecha = hoyLocal();
+                    // T4.2: duplicar un ANULADO nace como movimiento nuevo (default
+                    // Confirmado), no ya-anulado — si no, el INSERT creaba plata
+                    // invisible en todos los KPIs con toast de éxito.
+                    if (dup.estado === 'anulado') dup.estado = null;
                     this._showIngresoModal(dup);
                 } else if (action === 'del') {
+                    // T4.2: un movimiento contabilizado no se borra (dejaría el asiento
+                    // huérfano descontando el saldo) — se anula, con contra-asiento.
+                    // El trigger de la DB lo rechaza igual; esto evita el diálogo inútil.
+                    if (['confirmado', 'anulado'].includes(ingreso.estado)) {
+                        Toast.warning('Ya está contabilizado: usá Anular (genera contra-asiento). Un ingreso anulado queda como traza, no se borra.');
+                        return;
+                    }
                     const ok = await Confirm.delete(`el ingreso "${escHtml(ingreso.concepto)}" (${this._formatMoney(ingreso.monto)})`, { undoable: false });
                     if (!ok) return;
                     try {
@@ -3233,6 +3244,11 @@ const FinanzasModule = {
         });
 
         document.getElementById('finIngPanelDelete')?.addEventListener('click', async () => {
+            // T4.2: contabilizado no se borra — se anula (el trigger lo rechaza igual).
+            if (['confirmado', 'anulado'].includes(ingreso.estado)) {
+                Toast.warning('Ya está contabilizado: usá Anular (genera contra-asiento). Un ingreso anulado queda como traza, no se borra.');
+                return;
+            }
             const ok = await Modal.confirm({
                 title: 'Eliminar ingreso',
                 message: `¿Seguro que querés eliminar <strong>"${escHtml(ingreso.concepto)}"</strong>?`,
@@ -3411,6 +3427,13 @@ const FinanzasModule = {
         const isEdit = !!(ingreso && ingreso.id);
         const title = isEdit ? 'Editar ingreso' : 'Nuevo ingreso';
         const i = ingreso || {};
+        // T4.2/C2: contabilizado = tiene asiento. Editar monto/fecha/canal/medio/
+        // cuenta/moneda lo desincroniza (ya pasó: $486.420 con 2 meses de
+        // corrimiento). El candado DURO es el trigger de la DB; esto es la cara
+        // honesta: campos deshabilitados + payload sin esas claves. Estado final
+        // ≈ contabilizado (un confirmado legacy sin asiento queda igual de
+        // bloqueado acá, pero Anular→recargar le sirve exactamente igual).
+        const locked = isEdit && ['confirmado', 'anulado'].includes(i.estado);
 
         const today = hoyLocal();
         const defaultCanal = this._canalVista === 'total' ? 'oficial' : this._canalVista;
@@ -3439,19 +3462,21 @@ const FinanzasModule = {
             `<option value="${id}" ${i.cuenta_id === id ? 'selected' : ''}>${escHtml(c.nombre)}</option>`
         ).join('');
 
+        const lk = locked ? 'disabled' : '';
         Modal.open({
             title,
             size: 'md',
             body: `
                 <div class="fin-form-grid">
+                    ${locked ? `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Ya contabilizado</b> — tiene asiento. Se pueden editar concepto, notas e imputación; para corregir monto, fecha, medio, canal o cuenta: <b>Anular</b> (genera contra-asiento) y cargarlo de nuevo.</div>` : ''}
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Fecha *</label>
-                            <input type="date" class="fin-form-input" id="finIngFormFecha" value="${i.fecha || today}">
+                            <input type="date" class="fin-form-input" id="finIngFormFecha" value="${i.fecha || today}" ${lk}>
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Monto *</label>
-                            <input type="number" class="fin-form-input" id="finIngFormMonto" value="${i.monto || ''}" step="0.01" placeholder="0.00">
+                            <input type="number" class="fin-form-input" id="finIngFormMonto" value="${i.monto || ''}" step="0.01" placeholder="0.00" ${lk}>
                         </div>
                     </div>
                     ${this._renderMonedaFields('finIng', i)}
@@ -3472,7 +3497,7 @@ const FinanzasModule = {
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Medio *</label>
-                            <select class="fin-form-select" id="finIngFormMedio">
+                            <select class="fin-form-select" id="finIngFormMedio" ${lk}>
                                 <option value="transferencia" ${i.medio === 'transferencia' ? 'selected' : ''}>Transferencia</option>
                                 <option value="efectivo" ${i.medio === 'efectivo' ? 'selected' : ''}>Efectivo</option>
                                 <option value="cheque" ${i.medio === 'cheque' ? 'selected' : ''}>Cheque</option>
@@ -3483,7 +3508,7 @@ const FinanzasModule = {
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Canal *</label>
-                            <select class="fin-form-select" id="finIngFormCanal">
+                            <select class="fin-form-select" id="finIngFormCanal" ${lk}>
                                 <option value="oficial" ${(i.canal || defaultCanal) === 'oficial' ? 'selected' : ''}>Oficial</option>
                                 <option value="interno" ${(i.canal || defaultCanal) === 'interno' ? 'selected' : ''}>Interno</option>
                             </select>
@@ -3492,16 +3517,17 @@ const FinanzasModule = {
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Cuenta destino</label>
-                            <select class="fin-form-select" id="finIngFormCuenta">
+                            <select class="fin-form-select" id="finIngFormCuenta" ${lk}>
                                 <option value="">— Sin cuenta —</option>
                                 ${cuentaOptions}
                             </select>
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Estado</label>
-                            <select class="fin-form-select" id="finIngFormEstado">
+                            <select class="fin-form-select" id="finIngFormEstado" ${lk}>
                                 <option value="confirmado" ${(i.estado || 'confirmado') === 'confirmado' ? 'selected' : ''}>Confirmado</option>
                                 <option value="pendiente" ${i.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
+                                ${locked && i.estado === 'anulado' ? '<option value="anulado" selected>Anulado</option>' : ''}
                             </select>
                         </div>
                     </div>
@@ -3560,6 +3586,14 @@ const FinanzasModule = {
         });
 
         this._attachMonedaListeners('finIng');
+        // T4.2: moneda/cotización también alimentan el asiento (total_en_ars).
+        // Se renderizan en el helper compartido → se deshabilitan post-open.
+        if (locked) {
+            ['finIngFormMoneda', 'finIngFormCotizacion', 'finIngFormCotSugerir'].forEach(fid => {
+                const el = document.getElementById(fid);
+                if (el) el.disabled = true;
+            });
+        }
         // Cheque/e-cheq: mostrar campos del valor sólo cuando medio = cheque (alta nueva).
         if (!isEdit) {
             const ingMedioEl = document.getElementById('finIngFormMedio');
@@ -3613,6 +3647,15 @@ const FinanzasModule = {
                     payload[k] = null;
                 }
             });
+
+            // T4.2: contabilizado → viajan SOLO los campos que no viven en el
+            // asiento (concepto/notas/imputación). Los inputs ya están disabled;
+            // esto es la garantía dura contra drift de parseo (ej. es-AR) y
+            // contra cualquier bypass del DOM. El trigger de la DB es la red final.
+            if (locked) {
+                ['fecha', 'monto', 'medio', 'canal', 'cuenta_id', 'estado',
+                 'moneda', 'cotizacion', 'plan_cobro_item_id'].forEach(k => delete payload[k]);
+            }
 
             try {
                 if (isEdit) {
@@ -3942,8 +3985,15 @@ const FinanzasModule = {
                     delete dup.created_by;
                     dup.concepto = (egreso.concepto || '') + ' (copia)';
                     dup.fecha = hoyLocal();
+                    // T4.2: ídem Ingresos — duplicar un anulado nace como nuevo (default Pagado).
+                    if (dup.estado === 'anulado') dup.estado = null;
                     this._showEgresoModal(dup);
                 } else if (action === 'del') {
+                    // T4.2: mismo criterio que en Ingresos (ver comentario allá).
+                    if (['pagado', 'anulado'].includes(egreso.estado)) {
+                        Toast.warning('Ya está contabilizado: usá Anular (genera contra-asiento). Un egreso anulado queda como traza, no se borra.');
+                        return;
+                    }
                     const ok = await Confirm.delete(`el egreso "${escHtml(egreso.concepto)}" (${this._formatMoney(egreso.monto)})`, { undoable: false });
                     if (!ok) return;
                     try {
@@ -4176,6 +4226,11 @@ const FinanzasModule = {
         });
 
         document.getElementById('finEgrPanelDelete')?.addEventListener('click', async () => {
+            // T4.2: contabilizado no se borra — se anula (el trigger lo rechaza igual).
+            if (['pagado', 'anulado'].includes(egreso.estado)) {
+                Toast.warning('Ya está contabilizado: usá Anular (genera contra-asiento). Un egreso anulado queda como traza, no se borra.');
+                return;
+            }
             const ok = await Modal.confirm({
                 title: 'Eliminar egreso',
                 message: `¿Seguro que querés eliminar <strong>"${escHtml(egreso.concepto)}"</strong>?`,
@@ -4243,24 +4298,29 @@ const FinanzasModule = {
 
         const isCF = e.categoria === 'credito_fiscal';
         const isProg = e.estado === 'programado';
+        // T4.2/C2: mismo candado que el modal de Ingreso (ver comentario allá).
+        // Estado final de egresos = pagado|anulado.
+        const locked = isEdit && ['pagado', 'anulado'].includes(e.estado);
+        const lk = locked ? 'disabled' : '';
 
         Modal.open({
             title,
             size: 'lg',
             body: `
                 <div class="fin-form-grid">
+                    ${locked ? `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Ya contabilizado</b> — tiene asiento. Se pueden editar concepto, notas, destinatario e imputación; para corregir monto, fecha, categoría, medio, canal o cuenta: <b>Anular</b> (genera contra-asiento) y cargarlo de nuevo.</div>` : ''}
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Fecha *</label>
-                            <input type="date" class="fin-form-input" id="finEgrFormFecha" value="${e.fecha || today}">
+                            <input type="date" class="fin-form-input" id="finEgrFormFecha" value="${e.fecha || today}" ${lk}>
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Categoría *</label>
-                            <select class="fin-form-select" id="finEgrFormCat">${catOptions}</select>
+                            <select class="fin-form-select" id="finEgrFormCat" ${lk}>${catOptions}</select>
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Monto *</label>
-                            <input type="number" class="fin-form-input" id="finEgrFormMonto" value="${e.monto || ''}" step="0.01" placeholder="0.00">
+                            <input type="number" class="fin-form-input" id="finEgrFormMonto" value="${e.monto || ''}" step="0.01" placeholder="0.00" ${lk}>
                         </div>
                     </div>
                     <div class="fin-form-row">
@@ -4289,7 +4349,7 @@ const FinanzasModule = {
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Medio *</label>
-                            <select class="fin-form-select" id="finEgrFormMedio">
+                            <select class="fin-form-select" id="finEgrFormMedio" ${lk}>
                                 <option value="transferencia" ${e.medio === 'transferencia' ? 'selected' : ''}>Transferencia</option>
                                 <option value="efectivo" ${e.medio === 'efectivo' ? 'selected' : ''}>Efectivo</option>
                                 <option value="cheque" ${e.medio === 'cheque' ? 'selected' : ''}>Cheque</option>
@@ -4302,24 +4362,25 @@ const FinanzasModule = {
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Canal *</label>
-                            <select class="fin-form-select" id="finEgrFormCanal">
+                            <select class="fin-form-select" id="finEgrFormCanal" ${lk}>
                                 <option value="oficial" ${(e.canal || defaultCanal) === 'oficial' ? 'selected' : ''}>Oficial</option>
                                 <option value="interno" ${(e.canal || defaultCanal) === 'interno' ? 'selected' : ''}>Interno</option>
                             </select>
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Cuenta origen</label>
-                            <select class="fin-form-select" id="finEgrFormCuenta">
+                            <select class="fin-form-select" id="finEgrFormCuenta" ${lk}>
                                 <option value="">— Sin cuenta —</option>
                                 ${cuentaOptions}
                             </select>
                         </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Estado</label>
-                            <select class="fin-form-select" id="finEgrFormEstado">
+                            <select class="fin-form-select" id="finEgrFormEstado" ${lk}>
                                 <option value="pagado" ${(e.estado || 'pagado') === 'pagado' ? 'selected' : ''}>Pagado</option>
                                 <option value="pendiente" ${e.estado === 'pendiente' ? 'selected' : ''}>Pendiente</option>
                                 <option value="programado" ${e.estado === 'programado' ? 'selected' : ''}>Programado</option>
+                                ${locked && e.estado === 'anulado' ? '<option value="anulado" selected>Anulado</option>' : ''}
                             </select>
                         </div>
                     </div>
@@ -4434,6 +4495,13 @@ const FinanzasModule = {
 
         // Multi-moneda listeners
         this._attachMonedaListeners('finEgr');
+        // T4.2: moneda/cotización alimentan el asiento (total_en_ars) → disabled si contabilizado.
+        if (locked) {
+            ['finEgrFormMoneda', 'finEgrFormCotizacion', 'finEgrFormCotSugerir'].forEach(fid => {
+                const el = document.getElementById(fid);
+                if (el) el.disabled = true;
+            });
+        }
 
         // Cheque/e-cheq propio: mostrar campos del valor sólo cuando medio = cheque (alta nueva).
         if (!isEdit) {
@@ -4491,6 +4559,15 @@ const FinanzasModule = {
                 moneda: monedaData.moneda,
                 cotizacion: monedaData.cotizacion,
             };
+
+            // T4.2: contabilizado → viajan SOLO los campos que no viven en el
+            // asiento (concepto/notas/destinatario/subcategoría/imputación).
+            // Los inputs ya están disabled; esto es la garantía dura. El trigger
+            // de la DB es la red final.
+            if (locked) {
+                ['fecha', 'categoria', 'monto', 'medio', 'canal', 'cuenta_id',
+                 'estado', 'moneda', 'cotizacion'].forEach(k => delete payload[k]);
+            }
 
             try {
                 if (isEdit) {
