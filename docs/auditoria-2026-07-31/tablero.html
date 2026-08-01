@@ -1,0 +1,758 @@
+<title>Auditoría integral LOBBY-MEPEX · 31-07-2026</title>
+
+<style>
+  :root{
+    --ground:#EEF3F4; --surface:#FFFFFF; --surface-2:#F7FAFA;
+    --ink:#101819; --ink-2:#3C4B4E; --muted:#69797D; --line:#D3DEE0; --line-2:#E4ECED;
+    --accent:#00889B; --accent-soft:rgba(0,169,193,.10);
+    --crit:#AE362F; --alto:#B26A18; --medio:#7A7430; --bajo:#5F7176; --ok:#2F7A5F;
+    --crit-bg:rgba(174,54,47,.09); --alto-bg:rgba(178,106,24,.10);
+    --medio-bg:rgba(122,116,48,.10); --bajo-bg:rgba(95,113,118,.10); --ok-bg:rgba(47,122,95,.10);
+    --shadow:0 1px 2px rgba(16,24,25,.05), 0 8px 24px -12px rgba(16,24,25,.14);
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0C1214; --surface:#141D1F; --surface-2:#111A1C;
+      --ink:#E6EEEF; --ink-2:#B4C4C7; --muted:#8496 9A; --muted:#84969A;
+      --line:#243135; --line-2:#1B262A;
+      --accent:#2ABBCF; --accent-soft:rgba(42,187,207,.12);
+      --crit:#E4655C; --alto:#E0A055; --medio:#B8B064; --bajo:#8FA3A8; --ok:#5CB994;
+      --crit-bg:rgba(228,101,92,.12); --alto-bg:rgba(224,160,85,.12);
+      --medio-bg:rgba(184,176,100,.12); --bajo-bg:rgba(143,163,168,.12); --ok-bg:rgba(92,185,148,.12);
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0C1214; --surface:#141D1F; --surface-2:#111A1C;
+    --ink:#E6EEEF; --ink-2:#B4C4C7; --muted:#84969A; --line:#243135; --line-2:#1B262A;
+    --accent:#2ABBCF; --accent-soft:rgba(42,187,207,.12);
+    --crit:#E4655C; --alto:#E0A055; --medio:#B8B064; --bajo:#8FA3A8; --ok:#5CB994;
+    --crit-bg:rgba(228,101,92,.12); --alto-bg:rgba(224,160,85,.12);
+    --medio-bg:rgba(184,176,100,.12); --bajo-bg:rgba(143,163,168,.12); --ok-bg:rgba(92,185,148,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"]{
+    --ground:#EEF3F4; --surface:#FFFFFF; --surface-2:#F7FAFA;
+    --ink:#101819; --ink-2:#3C4B4E; --muted:#69797D; --line:#D3DEE0; --line-2:#E4ECED;
+    --accent:#00889B; --accent-soft:rgba(0,169,193,.10);
+    --crit:#AE362F; --alto:#B26A18; --medio:#7A7430; --bajo:#5F7176; --ok:#2F7A5F;
+    --crit-bg:rgba(174,54,47,.09); --alto-bg:rgba(178,106,24,.10);
+    --medio-bg:rgba(122,116,48,.10); --bajo-bg:rgba(95,113,118,.10); --ok-bg:rgba(47,122,95,.10);
+    --shadow:0 1px 2px rgba(16,24,25,.05), 0 8px 24px -12px rgba(16,24,25,.14);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+       font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+  h1,h2,h3{text-wrap:balance;margin:0}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+  /* ── shell ─────────────────────────────────────────── */
+  .shell{display:grid;grid-template-columns:210px minmax(0,1fr);gap:0;max-width:1240px;margin:0 auto;
+         min-height:100vh;align-items:start}
+  .rail{position:sticky;top:0;height:100vh;overflow-y:auto;padding:28px 18px 28px 24px;
+        border-right:1px solid var(--line);display:flex;flex-direction:column;gap:26px}
+  .main{padding:28px 32px 96px;min-width:0}
+  @media (max-width:880px){
+    .shell{grid-template-columns:1fr}
+    .rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);
+          flex-direction:row;flex-wrap:wrap;align-items:center;gap:14px;padding:16px 20px}
+    .rail nav{display:flex;flex-wrap:wrap;gap:4px}
+    .main{padding:22px 20px 80px}
+  }
+
+  .brandmark{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+             color:var(--muted);line-height:1.5}
+  .brandmark b{display:block;color:var(--ink);font-size:12px;letter-spacing:.1em;font-weight:600}
+  .rail nav{display:flex;flex-direction:column;gap:1px}
+  .navlink{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;color:var(--muted);
+           text-decoration:none;padding:6px 9px;border-radius:3px;border-left:2px solid transparent;
+           display:flex;gap:9px;align-items:baseline;transition:color .15s,background .15s}
+  .navlink span{opacity:.5;font-size:10px}
+  .navlink:hover{color:var(--ink);background:var(--surface-2)}
+  .navlink.on{color:var(--accent);border-left-color:var(--accent);background:var(--accent-soft)}
+  .themebtn{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+            background:none;border:1px solid var(--line);color:var(--muted);padding:6px 10px;
+            border-radius:3px;cursor:pointer;margin-top:auto}
+  .themebtn:hover{color:var(--ink);border-color:var(--muted)}
+  @media (max-width:880px){.themebtn{margin-top:0;margin-left:auto}}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+
+  /* ── header ────────────────────────────────────────── */
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+           color:var(--muted);margin-bottom:14px}
+  h1{font-size:clamp(27px,4vw,38px);line-height:1.14;letter-spacing:-.022em;font-weight:600;max-width:19ch}
+  .lede{margin:16px 0 0;font-size:16.5px;line-height:1.62;color:var(--ink-2);max-width:62ch}
+  .lede strong{color:var(--ink);font-weight:600}
+
+  /* ── vitals strip ──────────────────────────────────── */
+  .vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:1px;
+          background:var(--line);border:1px solid var(--line);border-radius:5px;overflow:hidden;margin:30px 0 0}
+  .vital{background:var(--surface);padding:13px 14px 12px}
+  .vital dt{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;
+            color:var(--muted);margin:0 0 5px}
+  .vital dd{margin:0;font-family:var(--mono);font-size:20px;font-weight:600;letter-spacing:-.02em;
+            font-variant-numeric:tabular-nums;line-height:1.15}
+  .vital small{display:block;font-family:var(--sans);font-size:11.5px;color:var(--muted);
+               font-weight:400;letter-spacing:0;margin-top:3px;line-height:1.4}
+  .v-ok dd{color:var(--ok)} .v-crit dd{color:var(--crit)} .v-alto dd{color:var(--alto)}
+
+  section{margin-top:60px;scroll-margin-top:20px}
+  .sechead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+           padding-bottom:11px;border-bottom:1px solid var(--line);margin-bottom:22px}
+  .sechead h2{font-size:20px;letter-spacing:-.015em;font-weight:600}
+  .sechead p{margin:0;font-size:13.5px;color:var(--muted);flex:1 1 240px}
+
+  /* ── filters ───────────────────────────────────────── */
+  .filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center}
+  .chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
+        background:var(--surface);border:1px solid var(--line);color:var(--muted);
+        padding:5px 11px;border-radius:99px;cursor:pointer;transition:.15s}
+  .chip:hover{color:var(--ink);border-color:var(--muted)}
+  .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--ground)}
+  .chip[data-sev="CRÍTICO"][aria-pressed="true"]{background:var(--crit);border-color:var(--crit);color:#fff}
+  .chip[data-sev="ALTO"][aria-pressed="true"]{background:var(--alto);border-color:var(--alto);color:#fff}
+  .fcount{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-left:auto;letter-spacing:.05em}
+
+  /* ── finding cards ─────────────────────────────────── */
+  .finds{display:flex;flex-direction:column;gap:9px}
+  .find{background:var(--surface);border:1px solid var(--line);border-radius:5px;
+        overflow:hidden;box-shadow:var(--shadow)}
+  .find[hidden]{display:none}
+  .fhead{display:grid;grid-template-columns:3px 1fr auto;gap:0;align-items:stretch;
+         width:100%;background:none;border:0;padding:0;text-align:left;cursor:pointer;font:inherit;color:inherit}
+  .stripe{background:var(--bajo)}
+  .find[data-sev="CRÍTICO"] .stripe{background:var(--crit)}
+  .find[data-sev="ALTO"] .stripe{background:var(--alto)}
+  .find[data-sev="MEDIO"] .stripe{background:var(--medio)}
+  .fmid{padding:14px 16px;min-width:0}
+  .ftags{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .sev{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;padding:2.5px 7px;border-radius:2.5px;font-weight:600}
+  .find[data-sev="CRÍTICO"] .sev{background:var(--crit-bg);color:var(--crit)}
+  .find[data-sev="ALTO"] .sev{background:var(--alto-bg);color:var(--alto)}
+  .find[data-sev="MEDIO"] .sev{background:var(--medio-bg);color:var(--medio)}
+  .dom{font-family:var(--mono);font-size:10px;letter-spacing:.07em;color:var(--muted);text-transform:uppercase}
+  .x2{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--accent);
+      border:1px solid var(--accent);border-radius:2.5px;padding:1.5px 5px}
+  .ftitle{font-size:15.5px;font-weight:600;line-height:1.42;letter-spacing:-.008em}
+  .fimpact{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:5px;
+           font-variant-numeric:tabular-nums}
+  .fimpact b{color:var(--crit);font-weight:600}
+  .fchev{display:flex;align-items:center;padding:0 16px;color:var(--muted);font-size:11px;font-family:var(--mono)}
+  .fbody{padding:2px 16px 18px 19px;border-top:1px solid var(--line-2);margin-top:-1px}
+  .fbody[hidden]{display:none}
+  .fbody p{margin:13px 0 0;font-size:14px;line-height:1.62;color:var(--ink-2);max-width:74ch}
+  .fbody p strong{color:var(--ink)}
+  .frow{display:flex;gap:9px;margin-top:14px;font-size:13px;align-items:baseline;flex-wrap:wrap}
+  .flab{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+        color:var(--muted);min-width:52px;padding-top:2px}
+  .frow div{flex:1 1 260px;min-width:0;color:var(--ink-2)}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);
+       border:1px solid var(--line-2);padding:1px 5px;border-radius:3px;color:var(--ink)}
+  .fbody .fix{background:var(--ok-bg);border-left:2px solid var(--ok);padding:10px 13px;
+              margin-top:15px;border-radius:0 3px 3px 0;font-size:13.5px;color:var(--ink-2)}
+  .fbody .fix b{color:var(--ok)}
+
+  /* ── wiring ────────────────────────────────────────── */
+  .wgroup{margin-bottom:26px}
+  .wgroup h3{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+             color:var(--muted);margin-bottom:9px;font-weight:500}
+  .wire{display:grid;grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr);align-items:center;
+        gap:0;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:13.5px}
+  .wire:last-child{border-bottom:0}
+  .wsrc{color:var(--ink-2);padding-right:14px}
+  .wdst{color:var(--ink-2);padding-left:14px}
+  .wlink{position:relative;height:15px;display:flex;align-items:center;justify-content:center}
+  .wlink::before{content:"";position:absolute;left:0;right:0;top:50%;height:1.5px;
+                 transform:translateY(-50%);border-radius:1px}
+  .wire[data-s="ok"] .wlink::before{background:var(--ok)}
+  .wire[data-s="warn"] .wlink::before{background:repeating-linear-gradient(90deg,var(--alto) 0 5px,transparent 5px 10px)}
+  .wire[data-s="cut"] .wlink::before{background:linear-gradient(90deg,var(--crit) 0 38%,transparent 38% 62%,var(--crit) 62% 100%)}
+  .wire[data-s="over"] .wlink::before{background:var(--crit)}
+  .wdot{position:relative;z-index:1;font-family:var(--mono);font-size:9.5px;font-weight:600;
+        padding:1px 6px;border-radius:99px;letter-spacing:.04em;background:var(--surface);border:1px solid}
+  .wire[data-s="ok"] .wdot{color:var(--ok);border-color:var(--ok)}
+  .wire[data-s="warn"] .wdot{color:var(--alto);border-color:var(--alto)}
+  .wire[data-s="cut"] .wdot{color:var(--crit);border-color:var(--crit)}
+  .wire[data-s="over"] .wdot{color:var(--crit);border-color:var(--crit);background:var(--crit);color:#fff}
+  .wire[data-s="cut"] .wdst,.wire[data-s="cut"] .wsrc{color:var(--muted)}
+  @media (max-width:620px){
+    .wire{grid-template-columns:1fr;gap:5px;padding:12px 0}
+    .wsrc,.wdst{padding:0}
+    .wlink{justify-content:flex-start;height:auto}
+    .wlink::before{display:none}
+  }
+
+  /* ── plan ──────────────────────────────────────────── */
+  .tanda{background:var(--surface);border:1px solid var(--line);border-radius:5px;
+         padding:16px 18px;margin-bottom:9px;box-shadow:var(--shadow)}
+  .tanda header{display:flex;gap:11px;align-items:baseline;flex-wrap:wrap;margin-bottom:5px}
+  .tnum{font-family:var(--mono);font-size:10px;letter-spacing:.1em;background:var(--accent-soft);
+        color:var(--accent);padding:2.5px 8px;border-radius:2.5px;font-weight:600}
+  .tanda h3{font-size:15px;font-weight:600;letter-spacing:-.008em}
+  .trisk{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--muted);margin-left:auto}
+  .tanda p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.6;max-width:78ch}
+  .tanda ul{margin:9px 0 0;padding-left:17px;font-size:13.5px;color:var(--ink-2);line-height:1.72}
+  .tanda ul li::marker{color:var(--muted)}
+
+  /* ── ideas ─────────────────────────────────────────── */
+  .ideas{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:9px}
+  .idea{background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:15px 16px;
+        box-shadow:var(--shadow);display:flex;flex-direction:column;gap:7px}
+  .imeta{display:flex;gap:8px;align-items:center}
+  .tier{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;padding:2px 7px;border-radius:2.5px;font-weight:600}
+  .t-oro{background:var(--alto-bg);color:var(--alto)}
+  .t-plata{background:var(--bajo-bg);color:var(--bajo)}
+  .idea h3{font-size:14.5px;font-weight:600;line-height:1.42;letter-spacing:-.008em}
+  .idea p{margin:0;font-size:13px;color:var(--ink-2);line-height:1.58}
+  .ievidence{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+             border-top:1px solid var(--line-2);padding-top:8px;margin-top:auto;font-variant-numeric:tabular-nums}
+  .ievidence b{color:var(--ink)}
+
+  /* ── healthy table ─────────────────────────────────── */
+  .tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:440px}
+  th,td{text-align:left;padding:9px 15px;border-bottom:1px solid var(--line-2)}
+  tbody tr:last-child td{border-bottom:0}
+  th{font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;
+     color:var(--muted);font-weight:500;background:var(--surface-2)}
+  td.num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--ok);font-weight:600;white-space:nowrap}
+
+  .note{font-size:13px;color:var(--muted);margin-top:20px;line-height:1.65;max-width:74ch;
+        border-left:2px solid var(--line);padding-left:14px}
+  footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);
+         font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em;line-height:1.8}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="brandmark">Auditoría integral<b>LOBBY-MEPEX</b>31·07·2026</div>
+    <nav>
+      <a class="navlink on" href="#estado"><span>01</span>Estado</a>
+      <a class="navlink" href="#hallazgos"><span>02</span>Hallazgos</a>
+      <a class="navlink" href="#cableado"><span>03</span>Cableado</a>
+      <a class="navlink" href="#plan"><span>04</span>Plan</a>
+      <a class="navlink" href="#ideas"><span>05</span>Ideas</a>
+      <a class="navlink" href="#sano"><span>06</span>Lo sano</a>
+    </nav>
+    <button class="themebtn" id="tt" type="button">Tema</button>
+  </aside>
+
+  <main class="main">
+    <p class="eyebrow">17 agentes · 88.800 líneas · 126 tablas · verificado contra producción</p>
+    <h1>Lo que falla no es el motor: son las costuras.</h1>
+    <p class="lede">La partida doble cuadra al centavo, las 181 claves foráneas no tienen una sola violación
+      y la reorganización operativa se completó sin nada a medias. <strong>El sistema está sano por dentro.</strong>
+      Lo que encontramos son tres familias de problema: cosas que <strong>fallan en silencio</strong>,
+      cosas que <strong>se calculan dos veces con criterios distintos</strong>, y cosas que
+      <strong>dependen de que alguien se acuerde</strong>.</p>
+
+    <section id="estado">
+      <dl class="vitals">
+        <div class="vital v-ok"><dt>Partida doble</dt><dd>$0,00</dd><small>DEBE = HABER = $18.984.910</small></div>
+        <div class="vital v-ok"><dt>Movimientos sin asiento</dt><dd>0</dd><small>de 7 ingresos y 6 egresos</small></div>
+        <div class="vital v-crit"><dt>Saldo escondido</dt><dd>$3,2M</dd><small>por el arrastre de saldos</small></div>
+        <div class="vital v-crit"><dt>Buckets expuestos</dt><dd>7 de 7</dd><small>anon con CRUD total</small></div>
+        <div class="vital v-alto"><dt>Precios desfasados</dt><dd>17/27</dd><small>1 cotizable, −$40.240</small></div>
+        <div class="vital v-alto"><dt>Peso muerto</dt><dd>411 KB</dd><small>8,3% del payload</small></div>
+      </dl>
+    </section>
+
+    <section id="hallazgos">
+      <div class="sechead">
+        <h2>Hallazgos</h2>
+        <p>Ordenados por daño real, no por severidad teórica. <code>×2</code> = encontrado por dos agentes independientes.</p>
+      </div>
+
+      <div class="filters" role="group" aria-label="Filtrar hallazgos">
+        <button class="chip" data-sev="CRÍTICO" aria-pressed="false" type="button">Crítico</button>
+        <button class="chip" data-sev="ALTO" aria-pressed="false" type="button">Alto</button>
+        <button class="chip" data-dom="Plata" aria-pressed="false" type="button">Plata</button>
+        <button class="chip" data-dom="Seguridad" aria-pressed="false" type="button">Seguridad</button>
+        <button class="chip" data-dom="Operaciones" aria-pressed="false" type="button">Operaciones</button>
+        <button class="chip" data-dom="Costos" aria-pressed="false" type="button">Costos</button>
+        <span class="fcount" id="fc"></span>
+      </div>
+
+      <div class="finds" id="finds">
+
+        <article class="find" data-sev="CRÍTICO" data-dom="Seguridad">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">CRÍTICO</span><span class="dom">Seguridad · Storage</span></div>
+            <div class="ftitle"><code>anon</code> tiene CRUD total sobre todos los buckets, incluidos los privados</div>
+            <div class="fimpact">Facturas con CUIT e importes y remitos <b>con firma de cliente</b>, descargables y borrables sin sesión</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>Cuatro policies sobre <code>storage.objects</code> con <code>TO public</code> y <strong>sin filtro de bucket</strong>,
+              hechas a mano en el Dashboard hace meses. Una se llama <code>allow-aññ-uploads</code>: un <code>allow-all</code>
+              tipeado con la ñ del teclado español. Quedó el intento fallido <em>y</em> el bueno.</p>
+            <p>Se evalúan con <strong>OR</strong>, así que <code>allow-service-uploads</code> (FOR ALL, USING true)
+              <strong>anula por sí sola</strong> las policies bien escritas de <code>comprobantes</code>, <code>remitos</code>
+              y <code>proyecto-fotos</code>. Las auditorías de seguridad de julio barrieron el schema <code>public</code>
+              y nunca tocaron <code>storage</code>.</p>
+            <div class="frow"><span class="flab">Verificar</span><div>Un <code>curl</code> anónimo a <code>/storage/v1/object/list/comprobantes</code> hoy devuelve los 5 archivos.</div></div>
+            <div class="fix"><b>Arreglo ·</b> 4 <code>DROP POLICY</code> + 2 <code>CREATE POLICY</code> para <code>stands</code>,
+              que no tiene policies propias y dejaría de funcionar. <b>15 minutos.</b></div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="CRÍTICO" data-dom="Seguridad">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">CRÍTICO</span><span class="dom">Seguridad · nginx</span></div>
+            <div class="ftitle">El repositorio entero, incluido <code>.git/</code>, se sirve por HTTP</div>
+            <div class="fimpact">Cualquiera clona el historial completo del proyecto desde el navegador</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p><code>root /home/mepex/lobby</code> es a la vez el checkout de git y el document root de nginx,
+              <strong>sin una sola regla <code>deny</code></strong>. Se puede bajar <code>tools/vps/server.js</code>,
+              <code>auth-middleware.js</code>, todo <code>sql/</code>, <code>CLAUDE.md</code>… y clonar desde <code>/.git/</code>.</p>
+            <p>En ese historial hay <strong>9 commits que tocan la API key de La PyME</strong> y
+              <strong>2 que tocan una service_role</strong> — ambas ya rotadas, así que hoy el daño es divulgación de código.
+              De acá en adelante, <strong>cualquier secreto que toque el repo por un minuto queda público para siempre</strong>.</p>
+            <div class="fix"><b>Arreglo ·</b> Tres <code>location ~ /\.</code> en el conf de nginx.
+              Entra en la misma copia de archivo que el rate-limit sin deployar.</div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="CRÍTICO" data-dom="Plata">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">CRÍTICO</span><span class="dom">Finanzas</span><span class="x2">×2</span></div>
+            <div class="ftitle">El “Saldo disponible” esconde $3.200.000</div>
+            <div class="fimpact">El KPI dice <b>$5.000.000</b> donde hay $8.200.000 — y es el número que se mira todos los días</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p><code>fn_refresh_saldo_periodo</code> busca el saldo anterior en <strong>el mes calendario previo, literalmente</strong>.
+              Si esa fila no existe porque la cuenta no tuvo movimiento, el acumulado <strong>se hace cero</strong>.</p>
+            <p>No es un caso aislado: <strong>cada vez que una cuenta pasa un mes entero quieta, el siguiente movimiento
+              le borra todo el saldo histórico.</strong> Con 3 cuentas y este volumen, los meses ociosos son la norma.</p>
+            <div class="frow"><span class="flab">Rastro</span><div>Abril cerró en $3.200.000 · mayo lo arrastró · <strong>junio no existe</strong> · julio arrancó en $0.</div></div>
+            <div class="frow"><span class="flab">Sano</span><div>Los <code>asiento_lineas</code> están intactos. El daño está solo en la tabla materializada — por eso ninguna verificación anterior lo agarró.</div></div>
+            <div class="fix"><b>Arreglo ·</b> Cambiar la búsqueda por <code>WHERE periodo &lt; p_periodo ORDER BY periodo DESC LIMIT 1</code>
+              y recalcular los 26 buckets. <b>El KPI va a subir</b> — no es un bug nuevo.</div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="CRÍTICO" data-dom="Plata">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">CRÍTICO</span><span class="dom">Cobranza</span></div>
+            <div class="ftitle">La cobranza con retenciones nunca marca la cuota como cobrada</div>
+            <div class="fimpact">La venta sigue mostrando <b>Cobrado $0</b> y la alerta reclama plata que ya entró</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>El recibo de cobranza arma las aplicaciones <strong>solo con el comprobante</strong>, sin la cuota.
+              El trigger que sincroniza corta en su primera línea. Se crea el ingreso, el crédito fiscal y el asiento balanceado —
+              pero la cuota sigue en <code>pendiente</code> con <code>monto_cobrado = 0</code>.</p>
+            <p><strong>Y hay una trampa de orden.</strong> Existe un segundo defecto: dos escritores de <code>monto_cobrado</code>
+              con semánticas incompatibles (uno suma, el otro recalcula desde cero). Hoy el primero está tapando al segundo.</p>
+            <div class="fix"><b>Orden obligatorio ·</b> Arreglar esto solo <b>ceba la bomba</b>: el trigger empezaría a
+              recalcular desde cero y borraría los cobros cargados por el camino viejo. <b>Van juntos, con backfill previo.</b></div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="CRÍTICO" data-dom="Plata">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">CRÍTICO</span><span class="dom">Contabilidad</span><span class="x2">×2</span></div>
+            <div class="ftitle">Editar un movimiento ya contabilizado no toca su asiento</div>
+            <div class="fimpact">Ya pasó: un egreso de <b>$486.420</b> con dos meses de corrimiento entre Finanzas y Contabilidad</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>Los triggers cortan al detectar un UPDATE sobre un movimiento ya final — correcto para no duplicar asientos,
+              pero <strong>es la única rama</strong>: nada sincroniza el asiento cuando cambian monto, fecha, canal o cuenta.
+              Y el modal de edición manda todos esos campos sin ningún guard.</p>
+            <div class="frow"><span class="flab">El caso</span><div>Creado 14:41:58 con asiento en abril · editado 14:42:59, fecha a julio.
+              <strong>61 segundos después alguien corrigió la fecha y el asiento se quedó en abril.</strong>
+              Abril sobrestima gastos en $486.420 y julio los subestima igual.</div></div>
+            <div class="fix"><b>Arreglo ·</b> Bloquear en la UI los campos que impactan el asiento cuando el estado es final,
+              y empujar a <em>Anular → volver a cargar</em>, que sí genera contra-asiento.
+              De fondo: <code>_deleted</code> no debería existir en ingresos ni egresos.</div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="ALTO" data-dom="Costos">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">ALTO</span><span class="dom">Costos</span></div>
+            <div class="ftitle">Un panel se cotiza $40.240 por debajo de su propia fórmula</div>
+            <div class="fimpact">Un stand de 30 paneles negros se subfactura <b>$1.207.221</b></div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>El ítem 89 (“Panel sistema negro h=2,50m”, <strong>cotizable</strong>) tiene el precio cacheado en $22.943,80
+              cuando su receta da $63.184,50. Alguien le cambió la vida útil y nadie apretó “Recalcular” —
+              <strong>porque el aviso de “recalculá” vive solo en el DOM del panel abierto y se pierde al cerrarlo.</strong></p>
+            <p>El panel blanco, con componentes idénticos, se recalculó media hora después y quedó bien.
+              Hay <strong>17 de 27 ítems con receta</strong> en la misma situación.</p>
+            <div class="frow"><span class="flab">Peor</span><div>El indicador <code>●</code> que debería avisar compara los parámetros globales,
+              <strong>nunca el precio contra su propia fórmula</strong>. Y marca “desfasado” de mentira a los 9 ítems con margen propio —
+              justo los caros. <strong>Pierde credibilidad donde más importa.</strong></div></div>
+            <div class="fix"><b>Arreglo ·</b> Una view que compare <code>precio_alquiler</code> contra <code>calcular_receta(id)</code>
+              y pinte la fila. La RPC ya es la fuente de verdad y corre para los 226 ítems en un SELECT.</div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="ALTO" data-dom="Costos">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">ALTO</span><span class="dom">Costos</span><span class="x2">×2</span></div>
+            <div class="ftitle">Hay cuatro motores de costeo, y la cascada usa el equivocado</div>
+            <div class="fimpact">La UI marca las recetas como desactualizadas <b>justo después de actualizarlas</b></div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>Cambiar el precio de un insumo <strong>no usa la RPC</strong>: usa un reimplemento en JS que ignora la regla 1:N,
+              ignora el desperdicio, suma un parámetro que la RPC descarta por legacy, y no escribe los snapshots.</p>
+            <p>Del barrido salieron dos joyas: <code>recalcularPorInsumo</code> está <strong>definido dos veces en el mismo objeto</strong>
+              (gana el último; la otra versión es código muerto invisible sin linter), y un tercer motor quedó desconectado
+              <strong>por un typo en un <code>getElementById</code></strong> — y no se nota porque el otro <code>getElementById</code>
+              de la misma función sí existe.</p>
+            <div class="fix"><b>Arreglo ·</b> Una línea: apuntar la cascada a <code>recalcularRecetaRPC</code>. Un motor solo.</div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="ALTO" data-dom="Operaciones">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">ALTO</span><span class="dom">Deploy</span></div>
+            <div class="ftitle">El manifiesto de versiones está cacheado: los bumps no llegan</div>
+            <div class="fimpact">Es el síntoma exacto de <b>“pulleé y sigo viendo lo viejo”</b></div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>Los 47 módulos diferidos están <strong>todos bien versionados</strong>: cada commit que tocó un
+              <code>.js</code> bumpeó su <code>?v=</code> en el mismo commit. Impecable.</p>
+            <p>Pero ese manifiesto vive <strong>adentro de <code>app.js</code></strong>, y <code>app.js</code> se sirve desde
+              <code>index.html</code> con <code>?v=16</code>, fijado el 27 de julio. Se modificó en <strong>17 commits</strong> desde entonces.</p>
+            <div class="frow"><span class="flab">Efecto</span><div>Un navegador que cacheó <code>app.js?v=16</code> sigue usando el manifiesto viejo.
+              <strong>Los módulos se bumpearon con disciplina y el cartel que los anuncia quedó congelado.</strong></div></div>
+            <div class="fix"><b>Arreglo ·</b> <code>app.js?v=17</code>, y de ahí en más bumpearlo en cada commit que toque el manifiesto.</div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="ALTO" data-dom="Operaciones">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">ALTO</span><span class="dom">Taller</span></div>
+            <div class="ftitle">El taller no puede tildar el checklist — y “Marcar listo” nunca se habilita</div>
+            <div class="fimpact">El botón queda congelado en <b>“Faltan N pasos”</b> para siempre</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>Al disolverse el módulo Taller, el candado de solo-lectura sobre <code>proyectos</code> le bloqueó al rol
+              las dos acciones que <strong>la base de datos sí le permite</strong>: tildar pasos y cargar novedades.</p>
+            <p>El plan de la reorganización lo dice explícito — <em>“el tildar del taller funciona; el lock fino es UI/API”</em>.
+              <strong>Se puso el lock y nunca se le abrió la excepción.</strong> Diego tampoco tiene forma de avisar que falta un material.</p>
+            <div class="fix"><b>Arreglo ·</b> Dos líneas. <b>El patrón exacto ya existe al lado</b>, para las fotos:
+              <code>this._ensureFotos(); // fuera del guard de RO: el taller igual sube fotos</code>.</div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="ALTO" data-dom="Plata">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">ALTO</span><span class="dom">Reportes</span></div>
+            <div class="ftitle">Dos pantallas del mismo sistema difieren $4.777.363</div>
+            <div class="fimpact">Y el Aging de cobros difiere <b>$30.000.000</b> entre el Lobby y Finanzas</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>El Estado de Resultados de Finanzas dice $12.417.090 y el Balance de Contabilidad dice $7.639.726.
+              La diferencia se descompone al peso: <strong>$5.000.000</strong> de un anticipo que Contabilidad manda
+              correctamente a pasivo y Finanzas cuenta como venta, más el IVA que Finanzas mete dentro del ingreso y del gasto.
+              <strong>Contabilidad es la que tiene razón.</strong></p>
+            <div class="frow"><span class="flab">Aging</span><div>Finanzas descarta las cuotas sin fecha ($4M) y el Lobby las mete en “0-30 días” ($34M).
+              El delator: <strong>el KPI al lado del gráfico de Finanzas dice $34M y el gráfico suma $4M — no cierra ni consigo misma.</strong></div></div>
+            <div class="frow"><span class="flab">Canal</span><div>El Lobby está <strong>clavado en Oficial y no lo dice</strong>:
+              un superadmin con el toggle en Total ve el home en cero y concluye que no cobró nada.</div></div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="ALTO" data-dom="Plata">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">ALTO</span><span class="dom">AFIP</span></div>
+            <div class="ftitle">La misma factura de proveedor cargada tres veces</div>
+            <div class="fimpact"><b>$151.200</b> de IVA crédito fiscal inventado, listo para una DDJJ</div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>Los cuatro caminos que dan de alta un comprobante de proveedor insertan <strong>sin chequear si ya existe</strong>,
+              y no hay índice único. En prod está tres veces la misma factura: las dos primeras subidas con
+              <strong>61 segundos de diferencia</strong> (doble click del OCR), la tercera al día siguiente.</p>
+            <div class="frow"><span class="flab">Nota</span><div>Es lo único de toda la auditoría con <strong>consecuencia directa ante AFIP</strong>.</div></div>
+            <div class="fix"><b>Arreglo ·</b> Índice único por <code>(cuit, tipo, numero)</code> — no por <code>proveedor_id</code>,
+              que está NULL en los 5 comprobantes vivos. Limpiar las copias primero:
+              <b>que el CREATE falle es una ventaja, te obliga a mirarlas.</b></div>
+          </div>
+        </article>
+
+        <article class="find" data-sev="ALTO" data-dom="Operaciones">
+          <button class="fhead" type="button"><i class="stripe"></i><div class="fmid">
+            <div class="ftags"><span class="sev">ALTO</span><span class="dom">Eventos · RRHH</span><span class="x2">×2</span></div>
+            <div class="ftitle">El puente asignaciones → jornales muere en silencio para PM y venta</div>
+            <div class="fimpact">Meli carga 12 personas, ve el toast verde, y <b>no se escribió una sola línea</b></div>
+          </div><span class="fchev" aria-hidden="true">+</span></button>
+          <div class="fbody" hidden>
+            <p>La tabla de costos pide permiso de <code>finanzas</code>, que los roles <code>pm</code>, <code>venta</code>
+              y <code>taller</code> no tienen. Y el error se traga <strong>dos veces</strong>: la lectura devuelve <code>[]</code>
+              ante un rechazo de RLS, y la función <strong>devuelve <code>{ok:false}</code> en vez de rechazar</strong> —
+              así que ni el <code>.catch()</code> del llamador se ejecuta.</p>
+            <div class="frow"><span class="flab">Rastro</span><div><strong>21 asignaciones de eventos ya terminados sin línea de jornal.</strong>
+              El caso duro: Feria del Libro de Campana, 20 personas asignadas, 0 jornales.</div></div>
+            <div class="frow"><span class="flab">Y además</span><div>Las tarifas están <strong>NULL en las 24 personas</strong> →
+              14 de 15 jornales valen $0. Total de mano de obra registrada en todo el sistema: <strong>$200</strong>.</div></div>
+            <div class="fix"><b>Orden obligatorio ·</b> Primero arreglar el candado que protege los montos tipeados a mano
+              (hoy no se activa nunca), <b>después</b> cargar las tarifas. Al revés, el primer sync reescribe montos ya conciliados.</div>
+          </div>
+        </article>
+
+      </div>
+
+      <p class="note">Hay 60 hallazgos más clasificados por severidad en los seis archivos de detalle,
+        cada uno con su ubicación exacta, el escenario de falla y el arreglo propuesto.</p>
+    </section>
+
+    <section id="cableado">
+      <div class="sechead">
+        <h2>Cableado</h2>
+        <p>Cuando un dato se mueve, ¿llega a donde tiene que llegar? Cada línea fue verificada.</p>
+      </div>
+
+      <div class="wgroup">
+        <h3>Muevo la fecha de armado de un evento</h3>
+        <div class="wire" data-s="ok"><div class="wsrc">Fecha de armado</div><div class="wlink"><span class="wdot">llega</span></div><div class="wdst">Alertas, tareas del taller, calendario</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Fecha de armado</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">Las jornadas — y le van a ganar al panel en cuanto alguien las toque</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Fecha de armado</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">Quién va cada día · <b>10 asignaciones fuera de rango hoy</b></div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Fecha de armado</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El camión — queda reservado el día viejo</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Fecha de armado</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El recordatorio de “faltan 2 días” — <b>no vuelve a salir nunca</b></div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Fecha de armado</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El historial — “¿quién movió el armado?” no tiene respuesta</div></div>
+        <div class="wire" data-s="over"><div class="wsrc">Borro un día de jornada</div><div class="wlink"><span class="wdot">de más</span></div><div class="wdst">Borra en cascada a toda la gente citada · sin confirm, sin undo</div></div>
+      </div>
+
+      <div class="wgroup">
+        <h3>Registro un cobro</h3>
+        <div class="wire" data-s="ok"><div class="wsrc">Cobranza con retenciones</div><div class="wlink"><span class="wdot">llega</span></div><div class="wdst">Asiento balanceado + crédito fiscal + libro</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Cobranza con retenciones</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">La cuota del plan · la venta sigue en <b>Cobrado $0</b></div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Cobro de una factura</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El saldo de esa factura · <b>riesgo de doble cobro, verificado</b></div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Anulo el cobro</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">Las retenciones · <b>siguen entrando a la DDJJ</b></div></div>
+      </div>
+
+      <div class="wgroup">
+        <h3>El proyecto y el taller</h3>
+        <div class="wire" data-s="ok"><div class="wsrc">Cotización aprobada</div><div class="wlink"><span class="wdot">llega</span></div><div class="wdst">Nace el proyecto · trigger, 0 duplicados</div></div>
+        <div class="wire" data-s="ok"><div class="wsrc">Cliente responde la encuesta</div><div class="wlink"><span class="wdot">llega</span></div><div class="wdst">Cierra el proyecto al 100%</div></div>
+        <div class="wire" data-s="over"><div class="wsrc">Cliente responde la encuesta</div><div class="wlink"><span class="wdot">de más</span></div><div class="wdst">Cierra <b>todos</b> los stands del evento, incluso los que siguen en armado</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Firmo la entrega</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El estado del proyecto · <b>firmar la entrega no cierra nada</b></div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Subo el remito firmado</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">Poder verlo después · hay que entrar al dashboard de Supabase</div></div>
+      </div>
+
+      <div class="wgroup">
+        <h3>Costos y compras</h3>
+        <div class="wire" data-s="warn"><div class="wsrc">Cambio el costo de un insumo</div><div class="wlink"><span class="wdot">a medias</span></div><div class="wdst">Las recetas · con el motor equivocado y sin snapshots</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Cambio la vida útil o el margen</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El precio · el aviso vive en el DOM y se pierde al cerrar</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">Recibo una orden de compra</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El costo del insumo · hay que tipearlo a mano en Costos</div></div>
+        <div class="wire" data-s="cut"><div class="wsrc">El stock cae bajo el mínimo</div><div class="wlink"><span class="wdot">corte</span></div><div class="wdst">El aviso · el trigger está perfecto y <b>el mínimo está vacío en los 80 insumos</b></div></div>
+      </div>
+
+      <p class="note"><strong>Los cinco cortes que más duelen</strong>, por daño real: la cobranza que no marca la cuota ·
+        editar un movimiento contabilizado · el puente de jornales para PM · mover la fecha del evento ·
+        el “recalculá” que vive en el DOM.</p>
+    </section>
+
+    <section id="plan">
+      <div class="sechead">
+        <h2>Plan de corrección</h2>
+        <p>Ordenado por riesgo de romper algo, no por severidad. Las primeras tandas no tocan JS.</p>
+      </div>
+
+      <div class="tanda"><header><span class="tnum">TANDA 0</span><h3>SQL puro</h3><span class="trisk">riesgo muy bajo · 1 sesión</span></header>
+        <p>Nada de esto toca la interfaz. Cierra un crítico, cuatro altos y varios medios.</p>
+        <ul>
+          <li><code>REVOKE</code> de las ~20 funciones expuestas a anónimos <em>(solo una de 21 tenía el revoke)</em></li>
+          <li>Que <code>profiles.active = false</code> desactive de verdad — hoy 4 cuentas de baja conservan acceso</li>
+          <li>Cerrar las tres tablas de RRHH: <b>nadie las lee fuera de su módulo, riesgo cero</b></li>
+          <li>La cartera de cheques a la matriz de roles — <b>la mejor relación valor/esfuerzo del informe</b></li>
+          <li>El arrastre de <code>saldos_mensuales</code> + backfill de 26 buckets</li>
+          <li>El mapeo genérico de egresos, que hoy es <b>inalcanzable por schema</b></li>
+          <li>Índices únicos en comprobantes emitidos y recibidos</li>
+        </ul>
+      </div>
+
+      <div class="tanda"><header><span class="tnum">TANDA 1</span><h3>nginx · una copia de archivo</h3><span class="trisk">riesgo bajo · 15 min</span></header>
+        <p>Cuatro problemas cerrados en el mismo <code>cp</code>: el <code>.git/</code> público, el rate-limit evadible
+          que nunca se deployó, el límite de 5 MB que hace que <b>el OCR no pueda funcionar con una foto de celular</b>,
+          y el timeout de 60 s que corta el lote de facturación.</p>
+      </div>
+
+      <div class="tanda"><header><span class="tnum">TANDA 2</span><h3>Deploy del VPS</h3><span class="trisk">riesgo bajo · 10 min</span></header>
+        <p>Los siete archivos <b>juntos</b> — <code>server.js</code> requiere seis hermanos y si falta uno entra en
+          crash-loop, llevándose ARCA, el CRM, el OCR y el push. Ya pasó una vez.
+          Esto habilita <code>/api/push/aviso</code>, que hoy responde 404 y el cliente se lo traga.</p>
+      </div>
+
+      <div class="tanda"><header><span class="tnum">TANDA 3</span><h3>JS quirúrgico</h3><span class="trisk">riesgo bajo-medio · 1 sesión</span></header>
+        <p>16 arreglos de una a tres líneas: el motor de costos unificado, el candado del jornal,
+          el taller que puede tildar, el rol <code>venta</code> que no existe, la alerta que filtra estados ilegales,
+          el desarme que se colapsa, el <code>?v=</code> del manifiesto.</p>
+      </div>
+
+      <div class="tanda"><header><span class="tnum">TANDA 4</span><h3>Cambios estructurales</h3><span class="trisk">riesgo medio-alto · varias sesiones</span></header>
+        <p>Los que necesitan diseño y verificación: la cobranza y <code>monto_cobrado</code> <b>juntos</b>,
+          el candado de edición sobre movimientos contabilizados, <code>anularCobro</code>,
+          multi-moneda en los KPIs, el signo de las notas de crédito, el sync de jornales por trigger,
+          y la matriz de roles en las 65 tablas que faltan.</p>
+      </div>
+
+      <div class="tanda"><header><span class="tnum">TANDA 5</span><h3>Datos</h3><span class="trisk">sin riesgo · 2-3 horas</span></header>
+        <p>Recalcular el ítem 89 · limpiar las dos copias de la factura · cargar las tarifas de jornal
+          <em>(después de la Tanda 3)</em> · cargar los stocks mínimos · rescatar las 5 asignaciones legacy
+          que ninguna pantalla muestra · instalar la app en los celulares de taller y PM.</p>
+      </div>
+
+      <div class="tanda"><header><span class="tnum">TANDA 6</span><h3>Documentación</h3><span class="trisk">sin riesgo · 30 min</span></header>
+        <p><code>CLAUDE.md</code> miente en ocho puntos verificados y es la fuente de verdad para las próximas sesiones.
+          Entre otros: dice que el soft delete es <code>deleted</code> cuando es <code>_deleted</code>,
+          y que hay 8 cuentas contables cuando hay 66.</p>
+      </div>
+    </section>
+
+    <section id="ideas">
+      <div class="sechead">
+        <h2>Lo que el sistema podría hacer solo</h2>
+        <p>Casi todo lo que falta ya tiene las piezas construidas. Falta el reloj o el puente.</p>
+      </div>
+      <div class="ideas">
+        <article class="idea">
+          <div class="imeta"><span class="tier t-oro">ORO</span><span class="dom">S</span></div>
+          <h3>La cuota se factura sola de la memoria de nadie</h3>
+          <p>Una tarea derivada cuando la cuota llega a su fecha, y una alerta para las que no tienen fecha —
+            que son plata que el motor <em>no puede reclamar nunca</em>.</p>
+          <p class="ievidence"><b>$34.000.000</b> en 8 cuotas sin facturar · 7 sin fecha</p>
+        </article>
+        <article class="idea">
+          <div class="imeta"><span class="tier t-oro">ORO</span><span class="dom">S</span></div>
+          <h3>Candado al comprobante duplicado</h3>
+          <p>Un índice único y un aviso antes de guardar. El OCR ya extrae CUIT, tipo y número: la IA no decide, decide una consulta exacta.</p>
+          <p class="ievidence">La misma factura <b>×3</b> · $151.200 de IVA inventado</p>
+        </article>
+        <article class="idea">
+          <div class="imeta"><span class="tier t-oro">ORO</span><span class="dom">M</span></div>
+          <h3>El evento termina y el ciclo se cierra</h3>
+          <p>Una tarea al día siguiente del desarme con el link de la encuesta ya armado.
+            <strong>El resto de la cadena ya es automático y funciona</strong> — el único evento donde se mandó, cerró solo.</p>
+          <p class="ievidence"><b>4 de 6</b> proyectos con el evento terminado siguen abiertos</p>
+        </article>
+        <article class="idea">
+          <div class="imeta"><span class="tier t-oro">ORO</span><span class="dom">M</span></div>
+          <h3>La receta se marca desfasada sola</h3>
+          <p>Un trigger que resuelve el árbol inverso y marca. <strong>Marcar, no recalcular</strong> — los snapshots existen
+            justo para que mover un parámetro no dispare cambios silenciosos en 200 ítems.</p>
+          <p class="ievidence"><b>16 de 28</b> recetas con un insumo tocado después de su snapshot</p>
+        </article>
+        <article class="idea">
+          <div class="imeta"><span class="tier t-plata">PLATA</span><span class="dom">S</span></div>
+          <h3>Dos triggers que encienden cinco pantallas muertas</h3>
+          <p>Escribir <code>ultimo_contacto</code> desde los mensajes, y derivar la fecha del evento en la cotización.
+            Diez líneas entre los dos.</p>
+          <p class="ievidence">Encienden <b>2 alertas, 2 widgets y 1 tarea</b> hoy ciegas</p>
+        </article>
+        <article class="idea">
+          <div class="imeta"><span class="tier t-plata">PLATA</span><span class="dom">M</span></div>
+          <h3>El subalquiler se pide antes de que sea tarde</h3>
+          <p>Falta <strong>solo el reloj</strong>: la función que agrupa por proveedor con teléfono y mail ya existe,
+            y el PDF del pedido también.</p>
+          <p class="ievidence"><b>1.277 unidades</b> en 4 eventos · 177 sin fecha</p>
+        </article>
+      </div>
+      <p class="note">Van con su contracara: ocho automatizaciones que <strong>no</strong> recomendamos, con el motivo.
+        La más importante — <em>no auto-recalcular las recetas</em> — va contra una decisión que el proyecto tomó a propósito.</p>
+    </section>
+
+    <section id="sano">
+      <div class="sechead">
+        <h2>Lo que está sano</h2>
+        <p>Verificado con número. Conviene saberlo para no romperlo.</p>
+      </div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th scope="col">Verificación</th><th scope="col" style="text-align:right">Resultado</th></tr></thead>
+          <tbody>
+            <tr><td>Partida doble global</td><td class="num">$0,00 de diferencia</td></tr>
+            <tr><td>Asientos desbalanceados · sin líneas · huérfanos</td><td class="num">0 · 0 · 0</td></tr>
+            <tr><td>Ingresos confirmados y egresos pagados sin asiento</td><td class="num">0 y 0</td></tr>
+            <tr><td>Claves foráneas declaradas · violaciones</td><td class="num">181 · 0</td></tr>
+            <tr><td>Padres borrados con hijos vivos (35 combinaciones)</td><td class="num">solo 6 de prueba</td></tr>
+            <tr><td>Rangos de fecha invertidos</td><td class="num">0</td></tr>
+            <tr><td>Duplicados de proveedores · personas · insumos</td><td class="num">0 · 0 · 0</td></tr>
+            <tr><td>Views con <code>security_invoker</code></td><td class="num">6 de 6</td></tr>
+            <tr><td>Versionado de los 47 módulos diferidos</td><td class="num">cero stale</td></tr>
+            <tr><td>Secretos en el árbol actual</td><td class="num">ninguno</td></tr>
+            <tr><td>Reorganización de la capa operativa</td><td class="num">completa</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note"><strong>Nota de método.</strong> Cada agente tenía instrucción de descartar activamente sus propios
+        falsos positivos y reportarlos por separado — el repo tiene historial de auditorías que reportaron 19 bugs de los
+        cuales casi todos eran falsos. Esa sección al pie de cada archivo de detalle vale tanto como los hallazgos:
+        confirma, entre otras cosas, que el bug de las columnas rotadas <strong>no se filtra fuera de <code>api.js</code></strong>,
+        que la protección anti-ciclo del BOM <strong>sí es completa</strong>, que el módulo de Inventario
+        <strong>no está roto</strong> (se usó y se abandonó), y que una deuda que cuatro documentos dan por pendiente
+        <strong>ya estaba saldada</strong>.</p>
+    </section>
+
+    <footer>
+      Auditoría integral · 31 de julio de 2026 · 17 agentes en paralelo<br>
+      88.800 líneas de JS · 126 tablas · 74 triggers · 80 funciones · 126 archivos SQL · 7 buckets<br>
+      Verificado contra producción con <span class="mono">SELECT</span>. Ninguna línea de código fue modificada.
+    </footer>
+  </main>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement;
+  document.getElementById('tt').addEventListener('click',function(){
+    var dark=root.getAttribute('data-theme')==='dark'||
+      (!root.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme:dark)').matches);
+    root.setAttribute('data-theme',dark?'light':'dark');
+  });
+
+  document.querySelectorAll('.fhead').forEach(function(h){
+    h.addEventListener('click',function(){
+      var b=h.nextElementSibling, open=!b.hidden;
+      b.hidden=open; h.querySelector('.fchev').textContent=open?'+':'–';
+      h.setAttribute('aria-expanded',String(!open));
+    });
+    h.setAttribute('aria-expanded','false');
+  });
+
+  var chips=[].slice.call(document.querySelectorAll('.chip')),
+      finds=[].slice.call(document.querySelectorAll('.find')),
+      fc=document.getElementById('fc');
+  function apply(){
+    var sev=chips.filter(function(c){return c.dataset.sev&&c.getAttribute('aria-pressed')==='true'}).map(function(c){return c.dataset.sev}),
+        dom=chips.filter(function(c){return c.dataset.dom&&c.getAttribute('aria-pressed')==='true'}).map(function(c){return c.dataset.dom}),
+        n=0;
+    finds.forEach(function(f){
+      var ok=(!sev.length||sev.indexOf(f.dataset.sev)>-1)&&(!dom.length||dom.indexOf(f.dataset.dom)>-1);
+      f.hidden=!ok; if(ok)n++;
+    });
+    fc.textContent=n+' de '+finds.length;
+  }
+  chips.forEach(function(c){c.addEventListener('click',function(){
+    c.setAttribute('aria-pressed',c.getAttribute('aria-pressed')==='true'?'false':'true'); apply();
+  })});
+  apply();
+
+  var links=[].slice.call(document.querySelectorAll('.navlink')),
+      secs=links.map(function(l){return document.querySelector(l.getAttribute('href'))});
+  if('IntersectionObserver' in window){
+    new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(!e.isIntersecting)return;
+        var i=secs.indexOf(e.target);
+        links.forEach(function(l,j){l.classList.toggle('on',i===j)});
+      });
+    },{rootMargin:'-15% 0px -70% 0px'}).observe&&secs.forEach(function(s){
+      if(s)new IntersectionObserver(function(es){
+        es.forEach(function(e){
+          if(!e.isIntersecting)return;
+          var i=secs.indexOf(e.target);
+          links.forEach(function(l,j){l.classList.toggle('on',i===j)});
+        });
+      },{rootMargin:'-15% 0px -70% 0px'}).observe(s);
+    });
+  }
+})();
+</script>
