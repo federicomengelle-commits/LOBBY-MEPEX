@@ -704,24 +704,41 @@ const RendimientoModule = {
                 <td>${p.fecha}</td>
                 <td class="rend-num">${this._money(p.monto)}</td>
                 <td>${p.comprobante_recibido_id ? '🧾 c/factura' : 'simple'}</td>
-                <td>${p.anulado ? '<span class="rend-estado rend-est-anulado">anulado</span>' : `<button class="rend-rowbtn" data-anular="${p.id}">Anular</button>`}</td>
+                <td>${p.anulado
+                    ? `<span class="rend-estado rend-est-anulado">anulado</span> <button class="rend-rowbtn" data-anular="${p.id}" title="Reintenta dar de baja lo que cuelga del pago, por si una anulación anterior quedó a medias">Completar</button>`
+                    : `<button class="rend-rowbtn" data-anular="${p.id}">Anular</button>`}</td>
             </tr>`).join('');
         Modal.open({
             title: `Pagos — ${this._esc(costo.descripcion)}`,
             size: 'md',
             body: `
-                <div class="rend-warn">Anular un pago revierte el estado de la línea, pero el <b>asiento contable NO se revierte automáticamente</b> (reversión manual en Contabilidad — deuda conocida).</div>
+                <!-- T4.3: este banner decía que el asiento NO se revierte solo y era FALSO
+                     desde sql/fix_anular_contraasiento.sql. No era un detalle: alguien de
+                     Finanzas que leía "reversión manual en Contabilidad" iba y cargaba el
+                     contra-asiento a mano → reversión duplicada y partida doble rota. -->
+                <div class="rend-warn">Anular un pago genera su <b>contra-asiento automáticamente</b> y devuelve la línea a pendiente. No hay que tocar nada en Contabilidad.</div>
                 <table class="rend-table"><thead><tr><th>Fecha</th><th class="rend-num">Monto</th><th>Tipo</th><th></th></tr></thead>
                 <tbody>${rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">Sin pagos</td></tr>'}</tbody></table>
             `,
             footer: '<button class="btn btn-ghost" data-modal-close>Cerrar</button>',
         });
-        document.querySelectorAll('[data-anular]').forEach(b => b.addEventListener('click', async () => {
-            const ok = await Confirm.action('Anular pago', 'El egreso vinculado se marca anulado. El asiento NO se revierte solo. ¿Continuar?');
+        document.querySelectorAll('[data-anular]').forEach(b => unaVez(b, async () => {
+            // T4.3: el texto decía "el asiento NO se revierte solo" y era falso —
+            // `fn_revertir_asiento_egreso` genera el contra-asiento desde hace
+            // rato. Y el resultado se tiraba: ahora `anularPagoEvento` delega en
+            // `API.anularPago`, que puede volver con una limpieza a medias.
+            const ok = await Confirm.action('Anular pago',
+                'Se anula el egreso vinculado y se genera su contra-asiento. La línea vuelve a figurar pendiente. ¿Continuar?');
             if (!ok) return;
-            try { await API.anularPagoEvento(b.dataset.anular); Modal.closeAll(); Toast.success('Pago anulado'); await this._loadEvento(); }
-            catch (err) { Toast.error('Error: ' + (err.message || err)); }
-        }));
+            try {
+                const res = await API.anularPagoEvento(b.dataset.anular);
+                (res?.avisos || []).forEach(a => Toast.warning(a));
+                if (res?.error) Toast.error(res.error);
+                else Toast.success('Pago anulado');
+                Modal.closeAll();
+                await this._loadEvento();
+            } catch (err) { Toast.error('Error: ' + (err.message || err)); }
+        }, 'Anulando…'));
     },
 
     // ═══════════════════════════════════════════ DUPLICAR

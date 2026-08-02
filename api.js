@@ -7274,6 +7274,258 @@ const API = {
         }
     },
 
+    // ═══════════════════════════════════════════════════════════════════
+    //  ANULAR un movimiento — el reverso COMPLETO (T4.3, auditoría 31/07)
+    // ═══════════════════════════════════════════════════════════════════
+    //  Hasta acá "anular" era un `update({estado:'anulado'})` suelto en el panel
+    //  de Finanzas: revertía el asiento (eso lo hacen los triggers
+    //  fn_revertir_asiento_ingreso/egreso) y NADA MÁS. Quedaban vivos todos los
+    //  satélites del movimiento: las aplicaciones contra las cuotas del plan, las
+    //  retenciones que van a la DDJJ, los FK del comprobante padre, el valor de
+    //  cartera y el pago de la planilla de Rendimiento.
+    //
+    //  Eso no era sólo suciedad. `comprobantes.ingreso_id` y
+    //  `comprobantes_recibidos.egreso_id` son justo lo que miran los botones
+    //  "Generar cobro"/"Generar pago" para decidir si mostrarse. Con el FK
+    //  colgando de un movimiento anulado el botón no aparece nunca más → el
+    //  camino "Anular y cargarlo de nuevo" al que empuja el candado de T4.2
+    //  quedaba cortado, y corregir un movimiento contabilizado dependía de
+    //  cirugía SQL a mano. La verificación de T4.18 ("anular→regenerar PASA")
+    //  era cierta a nivel constraint y falsa a nivel producto.
+    //
+    //  ⚠️ EL ORDEN NO ES OPCIONAL: el estado va PRIMERO.
+    //  `fn_cf_bloquear_si_confirmado` (trigger de `creditos_fiscales`) rechaza
+    //  tocar una retención mientras su cobro esté 'confirmado' — su propio
+    //  mensaje dice "anulá el cobro y volvé a registrarlo". Limpiar antes de
+    //  anular tira excepción y no limpia nada.
+    //
+    //  ⚠️ NO hay transacción del lado del cliente: entre el UPDATE del estado y
+    //  la limpieza puede fallar un paso. Por eso las dos funciones son
+    //  RE-EJECUTABLES: si el movimiento ya está anulado no se re-anula (el
+    //  contra-asiento tiene su propio anti-doble), pero la limpieza se reintenta
+    //  entera. **Volver a tocar "Anular" ES el camino de recuperación**, y por eso
+    //  los fallos parciales se devuelven en vez de tragarse: un `catch` mudo acá
+    //  dejaría media anulación sin que nadie se entere.
+
+    // Una escritura de limpieza que NO se conforma con "no hubo error".
+    // Un UPDATE cuya fila queda fuera del `USING` de la RLS **no falla**:
+    // Postgres lo trata igual que un WHERE que no matcheó y PostgREST responde
+    // 204. Mirar sólo `error` devuelve "limpio ✓" sobre una fila intacta — el
+    // mismo modo de falla que este repo ya documentó en `fix_rls_profiles.sql`
+    // ("la app creía que había guardado").
+    // Acá pesa el doble, porque dos de las siete tablas del cleanup
+    // (`evento_costos` y `evento_costo_pagos`) exigen `finanzas:write` y **no**
+    // aceptan `contabilidad:write` — que sí alcanza para anular el egreso. Un
+    // rol así anularía el pago y la planilla del evento no se enteraría nunca,
+    // dejando la línea con "ya migrada a Egresos" para siempre: justo el
+    // callejón sin salida que este ítem viene a cerrar.
+    // Por eso se cuenta antes y se compara después. Devuelve cuántas filas tocó.
+    async _limpiarSatelite({ tabla, patch, filtro, etiqueta, fallas }) {
+        const conFiltro = (q) => { Object.entries(filtro).forEach(([c, v]) => { q = q.eq(c, v); }); return q; };
+        const { data: antes, error: e0 } = await conFiltro(supabaseClient.from(tabla).select('id'));
+        if (e0) { fallas.push(etiqueta + ' (no pude leerlo: ' + e0.message + ')'); return 0; }
+        if (!antes || !antes.length) return 0;            // no había nada que limpiar
+        const { data: hechas, error: e1 } = await conFiltro(supabaseClient.from(tabla).update(patch)).select('id');
+        if (e1) { fallas.push(etiqueta + ' (' + e1.message + ')'); return 0; }
+        const n = (hechas || []).length;
+        if (n < antes.length) {
+            fallas.push(etiqueta + ' (la base sólo aceptó ' + n + ' de ' + antes.length + ' — falta de permisos)');
+        }
+        return n;
+    },
+
+    async anularCobro(ingresoId) {
+        if (!ingresoId) return { error: 'Falta el cobro a anular.' };
+        const { data: ing, error: eLee } = await supabaseClient
+            .from('ingresos').select('id, estado, _deleted').eq('id', ingresoId).maybeSingle();
+        if (eLee) return { error: 'No pude leer el cobro: ' + eLee.message };
+        if (!ing) return { error: 'Cobro no encontrado.' };
+        if (ing._deleted) return { error: 'Ese cobro está eliminado.' };
+
+        const yaEstaba = ing.estado === 'anulado';
+        if (!yaEstaba) {
+            // El candado de T4.2 (fn_candado_mov_contabilizado) devuelve acá su
+            // excepción con el número de asiento si la transición no es legal.
+            // El `.select('id')` es por el mismo motivo que en `_limpiarSatelite`:
+            // si la RLS filtrara esta fila, el UPDATE no falla y devuelve 0 filas
+            // — y seguir "limpiando" los satélites de un movimiento que en la base
+            // sigue vivo es peor que no hacer nada.
+            const { data, error } = await supabaseClient.from('ingresos')
+                .update({ estado: 'anulado' }).eq('id', ingresoId).select('id');
+            if (error) return { error: error.message };
+            if (!data || !data.length) return { error: 'No se pudo anular el cobro: la base rechazó la escritura (permisos).' };
+        }
+
+        const fallas = [];
+        const avisos = [];
+        let limpiado = 0;
+
+        // 1) Las aplicaciones contra las cuotas del plan de cobro.
+        //    Soft-delete a propósito: `fn_sync_cuota_desde_aplicacion` dispara
+        //    también en UPDATE y suma sólo las vivas (`_deleted = false`), así
+        //    que cada cuota vuelve sola a su `monto_cobrado` y su estado reales.
+        //    Un DELETE haría lo mismo pero borraría la traza de que hubo cobro.
+        limpiado += await this._limpiarSatelite({
+            tabla: 'cobro_aplicaciones', patch: { _deleted: true },
+            filtro: { ingreso_id: ingresoId, _deleted: false },
+            etiqueta: 'las aplicaciones a las cuotas', fallas,
+        });
+
+        // 2) Las retenciones. Si quedan vivas, ese crédito fiscal se computa en
+        //    una DDJJ real contra un cobro que ya no existe.
+        limpiado += await this._limpiarSatelite({
+            tabla: 'creditos_fiscales', patch: { _deleted: true },
+            filtro: { origen_ingreso_id: ingresoId, _deleted: false },
+            etiqueta: 'las retenciones del certificado', fallas,
+        });
+
+        // 3) El FK de la factura emitida: sin esto "Generar cobro" no vuelve a
+        //    aparecer y la factura queda marcada como cobrada para siempre.
+        limpiado += await this._limpiarSatelite({
+            tabla: 'comprobantes', patch: { ingreso_id: null },
+            filtro: { ingreso_id: ingresoId },
+            etiqueta: 'el vínculo con la factura', fallas,
+        });
+
+        // 4) El cheque/e-cheq que se recibió en este cobro.
+        //    Sólo se toca si sigue quieto en cartera. Si ya se depositó, cobró,
+        //    endosó o rebotó, ese movimiento tiene asientos propios: cambiarle el
+        //    estado desde acá dispararía `fn_asiento_auto_valor` sobre un ciclo
+        //    ya cerrado. Se avisa y lo resuelve una persona.
+        const { data: valsIng, error: eVal } = await supabaseClient.from('cartera_valores')
+            .select('id, estado, numero').eq('ingreso_id', ingresoId).eq('_deleted', false);
+        if (eVal) fallas.push('el valor en cartera (' + eVal.message + ')');
+        for (const v of (valsIng || [])) {
+            if (v.estado === 'en_cartera') {
+                // `sentido='recibido'` + `estado='anulado'` no entra en ninguna
+                // rama de fn_asiento_auto_valor (la de anulación pide
+                // `sentido='emitido'`) → no genera asiento. Verificado contra prod.
+                limpiado += await this._limpiarSatelite({
+                    tabla: 'cartera_valores', patch: { estado: 'anulado' },
+                    filtro: { id: v.id }, etiqueta: 'el valor en cartera', fallas,
+                });
+            } else {
+                avisos.push(`El valor ${v.numero || 'en cartera'} está "${v.estado}" y quedó como estaba: revisalo en la pestaña Valores.`);
+            }
+        }
+
+        if (fallas.length) {
+            return {
+                error: 'Se anuló el cobro y se revirtió su asiento, pero quedó sin limpiar: '
+                    + fallas.join('; ') + '. Usá "Completar anulación" en el panel del cobro para reintentarlo.',
+                parcial: true, ingreso_id: ingresoId, avisos, limpiado,
+            };
+        }
+        return { ok: true, ya_estaba: yaEstaba, ingreso_id: ingresoId, avisos, limpiado };
+    },
+
+    async anularPago(egresoId) {
+        if (!egresoId) return { error: 'Falta el pago a anular.' };
+        const { data: eg, error: eLee } = await supabaseClient
+            .from('egresos').select('id, estado, _deleted').eq('id', egresoId).maybeSingle();
+        if (eLee) return { error: 'No pude leer el pago: ' + eLee.message };
+        if (!eg) return { error: 'Pago no encontrado.' };
+        if (eg._deleted) return { error: 'Ese pago está eliminado.' };
+
+        const yaEstaba = eg.estado === 'anulado';
+        if (!yaEstaba) {
+            // Ver la nota del espejo en `anularCobro` sobre el `.select('id')`.
+            const { data, error } = await supabaseClient.from('egresos')
+                .update({ estado: 'anulado' }).eq('id', egresoId).select('id');
+            if (error) return { error: error.message };
+            if (!data || !data.length) return { error: 'No se pudo anular el pago: la base rechazó la escritura (permisos).' };
+        }
+
+        const fallas = [];
+        const avisos = [];
+        let limpiado = 0;
+
+        // 1) El FK de la factura del proveedor: sin esto "Generar pago" no vuelve.
+        limpiado += await this._limpiarSatelite({
+            tabla: 'comprobantes_recibidos', patch: { egreso_id: null },
+            filtro: { egreso_id: egresoId },
+            etiqueta: 'el vínculo con la factura del proveedor', fallas,
+        });
+
+        // 2) Endoso deshecho: el valor vuelve a la cartera.
+        //    Es lo que ya hizo el contra-asiento (devolvió 1.1.07), y la
+        //    transición 'endosado'→'en_cartera' no dispara ninguna rama de
+        //    fn_asiento_auto_valor. Sin esto el cheque queda "endosado" para
+        //    siempre y `endosarValor` lo rechaza ("no está en cartera"): el valor
+        //    se vuelve inusable sin haberse entregado nunca.
+        const { data: valsEnd, error: eEnd } = await supabaseClient.from('cartera_valores')
+            .select('id, estado, numero').eq('endoso_egreso_id', egresoId).eq('_deleted', false);
+        if (eEnd) fallas.push('el endoso del valor (' + eEnd.message + ')');
+        for (const v of (valsEnd || [])) {
+            if (v.estado === 'endosado') {
+                const n = await this._limpiarSatelite({
+                    tabla: 'cartera_valores',
+                    patch: { estado: 'en_cartera', endoso_egreso_id: null, endosado_a_proveedor_id: null },
+                    filtro: { id: v.id }, etiqueta: 'el endoso del valor', fallas,
+                });
+                limpiado += n;
+                if (n) avisos.push(`El valor ${v.numero || 'endosado'} volvió a la cartera.`);
+            } else {
+                avisos.push(`El valor ${v.numero || ''} está "${v.estado}" y no se pudo devolver a la cartera: revisalo en Valores.`);
+            }
+        }
+
+        // 3) El cheque PROPIO que se emitió con este pago.
+        //    ⚠️ Acá NO se escribe `estado='anulado'`: para `sentido='emitido'` esa
+        //    transición dispara la rama 3 de fn_asiento_auto_valor (DEBE 2.1.07 /
+        //    HABER 2.1.01 Proveedores), que se SUMARÍA al contra-asiento del
+        //    egreso → la reversión contada dos veces y una deuda con proveedores
+        //    que nadie contrajo. Anular el cheque en el banco es otro hecho, con
+        //    su propio botón en la pestaña Valores.
+        //    Acá el pago se deshace, así que el cheque nunca existió: se retira de
+        //    la cartera con soft-delete, que no toca `estado` y por eso no dispara
+        //    nada. Además de limpieza es protección: un cheque emitido que queda
+        //    "en cartera" apuntando a un pago anulado sigue ofreciendo "Debitar",
+        //    y ese clic saca plata del banco por un pago que ya se revirtió.
+        const { data: valsEmi, error: eEmi } = await supabaseClient.from('cartera_valores')
+            .select('id, estado, numero, sentido').eq('egreso_id', egresoId).eq('_deleted', false);
+        if (eEmi) fallas.push('el cheque emitido (' + eEmi.message + ')');
+        for (const v of (valsEmi || [])) {
+            if (v.sentido === 'emitido' && v.estado === 'en_cartera') {
+                const n = await this._limpiarSatelite({
+                    tabla: 'cartera_valores', patch: { _deleted: true },
+                    filtro: { id: v.id }, etiqueta: 'el cheque emitido', fallas,
+                });
+                limpiado += n;
+                if (n) avisos.push(`El cheque ${v.numero || 'emitido'} se retiró de la cartera junto con el pago.`);
+            } else {
+                avisos.push(`El valor ${v.numero || ''} está "${v.estado}" y quedó como estaba: revisalo en Valores.`);
+            }
+        }
+
+        // 4) El pago de la planilla de Rendimiento. `fn_sync_costo_desde_pago`
+        //    suma sólo los `anulado = false`, así que la línea vuelve sola a
+        //    'pendiente' con su monto_pagado real.
+        limpiado += await this._limpiarSatelite({
+            tabla: 'evento_costo_pagos', patch: { anulado: true },
+            filtro: { egreso_id: egresoId, anulado: false },
+            etiqueta: 'el pago en la planilla del evento', fallas,
+        });
+
+        // 5) El link de migración de la línea de planilla. Mientras siga puesto,
+        //    `marcarCostoPagado` la rechaza con "ya migrada a Egresos" y no hay
+        //    forma de volver a migrarla: el mismo callejón que este ítem cierra.
+        limpiado += await this._limpiarSatelite({
+            tabla: 'evento_costos', patch: { egreso_id: null },
+            filtro: { egreso_id: egresoId },
+            etiqueta: 'el vínculo con la línea del evento', fallas,
+        });
+
+        if (fallas.length) {
+            return {
+                error: 'Se anuló el pago y se revirtió su asiento, pero quedó sin limpiar: '
+                    + fallas.join('; ') + '. Usá "Completar anulación" en el panel del pago para reintentarlo.',
+                parcial: true, egreso_id: egresoId, avisos, limpiado,
+            };
+        }
+        return { ok: true, ya_estaba: yaEstaba, egreso_id: egresoId, avisos, limpiado };
+    },
+
     // ───────────────────────────────────────────────
     //  FASE E — Multi-moneda (ARS / USD / EUR)
     //  Snapshot de cotización por movimiento.
@@ -8141,8 +8393,12 @@ const API = {
         if (error) throw error;
         if (!c) return { error: 'Comprobante no encontrado' };
         if (c.egreso_id) {
-            const { data: eg } = await supabaseClient.from('egresos').select('id, _deleted').eq('id', c.egreso_id).maybeSingle();
-            if (eg && !eg._deleted) return { error: 'Este comprobante ya tiene un egreso' };
+            // T4.3: anular NO setea `_deleted`, sólo `estado='anulado'` → mirar
+            // sólo `_deleted` contaba los anulados como vigentes y este comprobante
+            // no se podía volver a pagar nunca. `anularPago` además limpia el FK,
+            // pero esto cubre lo anulado por otro camino (o antes de T4.3).
+            const { data: eg } = await supabaseClient.from('egresos').select('id, _deleted, estado').eq('id', c.egreso_id).maybeSingle();
+            if (eg && !eg._deleted && eg.estado !== 'anulado') return { error: 'Este comprobante ya tiene un egreso' };
         }
         const map = this._gastoDominio(c.categoria);
         const egreso_id = await this.createEgreso({
@@ -8172,8 +8428,9 @@ const API = {
         if (error) throw error;
         if (!c) return { error: 'Comprobante no encontrado' };
         if (c.ingreso_id) {
-            const { data: ing } = await supabaseClient.from('ingresos').select('id, _deleted').eq('id', c.ingreso_id).maybeSingle();
-            if (ing && !ing._deleted) return { error: 'Este comprobante ya tiene un cobro' };
+            // T4.3: ídem el espejo de arriba — un cobro anulado no es un cobro.
+            const { data: ing } = await supabaseClient.from('ingresos').select('id, _deleted, estado').eq('id', c.ingreso_id).maybeSingle();
+            if (ing && !ing._deleted && ing.estado !== 'anulado') return { error: 'Este comprobante ya tiene un cobro' };
         }
         const { ingreso_id } = await this.registrarCobro({
             fecha: fecha || c.fecha || this._today(),
@@ -8248,15 +8505,23 @@ const API = {
         return { ok: true, estado };
     },
 
-    // ── Anular un pago (revierte la línea; el asiento NO se revierte solo — deuda §9.2) ──
+    // ── Anular un pago de la planilla del evento ──
+    //  T4.3: cuando hay egreso detrás, delega en `anularPago` en vez de escribir
+    //  `estado='anulado'` a mano. Esa escritura suelta revertía el asiento y
+    //  dejaba colgados el comprobante del proveedor, el valor de cartera y el
+    //  link de migración de la línea. `anularPago` ya marca este pago como
+    //  anulado (filtra por `egreso_id`), así que no hace falta hacerlo antes.
     async anularPagoEvento(pagoId, { anularEgreso = true } = {}) {
         const { data: pago } = await supabaseClient.from('evento_costo_pagos').select('*').eq('id', pagoId).maybeSingle();
         if (!pago) return { error: 'pago no encontrado' };
+        if (anularEgreso && pago.egreso_id) {
+            const r = await this.anularPago(pago.egreso_id);
+            if (r?.error) return { ...r, egreso_id: pago.egreso_id };
+            return { ok: true, egreso_id: pago.egreso_id, avisos: r?.avisos || [] };
+        }
+        // Sin egreso (o pedido explícito de no tocarlo): sólo la línea de planilla.
         const { error } = await supabaseClient.from('evento_costo_pagos').update({ anulado: true }).eq('id', pagoId);
         if (error) throw error;
-        if (anularEgreso && pago.egreso_id) {
-            await supabaseClient.from('egresos').update({ estado: 'anulado' }).eq('id', pago.egreso_id);
-        }
         return { ok: true, egreso_id: pago.egreso_id };
     },
 

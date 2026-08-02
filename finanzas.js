@@ -3197,11 +3197,14 @@ const FinanzasModule = {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                         Editar
                     </button>
-                    ${ingreso.estado !== 'anulado' ? `
+                    <!-- T4.3: el botón NO se esconde cuando ya está anulado. Anular escribe
+                         el estado ANTES de la limpieza, así que si un paso posterior rebota
+                         el movimiento queda anulado y a medio limpiar; esconder el botón ahí
+                         dejaba la corrección sin ningún camino desde la app (retenciones vivas
+                         para la DDJJ incluidas). Re-ejecutarlo es idempotente. -->
                     <button class="fin-panel-btn fin-panel-btn-warn" id="finIngPanelAnular">
-                        Anular
+                        ${ingreso.estado === 'anulado' ? 'Completar anulación' : 'Anular'}
                     </button>
-                    ` : ''}
                     ${Auth.isSuperAdmin() ? `
                     <button class="fin-panel-btn fin-panel-btn-danger" id="finIngPanelDelete">
                         Eliminar
@@ -3219,29 +3222,42 @@ const FinanzasModule = {
         document.getElementById('finIngPanelClose')?.addEventListener('click', () => this._closeIngresoPanel());
         document.getElementById('finIngPanelEdit')?.addEventListener('click', () => this._showIngresoModal(ingreso));
 
-        document.getElementById('finIngPanelAnular')?.addEventListener('click', async () => {
+        // T4.3: el reverso completo vive en `API.anularCobro`. Antes acá había un
+        // `update({estado:'anulado'})` suelto que revertía el asiento y dejaba
+        // vivas las aplicaciones a las cuotas, las retenciones de la DDJJ y el FK
+        // de la factura — que es lo que después escondía el botón "Generar cobro".
+        const ingYaAnulado = ingreso.estado === 'anulado';
+        unaVez(document.getElementById('finIngPanelAnular'), async () => {
+            // El contra-asiento sólo existe si el cobro llegó a estar confirmado:
+            // `fn_revertir_asiento_ingreso` exige esa transición exacta. Prometerlo
+            // sobre un cobro pendiente sería contar algo que no pasa.
+            const teniaAsiento = ingreso.estado === 'confirmado';
             const ok = await Modal.confirm({
-                title: 'Anular ingreso',
-                message: `¿Seguro que querés anular <strong>"${escHtml(ingreso.concepto)}"</strong> por ${this._formatMoney(ingreso.monto)}?`,
-                confirmText: 'Anular',
+                title: ingYaAnulado ? 'Completar anulación' : 'Anular ingreso',
+                message: ingYaAnulado
+                    ? `Este cobro <strong>ya está anulado</strong>. Esto vuelve a dar de baja lo que cuelga de él: retenciones, lo aplicado a las cuotas y el vínculo con la factura.<br><br>
+                       <span style="color:#888;font-size:0.85rem;">Sirve si una anulación anterior quedó a medias. Si ya estaba todo limpio, no cambia nada.</span>`
+                    : `¿Seguro que querés anular <strong>"${escHtml(ingreso.concepto)}"</strong> por ${this._formatMoney(ingreso.monto)}?<br><br>
+                       <span style="color:#888;font-size:0.85rem;">${teniaAsiento ? 'Se genera el contra-asiento y se dan' : 'Se dan'} de baja sus retenciones y lo aplicado a las cuotas. La factura vuelve a quedar disponible para cobrar.</span>`,
+                confirmText: ingYaAnulado ? 'Completar' : 'Anular',
                 cancelText: 'Cancelar',
             });
-            if (ok) {
-                try {
-                    const { error } = await supabaseClient
-                        .from('ingresos')
-                        .update({ estado: 'anulado' })
-                        .eq('id', ingreso.id);
-                    if (error) throw error;
-                    Toast.success('Ingreso anulado');
-                    this._closeIngresoPanel();
-                    await this._loadIngresos();
-                } catch (e) {
-                    console.error('[Finanzas] Error anulando ingreso:', e);
-                    Toast.error('Error al anular ingreso');
-                }
+            if (!ok) return;
+            try {
+                const res = await API.anularCobro(ingreso.id);
+                (res?.avisos || []).forEach(a => Toast.warning(a));
+                if (res?.error) Toast.error(res.error);
+                else if (ingYaAnulado) Toast.success(res.limpiado ? `Anulación completada (${res.limpiado} registro${res.limpiado === 1 ? '' : 's'})` : 'Ya estaba todo dado de baja');
+                else Toast.success('Ingreso anulado');
+                // Aun con error parcial el ingreso ya está anulado: hay que refrescar
+                // para que la pantalla muestre lo que realmente quedó en la base.
+                this._closeIngresoPanel();
+                await this._loadIngresos();
+            } catch (e) {
+                console.error('[Finanzas] Error anulando ingreso:', e);
+                Toast.error('Error al anular ingreso');
             }
-        });
+        }, ingYaAnulado ? 'Completando…' : 'Anulando…');
 
         document.getElementById('finIngPanelDelete')?.addEventListener('click', async () => {
             // T4.2: contabilizado no se borra — se anula (el trigger lo rechaza igual).
@@ -3468,7 +3484,11 @@ const FinanzasModule = {
             size: 'md',
             body: `
                 <div class="fin-form-grid">
-                    ${locked ? `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Ya contabilizado</b> — tiene asiento. Se pueden editar concepto, notas e imputación; para corregir monto, fecha, medio, canal o cuenta: <b>Anular</b> (genera contra-asiento) y cargarlo de nuevo.</div>` : ''}
+                    ${locked ? (i.estado === 'anulado'
+                        // T4.3: antes este banner le decía "Anular y cargarlo de nuevo" a un
+                        // movimiento YA anulado, cuyo asiento ya fue revertido.
+                        ? `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Anulado</b> — su asiento ya fue revertido con un contra-asiento. Queda como traza y no se modifica; si el movimiento tiene que existir, cargalo de nuevo.</div>`
+                        : `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Ya contabilizado</b> — tiene asiento. Se pueden editar concepto, notas e imputación; para corregir monto, fecha, medio, canal o cuenta: <b>Anular</b> (genera contra-asiento) y cargarlo de nuevo.</div>`) : ''}
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Fecha *</label>
@@ -4184,11 +4204,12 @@ const FinanzasModule = {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                         Editar
                     </button>
-                    ${egreso.estado !== 'anulado' ? `
+                    <!-- T4.3: ver la nota del panel de ingresos — el botón sigue disponible
+                         con el movimiento ya anulado, porque es el único camino para
+                         completar una limpieza que quedó a medias. -->
                     <button class="fin-panel-btn fin-panel-btn-warn" id="finEgrPanelAnular">
-                        Anular
+                        ${egreso.estado === 'anulado' ? 'Completar anulación' : 'Anular'}
                     </button>
-                    ` : ''}
                     ${Auth.isSuperAdmin() ? `
                     <button class="fin-panel-btn fin-panel-btn-danger" id="finEgrPanelDelete">
                         Eliminar
@@ -4205,25 +4226,34 @@ const FinanzasModule = {
         document.getElementById('finEgrPanelClose')?.addEventListener('click', () => this._closeEgresoPanel());
         document.getElementById('finEgrPanelEdit')?.addEventListener('click', () => this._showEgresoModal(egreso));
 
-        document.getElementById('finEgrPanelAnular')?.addEventListener('click', async () => {
+        // T4.3: espejo del de ingresos — ver el comentario en `_showIngresoPanel`.
+        const egrYaAnulado = egreso.estado === 'anulado';
+        unaVez(document.getElementById('finEgrPanelAnular'), async () => {
+            const teniaAsiento = egreso.estado === 'pagado';
             const ok = await Modal.confirm({
-                title: 'Anular egreso',
-                message: `¿Seguro que querés anular <strong>"${escHtml(egreso.concepto)}"</strong> por ${this._formatMoney(egreso.monto)}?`,
-                confirmText: 'Anular',
+                title: egrYaAnulado ? 'Completar anulación' : 'Anular egreso',
+                message: egrYaAnulado
+                    ? `Este pago <strong>ya está anulado</strong>. Esto vuelve a dar de baja lo que cuelga de él: el vínculo con la factura del proveedor, el valor de cartera y la línea de la planilla del evento.<br><br>
+                       <span style="color:#888;font-size:0.85rem;">Sirve si una anulación anterior quedó a medias. Si ya estaba todo limpio, no cambia nada.</span>`
+                    : `¿Seguro que querés anular <strong>"${escHtml(egreso.concepto)}"</strong> por ${this._formatMoney(egreso.monto)}?<br><br>
+                       <span style="color:#888;font-size:0.85rem;">${teniaAsiento ? 'Se genera el contra-asiento. ' : ''}La factura del proveedor vuelve a quedar disponible para pagar y, si el pago venía de la planilla de un evento, esa línea vuelve a figurar pendiente.</span>`,
+                confirmText: egrYaAnulado ? 'Completar' : 'Anular',
                 cancelText: 'Cancelar',
             });
-            if (ok) {
-                try {
-                    const { error } = await supabaseClient.from('egresos').update({ estado: 'anulado' }).eq('id', egreso.id);
-                    if (error) throw error;
-                    Toast.success('Egreso anulado');
-                    this._closeEgresoPanel();
-                    await this._loadEgresos();
-                } catch (err) {
-                    Toast.error('Error al anular egreso');
-                }
+            if (!ok) return;
+            try {
+                const res = await API.anularPago(egreso.id);
+                (res?.avisos || []).forEach(a => Toast.warning(a));
+                if (res?.error) Toast.error(res.error);
+                else if (egrYaAnulado) Toast.success(res.limpiado ? `Anulación completada (${res.limpiado} registro${res.limpiado === 1 ? '' : 's'})` : 'Ya estaba todo dado de baja');
+                else Toast.success('Egreso anulado');
+                this._closeEgresoPanel();
+                await this._loadEgresos();
+            } catch (err) {
+                console.error('[Finanzas] Error anulando egreso:', err);
+                Toast.error('Error al anular egreso');
             }
-        });
+        }, egrYaAnulado ? 'Completando…' : 'Anulando…');
 
         document.getElementById('finEgrPanelDelete')?.addEventListener('click', async () => {
             // T4.2: contabilizado no se borra — se anula (el trigger lo rechaza igual).
@@ -4308,7 +4338,10 @@ const FinanzasModule = {
             size: 'lg',
             body: `
                 <div class="fin-form-grid">
-                    ${locked ? `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Ya contabilizado</b> — tiene asiento. Se pueden editar concepto, notas, destinatario e imputación; para corregir monto, fecha, categoría, medio, canal o cuenta: <b>Anular</b> (genera contra-asiento) y cargarlo de nuevo.</div>` : ''}
+                    ${locked ? (e.estado === 'anulado'
+                        // T4.3: ver la nota del modal de ingresos.
+                        ? `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Anulado</b> — su asiento ya fue revertido con un contra-asiento. Queda como traza y no se modifica; si el pago tiene que existir, cargalo de nuevo.</div>`
+                        : `<div style="border:1px solid rgba(242,141,21,.4);background:rgba(242,141,21,.08);border-radius:6px;padding:8px 10px;font-size:0.78rem;color:var(--text-muted,#888);">🔒 <b style="color:#F28D15;">Ya contabilizado</b> — tiene asiento. Se pueden editar concepto, notas, destinatario e imputación; para corregir monto, fecha, categoría, medio, canal o cuenta: <b>Anular</b> (genera contra-asiento) y cargarlo de nuevo.</div>`) : ''}
                     <div class="fin-form-row">
                         <div class="fin-form-group">
                             <label class="fin-form-label">Fecha *</label>
@@ -9132,13 +9165,32 @@ const FinanzasModule = {
         });
     },
 
-    _openFactEmitidoPanel(id) {
+    // T4.3: un FK que apunta a un movimiento ANULADO no es un vínculo vivo.
+    // Los gates de "Gestionar cobro"/"Generar pago" miraban sólo si el FK
+    // estaba puesto, así que un cobro anulado cuyo `comprobantes.ingreso_id` no
+    // llegó a nulearse dejaba la pantalla diciendo "✓ Cobro vinculado" y el
+    // botón para rehacerlo escondido **para siempre**. La API ya lo chequea
+    // (`generarIngresoDeComprobante`); esto alinea la UI con esa verdad.
+    async _movimientoVivo(tabla, movId) {
+        if (!movId) return false;
+        const { data, error } = await supabaseClient.from(tabla)
+            .select('id, estado, _deleted').eq('id', movId).maybeSingle();
+        // Ante un error de lectura se asume vinculado: esconder el botón es la
+        // dirección segura (no ofrecer generar un segundo movimiento a ciegas).
+        if (error) return true;
+        return !!data && !data._deleted && data.estado !== 'anulado';
+    },
+
+    async _openFactEmitidoPanel(id) {
         const comp = this._factEmitidos.find(c => c.id === id);
         if (!comp) return;
 
         this._activePanel = id;
         const panel = document.getElementById('finCuentasPanel');
         if (!panel) return;
+
+        const cobroVivo = await this._movimientoVivo('ingresos', comp.ingreso_id);
+        if (this._activePanel !== id) return;   // se abrió otro panel durante el await
 
         const tipoInfo = this._tipoComprobante[comp.tipo] || { label: comp.tipo };
         const jsonStr = comp.lapyme_response ? JSON.stringify(comp.lapyme_response, null, 2) : null;
@@ -9178,7 +9230,7 @@ const FinanzasModule = {
 
                 <div class="fin-panel-actions" style="justify-content:center;">
                     ${comp.cae ? `<button class="fin-panel-btn" id="finEmiPanelPDF">📄 Descargar / imprimir</button>` : ''}
-                    ${comp.ingreso_id
+                    ${cobroVivo
                         ? `<span style="color:var(--color-success,#00CC88);font-size:0.82rem;align-self:center;">✓ Cobro vinculado</span>`
                         : `<button class="fin-panel-btn fin-panel-btn-primary" id="finEmiPanelCobrar">⎘ Gestionar cobro</button>`}
                 </div>
@@ -9515,13 +9567,17 @@ const FinanzasModule = {
         main.querySelectorAll('.fin-rec-clip').forEach(a => a.addEventListener('click', (e) => e.stopPropagation()));
     },
 
-    _openRecibidoPanel(id) {
+    async _openRecibidoPanel(id) {
         const comp = this._factRecibidos.find(c => c.id === id);
         if (!comp) return;
 
         this._activePanel = id;
         const panel = document.getElementById('finCuentasPanel');
         if (!panel) return;
+
+        // T4.3: espejo del panel de emitidos — ver la nota en `_movimientoVivo`.
+        const pagoVivo = await this._movimientoVivo('egresos', comp.egreso_id);
+        if (this._activePanel !== id) return;   // se abrió otro panel durante el await
 
         const catInfo = this._catRecibido[comp.categoria] || { label: comp.categoria, color: '#888' };
         const tipoInfo = this._tipoCompRecibed[comp.tipo] || { label: comp.tipo };
@@ -9603,7 +9659,7 @@ const FinanzasModule = {
 
                 ${!this._isRO ? `
                 <div class="fin-panel-actions">
-                    ${!comp.egreso_id ? `
+                    ${!pagoVivo ? `
                     <button class="fin-panel-btn fin-panel-btn-primary" id="finRecPanelPagar">⎘ Generar pago</button>
                     ` : `<span style="color:var(--color-success,#00CC88);font-size:0.8rem;align-self:center;">✓ Ligado a un egreso</span>`}
                     <button class="fin-panel-btn" id="finRecPanelEdit">
