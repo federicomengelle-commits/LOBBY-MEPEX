@@ -1606,7 +1606,14 @@ const ComprasModule = {
         document.querySelectorAll('[data-presu-del]').forEach(b => b.addEventListener('click', async () => {
             await API.deletePresupuesto(b.dataset.presuDel); this._renderFichaOrden();
         }));
-        document.getElementById('cmpGenEgreso')?.addEventListener('click', async () => {
+        // T4.18: crea un egreso por la OC → un segundo click lo duplica.
+        // ⚠️ Igual que el pago de vencimiento, ACÁ TAMPOCO HAY RED DE BASE: el
+        // guard de idempotencia de `_egresoForOC` es un `ilike` sobre el texto
+        // del concepto, no una constraint, y ninguna columna de `egresos`
+        // referencia la OC. Este guard de UI es la única defensa. (Atenuante:
+        // el egreso nace `pendiente`, así que un duplicado no postea asiento
+        // hasta que alguien lo pague.)
+        unaVez(document.getElementById('cmpGenEgreso'), async () => {
             const r = await API.generarEgresoDeOC(oc.id);
             if (r && r.egreso_id) { Toast.success('Egreso generado en Finanzas 💸'); this._renderFichaOrden(); }
             else Toast.error(r?.error || 'No se pudo generar el egreso');

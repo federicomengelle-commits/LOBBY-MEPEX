@@ -219,7 +219,13 @@ const CalendarioAdm = {
             </div>`;
         const footer = `<button class="cadm-btn cadm-btn-ghost" data-modal-close>Cancelar</button><button class="cadm-btn cadm-btn-primary" id="cadmPagOk">Registrar pago</button>`;
         const inst = Modal.open({ title: 'Pagar vencimiento', body, footer, size: 'sm' });
-        document.getElementById('cadmPagOk')?.addEventListener('click', async () => {
+        // T4.18: el caso más feo de los cinco. Dos clicks crean DOS egresos (con
+        // sus asientos) y `vencimientos_generados.egreso_id` se pisa quedándose
+        // con el último → el otro queda huérfano e invisible en el calendario.
+        // Y es el único que NO puede cubrir un índice único: el vencimiento no
+        // viaja al egreso, así que no hay columna sobre la cual poner la red.
+        // Acá el guard de UI es la única defensa.
+        unaVez(document.getElementById('cadmPagOk'), async () => {
             const monto = parseFloat(document.getElementById('cadmPagMonto').value);
             if (!monto || isNaN(monto) || monto <= 0) { Toast.warning('Ingresá un monto válido'); return; }
             const medio = document.getElementById('cadmPagMedio').value;

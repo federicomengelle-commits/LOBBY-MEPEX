@@ -39,6 +39,47 @@ window.safeUrl = function (u) {
     return /^https?:\/\//i.test(s) ? s : null;
 };
 
+// unaVez: envuelve el handler de un botón que CREA PLATA para que un segundo
+// click no lo dispare de nuevo (T4.18, auditoría 31/07).
+//
+// El patrón roto es siempre el mismo: `addEventListener('click', async () => {
+// ... await API.crearAlgo() ... Modal.close() })`. Entre el primer click y el
+// cierre del modal el botón sigue vivo, y los guards de idempotencia de api.js
+// son read-then-write → dos llamadas concurrentes leen las dos "todavía no
+// existe" y escriben las dos. Los casos caros no duplican una fila: duplican
+// un ASIENTO CONTABLE (2 egresos + 2 asientos por la misma factura).
+//
+// Deshabilita ANTES del primer await y repone SIEMPRE al terminar, pase lo que
+// pase. La ventana peligrosa es exactamente la del `await`: ahí el botón está
+// muerto. Reponerlo después es lo correcto en los dos desenlaces —
+//   · salió bien  → el modal ya se está cerrando, el botón no se ve;
+//   · falló       → el usuario TIENE que poder reintentar.
+// Se repone en `finally` a propósito: casi todos estos handlers **tragan** el
+// error (`catch { Toast.error() }`) o hacen `return` temprano ante
+// `res.error`, así que un repone-sólo-si-throw dejaría el botón muerto con el
+// modal abierto — cambiar un duplicado por un formulario trabado no es un
+// arreglo. Detectar "el modal se cerró" tampoco sirve: `Modal.close()` saca el
+// overlay recién a los 250 ms de animación.
+// La red dura contra el doble-click deliberado son los índices únicos parciales
+// de sql/auditoria_t4_18_antiduplicado.sql; esto es la cara amable.
+//
+// USO:  unaVez(document.getElementById('btnX'), async () => { ... });
+window.unaVez = function (el, fn, textoOcupado = 'Guardando…') {
+    if (!el) return;
+    el.addEventListener('click', async (ev) => {
+        if (el.disabled) return;
+        el.disabled = true;
+        const textoPrevio = el.textContent;
+        if (textoOcupado) el.textContent = textoOcupado;
+        try {
+            await fn(ev);
+        } finally {
+            el.disabled = false;
+            if (textoOcupado) el.textContent = textoPrevio;
+        }
+    });
+};
+
 // ─────────────────────────────────────────────────────────────────────
 //  FECHAS LOCALES — Argentina es UTC-3 SIEMPRE, y eso rompe dos cosas:
 //

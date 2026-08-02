@@ -9672,7 +9672,8 @@ const FinanzasModule = {
             title: 'Generar pago del comprobante', body, size: 'sm',
             footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="finGenOk">Generar egreso</button>`,
         });
-        document.getElementById('finGenOk')?.addEventListener('click', async () => {
+        // T4.18: crea un egreso + su asiento → un segundo click duplica los dos.
+        unaVez(document.getElementById('finGenOk'), async () => {
             const cuenta_id = document.getElementById('finGenCuenta')?.value || null;
             const medio = document.getElementById('finGenMedio')?.value || 'transferencia';
             try {
@@ -9703,7 +9704,8 @@ const FinanzasModule = {
             title: 'Generar cobro del comprobante', body, size: 'sm',
             footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="finGenIngOk">Generar cobro</button>`,
         });
-        document.getElementById('finGenIngOk')?.addEventListener('click', async () => {
+        // T4.18: crea un ingreso + su asiento → un segundo click duplica los dos.
+        unaVez(document.getElementById('finGenIngOk'), async () => {
             const cuenta_id = document.getElementById('finGenIngCuenta')?.value || null;
             const medio = document.getElementById('finGenIngMedio')?.value || 'transferencia';
             try {
@@ -9981,7 +9983,8 @@ const FinanzasModule = {
             </div>`;
         const inst = Modal.open({ title: 'Endosar a proveedor', body, size: 'sm',
             footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="enOk">Endosar</button>` });
-        document.getElementById('enOk').addEventListener('click', async () => {
+        // T4.18: el endoso crea egreso + comprobante recibido → duplicarlo es doble pago.
+        unaVez(document.getElementById('enOk'), async () => {
             const proveedor_id = document.getElementById('enProv').value || null;
             const destinatario = document.getElementById('enDest').value || null;
             if (!proveedor_id && !destinatario) { Toast.error('Indicá el proveedor o un beneficiario'); return; }
@@ -10747,7 +10750,14 @@ const FinanzasModule = {
             `,
         });
 
-        document.getElementById('finBtnPagarVenc')?.addEventListener('click', async () => {
+        // T4.18: el gemelo del pago de vencimiento. Finanzas trae su propio tab
+        // Calendario, con este flujo, y `#calendario-adm` tiene OTRO igual —
+        // el guard hace falta en los dos. Mismo daño que allá: dos clicks crean
+        // 2 egresos con sus asientos, `vencimientos_generados.egreso_id` se pisa
+        // con el último y el otro queda huérfano e invisible. Tampoco acá cabe
+        // un índice único (ninguna columna de `egresos` referencia al
+        // vencimiento) → el guard de UI es la única defensa posible.
+        unaVez(document.getElementById('finBtnPagarVenc'), async () => {
             const monto = parseFloat(document.getElementById('finVencMonto')?.value);
             const medio = document.getElementById('finVencMedio')?.value;
             const cuenta_id = document.getElementById('finVencCuenta')?.value || null;

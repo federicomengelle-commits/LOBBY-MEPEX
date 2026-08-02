@@ -8140,6 +8140,15 @@ const API = {
 
     // ── Pagar una línea: orquesta comprobante? → egreso (asiento auto) → pago ──
     //  Pagos SIEMPRE discriminados: 1 pago = 1 egreso. Soporta tandas/adelantos (parcial).
+    //  ⚠️ T4.18: si la línea nació con `comprobante_recibido_id` fijo (foto/IA),
+    //  el índice único `ux_egresos_comprobante_recibido_vivo` sólo tolera UN
+    //  egreso vivo por comprobante → pagarla en 2 tandas rompe con 23505.
+    //  Hoy no se puede llegar a ese escenario, pero por dos motivos distintos:
+    //  `_openPayModal` (rendimiento.js, el ÚNICO con "Monto a pagar" editable)
+    //  no tiene ningún invocador; `_openBulkPayModal` sí lo tiene (la barra de
+    //  pago de `_buildShell`) pero paga siempre el SALDO COMPLETO de la línea,
+    //  así que nunca genera tandas. ANTES de reconectar el pago parcial hay que
+    //  revisar ese índice — si no, la 2ª cuota falla con un 23505 crudo.
     async pagarCostoEvento({ costo, monto, fecha, medio, canal, cuenta_id, comprobante = null, notas = null }) {
         const dom = costo.categoria; // jornal/flete/proveedor/seguro/comida (∈ GASTO_DOMINIO)
         const catLabel = this.RENDIMIENTO_CAT_LABEL[costo.categoria] || 'Costo';
