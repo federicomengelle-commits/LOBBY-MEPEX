@@ -1318,14 +1318,38 @@ const EventosModule = {
         const work = { armado: [], evento: [], desarme: [] };
         (jornadas || []).forEach(j => { if (work[j.fase]) work[j.fase].push({ id: j.id, fecha: j.fecha || '', hora_inicio: (j.hora_inicio || '').slice(0, 5), hora_fin: (j.hora_fin || '').slice(0, 5) }); });
         this._jWork = work;
-        const rowHtml = (fase, r, i) => `
+
+        // T4.9/C6: cuánta gente está citada en cada jornada. La FK
+        // `asignaciones_evento_jornada_id_fkey` es ON DELETE CASCADE y
+        // `setJornadas` hace un DELETE real (sin soft-delete ni undo) → borrar
+        // una fila acá borra a TODOS los que iban ese día, sin aviso y sin
+        // vuelta atrás. El contador vive en la fila y el confirm avisa a quién
+        // se lleva puesto. (Hoy hay jornadas con 5 personas colgando.)
+        const asigns = this._asignCache && this._asignCache[eventoId];
+        const genteEnJornada = {};
+        (asigns || []).forEach(a => {
+            if (a.jornada_id) (genteEnJornada[a.jornada_id] = genteEnJornada[a.jornada_id] || []).push(a);
+        });
+        const nombreDe = (a) => {
+            const p = a.persona || {};
+            return `${p.nombre || ''} ${p.apellido || ''}`.trim() || 'alguien sin nombre';
+        };
+
+        const rowHtml = (fase, r, i) => {
+            const gente = (r.id && genteEnJornada[r.id]) ? genteEnJornada[r.id] : [];
+            const chip = gente.length
+                ? `<span class="ev-j-gente" title="${this._escAttr(gente.map(nombreDe).join(', '))}">👥 ${gente.length}</span>`
+                : '';
+            return `
             <div class="ev-j-row" data-fase="${fase}" data-i="${i}">
                 <input type="date" class="ev-j-fecha" value="${r.fecha}">
                 <input type="time" class="ev-j-ini" value="${r.hora_inicio}">
                 <span class="ev-j-sep">→</span>
                 <input type="time" class="ev-j-fin" value="${r.hora_fin}">
+                ${chip}
                 <button class="ev-j-del" data-fase="${fase}" data-i="${i}" title="Quitar">🗑</button>
             </div>`;
+        };
         const faseHtml = (f) => `
             <div class="ev-j-fase">
                 <div class="ev-j-fase-head"><span>${f.label}</span><button class="ev-j-add" data-fase="${f.k}">＋ Jornada</button></div>
@@ -1344,7 +1368,33 @@ const EventosModule = {
                     : { fecha: '', hora_inicio: '', hora_fin: '' });
                 repaint(add.dataset.fase); return;
             }
-            const del = e.target.closest('.ev-j-del'); if (del) { this._jWork[del.dataset.fase].splice(+del.dataset.i, 1); repaint(del.dataset.fase); return; }
+            const del = e.target.closest('.ev-j-del');
+            if (del) {
+                const fase = del.dataset.fase, idx = +del.dataset.i;
+                const fila = this._jWork[fase] && this._jWork[fase][idx];
+                const gente = (fila && fila.id && genteEnJornada[fila.id]) ? genteEnJornada[fila.id] : [];
+                // Se borra por REFERENCIA, no por el índice capturado al click:
+                // el confirm es asincrónico y `repaint` reescribe los `data-i`,
+                // así que un índice viejo podría terminar borrando otra fila.
+                const quitar = () => {
+                    const i = this._jWork[fase].indexOf(fila);
+                    if (i < 0) return;   // ya no está (doble click, o se rehizo la lista)
+                    this._jWork[fase].splice(i, 1);
+                    repaint(fase);
+                };
+                // Sin gente citada: se quita sin preguntar, como siempre.
+                if (!gente.length) { quitar(); return; }
+                // Con gente: el borrado cascadea y no hay undo → confirmar
+                // diciendo A QUIÉN se lleva puesto, no un "¿estás seguro?" pelado.
+                const nombres = gente.map(nombreDe);
+                const lista = nombres.slice(0, 6).map(n => `• ${this._esc(n)}`).join('<br>')
+                    + (nombres.length > 6 ? `<br>…y ${nombres.length - 6} más` : '');
+                Confirm.action(
+                    `Quitar la jornada del ${this._fmtDate(fila.fecha)}`,
+                    `Hay <b>${gente.length} ${gente.length === 1 ? 'persona citada' : 'personas citadas'}</b> ese día. Al guardar, ${gente.length === 1 ? 'su asignación se borra' : 'sus asignaciones se borran'} y <b>no se puede deshacer</b>.<br><br>${lista}`
+                ).then(ok => { if (ok) quitar(); });
+                return;
+            }
         });
         ov.addEventListener('input', (e) => {
             const row = e.target.closest('.ev-j-row'); if (!row) return;
@@ -1400,6 +1450,10 @@ const EventosModule = {
             .ev-j-sep{color:var(--text-dim);}
             .ev-j-del{background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:0.9rem;}
             .ev-j-del:hover{color:#ff4444;}
+            /* T4.9: cuánta gente cuelga de esa jornada (el 🗑 la borra en cascada) */
+            .ev-j-gente{font-family:var(--font-mono,'Space Mono',monospace);font-size:0.7rem;color:#F28D15;
+                background:rgba(242,141,21,.1);border:1px solid rgba(242,141,21,.3);border-radius:10px;
+                padding:1px 7px;white-space:nowrap;cursor:help;}
             .ev-j-hint{font-size:0.72rem;color:var(--text-dim);margin:0;}
             .ev-jc{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;}
             .ev-jc-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:0.8rem;border-bottom:1px solid var(--border);padding-bottom:6px;}
