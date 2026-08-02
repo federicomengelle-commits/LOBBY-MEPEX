@@ -9216,6 +9216,30 @@ a.ev-doc-link:hover { text-decoration: underline; }
     border-radius: 4px;
     letter-spacing: 0.03em;
 }
+
+/* T3.6 — toggle "Vende" de la tabla de usuarios. Mismo idioma visual que el
+   badge de estado, pero clickeable: define quién recibe los avisos
+   comerciales, que no coincide con ningún rol. */
+.admpanel-vende-btn {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 4px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-dim, #555);
+    border: 1px solid var(--border, #2a2a2a);
+    transition: all 250ms ease;
+}
+.admpanel-vende-btn:hover:not(:disabled) { border-color: var(--primary, #00A9C1); color: var(--text-muted, #888); }
+.admpanel-vende-btn.on {
+    background: rgba(242, 141, 21, 0.1);
+    color: #F28D15;
+    border-color: rgba(242, 141, 21, 0.35);
+}
+.admpanel-vende-btn.on:hover:not(:disabled) { border-color: #F28D15; }
+.admpanel-vende-btn:disabled { opacity: 0.5; cursor: default; }
 .admpanel-status-badge.active {
     background: rgba(0, 204, 136, 0.1);
     color: #00CC88;

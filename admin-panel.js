@@ -836,6 +836,7 @@ const AdminPanel = {
                         <th data-usort="role">Rol ${sortIcon('role')}</th>
                         <th>Teléfono</th>
                         <th data-usort="active">Estado ${sortIcon('active')}</th>
+                        <th style="text-align:center;" title="Atiende clientes: recibe el aviso de caso nuevo y de presupuesto aprobado">Vende</th>
                         <th style="text-align:right;">Acciones</th>
                     </tr>
                 </thead>
@@ -859,6 +860,18 @@ const AdminPanel = {
                                     <span class="admpanel-status-dot"></span>
                                     ${u.active ? 'Activo' : 'Inactivo'}
                                 </span>
+                            </td>
+                            <!-- T3.6: quién vende NO es un rol (acá venden admin, pm y
+                                 superadmin), y de eso depende a quién le llega el aviso
+                                 de caso nuevo y de presupuesto aprobado. -->
+                            <td style="text-align:center;">
+                                <button class="admpanel-vende-btn ${u.hace_ventas ? 'on' : ''}"
+                                        data-action="vende" data-uid="${u.id}"
+                                        data-vende="${u.hace_ventas ? '1' : '0'}"
+                                        data-name="${escAttr(u.name)}"
+                                        title="${u.hace_ventas ? 'Atiende clientes — recibe los avisos comerciales. Click para sacarlo.' : 'No atiende clientes. Click para marcarlo.'}">
+                                    ${u.hace_ventas ? '● Sí' : '○ No'}
+                                </button>
                             </td>
                             <td>
                                 <div class="admpanel-actions">
@@ -947,6 +960,31 @@ const AdminPanel = {
                     case 'toggle': this._toggleUserActive(uid, name, btn.dataset.active === 'true'); break;
                     case 'delete': this._deleteUser(uid, name); break;
                 }
+            });
+        });
+
+        // T3.6 — toggle "Vende". Botón propio (no `.admpanel-action-btn`) porque
+        // vive en su columna, no en la barra de acciones.
+        document.querySelectorAll('.admpanel-vende-btn[data-action="vende"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (btn.disabled) return;
+                const uid = btn.dataset.uid;
+                const nuevo = btn.dataset.vende !== '1';
+                btn.disabled = true;
+                const ok = await API.setHaceVentas(uid, nuevo, btn.dataset.name);
+                btn.disabled = false;
+                if (!ok) { Toast.error('No se pudo guardar'); return; }
+                // Pintar en el momento, sin re-render: la tabla puede estar
+                // ordenada/filtrada y un refresh perdería esa vista.
+                btn.dataset.vende = nuevo ? '1' : '0';
+                btn.classList.toggle('on', nuevo);
+                btn.textContent = nuevo ? '● Sí' : '○ No';
+                // Y el cache que alimenta el re-render (`_realUsers`, el mismo
+                // que leen el buscador y el orden por columna): sin esto, la
+                // fila volvía al valor viejo apenas se ordenaba la tabla.
+                const u = (this._realUsers || []).find(x => String(x.id) === String(uid));
+                if (u) u.hace_ventas = nuevo;
+                Toast.success(`${btn.dataset.name || 'El usuario'} ${nuevo ? 'ahora recibe' : 'ya no recibe'} los avisos comerciales`);
             });
         });
     },

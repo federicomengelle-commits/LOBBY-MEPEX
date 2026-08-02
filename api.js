@@ -1388,12 +1388,23 @@ const API = {
             };
             const { data: row, error } = await supabaseClient.from('crm_casos').insert(payload).select().single();
             if (error) throw error;
-            // Fila 11 de la matriz del Paso 9 → venta. Si lo carga la propia
-            // vendedora no le llega nada: `avisar` excluye a quien disparó la
-            // acción, que es exactamente lo que hace que esto no sea ruido.
+            // Fila 11 de la matriz del Paso 9. Apuntaba a `roles: ['venta']` y
+            // **no existe ningún perfil con ese rol** → el aviso del lead que
+            // entra, el más caliente del CRM, no le llegaba a nadie (T3.6/C12).
+            //
+            // Y no alcanzaba con corregir el rol: acá vende gente de tres roles
+            // distintos y cada uno atiende ciertos clientes. Entonces:
+            //   · si el caso nace con dueño DISTINTO del que lo carga → es una
+            //     asignación, y le llega sólo a esa persona;
+            //   · si no (sin dueño, o quien lo carga se lo autoasigna) → les
+            //     llega a los que venden (`profiles.hace_ventas`), menos al que
+            //     lo cargó, que ya lo sabe.
+            const dueno = payload.owner_id && payload.owner_id !== uid ? payload.owner_id : null;
             this.avisar({
-                roles: ['venta'], tipo: 'caso_nuevo',
-                titulo: `Caso nuevo: ${payload.titulo}`,
+                usuarios: dueno ? [dueno] : [],
+                venden: !dueno,
+                tipo: 'caso_nuevo',
+                titulo: dueno ? `Te asignaron un caso: ${payload.titulo}` : `Caso nuevo: ${payload.titulo}`,
                 cuerpo: payload.evento_texto || null,
                 url: `#crm`, entidadTipo: 'caso', entidadId: row.id,
             }).catch(() => {});
@@ -2999,8 +3010,11 @@ const API = {
                     const { data: cot, error } = await supabaseClient
                         .from('cotizaciones').select('numero').eq('id', id).single();
                     if (error) console.warn('[API] cotizacion_aprobada, sin número:', error.message);
+                    // T3.6/C12: apuntaba a `['venta','superadmin']` — el rol
+                    // `venta` no existe, así que le llegaba a los 7 superadmin
+                    // y **no a quien lo vendió**. Ahora va a los que venden.
                     await this.avisar({
-                        roles: ['venta', 'superadmin'],
+                        venden: true,
                         tipo: 'cotizacion_aprobada',
                         titulo: `Presupuesto aprobado${cot?.numero ? `: ${cot.numero}` : ''}`,
                         url: '#crm', prioridad: 'alta',
@@ -3592,6 +3606,7 @@ const API = {
         if (updates.custom_permissions !== undefined) payload.custom_permissions = updates.custom_permissions;
         if (updates.telefono !== undefined) payload.telefono = updates.telefono;
         if (updates.active !== undefined) payload.active = updates.active;
+        if (updates.hace_ventas !== undefined) payload.hace_ventas = !!updates.hace_ventas;
 
         // Usamos .select() (sin .single()) para detectar silent-fail por RLS:
         // - Sin policy de UPDATE, Supabase devuelve data=[] sin error.
@@ -3627,6 +3642,33 @@ const API = {
         }
 
         return { success: true, data: data[0] };
+    },
+
+    /**
+     * T3.6 — marcar/desmarcar que una persona atiende clientes.
+     * De esto depende a quién le llega el aviso de caso nuevo y de presupuesto
+     * aprobado cuando el caso no tiene dueño. NO es un permiso: es un hecho del
+     * negocio, y acá atraviesa tres roles (admin, pm, superadmin).
+     * Devuelve true/false en vez de tirar, porque el caller es un toggle de UI.
+     */
+    async setHaceVentas(uid, valor, nombre = null) {
+        if (!uid) return false;
+        try {
+            await this.updateProfile(uid, { hace_ventas: !!valor });
+            // `action` es 'edit', el verbo del enum que documenta audit-log.js
+            // (create/edit/delete/login/logout/view/error/denied) y el que usa
+            // el toggle hermano de Activo/Inactivo. El qué cambió va en el
+            // detalle. El nombre lo trae el caller, que ya lo tiene en pantalla.
+            AuditLog?.record?.(
+                'edit', 'admin-panel',
+                `${nombre || uid} ${valor ? 'ahora recibe' : 'ya no recibe'} los avisos comerciales (vende: ${valor ? 'sí' : 'no'})`,
+                'profile', uid
+            );
+            return true;
+        } catch (e) {
+            console.warn('[API] setHaceVentas:', e.message);
+            return false;
+        }
     },
 
     async getRoles() {
@@ -4372,17 +4414,24 @@ const API = {
      * creador → excluir inactivos.
      * @returns {Promise<string[]>} user_ids únicos
      */
-    async resolverDestinatarios({ roles = [], usuarios = [], excluir = null } = {}) {
+    // `venden: true` suma a quienes tienen `profiles.hace_ventas` (T3.6/C12).
+    // Es una tercera vía además de rol y persona porque **quién vende no es un
+    // rol**: en MEPEX venden Noe y Lelean (admin), Meli y Leo (pm) y Fede
+    // (superadmin). Mandarlo por rol le llegaría también a las cuentas de
+    // consultoría que son superadmin, y un aviso que le suena a 13 para que lo
+    // lean 5 se apaga en una semana.
+    async resolverDestinatarios({ roles = [], usuarios = [], venden = false, excluir = null } = {}) {
         const rolesLimpios = [...new Set((roles || []).filter(Boolean))];
         const directos = [...new Set((usuarios || []).filter(Boolean))];
-        if (!rolesLimpios.length && !directos.length) return [];
+        if (!rolesLimpios.length && !directos.length && !venden) return [];
 
         const ids = new Set();
         try {
-            // Una sola consulta para las dos vías (rol y persona).
+            // Una sola consulta para las tres vías (rol, persona y "vende").
             const ors = [];
             if (rolesLimpios.length) ors.push(`role.in.(${rolesLimpios.join(',')})`);
             if (directos.length) ors.push(`id.in.(${directos.join(',')})`);
+            if (venden) ors.push('hace_ventas.is.true');
             const { data, error } = await supabaseClient
                 .from('profiles').select('id, active').or(ors.join(','));
             if (error) throw error;
@@ -4666,14 +4715,14 @@ const API = {
      *
      * Nunca tira: un aviso que falla no puede voltear la operación que lo disparó.
      */
-    async avisar({ roles = [], usuarios = [], tipo, titulo, cuerpo = null,
+    async avisar({ roles = [], usuarios = [], venden = false, tipo, titulo, cuerpo = null,
                    url = null, prioridad = 'normal', excluirActor = true,
                    push = false, entidadTipo = null, entidadId = null } = {}) {
         if (!tipo || !titulo) return { inapp: 0, push: null };
         try {
             const user = Auth?.getUser?.();
             const uid = excluirActor ? (user?.uid || user?.id || null) : null;
-            const destinatarios = await this.resolverDestinatarios({ roles, usuarios, excluir: uid });
+            const destinatarios = await this.resolverDestinatarios({ roles, usuarios, venden, excluir: uid });
             if (!destinatarios.length) return { inapp: 0, push: null };
             // `push: false` al notificar: ese flag es el camino de TAREAS, que
             // re-resuelve destinatarios a partir de una tarea y acá rebotaría.
