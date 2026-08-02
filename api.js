@@ -7077,6 +7077,80 @@ const API = {
             return { error: 'Falta la cuenta donde entró la plata.' };
         }
 
+        // ── Reparto por cuota (T4.1/C3) ──
+        // Una factura documenta N cuotas (plan_cobro_items.comprobante_venta_id).
+        // Cada aplicación se reparte entre esas cuotas POR ORDEN hasta agotar el
+        // monto; el excedente —o una factura sin cuotas— queda como aplicación
+        // sin cuota. Sin este reparto, fn_sync_cuota_desde_aplicacion corta en la
+        // primera línea (plan_cobro_item_id NULL) y la cuota quedaba `pendiente`
+        // con la plata ya adentro: la ficha de la venta seguía reclamando plata
+        // cobrada. Aritmética en CENTAVOS para que el total repartido sea
+        // idéntico al aplicado (ya validado contra efectivo+retenciones arriba).
+        // Se hace ANTES de escribir nada: si esta lectura falla, no queda ingreso
+        // pendiente huérfano.
+        let aplRepartidas = [];
+        {
+            const compIds = [...new Set(apl.map(a => a.comprobante_id))];
+
+            // Las facturas tienen que ser DEL cliente de la cobranza. Hoy el único
+            // caller ya las trae acotadas, pero la función no lo verificaba: aplicar
+            // el cobro de un cliente contra la factura de otro dejaría el saldo de
+            // los dos mal y no lo cazaría ningún candado (el de cuadre solo mira
+            // totales). Defense-in-depth, no un agujero conocido.
+            if (cliente_id) {
+                const { data: propios, error: eProp } = await supabaseClient
+                    .from('comprobantes').select('id')
+                    .in('id', compIds).eq('cliente_id', cliente_id).eq('_deleted', false);
+                if (eProp) return { error: 'No pude verificar las facturas: ' + eProp.message };
+                const ok = new Set((propios || []).map(c => c.id));
+                if (compIds.some(id => !ok.has(id))) {
+                    return { error: 'Hay una factura que no es de este cliente. Recargá y probá de nuevo.' };
+                }
+            }
+
+            const { data: cuotasDoc, error: eCuotas } = await supabaseClient
+                .from('plan_cobro_items')
+                .select('id, comprobante_venta_id, orden, monto, monto_cobrado')
+                .in('comprobante_venta_id', compIds)
+                .eq('_deleted', false)
+                .order('orden', { ascending: true });
+            if (eCuotas) return { error: 'No pude leer las cuotas del plan: ' + eCuotas.message };
+            const porFactura = {};
+            (cuotasDoc || []).forEach(q => {
+                (porFactura[q.comprobante_venta_id] = porFactura[q.comprobante_venta_id] || []).push(q);
+            });
+            // Lo ya repartido a cada cuota EN ESTA MISMA cobranza. `monto_cobrado`
+            // se lee una sola vez arriba: sin este acumulador, dos aplicaciones
+            // contra la misma factura calculan su "falta" contra el mismo
+            // snapshot viejo y le asignan las dos el total → la cuota termina
+            // sobre-cobrada (no hay CHECK que lo impida). El único caller de hoy
+            // no puede producir duplicados (arma un objeto keyeado por factura),
+            // pero el reparto no debe depender de eso.
+            const usadoCent = new Map();
+            for (const a of apl) {
+                const cuotas = porFactura[a.comprobante_id] || [];
+                let restoCent = Math.round(a.monto_aplicado * 100);
+                for (const q of cuotas) {
+                    if (restoCent <= 0) break;
+                    // Lo que le falta a la cuota (monto_cobrado lo mantiene el
+                    // trigger — post-T4.1 es la única fuente) menos lo ya
+                    // comprometido en esta cobranza.
+                    const faltaCent = Math.max(0,
+                        Math.round((Number(q.monto) || 0) * 100)
+                        - Math.round((Number(q.monto_cobrado) || 0) * 100)
+                        - (usadoCent.get(q.id) || 0));
+                    if (faltaCent <= 0) continue;
+                    const tomaCent = Math.min(restoCent, faltaCent);
+                    aplRepartidas.push({ ...a, plan_cobro_item_id: q.id, monto_aplicado: tomaCent / 100 });
+                    usadoCent.set(q.id, (usadoCent.get(q.id) || 0) + tomaCent);
+                    restoCent -= tomaCent;
+                }
+                if (restoCent > 0) {
+                    aplRepartidas.push({ ...a, plan_cobro_item_id: null, monto_aplicado: restoCent / 100 });
+                }
+            }
+        }
+
         const hoy = fecha || hoyLocal();
         let ingresoId = null;
 
@@ -7126,8 +7200,9 @@ const API = {
                 creditoIds = (creds || []).map(c => c.id);
             }
 
-            // 4) las aplicaciones (el trigger de la base sincroniza las cuotas)
-            const aplicadas = await this.aplicarCobro(ingresoId, apl);
+            // 4) las aplicaciones, ya repartidas por cuota (T4.1/C3) — el trigger
+            //    de la base sincroniza monto_cobrado/estado de cada cuota
+            const aplicadas = await this.aplicarCobro(ingresoId, aplRepartidas);
 
             // 5) recién ahora se confirma → se arma el asiento, con retenciones
             const { error: e3 } = await supabaseClient.from('ingresos')
@@ -7854,17 +7929,36 @@ const API = {
         const { data: ing, error } = await supabaseClient.from('ingresos').insert([row]).select('id').single();
         if (error) throw error;
         const out = { ingreso_id: ing.id, plan_sync: null, dif_cambio: null };
-        // 1) Sync del plan de cobro (monto_cobrado/estado)
+        // 1) Sync del plan de cobro — vía cobro_aplicaciones (T4.1/C4)
+        //    ÚNICA fuente de verdad: fn_sync_cuota_desde_aplicacion (SUM absoluto
+        //    de aplicaciones vivas → monto_cobrado/estado). Acá había un
+        //    read-modify-write INCREMENTAL que no dejaba fila de aplicación —
+        //    semántica incompatible con el trigger: la primera aplicación real
+        //    sobre esa cuota recalculaba desde cero y BORRABA lo cobrado por
+        //    este camino. El backfill de las cuotas legacy está en
+        //    sql/auditoria_t4_1_cobranza_cuotas.sql (mismo commit, gate C3+C4).
         if (syncPlanItem && row.plan_cobro_item_id) {
             try {
-                const { data: item } = await supabaseClient.from('plan_cobro_items')
-                    .select('monto, monto_cobrado').eq('id', row.plan_cobro_item_id).single();
-                if (item) {
-                    const cobrado = (Number(item.monto_cobrado) || 0) + Number(row.monto);
-                    const estado = cobrado >= Number(item.monto) ? 'cobrado' : 'parcial';
-                    await supabaseClient.from('plan_cobro_items').update({ monto_cobrado: cobrado, estado }).eq('id', row.plan_cobro_item_id);
-                    out.plan_sync = { monto_cobrado: cobrado, estado };
-                }
+                const { data: item, error: eItem } = await supabaseClient.from('plan_cobro_items')
+                    .select('id, comprobante_venta_id').eq('id', row.plan_cobro_item_id).single();
+                if (eItem) throw eItem;
+                const { error: eAp } = await supabaseClient.from('cobro_aplicaciones').insert([{
+                    ingreso_id: ing.id,
+                    // La factura de la cuota si la tiene; NULL si es un cobro sin
+                    // factura (la columna es nullable desde T4.1).
+                    comprobante_id: row.comprobante_id || item.comprobante_venta_id || null,
+                    plan_cobro_item_id: item.id,
+                    monto_aplicado: Number(row.monto) || 0,
+                    notas: 'Cobro de cuota (Finanzas)',
+                    created_by: this._uid(),
+                }]);
+                if (eAp) throw eAp;
+                // El trigger ya recalculó: leer la verdad, no computarla acá.
+                const { data: fresco } = await supabaseClient.from('plan_cobro_items')
+                    .select('monto_cobrado, estado').eq('id', item.id).single();
+                out.plan_sync = fresco
+                    ? { monto_cobrado: Number(fresco.monto_cobrado) || 0, estado: fresco.estado }
+                    : null;
             } catch (e) { console.warn('[API] registrarCobro plan sync:', e.message); }
         }
         // 2) Diferencia de cambio (si cobra una factura ME con cotización distinta)
