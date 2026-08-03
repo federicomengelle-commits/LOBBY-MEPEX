@@ -5234,7 +5234,10 @@ const API = {
     // Persona afectada a un evento en una fase con rango de fechas. Distinto
     // de carga_personas (que son ayudantes de UN viaje específico).
 
-    async getAsignacionesByEvento(eventoId) {
+    // `strict: true` → propaga el error en vez de devolver []. Ver la nota de
+    // `syncJornalesEvento`: un [] por error de lectura acá se interpreta como
+    // "no hay nadie asignado" y le borra al evento todas las líneas de jornal. (T4.6)
+    async getAsignacionesByEvento(eventoId, { strict = false } = {}) {
         if (!eventoId) return [];
         try {
             const { data, error } = await supabaseClient
@@ -5253,6 +5256,7 @@ const API = {
             return data || [];
         } catch (e) {
             console.warn('[API] Error getAsignacionesByEvento:', e.message);
+            if (strict) throw e;
             return [];
         }
     },
@@ -5538,7 +5542,9 @@ const API = {
     //  FASE 4 — Jornadas de evento
     // ═════════════════════════════════════════════════════════════
 
-    async getJornadas(eventoId) {
+    // `strict: true` → propaga el error. Sin jornadas, el sync de jornales cree que
+    // cada fase dura un solo día y pisa los días ya calculados. (T4.6)
+    async getJornadas(eventoId, { strict = false } = {}) {
         try {
             const { data, error } = await supabaseClient
                 .from('evento_jornadas').select('*')
@@ -5546,7 +5552,11 @@ const API = {
                 .order('fase').order('fecha').order('orden');
             if (error) throw error;
             return data || [];
-        } catch (e) { console.warn('[API] getJornadas:', e.message); return []; }
+        } catch (e) {
+            console.warn('[API] getJornadas:', e.message);
+            if (strict) throw e;
+            return [];
+        }
     },
 
     // Reemplaza TODAS las jornadas del evento (delete + insert). El trigger deriva fecha_*/hora_*.
@@ -7665,7 +7675,10 @@ const API = {
     },
 
     // ── Líneas de costo (la planilla) ──
-    async getEventoCostos(eventoId) {
+    // `strict: true` → propaga el error en vez de devolver []. Para quien NO puede
+    // distinguir "no hay costos" de "no pude leerlos": ver `syncJornalesEvento`,
+    // que con un [] falso vuelve a crear todas las líneas que ya existían. (T4.6)
+    async getEventoCostos(eventoId, { strict = false } = {}) {
         if (!eventoId) return [];
         try {
             const { data, error } = await supabaseClient.from('evento_costos')
@@ -7678,7 +7691,11 @@ const API = {
                 persona_nombre: r.personas ? `${r.personas.nombre || ''} ${r.personas.apellido || ''}`.trim() : null,
                 proveedor_nombre: r.proveedor?.nombre || null,
             }));
-        } catch (e) { console.warn('[API] getEventoCostos:', e.message); return []; }
+        } catch (e) {
+            console.warn('[API] getEventoCostos:', e.message);
+            if (strict) throw e;
+            return [];
+        }
     },
     async createEventoCosto(payload) {
         const row = { ...payload, created_by: this._uid() };
@@ -7751,11 +7768,85 @@ const API = {
             // (el campo "Jornal diario" de RRHH → Nómina). La columna `jornal_diario`
             // quedó inerte (no se usa ni escribe desde ningún lado).
             const res = await supabaseClient.from('personas').select('id, costo_dia_referencial');
-            if (res.error) return {};
+            // Un {} por error de lectura hace que el sync escriba tarifa 0 para todos,
+            // que es un importe, no una ausencia. Si no se pueden leer las tarifas no
+            // se escriben montos. (T4.6)
+            if (res.error) throw res.error;
             const m = {};
             (res.data || []).forEach(p => { m[String(p.id)] = parseFloat(p.costo_dia_referencial) || 0; });
             return m;
-        } catch (e) { return {}; }
+        } catch (e) { console.warn('[API] _getPersonasJornalMap:', e.message); throw e; }
+    },
+
+    // Eventos con gente asignada que todavía no tiene su línea de jornal.
+    //
+    // Por qué existe (T4.6 / hallazgo A13): el puente asignaciones→jornales es un
+    // no-op silencioso para `pm` y `venta` —los que justamente asignan gente— porque
+    // `evento_costos` pide `fn_role_can('finanzas', …)` y esos roles no tienen la
+    // clave. Meli carga 12 personas, ve el toast verde, y no se escribió una sola
+    // línea; Lelean abre Rendimiento semanas después y la planilla está vacía.
+    //
+    // La decisión (Fede, 2026-08-03) es **avisar, no ejecutar**: el sync sigue
+    // siendo el botón "🔄 Traer de asignaciones", que aprieta quien puede firmar el
+    // gasto. Automatizarlo pedía reescribir `_computeJornalLines` en PL/pgSQL —un
+    // segundo motor de la misma cuenta— y encima BORRA líneas que ya no
+    // corresponden: un DELETE disparado por un cambio de asignación es la clase de
+    // cosa que se come una línea con pago encima. Y hoy, con las 25 tarifas en
+    // NULL, sincronizar solo llenaría la planilla de ceros prolijos, que es peor
+    // que no traer nada (T5.3 va antes).
+    //
+    // Es ESTADO VIVO, no un suceso: por eso alimenta una alerta calculada y no una
+    // fila de `notifications`, que reaparecería sin leer en cada recálculo.
+    // Compara por (evento, persona) y no por (evento, persona, fase) a propósito:
+    // para avisar alcanza, y no arriesga falsos positivos por el doble nombre de la
+    // fase media ('evento' en las jornadas, 'funcionamiento' en Rendimiento).
+    async getEventosConJornalesPendientes({ diasAtras = 90 } = {}) {
+        try {
+            const { data: eventos, error: evErr } = await supabaseClient
+                .from('eventos')
+                .select('id, nombre, fecha_armado_inicio, fecha_evento_fin, fecha_desarme_fin')
+                .eq('_deleted', false);
+            if (evErr || !eventos || !eventos.length) return [];
+
+            // Ventana: lo que todavía no terminó, o terminó hace poco. Sin esto la
+            // alerta se vuelve un cementerio de eventos viejos que nadie va a costear.
+            const corte = fechaISOLocal(new Date(Date.now() - diasAtras * 86400000));
+            const enVentana = eventos.filter(e => {
+                const fin = e.fecha_desarme_fin || e.fecha_evento_fin || e.fecha_armado_inicio;
+                return !fin || fin >= corte;
+            });
+            if (!enVentana.length) return [];
+
+            const ids = enVentana.map(e => e.id);
+            const [asigRes, costosRes] = await Promise.all([
+                supabaseClient.from('asignaciones_evento')
+                    .select('evento_id, persona_id, estado, _deleted').in('evento_id', ids),
+                supabaseClient.from('evento_costos')
+                    .select('evento_id, persona_id')
+                    .eq('categoria', 'jornal').eq('_deleted', false).in('evento_id', ids),
+            ]);
+            // Sin poder leer alguna de las dos no se puede afirmar que falte nada.
+            if (asigRes.error || costosRes.error) return [];
+
+            const conJornal = new Set((costosRes.data || [])
+                .filter(c => c.persona_id).map(c => `${c.evento_id}|${c.persona_id}`));
+            const faltan = {};
+            (asigRes.data || []).forEach(a => {
+                if (a._deleted || a.estado === 'cancelada' || !a.persona_id) return;
+                const k = `${a.evento_id}|${a.persona_id}`;
+                if (conJornal.has(k)) return;
+                (faltan[a.evento_id] = faltan[a.evento_id] || new Set()).add(a.persona_id);
+            });
+
+            const nombres = {};
+            enVentana.forEach(e => { nombres[e.id] = e.nombre; });
+            return Object.entries(faltan)
+                .map(([eventoId, set]) => ({ evento_id: eventoId, nombre: nombres[eventoId] || 'Evento', personas: set.size }))
+                .sort((a, b) => b.personas - a.personas);
+        } catch (e) {
+            console.warn('[API] getEventosConJornalesPendientes:', e.message);
+            return [];
+        }
     },
 
     // Sincroniza las líneas de jornal de evento_costos con las asignaciones del evento.
@@ -7765,10 +7856,30 @@ const API = {
     async syncJornalesEvento(eventoId) {
         if (!eventoId) return { ok: false };
         try {
+            // ⚠️ LAS CUATRO VAN EN `strict`, Y NO ES OPCIONAL.
+            //
+            // Los cuatro getters fallan abierto por default (devuelven [] o {} ante
+            // un error), y acá un conjunto vacío no se distingue de "no hay nada" —
+            // pero significa cosas MUY distintas, y las cuatro terminan escribiendo:
+            //
+            //   costos []      → `existing` vacío → vuelve a crear todas las líneas
+            //                    que ya existían, y no borra ninguna. Duplica.
+            //   asignaciones []→ `lines` vacío → el loop de abajo cree que no hay
+            //                    NADIE asignado y borra todas las líneas sin pago
+            //                    del evento. El peor de los cuatro.
+            //   jornadas []    → cada fase parece durar un solo día → pisa una línea
+            //                    de 3 días con dias:1, deflactando el costo a un tercio.
+            //   tarifas {}     → escribe todos los montos en $0, que es un importe,
+            //                    no una ausencia.
+            //
+            // Y como los cuatro devolvían `{ok:true}` igual, pasaba como éxito: el
+            // toast salía verde. El disparador no es el gap de rol de pm/venta — es
+            // cualquier hiccup de red, porque el Promise.all no aborta a las otras
+            // tres cuando una falla. Alcanza a un admin apretando el botón real. (T4.6)
             const [jornadas, asignaciones, costos, rates] = await Promise.all([
-                this.getJornadas(eventoId),
-                this.getAsignacionesByEvento(eventoId),
-                this.getEventoCostos(eventoId),
+                this.getJornadas(eventoId, { strict: true }),
+                this.getAsignacionesByEvento(eventoId, { strict: true }),
+                this.getEventoCostos(eventoId, { strict: true }),
                 this._getPersonasJornalMap(),
             ]);
             const lines = this._computeJornalLines(jornadas, asignaciones);
@@ -7778,6 +7889,11 @@ const API = {
             existing.forEach(c => { exMap[keyOf(c.persona_id, c.fase)] = c; });
             let created = 0, updated = 0, removed = 0;
             const seen = new Set();
+            // Quién quedaría con la línea en $0 por no tener tarifa cargada. Hoy son
+            // las 25 personas: sin este dato el sync escribe ceros prolijos, que se
+            // leen como un costo real y dejan el margen del evento inflado hacia
+            // arriba. El que sincroniza tiene que enterarse. (T4.6 / A14 · T5.3)
+            const sinTarifa = [];
             // Una línea con plata ya movida NO se toca: ni tarifa, ni días, ni monto.
             // El guard existía sólo en el loop de borrado de abajo, así que el sync
             // igual recalculaba el importe de un jornal YA PAGADO — y ahí el número de
@@ -7791,7 +7907,15 @@ const API = {
                 const row = exMap[k];
                 if (row && conPlata(row)) {
                     continue;                       // intocable
-                } else if (row) {
+                }
+                // Después del guard de arriba: a una línea ya pagada no se le tocó el
+                // importe, así que no corresponde reportarla como "quedó en $0" aunque
+                // hoy la persona no tenga tarifa cargada en RRHH.
+                if (rate <= 0 && !(row && row.monto_editado)) {
+                    const quien = l.persona_nombre || 'sin nombre';
+                    if (!sinTarifa.includes(quien)) sinTarifa.push(quien);
+                }
+                if (row) {
                     const tarifa = row.monto_editado ? (parseFloat(row.tarifa) || 0) : rate;
                     await this.updateEventoCosto(row.id, {
                         dias: l.dias, tarifa,
@@ -7813,7 +7937,7 @@ const API = {
                 const k = keyOf(c.persona_id, c.fase);
                 if (!seen.has(k) && !conPlata(c)) { await this.deleteEventoCosto(c.id); removed++; }
             }
-            return { ok: true, created, updated, removed };
+            return { ok: true, created, updated, removed, sinTarifa };
         } catch (e) {
             console.warn('[API] syncJornalesEvento:', e.message);
             return { ok: false, error: e.message };

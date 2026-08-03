@@ -481,6 +481,31 @@ const Alertas = {
         // ⚠️ La columna de vencimiento de plan_cobro_items es `fecha_estimada`,
         //    NO `fecha_vencimiento` como en compras_pagos (verificado en prod).
         async finanzas() {
+            const items = [];
+
+            // Gente asignada a un evento que todavía no tiene su línea de jornal.
+            // Reemplaza al sync automático (T4.6 / A13): el puente es un no-op
+            // silencioso para pm y venta —los que asignan— porque `evento_costos`
+            // pide `finanzas`, que esos roles no tienen. Antes eso no se enteraba
+            // nadie. Va en el generador de `finanzas` a propósito: sólo lo ven
+            // superadmin y admin, que son los únicos que pueden sincronizar; a un
+            // pm le llegaría un aviso que no puede resolver.
+            try {
+                const pend = await API.getEventosConJornalesPendientes();
+                const personas = pend.reduce((s, e) => s + e.personas, 0);
+                if (personas > 0) {
+                    const detalle = pend.length === 1
+                        ? `${pend[0].nombre} · sin costear en Rendimiento`
+                        : `En ${pend.length} eventos · sin costear en Rendimiento`;
+                    items.push({
+                        moduleId: 'finanzas', tipo: 'jornales_sin_costear', key: 'finanzas_jornales_sin_costear',
+                        severidad: 'warning', icon: '👷',
+                        titulo: `${personas} ${Alertas._plural(personas, 'persona')} sin jornal cargado`,
+                        detalle, link: '#rendimiento', count: personas,
+                    });
+                }
+            } catch (e) { console.warn('[Alertas] jornales sin costear:', e.message); }
+
             try {
                 const hoy = Alertas._dateOffset(0);
                 const { data, error } = await supabaseClient
@@ -488,19 +513,22 @@ const Alertas = {
                     .eq('_deleted', false)
                     .in('estado', ['pendiente', 'parcial', 'facturada', 'vencido'])
                     .lt('fecha_estimada', hoy);
-                if (error || !data || !data.length) return [];
-                const pendiente = data.reduce(
-                    (s, c) => s + Math.max(0, Number(c.monto || 0) - Number(c.monto_cobrado || 0)), 0);
-                const monto = pendiente
-                    ? ` · $${pendiente.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-                    : '';
-                return [{
-                    moduleId: 'finanzas', tipo: 'cobranza_vencida', key: 'finanzas_cobranzas_vencidas',
-                    severidad: 'danger', icon: '📉',
-                    titulo: `${data.length} ${Alertas._plural(data.length, 'cuota')} ${Alertas._plural(data.length, 'vencida', 'vencidas')}`,
-                    detalle: `Sin cobrar${monto}`, link: '#finanzas', count: data.length,
-                }];
-            } catch (e) { console.warn('[Alertas] finanzas:', e.message); return []; }
+                if (!error && data && data.length) {
+                    const pendiente = data.reduce(
+                        (s, c) => s + Math.max(0, Number(c.monto || 0) - Number(c.monto_cobrado || 0)), 0);
+                    const monto = pendiente
+                        ? ` · $${pendiente.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                        : '';
+                    items.push({
+                        moduleId: 'finanzas', tipo: 'cobranza_vencida', key: 'finanzas_cobranzas_vencidas',
+                        severidad: 'danger', icon: '📉',
+                        titulo: `${data.length} ${Alertas._plural(data.length, 'cuota')} ${Alertas._plural(data.length, 'vencida', 'vencidas')}`,
+                        detalle: `Sin cobrar${monto}`, link: '#finanzas', count: data.length,
+                    });
+                }
+            } catch (e) { console.warn('[Alertas] finanzas:', e.message); }
+
+            return items;
         },
     },
 };

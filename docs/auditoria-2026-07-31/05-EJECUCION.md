@@ -66,7 +66,7 @@
 | **T4.3** | `API.anularCobro` completo | JS | ✅ | cierra el hallazgo que atravesaba T4.2·T4.18·T4.3. Salieron **2 funciones** (`anularCobro` + `anularPago`) y **8 satélites**, no 4 |
 | **T4.4** | `total_en_ars` en KPIs y reportes | JS | ✅ | 49 sitios + helper `montoARS`. Queda como deuda `plan_cobro_items` y las sumas de `iva` (no tienen columna ARS) |
 | **T4.5** | Signo de las notas de crédito | JS+SQL | ✅ | eran **views + 21 puntos de JS**, no "3 reduce": las 3 pantallas de Posición IVA **no leen las views** |
-| **T4.6** | Sync de jornales por trigger | SQL | ⬜ | |
+| **T4.6** | Sync de jornales por trigger | ~~SQL~~ JS | ✅ | **sin trigger** (decisión de Fede: *avisar, no ejecutar*). Y las 4 lecturas del sync fallaban abiertas: una de ellas **borraba todos los jornales del evento** devolviendo `ok:true` |
 | **T4.7** | View `personas_publicas` + cerrar `personas` | SQL+JS | ⬜ | |
 | **T4.8** | Grants por columna para el cotizador | SQL | ⬜ | **coordinar con el otro repo**. Sumar: `cotizacion_propuestas` tiene RLS activo y **cero policies** (5 filas, la última del 26/06) → o el Cotizador escribe con service key, o esa feature está muda hace más de un mes |
 | **T4.9** | Confirm + contador antes de borrar una jornada | JS | ✅ | chip 👥 por fila + confirm con los nombres. Borra por **referencia**, no por índice |
@@ -153,6 +153,39 @@ El plan lo daba por barato: *"el bucle correcto **ya está escrito** en `contabi
 **Verificación.** En prod hoy hay **15 asientos y 34 líneas**: el bug es 100% latente y no se puede demostrar contra la base sin sembrarle 1000 asientos, que no se hizo. Se probó donde se ve: dos tests nuevos, **30 checks**. `test-t410-paginacion.js` (15) sobre los helpers — bordes exactos de 1000 y 2000, filtros que sobreviven entre páginas, error que **lanza en vez de devolver el pedazo que trajo**, chunk que propaga. `test-t410-reportes.js` (15) carga `contabilidad.js` **entero** con el DOM stubeado y hace rendir los cuatro consumidores contra **2.500 asientos / 5.000 líneas**: los cuatro dan **$250.000**, que es el número correcto — truncados daban **$100.000**, prolijo y sin un solo error en consola. Incluye el caso que más dolía: un movimiento de enero fuera del período, que es de los primeros en perderse y del que sale el "Saldo anterior" del Mayor.
 
 **Queda anotado, no hecho:** `_loadAsientosManuales` sigue sin paginar (trae sólo `tipo='manual'`, hoy 2 filas; si se truncara, el corte es determinista —los más nuevos— y se ve como "faltan entradas", no como un total que miente). El paso 3 de `_loadAsientos` trae las líneas de 50 asientos: necesitaría 20 líneas por asiento para tocar el techo.
+
+---
+
+## ✅ T4.6 — CERRADO 2026-08-03 · el puente asignaciones→jornales
+
+**El plan y el doc de ideas se contradecían, y había que elegir.** `01-PLAN §4.6` mandaba mover el sync a un trigger `SECURITY DEFINER`; `02-IDEAS` argumenta lo contrario —*"marcar, no ejecutar"*— porque `syncJornalesEvento` **borra** las líneas que ya no corresponden, y un DELETE disparado por un cambio de asignación es la clase de cosa que se come una línea con un pago encima. **Fede eligió avisar.** Tres razones que además lo hacían la opción correcta:
+
+- El trigger pedía reescribir `_computeJornalLines` en PL/pgSQL: **un segundo motor de la misma cuenta**, que es el pecado que T4.19 y T3.2 acaban de cerrar por duplicado.
+- Con las **25 tarifas en NULL** (verificado hoy), sincronizar solo llena la planilla de ceros prolijos, que se leen como un costo real y dejan el margen del evento inflado hacia arriba. **T5.3 va antes.**
+- Una RPC/trigger con privilegios elevados habría sido una vía nueva para escribir plata salteándose el único gate real (lo confirmó el security-reviewer).
+
+**Lo construido:** `API.getEventosConJornalesPendientes()` + una **alerta calculada** en el generador `finanzas` de `alertas.js` — ahí y no en `eventos` a propósito: `_visibility.finanzas` es `['superadmin','admin']`, y avisarle a un pm de algo que su rol no puede ejecutar es ruido. Es estado vivo, así que va como alerta y no como fila de `notifications`, que reaparecería sin leer en cada recálculo. Los 3 `.catch(()=>{})` de `eventos.js` pasaron a un helper que **mira el resultado**: a quien puede sincronizar se le avisa que falló; a quien no, lo levanta la alerta. Y como el botón hoy escribiría ceros, `syncJornalesEvento` devuelve `sinTarifa` y Rendimiento **nombra** a quién le falta el jornal en RRHH.
+
+**Datos reales al cerrar:** 13 personas asignadas sin línea de jornal en 2 eventos — *Feria del Libro de Campana* con 12. La alerta no nace vacía.
+
+### 🔴 El hallazgo que no estaba en el plan: las 4 lecturas fallaban abiertas
+
+`syncJornalesEvento` lee cuatro cosas en paralelo y **las cuatro devolvían `[]`/`{}` ante un error**, indistinguible de "no hay nada" — pero las cuatro terminan escribiendo:
+
+| lectura | qué hacía un `[]` por error |
+|---|---|
+| `getEventoCostos` | `existing` vacío → **volvía a crear todas las líneas que ya existían**, y no borraba ninguna |
+| `getAsignacionesByEvento` | `lines` vacío → concluía que **no hay nadie asignado** y borraba todas las líneas sin pago del evento |
+| `getJornadas` | cada fase parecía durar un día → pisaba una línea de 3 días con `dias:1`, **un tercio del costo** |
+| `_getPersonasJornalMap` | escribía todos los montos en **$0**, que es un importe, no una ausencia |
+
+Y las cuatro devolvían **`{ok:true}`**: pasaba como éxito, con el toast verde. **El disparador no es el gap de rol de pm/venta — es cualquier hiccup de red**, porque el `Promise.all` no aborta a las otras tres cuando una falla. Alcanza a un admin apretando el botón real.
+
+**Y el fix salió a medias en la primera pasada: blindé 2 de las 4.** Lo cazó el typescript-reviewer con un repro ejecutable, no con lectura de código. Es el patrón 2 de la lista del handoff —*el arreglo a medias dentro de la misma función*— y esta vez la mitad que faltaba era **peor que el bug original**. Cerrado: las cuatro en `strict`, con el porqué de cada una escrito al lado para que no se afloje.
+
+**Test `tools/test-t46-jornales.js` (15 checks), y se verificó que es sensible:** quitando el `strict` de asignaciones, los casos nuevos fallan con `escrituras.length = 1` — el soft-delete exacto del repro.
+
+**Queda abierto:** la carrera clásica si dos personas tocan las asignaciones del mismo evento entre el `Promise.all` y los `await` de los loops. Es inherente a no tener transacción del lado del cliente y está igual en toda la app; no es regresión de este ítem.
 
 ---
 

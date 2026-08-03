@@ -1141,6 +1141,29 @@ const EventosModule = {
             </div>`;
     },
 
+    // Puente asignaciones → jornales de Rendimiento. (T4.6 / hallazgo A13)
+    //
+    // El sync escribe en `evento_costos`, que está bajo la llave `finanzas` — o sea
+    // que sólo lo puede hacer admin/superadmin. Para un `pm` o un `venta` —los que
+    // justamente asignan gente— rebota en la RLS. Y como `syncJornalesEvento`
+    // DEVUELVE `{ok:false}` en vez de rechazar, el `.catch(()=>{})` que había acá
+    // ni siquiera corría: el resultado se descartaba sin mirarlo. Meli veía el toast
+    // verde "12 agregadas" y la planilla quedaba vacía, sin que se enterara nadie.
+    //
+    // Ahora: a quien PUEDE sincronizar se le avisa que falló; a quien no puede no se
+    // le muestra un error que no está en sus manos resolver — para ese caso está la
+    // alerta "N personas sin jornal cargado", que ven admin y superadmin.
+    _syncJornales(eventoId) {
+        const puedeSincronizar = !!Auth.isAdminLevel?.();
+        const avisar = (motivo) => {
+            console.warn('[Eventos] sync de jornales:', motivo || 'sin detalle');
+            if (puedeSincronizar) Toast.warning('No se pudieron actualizar los jornales del evento. Revisalos en Rendimiento.');
+        };
+        Promise.resolve(API.syncJornalesEvento(eventoId))
+            .then(r => { if (r && r.ok === false) avisar(r.error); })
+            .catch(e => avisar(e?.message || e));
+    },
+
     _attachJornadasViewEvents(eventoId) {
         const c = document.getElementById('evJornadasContent');
         if (!c) return;
@@ -1152,7 +1175,7 @@ const EventosModule = {
         c.querySelectorAll('.ev-jc-del').forEach(btn => btn.addEventListener('click', async () => {
             const a = (this._asignCache[eventoId] || []).find(x => String(x.id) === String(btn.dataset.asig));
             await API.deleteAsignacionEvento(btn.dataset.asig);
-            API.syncJornalesEvento(eventoId).catch(() => {}); // auto-alimenta los jornales de Rendimiento
+            this._syncJornales(eventoId); // auto-alimenta los jornales de Rendimiento
             API.logEventChange(eventoId, 'Quitó persona', { nombre: a?.persona?.nombre || a?.persona_nombre || '' });
             await this._loadJornadasSection(eventoId);
             this._loadHistorialSection(eventoId);
@@ -1303,7 +1326,7 @@ const EventosModule = {
             }
             Toast.success(`${creadas} agregada${creadas === 1 ? '' : 's'}${saltadas ? ` · ${saltadas} ya estaban` : ''}.`);
             if (creadas > 0) {
-                API.syncJornalesEvento(eventoId).catch(() => {}); // auto-alimenta los jornales de Rendimiento
+                this._syncJornales(eventoId); // auto-alimenta los jornales de Rendimiento
                 API.logEventChange(eventoId, 'Asignó gente a jornadas', { nombre: `${creadas} asignación${creadas === 1 ? '' : 'es'}` });
             }
             Modal.close(inst.id);
@@ -1410,7 +1433,7 @@ const EventosModule = {
             });
             try {
                 await API.setJornadas(eventoId, arr);
-                API.syncJornalesEvento(eventoId).catch(() => {}); // los días cambian → re-alimenta los jornales de Rendimiento
+                this._syncJornales(eventoId); // los días cambian → re-alimenta los jornales de Rendimiento
                 API.logEventChange(eventoId, 'Jornadas actualizadas');
                 Toast.success('Jornadas guardadas.');
                 Modal.close(inst.id);

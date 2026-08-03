@@ -315,6 +315,13 @@ const RendimientoModule = {
         const r = await API.syncJornalesEvento(this._eventoId);
         if (r && r.ok) {
             Toast.success(`Jornales sincronizados: ${r.created} nuevo${r.created !== 1 ? 's' : ''} · ${r.updated} actualizado${r.updated !== 1 ? 's' : ''}${r.removed ? ` · ${r.removed} quitado${r.removed !== 1 ? 's' : ''}` : ''}`);
+            // Sin tarifa en RRHH la línea vale $0 — y un $0 se lee como un costo real,
+            // que deja la ganancia del evento inflada hacia arriba. (T4.6 / A14)
+            if (r.sinTarifa && r.sinTarifa.length) {
+                const n = r.sinTarifa.length;
+                const quienes = r.sinTarifa.slice(0, 3).join(', ') + (n > 3 ? ` y ${n - 3} más` : '');
+                Toast.warning(`${n} ${n === 1 ? 'persona quedó' : 'personas quedaron'} en $0 por no tener jornal cargado (${quienes}). Cargalo en RRHH → Nómina y volvé a sincronizar.`);
+            }
             this._costos = await API.getEventoCostos(this._eventoId);
             this._renderBody();
         } else {
