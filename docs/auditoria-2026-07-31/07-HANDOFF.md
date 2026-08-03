@@ -7,7 +7,7 @@
 
 ## Dónde quedó
 
-**52 ítems cerrados de 71**, más T4.7 con el JS listo esperando su SQL. Repo limpio, todo pusheado, `HEAD == origin/main`.
+**53 ítems cerrados de 71**, más T4.13 con su primera tanda aplicada. Repo limpio, todo pusheado, `HEAD == origin/main`. **Prod al día** (`app.js?v=36`).
 
 | Tanda | Estado |
 |---|---|
@@ -15,26 +15,42 @@
 | **T1 · nginx** | ✅ deployada y verificada en prod |
 | **T2 · VPS** | ✅ verificado |
 | **T3 · JS quirúrgico** | ✅ **24 de 24 — COMPLETA** |
-| **T4 · estructurales** | ✅ **16 de 19** · 1 a medias (T4.7, falta que Fede corra el SQL) · quedan **T4.8** y **T4.13** |
+| **T4 · estructurales** | ✅ **17 de 19** · **T4.13 🟡 tanda 1 de 3** · queda **T4.8** |
 | **T5 · datos** | ⬜ 12 pendientes (7 son de Fede, 5 necesitan su criterio) |
 | **T6 · docs** | ✅ **COMPLETA** |
 
-Commits de la sesión 5: `f927855` (T4.10) · `355ecd6` (T4.6) · `01116b6` (T4.7, JS).
+Commits de la sesión 5: `f927855` (T4.10) · `355ecd6` (T4.6) · `01116b6` (T4.7 JS) · `501db8e` (**la app no cargaba**) · `58011ef`+`1d8bbe6` (ícono PWA) · `f745291` (verificación en prod) · T4.13 tanda 1.
+
+**SQL aplicado en prod esta sesión (por MCP, regla 20):** `personas_publicas.sql` PARTE 2 · `rls_t413_compras_costos_rrhh.sql`.
+
+---
+
+## Lo primero de la sesión 6: **una pregunta a Fede antes de tocar nada**
+
+**T4.13 tanda 2 = inventario · locaciones · taller, y ahí está el problema.** El rol `taller` tiene `read` en TODA la matriz y `write` en NADA. Si hoy el galpón ajusta stock, carga un conteo físico o tilda el checklist, lo hace **gracias a que la RLS está abierta**. Cerrarla sin decidir esto **deja al taller sin poder trabajar** — y es el equipo menos tecnológico de la empresa.
+
+Las dos salidas (es decisión de producto, no técnica):
+1. darle `inventario:write` (y quizá `proyectos:write` acotado) en la matriz del Panel de Control, o
+2. mover esas escrituras a RPCs `SECURITY DEFINER` con guard propio.
 
 ---
 
 ## Cuánto falta: **2 sesiones**
 
-| # | Qué | Por qué van juntos |
-|---|---|---|
-| **1** | **T4.13, primera mitad**: `compras` + `costos` + `rrhh` | La propia auditoría dice que esas tres son **el 80% del riesgo** de las 65 tablas. Mismo patrón ya escrito para las 42 de finanzas |
-| **2** | **T4.13 el resto** + **T4.8** (grants del Cotizador) + los T5 de datos que se puedan hacer solos + cierre | T4.8 necesita **coordinar con el repo del Cotizador** |
-
-**La que puede estirarse a una tercera es T4.13**: son 65 tablas, es mecánico, pero cada policy hay que verificarla contra prod.
+| # | Qué |
+|---|---|
+| **1** | **T4.13 tanda 2** (inventario · locaciones · taller · eventos y satélites) — con la decisión de arriba tomada. El mapa por módulo, con las trampas marcadas, ya está al pie de `sql/rls_t413_compras_costos_rrhh.sql` |
+| **2** | **T4.13 tanda 3** (transversales: `profiles`, `notifications`) + **T4.8** (Cotizador) + los T5 que se puedan solos + cierre |
 
 **Lo de Fede se hace en una tarde** y no consume sesiones — pero **T5.2 destraba T0.8**, así que conviene que salga antes de la última.
 
-**Ojo con T4.13 y `personas`:** T4.7 ya le puso a esa tabla policies de INSERT/UPDATE con `fn_role_can('rrhh','write')` **y dejó el SELECT abierto a propósito** (los embeds). No "cerrarlo por completitud" al barrer las 65 — ver la sección de T4.7 en `05-EJECUCION.md` antes de tocarla.
+### Trampas ya identificadas para las tandas que faltan
+
+- **`personas`**: T4.7 le dejó el **SELECT abierto a propósito** (lo necesitan ~10 embeds) y la contención es **por columna**. No "cerrarlo por completitud" — ver T4.7 en `05-EJECUCION.md`.
+- **`notifications`**: NO está abierta como parece. Lo único en `true` es el **INSERT**, y cerrarlo pide mover el fan-out de avisos (hoy lo hace el cliente) a una RPC. Es rediseño, no una policy más.
+- **`profiles`**: sólo el SELECT está abierto, y probablemente deba quedar así (media docena de pantallas muestran el nombre del creador/responsable). Si se acota, que sea **por columna**, como T4.7.
+- **13 tablas no las lee nadie** en la app — pero *0 lectores ≠ 0 datos ni 0 escritores*: puede escribirlas un trigger o el Cotizador. `cotizacion_propuestas` y `venta_numerador` son del Cotizador → van con T4.8.
+- **T4.8**: la evidencia de esta sesión sugiere que el Cotizador pega con **service key server-side** (que ignora la RLS), no con la anon key. Si se confirma con el otro repo, `catalogo_items` se puede cerrar sin drama.
 
 ---
 
@@ -61,8 +77,8 @@ Commits de la sesión 5: `f927855` (T4.10) · `355ecd6` (T4.6) · `01116b6` (T4.
 
 | # | Qué | Por qué importa |
 |---|---|---|
-| **⛔ T4.7 · SQL** | **`sql/personas_publicas.sql` PARTE 1 — ANTES del pull** | el JS ya lee de `personas_legajo`: si pullea sin correrla, **RRHH se queda sin nómina**. La PARTE 2 (revocar columnas + cerrar escritura) va DESPUÉS del pull, y está comentada en el archivo con su checklist |
-| **pull** | `~/pull-lobby.sh` | el repo va por `app.js?v=35`; **prod todavía sirve `v=34`** (verificado el 3/8) |
+| **decisión** | **¿el taller puede escribir?** (ver arriba) | **bloquea la tanda 2 de T4.13** |
+| **T5.3** | cargar `costo_dia_referencial` de las 25 personas | **53 días de jornal valen $0 hoy**; la ganancia de 3 eventos sale inflada. La UI ya existe (RRHH → Nómina) |
 | **T5.2** | las 2 copias de la factura ONORIER | **destraba el gate 1** (T0.8-recibidos). $151.200 de crédito fiscal inventado que entra al Libro IVA |
 | **T0.9** | los huérfanos de $10,7M | decidir a qué proyecto real va cada uno antes de blanquear |
 | **T0.11** | el `pg_default_acl` de tablas/views | causa raíz del incidente de las 5 views (26/07). Cerrarlo toca el contrato del Cotizador |
@@ -79,6 +95,19 @@ Commits de la sesión 5: `f927855` (T4.10) · `355ecd6` (T4.6) · `01116b6` (T4.
 ## Lo que NO hay que volver a descubrir
 
 ### El método
+
+### 🔧 Cambio de método (2026-08-03): **el SQL lo aplica Claude por MCP**
+
+Pedido de Fede: *"vos deberías ponerlos, que tenés MCP"*. Ya no se le pasa un archivo para pegar en el SQL Editor. Es la **regla 20 de CLAUDE.md §8**. La ventaja no es la comodidad: es poder **medir el efecto en el momento** — el smoke posterior a T4.7 destapó que el privilegio de SELECT por columna también aplica dentro de un UPDATE, algo que ningún reviewer vio. Sigue valiendo el orden (DDL antes de que prod sirva el código que lo usa) y **verificar por curl qué sirve prod**, no asumir que Fede pulleó.
+
+**La técnica que más rindió, y que conviene repetir:** probar la RLS **como el usuario real**, sin dejar rastro —
+```sql
+BEGIN; SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"<uuid del profile>","role":"authenticated"}';
+… las consultas de la pantalla …
+ROLLBACK;
+```
+Con eso se verificó T4.7 y las dos tandas de T4.13. Se puede incluso **aplicar la migración entera y probarla dentro de la misma transacción antes de commitear**. ⚠️ Al leer los resultados: **un SELECT que la RLS filtra NO da error, devuelve 0 filas** — un `EXCEPTION WHEN OTHERS` nunca se dispara ahí y las etiquetas del test salen invertidas.
 
 ### ⚠️ Lo que agregó la sesión 5: **el plan acierta el QUÉ y puede errar el CÓMO**
 

@@ -73,7 +73,7 @@
 | **T4.10** | Paginar EERR · Balance · Libro Mayor | JS | ✅ | eran **5** puntos de truncado, no 3 — y **el bucle que el plan mandaba copiar paginaba sin ORDER BY** |
 | **T4.11** | `_safeUrl` global + los 10 `href` sin validar | JS | ✅ | + 3 HIGH que el barrido del audit no vio (iframe/window.open de `cot.pdfUrl`, lightbox) — los cazó el security-reviewer |
 | **T4.12** | `crm.js._escHtml` inseguro en ~23 atributos | JS | ✅ | delega al global (1 cambio cubre los ~110 usos) |
-| **T4.13** | Matriz de roles en las 65 tablas que faltan | SQL | ⬜ | partible |
+| **T4.13** | Matriz de roles en las 65 tablas que faltan | SQL | 🟡 | **tanda 1 de 3 aplicada y verificada** (18 tablas: compras · costos · rrhh legacy). Quedan **48 abiertas**, con el mapa por módulo ya hecho en `sql/rls_t413_compras_costos_rrhh.sql` |
 | **T4.14** | Aging de cobros: bucket "Sin fecha" | JS | ✅ | helper único `agingCobros` + el clamp del KPI, para que el desglose y su total cuenten igual |
 | **T4.15** | Lobby: chip de canal (o leer el toggle) | JS | ✅ | **chip**, no seguir el toggle: había una decisión previa documentada en el código. Cubre los **9** widgets de `_finData` |
 | **T4.16** | Rentabilidad: `—` en vez de 100% falso | JS | ✅ | + la columna Costo del reporte por proyecto, que mostraba `$0` donde la de cliente ya ponía `—` |
@@ -263,6 +263,33 @@ Prod sirviendo `app.js?v=36` · `api.js?v=110` · `rrhh.js?v=19` · `contabilida
 | Expo CAPPI 2026 | 6 | **$0** |
 
 **La ganancia de esos tres eventos está inflada**: el rubro más pesado de un armado computa en cero. No es regresión —sale de A14, con `costo_dia_referencial` NULL en las 25 personas— pero ahora hay más líneas afectadas. Se corrige con **T5.3** (cargar el jornal en RRHH → Nómina) y volviendo a sincronizar: el sync respeta las líneas con pago y recalcula las pendientes. Post-T4.6 el botón **nombra** a quién deja en $0.
+
+---
+
+## 🟡 T4.13 — tanda 1 de 3 · APLICADA Y VERIFICADA 2026-08-03 · `sql/rls_t413_compras_costos_rrhh.sql`
+
+**18 tablas cerradas** (compras · costos · las `rrhh_*` legacy). El tablero pasó de **63 abiertas a 48**, y las cerradas de 56 a **74**.
+
+**Verificado con la sesión de cada rol** (`SET LOCAL request.jwt.claims`, dentro de transacción con ROLLBACK):
+
+| rol | resultado |
+|---|---|
+| admin | 5 OC · 143 proveedores · 67 recetas · 41 de historial · 5 RRHH legacy |
+| pm | ve compras, costos y proveedores · **RRHH legacy → 0** |
+| **taller** | **sigue viendo** OC, pedidos y proveedores · **listas de precio → 0** · **recetas/márgenes → 0** |
+| anon | **0 en todo** |
+
+**🔴 Lo que destapó y no estaba en el plan: `listas_precio`, `lista_precio_items` y `lista_precio_rubros` tenían `FOR SELECT TO anon USING(true)`** — cualquier anónimo leía las listas de precio. Venía de `rls_capa2_operativo.sql` (junio) con el comentario *"el cotizador lo lee con la anon key — NO romper"*, pero `docs/cotizador-contexto-respuestas.md` (julio, escrito leyendo el repo del Cotizador) dice que **pega con service key server-side** —que ignora la RLS— y que **no lee esas tres tablas**. Además son código muerto en el lobby: `costos.js` llama `getListasPrecio()` y nunca usa el resultado; los 7 wrappers CRUD tienen cero llamadores. Se les sacó el anon. **Ojo para T4.8: la misma evidencia sugiere que el miedo que dejó a `catalogo_items` afuera puede no aplicar** — reconfirmar con el repo del Cotizador antes de asumir que necesita el anon.
+
+**El reviewer volvió APPROVE con un hallazgo grande que resultó FALSO POSITIVO:** dijo que `parametros_globales` —la que fija el precio de los 226 ítems— estaba abierta a cualquier autenticado. Verificado contra prod: **ya está cerrada con `fn_is_admin()`**. El reviewer no tenía MCP y leyó el SQL de junio, sin ver que se cerró después. *Es la enésima confirmación de la regla del repo: el reporte de un agente se verifica contra prod antes de actuar.* Lo que sí acertó: mis claves de SELECT tenían módulos de más (`catalogo`, `cotizador`, `compras`, `inventario` donde nadie lee) que le habrían dado lectura de márgenes justo a venta y taller. Se recortaron a `costos` solo.
+
+### ⛔ Antes de la tanda 2 hay una decisión de Fede, no técnica
+
+El rol **`taller` tiene `read` en toda la matriz y `write` en nada**. Si hoy el galpón ajusta stock, carga un conteo físico o tilda el checklist de producción, **lo está haciendo gracias a que la RLS está abierta**. La tanda 2 (inventario · locaciones · taller) cierra justo eso. Las opciones:
+- darle `inventario:write` (y quizá `proyectos:write` acotado) en la matriz del Panel, o
+- mover esas escrituras a RPCs `SECURITY DEFINER` con guard propio.
+
+Sin decidir eso, cerrar el grupo D/E **deja al taller sin poder trabajar**. Es el hallazgo C5 de la auditoría, ahora con consecuencia concreta.
 
 ---
 
