@@ -8392,6 +8392,11 @@ const API = {
         const { data: c, error } = await supabaseClient.from('comprobantes_recibidos').select('*').eq('id', comprobanteId).maybeSingle();
         if (error) throw error;
         if (!c) return { error: 'Comprobante no encontrado' };
+        // T4.5: una nota de crédito no se paga — descuenta de lo que le debemos al
+        // proveedor. Sin este guard, "Generar pago" creaba un egreso POSITIVO por
+        // el total de la NC. El gate de UI existe, pero el guard va acá también:
+        // hoy la UI es el único caller, y eso no es una garantía de mañana.
+        if (esNotaCredito(c.tipo)) return { error: 'Es una nota de crédito: no genera un pago. Descuenta de lo que se le debe al proveedor.' };
         if (c.egreso_id) {
             // T4.3: anular NO setea `_deleted`, sólo `estado='anulado'` → mirar
             // sólo `_deleted` contaba los anulados como vigentes y este comprobante
@@ -8427,6 +8432,8 @@ const API = {
         const { data: c, error } = await supabaseClient.from('comprobantes').select('*').eq('id', comprobanteId).maybeSingle();
         if (error) throw error;
         if (!c) return { error: 'Comprobante no encontrado' };
+        // T4.5: espejo del guard de arriba — una NC emitida no se cobra.
+        if (esNotaCredito(c.tipo)) return { error: 'Es una nota de crédito: no genera un cobro. Descuenta de lo que el cliente debe.' };
         if (c.ingreso_id) {
             // T4.3: ídem el espejo de arriba — un cobro anulado no es un cobro.
             const { data: ing } = await supabaseClient.from('ingresos').select('id, _deleted, estado').eq('id', c.ingreso_id).maybeSingle();
@@ -8681,11 +8688,14 @@ const API = {
             out.proyectos = proyIds.length;
             if (proyIds.length) {
                 const { data: comps } = await supabaseClient.from('comprobantes')
-                    .select('total, total_en_ars, estado').in('proyecto_id', proyIds).eq('_deleted', false);
+                    .select('total, total_en_ars, estado, tipo').in('proyecto_id', proyIds).eq('_deleted', false);
                 // "Facturado" = emitidos al cliente (excluye anuladas/error/rechazadas).
+                // T4.5: con signo. Una nota de crédito contra un proyecto del evento
+                // corrige una factura hacia abajo; sin esto la sumaba y el dashboard
+                // mostraba más facturado —y por lo tanto más ganancia— de la real.
                 out.facturado = (comps || [])
                     .filter(c => !['anulada', 'anulado', 'error', 'rechazada', 'rechazado'].includes((c.estado || '').toLowerCase()))
-                    .reduce((s, r) => s + (Number(r.total_en_ars) || Number(r.total) || 0), 0);
+                    .reduce((s, r) => s + (Number(r.total_en_ars) || Number(r.total) || 0) * signoComprobante(r.tipo), 0);
             }
 
             // Costos = planilla (evento_costos no anuladas) + egresos imputados al evento

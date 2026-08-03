@@ -5557,7 +5557,13 @@ const FinanzasModule = {
             alcance = 'todas';
         }
 
-        const { data: comprobantes, error } = await q.order('fecha', { ascending: false });
+        const { data: crudos, error } = await q.order('fecha', { ascending: false });
+
+        // T4.5: una nota de crédito no documenta una cuota a cobrar — es lo
+        // contrario. Vincularla dejaba la cuota en "Facturada" contra un
+        // documento que resta, y de ahí en más el reparto de la cobranza (T4.1)
+        // trabajaba sobre esa cuota.
+        const comprobantes = (crudos || []).filter(c => !esNotaCredito(c.tipo));
 
         if (error || !comprobantes?.length) {
             const de = alcance === 'proyecto' ? ' del proyecto' : alcance === 'cliente' ? ' del cliente' : '';
@@ -6202,9 +6208,11 @@ const FinanzasModule = {
 
         // Facturado del mes (comprobantes emitidas)
         try {
-            let q = supabaseClient.from('comprobantes').select('total').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', mesDesde).lte('fecha', mesHasta);
+            // T4.5: `tipo` en el select y signo en la suma — una nota de crédito
+            // resta de lo facturado, no suma.
+            let q = supabaseClient.from('comprobantes').select('total, tipo').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', mesDesde).lte('fecha', mesHasta);
             const { data } = await q;
-            kpi.facturado = (data || []).reduce((s, r) => s + (Number(r.total) || 0), 0);
+            kpi.facturado = (data || []).reduce((s, r) => s + (Number(r.total) || 0) * signoComprobante(r.tipo), 0);
         } catch (_) {}
 
         // Cobrado del mes
@@ -6830,8 +6838,8 @@ const FinanzasModule = {
         // Agregado en 3 queries (no N+1): facturado, cobrado y costo por proyecto.
         const facMap = {}, cobMap = {}, costoMap = {};
         try {
-            const { data } = await supabaseClient.from('comprobantes').select('proyecto_id, total').eq('_deleted', false).eq('estado', 'emitida').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
-            (data || []).forEach(r => { facMap[r.proyecto_id] = (facMap[r.proyecto_id] || 0) + (Number(r.total) || 0); });
+            const { data } = await supabaseClient.from('comprobantes').select('proyecto_id, total, tipo').eq('_deleted', false).eq('estado', 'emitida').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);   // T4.5: `tipo` para el signo
+            (data || []).forEach(r => { facMap[r.proyecto_id] = (facMap[r.proyecto_id] || 0) + (Number(r.total) || 0) * signoComprobante(r.tipo); });
         } catch (_) {}
         try {
             let q = supabaseClient.from('ingresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
@@ -7050,13 +7058,17 @@ const FinanzasModule = {
         let ivaDebito = 0, ivaCredito = 0;
 
         try {
-            const { data } = await supabaseClient.from('comprobantes').select('iva').eq('_deleted', false).eq('estado', 'emitida').eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta);
-            ivaDebito = (data || []).reduce((s, r) => s + (Number(r.iva) || 0), 0);
+            // T4.5: éste es el reduce que devolvía $347,10 en junio 2026 — sumaba
+            // el IVA de la FC B y el de su NC B en vez de netearlos.
+            const { data } = await supabaseClient.from('comprobantes').select('iva, tipo').eq('_deleted', false).eq('estado', 'emitida').eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta);
+            ivaDebito = (data || []).reduce((s, r) => s + (Number(r.iva) || 0) * signoComprobante(r.tipo), 0);
         } catch (_) {}
 
         try {
-            const { data } = await supabaseClient.from('comprobantes_recibidos').select('iva').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta);
-            ivaCredito = (data || []).reduce((s, r) => s + (Number(r.iva) || 0), 0);
+            // Los dos lados de la misma resta van con la misma regla: firmar sólo
+            // el débito sería el error de bases mezcladas de T3.24.
+            const { data } = await supabaseClient.from('comprobantes_recibidos').select('iva, tipo').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta);
+            ivaCredito = (data || []).reduce((s, r) => s + (Number(r.iva) || 0) * signoComprobante(r.tipo), 0);
         } catch (_) {}
 
         const posicion = ivaDebito - ivaCredito;
@@ -8184,7 +8196,7 @@ const FinanzasModule = {
             }, { comp })}
             <div class="fin-wizard-nav" style="margin-top:16px;gap:8px;flex-wrap:wrap;">
                 <button class="fin-wizard-btn" id="finEmitPDF">📄 Descargar PDF</button>
-                ${comp.id ? `<button class="fin-wizard-btn fin-wizard-btn-primary" id="finEmitCobrar">⎘ Generar cobro</button>` : ''}
+                ${comp.id && !esNotaCredito(comp.tipo) ? `<button class="fin-wizard-btn fin-wizard-btn-primary" id="finEmitCobrar">⎘ Generar cobro</button>` : ''}
                 <button class="fin-wizard-btn fin-wizard-btn-primary" id="finEmitOtro">🧾 Emitir otro</button>
             </div>
         `;
@@ -8988,11 +9000,13 @@ const FinanzasModule = {
         const mes = all.filter(c => String(c.fecha || '').slice(0, 7) === ym);
         const mesFC = mes.filter(c => facturas.includes(c.tipo)).length;
         const mesNC = mes.filter(c => (c.tipo || '').startsWith('nota_')).length;
-        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0), 0);
+        // T4.5: la fila ya distinguía FC de NC para CONTARLAS; los importes las
+        // sumaban igual. Con el signo, "facturado del mes" es facturado neto.
+        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);
         const ticket = mes.length ? Math.round(totalMes / mes.length) : 0;
         const anioCount = all.filter(c => String(c.fecha || '').slice(0, 4) === year).length;
         const byCli = {};
-        mes.forEach(c => { const k = this._clientesMap[c.cliente_id] || c.cuit_dni || '—'; byCli[k] = (byCli[k] || 0) + (Number(c.total) || 0); });
+        mes.forEach(c => { const k = this._clientesMap[c.cliente_id] || c.cuit_dni || '—'; byCli[k] = (byCli[k] || 0) + (Number(c.total) || 0) * signoComprobante(c.tipo); });
         let topCli = '—', topMonto = 0;
         Object.entries(byCli).forEach(([k, v]) => { if (v > topMonto) { topMonto = v; topCli = k; } });
         box.innerHTML = `
@@ -9095,7 +9109,7 @@ const FinanzasModule = {
             return `<span class="fin-sort-icon">${this._factEmitidosSortDir === 'asc' ? '▲' : '▼'}</span>`;
         };
 
-        const total = this._factEmitidosFiltered.reduce((s, c) => s + (Number(c.total) || 0), 0);
+        const total = this._factEmitidosFiltered.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);   // T4.5: neto de notas de crédito
 
         main.innerHTML = `
             <div class="fin-table-wrapper">
@@ -9230,9 +9244,14 @@ const FinanzasModule = {
 
                 <div class="fin-panel-actions" style="justify-content:center;">
                     ${comp.cae ? `<button class="fin-panel-btn" id="finEmiPanelPDF">📄 Descargar / imprimir</button>` : ''}
-                    ${cobroVivo
-                        ? `<span style="color:var(--color-success,#00CC88);font-size:0.82rem;align-self:center;">✓ Cobro vinculado</span>`
-                        : `<button class="fin-panel-btn fin-panel-btn-primary" id="finEmiPanelCobrar">⎘ Gestionar cobro</button>`}
+                    ${esNotaCredito(comp.tipo)
+                        // T4.5: una nota de crédito no se cobra — es plata que se le
+                        // devuelve al cliente. Ofrecer "Gestionar cobro" acá creaba un
+                        // ingreso POSITIVO por una NC.
+                        ? `<span style="color:var(--text-muted,#888);font-size:0.82rem;align-self:center;">Nota de crédito — no se cobra</span>`
+                        : cobroVivo
+                            ? `<span style="color:var(--color-success,#00CC88);font-size:0.82rem;align-self:center;">✓ Cobro vinculado</span>`
+                            : `<button class="fin-panel-btn fin-panel-btn-primary" id="finEmiPanelCobrar">⎘ Gestionar cobro</button>`}
                 </div>
             </div>
         `;
@@ -9414,7 +9433,11 @@ const FinanzasModule = {
         const mes = all.filter(c => String(c.fecha || '').slice(0, 7) === ym);
         const mesFact = mes.filter(c => String(c.tipo || '').startsWith('factura')).length;
         const mesRec = mes.filter(c => c.tipo === 'recibo').length;
-        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0), 0);
+        // T4.5: espejo del de Emitidos. Acá no es teórico: `_tipoCompRecibed`
+        // ofrece `nota_credito` y `nota_debito` en el modal de carga, así que
+        // una NC de proveedor se puede cargar hoy mismo — y sumaría el gasto en
+        // vez de restarlo.
+        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);
         const ticket = mes.length ? Math.round(totalMes / mes.length) : 0;
         const anioCount = all.filter(c => String(c.fecha || '').slice(0, 4) === year).length;
         const sinPagar = mes.filter(c => !c.egreso_id).length;
@@ -9504,7 +9527,7 @@ const FinanzasModule = {
             return `<span class="fin-sort-icon">${this._factRecibidosSortDir === 'asc' ? '▲' : '▼'}</span>`;
         };
 
-        const total = this._factRecibidosFiltered.reduce((s, c) => s + (Number(c.total) || 0), 0);
+        const total = this._factRecibidosFiltered.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);   // T4.5: neto de notas de crédito
 
         main.innerHTML = `
             <div class="fin-table-wrapper">
@@ -9659,7 +9682,14 @@ const FinanzasModule = {
 
                 ${!this._isRO ? `
                 <div class="fin-panel-actions">
-                    ${!pagoVivo ? `
+                    ${esNotaCredito(comp.tipo)
+                        // T4.5: espejo del gate de Emitidos. Una nota de crédito del
+                        // proveedor no se paga — descuenta de lo que le debemos.
+                        // "Generar pago" acá creaba un egreso POSITIVO por el total
+                        // de la NC. El hallazgo original de la auditoría sólo miraba
+                        // el lado de las ventas; lo cazó el reviewer.
+                        ? `<span style="color:var(--text-muted,#888);font-size:0.8rem;align-self:center;">Nota de crédito — no se paga</span>`
+                        : !pagoVivo ? `
                     <button class="fin-panel-btn fin-panel-btn-primary" id="finRecPanelPagar">⎘ Generar pago</button>
                     ` : `<span style="color:var(--color-success,#00CC88);font-size:0.8rem;align-self:center;">✓ Ligado a un egreso</span>`}
                     <button class="fin-panel-btn" id="finRecPanelEdit">

@@ -4194,9 +4194,13 @@ const ContabilidadModule = {
             const tipoUpper = tipo.toUpperCase();
             const discriminaIVA = tipoUpper.includes('A') || tipoUpper.includes('M') || tipoUpper.includes('E');
 
-            const neto = discriminaIVA ? (c.neto || c.subtotal || 0) : null;
-            const iva = discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) : null;
-            const total = c.total || c.monto || 0;
+            // T4.5: una nota de crédito entra al Libro IVA Ventas en NEGATIVO.
+            // Sin esto, los TOTALES del pie sumaban la NC como si fuera una venta
+            // más (junio 2026: $347,10 de IVA donde la posición real es $0,00).
+            const sg = signoComprobante(c.tipo);
+            const neto = discriminaIVA ? (c.neto || c.subtotal || 0) * sg : null;
+            const iva = discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) * sg : null;
+            const total = (c.total || c.monto || 0) * sg;
 
             if (neto !== null) totalNeto += neto;
             if (iva !== null) totalIva += iva;
@@ -4233,16 +4237,21 @@ const ContabilidadModule = {
         if (exportWrap) {
             exportWrap.innerHTML = '<button class="cont-btn-export" id="contIvaExportBtn">\u{1F4E5} Exportar CSV</button>';
             document.getElementById('contIvaExportBtn')?.addEventListener('click', () => {
-                const csvRows = this._ivaVentas.map(c => ({
-                    fecha: c.fecha || '',
-                    tipo: c.tipo || c.tipo_comprobante || '',
-                    numero: this._formatNumeroComprobante(c.punto_venta, c.numero),
-                    cliente: c.cliente_nombre || c.razon_social || '',
-                    cuit: c.cuit || c.cuit_cliente || '',
-                    neto: c.neto || c.subtotal || 0,
-                    iva: c.iva || c.iva_21 || c.monto_iva || 0,
-                    total: c.total || c.monto || 0,
-                }));
+                // T4.5: el CSV va al contador — tiene que salir con el mismo
+                // signo que la pantalla, o la NC se declara como una venta más.
+                const csvRows = this._ivaVentas.map(c => {
+                    const sg = signoComprobante(c.tipo);
+                    return {
+                        fecha: c.fecha || '',
+                        tipo: c.tipo || c.tipo_comprobante || '',
+                        numero: this._formatNumeroComprobante(c.punto_venta, c.numero),
+                        cliente: c.cliente_nombre || c.razon_social || '',
+                        cuit: c.cuit || c.cuit_cliente || '',
+                        neto: (c.neto || c.subtotal || 0) * sg,
+                        iva: (c.iva || c.iva_21 || c.monto_iva || 0) * sg,
+                        total: (c.total || c.monto || 0) * sg,
+                    };
+                });
                 this._exportCSV(csvRows, [
                     { key: 'fecha', label: 'Fecha' }, { key: 'tipo', label: 'Tipo' },
                     { key: 'numero', label: 'N\u00famero' }, { key: 'cliente', label: 'Cliente' },
@@ -4280,11 +4289,15 @@ const ContabilidadModule = {
             const tipoUpper = (tipo || '').toUpperCase();
             const discriminaIVA = esAuxiliar || tipoUpper.includes('A') || tipoUpper.includes('M');
 
+            // T4.5: el signo sale de `c.tipo` (el valor de la base), NO de la
+            // variable `tipo` de arriba, que para los auxiliares es la etiqueta
+            // 'Factura'. Los auxiliares no tienen `tipo` → signo +1, correcto.
+            const sg = signoComprobante(c.tipo);
             const neto = esAuxiliar ? (c.subtotal || 0)
-                         : (discriminaIVA ? (c.neto || c.subtotal || 0) : null);
+                         : (discriminaIVA ? (c.neto || c.subtotal || 0) * sg : null);
             const iva = esAuxiliar ? (parseFloat(c.iva_total) || 0)
-                        : (discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) : null);
-            const total = c.total || c.monto || 0;
+                        : (discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) * sg : null);
+            const total = (c.total || c.monto || 0) * sg;
             const esCF = iva !== null && iva > 0;
 
             if (neto !== null) totalNeto += neto;
@@ -4336,16 +4349,19 @@ const ContabilidadModule = {
         if (exportWrap) {
             exportWrap.innerHTML = '<button class="cont-btn-export" id="contIvaExportBtn">\u{1F4E5} Exportar CSV</button>';
             document.getElementById('contIvaExportBtn')?.addEventListener('click', () => {
-                const csvRows = this._ivaCompras.map(c => ({
-                    fecha: c.fecha || '',
-                    tipo: c.tipo || c.tipo_comprobante || '',
-                    numero: c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero),
-                    proveedor: c.proveedor_nombre || c.razon_social || c.proveedor || '',
-                    cuit: c.cuit || c.cuit_proveedor || '',
-                    neto: c.neto || c.subtotal || 0,
-                    iva: c.iva || c.iva_21 || c.monto_iva || 0,
-                    total: c.total || c.monto || 0,
-                }));
+                const csvRows = this._ivaCompras.map(c => {
+                    const sg = signoComprobante(c.tipo);   // T4.5, igual que en ventas
+                    return {
+                        fecha: c.fecha || '',
+                        tipo: c.tipo || c.tipo_comprobante || '',
+                        numero: c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero),
+                        proveedor: c.proveedor_nombre || c.razon_social || c.proveedor || '',
+                        cuit: c.cuit || c.cuit_proveedor || '',
+                        neto: (c.neto || c.subtotal || 0) * sg,
+                        iva: (c.iva || c.iva_21 || c.monto_iva || 0) * sg,
+                        total: (c.total || c.monto || 0) * sg,
+                    };
+                });
                 this._exportCSV(csvRows, [
                     { key: 'fecha', label: 'Fecha' }, { key: 'tipo', label: 'Tipo' },
                     { key: 'numero', label: 'N\u00famero' }, { key: 'proveedor', label: 'Proveedor' },
@@ -4361,11 +4377,13 @@ const ContabilidadModule = {
         const exportWrap = document.getElementById('contIvaExportWrap');
         if (exportWrap) exportWrap.innerHTML = '';
 
+        // T4.5: el signo va en los DOS lados de la resta. Firmar sólo el débito
+        // sería el error de bases mezcladas que dejó documentado T3.24.
         const sumIva = (rows, origen) => rows
             .filter(c => origen === undefined || c._origen === origen || (origen === 'oficial' && !c._origen))
-            .reduce((s, c) => s + (parseFloat(c.iva_total) || parseFloat(c.iva) || parseFloat(c.iva_21) || parseFloat(c.monto_iva) || 0), 0);
+            .reduce((s, c) => s + (parseFloat(c.iva_total) || parseFloat(c.iva) || parseFloat(c.iva_21) || parseFloat(c.monto_iva) || 0) * signoComprobante(c.tipo), 0);
 
-        const debito = this._ivaVentas.reduce((s, c) => s + (c.iva || c.iva_21 || c.monto_iva || 0), 0);
+        const debito = this._ivaVentas.reduce((s, c) => s + (c.iva || c.iva_21 || c.monto_iva || 0) * signoComprobante(c.tipo), 0);
         const creditoOficial  = sumIva(this._ivaCompras, 'oficial');
         const creditoAuxiliar = sumIva(this._ivaCompras, 'auxiliar');
         const creditoTotal    = creditoOficial + creditoAuxiliar;

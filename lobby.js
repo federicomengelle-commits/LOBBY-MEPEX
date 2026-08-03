@@ -530,13 +530,16 @@ const HomeModule = {
             const gastoQ = () => { let q = db.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', m3).lte('fecha', today); if (canal) q = q.eq('canal', canal); return q; };
             const [cobR, pagR, facR, cobrarR, pagarR, ctasR, gastoR] = await Promise.all([
                 cobQ(), pagQ(),
-                db.from('comprobantes').select('total').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', desde).lte('fecha', hasta),
+                db.from('comprobantes').select('total, tipo').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', desde).lte('fecha', hasta),   // T4.5: `tipo` para el signo
                 db.from('plan_cobro_items').select('monto,monto_cobrado,fecha_estimada,estado').eq('_deleted', false).in('estado', ['pendiente', 'parcial', 'vencido']),
                 db.from('vencimientos_generados').select('monto_estimado').eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', today).lte('fecha_vencimiento', in30),
                 db.from('cuentas_financieras').select('*').eq('_deleted', false),
                 gastoQ(),
             ]);
-            const cobrado = this._sum(cobR.data, 'monto'), pagado = this._sum(pagR.data, 'monto'), facturado = this._sum(facR.data, 'total');
+            const cobrado = this._sum(cobR.data, 'monto'), pagado = this._sum(pagR.data, 'monto');
+            // T4.5: facturado NETO — `_sum` no sabe de signos y una nota de
+            // crédito sumaba como si fuera una venta más.
+            const facturado = (facR.data || []).reduce((s, r) => s + (Number(r.total) || 0) * signoComprobante(r.tipo), 0);
             const porCobrar = (cobrarR.data || []).reduce((s, r) => s + (Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0), 0);
             const porPagar = this._sum(pagarR.data, 'monto_estimado');
             const gastoProm = this._sum(gastoR.data, 'monto') / 3;
@@ -812,11 +815,15 @@ const HomeModule = {
             const r = await this._memo(ctx, 'posIva', async () => {
                 if (!db) return null;
                 const { desde, hasta } = this._monthRange(ctx.now);
+                // T4.5: `tipo` en el select y suma firmada — una nota de crédito
+                // resta. Sin esto, junio 2026 daba $347,10 de débito con la
+                // posición real en $0,00 (una FC B y su NC B sumándose).
                 const [v, c] = await Promise.all([
-                    db.from('comprobantes').select('iva').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta),
-                    db.from('comprobantes_recibidos').select('iva').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta),
+                    db.from('comprobantes').select('iva, tipo').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta),
+                    db.from('comprobantes_recibidos').select('iva, tipo').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta),
                 ]);
-                return { debito: this._sum(v.data, 'iva'), credito: this._sum(c.data, 'iva') };
+                const sumFirmada = (rows) => (rows || []).reduce((s, r) => s + (Number(r.iva) || 0) * signoComprobante(r.tipo), 0);
+                return { debito: sumFirmada(v.data), credito: sumFirmada(c.data) };
             });
             if (!r) return this._empty('Sin datos');
             const pos = r.debito - r.credito;

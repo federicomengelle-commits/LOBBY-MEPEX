@@ -106,6 +106,29 @@ window.hoyLocal = function () { return window.fechaISOLocal(new Date()); };
 // mes SIGUIENTE — o sea, un comprobante archivado en el período equivocado.
 window.mesLocal = function () { return window.hoyLocal().slice(0, 7); };
 
+// ── El signo de un comprobante (T4.5, auditoría 31/07) ──────────────────
+// Una NOTA DE CRÉDITO resta; todo lo demás suma. Las notas de DÉBITO no son
+// excepción: aumentan la deuda igual que una factura, así que van con +1.
+//
+// Existía el bug en toda la app: `sum(iva)` sin mirar el tipo. Con los dos
+// únicos comprobantes reales de la base —una FC B de $1.000 y su NC B que la
+// anula— la Posición IVA de junio 2026 daba **$347,10 de débito donde la
+// posición real es $0,00**, porque sumaba los dos $173,55 en vez de netearlos.
+//
+// Espejo EXACTO de `fn_signo_comprobante(tipo)` en Postgres
+// (`sql/auditoria_t4_5_signo_nota_credito.sql`). Si cambia una, cambia la otra:
+// hay pantallas que leen las views (que ya vienen firmadas) y pantallas que
+// suman las tablas base en el cliente, y las dos tienen que dar lo mismo.
+//
+// Cubre `nota_credito` a secas (el tipo que usa el OCR de comprobantes
+// recibidos) y `nota_credito_a/b/c` (los que emite ARCA).
+window.signoComprobante = function (tipo) {
+    return String(tipo || '').startsWith('nota_credito') ? -1 : 1;
+};
+
+// Azúcar para los gates de UI: sobre una nota de crédito no se "cobra".
+window.esNotaCredito = function (tipo) { return window.signoComprobante(tipo) < 0; };
+
 // Convierte 'YYYY-MM-DD' (o un ISO completo) a un Date a medianoche LOCAL.
 // Devuelve null si no se puede parsear, para que el que llama decida.
 window.fechaLocal = function (s) {
