@@ -67,7 +67,7 @@
 | **T4.4** | `total_en_ars` en KPIs y reportes | JS | ✅ | 49 sitios + helper `montoARS`. Queda como deuda `plan_cobro_items` y las sumas de `iva` (no tienen columna ARS) |
 | **T4.5** | Signo de las notas de crédito | JS+SQL | ✅ | eran **views + 21 puntos de JS**, no "3 reduce": las 3 pantallas de Posición IVA **no leen las views** |
 | **T4.6** | Sync de jornales por trigger | ~~SQL~~ JS | ✅ | **sin trigger** (decisión de Fede: *avisar, no ejecutar*). Y las 4 lecturas del sync fallaban abiertas: una de ellas **borraba todos los jornales del evento** devolviendo `ok:true` |
-| **T4.7** | View `personas_publicas` + cerrar `personas` | SQL+JS | ⬜ | |
+| **T4.7** | View `personas_publicas` + cerrar `personas` | SQL+JS | 🟡 | JS listo · **`sql/personas_publicas.sql` espera a Fede**. NO es la view del plan: cerrar la RLS de filas apagaba **11 FKs de embeds**. Va por **columnas** |
 | **T4.8** | Grants por columna para el cotizador | SQL | ⬜ | **coordinar con el otro repo**. Sumar: `cotizacion_propuestas` tiene RLS activo y **cero policies** (5 filas, la última del 26/06) → o el Cotizador escribe con service key, o esa feature está muda hace más de un mes |
 | **T4.9** | Confirm + contador antes de borrar una jornada | JS | ✅ | chip 👥 por fila + confirm con los nombres. Borra por **referencia**, no por índice |
 | **T4.10** | Paginar EERR · Balance · Libro Mayor | JS | ✅ | eran **5** puntos de truncado, no 3 — y **el bucle que el plan mandaba copiar paginaba sin ORDER BY** |
@@ -186,6 +186,37 @@ Y las cuatro devolvían **`{ok:true}`**: pasaba como éxito, con el toast verde.
 **Test `tools/test-t46-jornales.js` (15 checks), y se verificó que es sensible:** quitando el `strict` de asignaciones, los casos nuevos fallan con `escrituras.length = 1` — el soft-delete exacto del repro.
 
 **Queda abierto:** la carrera clásica si dos personas tocan las asignaciones del mismo evento entre el `Promise.all` y los `await` de los loops. Es inherente a no tener transacción del lado del cliente y está igual en toda la app; no es regresión de este ítem.
+
+---
+
+## 🟡 T4.7 — JS LISTO 2026-08-03 · el SQL espera a Fede · `sql/personas_publicas.sql`
+
+**El plan pedía una cosa que no se puede hacer, y por dos motivos distintos.** Proponía una view `personas_publicas` con `security_invoker = true` y cerrar la RLS de `personas`:
+
+1. **`security_invoker = true` evalúa la RLS de la tabla base con los permisos de quien consulta.** Con `personas` cerrada a `rrhh`, un pm consultando la view recibe **cero filas**. La view no serviría para nada — que es justo lo que venía a resolver.
+2. Y sobre todo: **hay 11 FKs apuntando a `personas`**, y el JS las usa como **embeds** de PostgREST (`persona:personas!persona_id(…)`, `chofer:personas!chofer_persona_id(…)`). Un embed es un join contra la tabla base y **lo filtra su RLS**. Cerrarla le apaga a un pm el chofer de la carga, el encargado, la persona de cada asignación — y deja el widget *"Equipo de tus eventos"* del **Lobby**, que ven los 5 roles, mostrando `(sin nombre)` para todo el mundo. Nada de eso da error: aparece vacío. El hallazgo original nombraba 3 consumidores; son **8 usos directos + 10 embeds**.
+
+**Lo que se hace en su lugar** separa dos cosas que estaban mezcladas. El problema nunca fue a qué **filas** se accede —que todos vean a todos está bien y el sistema lo necesita— sino a qué **columnas**; y para columnas la herramienta es el `GRANT`, no la RLS:
+
+| capa | qué queda |
+|---|---|
+| **SELECT por fila** | `USING(true)`, **sin tocar** → los ~10 embeds siguen andando igual |
+| **SELECT por columna** | `REVOKE` + `GRANT SELECT (9 columnas)` → CUIL, DNI, CBU, banco, dirección, contacto de emergencia y **el jornal** dejan de ser legibles, para todos |
+| **INSERT / UPDATE** | RLS a `fn_role_can('rrhh','write')` — **la mitad más grave del hallazgo**: hoy cualquiera con la consola abierta le cambia el CBU a un compañero, o sea redirige a dónde se le paga |
+| **el legajo** | view `personas_legajo` con `WHERE fn_role_can('rrhh','read')` adentro, que usa sólo RRHH |
+
+Los column-grants no distinguen admin de pm (todos comparten el rol Postgres `authenticated`) — por eso **no son la solución solos**: le quitan las columnas sensibles a todos por igual, y quien tiene que ver el legajo lo lee por la view, que sí discrimina. Cada herramienta para lo que sirve.
+
+**JS (7 puntos, ya commiteados):** `PERSONA_COLS_PUBLICAS` como lista única · `getPersonas` y `getPersonasOperativas` dejan de pedir `select('*')` · el embed `chofer:personas!chofer_persona_id(*)` pasa a explícito (era el más expuesto del árbol) · `createPersona` tenía un `.select()` sin argumentos, que es `*` · `_getPersonasJornalMap` y los 4 `select('*')` de la nómina de RRHH van a `personas_legajo`.
+
+**Un guard que salió de la revisión:** `personas_legajo` **no da error** a quien no tiene `rrhh:read` — devuelve cero filas. Sin protección, eso hace que el sync escriba todos los jornales en **$0** y devuelva `ok:true`. Hoy no pasa porque ese mismo rol tampoco tiene `finanzas` y la escritura rebota igual, pero **esa coincidencia entre dos policies ajenas es accidental**: el día que alguien le dé `finanzas` a un pm por otro motivo, se reproduce el bug de los ceros por una vía nueva. Ahora `syncJornalesEvento` aborta si alguna persona de las líneas **falta** del padrón (ausente ≠ tarifa en NULL), con test.
+
+**⛔ Fede, en este orden — la PARTE 1 va ANTES del pull.** El JS ya lee de `personas_legajo`: si pullea sin correrla, **RRHH se queda sin nómina**.
+1. correr **PARTE 1** (crea la view; aditiva)
+2. `~/pull-lobby.sh`
+3. recién ahí **PARTE 2** (revoca columnas + cierra escritura) — el archivo la trae comentada, con el checklist de los 7 puntos de JS que tienen que estar arriba, y un self-audit por whitelist que aborta si quedó una columna de más.
+
+**Anotado para el futuro:** el `SELECT *` de una view **se congela** al crearla. Todo `ALTER TABLE personas ADD COLUMN` tiene que venir con un re-run de la PARTE 1, o la columna queda invisible para RRHH sin un solo error. Está escrito en el `COMMENT ON VIEW`. Ojo con **RRHH.2**, que va a agregar columnas de legajo.
 
 ---
 

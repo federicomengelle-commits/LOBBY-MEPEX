@@ -536,7 +536,10 @@ const RRHHModule = {
         try {
             const [pRes, aRes] = await Promise.all([
                 supabaseClient
-                    .from('personas')
+                    // El legajo completo (CUIL, CBU, jornal…) sale de la view, que
+                    // sólo devuelve filas a quien tiene rrhh:read. En la tabla base
+                    // esas columnas quedaron revocadas y un `select('*')` falla. (T4.7)
+                    .from('personas_legajo')
                     .select('*')
                     .eq('_deleted', false)
                     .order('nombre', { ascending: true }),
@@ -1326,7 +1329,7 @@ const RRHHModule = {
         const mananaISO = this._isoDay(this._addDays(new Date(), 1));
         try {
             const [persRes, asigHoyRes, ausHoyRes, pendRes, docsRes] = await Promise.all([
-                supabaseClient.from('personas').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
+                supabaseClient.from('personas_legajo').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
                 supabaseClient.from('asignaciones_evento')
                     .select('persona_id, fecha_inicio, fecha_fin, estado, evento:eventos!evento_id(id, nombre)')
                     .eq('_deleted', false).in('estado', ['aprobada', 'confirmada'])
@@ -1635,7 +1638,7 @@ const RRHHModule = {
         try {
             const evSel = 'id, persona_id, evento_id, fecha_inicio, fecha_fin, fase, rol, estado, evento:eventos!evento_id(id, nombre, color)';
             const [persRes, asigRes, ausRes, pendRes] = await Promise.all([
-                supabaseClient.from('personas').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
+                supabaseClient.from('personas_legajo').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
                 supabaseClient.from('asignaciones_evento').select(evSel)
                     .eq('_deleted', false).neq('estado', 'cancelada')
                     .lte('fecha_inicio', endISO + 'T23:59:59').gte('fecha_fin', startISO),
@@ -1839,7 +1842,7 @@ const RRHHModule = {
         const anio = this._vacAnio || new Date().getFullYear();
         try {
             const [persRes, ausRes, saldRes] = await Promise.all([
-                supabaseClient.from('personas').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
+                supabaseClient.from('personas_legajo').select('*').eq('_deleted', false).order('nombre', { ascending: true }),
                 supabaseClient.from('ausencias').select('*').eq('_deleted', false).order('fecha_desde', { ascending: false }),
                 supabaseClient.from('vacaciones_saldos').select('*').eq('_deleted', false).eq('anio', anio),
             ]);

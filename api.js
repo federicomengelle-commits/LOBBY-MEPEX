@@ -5715,10 +5715,17 @@ const API = {
     //  TANDA 2 — Personas (separado de rrhh_personal legacy)
     // ═════════════════════════════════════════════════════════════
 
+    // Las únicas columnas de `personas` que puede leer un rol cualquiera. El resto
+    // —CUIL, DNI, CBU, banco, dirección, contacto de emergencia, jornal— quedó
+    // revocado a nivel columna (T4.7), así que un `select('*')` sobre esta tabla
+    // ahora falla con 42501 para todos. El legajo completo se lee de la view
+    // `personas_legajo`, que sólo devuelve filas a quien tiene rrhh:read.
+    PERSONA_COLS_PUBLICAS: 'id, nombre, apellido, telefono, tipo, roles_operativos, rol_legacy, activo, _deleted',
+
     async getPersonas({ rol = null, tipo = null, soloActivos = true } = {}) {
         try {
             let q = supabaseClient
-                .from('personas').select('*')
+                .from('personas').select(this.PERSONA_COLS_PUBLICAS)
                 .eq('_deleted', false)
                 .order('nombre', { ascending: true });
             if (soloActivos) q = q.eq('activo', true);
@@ -5745,7 +5752,7 @@ const API = {
     async getPersonasOperativas({ soloActivos = true } = {}) {
         try {
             let q = supabaseClient
-                .from('personas').select('*')
+                .from('personas').select(this.PERSONA_COLS_PUBLICAS)
                 .eq('_deleted', false)
                 .overlaps('roles_operativos', this.OPERATIVO_ROLES)
                 .order('nombre', { ascending: true });
@@ -5780,7 +5787,9 @@ const API = {
         }
         try {
             const { data: row, error } = await supabaseClient
-                .from('personas').insert(payload).select().single();
+                // `.select()` sin argumentos es `select('*')`, que desde T4.7 falla con
+                // 42501: las columnas sensibles están revocadas para todos.
+                .from('personas').insert(payload).select(this.PERSONA_COLS_PUBLICAS).single();
             if (error) throw error;
             return row;
         } catch (e) {
@@ -5871,7 +5880,7 @@ const API = {
                     *,
                     evento:eventos!evento_id(id, nombre, fecha_armado_inicio, fecha_desarme_inicio, predio),
                     vehiculo:vehiculos!vehiculo_id(*),
-                    chofer:personas!chofer_persona_id(*),
+                    chofer:personas!chofer_persona_id(id, nombre, apellido, telefono, tipo, roles_operativos, rol_legacy, activo),
                     encargado:personas!encargado_persona_id(id, nombre, apellido, telefono, roles_operativos),
                     aprobador:profiles!aprobada_por(id, name, initials),
                     creador:profiles!created_by(id, name, initials),
@@ -7767,7 +7776,11 @@ const API = {
             // Unificado 2026-06-30: la tarifa por persona vive en `costo_dia_referencial`
             // (el campo "Jornal diario" de RRHH → Nómina). La columna `jornal_diario`
             // quedó inerte (no se usa ni escribe desde ningún lado).
-            const res = await supabaseClient.from('personas').select('id, costo_dia_referencial');
+            // Por `personas_legajo`: `costo_dia_referencial` es el salario y quedó
+            // revocado en la tabla base (T4.7). La view sólo devuelve filas a quien
+            // tiene rrhh:read — y quien sincroniza jornales necesita `finanzas`, que
+            // en la matriz sólo tienen admin y superadmin, que también tienen rrhh.
+            const res = await supabaseClient.from('personas_legajo').select('id, costo_dia_referencial');
             // Un {} por error de lectura hace que el sync escriba tarifa 0 para todos,
             // que es un importe, no una ausencia. Si no se pueden leer las tarifas no
             // se escriben montos. (T4.6)
@@ -7883,6 +7896,20 @@ const API = {
                 this._getPersonasJornalMap(),
             ]);
             const lines = this._computeJornalLines(jornadas, asignaciones);
+
+            // `personas_legajo` no da error a quien no tiene rrhh:read — devuelve CERO
+            // FILAS. O sea que un rol sin permiso obtiene `rates = {}` y escribiría
+            // todos los montos en $0 sin que nada falle. Hoy no pasa porque el mismo
+            // rol tampoco tiene `finanzas` y la escritura rebota igual, pero esa
+            // coincidencia entre dos policies distintas es accidental: el día que
+            // alguien le dé `finanzas` a un pm por otro motivo, esto escribiría ceros.
+            // Una persona con la tarifa en NULL SÍ aparece en el mapa (con 0); estar
+            // AUSENTE del mapa sólo puede ser que no se pudo leer el padrón. (T4.7)
+            const sinPadron = lines.filter(l => !(String(l.persona_id) in rates));
+            if (sinPadron.length) {
+                throw new Error('No se pudieron leer las tarifas del personal (faltan '
+                    + sinPadron.length + '). No se sincroniza para no escribir montos en $0.');
+            }
             const existing = (costos || []).filter(c => c.categoria === 'jornal' && !c._deleted && c.persona_id);
             const keyOf = (pid, fase) => `${pid}|${fase || ''}`;
             const exMap = {};

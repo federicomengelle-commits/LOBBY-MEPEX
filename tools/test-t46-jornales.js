@@ -109,7 +109,9 @@ const COSTOS_JORNAL = [{ id: 'c1', evento_id: 'e1', persona_id: 'p1', categoria:
         evento_jornadas: JORNADAS,
         asignaciones_evento: ASIGN.filter(a => a.evento_id === 'e1'),
         evento_costos: COSTOS_JORNAL,
-        personas: [{ id: 'p1', costo_dia_referencial: 5000 }, { id: 'p2', costo_dia_referencial: null }],
+        // Las tarifas se leen de la view del legajo, no de la tabla base: desde T4.7
+        // `costo_dia_referencial` está revocada para todos y sólo la ve rrhh:read.
+        personas_legajo: [{ id: 'p1', costo_dia_referencial: 5000 }, { id: 'p2', costo_dia_referencial: null }],
     };
 
     // El caso que motiva el guard: la lectura de costos falla, la escritura anda.
@@ -119,10 +121,19 @@ const COSTOS_JORNAL = [{ id: 'c1', evento_id: 'e1', persona_id: 'p1', categoria:
     check('  · y sobre todo: NO escribió nada', escrituras.length, 0);
 
     // Sin tarifas, escribir es escribir $0.
-    stub(base, ['personas']);
+    stub(base, ['personas_legajo']);
     res = await A.syncJornalesEvento('e1');
     check('tarifas ilegibles → NO sincroniza', res.ok, false);
     check('  · tampoco escribió', escrituras.length, 0);
+
+    // ⚠️ El caso silencioso: `personas_legajo` NO da error a quien no tiene
+    // rrhh:read — devuelve CERO FILAS. Sin guard, eso escribe todos los montos en
+    // $0 y devuelve ok:true. Una persona con la tarifa en NULL sí aparece en el
+    // mapa (con 0); estar AUSENTE sólo puede ser que no se pudo leer el padrón.
+    stub({ ...base, personas_legajo: [] });
+    res = await A.syncJornalesEvento('e1');
+    check('el legajo devuelve 0 filas (rol sin rrhh) → NO sincroniza', res.ok, false);
+    check('  · y NO escribe los jornales en $0', escrituras.length, 0);
 
     // ⚠️ Las OTRAS DOS lecturas del Promise.all. Se me habían escapado en la
     // primera pasada del ítem y las cazó el typescript-reviewer con un repro:
