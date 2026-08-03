@@ -12747,4 +12747,15 @@ const FinanzasModule = {
             }
         });
     },
+
+    // ── T4.17 (auditoría 31/07): teardown al salir del módulo ──
+    // El router sólo llamaba `destroy()` a 5 objetos; todo lo demás nunca lo
+    // recibía. Un handler de ESC registrado en `document` sobrevive al cambio de
+    // módulo: sigue escuchando cada tecla de toda la app y llama a `_closePanel()`
+    // sobre un DOM que ya no existe. Se desmonta lo que este módulo dejó colgado
+    // fuera de su propio `innerHTML` (lo que vive adentro muere con los nodos).
+    destroy() {
+        if (this._panelEscHandler) { document.removeEventListener('keydown', this._panelEscHandler); this._panelEscHandler = null; }
+        this._activePanel = null;
+    },
 };

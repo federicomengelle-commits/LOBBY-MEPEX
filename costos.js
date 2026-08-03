@@ -4333,4 +4333,21 @@ const CostosModule = {
             this._saveHandlerAttached = true;
         }
     },
+
+    // ── T4.17 (auditoría 31/07): teardown al salir del módulo ──
+    // El router sólo llamaba `destroy()` a 5 objetos; todo lo demás nunca lo
+    // recibía. Un handler de ESC registrado en `document` sobrevive al cambio de
+    // módulo: sigue escuchando cada tecla de toda la app y llama a `_closePanel()`
+    // sobre un DOM que ya no existe. Se desmonta lo que este módulo dejó colgado
+    // fuera de su propio `innerHTML` (lo que vive adentro muere con los nodos).
+    // Acá los handlers globales son anónimos y se registran UNA sola vez
+    // (`_qeGlobalHandler`, `_mfGlobalHandlerAttached`, `_escHandlerAttached`,
+    // `_saveHandlerAttached`), así que no se acumulan y no hay referencia para
+    // removerlos. Lo que sí se puede es desarmarles el gatillo: todos salen
+    // temprano si no hay panel abierto, así que apagar el estado los vuelve
+    // inertes mientras el módulo no está montado.
+    destroy() {
+        this._activePanel = null;
+        this._closeQuickEdit?.();
+    },
 };

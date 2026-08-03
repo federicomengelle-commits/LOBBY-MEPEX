@@ -92,7 +92,7 @@ const Router = {
             'lobby':            { render: () => Lobby.render(), requiresAuth: true },
             'calendario':       { render: () => CalendarioOperativo.render(), requiresAuth: true, obj: typeof CalendarioOperativo !== 'undefined' ? CalendarioOperativo : null },
             'perfil':           { render: () => Settings.renderProfile(), requiresAuth: true },
-            'admin-panel':      { render: () => AdminPanel.render(), requiresAuth: true, superadminOnly: true },
+            'admin-panel':      { render: () => AdminPanel.render(), requiresAuth: true, superadminOnly: true, obj: typeof AdminPanel !== 'undefined' ? AdminPanel : null },
             'notificaciones':   { render: () => Settings.renderNotifications(), requiresAuth: true },
             'tareas':           { render: () => Tareas.render(), requiresAuth: true },
 
@@ -109,24 +109,24 @@ const Router = {
             // ── Operaciones ──
             'proyectos':        { render: () => ProyectosModule.render(), requiresAuth: true, module: 'proyectos' },
             'proyectos/:id':    { render: (params) => ProyectoDetalle.render(params.id), requiresAuth: true, module: 'proyectos', obj: typeof ProyectoDetalle !== 'undefined' ? ProyectoDetalle : null },
-            'eventos':          { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos' },
+            'eventos':          { render: () => EventosModule.render(), requiresAuth: true, module: 'eventos', obj: typeof EventosModule !== 'undefined' ? EventosModule : null },
             // 'taller' y 'logistica' DISUELTOS (reorg C/D) → ver _redirects (#taller→#tareas, #logistica→#eventos).
 
             // ── Recursos ──
             'rrhh':             { render: () => RRHHModule.render(), requiresAuth: true, module: 'rrhh' },
-            'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras' },
-            'inventario':       { render: () => InventarioModule.render(), requiresAuth: true, module: 'inventario' },
+            'compras':          { render: () => ComprasModule.render(), requiresAuth: true, module: 'compras', obj: typeof ComprasModule !== 'undefined' ? ComprasModule : null },
+            'inventario':       { render: () => InventarioModule.render(), requiresAuth: true, module: 'inventario', obj: typeof InventarioModule !== 'undefined' ? InventarioModule : null },
             'locaciones':       { render: () => LocacionesModule.render(), requiresAuth: true, module: 'locaciones' },
             'flota':            { render: () => FlotaModule.render(), requiresAuth: true, module: 'flota' },
 
             // ── Admin & Finanzas ──
             'ventas':           { render: () => VentasModule.render(), requiresAuth: true, module: 'ventas', adminOnly: true, obj: typeof VentasModule !== 'undefined' ? VentasModule : null },
             'ventas/:id':       { render: (params) => VentaDetalle.render(params.id), requiresAuth: true, module: 'ventas', adminOnly: true, obj: typeof VentaDetalle !== 'undefined' ? VentaDetalle : null },
-            'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas' },
-            'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas' },
+            'contabilidad':     { render: () => ContabilidadModule.render(), requiresAuth: true, module: 'finanzas', obj: typeof ContabilidadModule !== 'undefined' ? ContabilidadModule : null },
+            'finanzas':         { render: () => FinanzasModule.render(), requiresAuth: true, module: 'finanzas', obj: typeof FinanzasModule !== 'undefined' ? FinanzasModule : null },
             'rendimiento':      { render: () => RendimientoModule.render(), requiresAuth: true, module: 'rendimiento', adminOnly: true },
             'calendario-adm':   { render: () => CalendarioAdm.render(), requiresAuth: true, module: 'calendario-adm', adminOnly: true },
-            'costos':           { render: () => CostosModule.render(), requiresAuth: true, module: 'costos', adminOnly: true },
+            'costos':           { render: () => CostosModule.render(), requiresAuth: true, module: 'costos', adminOnly: true, obj: typeof CostosModule !== 'undefined' ? CostosModule : null },
             // Deprecado: Parámetros ahora vive como tab dentro del módulo Costos.
             // Redirección para bookmarks viejos.
             'parametros-globales': {

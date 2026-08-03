@@ -4176,4 +4176,22 @@ const InventarioModule = {
     _soloMaterialesReales(items) {
         return (items || []).filter(i => i.clasificacion !== 'Sub alquiler');
     },
+
+    // ── T4.17 (auditoría 31/07): teardown al salir del módulo ──
+    // El router sólo llamaba `destroy()` a 5 objetos; todo lo demás nunca lo
+    // recibía. Un handler de ESC registrado en `document` sobrevive al cambio de
+    // módulo: sigue escuchando cada tecla de toda la app y llama a `_closePanel()`
+    // sobre un DOM que ya no existe. Se desmonta lo que este módulo dejó colgado
+    // fuera de su propio `innerHTML` (lo que vive adentro muere con los nodos).
+    destroy() {
+        // ⚠️ Acá NO va `_conteoKey`: pese al nombre **no es un handler de teclado**,
+        // es el método que agrupa las filas del conteo físico por rubro
+        // (`_conteoKey(c)` en `_renderConteoTable`). Nunca se registró como
+        // listener, así que nulearlo no soltaba nada y en cambio dejaba
+        // `Inventario Físico` tirando `TypeError: this._conteoKey is not a
+        // function` para el resto de la sesión (el objeto es singleton y nadie lo
+        // vuelve a definir). Cazado por el reviewer, con la repro hecha.
+        if (this._panelEscHandler) { document.removeEventListener('keydown', this._panelEscHandler); this._panelEscHandler = null; }
+        this._activePanel = null;
+    },
 };

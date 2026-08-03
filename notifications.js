@@ -109,12 +109,17 @@ const Notifications = {
         await this.loadPrefs();
         await this.refresh();
 
-        // Polling cada 30s + refresh al recuperar foco
+        // Polling cada 30s + refresh al recuperar foco.
+        // T4.17: los 3 listeners de abajo eran anónimos y `reset()` sólo limpiaba
+        // el interval → cada ciclo logout→login en la MISMA pestaña sumaba 3 más.
+        // Tras N sesiones, cada vuelta de foco disparaba N `refresh()` simultáneos
+        // contra Supabase. El escenario no es hipotético: es la tablet compartida
+        // del taller, donde nadie cierra la pestaña en todo el día.
         this._pollHandle = setInterval(() => this.refresh(), this.POLL_MS);
-        window.addEventListener('focus', () => this.refresh());
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) this.refresh();
-        });
+        this._onFocus = () => this.refresh();
+        this._onVisibility = () => { if (!document.hidden) this.refresh(); };
+        window.addEventListener('focus', this._onFocus);
+        document.addEventListener('visibilitychange', this._onVisibility);
 
         // Fase 9: repintar la campana cuando el motor de pendientes recomputa
         if (!this._alertasBound) {
@@ -123,14 +128,15 @@ const Notifications = {
         }
 
         // Click fuera → cerrar dropdown
-        document.addEventListener('click', (e) => {
+        this._onDocClick = (e) => {
             if (this._open
                 && !e.target.closest('.notif-wrapper')
                 && !e.target.closest('#notifMobileSheet')
                 && !e.target.closest('#notifBackdrop')) {
                 this.closeDropdown();
             }
-        });
+        };
+        document.addEventListener('click', this._onDocClick);
     },
 
     /**
@@ -145,6 +151,12 @@ const Notifications = {
      */
     reset() {
         if (this._pollHandle) { clearInterval(this._pollHandle); this._pollHandle = null; }
+        // T4.17: los listeners se sueltan junto con el interval. `_initialized`
+        // vuelve a false más abajo, así que el próximo `init()` los registra de
+        // nuevo — sin esto se acumulaban uno por sesión.
+        if (this._onFocus) { window.removeEventListener('focus', this._onFocus); this._onFocus = null; }
+        if (this._onVisibility) { document.removeEventListener('visibilitychange', this._onVisibility); this._onVisibility = null; }
+        if (this._onDocClick) { document.removeEventListener('click', this._onDocClick); this._onDocClick = null; }
         this._initialized = false;
         this._prefs = {};
         this._prefsReady = false;

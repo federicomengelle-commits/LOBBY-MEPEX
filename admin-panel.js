@@ -2086,4 +2086,21 @@ const AdminPanel = {
             mainContent.addEventListener('scroll', this._scrollHandler);
         }
     },
+
+    // ── T4.17 (auditoría 31/07): teardown al salir del módulo ──
+    // El router sólo llamaba `destroy()` a 5 objetos; todo lo demás nunca lo
+    // recibía. Un handler de ESC registrado en `document` sobrevive al cambio de
+    // módulo: sigue escuchando cada tecla de toda la app y llama a `_closePanel()`
+    // sobre un DOM que ya no existe. Se desmonta lo que este módulo dejó colgado
+    // fuera de su propio `innerHTML` (lo que vive adentro muere con los nodos).
+    // Además del listener, acá vive el timer huérfano: `_stopDashboardRefresh`
+    // existía y no lo llamaba nadie, así que el refresh de 60s seguía corriendo
+    // para siempre después de salir del panel.
+    destroy() {
+        this._stopDashboardRefresh?.();
+        if (this._scrollHandler) {
+            document.getElementById('mainContent')?.removeEventListener('scroll', this._scrollHandler);
+            this._scrollHandler = null;
+        }
+    },
 };

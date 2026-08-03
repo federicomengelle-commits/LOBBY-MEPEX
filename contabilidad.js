@@ -2298,6 +2298,13 @@ const ContabilidadModule = {
         });
 
         // ESC handler
+        // T4.17: acá faltaba el remove-before-add y era **el único acumulador
+        // ilimitado** de la app. Cada vez que se abre una cuenta del plan se
+        // reasignaba `_panelEscHandler` y se registraba de nuevo, pero la
+        // referencia anterior se perdía en la reasignación: abrir 12 cuentas
+        // dejaba 11 listeners zombis **irremovibles para siempre**, cada uno
+        // llamando `_closePanel()` en cada ESC de toda la app.
+        if (this._panelEscHandler) document.removeEventListener('keydown', this._panelEscHandler);
         this._panelEscHandler = (e) => {
             if (e.key === 'Escape') this._closePanel();
         };
@@ -5870,5 +5877,16 @@ const ContabilidadModule = {
             console.warn('[Contabilidad] _bloquearApertura:', e);
             Toast.error('No se pudo bloquear: ' + (e?.message || e));
         }
+    },
+
+    // ── T4.17 (auditoría 31/07): teardown al salir del módulo ──
+    // El router sólo llamaba `destroy()` a 5 objetos; todo lo demás nunca lo
+    // recibía. Un handler de ESC registrado en `document` sobrevive al cambio de
+    // módulo: sigue escuchando cada tecla de toda la app y llama a `_closePanel()`
+    // sobre un DOM que ya no existe. Se desmonta lo que este módulo dejó colgado
+    // fuera de su propio `innerHTML` (lo que vive adentro muere con los nodos).
+    destroy() {
+        if (this._panelEscHandler) { document.removeEventListener('keydown', this._panelEscHandler); this._panelEscHandler = null; }
+        this._activePanel = null;
     },
 };
