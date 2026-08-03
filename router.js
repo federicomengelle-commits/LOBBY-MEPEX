@@ -153,6 +153,38 @@ const Router = {
         return true;
     },
 
+    // El boot no pudo traer los scripts de la app. Se pinta sobre el spinner de
+    // `index.html` para que el usuario vea algo accionable en vez de una rueda
+    // girando: qué falló y un botón para reintentar (el loader es retry-safe —
+    // `_loadedScripts` evita re-ejecutar los que sí llegaron).
+    _renderBootError(err) {
+        const app = document.getElementById('app');
+        if (!app) return;
+        // Escape propio: `escHtml` vive en components.js, que es DIFERIDO — o sea,
+        // justo uno de los que puede no haber cargado. Referenciarlo acá tiraría un
+        // ReferenceError adentro del manejador de errores.
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+            c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const detalle = esc((err && err.message) ? err.message : 'Error desconocido');
+        app.innerHTML = `
+            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">
+              <div style="max-width:440px;text-align:center;font-family:var(--font-main,sans-serif);color:var(--text-primary,#E8E8E8);">
+                <div style="font-size:34px;margin-bottom:12px;">⚠️</div>
+                <div style="font-size:18px;font-weight:600;margin-bottom:8px;">No se pudo cargar la aplicación</div>
+                <div style="font-size:13px;color:var(--text-muted,#888);line-height:1.5;margin-bottom:6px;">
+                  Falló la descarga de uno de los archivos del sistema. Suele ser la conexión.
+                  Si sigue pasando, avisale a Fede.
+                </div>
+                <div style="font-family:var(--font-mono,monospace);font-size:11px;color:var(--text-dim,#555);
+                            margin-bottom:20px;word-break:break-all;">${detalle}</div>
+                <button id="bootRetryBtn" style="background:var(--primary,#00A9C1);color:#050505;border:none;
+                        border-radius:6px;padding:10px 22px;font-family:var(--font-mono,monospace);
+                        font-size:13px;font-weight:700;cursor:pointer;">Reintentar</button>
+              </div>
+            </div>`;
+        document.getElementById('bootRetryBtn')?.addEventListener('click', () => window.location.reload());
+    },
+
     async handleRoute() {
         if (!this._ready) return; // wait for session restore
 
@@ -166,6 +198,11 @@ const Router = {
                 await App.ensureAppLoaded();
             } catch (e) {
                 console.error('[Router] No se pudo cargar la app:', e);
+                // Antes esto sólo era un console.error + return: la pantalla quedaba
+                // con el spinner del boot girando para siempre, sin decir nada. Un
+                // script 404 (o el CDN caído) dejaba la app "colgada" y sin abrir F12
+                // no había manera de saber por qué. (2026-08-03)
+                this._renderBootError(e);
                 return;
             }
         }

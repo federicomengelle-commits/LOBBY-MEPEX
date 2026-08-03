@@ -55,8 +55,14 @@ const App = {
         'stands.js?v=6',
         'compositor-piezas.js?v=2',
         'compositor.js?v=18',
-        'tools/octexa/octexa-bom.js',
-        'tools/octexa/octexa-design.js',
+        // ⚠️ NO agregar acá nada bajo `tools/`, `sql/` ni `docs/`: nginx las bloquea
+        // con `location ~* ^/(sql|tools|docs)/ { deny all; return 404; }` para no
+        // publicar el schema ni el código del proxy. Un 404 en esta lista **tumba la
+        // app entera** (el loader hace Promise.all y sólo perdona `_OPTIONAL_SCRIPTS`).
+        // Acá vivían `tools/octexa/octexa-bom.js` y `octexa-design.js`, que dejaron la
+        // app en el spinner con un 404 mudo. Los usa sólo `disenador.js` —parkeado,
+        // oculto a superadmin— y ese módulo ya muestra su propio cartel cuando el
+        // motor OCTEXA no está (`disenador.js:33`). OCTEXA vive en su repo propio.
         'disenador.js?v=3',
         'plano-pdf.js?v=9',
         'remito-pdf.js?v=4',
