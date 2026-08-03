@@ -69,7 +69,7 @@ const App = {
         'rrhh.js?v=18',
         'costos.js?v=38',
         'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
-        'contabilidad.js?v=21',
+        'contabilidad.js?v=22',
         'ventas.js?v=2',
         'venta-detalle.js?v=3',
         'cobranza.js?v=3',

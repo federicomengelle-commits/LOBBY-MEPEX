@@ -70,7 +70,7 @@
 | **T4.7** | View `personas_publicas` + cerrar `personas` | SQL+JS | ⬜ | |
 | **T4.8** | Grants por columna para el cotizador | SQL | ⬜ | **coordinar con el otro repo**. Sumar: `cotizacion_propuestas` tiene RLS activo y **cero policies** (5 filas, la última del 26/06) → o el Cotizador escribe con service key, o esa feature está muda hace más de un mes |
 | **T4.9** | Confirm + contador antes de borrar una jornada | JS | ✅ | chip 👥 por fila + confirm con los nombres. Borra por **referencia**, no por índice |
-| **T4.10** | Paginar EERR · Balance · Libro Mayor | JS | ⬜ | |
+| **T4.10** | Paginar EERR · Balance · Libro Mayor | JS | ✅ | eran **5** puntos de truncado, no 3 — y **el bucle que el plan mandaba copiar paginaba sin ORDER BY** |
 | **T4.11** | `_safeUrl` global + los 10 `href` sin validar | JS | ✅ | + 3 HIGH que el barrido del audit no vio (iframe/window.open de `cot.pdfUrl`, lightbox) — los cazó el security-reviewer |
 | **T4.12** | `crm.js._escHtml` inseguro en ~23 atributos | JS | ✅ | delega al global (1 cambio cubre los ~110 usos) |
 | **T4.13** | Matriz de roles en las 65 tablas que faltan | SQL | ⬜ | partible |
@@ -128,6 +128,31 @@ Salió de tirar del hilo de la línea 252 del `04e` ("el 3er motor quedó descon
 **Por qué importa más que un cleanup:** `PUESTA-A-PUNTO-2027` pone como gate que *el motor de costos sano va ANTES de la carga masiva del catálogo*, porque cargar 200 ítems sobre el motor equivocado es fabricar 200 precios mal. Alguien que abra `costos.js`, vea `costosRecetaRecalc` sin la `Btn` y "arregle el typo" reconecta el motor equivocado **al botón Recalcular de la ficha**, en la pantalla donde se cargan los precios. Lo mismo si alguien reordena `api.js` y la definición vieja pasa a ganar.
 
 **Cerrado: se borraron, no se arregló el typo.** Fede lo autorizó explícitamente (*"resolvé lo de los 3, lo que mejor quede y ande"*) y al ejecutarlo resultaron **7** piezas, no 3 — ver la bitácora. **El fix era borrar las tres, no arreglar el typo.** Después de sacar el bloque de `costos.js` y la definición duplicada, `recalcularCostoItem` queda con **cero llamadores** (mismo criterio con el que T3.23 sacó `recalcularPrecioAlquiler`). Es borrado de código muerto y probadamente inalcanzable, pero toca el archivo del costeo → **va con su propia revisión y con OK de Fede**, no colgado de otro ítem.
+
+---
+
+## ✅ T4.10 — CERRADO 2026-08-03 · los reportes truncados a 1000 filas
+
+El plan lo daba por barato: *"el bucle correcto **ya está escrito** en `contabilidad.js` (`_loadAsientos`)"*. **Ese bucle tenía el defecto adentro:** paginaba `range(from, from+999)` **sin `ORDER BY`**. Postgres no garantiza orden entre queries, así que dos páginas con OFFSET distinto pueden repetir filas y omitir otras. Copiarlo tal cual habría cambiado un truncado por un total que se equivoca de otra manera. El helper nuevo **ordena siempre** y el orden no es un parámetro opcional; hay un caso en el test que corre el bucle viejo y muestra que pierde filas.
+
+**Eran 5 puntos de truncado, no 3** (el ítem nombra tres pantallas):
+
+| dónde | qué se truncaba |
+|---|---|
+| `_loadReporteEERR` | los ids de asientos **y** sus líneas — dos truncados en la misma función |
+| `_loadReporteBalance` | chunkeaba ids de a 500, pero **el resultado de cada chunk** se cortaba a 1000: 500 asientos son ~1500 líneas → ~500 perdidas por chunk |
+| `_loadLibroMayor` | toda la historia de la cuenta sin orden **y** el `.in()` de los asientos |
+| `_loadAsientos` (1b) | el bucle de totales: paginaba, pero **sin orden** |
+
+**El chunk de 200 no es lo que arregla el truncado** — lo arregla paginar cada chunk. El 200 es por el largo de la URL del `.in()`. Quedó escrito en el comentario porque el número invita a "optimizarlo" de vuelta a 500 creyendo que reintroduce el bug, y no.
+
+**Lo que cazó el reviewer (APPROVE, 2 MEDIUM):** el fix creaba **un modo de falla nuevo**, la clase de T3.21. Los totales del Libro Diario y el listado eran independientes: antes un error al sumar dejaba el header mal pero **la lista se veía**; al hacer que el helper lance, un fallo del sub-cálculo tumbaba la pestaña entera. Ahora los totales van en su propio `try` y, si fallan, el resumen muestra **`—`** en vez de un número a medias, con el listado intacto. De paso: el `count` no miraba su `error` (un count fallido se leía como "0 asientos") y el fetch de líneas de la página degradaba en silencio dejando **todos** los asientos con `_lineas: []`, o sea visibles pero huecos.
+
+**Rechazado con motivo:** el reviewer pedía `Promise.all` sobre los chunks. No se aplicó — es performance, no corrección; hoy es inalcanzable (`ids ≤ 200` ⇒ un solo chunk); y un `Promise.all` sin límite sobre un conjunto que crece sin techo dispara N requests simultáneos, que es cambiar un problema latente por otro. Una query lenta se ve; un total truncado no. Queda anotado.
+
+**Verificación.** En prod hoy hay **15 asientos y 34 líneas**: el bug es 100% latente y no se puede demostrar contra la base sin sembrarle 1000 asientos, que no se hizo. Se probó donde se ve: dos tests nuevos, **30 checks**. `test-t410-paginacion.js` (15) sobre los helpers — bordes exactos de 1000 y 2000, filtros que sobreviven entre páginas, error que **lanza en vez de devolver el pedazo que trajo**, chunk que propaga. `test-t410-reportes.js` (15) carga `contabilidad.js` **entero** con el DOM stubeado y hace rendir los cuatro consumidores contra **2.500 asientos / 5.000 líneas**: los cuatro dan **$250.000**, que es el número correcto — truncados daban **$100.000**, prolijo y sin un solo error en consola. Incluye el caso que más dolía: un movimiento de enero fuera del período, que es de los primeros en perderse y del que sale el "Saldo anterior" del Mayor.
+
+**Queda anotado, no hecho:** `_loadAsientosManuales` sigue sin paginar (trae sólo `tipo='manual'`, hoy 2 filas; si se truncara, el corte es determinista —los más nuevos— y se ve como "faltan entradas", no como un total que miente). El paso 3 de `_loadAsientos` trae las líneas de 50 asientos: necesitaría 20 líneas por asiento para tocar el techo.
 
 ---
 

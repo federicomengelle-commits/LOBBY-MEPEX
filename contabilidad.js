@@ -61,6 +61,8 @@ const ContabilidadModule = {
     _diarioPagina: 0,
     _diarioTotal: 0,
     _diarioTotales: { debe: 0, haber: 0, count: 0 },
+    _diarioError: false,        // falló la consulta (≠ "no hay asientos")
+    _diarioTotalesFiables: true, // los totales se pudieron sumar enteros
     _diarioSearchDebounce: null,
 
     // Libro mayor state
@@ -2682,7 +2684,56 @@ const ContabilidadModule = {
         `;
     },
 
+    // ─── Paginación de conjuntos grandes (T4.10) ────────────────────────────
+    // PostgREST corta en 1000 filas y no avisa: el reporte renderiza prolijo con
+    // números incompletos. Todo conjunto que pueda pasar de 1000 se trae por acá.
+
+    /**
+     * Trae TODAS las filas de una consulta, de a 1000.
+     * @param {function} build    () => query. Se re-invoca en cada página: el
+     *   builder de supabase-js no se puede reusar con otro .range().
+     * @param {string} orderCol   columna de orden estable. Es obligatoria a
+     *   propósito: sin ORDER BY, dos páginas con OFFSET distinto pueden repetir
+     *   u omitir filas — paginar sin orden es otra forma del mismo bug que esto
+     *   viene a arreglar.
+     * @throws el error de PostgREST. Devolver un conjunto parcial en silencio es
+     *   exactamente lo que hacía el código viejo.
+     */
+    async _fetchAll(build, orderCol = 'id') {
+        const PAGE = 1000;
+        const out = [];
+        for (let from = 0; ; from += PAGE) {
+            const { data, error } = await build()
+                .order(orderCol, { ascending: true })
+                .range(from, from + PAGE - 1);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            out.push(...data);
+            if (data.length < PAGE) break;
+        }
+        return out;
+    },
+
+    /**
+     * Líneas de un conjunto de asientos. Chunkea los ids (una URL con 1000 UUIDs
+     * adentro de un IN se pasa de largo) y pagina cada chunk: 500 asientos son
+     * ~1500 líneas, que es justo lo que se truncaba a 1000.
+     */
+    async _fetchLineasDeAsientos(ids, select) {
+        const CHUNK = 200;
+        const out = [];
+        for (let i = 0; i < ids.length; i += CHUNK) {
+            const chunk = ids.slice(i, i + CHUNK);
+            const rows = await this._fetchAll(() => supabaseClient
+                .from('asiento_lineas').select(select).in('asiento_id', chunk));
+            out.push(...rows);
+        }
+        return out;
+    },
+
     async _loadAsientos() {
+        this._diarioError = false;
+        this._diarioTotalesFiables = true;
         try {
             // Filtros compartidos por las queries de count / totales / listado.
             const canal = this._getCanalFilter();
@@ -2699,21 +2750,28 @@ const ContabilidadModule = {
             const countRes = await applyFilters(
                 supabaseClient.from('asientos').select('id', { count: 'exact', head: true }).eq('_deleted', false)
             );
+            if (countRes.error) throw countRes.error;   // si no, un count fallido se lee como "0 asientos"
             this._diarioTotal = countRes.count || 0;
 
             // 1b. Totales sobre TODOS los asientos filtrados — paginado para no
             // truncar a las primeras 1000 filas que PostgREST devuelve por defecto
             // (antes los totales se subvaluaban con >1000 asientos). (Fase 12.D)
-            let totDebe = 0, totHaber = 0, from = 0;
-            const TOT_PAGE = 1000;
-            while (true) {
-                const { data: page, error: pErr } = await applyFilters(
-                    supabaseClient.from('asientos').select('total_debe, total_haber').eq('_deleted', false)
-                ).range(from, from + TOT_PAGE - 1);
-                if (pErr || !page || page.length === 0) break;
-                for (const a of page) { totDebe += parseFloat(a.total_debe) || 0; totHaber += parseFloat(a.total_haber) || 0; }
-                if (page.length < TOT_PAGE) break;
-                from += TOT_PAGE;
+            // El bucle anterior paginaba SIN orden: dos páginas con OFFSET distinto
+            // podían repetir u omitir asientos. Ahora va por _fetchAll, que ordena. (T4.10)
+            // Va en su propio try: el resumen y el listado son independientes, y no
+            // corresponde que un fallo al sumar los totales deje al usuario sin la
+            // lista que sí se pudo traer. Antes el bucle cortaba y mostraba un total
+            // incompleto como si fuera bueno; ahora el resumen dice que no lo es.
+            let totDebe = 0, totHaber = 0;
+            try {
+                const todos = await this._fetchAll(() => applyFilters(
+                    supabaseClient.from('asientos').select('id, total_debe, total_haber').eq('_deleted', false)
+                ));
+                for (const a of todos) { totDebe += parseFloat(a.total_debe) || 0; totHaber += parseFloat(a.total_haber) || 0; }
+                this._diarioTotalesFiables = true;
+            } catch (eTot) {
+                console.error('[Contabilidad] Totales del diario:', eTot);
+                this._diarioTotalesFiables = false;
             }
             this._diarioTotales = { debe: totDebe, haber: totHaber, count: this._diarioTotal };
 
@@ -2738,7 +2796,11 @@ const ContabilidadModule = {
                     .select('*, plan_cuentas ( codigo, nombre )')
                     .in('asiento_id', ids)
                     .order('orden');
-                if (lineasErr) console.warn('[Contabilidad] Error loading lineas:', lineasErr);
+                // Un error acá deja a TODOS los asientos de la página con `_lineas: []`
+                // —no sólo a los que se hubieran truncado— y el detalle expandible los
+                // muestra vacíos, como si el asiento no tuviera movimientos. Lanzarlo
+                // es preferible a un asiento que se ve hueco. (T4.10)
+                if (lineasErr) throw lineasErr;
 
                 // Map lines to asientos
                 const lineasMap = {};
@@ -2755,6 +2817,10 @@ const ContabilidadModule = {
             this._diarioAsientos = asientos || [];
         } catch (e) {
             console.error('[Contabilidad] Error loading asientos:', e);
+            // Distinto de "no hay asientos": si falla la consulta, decirlo. Con
+            // ceros y el cartel de vacío, un error de red se lee como "no hay
+            // movimientos en el período". (T4.10)
+            this._diarioError = true;
             this._diarioAsientos = [];
             this._diarioTotal = 0;
             this._diarioTotales = { debe: 0, haber: 0, count: 0 };
@@ -2770,7 +2836,12 @@ const ContabilidadModule = {
         if (!el) return;
 
         if (!this._diarioAsientos.length) {
-            el.innerHTML = `
+            el.innerHTML = this._diarioError ? `
+                <div class="cont-empty">
+                    <div class="cont-empty-icon">\u26a0\ufe0f</div>
+                    <div class="cont-empty-text">No se pudieron cargar los asientos. Reintent\u00e1 en unos segundos.</div>
+                </div>
+            ` : `
                 <div class="cont-empty">
                     <div class="cont-empty-icon">\u{1F4D6}</div>
                     <div class="cont-empty-text">No hay asientos registrados en el per\u00edodo seleccionado.</div>
@@ -2946,15 +3017,20 @@ const ContabilidadModule = {
 
         if (this._diarioTotal === 0) { el.innerHTML = ''; return; }
 
+        // Si la suma de totales falló, mostrar "—" y no un número a medias. (T4.10)
+        const fiable = this._diarioTotalesFiables !== false;
+        const debe  = fiable ? this._formatMoney(this._diarioTotales.debe)  : '—';
+        const haber = fiable ? this._formatMoney(this._diarioTotales.haber) : '—';
+
         el.innerHTML = `
             <div class="cont-diario-summary">
                 <div class="cont-diario-summary-item">
                     <span class="cont-diario-summary-label">Total Debe</span>
-                    <span class="cont-diario-summary-value">${this._formatMoney(this._diarioTotales.debe)}</span>
+                    <span class="cont-diario-summary-value" ${fiable ? '' : 'title="No se pudieron sumar los totales del período"'}>${debe}</span>
                 </div>
                 <div class="cont-diario-summary-item">
                     <span class="cont-diario-summary-label">Total Haber</span>
-                    <span class="cont-diario-summary-value">${this._formatMoney(this._diarioTotales.haber)}</span>
+                    <span class="cont-diario-summary-value" ${fiable ? '' : 'title="No se pudieron sumar los totales del período"'}>${haber}</span>
                 </div>
                 <div class="cont-diario-summary-item">
                     <span class="cont-diario-summary-label">Asientos</span>
@@ -3115,39 +3191,47 @@ const ContabilidadModule = {
             const canal = this._getCanalFilter();
             const esDeudora = cuenta.naturaleza === 'deudora';
 
-            // 2. Fetch ALL asiento_lineas for this cuenta
-            const { data: allLineas, error: linErr } = await supabaseClient
+            // 2. Fetch ALL asiento_lineas for this cuenta.
+            // Sin paginar, PostgREST devolvía 1000 líneas y —al no haber ORDER BY—
+            // cuáles 1000 no estaba definido. Es el peor de los truncados: el
+            // "Saldo anterior" se calcula con los movimientos más viejos, que son
+            // justo los que se perdían. No daba error: daba un número plausible
+            // y equivocado. (T4.10)
+            const allLineas = await this._fetchAll(() => supabaseClient
                 .from('asiento_lineas')
                 .select('*')
-                .eq('cuenta_id', this._mayorCuentaId);
+                .eq('cuenta_id', this._mayorCuentaId));
 
-            if (linErr) console.warn('[Mayor] Error cargando líneas:', linErr.message);
-
-            if (!allLineas || allLineas.length === 0) {
+            if (allLineas.length === 0) {
                 this._mayorMovimientos = [];
                 this._mayorSaldoAnterior = 0;
                 this._renderMayorContent(cuenta, periodoLabel);
                 return;
             }
 
-            // 3. Fetch all related asientos
+            // 3. Fetch all related asientos. Chunkeado + paginado: un IN con miles
+            // de UUIDs no entra en la URL, y el resultado también se truncaba a 1000.
+            // Los movimientos cuyo asiento no aparecía se descartaban en silencio
+            // más abajo (`if (!asiento) continue`). (T4.10)
             const asientoIds = [...new Set(allLineas.map(l => l.asiento_id))];
-
-            let asientosQuery = supabaseClient
-                .from('asientos')
-                .select('*')
-                .eq('_deleted', false)
-                .in('id', asientoIds);
-
-            // Only apply canal filter if it's a clean string
-            if (canal && typeof canal === 'string' && (canal === 'oficial' || canal === 'interno')) {
-                asientosQuery = asientosQuery.eq('canal', canal);
+            const CHUNK = 200;
+            const asientos = [];
+            for (let i = 0; i < asientoIds.length; i += CHUNK) {
+                const chunk = asientoIds.slice(i, i + CHUNK);
+                const page = await this._fetchAll(() => {
+                    let q = supabaseClient
+                        .from('asientos')
+                        .select('*')
+                        .eq('_deleted', false)
+                        .in('id', chunk);
+                    if (canal === 'oficial' || canal === 'interno') q = q.eq('canal', canal);
+                    return q;
+                });
+                asientos.push(...page);
             }
 
-            const { data: asientos, error: asErr } = await asientosQuery;
-            if (asErr) console.warn('[Mayor] Error cargando asientos:', asErr.message);
             const asientosMap = {};
-            (asientos || []).forEach(a => { asientosMap[a.id] = a; });
+            asientos.forEach(a => { asientosMap[a.id] = a; });
 
             // 4. Build joined list, split by period
             const movimientosAntes = [];
@@ -4537,15 +4621,36 @@ const ContabilidadModule = {
 
         const { desde, hasta } = this._getReportePeriodoRange();
 
-        // Step 1: fetch asiento IDs
-        let query = supabaseClient.from('asientos').select('id')
-            .eq('_deleted', false)
-            .gte('fecha', desde).lte('fecha', hasta);
         const canal = this._getCanalFilter();
-        if (canal) query = query.eq('canal', canal);
-        const { data: asientos, error: errA } = await query;
 
-        if (errA || !asientos || asientos.length === 0) {
+        // Steps 1 y 2: ids de asientos + sus l\u00edneas. Los dos conjuntos pueden pasar
+        // de 1000 filas y los dos se truncaban en silencio, as\u00ed que van paginados:
+        // el reporte sal\u00eda prolijo con n\u00fameros incompletos. (T4.10)
+        let asientos = [], lineas = [];
+        try {
+            asientos = await this._fetchAll(() => {
+                let q = supabaseClient.from('asientos').select('id')
+                    .eq('_deleted', false)
+                    .gte('fecha', desde).lte('fecha', hasta);
+                if (canal) q = q.eq('canal', canal);
+                return q;
+            });
+            if (asientos.length > 0) {
+                lineas = await this._fetchLineasDeAsientos(
+                    asientos.map(a => a.id),
+                    'id, monto, tipo_movimiento, plan_cuentas(codigo, nombre, tipo, codigo_padre)'
+                );
+            }
+        } catch (e) {
+            // Antes un error ca\u00eda en el mismo cartel que "no hay movimientos".
+            console.error('[Contabilidad] EERR:', e);
+            container.innerHTML = '<div class="cont-empty"><div class="cont-empty-text">Error al cargar datos.</div></div>';
+            const exportWrapErr = document.getElementById('contRepExportWrap');
+            if (exportWrapErr) exportWrapErr.innerHTML = '';
+            return;
+        }
+
+        if (asientos.length === 0) {
             container.innerHTML = `
                 <div class="cont-empty">
                     <div class="cont-empty-icon">\u{1F4CA}</div>
@@ -4553,19 +4658,6 @@ const ContabilidadModule = {
                 </div>`;
             const exportWrap = document.getElementById('contRepExportWrap');
             if (exportWrap) exportWrap.innerHTML = '';
-            return;
-        }
-
-        const ids = asientos.map(a => a.id);
-
-        // Step 2: fetch lines with plan_cuentas
-        const { data: lineas, error: errL } = await supabaseClient
-            .from('asiento_lineas')
-            .select('monto, tipo_movimiento, plan_cuentas(codigo, nombre, tipo, codigo_padre)')
-            .in('asiento_id', ids);
-
-        if (errL || !lineas) {
-            container.innerHTML = '<div class="cont-empty"><div class="cont-empty-text">Error al cargar datos.</div></div>';
             return;
         }
 
@@ -4734,14 +4826,37 @@ const ContabilidadModule = {
         const hasta = `${y}-${String(m).padStart(2,'0')}-${new Date(y, m, 0).getDate()}`;
         const canal = this._getCanalFilter();
 
-        // Paso 1: traer todos los asientos hasta la fecha de corte
-        let q = supabaseClient.from('asientos').select('id')
-            .eq('_deleted', false)
-            .lte('fecha', hasta);
-        if (canal) q = q.eq('canal', canal);
-        const { data: asientos, error: errA } = await q;
+        // Pasos 1 y 2: asientos hasta la fecha de corte + sus líneas.
+        // El chunkeo de a 500 no alcanzaba porque el resultado de cada chunk se
+        // truncaba a 1000: 500 asientos son ~1500 líneas, así que se perdían ~500
+        // por chunk y el Balance empezaba a mentir a ~334 asientos, o cuadraba de
+        // casualidad. Lo que arregla el truncado es la PAGINACIÓN de cada chunk;
+        // el chunk de 200 es por el largo de la URL del `.in()`, no por el techo
+        // de filas —con paginación, un chunk de 500 vendría igual de completo. (T4.10)
+        let asientos = [], lineasAll = [];
+        try {
+            asientos = await this._fetchAll(() => {
+                let q = supabaseClient.from('asientos').select('id')
+                    .eq('_deleted', false)
+                    .lte('fecha', hasta);
+                if (canal) q = q.eq('canal', canal);
+                return q;
+            });
+            if (asientos.length > 0) {
+                lineasAll = await this._fetchLineasDeAsientos(
+                    asientos.map(a => a.id),
+                    'id, monto, tipo_movimiento, plan_cuentas(codigo, nombre, tipo, codigo_padre)'
+                );
+            }
+        } catch (e) {
+            console.error('[Contabilidad] Balance:', e);
+            container.innerHTML = '<div class="cont-empty"><div class="cont-empty-text">Error al cargar líneas de asientos.</div></div>';
+            const exportWrapErr = document.getElementById('contRepExportWrap');
+            if (exportWrapErr) exportWrapErr.innerHTML = '';
+            return;
+        }
 
-        if (errA || !asientos || asientos.length === 0) {
+        if (asientos.length === 0) {
             container.innerHTML = `
                 <div class="cont-empty">
                     <div class="cont-empty-icon">⚖️</div>
@@ -4750,25 +4865,6 @@ const ContabilidadModule = {
             const exportWrap = document.getElementById('contRepExportWrap');
             if (exportWrap) exportWrap.innerHTML = '';
             return;
-        }
-
-        const ids = asientos.map(a => a.id);
-
-        // Paso 2: líneas con datos de la cuenta. Como ids puede ser largo,
-        // chunkeo de a 500 por las limitaciones del operator IN de PostgREST.
-        const lineasAll = [];
-        const chunkSize = 500;
-        for (let i = 0; i < ids.length; i += chunkSize) {
-            const chunk = ids.slice(i, i + chunkSize);
-            const { data: lineas, error: errL } = await supabaseClient
-                .from('asiento_lineas')
-                .select('monto, tipo_movimiento, plan_cuentas(codigo, nombre, tipo, codigo_padre)')
-                .in('asiento_id', chunk);
-            if (errL) {
-                container.innerHTML = '<div class="cont-empty"><div class="cont-empty-text">Error al cargar líneas de asientos.</div></div>';
-                return;
-            }
-            lineasAll.push(...(lineas || []));
         }
 
         // Paso 3: agrupar por cuenta y calcular saldos
