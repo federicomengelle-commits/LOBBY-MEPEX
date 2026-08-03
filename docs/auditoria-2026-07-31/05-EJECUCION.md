@@ -238,6 +238,34 @@ El orden que se respetó, y que sigue valiendo si hay que rehacerlo: **PARTE 1**
 
 ---
 
+## ✅ Verificación en prod al cierre de la sesión 5 (2026-08-03)
+
+Prod sirviendo `app.js?v=36` · `api.js?v=110` · `rrhh.js?v=19` · `contabilidad.js?v=22`.
+
+| qué | cómo | resultado |
+|---|---|---|
+| la app carga | `App.ensureAppLoaded()` forzado en prod | **50 scripts, 0 errores, 865 ms** |
+| pantallas de `pm` | 7 consultas con la sesión de Meli (asignar · cargas · flota · transporte · ayudantes · operativas · documentos) | todas OK |
+| pantallas de `admin` | 5 con la sesión de Sofi (RRHH · Rendimiento · tarifas · alerta nueva) | todas OK |
+| contabilidad | partida doble | **$18.984.910 debe = haber ✓** |
+| T4.7 | leer CBU / cambiar CBU / `select(*)` como pm | bloqueado ✓ |
+
+**No verificado:** el render visual de las pantallas — el Chrome de Fede no estaba conectado. Lo de datos y carga está cubierto; un error de dibujo no se ve desde acá.
+
+### ⚠️ Hallazgo de datos: 40 días de jornal valuados en $0
+
+**El 2026-08-03 06:16 alguien apretó "🔄 Traer de asignaciones" en *Feria del Libro de Campana*** y se crearon **12 líneas de jornal, 34 días, todas en $0** (en ese momento el aviso de T4.6 todavía no estaba deployado). Estado real de la mano de obra en todo el sistema:
+
+| evento | días | monto |
+|---|---|---|
+| Feria del Libro de Campana | 34 | **$0** |
+| Beauty Day | 13 | $200 |
+| Expo CAPPI 2026 | 6 | **$0** |
+
+**La ganancia de esos tres eventos está inflada**: el rubro más pesado de un armado computa en cero. No es regresión —sale de A14, con `costo_dia_referencial` NULL en las 25 personas— pero ahora hay más líneas afectadas. Se corrige con **T5.3** (cargar el jornal en RRHH → Nómina) y volviendo a sincronizar: el sync respeta las líneas con pago y recalcula las pendientes. Post-T4.6 el botón **nombra** a quién deja en $0.
+
+---
+
 ## Los tres gates que no se pueden romper
 
 ```
