@@ -470,7 +470,39 @@ const HomeModule = {
     _db() { return (typeof supabaseClient !== 'undefined' && supabaseClient) || (window.API && API.supabase) || null; },
     // El lobby muestra SIEMPRE la vista oficial (el toggle Oficial/Interno vive solo
     // en Finanzas; acá distorsionaba). El canal interno se consulta desde Finanzas.
+    // T4.15: el lobby sigue mostrando SIEMPRE la vista oficial — esa decisión
+    // ya estaba tomada y documentada arriba ("acá distorsionaba"), así que no
+    // se revierte de prepo. Lo que se arregla es el SILENCIO, que es lo que
+    // marcó la auditoría: un superadmin con el toggle de Finanzas en Total o
+    // Interno veía el home contando otra cosa —hoy $5.000.000 de diferencia— sin
+    // nada que se lo dijera, y con toda razón lo leía como que un número estaba
+    // mal. El chip aparece SÓLO cuando hay divergencia; si el toggle está en
+    // Oficial no se muestra nada y el home queda igual que siempre.
+    //
+    // 👉 Si Fede prefiere que el home SIGA al toggle en vez de avisar, es
+    //    cambiar `_canal()` por el valor de `_toggleFinanzas()` (null si
+    //    'total', igual que `_getCanalFilter` de finanzas.js). Una línea.
     _canal() { return 'oficial'; },
+    _toggleFinanzas() {
+        if (typeof Auth === 'undefined' || !Auth.isSuperAdmin()) return 'oficial';
+        const v = localStorage.getItem('finanzas_vista_canal');
+        return ['oficial', 'interno', 'total'].includes(v) ? v : 'oficial';
+    },
+    _chipCanal() {
+        const v = this._toggleFinanzas();
+        if (v === 'oficial') return '';   // no hay divergencia: sin ruido
+        const otro = v === 'total' ? 'Oficial + Interno' : 'sólo Interno';
+        return `<span class="home-chip-canal" title="El home siempre muestra el canal oficial. En Finanzas tenés el toggle en «${otro}», por eso los números no van a coincidir.">Sólo oficial · en Finanzas ves ${otro}</span>`;
+    },
+    // La misma advertencia, para las celdas angostas de la banda superior, donde
+    // el pill no entra. Es el caso que la auditoría usó como evidencia:
+    // `kpi-margen` en $0 contra el Panel de Finanzas en $5.000.000.
+    _marcaCanal() {
+        const v = this._toggleFinanzas();
+        if (v === 'oficial') return '';
+        const otro = v === 'total' ? 'Oficial + Interno' : 'sólo Interno';
+        return `<sup class="home-marca-canal" title="Sólo canal oficial. En Finanzas tenés el toggle en «${otro}»: los números no van a coincidir.">*</sup>`;
+    },
     _todayStr(now) { return fechaISOLocal(now); },
     _offsetStr(now, days) { return fechaISOLocal(new Date(now.getTime() + days * 86400000)); },
     _monthRange(now) {
@@ -505,7 +537,7 @@ const HomeModule = {
     },
 
     // Render helpers compartidos
-    _kpiBody(value, sub) { return `<div class="home-kpi-value">${this._esc(value)}</div>${sub ? `<div class="home-kpi-sub">${this._esc(sub)}</div>` : ''}`; },
+    _kpiBody(value, sub, marca) { return `<div class="home-kpi-value">${this._esc(value)}${marca || ''}</div>${sub ? `<div class="home-kpi-sub">${this._esc(sub)}</div>` : ''}`; },
     _bignum(value, sub, color) { return `<div class="home-bignum"${color ? ` style="color:${color}"` : ''}>${this._esc(value)}</div>${sub ? `<div class="home-kpi-sub">${this._esc(sub)}</div>` : ''}`; },
     _li(main, val, sub, color) {
         return `<div class="home-li"><div class="home-li-l">${color ? `<span class="home-li-dot" style="background:${color}"></span>` : ''}<div style="min-width:0;flex:1"><div class="home-li-main">${this._esc(main)}</div>${sub ? `<div class="home-li-sub">${this._esc(sub)}</div>` : ''}</div></div>${val ? `<div class="home-li-val">${val}</div>` : ''}</div>`;
@@ -540,16 +572,16 @@ const HomeModule = {
             // T4.5: facturado NETO — `_sum` no sabe de signos y una nota de
             // crédito sumaba como si fuera una venta más.
             const facturado = (facR.data || []).reduce((s, r) => s + (Number(r.total) || 0) * signoComprobante(r.tipo), 0);
-            const porCobrar = (cobrarR.data || []).reduce((s, r) => s + (Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0), 0);
+            // T4.14: espejo del clamp de finanzas.js — el KPI y el desglose de
+            // aging tienen que contar con la misma regla.
+            const porCobrar = (cobrarR.data || []).reduce((s, r) => s + Math.max(0, (Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0)), 0);
             const porPagar = this._sum(pagarR.data, 'monto_estimado');
             const gastoProm = this._sum(gastoR.data, 'monto') / 3;
-            // aging de cobros
-            const aging = { b0: 0, b30: 0, b60: 0 };
-            (cobrarR.data || []).forEach(r => {
-                const pend = (Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0);
-                const days = r.fecha_estimada ? Math.floor((new Date(today) - new Date(r.fecha_estimada.slice(0, 10))) / 86400000) : 0;
-                if (days > 60) aging.b60 += pend; else if (days > 30) aging.b30 += pend; else aging.b0 += pend;
-            });
+            // T4.14: helper único con Finanzas (`agingCobros`, components.js).
+            // Antes acá una cuota sin `fecha_estimada` caía en `days = 0` y se
+            // enterraba en el bucket "0-30 días" — $30.000.000 presentados como
+            // deuda fresca. Ahora tienen su propio bucket.
+            const aging = agingCobros(cobrarR.data, fechaLocal(today) || new Date());
             // saldo por cuenta vía saldos_mensuales (contable) — igual que finanzas (piece 3):
             // saldo = saldo_inicial + Σ último saldo_final por canal. Capta el ciclo del cheque
             // (depósito/débito = asientos de clearing) → un cheque en tránsito no distorsiona el
@@ -657,16 +689,16 @@ const HomeModule = {
         'kpi-margen': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._kpiBody('—', 'sin datos');
             const m = f.cobrado ? Math.round((f.cobrado - f.pagado) / f.cobrado * 100) : null;
-            return this._kpiBody(m == null ? '—' : m + '%', `${this._formatMoney(f.cobrado - f.pagado)} neto (mes)`);
+            return this._kpiBody(m == null ? '—' : m + '%', `${this._formatMoney(f.cobrado - f.pagado)} neto (mes)`, this._marcaCanal());
         },
         'kpi-dias-caja': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._kpiBody('—', 'sin datos');
-            if (!f.gastoProm || f.gastoProm <= 0) return this._kpiBody('∞', `${this._formatMoney(f.saldo)} en caja`);
-            return this._kpiBody(Math.round(f.saldo / (f.gastoProm / 30)) + ' días', `${this._formatMoney(f.saldo)} en caja`);
+            if (!f.gastoProm || f.gastoProm <= 0) return this._kpiBody('∞', `${this._formatMoney(f.saldo)} en caja`, this._marcaCanal());
+            return this._kpiBody(Math.round(f.saldo / (f.gastoProm / 30)) + ' días', `${this._formatMoney(f.saldo)} en caja`, this._marcaCanal());
         },
         'kpi-cash30': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._kpiBody('—', 'sin datos');
-            return this._kpiBody(this._formatMoney(f.saldo + f.porCobrar - f.porPagar), `+${this._formatMoney(f.porCobrar)} −${this._formatMoney(f.porPagar)}`);
+            return this._kpiBody(this._formatMoney(f.saldo + f.porCobrar - f.porPagar), `+${this._formatMoney(f.porCobrar)} −${this._formatMoney(f.porPagar)}`, this._marcaCanal());
         },
         // ── KPIs venta ──
         'kpi-conversion': async function (ctx) {
@@ -762,15 +794,17 @@ const HomeModule = {
         'pulso-financiero': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._empty('Sin datos financieros');
             const cell = (lbl, val, color) => `<div class="home-pulse-cell"><span class="home-pulse-val"${color ? ` style="color:${color}"` : ''}>${this._formatMoney(val)}</span><span class="home-pulse-lbl">${lbl}</span></div>`;
-            return `<div class="home-pulse">${cell('Cobrado mes', f.cobrado, '#00CC88')}${cell('Pagado mes', f.pagado, '#ff6b6b')}${cell('Facturado mes', f.facturado, '#00A9C1')}${cell('Saldo', f.saldo)}${cell('Por cobrar', f.porCobrar, '#00CC88')}${cell('Por pagar 30d', f.porPagar, '#F28D15')}</div>` + this._more('Abrir Finanzas', 'finanzas');
+            return this._chipCanal() + `<div class="home-pulse">${cell('Cobrado mes', f.cobrado, '#00CC88')}${cell('Pagado mes', f.pagado, '#ff6b6b')}${cell('Facturado mes', f.facturado, '#00A9C1')}${cell('Saldo', f.saldo)}${cell('Por cobrar', f.porCobrar, '#00CC88')}${cell('Por pagar 30d', f.porPagar, '#F28D15')}</div>` + this._more('Abrir Finanzas', 'finanzas');
         },
         'cobros-pendientes': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._empty('Sin datos');
             if (f.porCobrar <= 0) return this._empty('Sin cobros pendientes');
-            let html = this._bignum(this._formatMoney(f.porCobrar), 'por cobrar', '#00CC88');
+            let html = this._chipCanal() + this._bignum(this._formatMoney(f.porCobrar), 'por cobrar', '#00CC88');
             if (ctx.role === 'admin') {
-                const a = f.aging, max = Math.max(a.b0, a.b30, a.b60, 1);
-                html += `<div class="home-aging" style="margin-top:12px">${this._agingRow('0-30 días', a.b0, max, '#00CC88')}${this._agingRow('30-60 días', a.b30, max, '#F28D15')}${this._agingRow('+60 días', a.b60, max, '#ff4444')}</div>`;
+                const a = f.aging, max = Math.max(a.b0, a.b30, a.b60, a.sinFecha, 1);
+                // T4.14: la barra "Sin fecha" sólo aparece si hay algo — no ensucia
+                // el widget cuando todas las cuotas tienen su vencimiento cargado.
+                html += `<div class="home-aging" style="margin-top:12px">${this._agingRow('0-30 días', a.b0, max, '#00CC88')}${this._agingRow('30-60 días', a.b30, max, '#F28D15')}${this._agingRow('+60 días', a.b60, max, '#ff4444')}${a.sinFecha > 0 ? this._agingRow('Sin fecha', a.sinFecha, max, '#888') : ''}</div>`;
             }
             return html + this._more('Ir a cobros', 'finanzas');
         },
@@ -784,10 +818,10 @@ const HomeModule = {
             }) || [];
             const f = ctx.role === 'admin' ? await this._finData(ctx) : null;
             if (!data.length) {
-                if (f && f.porPagar > 0) return this._bignum(this._formatMoney(f.porPagar), 'por pagar (30d)', '#F28D15') + this._more('Ir a pagos', 'finanzas');
+                if (f && f.porPagar > 0) return this._chipCanal() + this._bignum(this._formatMoney(f.porPagar), 'por pagar (30d)', '#F28D15') + this._more('Ir a pagos', 'finanzas');
                 return this._empty('Sin pagos próximos');
             }
-            const head = (f && f.porPagar > 0) ? `<div class="home-kpi-sub" style="margin-bottom:8px">Total 30d: <strong>${this._formatMoney(f.porPagar)}</strong></div>` : '';
+            const head = (f && f.porPagar > 0) ? (this._chipCanal() + `<div class="home-kpi-sub" style="margin-bottom:8px">Total 30d: <strong>${this._formatMoney(f.porPagar)}</strong></div>`) : '';
             return head + data.slice(0, 6).map(v => this._li(v.concepto, this._formatMoney(v.monto_estimado), this._dayLabel(v.fecha_vencimiento, ctx.now), '#F28D15')).join('') + this._more('Ir a pagos', 'finanzas');
         },
         'pipeline-comercial': async function (ctx) {
@@ -838,12 +872,12 @@ const HomeModule = {
                 if (canal) q = q.eq('canal', canal);
                 const { data } = await q; return this._sum(data, 'monto');
             });
-            return this._bignum(this._formatMoney(r || 0), 'sueldos/jornales (mes)') + this._more('Ver RRHH', 'rrhh');
+            return this._chipCanal() + this._bignum(this._formatMoney(r || 0), 'sueldos/jornales (mes)') + this._more('Ver RRHH', 'rrhh');
         },
         'saldos-cuenta': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._empty('Sin datos');
             if (!f.cuentasSaldos.length) return this._empty('Sin cuentas activas');
-            return f.cuentasSaldos.map(c => this._li(c.nombre, this._formatMoney(c.saldo), c.tipo || '')).join('') + this._more('Ver cuentas', 'finanzas');
+            return this._chipCanal() + f.cuentasSaldos.map(c => this._li(c.nombre, this._formatMoney(c.saldo), c.tipo || '')).join('') + this._more('Ver cuentas', 'finanzas');
         },
         'conciliacion-pendiente': async function (ctx) {
             const db = this._db();
@@ -857,7 +891,7 @@ const HomeModule = {
         },
         'ritmo-cp': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._empty('Sin datos');
-            return `<div class="home-pulse" style="grid-template-columns:1fr 1fr">` +
+            return this._chipCanal() + `<div class="home-pulse" style="grid-template-columns:1fr 1fr">` +
                 `<div class="home-pulse-cell"><span class="home-pulse-val" style="color:#00CC88">${this._formatMoney(f.porCobrar)}</span><span class="home-pulse-lbl">Por cobrar</span></div>` +
                 `<div class="home-pulse-cell"><span class="home-pulse-val" style="color:#F28D15">${this._formatMoney(f.porPagar)}</span><span class="home-pulse-lbl">Por pagar 30d</span></div></div>` +
                 `<div class="home-kpi-sub" style="margin-top:8px">DSO/DPO en días: próximamente</div>`;
@@ -1116,6 +1150,10 @@ const HomeModule = {
         .home-bar { height:5px; border-radius:3px; background:#1d1d1d; overflow:hidden; margin-top:7px; }
         .home-bar > span { display:block; height:100%; background:linear-gradient(90deg,#9B7DFF,#00A9C1); border-radius:3px; }
 
+        .home-chip-canal { display:inline-block; margin-bottom:9px; padding:2px 9px; border:1px solid #F28D15; border-radius:99px;
+                           color:#F28D15; font-size:.66rem; font-weight:700; letter-spacing:.3px;
+                           font-family:var(--font-mono,'Space Mono',monospace); background:rgba(242,141,21,.08); cursor:help; }
+        .home-marca-canal { color:#F28D15; font-size:.7em; font-weight:700; margin-left:2px; cursor:help; }
         .home-aging { display:flex; flex-direction:column; gap:8px; }
         .home-aging-row { display:grid; grid-template-columns:88px 1fr auto; align-items:center; gap:10px; }
         .home-aging-lbl { font-size:.72rem; color:var(--text-muted,#888); white-space:nowrap; }

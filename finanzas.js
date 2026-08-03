@@ -6263,7 +6263,12 @@ const FinanzasModule = {
         // Por cobrar (plan_cobro_items pendientes)
         try {
             const { data } = await supabaseClient.from('plan_cobro_items').select('monto, monto_cobrado').eq('_deleted', false).in('estado', ['pendiente', 'parcial', 'vencido']);
-            kpi.porCobrar = (data || []).reduce((s, r) => s + ((Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0)), 0);
+            // T4.14: misma regla que `agingCobros` — una cuota con `monto_cobrado`
+            // mayor que su `monto` (dato inconsistente, la tabla los tiene) aportaba
+            // un saldo NEGATIVO y descontaba de lo que falta cobrar. Clampear acá y
+            // no en el desglose dejaría el KPI y sus barras contando distinto: el
+            // mismo error de "media comparación" que dejó documentado T3.24.
+            kpi.porCobrar = (data || []).reduce((s, r) => s + Math.max(0, (Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0)), 0);
         } catch (_) {}
 
         // Por pagar (vencimientos pendientes próx 30 días)
@@ -6448,20 +6453,17 @@ const FinanzasModule = {
         const canvas = document.getElementById('finChartAging');
         if (!canvas) return;
 
-        const now = new Date();
-        const buckets = { '0-30 días': 0, '31-60 días': 0, '60+ días': 0 };
-
+        // T4.14: helper único con el Lobby (`agingCobros`, components.js). Antes
+        // esta pantalla DESCARTABA las cuotas sin fecha estimada y el Lobby las
+        // metía en "0-30 días": el mismo aging daba $4.000.000 acá y $34.000.000
+        // allá. El cuarto bucket las muestra sin mentir sobre su antigüedad.
+        let ag = { b0: 0, b30: 0, b60: 0, sinFecha: 0 };
         try {
             const { data } = await supabaseClient.from('plan_cobro_items').select('monto, monto_cobrado, fecha_estimada').eq('_deleted', false).in('estado', ['pendiente', 'parcial', 'vencido']);
-            (data || []).forEach(item => {
-                if (!item.fecha_estimada) return;
-                const diff = Math.floor((now - new Date(item.fecha_estimada)) / 86400000);
-                const pending = (Number(item.monto) || 0) - (Number(item.monto_cobrado) || 0);
-                if (diff <= 30) buckets['0-30 días'] += pending;
-                else if (diff <= 60) buckets['31-60 días'] += pending;
-                else buckets['60+ días'] += pending;
-            });
+            ag = agingCobros(data, new Date());
         } catch (_) {}
+
+        const buckets = { '0-30 días': ag.b0, '31-60 días': ag.b30, '60+ días': ag.b60, 'Sin fecha': ag.sinFecha };
 
         this._charts.aging = new Chart(canvas, {
             type: 'bar',
@@ -6469,8 +6471,8 @@ const FinanzasModule = {
                 labels: Object.keys(buckets),
                 datasets: [{
                     data: Object.values(buckets),
-                    backgroundColor: ['rgba(0,204,136,0.6)', 'rgba(242,141,21,0.6)', 'rgba(232,72,85,0.6)'],
-                    borderColor: ['#00CC88', '#F28D15', '#E84855'],
+                    backgroundColor: ['rgba(0,204,136,0.6)', 'rgba(242,141,21,0.6)', 'rgba(232,72,85,0.6)', 'rgba(136,136,136,0.5)'],
+                    borderColor: ['#00CC88', '#F28D15', '#E84855', '#888'],
                     borderWidth: 1,
                 }],
             },
@@ -6856,12 +6858,16 @@ const FinanzasModule = {
 
         const rows = proyKeys.map(pid => {
             const facturado = facMap[pid] || 0, cobrado = cobMap[pid] || 0, costo = costoMap[pid] || 0;
-            const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
+            // T4.16 (hallazgo N6): sin costo imputado la fórmula da 100%, que no es una
+            // rentabilidad excelente sino un dato que falta. La columna Costo de
+            // al lado ya muestra "—"; afirmar 100% en la celda siguiente es la
+            // pantalla contradiciéndose. `null` = no se puede calcular.
+            const rent = (cobrado > 0 && costo > 0) ? Math.round(((cobrado - costo) / cobrado) * 100) : null;
             return { nombre: this._proyectosMap[pid], presupuesto: presupuestoMap[pid] || 0, facturado, cobrado, costo, rent };
         });
 
         rows.sort((a, b) => b.cobrado - a.cobrado);
-        this._lastReportData = rows.map(r => ({ proyecto: r.nombre, presupuesto: r.presupuesto, facturado: r.facturado, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent + '%' }));
+        this._lastReportData = rows.map(r => ({ proyecto: r.nombre, presupuesto: r.presupuesto, facturado: r.facturado, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent === null ? '—' : r.rent + '%' }));
 
         main.innerHTML = `
             <div class="fin-table-wrapper">
@@ -6877,16 +6883,16 @@ const FinanzasModule = {
                     </tr></thead>
                     <tbody>
                         ${rows.map(r => {
-                            const rentColor = r.rent > 20 ? '#00CC88' : r.rent > 0 ? '#F28D15' : '#E84855';
+                            const rentColor = r.rent === null ? 'var(--text-dim)' : r.rent > 20 ? '#00CC88' : r.rent > 0 ? '#F28D15' : '#E84855';
                             const avance = r.presupuesto > 0 ? Math.round((r.cobrado / r.presupuesto) * 100) : null;
                             return `<tr class="fin-row" style="cursor:default;">
                                 <td class="fin-td fin-td-name">${escHtml(r.nombre)}</td>
                                 <td class="fin-td fin-td-money" style="color:#4A90D9;">${r.presupuesto > 0 ? this._formatMoney(r.presupuesto) : '<span style="color:var(--text-dim)">—</span>'}</td>
                                 <td class="fin-td fin-td-money">${this._formatMoney(r.facturado)}</td>
                                 <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
-                                <td class="fin-td fin-td-money" style="color:#E84855;">${this._formatMoney(r.costo)}</td>
+                                <td class="fin-td fin-td-money" style="color:${r.costo > 0 ? '#E84855' : 'var(--text-dim)'};">${r.costo > 0 ? this._formatMoney(r.costo) : '—'}</td>
                                 <td class="fin-td fin-td-money" style="color:var(--text-muted);">${avance != null ? avance + '%' : '<span style="color:var(--text-dim)">—</span>'}</td>
-                                <td class="fin-td fin-td-money" style="color:${rentColor};font-weight:700;">${r.rent}%</td>
+                                <td class="fin-td fin-td-money" style="color:${rentColor};font-weight:700;" ${r.rent === null ? 'title="Sin costos imputados a este proyecto: no se puede calcular"' : ''}>${r.rent === null ? '—' : r.rent + '%'}</td>
                             </tr>`;
                         }).join('')}
                     </tbody>
@@ -6931,12 +6937,14 @@ const FinanzasModule = {
             const cobrado = cobMap[cid] || 0;
             if (cobrado === 0) continue; // sin cobros en el período → no se lista
             const costo = costoMap[cid] || 0;
-            const rent = cobrado > 0 ? Math.round(((cobrado - costo) / cobrado) * 100) : 0;
+            // T4.16: ver la nota del reporte por proyecto. Con la data de hoy,
+            // 6 de 7 clientes daban 100% porque no hay costos imputados.
+            const rent = (cobrado > 0 && costo > 0) ? Math.round(((cobrado - costo) / cobrado) * 100) : null;
             rows.push({ nombre: this._clientesMap[cid], cobrado, costo, rent });
         }
 
         rows.sort((a, b) => b.cobrado - a.cobrado);
-        this._lastReportData = rows.map(r => ({ cliente: r.nombre, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent + '%' }));
+        this._lastReportData = rows.map(r => ({ cliente: r.nombre, cobrado: r.cobrado, costo: r.costo, rentabilidad: r.rent === null ? '—' : r.rent + '%' }));
 
         if (rows.length === 0) {
             main.innerHTML = '<div class="fin-empty"><div class="fin-empty-icon">📊</div><div class="fin-empty-text">Sin datos de clientes en el período</div></div>';
@@ -6960,7 +6968,7 @@ const FinanzasModule = {
                                 <td class="fin-td fin-td-name">${escHtml(r.nombre)}</td>
                                 <td class="fin-td fin-td-money" style="color:#00CC88;">${this._formatMoney(r.cobrado)}</td>
                                 <td class="fin-td fin-td-money" style="color:#E84855;">${r.costo > 0 ? this._formatMoney(r.costo) : '<span style="color:var(--text-dim)">—</span>'}</td>
-                                <td class="fin-td fin-td-money" style="color:${r.rent > 0 ? '#00CC88' : '#E84855'};">${r.rent}%</td>
+                                <td class="fin-td fin-td-money" style="color:${r.rent === null ? 'var(--text-dim)' : r.rent > 0 ? '#00CC88' : '#E84855'};" ${r.rent === null ? 'title="Sin costos imputados a los proyectos de este cliente: no se puede calcular"' : ''}>${r.rent === null ? '—' : r.rent + '%'}</td>
                             </tr>
                         `).join('')}
                     </tbody>

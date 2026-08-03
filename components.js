@@ -138,6 +138,36 @@ window.fechaLocal = function (s) {
     return new Date(y, m - 1, d);
 };
 
+// ── Aging de cobros (T4.14, auditoría 31/07) ────────────────────────────
+// Había DOS implementaciones y diferían en $30.000.000: Finanzas descartaba
+// las cuotas sin `fecha_estimada` (`if (!item.fecha_estimada) return;`) y el
+// Lobby las metía en el bucket "0-30 días" (`fecha_estimada ? … : 0`). Con la
+// data de hoy eso daba $4.000.000 en una pantalla y $34.000.000 en la otra,
+// para el mismo concepto y el mismo día.
+//
+// Ninguna de las dos tenía razón: **enterrar $30M en "0-30 días" miente sobre
+// la antigüedad, y descartarlos hace desaparecer plata a cobrar.** Por eso hay
+// un cuarto bucket explícito: si no tienen fecha, se ven Y se ven aparte.
+//
+// `items` = filas de `plan_cobro_items` con `monto`, `monto_cobrado` y
+// `fecha_estimada`. Las fechas se parsean con `fechaLocal` (Argentina es UTC−3
+// siempre; `new Date('2026-08-01')` da medianoche UTC y corre un día el bucket).
+window.agingCobros = function (items, hoy) {
+    const out = { b0: 0, b30: 0, b60: 0, sinFecha: 0 };
+    const ref = (hoy instanceof Date) ? hoy : (window.fechaLocal(hoy) || new Date());
+    (items || []).forEach(it => {
+        const pend = (Number(it.monto) || 0) - (Number(it.monto_cobrado) || 0);
+        if (!(pend > 0)) return;
+        const f = window.fechaLocal(it.fecha_estimada);
+        if (!f) { out.sinFecha += pend; return; }
+        const dias = Math.floor((ref - f) / 86400000);
+        if (dias > 60) out.b60 += pend;
+        else if (dias > 30) out.b30 += pend;
+        else out.b0 += pend;
+    });
+    return out;
+};
+
 // ─── TOAST ──────────────────────────────────────
 const Toast = {
     _container: null,
