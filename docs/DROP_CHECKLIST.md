@@ -2,12 +2,22 @@
 
 > Registro vivo de tablas legacy candidatas a `DROP`. **Regla MEPEX:** backup antes de dropear (`tools/vps/backup-supabase.sh`) y verificar 0 lectores con `docs/mapa-tablas.md` + grep `.from('<tabla>')`. Verificado por auditoría read-only 2026-06-13 (workflow ultracode).
 
+> ⚠️ **Corrección 2026-08-02 (T6 de la auditoría): "0 lectores" NO es lo mismo que
+> "0 datos".** Este checklist verificaba que ninguna pantalla leyera la tabla, y
+> con eso la daba por segura — pero dos de ellas **todavía tienen filas que nadie
+> migró**, y justamente por no tener lectores nadie las va a extrañar hasta que se
+> las necesite. Conteos verificados contra prod hoy: `rrhh_asignaciones` **5
+> filas**, `rrhh_vacaciones` **2**, `rrhh_personal` **3**,
+> `rrhh_vacaciones_solicitudes` **0**.
+> **Antes de cada `DROP`, además del grep: contar filas y decidir qué se hace con
+> ellas.** Es el ítem **T5.6** de la auditoría.
+
 ## ✅ SAFE TO DROP AHORA (0 lectores en código)
 
 | Tabla | Migrada a | Evidencia |
 |---|---|---|
-| `rrhh_asignaciones` | `asignaciones_evento` | 0 `.from()` activos; funciones API removidas (api.js:706-708); tab Asignación eliminado en RRHH.2 (`22a5829`) |
-| `rrhh_vacaciones` | `ausencias` + `vacaciones_saldos` | 0 `.from()` activos; tab Vacaciones eliminado en RRHH.2; data migrada por `sql/rrhh2_ausencias.sql` |
+| `rrhh_asignaciones` | `asignaciones_evento` | 0 `.from()` activos; funciones API removidas (api.js:706-708); tab Asignación eliminado en RRHH.2 (`22a5829`). ⛔ **NO dropear todavía: tiene 5 filas sin migrar** (quién manejó y quién fue encargado en el evento Estetica), y `asignaciones_evento` no las tiene. Es **T5.6** |
+| `rrhh_vacaciones` | `ausencias` + `vacaciones_saldos` | 0 `.from()` activos; tab Vacaciones eliminado en RRHH.2; data migrada por `sql/rrhh2_ausencias.sql`. ⛔ **Tiene 2 filas y `ausencias` está VACÍA** → la migración que se da por hecha acá no llegó a correr, o no trajo nada. Verificar antes de dropear |
 | `rrhh_vacaciones_solicitudes` | `ausencias` (estado enum) | 0 `.from()` activos; tabla legacy probablemente vacía |
 | `logistica_remito` | `remitos` (UUID) | 0 `.from()` activos; `remitos` nueva ya activa (api.js) |
 

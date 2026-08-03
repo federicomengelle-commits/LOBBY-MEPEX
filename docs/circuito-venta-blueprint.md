@@ -347,7 +347,7 @@ toggle A/B del dashboard sigue funcionando sin cambios.
 
 ```
 DEBE   1.1.04  Banco                      115.000
-DEBE   1.1.10  Ret. Ganancias sufridas      6.000
+DEBE   1.1.11  Ret. Ganancias sufridas      6.000
 HABER  1.1.08  Deudores por ventas        121.000
 ```
 
@@ -356,7 +356,7 @@ HABER  1.1.08  Deudores por ventas        121.000
 ```
 DEBE   5.x     Gasto                      100.000
 DEBE   1.1.09  IVA crédito fiscal          21.000
-DEBE   1.1.12  Perc. IIBB sufrida           3.000
+DEBE   1.1.13  Perc. IIBB sufrida           3.000
 HABER  1.1.04  Banco                      124.000
 ```
 
@@ -370,13 +370,16 @@ HABER  1.1.08  Deudores por ventas
 
 ### 6.2 Cuentas nuevas en `plan_cuentas`
 
-Códigos **propuestos** — verificar disponibilidad antes de crear (§10):
+⚠️ **Actualizado 2026-08-02 (T6 de la auditoría): estos ya NO son códigos
+propuestos — son los que quedaron creados en prod.** El blueprint proponía
+`1.1.10`-`1.1.13`, pero `1.1.10` ya estaba ocupado por "Anticipos a
+proveedores", así que las cuatro se corrieron uno:
 
 ```
-1.1.10  Retenciones de Ganancias sufridas
-1.1.11  Retenciones de IVA sufridas
-1.1.12  Retenciones y percepciones de IIBB sufridas
-1.1.13  Retenciones SUSS sufridas
+1.1.11  Retenciones de Ganancias sufridas
+1.1.12  Retenciones de IVA sufridas
+1.1.13  Retenciones y percepciones de IIBB
+1.1.14  Retenciones de SUSS sufridas
 ```
 
 Naturaleza deudora, tipo `activo`. Se conocen ocupados `1.1.04` (Banco),
@@ -674,7 +677,7 @@ de escribir una sola línea de cualquier fase, verificar en Supabase:
    qué otros valores tiene hoy.
 3. **`comprobantes.canal`** — confirmar que no tiene CHECK (el repo dice que no) y
    qué valores hay cargados.
-4. **Códigos `1.1.10` a `1.1.13` libres** en `plan_cuentas`, y el enum real de
+4. ~~**Códigos `1.1.10` a `1.1.13` libres**~~ **NO lo estaban**: `1.1.10` ya era "Anticipos a proveedores". En prod las 4 cuentas quedaron en **`1.1.11`-`1.1.14`** (corregido 2026-08-02, T6). Y el enum real de
    `plan_cuentas.tipo`.
 5. **`plan_cobro`** — columnas reales, y cuántos planes existen hoy (para
    dimensionar la migración a `venta_id`).

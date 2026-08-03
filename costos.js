@@ -4091,7 +4091,14 @@ const CostosModule = {
 
     // ═══════════════════════════════════════════
     //  F.3 — TAB PARÁMETROS GLOBALES
-    //  (singleton costos_params_globales id=1, solo superadmin)
+    //  ⚠️ La tabla que se usa es **`parametros_globales`** (clave-valor, vía
+    //  `API.getParametrosGlobales`), NO `costos_params_globales`. Ese nombre
+    //  quedó del diseño viejo y describe una tabla singleton que este tab no
+    //  toca. Corregido 2026-08-02 (T6 de la auditoría) porque el comentario
+    //  estaba invitando a un accidente: los valores de la otra tabla están en
+    //  **otra escala** (porcentaje en vez de factor), así que quien leyera esto
+    //  y la cableara aplicaría indirectos al 3000%.
+    //  Solo superadmin.
     // ═══════════════════════════════════════════
 
     async _loadParamsGlobales() {

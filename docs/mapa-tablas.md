@@ -24,7 +24,7 @@
 | `compras_ordenes` | `api.js` (3561, 3580, 3642, 3643, 3675) · `compras.js` (695, 961, 1066, 1176, 1264, 1359, 1362, 1449) |
 | `compras_pagos` | `alertas.js` (256) · `compras.js` (1466, 1582, 1597, 1654) |
 | `compras_pedidos` | `api.js` (3462, 3475, 3514, 3520, 3540) |
-| `compras_proveedores` | `api.js` (3688) · `compras.js` (530, 569, 574, 872, 875, 928, 944, 962, … (+1)) |
+| `compras_proveedores` | ⚠️ **NINGUNO — deuda 3b.2 SALDADA.** Verificado 2026-08-02 (T6): **cero** `from('compras_proveedores')` en todo el repo. Compras usa `proveedor` (UUID); sólo quedan dos menciones en comentarios y el puente `compras_proveedor_id`. Esta fila listaba llamadores que ya no existen. |
 | `comprobantes` | `api.js` (5414) · `contabilidad.js` (4118) · `finanzas.js` (5198, 5812, 6423, 6621, 7194, 7223, 7287) |
 | `comprobantes_iva_recovery` | `api.js` (5015, 5049, 5058, 5066) |
 | `comprobantes_recibidos` | `contabilidad.js` (4141) · `finanzas.js` (6626, 7642, 7897, 8078, 8083) |
