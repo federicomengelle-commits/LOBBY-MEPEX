@@ -1,13 +1,13 @@
 # Handoff — ejecución de la auditoría 2026-07-31
 
-> Reescrito al cerrar la sesión del **2026-08-02b** (la cuarta). Sirve para retomar en una charla nueva sin releer nada.
+> Reescrito al cerrar la sesión del **2026-08-03** (la quinta). Sirve para retomar en una charla nueva sin releer nada.
 > **El archivo de trabajo sigue siendo `05-EJECUCION.md`.** Esto es el pase: dónde quedó, qué sigue, cuánto falta y qué NO hay que volver a descubrir.
 
 ---
 
 ## Dónde quedó
 
-**50 ítems cerrados de 71.** Repo limpio, todo pusheado, `HEAD == origin/main`.
+**52 ítems cerrados de 71**, más T4.7 con el JS listo esperando su SQL. Repo limpio, todo pusheado, `HEAD == origin/main`.
 
 | Tanda | Estado |
 |---|---|
@@ -15,25 +15,26 @@
 | **T1 · nginx** | ✅ deployada y verificada en prod |
 | **T2 · VPS** | ✅ verificado |
 | **T3 · JS quirúrgico** | ✅ **24 de 24 — COMPLETA** |
-| **T4 · estructurales** | ✅ **14 de 19** — quedan 5, todos de código |
+| **T4 · estructurales** | ✅ **16 de 19** · 1 a medias (T4.7, falta que Fede corra el SQL) · quedan **T4.8** y **T4.13** |
 | **T5 · datos** | ⬜ 12 pendientes (7 son de Fede, 5 necesitan su criterio) |
 | **T6 · docs** | ✅ **COMPLETA** |
 
-Commits de la sesión: `1845406` (T4.3) · `c8f3504` (T4.5) · `30cebf4` (T4.14·15·16) · `b275350` (T4.17) · `e075ae8` (T6) · `b7a61ca` (T4.4) · `8325665` (T4.19).
+Commits de la sesión 5: `f927855` (T4.10) · `355ecd6` (T4.6) · `01116b6` (T4.7, JS).
 
 ---
 
-## Cuánto falta: **3 sesiones**
+## Cuánto falta: **2 sesiones**
 
 | # | Qué | Por qué van juntos |
 |---|---|---|
-| **1** | **T4.10** (paginar EERR/Balance/Libro Mayor) · **T4.6** (sync de jornales por trigger) · **T4.7** (view `personas_publicas`) | Los tres medianos de código. T4.10 es el más barato: **el bucle correcto ya está escrito** en `contabilidad.js` (`_loadAsientos`). T4.6 y T4.7 son SQL + un poco de JS |
-| **2** | **T4.13, primera mitad**: `compras` + `costos` + `rrhh` | La propia auditoría dice que esas tres son **el 80% del riesgo** de las 65 tablas. Mismo patrón ya escrito para las 42 de finanzas |
-| **3** | **T4.13 el resto** + **T4.8** (grants del Cotizador) + los T5 de datos que se puedan hacer solos + cierre | T4.8 necesita **coordinar con el repo del Cotizador** |
+| **1** | **T4.13, primera mitad**: `compras` + `costos` + `rrhh` | La propia auditoría dice que esas tres son **el 80% del riesgo** de las 65 tablas. Mismo patrón ya escrito para las 42 de finanzas |
+| **2** | **T4.13 el resto** + **T4.8** (grants del Cotizador) + los T5 de datos que se puedan hacer solos + cierre | T4.8 necesita **coordinar con el repo del Cotizador** |
 
-**La única que puede estirarse a una cuarta es T4.13**: son 65 tablas, es mecánico, pero cada policy hay que verificarla contra prod.
+**La que puede estirarse a una tercera es T4.13**: son 65 tablas, es mecánico, pero cada policy hay que verificarla contra prod.
 
 **Lo de Fede se hace en una tarde** y no consume sesiones — pero **T5.2 destraba T0.8**, así que conviene que salga antes de la última.
+
+**Ojo con T4.13 y `personas`:** T4.7 ya le puso a esa tabla policies de INSERT/UPDATE con `fn_role_can('rrhh','write')` **y dejó el SELECT abierto a propósito** (los embeds). No "cerrarlo por completitud" al barrer las 65 — ver la sección de T4.7 en `05-EJECUCION.md` antes de tocarla.
 
 ---
 
@@ -45,11 +46,11 @@ Commits de la sesión: `1845406` (T4.3) · `c8f3504` (T4.5) · `30cebf4` (T4.14�
    printf "repo: "; grep -oE 'app\.js\?v=[0-9]+' index.html
    printf "prod: "; curl -s https://app.mepex.com.ar/ | grep -oE 'app\.js\?v=[0-9]+'
    ```
-3. **Correr los cinco tests.** Si alguno falla, algo se rompió:
+3. **Correr los ocho tests.** Si alguno falla, algo se rompió:
    ```bash
    for t in tools/test-*.js; do node "$t"; done
    ```
-   Esperado: **95 checks en verde** (7 + 8 + 49 + 18 + 13).
+   Esperado: **142 checks en verde** (7 + 8 + 49 + 18 + 13 + 15 + 15 + 17).
 4. **Leer `05-EJECUCION.md`.** El "por qué" de cada ítem está en `01-PLAN-CORRECCION.md`.
 
 **Semáforo de integridad en prod**: partida doble **$0.00** · asientos desbalanceados **0** · drift movimiento↔asiento **0** · arrastres de saldo rotos **0** · SECDEF sin `search_path` **0** · views legibles por anon **0** · IVA débito 2026-06 **$0.00**.
@@ -60,7 +61,8 @@ Commits de la sesión: `1845406` (T4.3) · `c8f3504` (T4.5) · `30cebf4` (T4.14�
 
 | # | Qué | Por qué importa |
 |---|---|---|
-| **pull** | `~/pull-lobby.sh` | el repo va por `app.js?v=35` |
+| **⛔ T4.7 · SQL** | **`sql/personas_publicas.sql` PARTE 1 — ANTES del pull** | el JS ya lee de `personas_legajo`: si pullea sin correrla, **RRHH se queda sin nómina**. La PARTE 2 (revocar columnas + cerrar escritura) va DESPUÉS del pull, y está comentada en el archivo con su checklist |
+| **pull** | `~/pull-lobby.sh` | el repo va por `app.js?v=35`; **prod todavía sirve `v=34`** (verificado el 3/8) |
 | **T5.2** | las 2 copias de la factura ONORIER | **destraba el gate 1** (T0.8-recibidos). $151.200 de crédito fiscal inventado que entra al Libro IVA |
 | **T0.9** | los huérfanos de $10,7M | decidir a qué proyecto real va cada uno antes de blanquear |
 | **T0.11** | el `pg_default_acl` de tablas/views | causa raíz del incidente de las 5 views (26/07). Cerrarlo toca el contrato del Cotizador |
@@ -78,7 +80,21 @@ Commits de la sesión: `1845406` (T4.3) · `c8f3504` (T4.5) · `30cebf4` (T4.14�
 
 ### El método
 
-**Acumulado de las cuatro sesiones: 24 de 34 pasadas de reviewers volvieron BLOCK, con UN solo falso positivo** (T4.4: dijo que el ingreso con cheque perdía la moneda, y sí la pasa). **Cinco veces el daño lo causó el propio fix:**
+### ⚠️ Lo que agregó la sesión 5: **el plan acierta el QUÉ y puede errar el CÓMO**
+
+Los tres ítems de la sesión traían su solución escrita en `01-PLAN-CORRECCION.md`, y **las tres estaban mal**. El hallazgo era correcto en los tres casos; la receta no. No es un defecto del plan —se escribió sin implementar— pero **hay que leer la receta como hipótesis, no como instrucción**:
+
+- **T4.10** — *"el bucle correcto **ya está escrito** en `_loadAsientos`"*. Ese bucle paginaba **sin `ORDER BY`**: copiarlo cambiaba un truncado por un total que se equivoca de otra forma.
+- **T4.6** — *"mover el sync a un trigger `SECURITY DEFINER`"*. Exigía reescribir `_computeJornalLines` en PL/pgSQL: **un segundo motor de la misma cuenta**, el pecado que T4.19 y T3.2 acababan de cerrar. Y `02-IDEAS`, del mismo paquete, argumentaba lo contrario. **Cuando dos docs de la auditoría se contradicen, es una decisión de producto: preguntarle a Fede.**
+- **T4.7** — *"view con `security_invoker=true`"*. Con la tabla base cerrada eso devuelve **cero filas**: la view nace inútil.
+
+**Y la trampa técnica que más caro salía:** buscar consumidores de una tabla con `from('tabla')` **no encuentra los embeds** (`persona:personas!persona_id(…)`). Un embed es un join contra la tabla base y **lo filtra su RLS igual**. En `personas` eran **11 FKs**: cerrarla habría dejado el widget del Lobby —el que ven los 5 roles al entrar— mostrando `(sin nombre)`, sin un error en consola. **Antes de cerrar la RLS de cualquier tabla, listar sus FKs entrantes**, no sólo grepear el nombre.
+
+Y el corolario de T4.6: **un getter que falla abierto es una bomba cuando alimenta una escritura.** `syncJornalesEvento` leía cuatro cosas que devolvían `[]` ante error, y las cuatro escriben — una de ellas borraba todos los jornales del evento devolviendo `ok:true`.
+
+**Acumulado de las cinco sesiones: 26 de 40 pasadas de reviewers volvieron BLOCK, con UN solo falso positivo** (T4.4: dijo que el ingreso con cheque perdía la moneda, y sí la pasa). **Seis veces el daño lo causó el propio fix** — la sexta es de esta sesión: en T4.6 blindé **2 de las 4** lecturas del mismo `Promise.all`, y la mitad que faltaba era **peor que el bug original**. Es el patrón 2 de acá abajo, otra vez.
+
+**Las cinco anteriores:**
 
 - **T0.2** — la Parte A sola habría **ascendido** a un usuario de taller dado de baja.
 - **T3.21** — hacer que `ajustarStock` propague errores le dio a `recibirOrdenCompra` un modo de falla que **duplicaba stock**.
