@@ -339,8 +339,14 @@ const CostosModule = {
                         const ins = insumosMap[comp.componente_id];
                         costoUnit = ins ? ins.costoUnitario : 0;
                     } else if (comp.componente_type === 'item') {
+                        // T4.19: leia SOLO `costoProduccion`, la columna del motor
+                        // viejo, que el motor nuevo NO escribe. Medido en prod: de
+                        // los 14 sub-items usados como componente, 7 la tenian en
+                        // CERO -> su receta padre se marcaba "incompleta" y su
+                        // costoCalculado salia mal. Misma cadena que ya usaban los
+                        // otros dos lectores del archivo.
                         const sub = itemsMap[comp.componente_id];
-                        costoUnit = sub ? sub.costoProduccion : 0;
+                        costoUnit = sub ? (sub.costoPorUso || sub.costoFabricacion || sub.costoProduccion || 0) : 0;
                     }
                     if (costoUnit === 0) hasZeroCost = true;
                     costoCalc += (parseFloat(comp.cantidad) || 0) * costoUnit;
@@ -3479,20 +3485,12 @@ const CostosModule = {
             loadBaseBtn.addEventListener('click', () => this._openLoadBaseRecetaModal(item));
         }
 
-        // Recalculate
-        const recalcBtn = document.getElementById('costosRecetaRecalc');
-        if (recalcBtn) {
-            recalcBtn.addEventListener('click', async () => {
-                recalcBtn.disabled = true;
-                recalcBtn.textContent = 'Recalculando…';
-                const newCost = await API.recalcularCostoItem(item.id);
-                Toast.success(`Costo recalculado: ${API.formatCurrency(newCost)}`);
-                await this._refreshData();
-                // Refresh ficha
-                const updatedItem = this._catalogoItems.find(i => String(i.id) === String(item.id));
-                if (updatedItem) await this._loadRecetaContent(updatedItem);
-            });
-        }
+        // T4.19: acá había un handler para `costosRecetaRecalc` — un id que NO
+        // existe (el botón real es `costosRecetaRecalcBtn`, y las otras 6
+        // referencias del archivo usan el correcto), así que nunca se enganchó.
+        // Llamaba al motor de costos VIEJO. "Arreglar el typo" habría conectado
+        // ese motor al botón Recalcular de la ficha. Se borró: el botón bueno ya
+        // está cableado a `_recalcularUnaReceta` (RPC `calcular_receta`).
     },
 
     // ─── Add insumo to recipe ───

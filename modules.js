@@ -4150,9 +4150,20 @@ const Modules = {
             }
 
             Toast.success(`${updated} precios actualizados`);
-            Toast.info('Recalculando cascada completa…');
-            const result = await API.recalcularTodo();
-            if (result.ok) Toast.success(`${result.updated} items recalculados`);
+            // T4.19: llamaba a `API.recalcularTodo()`, el motor de costos VIEJO
+            // (sumaba cantidad × costo y escribía las columnas legacy). Ahora
+            // cascadea con `recalcularPorInsumo`, que va por la RPC
+            // `calcular_receta` — la fuente de verdad. Esta pantalla hoy no tiene
+            // invocador, pero si se reconecta tiene que usar el motor bueno.
+            Toast.info('Recalculando recetas afectadas…');
+            let recalc = 0;
+            for (const cb of checked) {
+                const s = selectedInsumos[parseInt(cb.dataset.idx)];
+                if (!s) continue;
+                const r = await API.recalcularPorInsumo(s.id);
+                if (r?.ok) recalc += (r.updated || 0);
+            }
+            Toast.success(`${recalc} items recalculados`);
 
             Modal.close(instance.id);
             this._refreshCurrentTable();

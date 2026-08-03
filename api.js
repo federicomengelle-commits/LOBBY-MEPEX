@@ -2738,113 +2738,22 @@ const API = {
         }
     },
 
-    // ─── Recalcular costo de un item (cascada) ──
-    async recalcularCostoItem(itemId) {
-        const componentes = await this.getRecetaComponentes(itemId);
-        if (!componentes.length) return 0;
-
-        const [insumos, items] = await Promise.all([
-            this.getInsumos(),
-            this.getCatalogoItems(),
-        ]);
-
-        let total = 0;
-        for (const comp of componentes) {
-            if (comp.componenteType === 'insumo') {
-                const insumo = (insumos || []).find(i => String(i.id) === String(comp.componenteId));
-                if (insumo) {
-                    total += comp.cantidad * insumo.costoUnitario;
-                }
-            } else if (comp.componenteType === 'item') {
-                const subItem = (items || []).find(i => String(i.id) === String(comp.componenteId));
-                if (subItem) {
-                    total += comp.cantidad * subItem.costoProduccion;
-                }
-            }
-        }
-
-        // Guardar costo recalculado + precio cliente con margen
-        const newCost = Math.round(total * 100) / 100;
-        const currentItem = (items || []).find(i => String(i.id) === String(itemId));
-        const margen = currentItem ? await this.getEffectiveMargin(currentItem) : 0;
-        const nuevoPrecio = this.calcPrecioCliente(newCost, margen);
-        await this.updateCatalogoItem(itemId, {
-            costoProduccion: newCost,
-            precioCliente: nuevoPrecio,
-        });
-        return total;
-    },
-
-    // ─── Recalcular TODOS los items (cascada completa) ──
-    async recalcularTodo() {
-        const items = await this.getCatalogoItems();
-        if (!items) return { ok: false };
-
-        // Construir grafo de dependencias y ordenar topológicamente
-        const allComps = {};
-        for (const item of items) {
-            allComps[item.id] = await this.getRecetaComponentes(item.id);
-        }
-
-        const insumos = await this.getInsumos();
-        const costos = {}; // id → costo calculado
-        const visited = new Set();
-
-        const calcular = (itemId, depth = 0) => {
-            if (depth > 20) return 0; // protección circular
-            if (costos[itemId] !== undefined) return costos[itemId];
-            if (visited.has(itemId)) return 0; // circular
-            visited.add(itemId);
-
-            const comps = allComps[itemId] || [];
-            let total = 0;
-            for (const comp of comps) {
-                if (comp.componenteType === 'insumo') {
-                    const ins = (insumos || []).find(i => String(i.id) === String(comp.componenteId));
-                    if (ins) total += comp.cantidad * ins.costoUnitario;
-                } else if (comp.componenteType === 'item') {
-                    total += comp.cantidad * calcular(comp.componenteId, depth + 1);
-                }
-            }
-            costos[itemId] = Math.round(total * 100) / 100;
-            visited.delete(itemId);
-            return costos[itemId];
-        };
-
-        // Calcular todos
-        for (const item of items) {
-            calcular(item.id);
-        }
-
-        // Guardar todos los costos + precios actualizados (con margen)
-        const categoriasConfig = await this.getCategoriasConfig();
-        let updated = 0;
-        for (const item of items) {
-            const newCost = costos[item.id] || 0;
-            // Determinar margen efectivo: override del item > default de categoría > 0
-            let margen = 0;
-            if (item.margenOverride != null) {
-                margen = item.margenOverride;
-            } else if (categoriasConfig) {
-                const cc = categoriasConfig.find(c => c.nombre === item.categoria);
-                if (cc) margen = cc.margenDefault;
-            }
-            const newPrecio = this.calcPrecioCliente(newCost, margen);
-            if (Math.abs(newCost - item.costoProduccion) > 0.01 ||
-                Math.abs(newPrecio - item.precioCliente) > 0.01) {
-                await this.updateCatalogoItem(item.id, { costoProduccion: newCost, precioCliente: newPrecio });
-                updated++;
-            }
-        }
-
-        this.clearCache();
-        return { ok: true, total: items.length, updated };
-    },
-
-    // ═══════════════════════════════════════════
-    // PIPELINE COMERCIAL — Cotizaciones
-    // ═══════════════════════════════════════════
-
+    // ─────────────────────────────────────────────────────────────────
+    //  T4.19 (auditoría 31/07) — acá vivían `recalcularCostoItem` y
+    //  `recalcularTodo`, el MOTOR DE COSTOS VIEJO. Sumaban
+    //  `cantidad × costoUnitario` y escribían `costo_produccion` /
+    //  `precio_cliente`: sin desperdicio, sin amortización, sin regla 1:N, sin
+    //  mano de obra, sin indirectos, sin snapshots. No eran una versión vieja
+    //  de la fórmula — eran otra cosa.
+    //  La fuente de verdad es la RPC `calcular_receta` de Postgres, vía
+    //  `recalcularRecetaRPC` / `recalcularPorInsumo` (más abajo en este archivo).
+    //  Se borraron con CERO llamadores: `recalcularCostoItem` sólo lo invocaban
+    //  una definición duplicada de `recalcularPorInsumo` (muerta por el orden de
+    //  las claves del objeto) y un handler de `costos.js` colgado de un id que
+    //  no existe; `recalcularTodo`, un modal sin invocador.
+    //  👉 Si hace falta recalcular en masa, se usa `recalcularPorInsumo`.
+    // ─────────────────────────────────────────────────────────────────
+    // ─── PIPELINE COMERCIAL — Cotizaciones ──────
     async getCotizaciones() {
         const cacheKey = 'cotizaciones';
         const cached = this._cache[cacheKey];
@@ -3241,16 +3150,19 @@ const API = {
     },
 
     // ─── Margin helpers ──────────────────────────
-    async getEffectiveMargin(item) {
-        if (item.margenOverride != null) return item.margenOverride;
-        const config = await this.getCategoriasConfig();
-        const cat = config.find(c => c.nombre === item.categoria);
-        return cat ? cat.margenDefault : 0;
-    },
-
-    calcPrecioCliente(costoProduccion, margen) {
-        return Math.round(costoProduccion * (1 + margen / 100) * 100) / 100;
-    },
+    //  T4.19: acá vivían `getEffectiveMargin` y `calcPrecioCliente`. Eran del
+    //  modelo de margen VIEJO (`margenOverride` + el margen de
+    //  `categorias_config`) y calculaban el `precio_cliente` legacy. Su único
+    //  llamador era el motor de costos borrado arriba, así que quedaron en cero
+    //  llamadores; se van con él, mismo criterio con el que T3.23 sacó
+    //  `recalcularPrecioAlquiler`.
+    //  ⚠️ Y `calcPrecioCliente` tenía la misma trampa de escala que el
+    //  comentario de `costos_params_globales`: tomaba el margen como
+    //  PORCENTAJE (`margen / 100`), mientras el modelo vigente lo maneja como
+    //  FACTOR (`pct_margen_default` = 0.50). Reconectarla habría aplicado el
+    //  margen 100 veces desviado.
+    //  El margen efectivo hoy lo resuelve la RPC `calcular_receta`:
+    //  COALESCE(margen_propio, snapshot_pct_margen, pct_margen_default).
 
     // ─── Listas de Precio CRUD ─────────────────
     async getListasPrecio() {
@@ -3463,55 +3375,6 @@ const API = {
         } catch (e) {
             console.warn('[API] Error fetching precio historial:', e.message);
             return [];
-        }
-    },
-
-    // ─── Recalcular por insumo (cascada dirigida) ──
-    async recalcularPorInsumo(insumoId) {
-        try {
-            // 1. Cargar todas las recetas de una vez
-            const { data: allComps, error } = await supabaseClient
-                .from('receta_componentes').select('item_id, componente_type, componente_id').eq('_deleted', false);
-            if (error) throw error;
-
-            // 2. Grafo inverso: componenteKey → [itemIds que lo usan]
-            const usedBy = {};
-            for (const comp of (allComps || [])) {
-                const key = `${comp.componente_type}:${comp.componente_id}`;
-                if (!usedBy[key]) usedBy[key] = new Set();
-                usedBy[key].add(String(comp.item_id));
-            }
-
-            // 3. BFS: encontrar todos los items afectados (directos + transitivos)
-            const affected = new Set();
-            const queue = [...(usedBy[`insumo:${insumoId}`] || [])];
-            while (queue.length > 0) {
-                const itemId = queue.shift();
-                if (affected.has(itemId)) continue;
-                affected.add(itemId);
-                const downstream = usedBy[`item:${itemId}`];
-                if (downstream) {
-                    for (const depId of downstream) {
-                        if (!affected.has(depId)) queue.push(depId);
-                    }
-                }
-            }
-
-            if (affected.size === 0) return { ok: true, affected: 0, updated: 0 };
-
-            // 4. Recalcular cada item afectado
-            this.clearCache();
-            let updated = 0;
-            for (const itemId of affected) {
-                await this.recalcularCostoItem(parseInt(itemId));
-                updated++;
-            }
-
-            this.clearCache();
-            return { ok: true, affected: affected.size, updated };
-        } catch (e) {
-            console.warn('[API] Error en recalcularPorInsumo:', e.message);
-            return { ok: false, error: e.message };
         }
     },
 
