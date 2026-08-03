@@ -67,7 +67,7 @@
 | **T4.4** | `total_en_ars` en KPIs y reportes | JS | ✅ | 49 sitios + helper `montoARS`. Queda como deuda `plan_cobro_items` y las sumas de `iva` (no tienen columna ARS) |
 | **T4.5** | Signo de las notas de crédito | JS+SQL | ✅ | eran **views + 21 puntos de JS**, no "3 reduce": las 3 pantallas de Posición IVA **no leen las views** |
 | **T4.6** | Sync de jornales por trigger | ~~SQL~~ JS | ✅ | **sin trigger** (decisión de Fede: *avisar, no ejecutar*). Y las 4 lecturas del sync fallaban abiertas: una de ellas **borraba todos los jornales del evento** devolviendo `ok:true` |
-| **T4.7** | View `personas_publicas` + cerrar `personas` | SQL+JS | 🟡 | JS listo · **`sql/personas_publicas.sql` espera a Fede**. NO es la view del plan: cerrar la RLS de filas apagaba **11 FKs de embeds**. Va por **columnas** |
+| **T4.7** | View `personas_publicas` + cerrar `personas` | SQL+JS | ✅ | **aplicado y verificado en prod 2026-08-03.** NO es la view del plan: cerrar la RLS de filas apagaba **11 FKs de embeds**. Va por **columnas** |
 | **T4.8** | Grants por columna para el cotizador | SQL | ⬜ | **coordinar con el otro repo**. Sumar: `cotizacion_propuestas` tiene RLS activo y **cero policies** (5 filas, la última del 26/06) → o el Cotizador escribe con service key, o esa feature está muda hace más de un mes |
 | **T4.9** | Confirm + contador antes de borrar una jornada | JS | ✅ | chip 👥 por fila + confirm con los nombres. Borra por **referencia**, no por índice |
 | **T4.10** | Paginar EERR · Balance · Libro Mayor | JS | ✅ | eran **5** puntos de truncado, no 3 — y **el bucle que el plan mandaba copiar paginaba sin ORDER BY** |
@@ -189,7 +189,27 @@ Y las cuatro devolvían **`{ok:true}`**: pasaba como éxito, con el toast verde.
 
 ---
 
-## 🟡 T4.7 — JS LISTO 2026-08-03 · el SQL espera a Fede · `sql/personas_publicas.sql`
+## ✅ T4.7 — CERRADO 2026-08-03 · aplicado y verificado en prod · `sql/personas_publicas.sql`
+
+**Verificado como los usuarios reales**, simulando el JWT de cada uno (`SET LOCAL request.jwt.claims`, todo dentro de una transacción con ROLLBACK):
+
+| quién | prueba | resultado |
+|---|---|---|
+| **pm** (Meli) | ve a las 24 personas para asignar | ✅ |
+| **pm** | ve los **50 nombres** de las asignaciones (el embed) | ✅ *lo que se rompía con el enfoque del plan* |
+| **pm** | ve el chofer de las cargas | ✅ |
+| **pm** | leer `cbu_alias` / `costo_dia_referencial` / `select(*)` | **bloqueado (42501)** |
+| **pm** | **cambiarle el CBU a todos** | **bloqueado — 0 filas** |
+| **pm** | dar de alta una persona | **bloqueado (42501)** |
+| **pm** | leer `personas_legajo` | **0 filas** |
+| **admin** (Sofi) | ve el legajo completo | ✅ 25 filas, 22 con cuil/cbu |
+| **admin** | editar notas · editar cuil/cbu/jornal · alta | ✅ los tres |
+
+**Un hallazgo del smoke que ningún reviewer había visto:** el privilegio de SELECT por columna **también aplica adentro de un UPDATE**. Un `UPDATE personas SET notas = coalesce(notas,'')` falla con 42501, porque **lee** `notas` en su propia expresión. Los updates reales del código no lo hacen (asignan valores literales y filtran por `id`, que es legible) y los cinco casos reales pasan — pero queda como regla: **con columnas revocadas, no leer una columna sensible en el `SET`, el `WHERE` ni el `RETURNING`**. Un `.update(...).select('*')` encadenado también rompería.
+
+---
+
+## 📄 T4.7 — el diseño (por qué no es lo que pedía el plan)
 
 **El plan pedía una cosa que no se puede hacer, y por dos motivos distintos.** Proponía una view `personas_publicas` con `security_invoker = true` y cerrar la RLS de `personas`:
 
@@ -211,10 +231,8 @@ Los column-grants no distinguen admin de pm (todos comparten el rol Postgres `au
 
 **Un guard que salió de la revisión:** `personas_legajo` **no da error** a quien no tiene `rrhh:read` — devuelve cero filas. Sin protección, eso hace que el sync escriba todos los jornales en **$0** y devuelva `ok:true`. Hoy no pasa porque ese mismo rol tampoco tiene `finanzas` y la escritura rebota igual, pero **esa coincidencia entre dos policies ajenas es accidental**: el día que alguien le dé `finanzas` a un pm por otro motivo, se reproduce el bug de los ceros por una vía nueva. Ahora `syncJornalesEvento` aborta si alguna persona de las líneas **falta** del padrón (ausente ≠ tarifa en NULL), con test.
 
-**⛔ Fede, en este orden — la PARTE 1 va ANTES del pull.** El JS ya lee de `personas_legajo`: si pullea sin correrla, **RRHH se queda sin nómina**.
-1. correr **PARTE 1** (crea la view; aditiva)
-2. `~/pull-lobby.sh`
-3. recién ahí **PARTE 2** (revoca columnas + cierra escritura) — el archivo la trae comentada, con el checklist de los 7 puntos de JS que tienen que estar arriba, y un self-audit por whitelist que aborta si quedó una columna de más.
+**✅ Corrido el 2026-08-03** (PARTE 1 por Fede, PARTE 2 por MCP tras confirmar que prod ya servía `api.js?v=110` y `rrhh.js?v=19` con los 7 puntos). El archivo queda como referencia y con el bloque de rollback al pie.
+El orden que se respetó, y que sigue valiendo si hay que rehacerlo: **PARTE 1** (crea la view; aditiva) → `~/pull-lobby.sh` → **PARTE 2** (revoca columnas + cierra escritura). Al revés, entre el paso 1 y el 2 RRHH queda sin nómina. La PARTE 2 quedó comentada en el archivo, con el checklist de los 7 puntos de JS que tienen que estar arriba y un self-audit por whitelist que aborta si quedó una columna de más.
 
 **Anotado para el futuro:** el `SELECT *` de una view **se congela** al crearla. Todo `ALTER TABLE personas ADD COLUMN` tiene que venir con un re-run de la PARTE 1, o la columna queda invisible para RRHH sin un solo error. Está escrito en el `COMMENT ON VIEW`. Ojo con **RRHH.2**, que va a agregar columnas de legajo.
 
