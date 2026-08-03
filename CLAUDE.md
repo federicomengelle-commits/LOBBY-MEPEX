@@ -522,6 +522,8 @@ El mapeo se maneja en `api.js` al hacer el fetch. No se corrige en Supabase.
 17. **Ser certero.** Si hay decisión clara, ejecutar; si hay duda real, preguntar una sola vez con opciones concretas. Nada de "¿querés que…?" cuando ya está acordado.
 18. **Plan first solo cuando aporta valor.** Si la tarea es chica y obvia, ejecutar directo. Plan extenso solo para refactors macro.
 
+20. **El SQL lo aplica Claude por el MCP de Supabase** (pedido de Fede, 2026-08-03: *"vos deberías ponerlos, que tenés MCP"*). No se le pasa un archivo para pegar en el SQL Editor. La ventaja no es la comodidad sino **poder verificar el efecto en el mismo momento** — en T4.7 el smoke posterior destapó que el privilegio de SELECT por columna también aplica dentro de un UPDATE, algo que ningún reviewer había visto. Sigue valiendo: **(a)** los `sql/*.sql` se escriben igual (documentan qué se hizo + rollback al pie) y pasan por el `sql-reviewer` antes (regla 19); **(b)** el orden manda — el DDL va **antes** de que prod sirva el código que lo necesita, y hay que **verificar por curl qué está sirviendo prod**, no asumir que Fede pulleó; **(c)** lo destructivo (DROP de tablas con datos, borrados masivos) se consulta primero.
+
 ### Método pro (consultoría Jordi, 2026-07-18)
 
 19. **Reviewers como subagentes ANTES de commitear.** Instalados en `.claude/agents/` (local, gitignored; genéricos de Jordi a nivel usuario `~/.claude/agents/`): `security-reviewer` (diff toca input/auth/endpoints/datos sensibles), `typescript-reviewer` (todo diff JS no trivial), `sql-reviewer` (TODO `sql/*.sql` nuevo antes de entregárselo a Fede). Findings CRITICAL/HIGH se arreglan antes del push. Originales + veredicto: `docs/jordi/`.
