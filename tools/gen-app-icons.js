@@ -39,16 +39,15 @@ const bbox = (() => {
     return { x0, y0, w: x1 - x0, h: y1 - y0 };
 })();
 
-// El `frac` más grande con el que TODO el dibujo entra en la zona segura de un
-// maskable: Android le aplica una máscara encima y sólo garantiza el círculo
-// central del 80%. Se calcula con el vértice más lejano del centro en vez de
-// estimarlo a ojo — la punta inferior derecha de la X es la que se pasa, y con
-// un 0,66 elegido a mano quedaba a 220px de un radio seguro de 205.
-const fracSeguroCirculo = () => {
+// El `frac` más grande con el que TODO el dibujo entra en una máscara circular
+// de radio `radio` (en fracción del lado). Se calcula con el vértice más lejano
+// del centro en vez de estimarlo a ojo — la punta inferior derecha de la X es la
+// que manda, y con un 0,66 puesto a mano quedaba fuera hasta del círculo del 80%.
+const fracEnCirculo = (radio) => {
     const cx = bbox.x0 + bbox.w / 2, cy = bbox.y0 + bbox.h / 2;
     let r = 0;
     for (const p of POLIGONOS) for (const [x, y] of p) r = Math.max(r, Math.hypot(x - cx, y - cy));
-    return (0.4 * Math.max(bbox.w, bbox.h)) / r;   // 0.4 = radio del círculo garantizado
+    return (radio * Math.max(bbox.w, bbox.h)) / r;
 };
 
 const dentro = (px, py, poly) => {
@@ -133,13 +132,18 @@ function png(w, h, raw, alpha) {
 // `frac` es la decisión de diseño de cada uno:
 const SALIDAS = [
     // Los normales: sin recorte del sistema → el dibujo puede llenar el cuadro.
-    { file: 'icon-192.png',          size: 192, frac: 0.80 },
-    { file: 'icon-512.png',          size: 512, frac: 0.80 },
+    { file: 'icon-192.png',          size: 192, frac: 0.88 },
+    { file: 'icon-512.png',          size: 512, frac: 0.88 },
     // iOS redondea las esquinas pero no recorta hacia adentro.
-    { file: 'apple-touch-icon.png',  size: 180, frac: 0.78 },
-    // Android le pone una máscara encima y sólo garantiza el 80% central:
-    // el frac lo decide la geometría, no el ojo.
-    { file: 'icon-512-maskable.png', size: 512, frac: fracSeguroCirculo() },
+    { file: 'apple-touch-icon.png',  size: 180, frac: 0.86 },
+    // ★ El maskable es EL QUE SE VE en la pantalla de inicio de Android, así que es
+    // el que importa que se lea grande. La spec de PWA recomienda no salir del
+    // círculo central del 80% (radio 0.40) y con eso la X quedaba en 61% — de ahí
+    // que siguiera viéndose chica. El peor caso REAL de un launcher es recortar a
+    // un círculo inscrito completo (radio 0.50), y las máscaras de Pixel, Samsung
+    // y Xiaomi son squircles, que dan todavía más aire. Se usa ese límite con un
+    // 4% de margen: 74% en vez de 61%, sin cortarse ni con máscara circular.
+    { file: 'icon-512-maskable.png', size: 512, frac: fracEnCirculo(0.50) * 0.96 },
     // Badge de notificación: silueta blanca sobre transparente, la recolorea el SO.
     { file: 'badge-72.png',          size: 72,  frac: 0.86, alpha: true, color: [255, 255, 255] },
 ];
