@@ -1,0 +1,124 @@
+-- ════════════════════════════════════════════════════════════════════════
+-- T4.13 · tandas 2 y 3 — el resto de la matriz de roles
+-- (auditoría 2026-07-31) · APLICADO EN PROD 2026-08-03 por MCP
+-- ════════════════════════════════════════════════════════════════════════
+--
+-- Con esto el tablero pasa de **63 tablas abiertas a 6**, y las 6 que quedan
+-- son todas de tratamiento especial documentado (ver al pie).
+--
+-- ⚠️ LO QUE DESTRABÓ ESTA TANDA — el bloqueo del taller resultó no existir.
+-- El handoff decía que había que decidir antes si el rol `taller` podía
+-- escribir, porque tiene `read` en toda la matriz y si hoy el galpón ajusta
+-- stock lo hace gracias a la RLS abierta. Se resolvió con datos en vez de con
+-- una charla:
+--   · `audit_log`: el rol `taller` NO aparece en ninguna escritura — todas son
+--     de superadmin y admin.
+--   · Barrido de columnas de autoría (`created_by`, `checked_by`, `firmado_by`…)
+--     en 21 tablas: **cero filas escritas por un usuario del taller.**
+--   · Y la razón de fondo: **ni el taller ni los PM entraron NUNCA al sistema**
+--     (0 logins, 0 celulares con la PWA). Los 5 usuarios están creados y activos,
+--     pero nadie los usó todavía.
+-- O sea: cerrar ahora no rompe nada en uso, y es **mejor** cerrarlo antes de que
+-- entren — así se prueba con los permisos correctos desde el día uno, en vez de
+-- descubrir en la rampa a 2027 que todo dependía de una puerta abierta.
+--
+-- ⚠️ PERO EL PERMISO DEL TALLER SIGUE SIENDO UNA DECISIÓN PENDIENTE. Acá se
+-- preservó lo que el diseño del sistema dice que el taller hace, ni más ni menos
+-- (ver el bloque `v_taller` de la tanda 2). Cuando el galpón empiece a usar la
+-- app en serio, hay que probar CON un usuario taller real:
+--     tildar el checklist · reportar un faltante · firmar la entrega ·
+--     subir fotos del armado · ajustar stock · cargar un conteo físico
+-- Los dos primeros están cubiertos acá. **`ajustar stock` y `conteo físico` NO**:
+-- quedaron en `inventario:write`, que el taller no tiene. Si esas dos son
+-- trabajo del galpón, hay que darle `inventario:write` en el Panel o mover esas
+-- escrituras a una RPC `SECURITY DEFINER`.
+-- ════════════════════════════════════════════════════════════════════════
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- TANDA 2 · 27 tablas — eventos · logística · inventario · proyectos
+-- ─────────────────────────────────────────────────────────────────────────
+-- El patrón es el mismo de la tanda 1 (`rls_t413_compras_costos_rrhh.sql`):
+-- SELECT con OR de las claves de los módulos que la leen de verdad, WRITE con
+-- la clave del módulo dueño, DELETE sólo admin (la app borra con `_deleted`).
+--
+--   eventos                  ← eventos,finanzas,proyectos,crm,rendimiento / eventos
+--   asignaciones_evento      ← eventos,rrhh,finanzas / eventos
+--   evento_jornadas          ← eventos,rrhh / eventos
+--   evento_documentos        ← eventos / eventos
+--   evento_historial         ← eventos / eventos
+--   evento_transporte        ← eventos,flota / eventos
+--   evento_transporte_items  ← eventos,flota / eventos
+--   encuestas_evento         ← eventos / eventos
+--   predios                  ← eventos,proyectos / eventos
+--   cargas                   ← eventos,flota / eventos
+--   carga_personas           ← eventos,flota / eventos
+--   carga_proyectos          ← eventos,flota / eventos
+--   logistica_movimientos    ← eventos,flota / eventos
+--   vehiculos                ← flota,eventos / flota
+--   inventario_movimientos       ← inventario / inventario
+--   inventario_movimiento_items  ← inventario / inventario
+--   inventario_fisico_sesiones   ← inventario / inventario
+--   inventario_fisico_conteo     ← inventario / inventario
+--   locaciones_stock         ← locaciones,inventario / locaciones
+--   locaciones_documentos    ← locaciones,inventario / locaciones
+--   equipos                  ← inventario,locaciones / inventario
+--   equipo_contenido         ← inventario,locaciones / inventario
+--   produccion_mantenimiento ← inventario,proyectos / inventario
+--   proyecto_actividad       ← proyectos / proyectos
+--
+-- ★ Y las tres que el TALLER escribe por diseño, con
+--   WRITE = fn_role_can('proyectos','write') OR fn_user_role() = 'taller':
+--   proyecto_novedades  (reporta que falta material)
+--   proyecto_conformes  (firma la entrega del stand — CLAUDE.md: "el encargado
+--                        = taller = RO es quien firma")
+--   taller_proyecto_checklist (tilda los pasos de producción — hallazgo C5)
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- TANDA 3 · 15 tablas — compartidas, transversales y legacy
+-- ─────────────────────────────────────────────────────────────────────────
+--   insumos_base        ← costos,inventario,locaciones,compras / costos|inventario
+--                         (la más compartida del sistema: 5 módulos la leen)
+--   catalogo_item_fotos ← catalogo,costos / catalogo
+--   opciones_select     ← cualquier autenticado / admin   (opciones de los <select>)
+--   rutinas             ← admin / admin                   (pestaña admin de Tareas)
+--   taller_checklist · taller_materiales · taller_notas
+--                       ← proyectos:read / admin          (vacías, sin lectores)
+--   inventory_items · locations · logistica_remito · logistica_vehiculos ·
+--   octexa_piezas · payments · pyme_sync_log
+--                       ← admin / admin                   (legacy sin lectores)
+--
+-- ★ `audit_logs` va aparte y NO con el patrón de 4 policies:
+--   SELECT sólo admin · INSERT a cualquier autenticado · **sin UPDATE ni DELETE**.
+--   Es un log append-only, y el INSERT queda abierto a propósito: lo escribe el
+--   trigger de `asientos`, que corre con el usuario que hace el movimiento — si
+--   se le cierra, **confirmar un ingreso empieza a fallar**.
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- LAS 6 QUE QUEDAN ABIERTAS, Y POR QUÉ
+-- ─────────────────────────────────────────────────────────────────────────
+--   personas       → SELECT abierto A PROPÓSITO: lo necesitan ~10 embeds de
+--                    PostgREST. La contención es POR COLUMNA (T4.7). Cerrar el
+--                    SELECT le apaga a un pm el chofer de la carga y deja el
+--                    widget del Lobby en "(sin nombre)". **No tocar.**
+--   profiles       → sólo el SELECT. Media docena de pantallas muestran el
+--                    nombre del creador/responsable/aprobador. Si se acota, que
+--                    sea por columna, como personas.
+--   notifications  → sólo el INSERT, y no es descuido: el fan-out de avisos lo
+--                    hace el CLIENTE (`API.notificar`). Cerrarlo pide mover el
+--                    fan-out a una RPC `SECURITY DEFINER`. Es rediseño.
+--   catalogo_items → contrato del **Cotizador** (T4.8). Tiene además una policy
+--                    `FOR SELECT TO anon`.
+--   clientes       → mixta; también del contrato del Cotizador.
+--   roles          → mixta; es la matriz misma.
+--   (+ `cotizacion_propuestas` y `venta_numerador`: RLS activa y CERO policies,
+--      o sea que hoy no las lee nadie. Son del Cotizador → T4.8.)
+--
+-- Para T4.8 hay una pista fuerte de esta sesión: se le sacó el `anon` a
+-- listas_precio* y nada se rompió, y `docs/cotizador-contexto-respuestas.md`
+-- dice que el Cotizador pega con **service key server-side**, que ignora la RLS.
+-- Si se confirma con el otro repo, `catalogo_items` se puede cerrar sin drama.
+
+-- ─── Rollback de una tabla puntual ──────────────────────────────────────
+-- DROP POLICY IF EXISTS <tabla>_rls_sel ON public.<tabla>;  -- y los otros 3
+-- CREATE POLICY <tabla>_auth_all ON public.<tabla> FOR ALL TO authenticated
+--   USING (true) WITH CHECK (true);

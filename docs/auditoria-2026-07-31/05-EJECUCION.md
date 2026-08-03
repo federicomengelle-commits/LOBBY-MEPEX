@@ -73,7 +73,7 @@
 | **T4.10** | Paginar EERR · Balance · Libro Mayor | JS | ✅ | eran **5** puntos de truncado, no 3 — y **el bucle que el plan mandaba copiar paginaba sin ORDER BY** |
 | **T4.11** | `_safeUrl` global + los 10 `href` sin validar | JS | ✅ | + 3 HIGH que el barrido del audit no vio (iframe/window.open de `cot.pdfUrl`, lightbox) — los cazó el security-reviewer |
 | **T4.12** | `crm.js._escHtml` inseguro en ~23 atributos | JS | ✅ | delega al global (1 cambio cubre los ~110 usos) |
-| **T4.13** | Matriz de roles en las 65 tablas que faltan | SQL | 🟡 | **tanda 1 de 3 aplicada y verificada** (18 tablas: compras · costos · rrhh legacy). Quedan **48 abiertas**, con el mapa por módulo ya hecho en `sql/rls_t413_compras_costos_rrhh.sql` |
+| **T4.13** | Matriz de roles en las 65 tablas que faltan | SQL | ✅ | **las 3 tandas aplicadas y verificadas.** De **63 tablas abiertas a 6**, y las 6 son de tratamiento especial documentado. El bloqueo del taller **resultó no existir** |
 | **T4.14** | Aging de cobros: bucket "Sin fecha" | JS | ✅ | helper único `agingCobros` + el clamp del KPI, para que el desglose y su total cuenten igual |
 | **T4.15** | Lobby: chip de canal (o leer el toggle) | JS | ✅ | **chip**, no seguir el toggle: había una decisión previa documentada en el código. Cubre los **9** widgets de `_finData` |
 | **T4.16** | Rentabilidad: `—` en vez de 100% falso | JS | ✅ | + la columna Costo del reporte por proyecto, que mostraba `$0` donde la de cliente ya ponía `—` |
@@ -283,13 +283,21 @@ Prod sirviendo `app.js?v=36` · `api.js?v=110` · `rrhh.js?v=19` · `contabilida
 
 **El reviewer volvió APPROVE con un hallazgo grande que resultó FALSO POSITIVO:** dijo que `parametros_globales` —la que fija el precio de los 226 ítems— estaba abierta a cualquier autenticado. Verificado contra prod: **ya está cerrada con `fn_is_admin()`**. El reviewer no tenía MCP y leyó el SQL de junio, sin ver que se cerró después. *Es la enésima confirmación de la regla del repo: el reporte de un agente se verifica contra prod antes de actuar.* Lo que sí acertó: mis claves de SELECT tenían módulos de más (`catalogo`, `cotizador`, `compras`, `inventario` donde nadie lee) que le habrían dado lectura de márgenes justo a venta y taller. Se recortaron a `costos` solo.
 
-### ⛔ Antes de la tanda 2 hay una decisión de Fede, no técnica
+### ✅ Tandas 2 y 3 — CERRADAS el mismo día · `sql/rls_t413_tandas_2_y_3.sql`
 
-El rol **`taller` tiene `read` en toda la matriz y `write` en nada**. Si hoy el galpón ajusta stock, carga un conteo físico o tilda el checklist de producción, **lo está haciendo gracias a que la RLS está abierta**. La tanda 2 (inventario · locaciones · taller) cierra justo eso. Las opciones:
-- darle `inventario:write` (y quizá `proyectos:write` acotado) en la matriz del Panel, o
-- mover esas escrituras a RPCs `SECURITY DEFINER` con guard propio.
+**El bloqueo del taller resultó no existir, y se resolvió con datos en vez de con una charla.** Se creía que había que decidir antes si el rol `taller` podía escribir, porque tiene `read` en toda la matriz. Tres consultas lo despejaron:
 
-Sin decidir eso, cerrar el grupo D/E **deja al taller sin poder trabajar**. Es el hallazgo C5 de la auditoría, ahora con consecuencia concreta.
+- **`audit_log`**: el rol `taller` no aparece en **ninguna** escritura — todas son de superadmin y admin.
+- **Barrido de columnas de autoría** (`created_by`, `checked_by`, `firmado_by`…) en 21 tablas: **cero filas escritas por un usuario del taller**.
+- Y la razón de fondo: **ni el taller ni los PM entraron NUNCA al sistema** — 0 logins, 0 celulares con la PWA. Los 5 usuarios están creados y activos, pero nadie los usó todavía.
+
+O sea: cerrar ahora no rompe nada en uso, y **es mejor cerrarlo antes de que entren** — así el galpón se prueba con los permisos correctos desde el día uno, en vez de descubrir a mitad de la rampa a 2027 que todo dependía de una puerta abierta.
+
+**Se preservó lo que el diseño dice que el taller hace**, con `WRITE = fn_role_can('proyectos','write') OR fn_user_role() = 'taller'` en tres tablas: `proyecto_novedades` (reportar que falta material), `proyecto_conformes` (firmar la entrega del stand) y `taller_proyecto_checklist` (tildar los pasos de producción — el hallazgo C5). Verificado: **el taller PUEDE reportar un faltante, y NO puede crear un evento ni borrar movimientos de stock.**
+
+**Resultado: de 63 tablas abiertas a 6.** Las 6 restantes son `personas` y `profiles` (SELECT abierto a propósito, ver T4.7), `notifications` (sólo el INSERT, por el fan-out del cliente), y `catalogo_items`/`clientes`/`roles` (contrato del Cotizador → T4.8).
+
+**⚠️ Queda una punta abierta para cuando el galpón entre:** `ajustar stock` y `cargar un conteo físico` quedaron en `inventario:write`, que el taller **no** tiene. Si esas dos son trabajo del galpón —y probablemente lo sean— hay que darle `inventario:write` en el Panel o mover esas escrituras a una RPC. **Se prueba con un usuario taller real, no antes.**
 
 ---
 
