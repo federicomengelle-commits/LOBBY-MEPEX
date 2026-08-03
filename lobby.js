@@ -557,26 +557,29 @@ const HomeModule = {
             const canal = this._canal(), now = ctx.now;
             const { desde, hasta } = this._monthRange(now);
             const today = this._todayStr(now), in30 = this._offsetStr(now, 30), m3 = this._offsetStr(now, -90);
-            const cobQ = () => { let q = db.from('ingresos').select('monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta); if (canal) q = q.eq('canal', canal); return q; };
-            const pagQ = () => { let q = db.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta); if (canal) q = q.eq('canal', canal); return q; };
-            const gastoQ = () => { let q = db.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', m3).lte('fecha', today); if (canal) q = q.eq('canal', canal); return q; };
+            const cobQ = () => { let q = db.from('ingresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta); if (canal) q = q.eq('canal', canal); return q; };
+            const pagQ = () => { let q = db.from('egresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta); if (canal) q = q.eq('canal', canal); return q; };
+            const gastoQ = () => { let q = db.from('egresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', m3).lte('fecha', today); if (canal) q = q.eq('canal', canal); return q; };
             const [cobR, pagR, facR, cobrarR, pagarR, ctasR, gastoR] = await Promise.all([
                 cobQ(), pagQ(),
-                db.from('comprobantes').select('total, tipo').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', desde).lte('fecha', hasta),   // T4.5: `tipo` para el signo
+                db.from('comprobantes').select('total, total_en_ars, tipo').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', desde).lte('fecha', hasta),   // T4.5: `tipo` para el signo
                 db.from('plan_cobro_items').select('monto,monto_cobrado,fecha_estimada,estado').eq('_deleted', false).in('estado', ['pendiente', 'parcial', 'vencido']),
                 db.from('vencimientos_generados').select('monto_estimado').eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', today).lte('fecha_vencimiento', in30),
                 db.from('cuentas_financieras').select('*').eq('_deleted', false),
                 gastoQ(),
             ]);
-            const cobrado = this._sum(cobR.data, 'monto'), pagado = this._sum(pagR.data, 'monto');
+            // T4.4: `_sum` toma la columna cruda; `montoARS` prefiere el total ya
+            // convertido que materializa el trigger de la Fase E.
+            const cobrado = (cobR.data || []).reduce((s, r) => s + montoARS(r), 0);
+            const pagado = (pagR.data || []).reduce((s, r) => s + montoARS(r), 0);
             // T4.5: facturado NETO — `_sum` no sabe de signos y una nota de
             // crédito sumaba como si fuera una venta más.
-            const facturado = (facR.data || []).reduce((s, r) => s + (Number(r.total) || 0) * signoComprobante(r.tipo), 0);
+            const facturado = (facR.data || []).reduce((s, r) => s + montoARS(r, 'total') * signoComprobante(r.tipo), 0);
             // T4.14: espejo del clamp de finanzas.js — el KPI y el desglose de
             // aging tienen que contar con la misma regla.
             const porCobrar = (cobrarR.data || []).reduce((s, r) => s + Math.max(0, (Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0)), 0);
             const porPagar = this._sum(pagarR.data, 'monto_estimado');
-            const gastoProm = this._sum(gastoR.data, 'monto') / 3;
+            const gastoProm = (gastoR.data || []).reduce((s, r) => s + montoARS(r), 0) / 3;
             // T4.14: helper único con Finanzas (`agingCobros`, components.js).
             // Antes acá una cuota sin `fecha_estimada` caía en `days = 0` y se
             // enterraba en el bucket "0-30 días" — $30.000.000 presentados como
@@ -609,11 +612,12 @@ const HomeModule = {
                     return { nombre: c.nombre, tipo: c.tipo, saldo: base + Object.values(byCanal).reduce((s, r) => s + (Number(r.saldo_final) || 0), 0) };
                 }
                 const base = Number(c.saldo_inicial) || 0;
-                let qi = db.from('ingresos').select('monto').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'confirmado');
-                let qe = db.from('egresos').select('monto').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'pagado');
+                let qi = db.from('ingresos').select('monto, total_en_ars').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'confirmado');
+                let qe = db.from('egresos').select('monto, total_en_ars').eq('cuenta_id', c.id).eq('_deleted', false).eq('estado', 'pagado');
                 if (canal) { qi = qi.eq('canal', canal); qe = qe.eq('canal', canal); }
                 const [ir, er] = await Promise.all([qi, qe]);
-                return { nombre: c.nombre, tipo: c.tipo, saldo: base + this._sum(ir.data, 'monto') - this._sum(er.data, 'monto') };
+                const suma = (rows) => (rows || []).reduce((s, r) => s + montoARS(r), 0);   // T4.4
+                return { nombre: c.nombre, tipo: c.tipo, saldo: base + suma(ir.data) - suma(er.data) };
             }));
             const saldo = cuentasSaldos.reduce((s, c) => s + c.saldo, 0);
             return { facturado, cobrado, pagado, saldo, porCobrar, porPagar, gastoProm, cuentasSaldos, aging };
@@ -868,9 +872,9 @@ const HomeModule = {
             const r = await this._memo(ctx, 'sueldos', async () => {
                 if (!db) return 0;
                 const { desde, hasta } = this._monthRange(ctx.now), canal = this._canal();
-                let q = db.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').eq('categoria', 'rrhh').gte('fecha', desde).lte('fecha', hasta);
+                let q = db.from('egresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').eq('categoria', 'rrhh').gte('fecha', desde).lte('fecha', hasta);
                 if (canal) q = q.eq('canal', canal);
-                const { data } = await q; return this._sum(data, 'monto');
+                const { data } = await q; return (data || []).reduce((s, r) => s + montoARS(r), 0);
             });
             return this._chipCanal() + this._bignum(this._formatMoney(r || 0), 'sueldos/jornales (mes)') + this._more('Ver RRHH', 'rrhh');
         },

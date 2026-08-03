@@ -2935,7 +2935,7 @@ const FinanzasModule = {
         // Total
         const total = this._ingresosFiltered
             .filter(i => i.estado !== 'anulado')
-            .reduce((s, i) => s + (parseFloat(i.monto) || 0), 0);
+            .reduce((s, i) => s + montoARS(i), 0);   // T4.4
 
         const esc = s => (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         main.innerHTML = `
@@ -3907,7 +3907,7 @@ const FinanzasModule = {
 
         const total = this._egresosFiltered
             .filter(e => e.estado !== 'anulado')
-            .reduce((s, e) => s + (parseFloat(e.monto) || 0), 0);
+            .reduce((s, e) => s + montoARS(e), 0);   // T4.4
 
         const esc = s => (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         main.innerHTML = `
@@ -4702,13 +4702,16 @@ const FinanzasModule = {
     },
 
     async _saldoCuentaLegacy(cuentaId, canal, base) {
-        let qi = supabaseClient.from('ingresos').select('monto').eq('cuenta_id', cuentaId).eq('_deleted', false).eq('estado', 'confirmado');
-        let qe = supabaseClient.from('egresos').select('monto').eq('cuenta_id', cuentaId).eq('_deleted', false).eq('estado', 'pagado');
+        let qi = supabaseClient.from('ingresos').select('monto, total_en_ars').eq('cuenta_id', cuentaId).eq('_deleted', false).eq('estado', 'confirmado');
+        let qe = supabaseClient.from('egresos').select('monto, total_en_ars').eq('cuenta_id', cuentaId).eq('_deleted', false).eq('estado', 'pagado');
         if (canal) { qi = qi.eq('canal', canal); qe = qe.eq('canal', canal); }
         const [{ data: ing }, { data: egr }] = await Promise.all([qi, qe]);
+        // T4.4: el saldo de una cuenta se arma en PESOS. Sumar `monto` crudo
+        // mezclaba unidades: un movimiento en dólares entraba por su valor
+        // nominal (USD 1.000 sumaba $1.000 a una caja en pesos).
         return (Number(base) || 0)
-            + (ing || []).reduce((s, r) => s + (Number(r.monto) || 0), 0)
-            - (egr || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            + (ing || []).reduce((s, r) => s + montoARS(r), 0)
+            - (egr || []).reduce((s, r) => s + montoARS(r), 0);
     },
 
     async _calcularSaldo(cuentaId) {
@@ -4721,7 +4724,7 @@ const FinanzasModule = {
         let movs = [];
 
         try {
-            let qIn = supabaseClient.from('ingresos').select('id,fecha,concepto,monto,estado,canal')
+            let qIn = supabaseClient.from('ingresos').select('id,fecha,concepto,monto,total_en_ars,estado,canal')
                 .eq('cuenta_id', cuentaId).eq('_deleted', false).neq('estado', 'anulado');
             if (canal) qIn = qIn.eq('canal', canal);
             const { data: inData } = await qIn;
@@ -4729,7 +4732,7 @@ const FinanzasModule = {
         } catch (e) { /* ignore */ }
 
         try {
-            let qOut = supabaseClient.from('egresos').select('id,fecha,concepto,monto,estado,canal')
+            let qOut = supabaseClient.from('egresos').select('id,fecha,concepto,monto,total_en_ars,estado,canal')
                 .eq('cuenta_id', cuentaId).eq('_deleted', false).neq('estado', 'anulado');
             if (canal) qOut = qOut.eq('canal', canal);
             const { data: outData } = await qOut;
@@ -4762,8 +4765,10 @@ const FinanzasModule = {
         let running = Number(c.saldo_inicial) || 0;
         const balances = [];
         movsAsc.forEach(m => {
-            if (m.tipo === 'ingreso') running += Number(m.monto);
-            else running -= Number(m.monto);
+            // T4.4: el saldo corriente de esta pantalla tiene que hablar la misma
+            // moneda que el "Saldo" del header, que ya sale de saldos_mensuales.
+            if (m.tipo === 'ingreso') running += montoARS(m);
+            else running -= montoARS(m);
             balances.push(running);
         });
         balances.reverse(); // now matches movs order (newest first)
@@ -6210,41 +6215,41 @@ const FinanzasModule = {
         try {
             // T4.5: `tipo` en el select y signo en la suma — una nota de crédito
             // resta de lo facturado, no suma.
-            let q = supabaseClient.from('comprobantes').select('total, tipo').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', mesDesde).lte('fecha', mesHasta);
+            let q = supabaseClient.from('comprobantes').select('total, total_en_ars, tipo').eq('_deleted', false).eq('estado', 'emitida').gte('fecha', mesDesde).lte('fecha', mesHasta);
             const { data } = await q;
-            kpi.facturado = (data || []).reduce((s, r) => s + (Number(r.total) || 0) * signoComprobante(r.tipo), 0);
+            kpi.facturado = (data || []).reduce((s, r) => s + montoARS(r, 'total') * signoComprobante(r.tipo), 0);
         } catch (_) {}
 
         // Cobrado del mes
         try {
-            let q = supabaseClient.from('ingresos').select('monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', mesDesde).lte('fecha', mesHasta);
+            let q = supabaseClient.from('ingresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', mesDesde).lte('fecha', mesHasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            kpi.cobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            kpi.cobrado = (data || []).reduce((s, r) => s + montoARS(r), 0);
         } catch (_) {}
 
         // Cobrado mes anterior
         try {
-            let q = supabaseClient.from('ingresos').select('monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', prevDesde).lte('fecha', prevHasta);
+            let q = supabaseClient.from('ingresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', prevDesde).lte('fecha', prevHasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            kpi.prevCobrado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            kpi.prevCobrado = (data || []).reduce((s, r) => s + montoARS(r), 0);
         } catch (_) {}
 
         // Pagado del mes
         try {
-            let q = supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', mesDesde).lte('fecha', mesHasta);
+            let q = supabaseClient.from('egresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', mesDesde).lte('fecha', mesHasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            kpi.pagado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            kpi.pagado = (data || []).reduce((s, r) => s + montoARS(r), 0);
         } catch (_) {}
 
         // Pagado mes anterior
         try {
-            let q = supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', prevDesde).lte('fecha', prevHasta);
+            let q = supabaseClient.from('egresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', prevDesde).lte('fecha', prevHasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            kpi.prevPagado = (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+            kpi.prevPagado = (data || []).reduce((s, r) => s + montoARS(r), 0);
         } catch (_) {}
 
         // Saldo disponible (cuentas activas) — respeta el toggle de canal.
@@ -6263,6 +6268,12 @@ const FinanzasModule = {
         // Por cobrar (plan_cobro_items pendientes)
         try {
             const { data } = await supabaseClient.from('plan_cobro_items').select('monto, monto_cobrado').eq('_deleted', false).in('estado', ['pendiente', 'parcial', 'vencido']);
+            // T4.4: acá NO va `montoARS`, a propósito. `plan_cobro_items` tiene
+            // `total_en_ars`, pero es el equivalente en pesos de `monto` — y lo que
+            // se calcula es `monto − monto_cobrado`, donde lo cobrado NO tiene su
+            // propia columna convertida. Mezclar las dos daría un saldo peor que el
+            // de hoy. Convertirlo bien pide `monto_cobrado_en_ars` (o aplicar la
+            // cotización de cada cobro), y eso es diseño, no un reemplazo.
             // T4.14: misma regla que `agingCobros` — una cuota con `monto_cobrado`
             // mayor que su `monto` (dato inconsistente, la tabla los tiene) aportaba
             // un saldo NEGATIVO y descontaba de lo que falta cobrar. Clampear acá y
@@ -6285,7 +6296,7 @@ const FinanzasModule = {
             let q = supabaseClient.from('cartera_valores').select('monto, total_en_ars, sentido').eq('_deleted', false).eq('estado', 'en_cartera');
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            const monto = (v) => Number(v.total_en_ars) || Number(v.monto) || 0;
+            const monto = (v) => montoARS(v);   // T4.4: el `||` perdia un total_en_ars en cero
             kpi.valoresACobrar = (data || []).filter(v => v.sentido === 'recibido').reduce((s, v) => s + monto(v), 0);
             kpi.valoresAPagar = (data || []).filter(v => v.sentido === 'emitido').reduce((s, v) => s + monto(v), 0);
         } catch (_) {}
@@ -6368,12 +6379,12 @@ const FinanzasModule = {
         // 2 queries (en paralelo) + bucketing por mes en JS, en vez de 24 queries secuenciales
         const ingByMonth = {}, egrByMonth = {};
         try {
-            let qi = supabaseClient.from('ingresos').select('fecha, monto').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
-            let qe = supabaseClient.from('egresos').select('fecha, monto').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
+            let qi = supabaseClient.from('ingresos').select('fecha, monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
+            let qe = supabaseClient.from('egresos').select('fecha, monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
             if (canal) { qi = qi.eq('canal', canal); qe = qe.eq('canal', canal); }
             const [{ data: ingRows }, { data: egrRows }] = await Promise.all([qi, qe]);
-            (ingRows || []).forEach(r => { const k = (r.fecha || '').slice(0, 7); ingByMonth[k] = (ingByMonth[k] || 0) + (Number(r.monto) || 0); });
-            (egrRows || []).forEach(r => { const k = (r.fecha || '').slice(0, 7); egrByMonth[k] = (egrByMonth[k] || 0) + (Number(r.monto) || 0); });
+            (ingRows || []).forEach(r => { const k = (r.fecha || '').slice(0, 7); ingByMonth[k] = (ingByMonth[k] || 0) + montoARS(r); });
+            (egrRows || []).forEach(r => { const k = (r.fecha || '').slice(0, 7); egrByMonth[k] = (egrByMonth[k] || 0) + montoARS(r); });
         } catch (_) {}
 
         for (let i = 11; i >= 0; i--) {
@@ -6411,14 +6422,14 @@ const FinanzasModule = {
         // Group ingresos by broad category
         const cats = { 'Stands': 0, 'Alquileres': 0, 'Expo': 0, 'Adicionales': 0, 'Otros': 0 };
         try {
-            const { data } = await supabaseClient.from('ingresos').select('concepto, monto').eq('_deleted', false).eq('estado', 'confirmado');
+            const { data } = await supabaseClient.from('ingresos').select('concepto, monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado');
             (data || []).forEach(r => {
                 const c = (r.concepto || '').toLowerCase();
-                if (c.includes('stand') || c.includes('montaje')) cats['Stands'] += Number(r.monto) || 0;
-                else if (c.includes('alquiler') || c.includes('equip')) cats['Alquileres'] += Number(r.monto) || 0;
-                else if (c.includes('expo') || c.includes('feria')) cats['Expo'] += Number(r.monto) || 0;
-                else if (c.includes('adic') || c.includes('extra')) cats['Adicionales'] += Number(r.monto) || 0;
-                else cats['Otros'] += Number(r.monto) || 0;
+                if (c.includes('stand') || c.includes('montaje')) cats['Stands'] += montoARS(r);
+                else if (c.includes('alquiler') || c.includes('equip')) cats['Alquileres'] += montoARS(r);
+                else if (c.includes('expo') || c.includes('feria')) cats['Expo'] += montoARS(r);
+                else if (c.includes('adic') || c.includes('extra')) cats['Adicionales'] += montoARS(r);
+                else cats['Otros'] += montoARS(r);
             });
         } catch (_) {}
 
@@ -6504,8 +6515,8 @@ const FinanzasModule = {
         } catch (_) {}
 
         try {
-            const { data } = await supabaseClient.from('egresos').select('concepto, monto, fecha_programada').eq('_deleted', false).eq('estado', 'programado').gte('fecha_programada', todayStr).lte('fecha_programada', in7);
-            (data || []).forEach(e => events.push({ date: e.fecha_programada, label: e.concepto, amount: e.monto, color: '#E84855' }));
+            const { data } = await supabaseClient.from('egresos').select('concepto, monto, total_en_ars, fecha_programada').eq('_deleted', false).eq('estado', 'programado').gte('fecha_programada', todayStr).lte('fecha_programada', in7);
+            (data || []).forEach(e => events.push({ date: e.fecha_programada, label: e.concepto, amount: montoARS(e), color: '#E84855' }));   // T4.4
         } catch (_) {}
 
         events.sort((a, b) => a.date.localeCompare(b.date));
@@ -6735,13 +6746,13 @@ const FinanzasModule = {
     async _renderEstadoResultados(main, desde, hasta, canal) {
         let ingresos = [], egresos = [];
         try {
-            let q = supabaseClient.from('ingresos').select('concepto, monto, proyecto_id').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
+            let q = supabaseClient.from('ingresos').select('concepto, monto, total_en_ars, proyecto_id').eq('_deleted', false).eq('estado', 'confirmado').gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
             ingresos = data || [];
         } catch (_) {}
         try {
-            let q = supabaseClient.from('egresos').select('categoria, concepto, monto, proyecto_id').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
+            let q = supabaseClient.from('egresos').select('categoria, concepto, monto, total_en_ars, proyecto_id').eq('_deleted', false).eq('estado', 'pagado').gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
             egresos = data || [];
@@ -6751,21 +6762,21 @@ const FinanzasModule = {
         const ingByType = {};
         ingresos.forEach(r => {
             const key = r.concepto?.split(' ')[0] || 'Otros';
-            ingByType[key] = (ingByType[key] || 0) + (Number(r.monto) || 0);
+            ingByType[key] = (ingByType[key] || 0) + montoARS(r);
         });
-        const totalIng = ingresos.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        const totalIng = ingresos.reduce((s, r) => s + montoARS(r), 0);
 
         // Egresos operativos (con proyecto)
         const egrOp = egresos.filter(e => e.proyecto_id);
         const egrOpByCat = {};
-        egrOp.forEach(e => { egrOpByCat[e.categoria] = (egrOpByCat[e.categoria] || 0) + (Number(e.monto) || 0); });
-        const totalCostos = egrOp.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        egrOp.forEach(e => { egrOpByCat[e.categoria] = (egrOpByCat[e.categoria] || 0) + montoARS(e); });   // T4.4: si no, los renglones no suman su propio TOTAL
+        const totalCostos = egrOp.reduce((s, r) => s + montoARS(r), 0);
 
         // Egresos administrativos (sin proyecto)
         const egrAdmin = egresos.filter(e => !e.proyecto_id);
         const egrAdByCat = {};
-        egrAdmin.forEach(e => { egrAdByCat[e.categoria] = (egrAdByCat[e.categoria] || 0) + (Number(e.monto) || 0); });
-        const totalGastos = egrAdmin.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        egrAdmin.forEach(e => { egrAdByCat[e.categoria] = (egrAdByCat[e.categoria] || 0) + montoARS(e); });   // T4.4
+        const totalGastos = egrAdmin.reduce((s, r) => s + montoARS(r), 0);
 
         const resultBruto = totalIng - totalCostos;
         const resultNeto = resultBruto - totalGastos;
@@ -6840,20 +6851,20 @@ const FinanzasModule = {
         // Agregado en 3 queries (no N+1): facturado, cobrado y costo por proyecto.
         const facMap = {}, cobMap = {}, costoMap = {};
         try {
-            const { data } = await supabaseClient.from('comprobantes').select('proyecto_id, total, tipo').eq('_deleted', false).eq('estado', 'emitida').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);   // T4.5: `tipo` para el signo
-            (data || []).forEach(r => { facMap[r.proyecto_id] = (facMap[r.proyecto_id] || 0) + (Number(r.total) || 0) * signoComprobante(r.tipo); });
+            const { data } = await supabaseClient.from('comprobantes').select('proyecto_id, total, total_en_ars, tipo').eq('_deleted', false).eq('estado', 'emitida').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);   // T4.5: `tipo` para el signo
+            (data || []).forEach(r => { facMap[r.proyecto_id] = (facMap[r.proyecto_id] || 0) + montoARS(r, 'total') * signoComprobante(r.tipo); });
         } catch (_) {}
         try {
-            let q = supabaseClient.from('ingresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
+            let q = supabaseClient.from('ingresos').select('proyecto_id, monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            (data || []).forEach(r => { cobMap[r.proyecto_id] = (cobMap[r.proyecto_id] || 0) + (Number(r.monto) || 0); });
+            (data || []).forEach(r => { cobMap[r.proyecto_id] = (cobMap[r.proyecto_id] || 0) + montoARS(r); });
         } catch (_) {}
         try {
-            let q = supabaseClient.from('egresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
+            let q = supabaseClient.from('egresos').select('proyecto_id, monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            (data || []).forEach(r => { costoMap[r.proyecto_id] = (costoMap[r.proyecto_id] || 0) + (Number(r.monto) || 0); });
+            (data || []).forEach(r => { costoMap[r.proyecto_id] = (costoMap[r.proyecto_id] || 0) + montoARS(r); });
         } catch (_) {}
 
         const rows = proyKeys.map(pid => {
@@ -6915,10 +6926,10 @@ const FinanzasModule = {
         // Agregado en 1 query (no N+1): cobrado por cliente.
         const cobMap = {};
         try {
-            let q = supabaseClient.from('ingresos').select('cliente_id, monto').eq('_deleted', false).eq('estado', 'confirmado').not('cliente_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
+            let q = supabaseClient.from('ingresos').select('cliente_id, monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado').not('cliente_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             if (canal) q = q.eq('canal', canal);
             const { data } = await q;
-            (data || []).forEach(r => { cobMap[r.cliente_id] = (cobMap[r.cliente_id] || 0) + (Number(r.monto) || 0); });
+            (data || []).forEach(r => { cobMap[r.cliente_id] = (cobMap[r.cliente_id] || 0) + montoARS(r); });
         } catch (_) {}
 
         // Costo por cliente = Σ egresos pagados (período) imputados a los proyectos del cliente.
@@ -6926,10 +6937,10 @@ const FinanzasModule = {
         try {
             const { data: proys } = await supabaseClient.from('proyectos').select('id, cliente_id').not('cliente_id', 'is', null);
             const proyCli = {}; (proys || []).forEach(p => { proyCli[p.id] = p.cliente_id; });
-            let qe = supabaseClient.from('egresos').select('proyecto_id, monto').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
+            let qe = supabaseClient.from('egresos').select('proyecto_id, monto, total_en_ars').eq('_deleted', false).eq('estado', 'pagado').not('proyecto_id', 'is', null).gte('fecha', desde).lte('fecha', hasta);
             if (canal) qe = qe.eq('canal', canal);
             const { data: egs } = await qe;
-            (egs || []).forEach(r => { const cid = proyCli[r.proyecto_id]; if (cid) costoMap[cid] = (costoMap[cid] || 0) + (Number(r.monto) || 0); });
+            (egs || []).forEach(r => { const cid = proyCli[r.proyecto_id]; if (cid) costoMap[cid] = (costoMap[cid] || 0) + montoARS(r); });
         } catch (_) {}
 
         const rows = [];
@@ -7007,8 +7018,8 @@ const FinanzasModule = {
                 cobros = (data || []).reduce((s, r) => s + ((Number(r.monto) || 0) - (Number(r.monto_cobrado) || 0)), 0);
             } catch (_) {}
             try {
-                const { data } = await supabaseClient.from('egresos').select('monto').eq('_deleted', false).eq('estado', 'programado').gte('fecha_programada', desde).lte('fecha_programada', hasta);
-                pagos += (data || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+                const { data } = await supabaseClient.from('egresos').select('monto, total_en_ars').eq('_deleted', false).eq('estado', 'programado').gte('fecha_programada', desde).lte('fecha_programada', hasta);
+                pagos += (data || []).reduce((s, r) => s + montoARS(r), 0);
             } catch (_) {}
             try {
                 const { data } = await supabaseClient.from('vencimientos_generados').select('monto_estimado').eq('_deleted', false).eq('estado', 'pendiente').gte('fecha_vencimiento', desde).lte('fecha_vencimiento', hasta);
@@ -9010,11 +9021,11 @@ const FinanzasModule = {
         const mesNC = mes.filter(c => (c.tipo || '').startsWith('nota_')).length;
         // T4.5: la fila ya distinguía FC de NC para CONTARLAS; los importes las
         // sumaban igual. Con el signo, "facturado del mes" es facturado neto.
-        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);
+        const totalMes = mes.reduce((s, c) => s + montoARS(c, 'total') * signoComprobante(c.tipo), 0);
         const ticket = mes.length ? Math.round(totalMes / mes.length) : 0;
         const anioCount = all.filter(c => String(c.fecha || '').slice(0, 4) === year).length;
         const byCli = {};
-        mes.forEach(c => { const k = this._clientesMap[c.cliente_id] || c.cuit_dni || '—'; byCli[k] = (byCli[k] || 0) + (Number(c.total) || 0) * signoComprobante(c.tipo); });
+        mes.forEach(c => { const k = this._clientesMap[c.cliente_id] || c.cuit_dni || '—'; byCli[k] = (byCli[k] || 0) + montoARS(c, 'total') * signoComprobante(c.tipo); });
         let topCli = '—', topMonto = 0;
         Object.entries(byCli).forEach(([k, v]) => { if (v > topMonto) { topMonto = v; topCli = k; } });
         box.innerHTML = `
@@ -9117,7 +9128,7 @@ const FinanzasModule = {
             return `<span class="fin-sort-icon">${this._factEmitidosSortDir === 'asc' ? '▲' : '▼'}</span>`;
         };
 
-        const total = this._factEmitidosFiltered.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);   // T4.5: neto de notas de crédito
+        const total = this._factEmitidosFiltered.reduce((s, c) => s + montoARS(c, 'total') * signoComprobante(c.tipo), 0);   // T4.5 signo + T4.4 moneda
 
         main.innerHTML = `
             <div class="fin-table-wrapper">
@@ -9445,7 +9456,7 @@ const FinanzasModule = {
         // ofrece `nota_credito` y `nota_debito` en el modal de carga, así que
         // una NC de proveedor se puede cargar hoy mismo — y sumaría el gasto en
         // vez de restarlo.
-        const totalMes = mes.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);
+        const totalMes = mes.reduce((s, c) => s + montoARS(c, 'total') * signoComprobante(c.tipo), 0);   // T4.4
         const ticket = mes.length ? Math.round(totalMes / mes.length) : 0;
         const anioCount = all.filter(c => String(c.fecha || '').slice(0, 4) === year).length;
         const sinPagar = mes.filter(c => !c.egreso_id).length;
@@ -9535,7 +9546,7 @@ const FinanzasModule = {
             return `<span class="fin-sort-icon">${this._factRecibidosSortDir === 'asc' ? '▲' : '▼'}</span>`;
         };
 
-        const total = this._factRecibidosFiltered.reduce((s, c) => s + (Number(c.total) || 0) * signoComprobante(c.tipo), 0);   // T4.5: neto de notas de crédito
+        const total = this._factRecibidosFiltered.reduce((s, c) => s + montoARS(c, 'total') * signoComprobante(c.tipo), 0);   // T4.5 signo + T4.4 moneda
 
         main.innerHTML = `
             <div class="fin-table-wrapper">
@@ -9884,8 +9895,8 @@ const FinanzasModule = {
     _renderValoresKpis() {
         const el = document.getElementById('finValoresKpis'); if (!el) return;
         const enC = this._valores.filter(v => v.estado === 'en_cartera');
-        const aCobrar = enC.filter(v => v.sentido === 'recibido').reduce((s,v)=>s+Number(v.total_en_ars||v.monto||0),0);
-        const aPagar = enC.filter(v => v.sentido === 'emitido').reduce((s,v)=>s+Number(v.total_en_ars||v.monto||0),0);
+        const aCobrar = enC.filter(v => v.sentido === 'recibido').reduce((s, v) => s + montoARS(v), 0);   // T4.4
+        const aPagar  = enC.filter(v => v.sentido === 'emitido').reduce((s, v) => s + montoARS(v), 0);
         const hoy = hoyLocal();
         const venc = enC.filter(v => v.fecha_cobro && v.fecha_cobro < hoy).length;
         const k = (l,val,c) => `<div class="finval-kpi"><div class="finval-kpi-l">${l}</div><div class="finval-kpi-v" style="color:${c};">${val}</div></div>`;
@@ -12466,7 +12477,7 @@ const FinanzasModule = {
         const items = this._ivar || [];
         const totIva = items.reduce((s, i) => s + (parseFloat(i.iva_total) || 0), 0);
         const totSubt = items.reduce((s, i) => s + (parseFloat(i.subtotal) || 0), 0);
-        const totTotal = items.reduce((s, i) => s + (parseFloat(i.total) || 0), 0);
+        const totTotal = items.reduce((s, i) => s + montoARS(i, 'total'), 0);   // T4.4
         const periodoLabel = this._ivarPeriodoFilter || 'Todos los periodos';
         const fmt = n => '$' + Math.round(n).toLocaleString('es-AR');
         cont.innerHTML = `

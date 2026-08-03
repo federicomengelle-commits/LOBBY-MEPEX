@@ -8679,7 +8679,7 @@ const API = {
             // Cobrado = ingresos confirmados del evento
             const { data: ing } = await supabaseClient.from('ingresos')
                 .select('total_en_ars, monto').eq('evento_id', eventoId).eq('estado', 'confirmado').eq('_deleted', false);
-            out.cobrado = (ing || []).reduce((s, r) => s + (Number(r.total_en_ars) || Number(r.monto) || 0), 0);
+            out.cobrado = (ing || []).reduce((s, r) => s + montoARS(r), 0);   // T4.4: era el mismo `||` que perdia un total_en_ars en cero
 
             // Proyectos del evento → Facturado (comprobantes emitidos al cliente)
             const { data: proys } = await supabaseClient.from('proyectos')
@@ -8695,7 +8695,7 @@ const API = {
                 // mostraba más facturado —y por lo tanto más ganancia— de la real.
                 out.facturado = (comps || [])
                     .filter(c => !['anulada', 'anulado', 'error', 'rechazada', 'rechazado'].includes((c.estado || '').toLowerCase()))
-                    .reduce((s, r) => s + (Number(r.total_en_ars) || Number(r.total) || 0) * signoComprobante(r.tipo), 0);
+                    .reduce((s, r) => s + montoARS(r, 'total') * signoComprobante(r.tipo), 0);   // T4.4
             }
 
             // Costos = planilla (evento_costos no anuladas) + egresos imputados al evento
@@ -8717,7 +8717,7 @@ const API = {
                 try { const rm = await supabaseClient.from('evento_costos').select('egreso_id').eq('evento_id', eventoId).not('egreso_id', 'is', null); migrados = rm.data || []; } catch (e) { /* columna nueva */ }
                 const linked = new Set([...(pagados || []).map(p => p.egreso_id), ...migrados.map(c => c.egreso_id)].filter(Boolean));
                 costoDirecto = (egEvento || []).filter(e => !linked.has(e.id))
-                    .reduce((s, e) => s + (Number(e.total_en_ars) || Number(e.monto) || 0), 0);
+                    .reduce((s, e) => s + montoARS(e), 0);   // T4.4
             }
             out.costos_directo = costoDirecto;
             out.costos = out.costos_planilla + costoDirecto;

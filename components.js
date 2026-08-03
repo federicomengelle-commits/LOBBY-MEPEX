@@ -138,6 +138,31 @@ window.fechaLocal = function (s) {
     return new Date(y, m - 1, d);
 };
 
+// ── El importe de una fila, en PESOS (T4.4, auditoría 31/07) ───────────
+// Nueve tablas tienen `total_en_ars` materializado por trigger desde la Fase E
+// (multi-moneda), pero casi todo el front seguía sumando `monto`/`total` crudo.
+// Un cobro de USD 1.000 con cotización 1.420 —o sea $1.420.000 ya guardados en
+// la columna— sumaba **$1.000** al KPI del mes, al EERR y a la rentabilidad del
+// proyecto. Está latente porque hoy no hay movimientos en otra moneda, pero el
+// selector de moneda está vivo en los modales: el primer cobro en dólares lo
+// activa, y en silencio.
+//
+// ⚠️ El `??` no sirve acá: `Number(null)` es **0**, no null, así que
+// `Number(r.total_en_ars) ?? Number(r.monto)` nunca cae al fallback. Y `||`
+// tampoco alcanza del todo (un total_en_ars legítimamente 0 caería al crudo).
+// Por eso se chequea la presencia de la columna, no el valor.
+// `campoArs` es parametrizable a propósito: `vencimientos_generados` y
+// `vencimientos_recurrentes` tienen la suya con otro nombre (`monto_estimado_ars`,
+// de la Fase G.5). Con el nombre hardcodeado, llamar `montoARS(r,'monto_estimado')`
+// buscaría un `total_en_ars` que no existe ahí y caería SIEMPRE al crudo — el
+// mismo bug, disfrazado de arreglo.
+window.montoARS = function (row, campo, campoArs) {
+    if (!row) return 0;
+    const ars = row[campoArs || 'total_en_ars'];
+    if (ars !== undefined && ars !== null && ars !== '') return Number(ars) || 0;
+    return Number(row[campo || 'monto']) || 0;
+};
+
 // ── Aging de cobros (T4.14, auditoría 31/07) ────────────────────────────
 // Había DOS implementaciones y diferían en $30.000.000: Finanzas descartaba
 // las cuotas sin `fecha_estimada` (`if (!item.fecha_estimada) return;`) y el
