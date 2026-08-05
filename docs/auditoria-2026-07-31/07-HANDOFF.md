@@ -5,7 +5,7 @@
 
 ---
 
-## Dónde quedó: **64 de 72**
+## Dónde quedó: **65 de 73**
 
 Repo limpio, todo pusheado, `HEAD == origin/main`. ⏳ **Prod sirve `app.js?v=36` y el repo va por `?v=39`: falta `~/pull-lobby.sh`** (trae el KPI de presupuestos, el costo del modal de recetas y el CSV del Libro IVA).
 
@@ -27,7 +27,9 @@ Repo limpio, todo pusheado, `HEAD == origin/main`. ⏳ **Prod sirve `app.js?v=36
 
 ## Lo que se cerró el 2026-08-05
 
-**T5.5** (16 clientes con `ultimo_contacto` → la alerta pasa de 0 siempre a 14) · **T5.6** (2 asignaciones rescatadas, no 5 — ver abajo) · **T5.7** (10 fechas de Campana, neutro en plata) · **T5.2** (las 2 copias sin pago, −$151.200 de IVA inventado) · **T5.11** (265 → 255 clientes) · **T5.10 parcial**.
+**T5.5** (16 clientes con `ultimo_contacto` → la alerta pasa de 0 siempre a 14) · **T5.6** (2 asignaciones rescatadas, no 5 — ver abajo) · **T5.7** (10 fechas de Campana, neutro en plata) · **T5.2** + **T5.2-bis** (el libro blanqueado) · **T5.10** · **T5.11** (265 → 254 clientes) · **T0.8** (los 3 índices) · **T0.9 parcial** (2 de 3 FKs).
+
+Y tres deudas que no eran ítems del plan: el **KPI de presupuestos** (lo encontró Fede), la de **T4.19** en el modal de recetas, y el **CSV del Libro IVA Compras** con IVA mixto.
 
 **⚠️ El MCP de Supabase arrancó SIN autorizar** (el plugin está instalado pero es un server HTTP con OAuth) y apareció recién a mitad de sesión. Mientras no estuvo, el camino fue la **service key de `lobby-api/.env`** (`sb_secret_`, verificada contra prod): alcanza para todo lo que sea **datos** vía PostgREST, y lo único que no puede es **DDL**. Vale tenerlo a mano por si la próxima sesión arranca igual.
 
