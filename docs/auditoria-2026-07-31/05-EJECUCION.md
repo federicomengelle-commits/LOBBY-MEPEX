@@ -68,7 +68,7 @@
 | **T4.5** | Signo de las notas de crédito | JS+SQL | ✅ | eran **views + 21 puntos de JS**, no "3 reduce": las 3 pantallas de Posición IVA **no leen las views** |
 | **T4.6** | Sync de jornales por trigger | ~~SQL~~ JS | ✅ | **sin trigger** (decisión de Fede: *avisar, no ejecutar*). Y las 4 lecturas del sync fallaban abiertas: una de ellas **borraba todos los jornales del evento** devolviendo `ok:true` |
 | **T4.7** | View `personas_publicas` + cerrar `personas` | SQL+JS | ✅ | **aplicado y verificado en prod 2026-08-03.** NO es la view del plan: cerrar la RLS de filas apagaba **11 FKs de embeds**. Va por **columnas** |
-| **T4.8** | Grants por columna para el cotizador | SQL | ⬜ | **coordinar con el otro repo**. Sumar: `cotizacion_propuestas` tiene RLS activo y **cero policies** (5 filas, la última del 26/06) → o el Cotizador escribe con service key, o esa feature está muda hace más de un mes |
+| **T4.8** | Grants por columna para el cotizador | SQL | ✅ | **la premisa del ítem era falsa**: el Cotizador NO lee Supabase desde el browser. Verificado en su JS servido + medido antes/después. `catalogo_items` cerrada, **cero anon en toda la base** |
 | **T4.9** | Confirm + contador antes de borrar una jornada | JS | ✅ | chip 👥 por fila + confirm con los nombres. Borra por **referencia**, no por índice |
 | **T4.10** | Paginar EERR · Balance · Libro Mayor | JS | ✅ | eran **5** puntos de truncado, no 3 — y **el bucle que el plan mandaba copiar paginaba sin ORDER BY** |
 | **T4.11** | `_safeUrl` global + los 10 `href` sin validar | JS | ✅ | + 3 HIGH que el barrido del audit no vio (iframe/window.open de `cot.pdfUrl`, lightbox) — los cazó el security-reviewer |
@@ -298,6 +298,31 @@ O sea: cerrar ahora no rompe nada en uso, y **es mejor cerrarlo antes de que ent
 **Resultado: de 63 tablas abiertas a 6.** Las 6 restantes son `personas` y `profiles` (SELECT abierto a propósito, ver T4.7), `notifications` (sólo el INSERT, por el fan-out del cliente), y `catalogo_items`/`clientes`/`roles` (contrato del Cotizador → T4.8).
 
 **⚠️ Queda una punta abierta para cuando el galpón entre:** `ajustar stock` y `cargar un conteo físico` quedaron en `inventario:write`, que el taller **no** tiene. Si esas dos son trabajo del galpón —y probablemente lo sean— hay que darle `inventario:write` en el Panel o mover esas escrituras a una RPC. **Se prueba con un usuario taller real, no antes.**
+
+---
+
+## ✅ T4.8 — CERRADO 2026-08-03 · **la premisa del ítem era falsa**
+
+El ítem daba por hecho que el Cotizador lee Supabase **desde el browser con la anon key** — de ahí salían los grants por columna, y el miedo que había dejado a `catalogo_items` afuera de las tandas anteriores. **No es así, y se verificó mirando lo que sirve el propio Cotizador en producción:**
+
+- Sus JS (`api.js`, `database.js`, `pricing.js`, `script.js`…) **no contienen ninguna anon key, ningún `createClient`, ningún `.from('catalogo_items')`.** Las menciones a "Supabase" son comentarios y mensajes de consola.
+- `api.js` define `baseUrl: '/cotizador-api/api'` y llama a `/catalog`, `/clients`, `/events`, `/projects`, `/propuestas` — **a su propio backend**, que usa service key y por lo tanto ignora la RLS por completo.
+
+**Verificación end-to-end**, midiendo el Cotizador antes y después de cerrar: `/catalog` 200 · 9 ítems · `/clients` 200 · 267 · `/events` 200 · 7 — **idénticos**. La única diferencia entre las respuestas es el `timestamp` que estampa el propio backend.
+
+Cerradas: `catalogo_items` (+ se le sacó el `anon`), `clientes` (el SELECT; la escritura ya estaba), `cotizacion_propuestas` y `venta_numerador` (tenían RLS activa y **cero policies**: no las leía nadie).
+
+---
+
+## 🏁 T4.13 + T4.8 — el tablero de RLS, final
+
+| | antes | después |
+|---|---|---|
+| tablas cerradas con la matriz | 56 | **120** |
+| tablas abiertas (`USING true`) | **63** | **4**, todas a propósito |
+| policies que dejan entrar a `anon` | 4 | **0** |
+
+Las 4 que quedan y **por qué deben quedar**: `personas` y `profiles` (SELECT — lo necesitan los embeds y los nombres en pantalla; la contención de `personas` es por columna, T4.7) · `notifications` (INSERT — el fan-out de avisos lo hace el cliente; cerrarlo es rediseño) · `roles` (SELECT — el browser lee la matriz para armar el menú; no es un secreto).
 
 ---
 

@@ -94,7 +94,42 @@
 --   se le cierra, **confirmar un ingreso empieza a fallar**.
 
 -- ─────────────────────────────────────────────────────────────────────────
--- LAS 6 QUE QUEDAN ABIERTAS, Y POR QUÉ
+-- TANDA 4 · T4.8 — el contrato del Cotizador  ·  APLICADO 2026-08-03
+-- ─────────────────────────────────────────────────────────────────────────
+-- El ítem daba por hecho que el Cotizador lee Supabase **desde el browser con
+-- la anon key**, y de ahí salía todo: los grants por columna, y el miedo que
+-- dejó a `catalogo_items` afuera de las tandas anteriores. **Es falso, y se
+-- verificó mirando lo que sirve el propio Cotizador en prod:**
+--
+--   · `https://app.mepex.com.ar/cotizador/{api,database,pricing,script,…}.js`
+--     NO contienen ninguna anon key (`eyJ…`), ningún `createClient`, ningún
+--     `.from('catalogo_items')`. Las menciones a "Supabase" son comentarios y
+--     mensajes de consola.
+--   · `api.js` del Cotizador define `baseUrl: '/cotizador-api/api'` y llama a
+--     `/catalog`, `/clients`, `/events`, `/projects`, `/cotizaciones/next-number`,
+--     `/propuestas` — o sea, **a su propio backend**, que usa service key y por
+--     lo tanto ignora la RLS por completo.
+--
+-- Verificación end-to-end (medido antes y después de cerrar):
+--   /cotizador-api/api/catalog → 200 · 9 ítems   (idéntico)
+--   /cotizador-api/api/clients → 200 · 267       (idéntico)
+--   /cotizador-api/api/events  → 200 · 7         (idéntico)
+--   La ÚNICA diferencia entre las respuestas de antes y después es el
+--   `timestamp` que el propio backend estampa.
+--
+--   catalogo_items ← catalogo,costos,inventario,cotizador,proyectos,crm
+--                    / costos|catalogo · DELETE admin · **sin anon**
+--   clientes       ← crm,ventas,proyectos,eventos,finanzas,cotizador / crm
+--                    (la escritura ya estaba cerrada; faltaba el SELECT)
+--   cotizacion_propuestas ← cotizador,crm,ventas / cotizador
+--   venta_numerador       ← ventas,cotizador / ventas
+--   (las dos últimas tenían RLS activa y CERO policies: nadie las leía.)
+--
+-- ⚠️ Si algún día el Cotizador pasa a pegarle a Supabase directo desde el
+-- browser, esto lo rompe. Hoy no lo hace, y está verificado arriba.
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- RESULTADO FINAL: 120 tablas cerradas · 4 abiertas a propósito · CERO anon
 -- ─────────────────────────────────────────────────────────────────────────
 --   personas       → SELECT abierto A PROPÓSITO: lo necesitan ~10 embeds de
 --                    PostgREST. La contención es POR COLUMNA (T4.7). Cerrar el
@@ -106,17 +141,10 @@
 --   notifications  → sólo el INSERT, y no es descuido: el fan-out de avisos lo
 --                    hace el CLIENTE (`API.notificar`). Cerrarlo pide mover el
 --                    fan-out a una RPC `SECURITY DEFINER`. Es rediseño.
---   catalogo_items → contrato del **Cotizador** (T4.8). Tiene además una policy
---                    `FOR SELECT TO anon`.
---   clientes       → mixta; también del contrato del Cotizador.
---   roles          → mixta; es la matriz misma.
---   (+ `cotizacion_propuestas` y `venta_numerador`: RLS activa y CERO policies,
---      o sea que hoy no las lee nadie. Son del Cotizador → T4.8.)
---
--- Para T4.8 hay una pista fuerte de esta sesión: se le sacó el `anon` a
--- listas_precio* y nada se rompió, y `docs/cotizador-contexto-respuestas.md`
--- dice que el Cotizador pega con **service key server-side**, que ignora la RLS.
--- Si se confirma con el otro repo, `catalogo_items` se puede cerrar sin drama.
+--   roles          → sólo el SELECT, y **debe quedar así**: `Auth.getAccessLevel()`
+--                    lee `roles.permissions` desde el browser para armar el menú
+--                    y decidir qué botones mostrar. No es un secreto: es la
+--                    matriz de permisos. La escritura ya está en `admin-panel`.
 
 -- ─── Rollback de una tabla puntual ──────────────────────────────────────
 -- DROP POLICY IF EXISTS <tabla>_rls_sel ON public.<tabla>;  -- y los otros 3
