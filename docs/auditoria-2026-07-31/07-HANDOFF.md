@@ -5,20 +5,23 @@
 
 ---
 
-## Dónde quedó: **62 de 71**
+## Dónde quedó: **64 de 72**
 
 Repo limpio, todo pusheado, `HEAD == origin/main`. Prod al día (`app.js?v=36`).
 
 | Tanda | Estado |
 |---|---|
-| **T0 · SQL** | ✅ salvo 2: **T0.8-recibidos** (el SQL está escrito, falta correrlo) y **T0.9** (absorbido por T5.2-bis) |
+| **T0 · SQL** | ✅ salvo **T0.9** (las 3 FKs de `proyecto_id`, escritas en `sql/auditoria_t0_9_fks_proyecto.sql` y en revisión) |
 | **T1 · nginx** · **T2 · VPS** | ✅ deployadas y verificadas |
 | **T3 · JS quirúrgico** | ✅ **24 de 24** |
 | **T4 · estructurales** | ✅ **19 de 19 — COMPLETA** |
-| **T5 · datos** | ✅ 5 de 13 cerrados el 5/8 · 1 parcial · **7 abiertos, casi todos de Fede** |
+| **T5 · datos** | ✅ **7 cerrados el 5/8** (incluido T5.2-bis) · **6 abiertos, todos de Fede** |
 | **T6 · docs** | ✅ |
+| **T7 · testeo integral** | 📋 **planificado** — es el último punto, va después de `PLAN-SUPERIOR.md` |
 
-**Todo lo de código está cerrado.** Lo que queda es datos y decisiones.
+**Todo lo de código está cerrado.** Lo que queda son 6 cosas de Fede y el testeo.
+
+**★ La base quedó en cero.** Se pueden crear y borrar cosas para probar sin ensuciar nada — que es la precondición de la Tanda 7.
 
 ---
 
@@ -28,22 +31,19 @@ Repo limpio, todo pusheado, `HEAD == origin/main`. Prod al día (`app.js?v=36`).
 
 **⚠️ El MCP de Supabase NO estaba autorizado en esa sesión** (el plugin está instalado pero es un server HTTP con OAuth). Se destrabó solo: la **service key de `lobby-api/.env`** (`sb_secret_`, verificada contra prod) alcanza para todo lo que sea **datos** vía PostgREST. Lo único que no puede es **DDL** → por eso el índice de T0.8 quedó escrito y sin correr. Si la próxima sesión tampoco tiene MCP, ese es el camino.
 
-### 🔶 Lo que se abrió: **T5.2-bis — el libro contable es data de prueba**
+### ✅ Y lo que se abrió y se cerró el mismo día: **T5.2-bis — el libro era data de prueba**
 
-Al preguntarle cuál copia de la factura ONORIER se quedaba, Fede contestó **"todo dummy… salvo lo de Alejandro Olavarría"**. Eso decide el libro entero, no un comprobante: **$15.201.000 de ingresos** de los cuales **$1.000 son de Olavarría**, 7 egresos, 15 asientos. Los dos únicos comprobantes reales son la FC B de $1.000 y su NC B — **una prueba de ARCA, con CAE real**.
+Al preguntarle cuál copia de la factura ONORIER se quedaba, Fede contestó **"todo dummy… salvo lo de Alejandro Olavarría"**. Eso decidía el libro entero. Se blanqueó: **14 movimientos anulados** ($15.201.000 + $2.784.007) con sus 13 contra-asientos, 2 asientos manuales de prueba, 3 comprobantes recibidos, AAAAC, y **4 planes + 9 cuotas + 2 ventas** ($39.000.000 de "Por cobrar" que no tenía un asiento detrás). **Se quedan los dos comprobantes de Olavarría** — decisión delegada: son lo único con CAE real de AFIP.
 
-Consecuencias: **T0.9 se disuelve** (los huérfanos de $10,7M son exactamente ese dummy) y **AAAAC** sale de T5.10 y entra acá. **No se puede borrar a mano** — el candado de T4.2 lo rechaza y manda a Anular, que dispara el contra-asiento; son 13 movimientos y `anularCobro`/`anularPago` tocan 8 satélites, así que **el camino barato es el botón Anular de Finanzas, no un script**. La decisión de fondo está escrita en `05-EJECUCION.md` §T5.2-bis: anular ahora vs. dejar el dummy como historia del testeo y que la apertura de 2027 defina la realidad.
+**Saldo final de cada cuenta $0,00, partida doble $0,00, y la capa operativa entera** (11 proyectos, 7 eventos, 18 cotizaciones, personas, asignaciones). Detalle y rollback: `sql/auditoria_t5_2bis_blanqueo_libro.sql`.
+
+**Dos trampas que valen para la próxima:**
+- **El candado de T4.2 hace exactamente lo que tiene que hacer**: rechaza el soft-delete de un movimiento contabilizado y manda a Anular. Probarlo *antes* de diseñar la limpieza ahorró dejar 13 asientos huérfanos descontando saldo.
+- **El `javascript_tool` de Chrome corre en un MUNDO AISLADO**: ve el DOM pero no `window.API` ni `supabaseClient` de la página. El plan de "llamo la función real desde la consola de su sesión" **no está disponible**; si hace falta el código real de la app, es por UI clickeada o replicando la función.
 
 ---
 
 ## Lo que queda
-
-### A · Con el criterio ya dado, lo hace Claude
-
-| # | Qué | Estado |
-|---|---|---|
-| **T5.10** | AAAAC — el resto ya se limpió | espera T5.2-bis |
-| **T5.2-bis** | Anular (o no) los 13 movimientos dummy | **espera decisión** |
 
 ### C · Lo que sólo puede hacer Fede
 
@@ -55,12 +55,13 @@ Consecuencias: **T0.9 se disuelve** (los huérfanos de $10,7M son exactamente es
 | **T5.9** | Instalar la PWA en los celulares de taller y pm | 15 min. **Hoy no entró nadie: 0 logins, 0 celulares** |
 | **T5.12** | Revocar sesiones de las 4 cuentas de baja | Dashboard de Supabase |
 | **T5.13** | Activar "Leaked password protection" | Dashboard → Auth. 1 clic |
-| **T0.8** | Correr `sql/auditoria_t0_8_indice_recibidos.sql` | SQL Editor. Es DDL y son 3 líneas; los duplicados ya no están, no puede fallar |
 
-### D · Congelados a propósito
+**Nota: el MCP de Supabase apareció a mitad de la sesión del 5/8**, así que el DDL dejó de ser un problema — T0.8 se aplicó y verificó ahí mismo. Si en la próxima sesión no está, el camino de datos sigue siendo la service key de `lobby-api/.env`.
 
+### D · Después de todo esto
+
+- **TANDA 7 · testeo integral** — el plan está escrito en `05-EJECUCION.md`. Nueve circuitos, probados end-to-end en prod, verificando que cada carga **impacte en todos los lugares que corresponde** (no sólo que la pantalla no explote). Va cuando cierren `PLAN-SUPERIOR.md` y esta tabla.
 - **T5.1** (ítem 89) — espera la sesión de diseño de costos. Ver **`docs/costos-estado-real-y-decisiones.md`**.
-- **T0.9** — absorbido por T5.2-bis: ya no hay a qué proyecto reconstruir esos huérfanos.
 
 ---
 
@@ -135,6 +136,8 @@ Se puede incluso **aplicar la migración entera y probarla en la misma transacci
 ---
 
 ## Hallazgos abiertos que no son ítems del plan
+
+- **★ El embudo comercial no avanza: 16 de 18 cotizaciones están en `borrador` desde mayo.** `cotizaciones.estado` tiene DEFAULT `'borrador'` NOT NULL y **el Cotizador no escribe la columna**, así que toda cotización nace ahí y nada la promueve. Las dos únicas que no lo están (COT-0001 y 0002, del 3 y 7 de mayo) se movieron a mano. Consecuencia en cadena: el KPI del lobby, la conversión del rol venta, el pipeline kanban del CRM —las 16 apiladas en una columna— y el aging *"cotización enviada hace >3 días"* (`crm.js:2691`) **no pueden encenderse nunca**. Es la misma familia que A29. Lo encontró Fede el 5/8 mirando el tablero. El KPI ya no lo esconde (ver bitácora), pero **la decisión de fondo es suya**: si esas 16 se enviaron al cliente, hay que moverlas de estado; si no, hay que revisar por qué se quedaron. Conexo: **`cotizaciones.vendedor_id` está NULL en las 18** —el Cotizador tampoco lo escribe— así que todo KPI filtrado por vendedor da vacío para Noe.
 
 - **53 días de jornal valuados en $0** (Campana 34 · Beauty Day 13 · CAPPI 6). Total de mano de obra en todo el sistema: **$200**. Sale de T5.3.
 - **Caja Oficina quedó en −$486.420 en julio**: se registró un pago de esa caja sin ningún ingreso que la abastezca.

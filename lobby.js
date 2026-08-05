@@ -81,7 +81,7 @@ const HomeModule = {
     // ─────────────────────────────────────────────────────────────────
     _widgets: {
         // ── KPIs (band) ──
-        'kpi-presupuestos': { title: 'Presupuestos',   icon: '📄', accent: '#F28D15' },
+        'kpi-presupuestos': { title: 'Presupuestos abiertos', icon: '📄', accent: '#F28D15' },
         'kpi-margen':       { title: 'Margen del mes',  icon: '📈', accent: '#00CC88' },
         'kpi-dias-caja':    { title: 'Días de caja',    icon: '💧', accent: '#00A9C1' },
         'kpi-cash30':       { title: 'Cash 30 días',    icon: '💵', accent: '#00A9C1' },
@@ -538,6 +538,12 @@ const HomeModule = {
 
     // Render helpers compartidos
     _kpiBody(value, sub, marca) { return `<div class="home-kpi-value">${this._esc(value)}${marca || ''}</div>${sub ? `<div class="home-kpi-sub">${this._esc(sub)}</div>` : ''}`; },
+
+    // Una cotización está CERRADA cuando se decidió, no cuando se mandó.
+    // Vive acá y no adentro de cada widget porque `kpi-presupuestos` y
+    // `kpi-conversion` miden el mismo embudo: si cada uno define lo suyo,
+    // el tablero termina diciendo dos cosas distintas del mismo dato.
+    _COT_CERRADAS: ['aprobada', 'rechazada'],
     _bignum(value, sub, color) { return `<div class="home-bignum"${color ? ` style="color:${color}"` : ''}>${this._esc(value)}</div>${sub ? `<div class="home-kpi-sub">${this._esc(sub)}</div>` : ''}`; },
     _li(main, val, sub, color) {
         return `<div class="home-li"><div class="home-li-l">${color ? `<span class="home-li-dot" style="background:${color}"></span>` : ''}<div style="min-width:0;flex:1"><div class="home-li-main">${this._esc(main)}</div>${sub ? `<div class="home-li-sub">${this._esc(sub)}</div>` : ''}</div></div>${val ? `<div class="home-li-val">${val}</div>` : ''}</div>`;
@@ -681,14 +687,30 @@ const HomeModule = {
     // ═══════════════════════════════════════════════════════════════════
     _R: {
         // ── KPIs macro (super/admin) ──
+        // Contaba las cotizaciones EMITIDAS ESTE MES y además sólo las que ya
+        // habían salido de borrador. Con 18 vivas en el sistema mostraba **0**, y
+        // un KPI titulado "Presupuestos" en 0 se lee como "no hay ninguno".
+        // Fallaba por dos lados a la vez: el mes en curso puede no tener ninguna
+        // (la última emisión es de julio), y sobre todo **el Cotizador las crea en
+        // `borrador`** —es el DEFAULT de la columna, la app externa no escribe
+        // `estado`— y nada las promueve: 16 de 18 llevan ahí desde mayo. O sea que
+        // el estado que el KPI exigía casi nunca llega.
+        // Ahora el número es el que se cuenta con la mano (los presupuestos
+        // abiertos) y el subtítulo dice dónde están parados, que es el dato
+        // accionable. El embudo trabado deja de estar escondido detrás de un 0.
         'kpi-presupuestos': async function (ctx) {
             const cots = await this._memo(ctx, 'cots', () => API.getCotizaciones()) || [];
-            const { desde, hasta } = this._monthRange(ctx.now);
-            const mes = cots.filter(c => { const f = c.fechaEmision ? String(c.fechaEmision).slice(0, 10) : (c.createdAt ? fechaISOLocal(new Date(c.createdAt)) : ''); return f >= desde && f <= hasta; });
-            const env = mes.filter(c => ['enviada', 'en_negociacion', 'aprobada', 'rechazada'].includes(c.estado)).length;
-            const won = mes.filter(c => c.estado === 'aprobada').length;
-            const conv = env ? Math.round(won / env * 100) : 0;
-            return this._kpiBody(String(env), `${won} ganadas · ${conv}% conv`);
+            const abiertas = cots.filter(c => !this._COT_CERRADAS.includes(c.estado));
+            const borrador = abiertas.filter(c => (c.estado || 'borrador') === 'borrador').length;
+            const ganadas = cots.filter(c => c.estado === 'aprobada').length;
+            const resueltas = cots.filter(c => this._COT_CERRADAS.includes(c.estado)).length;
+            const partes = [];
+            if (borrador) partes.push(`${borrador} en borrador`);
+            partes.push(`${ganadas} ${ganadas === 1 ? 'ganada' : 'ganadas'}`);
+            // Sin ninguna cerrada no hay conversión que medir: un "0%" ahí es un
+            // dato falso, no un cero (misma regla que T4.16 con la rentabilidad).
+            if (resueltas) partes.push(`${Math.round(ganadas / resueltas * 100)}% conv`);
+            return this._kpiBody(String(abiertas.length), partes.join(' · '));
         },
         'kpi-margen': async function (ctx) {
             const f = await this._finData(ctx); if (!f) return this._kpiBody('—', 'sin datos');
@@ -705,11 +727,26 @@ const HomeModule = {
             return this._kpiBody(this._formatMoney(f.saldo + f.porCobrar - f.porPagar), `+${this._formatMoney(f.porCobrar)} −${this._formatMoney(f.porPagar)}`, this._marcaCanal());
         },
         // ── KPIs venta ──
+        // Sin nada cerrado no hay conversión: mostrar "0%" afirma que se perdieron
+        // todas, cuando lo que pasa es que no hay con qué medir.
+        // El denominador son las CERRADAS (`_COT_CERRADAS`), no las enviadas: una
+        // cotización mandada y sin respuesta todavía no se perdió, y meterla abajo
+        // de la división la cuenta como derrota. Antes el guard miraba
+        // enviada+en_negociacion+aprobada+rechazada y el subtítulo las llamaba
+        // "cerradas" a todas — con los datos de hoy da igual (no hay ninguna en
+        // enviada), pero el primer presupuesto que se mande y quede pendiente
+        // reponía el 0% falso por la puerta de al lado.
+        // Hoy además esto cae siempre en el caso "sin cerradas" por algo que NO se
+        // arregla acá: `cotizaciones.vendedor_id` está NULL en las 18 (el Cotizador
+        // no lo escribe), así que el filtro por vendedor deja la lista vacía.
+        // Ver kpi-presupuestos por el otro motivo (el estado atascado en borrador).
         'kpi-conversion': async function (ctx) {
             const cots = (await this._memo(ctx, 'cots', () => API.getCotizaciones()) || []).filter(c => c.vendedorId === ctx.userId);
-            const env = cots.filter(c => ['enviada', 'en_negociacion', 'aprobada', 'rechazada'].includes(c.estado)).length;
+            const cerradas = cots.filter(c => this._COT_CERRADAS.includes(c.estado)).length;
             const won = cots.filter(c => c.estado === 'aprobada').length;
-            return this._kpiBody((env ? Math.round(won / env * 100) : 0) + '%', `${won}/${env} cerradas`);
+            const abiertas = cots.length - cerradas;
+            if (!cerradas) return this._kpiBody('—', abiertas ? `${abiertas} sin cerrar` : 'sin presupuestos cerrados');
+            return this._kpiBody(Math.round(won / cerradas * 100) + '%', `${won}/${cerradas} cerradas${abiertas ? ` · ${abiertas} sin cerrar` : ''}`);
         },
         'kpi-calientes': async function (ctx) {
             const casos = await this._memo(ctx, 'casosMine', () => API.getCasos({ ownerId: ctx.userId })) || [];

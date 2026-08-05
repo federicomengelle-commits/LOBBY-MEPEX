@@ -1,0 +1,110 @@
+-- =====================================================================
+-- AUDITORÍA 2026-07-31 · T5.2-bis — blanqueo del libro de prueba
+-- Fecha: 2026-08-05
+-- =====================================================================
+-- ⚠️ ESTE ARCHIVO NO SE CORRE. Es el REGISTRO + ROLLBACK de una tanda
+--    aplicada por PostgREST con la service key.
+--
+-- DECISIÓN DE FEDE (5/8): "todo dummy salvo lo de Alejandro Olavarría…
+--    lo único que yo mantendría es tanto la factura como la nota".
+--    Y sobre si borrar también esos dos: "decime vos" → se QUEDAN.
+--    Son lo único con CAE real de AFIP, y `comprobantes` es el espejo
+--    local de lo emitido bajo el CUIT de MEPEX: borrar un comprobante
+--    con CAE rompe esa invariante. La NC neutraliza a la factura, así
+--    que no ensucian ningún número (IVA débito de junio ya daba $0,00).
+--
+-- QUÉ SE HIZO — por el camino legal, no a mano
+-- --------------------------------------------
+-- El candado de T4.2 (`fn_candado_mov_contabilizado`) rechaza el
+-- soft-delete de un movimiento contabilizado y manda a Anular. Probado
+-- contra prod antes de empezar:
+--   "Este movimiento ya está contabilizado (asiento #1): eliminarlo
+--    dejaría el asiento huérfano descontando el saldo. Usá Anular."
+-- Así que se replicaron `API.anularCobro` / `API.anularPago`
+-- (api.js:7205-7409) al pie de la letra, incluido el `_limpiarSatelite`
+-- que cuenta filas antes y después (un UPDATE filtrado por RLS no falla:
+-- devuelve 204 y cero filas).
+-- Precondición verificada antes de correr: `cartera_valores` en 0 filas
+-- vivas → las ramas de cheque/endoso no aplicaban. El script aborta si
+-- alguna vez dejan de estar en cero.
+--
+--   14 movimientos anulados  (7 ingresos $15.201.000 + 7 egresos $2.784.007)
+--   13 contra-asientos generados por trigger, fechados 2026-08-05
+--    2 asientos manuales de prueba dados de baja (#6 "Ajuste" y
+--      #9 "Pago por equipamiento", $500.000 c/u): no tienen movimiento
+--      detrás, así que ningún botón de Finanzas los alcanza
+--    3 comprobantes recibidos dummy (ONORIER + las 2 de CANEPA)
+--    1 cliente de prueba (AAAAC) → cierra T5.10
+--    4 planes de cobro + 9 cuotas + 2 ventas: era el último número vivo
+--      del dashboard ($39.000.000 de "Por cobrar"). No son movimientos,
+--      no tienen asiento → borrarlos no toca el libro (26 antes, 26 después)
+--
+-- VERIFICADO DESPUÉS
+-- ------------------
+--   partida doble          debe = haber = $35.969.820,00 · dif $0,00
+--   asientos desbalanceados 0     · líneas vs cabeceras   dif $0,00
+--   movimientos vivos no anulados 0 ingresos · 0 egresos
+--   drift movimiento↔asiento      0
+--   saldo final de cada cuenta    $0,00  (los períodos marzo-julio
+--       conservan el movimiento y su reversión: la reversión es un hecho
+--       con su propia fecha, es lo que hace el botón Anular)
+--   plan_cobro_items cobrado      $5.000.000 → $0,00, todas a 'pendiente'
+--       (lo recalculó `fn_sync_cuota_desde_aplicacion`, no la mano)
+--   en pantalla (Chrome, sesión real): Finanzas → Dashboard con los 8 KPIs
+--       en $0,00 · Ingresos con pie "Total: $0,00" y las filas en Anulado ·
+--       Lobby sin un solo importe · agenda, montajes y proyectos intactos
+--
+-- LO QUE NO SE TOCÓ, A PROPÓSITO
+-- ------------------------------
+--   La capa operativa: 11 proyectos, 7 eventos, 18 cotizaciones, personas,
+--   asignaciones y jornadas. Es data real de trabajo y es la base sobre la
+--   que se va a testear.
+--
+-- =====================================================================
+-- ROLLBACK EXACTO (deja la base como estaba antes de esta tanda)
+-- =====================================================================
+-- ⚠️ Al revertir un ingreso/egreso a 'confirmado'/'pagado' se dispara de
+--    nuevo el trigger de asiento. Los 13 contra-asientos NO se borran acá:
+--    revisarlos a mano después, o el movimiento queda contado dos veces.
+--
+-- BEGIN;
+-- UPDATE public.ingresos SET estado = 'confirmado' WHERE id = '0a31afaf-451d-4566-a6e5-1aad6cc0c0d1';
+-- UPDATE public.ingresos SET estado = 'confirmado' WHERE id = '09e67120-6848-43b1-8515-643351880d0b';
+-- UPDATE public.ingresos SET estado = 'confirmado' WHERE id = '7e51d928-aa98-4d4b-85a3-551809e88519';
+-- UPDATE public.ingresos SET estado = 'confirmado' WHERE id = 'f577356f-5f9b-4f07-8388-40d8682e3cb3';
+-- UPDATE public.ingresos SET estado = 'confirmado' WHERE id = 'd9667fa6-3a46-4185-8d17-6ab0bbe30c73';
+-- UPDATE public.ingresos SET estado = 'confirmado' WHERE id = '31219630-d8a8-4fb6-86e8-c834b7cc246d';
+-- UPDATE public.comprobantes SET ingreso_id = NULL WHERE id = '785befd8-91d5-45cd-b464-c9904b6ae830';
+-- UPDATE public.ingresos SET estado = 'confirmado' WHERE id = '28fd52c4-0ca3-4df8-8a29-05e7134ce544';
+-- UPDATE public.cobro_aplicaciones SET _deleted = true WHERE id = '47d0d4fd-8ce9-4a4b-9460-534ef277ec86';
+-- UPDATE public.egresos SET estado = 'pagado' WHERE id = 'e1ca9240-e7ed-45e5-b8f6-ca09dea09402';
+-- UPDATE public.comprobantes_recibidos SET egreso_id = NULL WHERE id = '8ee7368d-537b-4255-a9df-2c47b17ec560';
+-- UPDATE public.egresos SET estado = 'pagado' WHERE id = 'c4dd2fee-911e-4758-b5c1-2bac5c54df87';
+-- UPDATE public.egresos SET estado = 'pagado' WHERE id = '863f6e82-b44b-440c-88fc-5cbbbbc492dd';
+-- UPDATE public.egresos SET estado = 'pagado' WHERE id = '141a2c79-b982-49b0-afe0-0889b2b84682';
+-- UPDATE public.comprobantes_recibidos SET egreso_id = NULL WHERE id = 'eab7d116-a906-4780-9e9a-0040aef22021';
+-- UPDATE public.egresos SET estado = 'pendiente' WHERE id = 'aa5ee8cf-280c-4455-b08c-3d644e2e0864';
+-- UPDATE public.egresos SET estado = 'pagado' WHERE id = 'bb63bb00-efd1-4596-bf5b-8d2cccea3bfa';
+-- UPDATE public.comprobantes_recibidos SET egreso_id = NULL WHERE id = '8f9eb7dc-8a84-46c5-8968-20f12d0f0020';
+-- UPDATE public.egresos SET estado = 'pagado' WHERE id = '22584f32-7b09-400e-b94a-0d02e76715cd';
+-- UPDATE public.asientos SET _deleted = false WHERE id = '35324edf-baf4-4384-9cc3-d0b537625a72';
+-- UPDATE public.asientos SET _deleted = false WHERE id = '87f54f8f-cdbc-4133-a7b8-122e12a8c92a';
+-- UPDATE public.comprobantes_recibidos SET _deleted = false WHERE id = '8ee7368d-537b-4255-a9df-2c47b17ec560';
+-- UPDATE public.comprobantes_recibidos SET _deleted = false WHERE id = 'eab7d116-a906-4780-9e9a-0040aef22021';
+-- UPDATE public.comprobantes_recibidos SET _deleted = false WHERE id = '8f9eb7dc-8a84-46c5-8968-20f12d0f0020';
+-- UPDATE public.clientes SET _deleted = false WHERE id = '6c0727a2-fb54-4fdb-bef0-d6d04edef54e';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = '3402ba27-2b1e-480a-9e40-060aba40c6e3';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = '8114e143-6349-48b0-aa79-c8edf6983bc5';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = '0ff86df9-6d23-4b37-b3ad-30fd03668ece';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = 'eef946a9-1a78-41d2-9681-45e9f31290f2';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = 'b645ef68-a88e-430a-8461-b4d95b0364ba';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = '0a26397e-18d1-4a14-8db6-5c5f20b8014c';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = '2cd280e9-714d-405a-8bc7-685001d45465';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = '53f3db50-77ef-4af0-b26f-e623cddc4b5c';
+-- UPDATE public.plan_cobro_items SET _deleted = false WHERE id = '36241d3e-1dca-4540-a9ee-901855a63ae1';
+-- UPDATE public.plan_cobro SET _deleted = false WHERE id = '8c2b86c9-e28d-4def-8240-d1c797f9422c';
+-- UPDATE public.plan_cobro SET _deleted = false WHERE id = 'ecd8f8d6-ad90-4bb2-8c5b-801e8361d734';
+-- UPDATE public.plan_cobro SET _deleted = false WHERE id = 'ed2d9b94-40ce-44cb-bc86-bd406b0b27a5';
+-- UPDATE public.plan_cobro SET _deleted = false WHERE id = 'baee89fa-b435-4992-9e2d-0bc0e07df941';
+-- UPDATE public.ventas SET _deleted = false WHERE id = '92d8f39a-3b89-48c8-af13-1c12d67e7bcc';
+-- UPDATE public.ventas SET _deleted = false WHERE id = '081aca17-cce8-4ee0-b515-71beb42d3afd';-- COMMIT;

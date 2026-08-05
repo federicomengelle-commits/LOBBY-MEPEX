@@ -16,15 +16,20 @@
 --            bajó de $374.010 a $222.810 — exactamente los $151.200 que
 --            el Libro IVA Compras estaba computando de más.
 --
--- ⚠️ ESTE ARCHIVO ES DDL Y NO SE PUDO APLICAR POR MCP (la sesión del 5/8
---    no tenía el MCP de Supabase autorizado; la service key de
---    `lobby-api/.env` alcanza para datos pero no para DDL).
---    → Correr en el SQL Editor de Supabase.
+-- ✅ APLICADO A PROD EL 2026-08-05 por MCP (migración
+--    `auditoria_t0_8_indice_unico_comprobantes_recibidos`). El MCP de
+--    Supabase apareció a mitad de sesión; hasta entonces sólo había
+--    service key, que alcanza para datos pero no para DDL.
 --
--- Precondición, ya verificada el 2026-08-05:
---    grupos (cuit, tipo, numero) duplicados entre los vivos = 0
--- Si el CREATE falla con 23505, es que apareció un duplicado nuevo desde
--- entonces: mirarlo con la consulta de abajo ANTES de tocar nada.
+-- Precondición verificada antes: grupos (cuit, tipo, numero) duplicados
+-- entre los vivos = 0.
+--
+-- Verificado después:
+--   · el índice existe en `pg_indexes` con el predicado parcial correcto
+--   · prueba funcional con rollback: dos INSERT idénticos → el segundo
+--     rebota con **23505**, y no quedó residuo (0 filas con el número
+--     de prueba). Ojo al reproducirla: `concepto` es NOT NULL y no
+--     estaba en el INSERT de ejemplo original.
 -- =====================================================================
 
 BEGIN;
