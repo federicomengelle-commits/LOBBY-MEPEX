@@ -33,7 +33,7 @@
 | **T0.8** | Índices únicos en comprobantes (emitidos y recibidos) | SQL | 🟡 | **emitidos ✅** (2 índices). Recibidos ⛔ **espera T5.2** (3 copias de la misma factura) |
 | **T0.9** | FK de `plan_cobro.proyecto_id` + huérfanos de $10,7M | SQL | ⬜ | **decidir con Fede primero** |
 | **T0.10** | **Las 4 policies de `storage.objects`** | SQL | ✅ | eran 1 en `objects` + 3 en `buckets`. anon fuera de comprobantes/remitos/stands |
-| **T0.11** | `pg_default_acl` de TABLAS/VIEWS también abre todo a `anon` | SQL | ⬜ | **decisión de Fede** — nuevo, salió de T0.1. Es la causa raíz del incidente de las 5 views (26/07). Cerrarlo toca el contrato del Cotizador |
+| **T0.11** | `pg_default_acl` de TABLAS/VIEWS también abre todo a `anon` | SQL | ✅ | **el motivo del bloqueo desapareció** al verificar en T4.8 que el Cotizador no usa la anon key. Cerrado y probado creando una tabla: nace sin nada para `anon` |
 | **T0.12** | 4 funciones SECDEF de trigger sin `SET search_path` | SQL | ✅ | nuevo, salió de T0.2. Ahora **0** SECDEF sin search_path |
 | **T1** | nginx: `.git` + X-Forwarded-For + 16m + timeout 180s | config | ✅ | deployado y verificado 2026-08-01: `.git/config`, `CLAUDE.md` y `tools/` pasaron de 200 a **404**; app, assets, sw.js, manifest, encuesta, cotizador y `.well-known` intactos |
 | **T2** | Deploy VPS (los 7 archivos juntos) | deploy | ✅ | Fede lo corrió; verificado 2026-08-01b: `/api/push/aviso` **401** (antes 404 = no montado), arca/crm/ocr con auth, sin crash-loop |
@@ -80,7 +80,7 @@
 | **T4.17** | `destroy()` en el router para 7 módulos más | JS | ✅ | + el acumulador ilimitado de `contabilidad` y los 3 listeners que `notifications.reset()` no soltaba |
 | **T4.19** | **El motor de costos viejo, vivo por duplicado** | JS | ✅ | eran **7** piezas, no 3 — y de paso apareció un **bug vivo** en el badge de las recetas |
 | **T4.18** | Doble-submit en los 5 botones que crean plata | JS+SQL | ✅ | eran **6** sitios (Finanzas tiene su propio "pagar vencimiento", gemelo del de `#calendario-adm`) + 3 índices únicos de red |
-| **T5.1** | Recalcular el ítem 89 | dato | ⬜ | 1 clic, $40.240 |
+| **T5.1** | Recalcular el ítem 89 | dato | 🔶 | **no es 1 clic**: el clic aplica una vida útil de 5 usos que nadie validó. Fede: no tocar hasta rediseñar los criterios de costos |
 | **T5.2** | Limpiar las 2 copias de la factura ONORIER | dato | ⬜ | **antes de T0.8** |
 | **T5.3** | Cargar `costo_dia_referencial` (0 de 24) | dato | ⬜ | ⚠️ **después de T3.3** |
 | **T5.4** | Cargar `stock_minimo` (0 de 80) | dato | ⬜ | |
@@ -323,6 +323,48 @@ Cerradas: `catalogo_items` (+ se le sacó el `anon`), `clientes` (el SELECT; la 
 | policies que dejan entrar a `anon` | 4 | **0** |
 
 Las 4 que quedan y **por qué deben quedar**: `personas` y `profiles` (SELECT — lo necesitan los embeds y los nombres en pantalla; la contención de `personas` es por columna, T4.7) · `notifications` (INSERT — el fan-out de avisos lo hace el cliente; cerrarlo es rediseño) · `roles` (SELECT — el browser lee la matriz para armar el menú; no es un secreto).
+
+---
+
+## ✅ T0.11 — CERRADO 2026-08-03 · el permiso por defecto que abría todo a `anon`
+
+Era la **causa raíz** del incidente del 26/07 (5 views financieras legibles por anónimos): el `pg_default_acl` de `public` le daba a `anon` **todos** los permisos (`arwdDxtm`) sobre cada tabla o view nueva. Estaba marcado como "decisión de Fede" porque *"cerrarlo toca el contrato del Cotizador"* — **y ese motivo desapareció** al verificar en T4.8 que el Cotizador no usa la anon key.
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon;
+```
+
+**Verificado creando una tabla de prueba** (y descartándola): nace con `— NADA para anon`, `has_table_privilege(anon, …) = false`. No afecta a nada existente: los default ACL sólo aplican a objetos futuros.
+
+Queda el default de `supabase_admin`, que no se puede alterar desde `postgres`. No importa en la práctica: las migraciones y el MCP corren como `postgres`, que es el que quedó cerrado.
+
+**De paso se verificó que la encuesta pública sigue viva**, porque es lo único de la app que usa `anon`: entra por `fn_encuesta_publica_get(token)`, una RPC `SECURITY DEFINER` que valida el token server-side. Probado como `anon`: **abre la encuesta con su token ✓ y no puede leer la tabla directo (0 filas) ✓**.
+
+---
+
+## 🔶 T5.1 — REPLANTEADO 2026-08-03 · **no es "un clic"**
+
+El plan lo vendía como *"recalcular el ítem 89 — un clic, $40.240"*. Al mirarlo, el clic aplica un dato que nadie validó:
+
+El panel tiene **`vida_util_armado_override = 5`**. Con la regla 1:N, la fórmula reparte los **$140.185** que cuesta fabricarlo entre **5 usos** → $28.082 por uso → **$63.184** con su margen del 125%. El precio guardado ($22.943) corresponde a repartirlo entre **~14 usos**. O sea: alguien dijo "este panel dura 5 usos", nunca se recalculó, y **apretar Recalcular no arregla un precio: aplica esa afirmación**.
+
+**Fede (2026-08-03): no tocar.** *"No lo tengo del todo claro; es lo que tengo que diseñar mejor y saber generalidades, esto aplicado a todo el tema costos en general, para poder armar una buena propuesta."* → El ítem 89 no se recalcula hasta que estén definidos los criterios de vida útil.
+
+**Alcance real medido** (por si sirve para el rediseño): **17 ítems** tienen el precio guardado distinto de su receta, pero **sólo el 89 es cotizable** — los otros 16 son componentes internos, con diferencias de $48 a $1.720, y uno (`217 Placa Karikal`) está **$1.720 por encima**, no por debajo.
+
+### 📐 Para el rediseño del modelo de costos: **dos convenciones de porcentaje conviviendo**
+
+Verificado leyendo `calcular_receta` en prod. No es un bug hoy —cada una es correcta en su contexto— pero es una trampa esperando:
+
+| dónde | cómo se guarda | qué hace la RPC |
+|---|---|---|
+| `costos_tipo_amortizacion.pct_desperdicio` / `pct_reacond` | **entero**: `15` = 15% | `* (1 + pct/100)` |
+| `insumos_base.*_override` | idem, entero | idem |
+| `parametros_globales.pct_indirectos_fabrica` / `pct_margen_default` | **factor**: `0.30` = 30% | `* pct` — **sin** dividir |
+| `catalogo_items.margen_propio` / `margen_subalquiler` | factor: `1.25` = 125% | `* (1 + margen)` |
+
+Cargar un desperdicio como `0.15` pensando en factor da **0,15%** en vez de 15%, y nada lo avisa. Al revés, un margen cargado como `50` daría **5000%**.
 
 ---
 
