@@ -73,7 +73,7 @@ const App = {
         'locaciones.js?v=14',
         'flota.js?v=8',
         'rrhh.js?v=19',
-        'costos.js?v=38',
+        'costos.js?v=39',
         'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
         'contabilidad.js?v=22',
         'ventas.js?v=2',

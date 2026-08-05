@@ -3754,7 +3754,7 @@ const CostosModule = {
             <div class="costos-add-insumo-row" data-item-id="${i.id}">
                 <span class="costos-add-insumo-name">${escHtml(i.nombre)}</span>
                 <span class="costos-add-insumo-code">${i.codigo || ''}</span>
-                <span class="costos-add-insumo-cost">${API.formatCurrency(i.costoProduccion)}</span>
+                <span class="costos-add-insumo-cost" title="Costo de fabricación (sin margen)">${API.formatCurrency(i.costoFabricacion || i.costoProduccion || 0)}</span>
             </div>
         `).join('');
 
@@ -3868,8 +3868,17 @@ const CostosModule = {
             switch (col) {
                 case 'costoUnitario':
                     va = a.costoUnitario || 0; vb = b.costoUnitario || 0; break;
+                // Vestigial: NINGUNA tabla tiene un header con
+                // `data-sort-col="costoProduccion"` (el de Recetas ordena por
+                // `costoFabricacion`), y `_sortCol` sólo se setea desde un header
+                // clickeado, así que hoy este case es inalcanzable. Queda con la
+                // cadena de fallback y no con la columna cruda para que, si
+                // alguien engancha ese header, no ordene 209 de 226 ítems como
+                // cero: `costo_produccion` es la columna del motor viejo y el
+                // motor vigente no la escribe. Deuda anotada en T4.19.
                 case 'costoProduccion':
-                    va = a.costoProduccion || 0; vb = b.costoProduccion || 0; break;
+                    va = a.costoFabricacion || a.costoProduccion || 0;
+                    vb = b.costoFabricacion || b.costoProduccion || 0; break;
                 case 'costoCalculado':
                     va = this._getRecetaStatus(a.id).costoCalculado || 0;
                     vb = this._getRecetaStatus(b.id).costoCalculado || 0;

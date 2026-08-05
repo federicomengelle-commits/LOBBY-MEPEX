@@ -4354,6 +4354,33 @@ const ContabilidadModule = {
         }
     },
 
+    // Los importes de una fila del Libro IVA Compras, en un solo lugar.
+    // La tabla y el CSV los calculaban por separado y ya habían divergido: el
+    // CSV no miraba `iva_total`, que es la columna donde los registros
+    // AUXILIARES guardan su IVA (los oficiales usan `iva`). Resultado: un
+    // auxiliar con IVA mixto exportaba sólo el tramo del 21%, y uno cargado
+    // por total exportaba cero — al contador le llegaba un crédito fiscal
+    // más chico que el que muestra la pantalla de al lado.
+    _ivaComprasImportes(c) {
+        const esAuxiliar = c._origen === 'auxiliar';
+        const tipo = esAuxiliar ? 'Factura' : (c.tipo || c.tipo_comprobante || '');
+        const tipoUpper = tipo.toUpperCase();
+        // Para auxiliares siempre discrimina IVA. Para oficiales depende del tipo.
+        const discriminaIVA = esAuxiliar || tipoUpper.includes('A') || tipoUpper.includes('M');
+        // T4.5: el signo sale de `c.tipo` (el valor de la base), NO del `tipo` de
+        // arriba, que para los auxiliares es la etiqueta 'Factura'. Los auxiliares
+        // no tienen `tipo` → signo +1, correcto.
+        const sg = signoComprobante(c.tipo);
+        return {
+            esAuxiliar, discriminaIVA,
+            neto: esAuxiliar ? (c.subtotal || 0)
+                  : (discriminaIVA ? (c.neto || c.subtotal || 0) * sg : null),
+            iva: esAuxiliar ? (parseFloat(c.iva_total) || 0)
+                 : (discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) * sg : null),
+            total: (c.total || c.monto || 0) * sg,
+        };
+    },
+
     _renderIVACompras(container) {
         const exportWrap = document.getElementById('contIvaExportWrap');
         if (this._ivaCompras.length === 0) {
@@ -4376,19 +4403,7 @@ const ContabilidadModule = {
             const proveedor = esAuxiliar ? (c.razon_social || '\u2014') : (c.proveedor_nombre || c.razon_social || c.proveedor || '\u2014');
             const cuit = c.cuit || c.cuit_proveedor || '\u2014';
 
-            // Para auxiliares siempre discrimina IVA. Para oficiales depende del tipo.
-            const tipoUpper = (tipo || '').toUpperCase();
-            const discriminaIVA = esAuxiliar || tipoUpper.includes('A') || tipoUpper.includes('M');
-
-            // T4.5: el signo sale de `c.tipo` (el valor de la base), NO de la
-            // variable `tipo` de arriba, que para los auxiliares es la etiqueta
-            // 'Factura'. Los auxiliares no tienen `tipo` → signo +1, correcto.
-            const sg = signoComprobante(c.tipo);
-            const neto = esAuxiliar ? (c.subtotal || 0)
-                         : (discriminaIVA ? (c.neto || c.subtotal || 0) * sg : null);
-            const iva = esAuxiliar ? (parseFloat(c.iva_total) || 0)
-                        : (discriminaIVA ? (c.iva || c.iva_21 || c.monto_iva || 0) * sg : null);
-            const total = (c.total || c.monto || 0) * sg;
+            const { neto, iva, total } = this._ivaComprasImportes(c);
             const esCF = iva !== null && iva > 0;
 
             if (neto !== null) totalNeto += neto;
@@ -4441,20 +4456,28 @@ const ContabilidadModule = {
             exportWrap.innerHTML = '<button class="cont-btn-export" id="contIvaExportBtn">\u{1F4E5} Exportar CSV</button>';
             document.getElementById('contIvaExportBtn')?.addEventListener('click', () => {
                 const csvRows = this._ivaCompras.map(c => {
-                    const sg = signoComprobante(c.tipo);   // T4.5, igual que en ventas
+                    // Mismos importes que la tabla, por el mismo helper: si se
+                    // calculan por separado vuelven a divergir (ya pas\u00f3 con `iva_total`).
+                    const m = this._ivaComprasImportes(c);
                     return {
                         fecha: c.fecha || '',
-                        tipo: c.tipo || c.tipo_comprobante || '',
-                        numero: c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero),
+                        // La columna Origen no es cosm\u00e9tica: las filas auxiliares son
+                        // EXTRACONTABLES y no generan asiento. Un CSV que las mezcla
+                        // con las oficiales sin marcarlas deja al contador sin forma
+                        // de distinguirlas \u2014 en pantalla s\u00ed se ven, con el badge AUXILIAR.
+                        origen: m.esAuxiliar ? 'Auxiliar' : 'Oficial',
+                        tipo: m.esAuxiliar ? 'Factura' : (c.tipo || c.tipo_comprobante || ''),
+                        numero: m.esAuxiliar ? '' : (c.numero_formateado || this._formatNumeroComprobante(c.punto_venta, c.numero)),
                         proveedor: c.proveedor_nombre || c.razon_social || c.proveedor || '',
                         cuit: c.cuit || c.cuit_proveedor || '',
-                        neto: (c.neto || c.subtotal || 0) * sg,
-                        iva: (c.iva || c.iva_21 || c.monto_iva || 0) * sg,
-                        total: (c.total || c.monto || 0) * sg,
+                        neto: m.neto === null ? '' : m.neto,
+                        iva: m.iva === null ? '' : m.iva,
+                        total: m.total,
                     };
                 });
                 this._exportCSV(csvRows, [
-                    { key: 'fecha', label: 'Fecha' }, { key: 'tipo', label: 'Tipo' },
+                    { key: 'fecha', label: 'Fecha' }, { key: 'origen', label: 'Origen' },
+                    { key: 'tipo', label: 'Tipo' },
                     { key: 'numero', label: 'N\u00famero' }, { key: 'proveedor', label: 'Proveedor' },
                     { key: 'cuit', label: 'CUIT' }, { key: 'neto', label: 'Neto' },
                     { key: 'iva', label: 'IVA' }, { key: 'total', label: 'Total' },

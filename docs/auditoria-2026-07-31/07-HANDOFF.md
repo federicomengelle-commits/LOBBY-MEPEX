@@ -7,11 +7,11 @@
 
 ## Dónde quedó: **64 de 72**
 
-Repo limpio, todo pusheado, `HEAD == origin/main`. Prod al día (`app.js?v=36`).
+Repo limpio, todo pusheado, `HEAD == origin/main`. ⏳ **Prod sirve `app.js?v=36` y el repo va por `?v=39`: falta `~/pull-lobby.sh`** (trae el KPI de presupuestos, el costo del modal de recetas y el CSV del Libro IVA).
 
 | Tanda | Estado |
 |---|---|
-| **T0 · SQL** | ✅ salvo **T0.9** (las 3 FKs de `proyecto_id`, escritas en `sql/auditoria_t0_9_fks_proyecto.sql` y en revisión) |
+| **T0 · SQL** | ✅ salvo **T0.9b**: la FK de `plan_cobro` (bloqueada por un CHECK, pide borrar 1 fila) y 5 tablas más con `proyecto_id` sin FK |
 | **T1 · nginx** · **T2 · VPS** | ✅ deployadas y verificadas |
 | **T3 · JS quirúrgico** | ✅ **24 de 24** |
 | **T4 · estructurales** | ✅ **19 de 19 — COMPLETA** |
@@ -29,7 +29,7 @@ Repo limpio, todo pusheado, `HEAD == origin/main`. Prod al día (`app.js?v=36`).
 
 **T5.5** (16 clientes con `ultimo_contacto` → la alerta pasa de 0 siempre a 14) · **T5.6** (2 asignaciones rescatadas, no 5 — ver abajo) · **T5.7** (10 fechas de Campana, neutro en plata) · **T5.2** (las 2 copias sin pago, −$151.200 de IVA inventado) · **T5.11** (265 → 255 clientes) · **T5.10 parcial**.
 
-**⚠️ El MCP de Supabase NO estaba autorizado en esa sesión** (el plugin está instalado pero es un server HTTP con OAuth). Se destrabó solo: la **service key de `lobby-api/.env`** (`sb_secret_`, verificada contra prod) alcanza para todo lo que sea **datos** vía PostgREST. Lo único que no puede es **DDL** → por eso el índice de T0.8 quedó escrito y sin correr. Si la próxima sesión tampoco tiene MCP, ese es el camino.
+**⚠️ El MCP de Supabase arrancó SIN autorizar** (el plugin está instalado pero es un server HTTP con OAuth) y apareció recién a mitad de sesión. Mientras no estuvo, el camino fue la **service key de `lobby-api/.env`** (`sb_secret_`, verificada contra prod): alcanza para todo lo que sea **datos** vía PostgREST, y lo único que no puede es **DDL**. Vale tenerlo a mano por si la próxima sesión arranca igual.
 
 ### ✅ Y lo que se abrió y se cerró el mismo día: **T5.2-bis — el libro era data de prueba**
 
@@ -146,9 +146,7 @@ Se puede incluso **aplicar la migración entera y probarla en la misma transacci
 - **El reparto de cobranza (T4.1) sigue latente**: ninguna de las 9 cuotas tiene factura vinculada.
 - **`API.getPosicionIvaMes` y `getLibroIvaComprasExtendido` no tienen ningún caller** — código muerto.
 - **`_openPayModal` (rendimiento) y `_openBulkPriceModal` (modules) no tienen invocador.**
-- **Deuda de T4.19**: `costos.js:3757` y `:3872` leen `costoProduccion` crudo, sin la cadena de fallback.
 - **Deudas de multi-moneda de T4.4**: `plan_cobro_items` y las sumas de `iva` no tienen columna ARS; `vencimientos_*` tiene la suya (`monto_estimado_ars`) y **nadie la usa**.
-- **El CSV del Libro IVA Compras** arma el IVA de las filas auxiliares sin `c.iva_total` — con IVA mixto exportaría sólo el tramo del 21%.
 
 ---
 
