@@ -1,0 +1,103 @@
+-- =====================================================================
+-- AUDITORÍA 2026-07-31 · TANDA 5 (datos) — lo aplicado el 2026-08-05
+-- =====================================================================
+-- ⚠️ ESTE ARCHIVO NO SE CORRE. Es el REGISTRO de una tanda que se aplicó
+--    por PostgREST con la service key (el MCP de Supabase no estaba
+--    autorizado en esa sesión). Abajo está el ROLLBACK exacto, fila por
+--    fila, por si algo de esto hay que volver atrás.
+--
+-- Ítems: T5.5 · T5.6 · T5.7 (bloque A, sin preguntar) y
+--        T5.2 · T5.10 parcial · T5.11 (bloque B, con OK de Fede).
+-- El detalle y el porqué de cada uno: `docs/auditoria-2026-07-31/05-EJECUCION.md`.
+--
+-- QUÉ SE HIZO
+-- -----------
+-- T5.5  16 UPDATE de `clientes.ultimo_contacto`, derivado de la señal más
+--       reciente entre crm_mensajes / cotizaciones / proyectos / ingresos.
+--       Antes: 0 de 265 tenían el campo. La alerta "cliente sin follow-up"
+--       pasa de no dispararse nunca a 14 clientes.
+-- T5.6  2 INSERT en `asignaciones_evento` (Sacha `chofer` y David Alborez
+--       `encargado_armado` en Estetica, 14→17/05), rescatados de
+--       `rrhh_asignaciones`, que quedó INTACTA. Las otras 3 filas legacy
+--       NO se migraron: no tienen rol ni fechas, y con el `fase` default
+--       le habrían facturado 3 días de armado a dos personas que no
+--       tienen ni un día en ese evento.
+-- T5.7  10 UPDATE de fechas en `asignaciones_evento` (Campana): 2026-06-05
+--       → el rango real del armado, 06-10 → 06-12. Neutro en jornales:
+--       34 persona-días antes y después (esas filas tienen `jornada_id`
+--       NULL, y `_computeJornalLines` ya las contaba como la fase entera).
+-- T5.2  soft-delete de las 2 copias de la factura ONORIER que NO tenían
+--       egreso. IVA crédito vivo $374.010 → $222.810 (−$151.200).
+--       La tercera (con egreso y asiento) sigue viva: entra en T5.2-bis.
+-- T5.10 soft-delete de 6 crm_mensajes + 1 crm_caso de "PRUEBA CLAUDE v4"
+--       (el cliente ya estaba borrado, sus hijos no) y de 8 tareas
+--       manuales de prueba. El jornal de $200 se puso en CERO en vez de
+--       borrarse: los 2 días de Adrián salen de asignaciones reales, lo
+--       inventado era la tarifa de $100/día.
+-- T5.11 soft-delete de 1 cliente por cada uno de los 10 pares duplicados
+--       (siempre el de menos datos). 265 → 255, 0 nombres repetidos.
+--       Verificado antes: las 20 filas sin cotización, proyecto, caso,
+--       ingreso ni venta colgando.
+--
+-- =====================================================================
+-- ROLLBACK EXACTO (deja la base como estaba el 2026-08-04)
+-- =====================================================================
+-- BEGIN;
+-- -- ── Bloque A (T5.5 · T5.6 · T5.7) ──
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '45f881d4-2d87-4b83-9423-e7c69287372f';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = 'bbff036a-5295-42e9-a621-4a756ce20037';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '7bfaa9a8-87ac-4d4a-a3f7-87975bc95fcc';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '90b66476-2ed1-433e-9561-aeee92278459';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '2b28405e-05fc-4e71-a0f6-8ce78721df62';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '9ba2398b-5f91-44f9-8f28-685c403f5028';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '8160def0-5d6d-47f9-9f9d-c5e645bddd70';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '8161fd1e-fa8e-4c67-bc6f-78e495ee2315';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = 'bdd963e0-82a5-490c-8021-993c0f8d7ca9';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = 'eb522d7a-3faa-48bd-8319-288ff0cbe1ab';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = 'f5facacf-4f58-4306-a80d-a7d942427256';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '1f134fca-8e4e-4861-a34f-5b27714b2d15';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '3bcce61b-678f-4d6e-bb67-5865bc1701af';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '02210666-3ad3-4a62-8083-a61bb504a27d';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = 'dd0a7659-9d99-480e-ac32-982495e7edbc';
+-- UPDATE public.clientes SET ultimo_contacto = NULL WHERE id = '82322a7a-4ce8-4abb-8885-b1264b5913d0';
+-- DELETE FROM public.asignaciones_evento WHERE id = '4a7fed21-9b93-42ff-84bf-1ba1f52fbd40';
+-- DELETE FROM public.asignaciones_evento WHERE id = '9f12584d-2b54-4e0d-acad-a383c7a66aee';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '29ee804c-f612-4224-a210-8494a28e963e';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '81b6c51a-900e-47f5-99fc-b312f542a47a';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = 'f00887ce-9bb8-4fc5-a901-1f587f7942d8';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '6d2142be-b7f6-4124-ac29-788f7d70b9ae';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '98f026c2-5a25-404b-b87c-f74dbe6cc86f';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '98fb94ec-cc69-4ebc-812c-ed4668206ff3';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '5bb67ddb-8c52-480a-9ab5-a3832fc70b91';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '1e5a30fd-46d2-49a1-97ee-c97fe92fc4d5';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = '457d3504-6171-4cb2-9d7f-618bab953f6b';
+-- UPDATE public.asignaciones_evento SET fecha_inicio = '2026-06-05T08:00:00+00:00', fecha_fin = '2026-06-05T10:00:00+00:00' WHERE id = 'e87308f8-4342-4b89-862c-6de23b313a17';
+-- 
+-- -- ── Bloque B (T5.2 · T5.10 · T5.11) ──
+-- UPDATE public.comprobantes_recibidos SET _deleted = false WHERE id = 'dfcf79f7-a605-4696-8ccf-bb985753c333';
+-- UPDATE public.comprobantes_recibidos SET _deleted = false WHERE id = 'a91fcaef-6aed-48d4-acd4-bfc045bc2b75';
+-- UPDATE public.crm_mensajes SET _deleted = false WHERE id = 'c6ed161d-a92a-4ef1-a61e-87aa3ef6737a';
+-- UPDATE public.crm_mensajes SET _deleted = false WHERE id = '12c17ab3-e0d7-48f1-b33b-6854a870d0f1';
+-- UPDATE public.crm_mensajes SET _deleted = false WHERE id = 'd3f3a6a7-e7f7-43cc-b956-61468872db5c';
+-- UPDATE public.crm_mensajes SET _deleted = false WHERE id = 'd2c06e83-d7cf-449f-9ceb-f5b4600ed909';
+-- UPDATE public.crm_mensajes SET _deleted = false WHERE id = '40d750ae-ba40-432b-9563-075455e66d90';
+-- UPDATE public.crm_mensajes SET _deleted = false WHERE id = '3255c51b-3adf-415e-9dd4-be4e990af842';
+-- UPDATE public.tareas SET _deleted = false WHERE id = 'f213f02e-ca36-41c0-82b9-6c76aa82a733';
+-- UPDATE public.tareas SET _deleted = false WHERE id = 'c8dad0a2-0a4c-4bd5-a33d-01dc524ff981';
+-- UPDATE public.tareas SET _deleted = false WHERE id = '6d631390-84ac-4c36-b96e-3901278be35a';
+-- UPDATE public.tareas SET _deleted = false WHERE id = 'cfd8e892-4b5f-4264-96bb-34694ce8280c';
+-- UPDATE public.tareas SET _deleted = false WHERE id = 'f581b0f3-4c2e-47bc-b09d-7abf8106ae29';
+-- UPDATE public.tareas SET _deleted = false WHERE id = '8f3bbda0-c49f-48ff-8fad-639028de8c3a';
+-- UPDATE public.tareas SET _deleted = false WHERE id = '43f24372-da1f-4d12-a4b3-6b0c5e40cef4';
+-- UPDATE public.tareas SET _deleted = false WHERE id = 'b65b0e21-ac0e-4103-9c25-67fe36fd8885';
+-- UPDATE public.evento_costos SET tarifa = 100, monto = 200 WHERE id = 'aa252ccd-9c21-422b-97a3-dc1ca67b1eb0';
+-- UPDATE public.clientes SET _deleted = false WHERE id = 'dc659be1-2976-4b95-9aef-acaa43046601';
+-- UPDATE public.clientes SET _deleted = false WHERE id = '830ba62a-5639-419c-af74-7393d2ff77e0';
+-- UPDATE public.clientes SET _deleted = false WHERE id = '5d48cffc-af30-4cdd-b384-275821d0b3a7';
+-- UPDATE public.clientes SET _deleted = false WHERE id = 'b7a4d610-4c47-487d-9a31-caaf34514d5c';
+-- UPDATE public.clientes SET _deleted = false WHERE id = '9a948aad-2bb1-4b0a-b226-f35b9b84600b';
+-- UPDATE public.clientes SET _deleted = false WHERE id = '7f527ecb-2854-4a0f-92a7-bd68ed1fa26a';
+-- UPDATE public.clientes SET _deleted = false WHERE id = '887b1bee-50a1-4745-b007-5af9b04f2ba5';
+-- UPDATE public.clientes SET _deleted = false WHERE id = 'f47d2692-cb56-40ca-a2ae-85f359c28a33';
+-- UPDATE public.clientes SET _deleted = false WHERE id = '43dbc9ac-4173-4aa9-b7ac-9578ba76c681';
+-- UPDATE public.clientes SET _deleted = false WHERE id = 'fa54dc91-a543-4b98-8300-b2d52f858c7f';-- COMMIT;

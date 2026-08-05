@@ -1,47 +1,49 @@
 # Handoff — ejecución de la auditoría 2026-07-31
 
-> Reescrito al cerrar la sesión del **2026-08-03** (la quinta). Para retomar en una charla nueva sin releer nada.
+> Reescrito al cerrar la sesión del **2026-08-05** (la sexta). Para retomar en una charla nueva sin releer nada.
 > **El archivo de trabajo sigue siendo `05-EJECUCION.md`.** Esto es el pase.
-> **El objetivo de la sesión 6 es cerrar la auditoría.** Abajo está exactamente cómo.
 
 ---
 
-## Dónde quedó: **57 de 71**
+## Dónde quedó: **62 de 71**
 
 Repo limpio, todo pusheado, `HEAD == origin/main`. Prod al día (`app.js?v=36`).
 
 | Tanda | Estado |
 |---|---|
-| **T0 · SQL** | ✅ salvo 2: **T0.8-recibidos** (espera T5.2) y **T0.9** (decisión de Fede) |
+| **T0 · SQL** | ✅ salvo 2: **T0.8-recibidos** (el SQL está escrito, falta correrlo) y **T0.9** (absorbido por T5.2-bis) |
 | **T1 · nginx** · **T2 · VPS** | ✅ deployadas y verificadas |
 | **T3 · JS quirúrgico** | ✅ **24 de 24** |
 | **T4 · estructurales** | ✅ **19 de 19 — COMPLETA** |
-| **T5 · datos** | ⬜ 13 pendientes |
+| **T5 · datos** | ✅ 5 de 13 cerrados el 5/8 · 1 parcial · **7 abiertos, casi todos de Fede** |
 | **T6 · docs** | ✅ |
 
 **Todo lo de código está cerrado.** Lo que queda es datos y decisiones.
 
 ---
 
-## Cómo cerrar la auditoría — el plan de la sesión 6
+## Lo que se cerró el 2026-08-05
 
-### A · Lo que se puede hacer solo, sin preguntar nada (≈1 sesión corta)
+**T5.5** (16 clientes con `ultimo_contacto` → la alerta pasa de 0 siempre a 14) · **T5.6** (2 asignaciones rescatadas, no 5 — ver abajo) · **T5.7** (10 fechas de Campana, neutro en plata) · **T5.2** (las 2 copias sin pago, −$151.200 de IVA inventado) · **T5.11** (265 → 255 clientes) · **T5.10 parcial**.
 
-| # | Qué | Por qué es seguro |
+**⚠️ El MCP de Supabase NO estaba autorizado en esa sesión** (el plugin está instalado pero es un server HTTP con OAuth). Se destrabó solo: la **service key de `lobby-api/.env`** (`sb_secret_`, verificada contra prod) alcanza para todo lo que sea **datos** vía PostgREST. Lo único que no puede es **DDL** → por eso el índice de T0.8 quedó escrito y sin correr. Si la próxima sesión tampoco tiene MCP, ese es el camino.
+
+### 🔶 Lo que se abrió: **T5.2-bis — el libro contable es data de prueba**
+
+Al preguntarle cuál copia de la factura ONORIER se quedaba, Fede contestó **"todo dummy… salvo lo de Alejandro Olavarría"**. Eso decide el libro entero, no un comprobante: **$15.201.000 de ingresos** de los cuales **$1.000 son de Olavarría**, 7 egresos, 15 asientos. Los dos únicos comprobantes reales son la FC B de $1.000 y su NC B — **una prueba de ARCA, con CAE real**.
+
+Consecuencias: **T0.9 se disuelve** (los huérfanos de $10,7M son exactamente ese dummy) y **AAAAC** sale de T5.10 y entra acá. **No se puede borrar a mano** — el candado de T4.2 lo rechaza y manda a Anular, que dispara el contra-asiento; son 13 movimientos y `anularCobro`/`anularPago` tocan 8 satélites, así que **el camino barato es el botón Anular de Finanzas, no un script**. La decisión de fondo está escrita en `05-EJECUCION.md` §T5.2-bis: anular ahora vs. dejar el dummy como historia del testeo y que la apertura de 2027 defina la realidad.
+
+---
+
+## Lo que queda
+
+### A · Con el criterio ya dado, lo hace Claude
+
+| # | Qué | Estado |
 |---|---|---|
-| **T5.5** | Backfill de `ultimo_contacto` en los ~15 clientes con actividad | Es un dato **derivable** de `crm_mensajes`/`interacciones`. No inventa nada, y destraba la alerta "cliente sin follow-up", que hoy no se dispara nunca |
-| **T5.6** | Rescatar las 5 filas de `rrhh_asignaciones` | Son asignaciones reales que la migración a `personas` dejó atrás. Migrarlas a `asignaciones_evento` es aditivo |
-| **T5.7** | Asignaciones fuera del rango de fechas de Campana | Verificar y corregir el rango. Dato inconsistente, no ambiguo |
-
-### B · Lo que necesita 5 minutos de Fede y después lo hace Claude
-
-| # | Qué preguntar | Qué se destraba |
-|---|---|---|
-| **T5.2** | Las 2 copias de la factura ONORIER: **cuál se queda** | ⛔ **Destraba T0.8-recibidos** — los 3 índices únicos no se pueden crear con duplicados vivos. Son **$151.200 de crédito fiscal inventado** que entra al Libro IVA |
-| **T5.10** | Los datos de prueba (cliente AAAAC, 6 mensajes, 4 tareas, 3 jornales): **¿se borran?** | Ensucian los tableros que va a mirar la gente cuando entre a probar |
-| **T5.11** | 10 pares de clientes duplicados, **los 20 sin nada colgando**: ¿se fusionan o se borran? | La base de clientes es lo primero que va a tocar Noe |
-
-**Los tres son destructivos**, por eso van con OK explícito. Claude ya sabe identificarlos; lo que falta es el criterio.
+| **T5.10** | AAAAC — el resto ya se limpió | espera T5.2-bis |
+| **T5.2-bis** | Anular (o no) los 13 movimientos dummy | **espera decisión** |
 
 ### C · Lo que sólo puede hacer Fede
 
@@ -53,12 +55,12 @@ Repo limpio, todo pusheado, `HEAD == origin/main`. Prod al día (`app.js?v=36`).
 | **T5.9** | Instalar la PWA en los celulares de taller y pm | 15 min. **Hoy no entró nadie: 0 logins, 0 celulares** |
 | **T5.12** | Revocar sesiones de las 4 cuentas de baja | Dashboard de Supabase |
 | **T5.13** | Activar "Leaked password protection" | Dashboard → Auth. 1 clic |
-| **T0.9** | Los huérfanos de $10,7M: a qué proyecto va cada uno | Decisión antes de blanquear |
+| **T0.8** | Correr `sql/auditoria_t0_8_indice_recibidos.sql` | SQL Editor. Es DDL y son 3 líneas; los duplicados ya no están, no puede fallar |
 
 ### D · Congelados a propósito
 
 - **T5.1** (ítem 89) — espera la sesión de diseño de costos. Ver **`docs/costos-estado-real-y-decisiones.md`**.
-- **T0.8-recibidos** — espera T5.2.
+- **T0.9** — absorbido por T5.2-bis: ya no hay a qué proyecto reconstruir esos huérfanos.
 
 ---
 
@@ -105,6 +107,8 @@ Se puede incluso **aplicar la migración entera y probarla en la misma transacci
 - **T4.7** — *"view con `security_invoker=true`"*: con la tabla cerrada devuelve **cero filas**.
 - **T4.8** — daba por hecho que el Cotizador lee Supabase con la anon key. **No lo hace**: pega a su propio backend con service key. Toda la premisa del ítem era falsa.
 - **T5.1** — *"un clic, $40.240"*: el clic **afirma que el panel dura 5 usos**.
+- **T5.6** (5/8) — *"son 5 asignaciones reales, migrarlas es aditivo"*: **tres de las cinco no tienen ni rol ni fechas**. Migrarlas con el `fase` default habría facturado 3 días de armado a dos personas que no tienen ni un día en ese evento. Aditivo no es inocuo cuando la tabla destino alimenta plata.
+- **T5.7** (5/8) — *"dato inconsistente, no ambiguo"*: es **las dos cosas**. La fecha está objetivamente mal y se corrige; *quiénes* de esos 10 hicieron los 3 días no está en ninguna tabla.
 
 **El corolario:** varios bloqueos del plan eran fantasmas. T0.11 estaba frenado *"porque toca el contrato del Cotizador"* — se destrabó solo al verificar T4.8. Y el bloqueo del taller en T4.13 se resolvió con tres consultas (`audit_log` + columnas de autoría + logins), no con una charla. **Antes de aceptar un bloqueo, medirlo.**
 
