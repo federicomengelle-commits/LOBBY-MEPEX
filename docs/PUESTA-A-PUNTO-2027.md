@@ -61,6 +61,18 @@ Ocho cosas chicas que hoy hacen que el sistema **mienta o esté abierto**. Ningu
 > ## ⛔ GATE 1 — **No se carga un solo ítem masivo hasta cerrar esta etapa.**
 > Hoy hay **cuatro motores de costeo** y la cascada usa el equivocado: cambiar el precio de un insumo no llama a la RPC `calcular_receta` — usa un reimplemento en JS que ignora la regla 1:N, ignora el desperdicio y **no escribe los snapshots**, así que la UI marca las recetas como desactualizadas justo después de actualizarlas.
 > Cargar 200 ítems arriba de eso es fabricar 200 precios mal.
+>
+> ### 📄 Antes de esta etapa hay una sesión de DISEÑO, y su insumo es **[`costos-estado-real-y-decisiones.md`](costos-estado-real-y-decisiones.md)**
+> *(escrito el 2026-08-03 con datos leídos de producción — no de la documentación)*
+>
+> El motor calcula bien; lo que falta son **los números que lo alimentan**, y ésos no salen del sistema. Ese archivo pone sobre la mesa lo que hay cargado hoy y las **6 decisiones** que hay que tomar, en orden. Las tres que mandan:
+> 1. **¿La vida útil se mide en usos, en armados o en meses?** Todo lo demás cuelga de esto.
+> 2. **Las vidas útiles reales del sistema OCTEXA** — conversación con el taller, no con el sistema.
+> 3. **Una política de márgenes escrita** (hoy van de 50% a 125% sin criterio registrado).
+>
+> Y el dato que reencuadra la Etapa 2: **de 227 ítems, sólo 9 son cotizables y 28 tienen receta.** Los otros ~199 están en **$0**. Así que la carga masiva **no es "cargar 200 precios": es decidir 200 vidas útiles.**
+>
+> ⏸️ **El ítem 89 queda congelado hasta esa sesión** (decisión de Fede, 3/8): recalcularlo no arregla un precio, *afirma que el panel dura 5 usos* — y lo lleva de $22.944 a $63.184.
 
 | # | Qué | Detalle |
 |---|---|---|
