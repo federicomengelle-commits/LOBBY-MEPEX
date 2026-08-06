@@ -66,9 +66,16 @@ Son 6, y **ninguna es de código**. Las dos primeras son las que más cambian lo
 
 Sin esto, ni el cotizador ni la fórmula de precio por m² se paran en datos reales — todo queda a ojo.
 
-**⚠️ Y hay un orden que no se puede invertir:** primero **la sesión de diseño del modelo de costos**
-(insumo listo en `docs/costos-estado-real-y-decisiones.md`, con las 6 decisiones en orden), **después** la carga masiva.
+**⚠️ Y hay un orden que no se puede invertir:** primero **la sesión de diseño del modelo de costos**, **después** la carga masiva.
 Cargar 200 ítems arriba de criterios de vida útil que nadie validó es fabricar 200 precios mal.
+
+> **✅ La sesión de diseño se hizo el 2026-08-06. Resultado: `docs/costos-modelo-decidido.md`.**
+> Quedaron cerradas la **decisión 1** (qué significa "vida útil" — una columna, con regla escrita por
+> familia) y la **decisión 4** (política de márgenes por rubro, dos bandas propio/subalquilado).
+> Los seis rubros quedaron fijados y nació **Marketing**.
+> **Falta lo que sólo sabe el taller** — decisiones 2, 3 y 5: hoja lista para Diego en
+> `docs/costos-preguntas-taller.md`, 13 preguntas, media hora. **Son sólo 9 insumos**, no 80.
+> El **ítem 89 sigue congelado** hasta que Diego conteste si el panel negro dura la mitad que el blanco.
 
 **El trabajo, cuando toque:** ampliar `insumos_base` → armar los ítems que se cotizan de verdad con su receta
 (paneles, vitrinas, tarimas 4/8/30 cm, pisos, puertas, depósitos, iluminación por metro lineal, LED, estanterías,
@@ -181,7 +188,7 @@ por la Cloud API (el punto de enchufe ya está hecho en la ficha v4, sin redise�
 
 ```
 1. Los 6 tuyos de la sección A          ← desbloquean el resto (sobre todo jornales y stock mínimo)
-2. Sesión de diseño del modelo de costos ← ANTES de cargar el catálogo, no después
+2. Sesión de diseño del modelo de costos ← ✅ HECHA 6/8; resta la media hora con Diego
 3. Carga del catálogo (sección B)        ← con la consigna al equipo en paralelo
 4. TANDA 7 — el testeo integral          ← yo, end-to-end, con informe
 5. Ronda de testeo del equipo            ← con el sistema ya cargado y probado

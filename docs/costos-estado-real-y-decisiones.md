@@ -1,5 +1,16 @@
 # Costos — estado real del modelo y las decisiones que faltan
 
+> ### ⚠️ ESTE ARCHIVO YA CUMPLIÓ SU FUNCIÓN — 2026-08-06
+> Era el **insumo** de la sesión de diseño, y esa sesión se hizo. **Las decisiones tomadas viven
+> ahora en `docs/costos-modelo-decidido.md`**, que es el que manda.
+> Esto queda como el **diagnóstico** que la originó: sirve para entender de dónde venía cada
+> problema, no para saber qué se decidió.
+>
+> **Ojo con los números de acá abajo: son del 2026-08-03 y varios ya no valen.** Los márgenes
+> cambiaron (política nueva por rubro), las tarimas pasaron a subalquiladas y nació el rubro
+> Marketing. Lo que sigue en pie: el diagnóstico del ítem 89 y el hecho de que las vidas útiles
+> reales las tiene que decir el taller — para eso está `docs/costos-preguntas-taller.md`.
+
 > Escrito el **2026-08-03**, con datos leídos de producción (no de la documentación).
 > Nace de T5.1 de la auditoría: el plan decía *"recalcular el ítem 89, un clic, $40.240"* y al mirarlo
 > resultó que el clic **no arregla un precio: aplica una vida útil que nadie validó**. Fede:
