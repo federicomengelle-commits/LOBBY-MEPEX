@@ -49,7 +49,7 @@ const App = {
         'calendario-operativo.js?v=21',
         'eventos.js?v=49',
         'proyectos.js?v=6',
-        'proyecto-detalle.js?v=22',
+        'proyecto-detalle.js?v=23',
         'crm.js?v=43',
         'catalogo.js?v=9',
         'stands.js?v=6',
@@ -68,7 +68,7 @@ const App = {
         'remito-pdf.js?v=4',
         'pedido-pdf.js?v=2',
         'conforme-pdf.js?v=2',
-        'compras.js?v=24',
+        'compras.js?v=25',
         'inventario.js?v=21',
         'locaciones.js?v=14',
         'flota.js?v=8',
@@ -91,7 +91,7 @@ const App = {
         'importar-cotizacion.js?v=2',
         'importar-contactos.js?v=3',
         'modules.js?v=12',
-        'notifications.js?v=14',
+        'notifications.js?v=15',
         'tareas.js?v=16',
         // PostHog Analytics (consultoría Jordi 2026-07-17) — al final a propósito:
         // si el CDN de PostHog falla, la app ya cargó entera (analytics es lo único

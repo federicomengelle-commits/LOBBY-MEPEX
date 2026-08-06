@@ -2384,11 +2384,14 @@ const ProyectoDetalle = {
     },
     _getTypeOption(value)   { return this._typeOptions.find(t => t.value === value); },
 
+    // Delega en el `escHtml` global (T4.12). Escapaba sólo `& < >`: seguro en
+    // texto, trampa dentro de un atributo — la lección de `Tareas._esc()`.
+    // En este archivo había UNA llamada dentro de un atributo (`title` de la
+    // fecha de una novedad, línea ~1111); es un timestamp de la base, así que
+    // no era explotable, pero con esto deja de depender de eso.
     _esc(str) {
-        return String(str ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+        if (window.escHtml) return window.escHtml(str);
+        return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     },
     _escAttr(str) {
         return String(str ?? '')

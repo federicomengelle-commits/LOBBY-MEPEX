@@ -800,7 +800,16 @@ const ComprasModule = {
     //  HELPERS
     // ════════════════════════════════════════════════════
 
-    _esc(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
+    // Delega en el `escHtml` global (T4.12). El cuerpo viejo escapaba sólo
+    // `& < >`: seguro en texto, **trampa cargada dentro de un atributo**, que es
+    // exactamente la lección de `Tareas._esc()`. Hoy ninguna de las llamadas de
+    // este archivo cae en un atributo —barrido del 2026-08-05— pero el próximo
+    // `title="${this._esc(...)}"` abría el agujero sin que nadie lo notara.
+    // El fallback mantiene el módulo usable si `components.js` no cargó.
+    _esc(str) {
+        if (window.escHtml) return window.escHtml(str);
+        return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    },
     _escAttr(str) { return String(str ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;'); },
 
     // Carga this._insumos + this._catalogoPiezas on-demand (un ítem de pedido/OC puede

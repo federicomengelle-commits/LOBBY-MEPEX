@@ -643,11 +643,13 @@ const Notifications = {
     },
 
     // ─── Helpers ──────────────────────────────
+    // Delega en el `escHtml` global (T4.12). Escapaba sólo `& < >`: seguro en
+    // texto, trampa dentro de un atributo — la lección de `Tareas._esc()`.
+    // `_escAttr` de abajo queda como estaba: ya escapa comillas y sigue siendo
+    // el helper correcto para atributos; esto sólo saca el filo al de texto.
     _esc(str) {
-        return String(str ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+        if (window.escHtml) return window.escHtml(str);
+        return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     },
     _escAttr(str) {
         return String(str ?? '')
