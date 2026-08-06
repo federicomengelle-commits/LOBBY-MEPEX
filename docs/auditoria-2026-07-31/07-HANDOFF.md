@@ -5,21 +5,21 @@
 
 ---
 
-## Dónde quedó: **65 de 73**
+## Dónde quedó: **67 de 73**
 
 Repo limpio, todo pusheado, `HEAD == origin/main`. ⏳ **Prod sirve `app.js?v=36` y el repo va por `?v=39`: falta `~/pull-lobby.sh`** (trae el KPI de presupuestos, el costo del modal de recetas y el CSV del Libro IVA).
 
 | Tanda | Estado |
 |---|---|
-| **T0 · SQL** | ✅ salvo **T0.9b**: la FK de `plan_cobro` (bloqueada por un CHECK, pide borrar 1 fila) y 5 tablas más con `proyecto_id` sin FK |
+| **T0 · SQL** | ✅ **completa**, salvo **T0.9b** (5 tablas más con `proyecto_id` y ninguna FK — hoy sin huérfanos) |
 | **T1 · nginx** · **T2 · VPS** | ✅ deployadas y verificadas |
 | **T3 · JS quirúrgico** | ✅ **24 de 24** |
 | **T4 · estructurales** | ✅ **19 de 19 — COMPLETA** |
-| **T5 · datos** | ✅ **7 cerrados el 5/8** (incluido T5.2-bis) · **6 abiertos, todos de Fede** |
+| **T5 · datos** | ✅ **9 cerrados el 5/8** (incluido T5.2-bis) · **4 abiertos, todos de Fede** |
 | **T6 · docs** | ✅ |
 | **T7 · testeo integral** | 📋 **planificado** — es el último punto, va después de `PLAN-SUPERIOR.md` |
 
-**Todo lo de código está cerrado.** Lo que queda son 6 cosas de Fede y el testeo.
+**Todo lo de código está cerrado.** Lo que queda son 4 cosas de Fede, T0.9b y el testeo.
 
 **★ La base quedó en cero.** Se pueden crear y borrar cosas para probar sin ensuciar nada — que es la precondición de la Tanda 7.
 
@@ -27,7 +27,9 @@ Repo limpio, todo pusheado, `HEAD == origin/main`. ⏳ **Prod sirve `app.js?v=36
 
 ## Lo que se cerró el 2026-08-05
 
-**T5.5** (16 clientes con `ultimo_contacto` → la alerta pasa de 0 siempre a 14) · **T5.6** (2 asignaciones rescatadas, no 5 — ver abajo) · **T5.7** (10 fechas de Campana, neutro en plata) · **T5.2** + **T5.2-bis** (el libro blanqueado) · **T5.10** · **T5.11** (265 → 254 clientes) · **T0.8** (los 3 índices) · **T0.9 parcial** (2 de 3 FKs).
+**T5.5** (16 clientes con `ultimo_contacto` → la alerta pasa de 0 siempre a 14) · **T5.6** (2 asignaciones rescatadas, no 5) · **T5.7** (10 fechas de Campana, neutro en plata) · **T5.2** + **T5.2-bis** (el libro blanqueado) · **T5.10** · **T5.11** (265 → 254 clientes) · **T5.12** (era 1 sesión, no 4) · **T0.8** (los 3 índices) · **T0.9** (las 3 FKs).
+
+**Cotizaciones**: de las 18, Fede identificó **COT-2026-0003 (Riderchail)** como la única que se mandó a un cliente — quedó en `enviada` y las otras 15 se dieron de baja. Vivas: 0001 rechazada · 0002 aprobada · 0003 enviada.
 
 Y tres deudas que no eran ítems del plan: el **KPI de presupuestos** (lo encontró Fede), la de **T4.19** en el modal de recetas, y el **CSV del Libro IVA Compras** con IVA mixto.
 
@@ -55,8 +57,7 @@ Al preguntarle cuál copia de la factura ONORIER se quedaba, Fede contestó **"t
 | **T5.4** | Cargar `stock_minimo` (0 de 80 insumos) | Inventario. Sin eso, la alerta de stock bajo no existe |
 | **T5.8** | Depurar los 7 superadmins (4 parecen de prueba) | Panel de Control |
 | **T5.9** | Instalar la PWA en los celulares de taller y pm | 15 min. **Hoy no entró nadie: 0 logins, 0 celulares** |
-| **T5.12** | Revocar sesiones de las 4 cuentas de baja | Dashboard de Supabase |
-| **T5.13** | Activar "Leaked password protection" | Dashboard → Auth. 1 clic |
+| **T5.13** | Activar "Leaked password protection" | Dashboard → Auth. 1 clic. Fede ya dijo que las contraseñas se van a resetear todas y que cada usuario configure la suya |
 
 **Nota: el MCP de Supabase apareció a mitad de la sesión del 5/8**, así que el DDL dejó de ser un problema — T0.8 se aplicó y verificó ahí mismo. Si en la próxima sesión no está, el camino de datos sigue siendo la service key de `lobby-api/.env`.
 
@@ -153,6 +154,8 @@ Se puede incluso **aplicar la migración entera y probarla en la misma transacci
 ---
 
 ## Después de la auditoría — lo que Fede ya dejó dicho
+
+0. **★ Ver las PROPUESTAS del Cotizador desde el lobby** — pedido nuevo del 2026-08-05, y **más barato de lo que parece**. El Cotizador arma propuestas comerciales brandeadas (frame MEPEX, **renders de stands**, PDF por weasyprint) y hoy **desde el lobby no se ven**: se ven los presupuestos y no las propuestas, que es la pieza que el cliente efectivamente mira. *Verificado en prod ese día: la tabla **`cotizacion_propuestas` ya está en esta misma base, con 5 filas**, y trae `cliente`, `evento`, `modo`, `total`, `ref`, `cotizacion_id`, `payload` y **`pdf_url` apuntando a Storage**.* O sea que **no hay que construir nada del lado del Cotizador ni tocar su contrato**: es leer esa tabla y colgar el PDF donde corresponda (la ficha del caso en CRM y/o la de la cotización). Ojo con lo ya documentado: la RLS de `cotizacion_propuestas` quedó marcada en T0.2 como *"tabla con RLS y cero policies"* — hay que darle policy antes de que el browser pueda leerla.
 
 1. **Retenciones** — la Fase 2 del circuito de venta, lo hablado con Sofi. Spec: `docs/circuito-venta-blueprint.md`.
 2. **El cierre para que lo pruebe la gente** — los PDFs, las tareas de cada uno y los reportes que tiene que armar cada rol, para después corregir sobre lo que aparezca.
