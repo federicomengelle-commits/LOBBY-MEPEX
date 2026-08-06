@@ -111,15 +111,23 @@ END $$;
 COMMIT;
 
 -- =====================================================================
--- T0.9b — lo que queda abierto en este frente (la FK de plan_cobro ya está)
+-- T0.9b — ✅ CERRADO el 2026-08-05, y eran 8 tablas, no 5
 -- =====================================================================
--- 1. Hay **5 tablas más con `proyecto_id UUID` y ninguna FK**, verificado
---    contra prod el 2026-08-05: `comprobantes`, `comprobantes_recibidos`,
---    `cartera_valores`, `crm_casos` y `compras_ordenes`. Hoy no tienen
---    huérfanos —por eso no aparecieron en el tablero del 31/07, que contó
---    relaciones CON filas rotas, no relaciones sin constraint— pero es el
---    mismo hueco de schema que causó T0.9. Las dos primeras son las más
---    calientes: Facturación escribe ahí todos los días.
+-- La lista escrita a mano tenía `comprobantes`, `comprobantes_recibidos`,
+-- `cartera_valores`, `crm_casos` y `compras_ordenes`. **Un barrido sobre
+-- `pg_attribute` sumó tres más, las tres con datos**: `compras_pedidos`,
+-- `inventario_movimientos` y `tareas`. Lección: para "qué tablas tienen la
+-- columna X", barrer el catálogo — una lista a mano se deja tres afuera.
+-- Ninguna tenía huérfanos, por eso no aparecieron en el tablero del 31/07,
+-- que contó relaciones CON filas rotas y no relaciones sin constraint.
+-- Aplicadas en `auditoria_t0_9b_fks_proyecto_restantes` (5) y
+-- `auditoria_t0_9b_fks_proyecto_ultimas_tres` (3).
+--
+-- **Estado final: 24 tablas con FK a `proyectos` y 3 sin ella** — las 3
+-- legacy vacías (`taller_checklist`/`taller_materiales`/`taller_notas`),
+-- a propósito: están en el DROP_CHECKLIST y ponerles una FK es trabajo
+-- para tirar. Verificado además que ninguna tabla quedó con DOS FKs a
+-- `proyectos`, que habría vuelto ambiguo cualquier embed `proyectos(...)`.
 --
 -- =====================================================================
 -- ROLLBACK
