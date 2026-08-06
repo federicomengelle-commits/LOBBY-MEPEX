@@ -24,10 +24,15 @@ Números verificados contra producción el 2026-08-05:
 | Integridad contable | partida doble **$0,00** · 0 asientos desbalanceados · 0 drift · saldo final de cada cuenta **$0,00** |
 | Seguridad | RLS: 120 tablas cerradas · 0 policies para `anon` · 0 sesiones de cuentas dadas de baja |
 | Schema | **24 tablas con FK a `proyectos`**, 3 sin ella (legacy vacías, a propósito) · 3 índices únicos fiscales activos |
-| Infra | prod sirve `app.js?v=39` ✓ · VPS entero sano (ARCA, push, digest y webhook de WhatsApp responden) |
+| Infra | prod al día ✓ · VPS entero sano (ARCA, push, digest y webhook de WhatsApp responden) |
 | Tests | 8 suites, 142 checks, en verde |
 
 **La base quedó en cero**: se puede crear y borrar para probar sin ensuciar nada. Es la precondición de la Tanda 7.
+
+**Barrido de schema código↔prod (2026-08-05):** se extrajo cada `.select()` del JS y se probó contra producción
+por el mismo camino que usa el cliente. **75 tablas · 410 referencias a columnas · 24 embeds → 0 mismatches.**
+Es la clase de bug que este repo identificó como la más valiosa (JS pidiendo una columna que una migración
+renombró); el último barrido fue en junio y desde entonces hubo muchas migraciones.
 
 ### Pendientes fantasma — verificados hoy, ya no existen
 
@@ -95,11 +100,17 @@ Los 9 circuitos: venta · compra · evento · proyecto-taller · costos · inven
 El cotizador arma propuestas comerciales brandeadas con **renders de stands**, y desde el lobby **no se ven**:
 se ven los presupuestos, no las propuestas — que es la pieza que el cliente efectivamente mira.
 
-**Sale barato**, verificado en el momento: `cotizacion_propuestas` **ya vive en esta misma base, con 5 filas**,
-y trae `cliente`, `evento`, `total`, `ref`, `cotizacion_id` y **`pdf_url` apuntando a Storage**. No hay que
-construir nada del lado del cotizador ni tocar su contrato: es leer esa tabla y colgar el PDF en la ficha del
-caso y/o de la cotización. **Único cuidado:** la tabla tiene RLS activada y **cero policies** (viene de T0.2),
-así que hoy el browser no la puede leer — hay que darle una antes.
+**Lo técnico está listo** (verificado 2026-08-05): `cotizacion_propuestas` vive en esta misma base con **5 filas**,
+trae `cliente`, `evento`, `modo`, `total`, `ref` y **`pdf_url`**, y **ya tiene sus 4 policies** — la nota de T0.2
+que decía "cero policies" quedó vieja, se arregló en la misma tanda. No hace falta SQL.
+
+**⚠️ Pero falta el cableado, y ahí hay una decisión:** `cotizacion_id` está **NULL en las 5** y `ref` sólo en una,
+así que **no hay join confiable con la cotización ni con el cliente** (`cliente` y `evento` son texto libre).
+Las opciones: matchear por `ref` cuando esté · matchear por nombre de cliente (frágil) · **pedirle al cotizador
+que escriba el `cotizacion_id`**, que es la buena. Es un flujo a diagramar juntos antes de codear.
+
+**Dato de seguridad a tener presente:** el bucket `propuestas-pdf` es **público** — el PDF se abre sin login.
+Tiene sentido para mandárselo al cliente, pero significa que cualquiera con la URL ve precios y nombre del cliente.
 
 ### C3 · El embudo comercial no avanza *(hallazgo del 5/8)*
 
@@ -152,10 +163,8 @@ por la Cloud API (el punto de enchufe ya está hecho en la ficha v4, sin redise�
 **Deudas conocidas, con nombre y apellido:**
 - **Una nota de crédito no baja el saldo de la factura que anula** — `comprobantes` no tiene columna que las ate. La NC ya no infla el IVA ni parece cobrable, pero la factura sigue figurando como cobrable. Cerrarlo es una columna + UI de vinculación.
 - **Multi-moneda (resto de T4.4):** `plan_cobro_items` sin columna ARS para `monto_cobrado` · las sumas de `iva` no tienen columna convertida (la Fase E snapshotea `total`, no `iva`) · `vencimientos_*` tiene la suya (`monto_estimado_ars`) y nadie la usa.
-- **Código muerto:** `API.getPosicionIvaMes` y `getLibroIvaComprasExtendido` sin un solo caller · `_openPayModal` (rendimiento) sin invocador.
+- **`API.getPosicionIvaMes` y `getLibroIvaComprasExtendido` no tienen caller** — pero **no son para borrar**: son la implementación *correcta* (leen las views que T4.5 arregló) mientras las 3 pantallas de Posición IVA suman en el cliente. Borrarlas pierde la versión buena; cablearlas cambia cómo calculan tres pantallas y pide verificación. Queda como decisión, no como limpieza. Ídem `_openPayModal` en `rendimiento.js`.
 - **`eventos`: la sección "Fechas" debería ser de sólo lectura si el evento tiene jornadas** — hoy editarla discrepa con `evento_jornadas` (la fuente de verdad) hasta que alguien toca una jornada y el trigger reimpone las suyas. Es decisión de producto.
-- **Barrido de `_esc` caseros por módulo** — la veta existe: ya salieron tres de ese palo.
-- **Un armado de 3 días se vuelve de 1 sin avisar** — `eventos.js:2778` manda siempre `setupEndDate = setupDate`.
 
 **Piezas grandes:**
 - **Finanzas Fase 5 — conciliación bancaria CSV** (Galicia/MercadoPago). La última pata gorda de Finanzas; hoy el matching es manual.
