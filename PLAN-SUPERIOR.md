@@ -1,3 +1,14 @@
+> # ⛔ ARCHIVO SUPERADO — 2026-08-05
+>
+> **La lista de pendientes vive ahora en [`PENDIENTES.md`](PENDIENTES.md)**, que juntó lo de acá,
+> los ítems abiertos de la auditoría del 31/07 y los cabos que estaban sueltos, con todo verificado
+> contra producción ese día. **Varios "pendientes" de este archivo eran fantasmas** (el `cp` del
+> connector de push, el webhook de WhatsApp, el pull de prod) y ya no figuran.
+>
+> Esto queda como registro histórico. **No agregar tareas acá.**
+
+---
+
 # 🚀 PLAN SUPERIOR — LOBBY MEPEX
 
 > **Fuente de verdad de lo que FALTA.** Nace del "Project Scope & Missing Pieces".

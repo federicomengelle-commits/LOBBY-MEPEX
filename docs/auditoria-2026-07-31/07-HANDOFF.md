@@ -5,21 +5,23 @@
 
 ---
 
-## Dónde quedó: **67 de 73**
+## Dónde quedó: **63 de 69** — y los 6 que faltan son todos de Fede
 
-Repo limpio, todo pusheado, `HEAD == origin/main`. ⏳ **Prod sirve `app.js?v=36` y el repo va por `?v=39`: falta `~/pull-lobby.sh`** (trae el KPI de presupuestos, el costo del modal de recetas y el CSV del Libro IVA).
+Repo limpio, todo pusheado, `HEAD == origin/main`. **Prod al día** (`app.js?v=39`, verificado).
+
+> **★ La lista de pendientes ya no vive acá: está en [`PENDIENTES.md`](../../PENDIENTES.md)**, el archivo único que juntó este handoff, `PLAN-SUPERIOR.md` y los cabos sueltos. Este documento queda como el **registro** de la auditoría: qué se arregló, por qué, y las trampas que no hay que volver a descubrir.
 
 | Tanda | Estado |
 |---|---|
-| **T0 · SQL** | ✅ **completa**, salvo **T0.9b** (5 tablas más con `proyecto_id` y ninguna FK — hoy sin huérfanos) |
+| **T0 · SQL** | ✅ **COMPLETA** (T0.9b cerrado: 8 FKs, no 5 — el barrido encontró 3 tablas que la lista a mano no tenía) |
 | **T1 · nginx** · **T2 · VPS** | ✅ deployadas y verificadas |
 | **T3 · JS quirúrgico** | ✅ **24 de 24** |
 | **T4 · estructurales** | ✅ **19 de 19 — COMPLETA** |
-| **T5 · datos** | ✅ **9 cerrados el 5/8** (incluido T5.2-bis) · **4 abiertos, todos de Fede** |
+| **T5 · datos** | ✅ **9 cerrados el 5/8** (incluido T5.2-bis) · **5 abiertos, todos de Fede** |
 | **T6 · docs** | ✅ |
 | **T7 · testeo integral** | 📋 **planificado** — es el último punto, va después de `PLAN-SUPERIOR.md` |
 
-**Todo lo de código está cerrado.** Lo que queda son 4 cosas de Fede, T0.9b y el testeo.
+**Todo lo de código está cerrado.** Lo que queda son 6 cosas de Fede (ninguna de código) y la Tanda 7.
 
 **★ La base quedó en cero.** Se pueden crear y borrar cosas para probar sin ensuciar nada — que es la precondición de la Tanda 7.
 
