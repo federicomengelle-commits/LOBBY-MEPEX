@@ -15,7 +15,15 @@
 
 ## Dónde estamos hoy
 
-**La auditoría del 31/07 está en 63 de 69.** Todo lo de código cerrado. Los 6 que quedan son de Fede.
+> ### ✅ La auditoría del 31/07 quedó CERRADA el 2026-08-06
+> Quedan **5 ítems abiertos y ninguno es de código** — los cinco esperan a una persona:
+> el ítem 89 a **Diego** · los jornales a **Lelean** · el stock físico al **taller** ·
+> los 5 dispositivos y el MFA a **Fede**.
+> Ese día se cerraron los superadmins (7→4) y la protección de contraseñas filtradas, y
+> **dos ítems cambiaron de naturaleza al medirlos** (el stock mínimo y la instalación en celulares).
+> **Punto de retomar de costos + integración con el Cotizador: `docs/handoff-costos-cotizador.md`.**
+
+**La auditoría del 31/07 llegó a 63 de 69 el 5/8** (histórico). Todo lo de código cerrado.
 
 Números verificados contra producción el 2026-08-05:
 
