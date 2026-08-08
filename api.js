@@ -3955,6 +3955,41 @@ const API = {
         }
     },
 
+    /**
+     * Ítems cuyo `precio_alquiler` GUARDADO ya no coincide con el que daría su
+     * receta hoy. Lee la view `v_catalogo_precio_desfasado`.
+     *
+     * Existe porque el precio es un valor CACHEADO: se escribe al apretar
+     * "Recalcular" y ahí queda. Si después cambia el costo de un insumo o el
+     * margen del ítem, lo guardado envejece — y es lo que lee el Cotizador para
+     * cotizarle a un cliente. El único aviso que había vivía DENTRO del panel
+     * del ítem abierto y se perdía al cerrarlo; así el ítem 89 estuvo $40.240
+     * por debajo de su receta durante meses sin que nadie lo viera.
+     *
+     * Degrada en silencio: si la view todavía no está en la base devuelve []
+     * y el módulo no muestra el chip. Nunca rompe el render.
+     */
+    async getItemsDesfasados() {
+        try {
+            const { data, error } = await supabaseClient
+                .from('v_catalogo_precio_desfasado')
+                .select('id, nombre, rubro, es_cotizable, precio_guardado, precio_receta, diferencia');
+            if (error) throw error;
+            return (data || []).map(r => ({
+                id: r.id,
+                nombre: r.nombre || '',
+                rubro: r.rubro || '',
+                esCotizable: !!r.es_cotizable,
+                precioGuardado: parseFloat(r.precio_guardado) || 0,
+                precioReceta: parseFloat(r.precio_receta) || 0,
+                diferencia: parseFloat(r.diferencia) || 0,
+            }));
+        } catch (e) {
+            console.warn('[API] getItemsDesfasados:', e.message);
+            return [];
+        }
+    },
+
     // F.2 — recalcular masivo: itera por items con receta y llama RPC en cada uno.
     // onProgress(cur, total, item) opcional para feedback al UI.
     async recalcularTodasRecetasRPC(onProgress) {

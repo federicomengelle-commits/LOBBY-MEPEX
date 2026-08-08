@@ -51,7 +51,10 @@ const CostosModule = {
     _filterCategoria: [],
     _filterProveedor: [],
     _filterTipoAmortizacion: [],
-    _filterRecetaEstado: '',  // '', 'completa', 'incompleta', 'sin-receta'
+    _filterRecetaEstado: '',  // '', 'completa', 'incompleta', 'sin-receta', 'desfasado'
+    // Ítems con el precio guardado distinto del que da su receta hoy.
+    // { [itemId]: { diferencia, precioReceta } }. Se llena en _loadAllRecetaStatuses.
+    _desfasados: {},
 
     // Receta status cache (item.id → { status, comps })
     _recetaStatusCache: {},
@@ -299,6 +302,22 @@ const CostosModule = {
 
     async _loadAllRecetaStatuses() {
         this._recetaStatusCache = {};
+
+        // Precios que quedaron viejos respecto de su receta (view
+        // v_catalogo_precio_desfasado). Nunca bloquea el render: si la view no
+        // existe o la consulta falla, el chip simplemente no aparece.
+        // El guard de `typeof` cubre el caso de un api.js cacheado sin el método.
+        this._desfasados = {};
+        if (typeof API.getItemsDesfasados === 'function') {
+            try {
+                for (const d of await API.getItemsDesfasados()) {
+                    this._desfasados[d.id] = { diferencia: d.diferencia, precioReceta: d.precioReceta };
+                }
+            } catch (e) {
+                console.warn('[Costos] no se pudieron leer los precios desfasados:', e.message);
+            }
+        }
+
         // Batch load: fetch all receta_componentes at once
         try {
             const { data, error } = await supabaseClient
@@ -1961,6 +1980,23 @@ const CostosModule = {
         const rubroOpts = [...new Set(this._catalogoItems.map(i => i.rubro).filter(Boolean))].sort();
         const est = this._filterRecetaEstado;
 
+        // Chip de precios desactualizados. Sólo existe si hay alguno: cuando el
+        // catálogo está al día, la barra de filtros queda como estaba.
+        const desfIds = Object.keys(this._desfasados || {});
+        const desfN = desfIds.length;
+        let desfTitle = '';
+        if (desfN) {
+            const fmt = n => (n > 0 ? '+' : '') + '$' + Math.round(n).toLocaleString('es-AR');
+            const lineas = desfIds.slice(0, 4).map(id => {
+                const it = this._catalogoItems.find(i => String(i.id) === String(id));
+                return `· ${it ? it.nombre : 'ítem ' + id}  ${fmt(this._desfasados[id].diferencia)}`;
+            });
+            desfTitle = 'El precio guardado no coincide con lo que da su receta hoy.\n'
+                + 'Es el precio que lee el Cotizador.\n\n'
+                + lineas.join('\n')
+                + (desfN > 4 ? `\n… y ${desfN - 4} más` : '');
+        }
+
         this._ensureTabKpiStyles();
         const kpiTotal = this._catalogoItems.length;
         const kpiCotizables = this._catalogoItems.filter(i => i.esCotizable === true).length;
@@ -1979,6 +2015,9 @@ const CostosModule = {
                     <button class="costos-estado-chip chip-completa ${est === 'completa' ? 'active' : ''}" data-estado="completa">Completa</button>
                     <button class="costos-estado-chip chip-incompleta ${est === 'incompleta' ? 'active' : ''}" data-estado="incompleta">Incompleta</button>
                     <button class="costos-estado-chip chip-sin-receta ${est === 'sin-receta' ? 'active' : ''}" data-estado="sin-receta">Sin receta</button>
+                    ${desfN ? `<button class="costos-estado-chip ${est === 'desfasado' ? 'active' : ''}" data-estado="desfasado"
+                        title="${escAttr(desfTitle)}"
+                        ${est === 'desfasado' ? '' : 'style="color:#F28D15; border-color:#F28D15;"'}>⚠ ${desfN} desactualizado${desfN === 1 ? '' : 's'}</button>` : ''}
                 </div>
                 <button class="costos-filter-clear" id="costosClearFilters">Limpiar</button>
                 <div style="flex:1"></div>
@@ -2026,8 +2065,12 @@ const CostosModule = {
             data = data.filter(i => this._filterRubro.includes(i.rubro));
         }
 
-        // Filter by receta status
-        if (this._filterRecetaEstado) {
+        // Filter by receta status. 'desfasado' no sale de _getRecetaStatus
+        // (que mira si la receta está completa) sino del cruce contra la view:
+        // un ítem puede tener la receta completa y el precio viejo igual.
+        if (this._filterRecetaEstado === 'desfasado') {
+            data = data.filter(i => this._desfasados[i.id]);
+        } else if (this._filterRecetaEstado) {
             data = data.filter(i => {
                 const rs = this._getRecetaStatus(i.id);
                 return rs.status === this._filterRecetaEstado;
