@@ -2272,7 +2272,9 @@ const CostosModule = {
                 if (res.fotos?.copiadas) detalle.push(`${res.fotos.copiadas} foto${res.fotos.copiadas === 1 ? '' : 's'}`);
                 Toast.success(`Duplicado como "${res.nombre}"${detalle.length ? ' · ' + detalle.join(' + ') : ''}`);
             }
-            if (res.fotos?.fallidas) Toast.warning(`${res.fotos.fallidas} foto(s) no se pudieron copiar`);
+            if (res.fotos?.fallidas) {
+                Toast.warning(`El ítem quedó creado, pero ${res.fotos.fallidas} foto(s) no se pudieron copiar — cargalas a mano`, 6000);
+            }
             if (!res.codigo && item.codigo) {
                 Toast.info('El duplicado quedó sin código — cargale uno a mano en la ficha', 5000);
             }
@@ -2448,11 +2450,13 @@ const CostosModule = {
         const body = document.getElementById('costosRecetaBody');
         if (!body) return;
 
-        const [componentes, params] = await Promise.all([
+        const [componentes, params, notasOk] = await Promise.all([
             API.getRecetaComponentes(item.id),
             this._getParamsGlobales(),
+            API.catalogoTieneNotas(),
         ]);
         this._recetaCache[item.id] = componentes;
+        this._notasSoportadas = notasOk;
 
         // F.5 — alinear con la RPC `calcular_receta`:
         //  - Insumos: subtotal = cantidad × costo_unit × (1 + desperdicio%)
@@ -2931,15 +2935,29 @@ const CostosModule = {
     },
 
     // F.10 — Bloque Notas (similar al de Insumos, opcional)
+    // Si `catalogo_items.notas` todavía no existe en la base, el bloque se
+    // muestra DESHABILITADO con el motivo. Antes toasteaba "Notas guardadas"
+    // y no guardaba nada: `updateCatalogoItem` no mapeaba el campo, el payload
+    // salía vacío y el UPDATE "funcionaba". Correr sql/costos_catalogo_notas.sql
+    // habilita el bloque solo (el sondeo es automático).
+    _notasSoportadas: true,
+
     _renderNotasBlock(item) {
         const notas = item.notas || '';
+        const off = this._notasSoportadas === false;
         return `
             <div class="costos-receta-config-block">
                 <div class="costos-receta-config-title">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     Notas
                 </div>
-                <textarea class="costos-receta-config-input" id="costosRecetaNotasEdit" data-field="notas" placeholder="Observaciones, contexto, alertas…" style="width:100%; min-height:50px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;">${escHtml(notas)}</textarea>
+                <textarea class="costos-receta-config-input" id="costosRecetaNotasEdit" data-field="notas"
+                    ${off ? 'disabled' : ''}
+                    placeholder="${off ? 'No disponible todavía' : 'Observaciones, contexto, alertas…'}"
+                    style="width:100%; min-height:50px; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-family:var(--font-main); font-size:13px; resize:vertical;${off ? ' opacity:0.5; cursor:not-allowed;' : ''}">${escHtml(notas)}</textarea>
+                ${off ? `<div style="margin-top:6px; color:#F2A94B; font-size:11px; line-height:1.4;">
+                    Falta la columna <code>notas</code> en <code>catalogo_items</code>. Correr <code>sql/costos_catalogo_notas.sql</code> en el SQL Editor de Supabase y se habilita solo.
+                </div>` : ''}
             </div>
         `;
     },
@@ -3331,15 +3349,27 @@ const CostosModule = {
             });
         });
 
-        // F.10 — Notas (blur guarda)
+        // F.10 — Notas (blur guarda). Sin la columna en la base el textarea va
+        // disabled, así que este handler no llega a dispararse; el guard extra
+        // es por si alguien lo habilita desde el inspector.
         const notasEl = document.getElementById('costosRecetaNotasEdit');
         if (notasEl) {
             const originalNotas = notasEl.value;
             notasEl.addEventListener('blur', async () => {
                 if (notasEl.value === originalNotas) return;
+                if (this._notasSoportadas === false) {
+                    Toast.warning('Las notas todavía no se pueden guardar: falta correr sql/costos_catalogo_notas.sql', 5000);
+                    return;
+                }
                 const ok = await API.updateCatalogoItem(item.id, { notas: notasEl.value });
-                if (ok) { item.notas = notasEl.value; Toast.success('Notas guardadas', 1500); }
-                else Toast.error('No se pudo guardar');
+                if (ok) {
+                    item.notas = notasEl.value;
+                    const cached = this._catalogoItems.find(i => String(i.id) === String(item.id));
+                    if (cached) cached.notas = notasEl.value;
+                    Toast.success('Notas guardadas', 1500);
+                } else {
+                    Toast.error('No se pudo guardar la nota');
+                }
             });
         }
 

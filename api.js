@@ -2127,6 +2127,9 @@ const API = {
                 snapshotCostosAt: i.snapshot_costos_at || null,
                 // F.4 — flag de cotizable (visible en lista de precios)
                 esCotizable: i.es_cotizable === true,
+                // Notas del ítem. La columna se agrega con sql/costos_catalogo_notas.sql;
+                // mientras no exista, `i.notas` es undefined y esto queda en ''.
+                notas: i.notas || '',
             }));
             this._cache[cacheKey] = { data: mapped, ts: Date.now() };
             return mapped;
@@ -2211,6 +2214,12 @@ const API = {
             if (data.snapshotCostosAt !== undefined) payload.snapshot_costos_at = data.snapshotCostosAt;
             // F.4 — flag cotizable
             if (data.esCotizable !== undefined) payload.es_cotizable = data.esCotizable === true;
+            // Notas del ítem. Faltaba el mapeo: la ficha de receta mandaba
+            // `{ notas }`, el payload quedaba VACÍO y el UPDATE "funcionaba" sin
+            // guardar nada — el usuario veía "Notas guardadas" y no se guardaba.
+            // Requiere sql/costos_catalogo_notas.sql; sin esa columna el UPDATE
+            // ahora falla de verdad y la UI avisa (antes mentía).
+            if (data.notas !== undefined) payload.notas = data.notas;
             await UndoHelpers.updateRecord('catalogo_items', id, payload, 'Edito item de catalogo');
             this.clearCache();
             return true;
@@ -2218,6 +2227,23 @@ const API = {
             console.warn('[API] Error updating catalogo item:', e.message);
             return null;
         }
+    },
+
+    // ¿Existe ya `catalogo_items.notas`? La columna la agrega
+    // sql/costos_catalogo_notas.sql (pendiente de correr a mano en el SQL Editor).
+    // Mientras no exista, la ficha de receta muestra el bloque Notas
+    // DESHABILITADO con el motivo, en vez de fingir que guarda.
+    // Se sondea una vez por sesión y se cachea.
+    _catalogoNotasOk: null,
+    async catalogoTieneNotas() {
+        if (this._catalogoNotasOk !== null) return this._catalogoNotasOk;
+        try {
+            const { error } = await supabaseClient.from('catalogo_items').select('id, notas').limit(1);
+            this._catalogoNotasOk = !error;
+        } catch (_) {
+            this._catalogoNotasOk = false;
+        }
+        return this._catalogoNotasOk;
     },
 
     async deleteCatalogoItem(id) {
@@ -2281,6 +2307,33 @@ const API = {
             const cand = gen(i);
             if (usados.has(cand.toLowerCase())) continue;
             return this._CODIGO_CATALOGO_RE.test(cand) ? cand : null;
+        }
+        return null;
+    },
+
+    // Copia un objeto del bucket `catalogo` a la carpeta del ítem destino.
+    // Devuelve { path, url } o null si falló (el llamador NO debe insertar la
+    // fila: dejaría al duplicado apuntando al archivo del original).
+    // Ruta destino `<itemIdDestino>/<basename>`: determinística y libre de
+    // colisiones porque la carpeta de un ítem recién creado está vacía. Si aun
+    // así el nombre estuviera tomado, reintenta una vez con un uuid nuevo.
+    async _copiarObjetoCatalogo(srcPath, itemIdDestino) {
+        const base = String(srcPath).split('/').pop() || `${this._genUuid()}.jpg`;
+        const intentos = [`${itemIdDestino}/${base}`];
+        const ext = base.includes('.') ? base.slice(base.lastIndexOf('.')) : '.jpg';
+        intentos.push(`${itemIdDestino}/${this._genUuid()}${ext}`);
+        for (const destPath of intentos) {
+            const { error } = await supabaseClient.storage.from('catalogo').copy(srcPath, destPath);
+            if (error) {
+                console.warn('[API] _copiarObjetoCatalogo:', srcPath, '→', destPath, '·', error.message || error);
+                continue;
+            }
+            const { data: pub } = supabaseClient.storage.from('catalogo').getPublicUrl(destPath);
+            if (!pub?.publicUrl) {
+                await supabaseClient.storage.from('catalogo').remove([destPath]).catch(() => {});
+                continue;
+            }
+            return { path: destPath, url: pub.publicUrl };
         }
         return null;
     },
@@ -2368,24 +2421,49 @@ const API = {
                 }
             }
 
-            // 5. Fotos. OJO: se comparte el MISMO objeto de Storage (mismo
-            //    storage_path), no se duplica el archivo. Borrar una foto del
-            //    duplicado borra el objeto y rompe la del original.
-            const fotos = { copiadas: 0, fallidas: 0 };
+            // 5. Fotos. 🟥 Se COPIA el objeto en Storage, no se comparte:
+            //    `deleteCatalogoFoto` borra el objeto del bucket, así que si el
+            //    duplicado apuntara al mismo `storage_path` que el original,
+            //    borrar la foto del duplicado rompería la del original.
+            //    Ruta destino: `<idNuevo>/<mismo nombre de archivo>` — determinística
+            //    y sin colisiones porque la carpeta del ítem nuevo arranca vacía.
+            //    Fotos con `storage_path` null (URL externa, migración de Drive) se
+            //    referencian tal cual: no hay objeto propio que copiar ni que borrar.
+            const fotos = { copiadas: 0, fallidas: 0, referenciadas: 0 };
             const { data: srcFotos } = await supabaseClient
                 .from('catalogo_item_fotos').select('*')
                 .eq('item_id', sourceId)
                 .eq('_deleted', false)
                 .order('orden', { ascending: true });
             for (const f of (srcFotos || [])) {
+                let destPath = null;
+                let destUrl = f.url;
+                if (f.storage_path) {
+                    const copia = await this._copiarObjetoCatalogo(f.storage_path, nuevoId);
+                    if (!copia) {
+                        // El duplicado NUNCA queda apuntando al archivo del original.
+                        fotos.fallidas++;
+                        continue;
+                    }
+                    destPath = copia.path;
+                    destUrl = copia.url;
+                } else {
+                    fotos.referenciadas++;
+                }
                 const ok = await this.addCatalogoFoto(nuevoId, {
-                    url: f.url,
-                    storagePath: f.storage_path,
+                    url: destUrl,
+                    storagePath: destPath,
                     orden: f.orden,
                     esPrincipal: f.es_principal === true,
                     alt: f.alt || '',
                 });
-                if (ok) fotos.copiadas++; else fotos.fallidas++;
+                if (ok) {
+                    fotos.copiadas++;
+                } else {
+                    fotos.fallidas++;
+                    // Sin fila que lo referencie, el objeto copiado quedaría huérfano.
+                    if (destPath) await supabaseClient.storage.from('catalogo').remove([destPath]).catch(() => {});
+                }
             }
 
             this.clearCache();
