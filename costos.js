@@ -32,6 +32,9 @@ const CostosModule = {
     // F.2 — lock para evitar dobles clicks en recalcular
     _recalcInProgress: false,
 
+    // Lock para evitar dobles clicks en duplicar (un click = un ítem nuevo)
+    _duplicateInProgress: false,
+
     // Tipos de amortización (catálogo costos_tipo_amortizacion)
     _tiposAmortizacion: [],
     _tiposAmortizacionMap: {},
@@ -2151,6 +2154,13 @@ const CostosModule = {
                     <td><span class="td-number td-mono">${staleIcon}<strong>${precioDisplay}</strong></span></td>
                     <td><span class="td-number">${item.unidad || '—'}</span></td>
                     <td style="text-align:center">${estadoCircle(item, rs)}</td>
+                    <td class="costos-row-actions-cell">
+                        <button class="costos-row-action" data-dup-id="${item.id}"
+                                title="Duplicar este ítem con toda su receta"
+                                aria-label="Duplicar ${escAttr(item.nombre)}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -2168,6 +2178,7 @@ const CostosModule = {
                         <th class="sortable" data-sort-col="precioAlquiler">PRECIO ${sortIcon('precioAlquiler')}</th>
                         <th>UNIDAD</th>
                         <th class="sortable" data-sort-col="estadoReceta" style="text-align:center">ESTADO ${sortIcon('estadoReceta')}</th>
+                        <th style="width:44px"></th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -2186,6 +2197,16 @@ const CostosModule = {
             });
         });
 
+        // Duplicar (acción por fila). stopPropagation obligatorio: el click en
+        // la fila abre la ficha.
+        document.querySelectorAll('.costos-receta-row [data-dup-id]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const item = data.find(i => String(i.id) === btn.dataset.dupId);
+                if (item) this._duplicarReceta(item, btn);
+            });
+        });
+
         // Sort headers
         document.querySelectorAll('.costos-table .sortable').forEach(th => {
             th.addEventListener('click', () => {
@@ -2201,6 +2222,80 @@ const CostosModule = {
         });
 
         this._attachQuickEditPopovers();
+    },
+
+    // ─── Duplicar ítem (+ receta completa) ───
+    // Estilo Notion: un click y tenés una copia editable del ítem con TODA su
+    // receta. Sirve para cargar en tanda ítems parecidos (misma estructura,
+    // cambia una medida o un color). Sin confirm: es una acción NO destructiva,
+    // se ve al toque (abre la ficha del duplicado) y se deshace con Ctrl+Z o con
+    // el botón Eliminar de la ficha.
+    //
+    // Reglas (ver `API.duplicarCatalogoItem`): nombre "<nombre> 1/2/3…", código
+    // autoincremental (VMB-080 → VMB-081), `es_cotizable` arranca en false para
+    // que un duplicado a medio editar no se cuele en el Cotizador.
+    //
+    // Robustez: lock anti doble click + si algo falla a mitad de camino avisamos
+    // el estado REAL (el ítem puede haberse creado aunque falle la receta) y
+    // abrimos igual la ficha para que el usuario vea con qué quedó.
+    async _duplicarReceta(item, btn) {
+        if (!item || this._duplicateInProgress) return;
+        this._duplicateInProgress = true;
+        if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
+        Toast.info(`Duplicando "${item.nombre}"…`, 1500);
+
+        try {
+            const res = await API.duplicarCatalogoItem(item.id);
+            const nuevoId = res?.id || null;
+
+            if (!res || !res.ok) {
+                if (nuevoId) {
+                    // Se creó el ítem pero explotó algo después: no lo escondemos,
+                    // lo abrimos para que el usuario vea con qué quedó.
+                    Toast.error(`El duplicado se creó pero quedó a medias: ${res?.error || 'error desconocido'}`, 7000);
+                    await this._refreshData();
+                    const parcial = this._catalogoItems.find(i => String(i.id) === String(nuevoId));
+                    if (parcial) await this._openRecetaFicha(parcial);
+                } else {
+                    Toast.error(`No se pudo duplicar: ${res?.error || 'error desconocido'}`);
+                    if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
+                }
+                return;
+            }
+
+            const comp = res.componentes || {};
+            if (comp.fallidos) {
+                Toast.warning(`Duplicado "${res.nombre}" · ${comp.copiados} de ${res.totalComponentes} componentes copiados${comp.error ? ' · ' + comp.error : ''}`, 7000);
+            } else {
+                const detalle = [];
+                if (comp.copiados) detalle.push(`${comp.copiados} componente${comp.copiados === 1 ? '' : 's'}`);
+                if (res.fotos?.copiadas) detalle.push(`${res.fotos.copiadas} foto${res.fotos.copiadas === 1 ? '' : 's'}`);
+                Toast.success(`Duplicado como "${res.nombre}"${detalle.length ? ' · ' + detalle.join(' + ') : ''}`);
+            }
+            if (res.fotos?.fallidas) Toast.warning(`${res.fotos.fallidas} foto(s) no se pudieron copiar`);
+            if (!res.codigo && item.codigo) {
+                Toast.info('El duplicado quedó sin código — cargale uno a mano en la ficha', 5000);
+            }
+
+            // El precio lo manda la RPC `calcular_receta`, no lo que se copió.
+            const rc = await API.recalcularRecetaRPC(res.id);
+            if (!rc?.ok) Toast.warning('El duplicado quedó sin recalcular — apretá "Recalcular precio" en la ficha', 5000);
+
+            // Abrir la ficha del duplicado para seguir editando ahí mismo.
+            // (_refreshData → _renderActiveTab → _closePanel, así que se reabre después.)
+            if (this._activeTab !== 'recetas') this._goToRecetasTab();
+            await this._refreshData();
+            const nuevo = this._catalogoItems.find(i => String(i.id) === String(res.id));
+            if (nuevo) await this._openRecetaFicha(nuevo);
+        } catch (e) {
+            console.warn('[Costos] Error duplicando item:', e?.message || e);
+            Toast.error(`No se pudo duplicar: ${e?.message || 'error desconocido'}`);
+            if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
+        } finally {
+            // El lock SIEMPRE se libera: si quedara pegado, no se podría volver
+            // a duplicar hasta recargar la página.
+            this._duplicateInProgress = false;
+        }
     },
 
     // ─── Receta Ficha ───
@@ -2824,6 +2919,10 @@ const CostosModule = {
                     Recalcular precio
                 </button>
                 <span class="costos-receta-recalc-dirty" id="costosRecetaRecalcDirty" style="display:none;">● cambios sin recalcular</span>
+                <button class="btn btn-ghost btn-sm costos-receta-dup-btn" id="costosRecetaDuplicarBtn" title="Duplicar este ítem con toda su receta">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Duplicar
+                </button>
                 <button class="btn btn-ghost btn-danger costos-receta-delete-btn" id="costosRecetaDeleteBtn" title="Eliminar receta">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 </button>
@@ -3242,6 +3341,12 @@ const CostosModule = {
                 if (ok) { item.notas = notasEl.value; Toast.success('Notas guardadas', 1500); }
                 else Toast.error('No se pudo guardar');
             });
+        }
+
+        // Botón Duplicar ítem (clona cabecera + receta + fotos y abre el duplicado)
+        const dupBtn = document.getElementById('costosRecetaDuplicarBtn');
+        if (dupBtn) {
+            dupBtn.addEventListener('click', () => this._duplicarReceta(item, dupBtn));
         }
 
         // F.10 — Botón Eliminar receta (con confirm)

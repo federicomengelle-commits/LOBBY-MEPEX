@@ -2232,6 +2232,172 @@ const API = {
     },
 
     // ═══════════════════════════════════════════════════════════════
+    //  DUPLICAR ÍTEM DE CATÁLOGO (+ RECETA COMPLETA) — estilo Notion
+    // ═══════════════════════════════════════════════════════════════
+    // Clona la fila de `catalogo_items` con TODAS sus columnas (menos las que
+    // no tiene sentido copiar) + sus `receta_componentes` + sus
+    // `catalogo_item_fotos`. Existe para cargar en tanda ítems parecidos:
+    // duplicar sólo la cabecera, sin la receta, no ahorra nada de trabajo.
+    //
+    // Reglas (acordadas con el dueño):
+    //   · nombre → "<nombre> 1", "<nombre> 2", … hasta encontrar uno libre.
+    //   · codigo → autoincrementa el número final MANTENIENDO el ancho de
+    //     dígitos: VMB-080 → VMB-081 → VMB-082… Sin código en el original ⇒ NULL.
+    //   · es_cotizable → SIEMPRE false, aunque el original sea true. Un duplicado
+    //     a medio editar no se puede colar en el Cotizador (que lee
+    //     es_cotizable = true + precio_alquiler).
+    //   · NO se copian: id · created_at · updated_at · ultima_recalculacion ·
+    //     snapshot_* (los reescribe el recálculo).
+    //
+    // 🟥 `catalogo_items.codigo` tiene un CHECK (2026-08-08): sólo `^[A-Za-z0-9-]+$`
+    //    — letras, números y guion MEDIO. Ni espacios, ni guion bajo, ni acentos.
+    //    NULL sí está permitido. Por eso todo código generado se valida contra el
+    //    patrón antes de mandarlo: si no matchea (códigos legacy raros) el
+    //    duplicado va con codigo = NULL en vez de reventar el INSERT.
+    _CODIGO_CATALOGO_RE: /^[A-Za-z0-9-]+$/,
+
+    // "<base> 1", "<base> 2", … hasta encontrar uno libre. `usados` = Set de
+    // nombres en minúscula.
+    _siguienteNombreDuplicado(base, usados) {
+        const raiz = String(base || '').trim() || 'Sin nombre';
+        for (let n = 1; n <= 999; n++) {
+            const cand = `${raiz} ${n}`;
+            if (!usados.has(cand.toLowerCase())) return cand;
+        }
+        return `${raiz} ${Date.now()}`;
+    },
+
+    // VMB-080 → VMB-081 → VMB-082… (ancho de dígitos preservado). Si el código
+    // no termina en número, prueba `<codigo>-2`, `-3`, … Devuelve null cuando no
+    // hay código de origen o cuando el candidato violaría el CHECK del `codigo`.
+    _siguienteCodigoDuplicado(base, usados) {
+        const raw = String(base || '').trim();
+        if (!raw) return null;
+        const m = raw.match(/^(.*?)(\d+)$/);
+        const gen = m
+            ? (i) => m[1] + String(parseInt(m[2], 10) + 1 + i).padStart(m[2].length, '0')
+            : (i) => `${raw}-${i + 2}`;
+        for (let i = 0; i < 999; i++) {
+            const cand = gen(i);
+            if (usados.has(cand.toLowerCase())) continue;
+            return this._CODIGO_CATALOGO_RE.test(cand) ? cand : null;
+        }
+        return null;
+    },
+
+    // Devuelve { ok, id, nombre, codigo, totalComponentes,
+    //            componentes: { copiados, fallidos, error }, fotos: { copiadas, fallidas } }
+    // o { ok:false, error, id? }. Si el ítem se creó pero falló la receta, `id`
+    // viene igual para que el front pueda abrirlo y no dejar huérfano al usuario.
+    async duplicarCatalogoItem(sourceId) {
+        if (sourceId == null) return { ok: false, error: 'Falta el ítem de origen' };
+        let nuevoId = null;
+        try {
+            // 1. Fila cruda del original. `select('*')` a propósito: así se copian
+            //    también las columnas que se agreguen más adelante sin tocar esto.
+            const { data: src, error: srcErr } = await supabaseClient
+                .from('catalogo_items').select('*').eq('id', sourceId).maybeSingle();
+            if (srcErr) throw srcErr;
+            if (!src) return { ok: false, error: 'No se encontró el ítem original' };
+
+            // 2. Nombres y códigos ya tomados.
+            //    Códigos: TODOS (incluidos los borrados) por si hay índice único.
+            //    Nombres: sólo vivos — un ítem borrado no debería empujar el contador.
+            const { data: usados, error: usErr } = await supabaseClient
+                .from('catalogo_items').select('nombre, codigo, _deleted');
+            if (usErr) throw usErr;
+            const nombresVivos = new Set((usados || [])
+                .filter(r => r._deleted !== true)
+                .map(r => String(r.nombre || '').trim().toLowerCase()));
+            const codigosTodos = new Set((usados || [])
+                .map(r => String(r.codigo || '').trim().toLowerCase())
+                .filter(Boolean));
+
+            const nombre = this._siguienteNombreDuplicado(src.nombre, nombresVivos);
+            const codigo = this._siguienteCodigoDuplicado(src.codigo, codigosTodos);
+
+            // 3. Payload = el original menos lo que no se copia.
+            const payload = { ...src };
+            delete payload.id;
+            delete payload.created_at;
+            delete payload.updated_at;
+            delete payload.ultima_recalculacion;
+            Object.keys(payload).forEach(k => { if (k.startsWith('snapshot_')) delete payload[k]; });
+            payload.nombre = nombre;
+            payload.codigo = codigo;         // puede ser null (el CHECK lo permite)
+            payload.es_cotizable = false;    // nunca hereda el flag
+            payload._deleted = false;
+
+            const nuevo = await UndoHelpers.createRecord('catalogo_items', payload, `Duplico item: ${nombre}`);
+            nuevoId = nuevo?.id;
+            if (!nuevoId) throw new Error('El INSERT del duplicado no devolvió id');
+            this.clearCache();
+
+            // 4. Receta completa. Se leen las filas CRUDAS (no `getRecetaComponentes`)
+            //    para no perder es_parametrico / factor / cantidad_fija: el mapper
+            //    los normaliza para la UI y `cantidad_fija` es boolean en prod.
+            const componentes = { copiados: 0, fallidos: 0, error: '' };
+            let totalComponentes = 0;
+            const { data: srcComps, error: compErr } = await supabaseClient
+                .from('receta_componentes').select('*')
+                .eq('item_id', sourceId)
+                .eq('_deleted', false)
+                .order('created_at', { ascending: true });
+            if (compErr) {
+                componentes.error = compErr.message || String(compErr);
+                componentes.fallidos = 1;   // no sabemos cuántos eran: al menos falló la lectura
+            } else {
+                totalComponentes = (srcComps || []).length;
+                for (const c of (srcComps || [])) {
+                    const r = await this.addRecetaComponente({
+                        itemId: nuevoId,
+                        componenteType: c.componente_type,
+                        componenteId: c.componente_id,
+                        cantidad: c.cantidad,
+                        unidadUso: c.unidad_uso || '',
+                        notas: c.notas || '',
+                        esParametrico: c.es_parametrico,
+                        factor: c.factor,
+                        cantidadFija: c.cantidad_fija,
+                    });
+                    if (r?.ok) componentes.copiados++;
+                    else {
+                        componentes.fallidos++;
+                        if (r?.error) componentes.error = r.error;
+                    }
+                }
+            }
+
+            // 5. Fotos. OJO: se comparte el MISMO objeto de Storage (mismo
+            //    storage_path), no se duplica el archivo. Borrar una foto del
+            //    duplicado borra el objeto y rompe la del original.
+            const fotos = { copiadas: 0, fallidas: 0 };
+            const { data: srcFotos } = await supabaseClient
+                .from('catalogo_item_fotos').select('*')
+                .eq('item_id', sourceId)
+                .eq('_deleted', false)
+                .order('orden', { ascending: true });
+            for (const f of (srcFotos || [])) {
+                const ok = await this.addCatalogoFoto(nuevoId, {
+                    url: f.url,
+                    storagePath: f.storage_path,
+                    orden: f.orden,
+                    esPrincipal: f.es_principal === true,
+                    alt: f.alt || '',
+                });
+                if (ok) fotos.copiadas++; else fotos.fallidas++;
+            }
+
+            this.clearCache();
+            return { ok: true, id: nuevoId, nombre, codigo, totalComponentes, componentes, fotos };
+        } catch (e) {
+            const msg = e?.message || String(e);
+            console.warn('[API] Error duplicarCatalogoItem:', msg);
+            return { ok: false, error: msg, id: nuevoId };
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
     //  CATÁLOGO SHOWROOM — fotos múltiples + campos ricos (F1)
     //  Nombres canónicos del spec §00. Orden de fotos: es_principal DESC,
     //  orden ASC, id ASC. NO toca precio/receta/snapshots/esCotizable
@@ -2702,6 +2868,16 @@ const API = {
                 unidad_uso: data.unidadUso || '',
                 notas: data.notas || '',
             };
+            // F.2 — campos del modelo polimórfico. OPCIONALES: sólo viajan si el
+            // llamador los pasa (los alta manuales no los mandan y quedan en el
+            // default de la tabla). Se copian tal cual, sin coerción numérica:
+            // `cantidad_fija` es boolean en prod y `factor` numeric nullable.
+            // Los usa `duplicarCatalogoItem` para clonar la receta sin perderlos.
+            if (data.esParametrico !== undefined) {
+                payload.es_parametrico = data.esParametrico == null ? null : data.esParametrico === true;
+            }
+            if (data.factor !== undefined) payload.factor = data.factor;
+            if (data.cantidadFija !== undefined) payload.cantidad_fija = data.cantidadFija;
             const result = await UndoHelpers.createRecord('receta_componentes', payload, 'Nuevo componente de receta');
             return { ok: true, data: result || true };
         } catch (e) {

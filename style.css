@@ -15775,6 +15775,19 @@ select.costos-listas-filter-select {
     50% { box-shadow: 0 0 0 4px rgba(242,141,21,0); }
 }
 
+/* Botón Duplicar ítem (ficha de receta) */
+.costos-receta-dup-btn {
+    padding: 6px 10px !important;
+    color: var(--text-muted) !important;
+    gap: 6px;
+}
+.costos-receta-dup-btn:hover:not(:disabled) {
+    background: rgba(0, 169, 193, 0.10) !important;
+    color: var(--primary) !important;
+    border-color: rgba(0, 169, 193, 0.35) !important;
+}
+.costos-receta-dup-btn:disabled { opacity: 0.5; cursor: progress; }
+
 /* Botón Eliminar receta (icono solo, danger) */
 .costos-receta-delete-btn {
     margin-left: auto;
@@ -15784,6 +15797,47 @@ select.costos-listas-filter-select {
 .costos-receta-delete-btn:hover {
     background: rgba(255,68,68,0.10) !important;
     color: #ff4444 !important;
+}
+
+/* ─── Acción por fila en la tabla de recetas (Duplicar) ─── */
+.costos-row-actions-cell {
+    text-align: center;
+    width: 44px;
+    padding-left: 0 !important;
+    padding-right: 6px !important;
+}
+.costos-row-action {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    padding: 4px 6px;
+    line-height: 0;
+    cursor: pointer;
+    color: var(--text-dim);
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s, border-color 0.15s;
+}
+.costos-table-row:hover .costos-row-action,
+.costos-row-action:focus-visible { opacity: 1; }
+/* Touch: sin hover no hay forma de descubrir el botón, se muestra siempre */
+@media (hover: none) {
+    .costos-row-action { opacity: 0.7; }
+}
+.costos-row-action:hover:not(:disabled) {
+    color: var(--primary);
+    background: rgba(0, 169, 193, 0.10);
+    border-color: rgba(0, 169, 193, 0.35);
+}
+.costos-row-action:disabled,
+.costos-row-action.is-busy {
+    opacity: 1;
+    color: var(--primary);
+    cursor: progress;
+    animation: costosRowActionBusy 0.9s ease-in-out infinite;
+}
+@keyframes costosRowActionBusy {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
 }
 
 /* Reducir paddings/gaps generales del panel para más densidad efectiva */
