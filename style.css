@@ -15050,6 +15050,34 @@ tr.cmp-proximo td { color: #F28D15; }
     padding-bottom: 10px;
     border-bottom: 1px solid rgba(255,255,255,0.04);
 }
+/* Nota al pie del título de cada card de parámetros: dice para qué sirve el grupo. */
+.costos-params-card-nota {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    margin: -6px 0 12px 0;
+}
+.costos-params-card-nota code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-primary);
+}
+/* Los parámetros que no lee nadie: presentes y legibles, pero visiblemente apagados
+   para que no inviten a moverlos (la razón está escrita en la nota de la card). */
+.costos-params-card-inerte {
+    border-style: dashed;
+    background: #0d0d0d;
+}
+.costos-params-card-inerte .costos-params-card-title {
+    color: var(--text-muted);
+}
+.costos-params-row-inerte {
+    opacity: 0.55;
+}
+.costos-params-row-inerte .costos-params-input {
+    cursor: not-allowed;
+    border-style: dashed;
+}
 .costos-params-row {
     display: flex;
     align-items: center;

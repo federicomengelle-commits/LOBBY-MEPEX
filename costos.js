@@ -4313,10 +4313,35 @@ const CostosModule = {
             return;
         }
 
-        // Agrupar por unidad: ARS/usos por un lado, % por otro, USD aparte.
-        const grupoEconomico = params.filter(p => ['ARS', 'usos'].includes(p.unidad));
-        const grupoPct = params.filter(p => p.unidad === '%');
-        const grupoOtros = params.filter(p => !['ARS', '%', 'usos'].includes(p.unidad));
+        // Agrupar por lo ÚNICO que importa acá: si el motor lo lee o no.
+        //
+        // Antes se agrupaba por unidad (ARS / % / otros), que ordena la vista pero
+        // no dice nada útil: dejaba nueve perillas iguales, y sólo tres hacen algo.
+        // Las otras seis quedaban invitando a que alguien las moviera creyendo que
+        // cambiaba un precio. Verificado contra prod el 2026-08-11, no contra la
+        // doc: se listó cada función de `public` y se buscó qué claves menciona.
+        // `calcular_receta` —la única fuente de verdad del cálculo— lee tres.
+        // Las otras seis no las lee NADIE: ni la base, ni el front. Las tres que
+        // aparecían en `api.js` viven dentro de `recetasQueDependenDeParametro`,
+        // que no tiene un solo llamador.
+        //
+        // ⚠️ Ojo con el parecido de nombres: la RPC sí usa `pct_reacond`, pero es
+        // la columna de `costos_tipo_amortizacion`, NO el parámetro global
+        // `pct_reacondicionamiento` de acá. Son cosas distintas y encima están en
+        // escalas distintas (aquella es 15 = 15%, ésta es 0.05 = 5%).
+        const MOTOR_USA = new Set(['hora_taller_ars', 'pct_indirectos_fabrica', 'pct_margen_default']);
+
+        // Esta tabla también la usan OTRAS pantallas por su cuenta, con claves que
+        // nada tienen que ver con el motor de costos. `proxima_revision_lista` la
+        // lee y escribe el tab Listas de Precio (`_loadListasMeta`), por un camino
+        // que no pasa por acá. Hoy la fila no existe en prod, pero si algún día se
+        // crea caería en "no la lee nadie" con un cartel que sería mentira para ese
+        // caso. Se la excluye de los dos grupos: no es del motor, y tampoco es basura.
+        const DE_OTRA_PANTALLA = new Set(['proxima_revision_lista']);
+
+        const grupoVivos  = params.filter(p => MOTOR_USA.has(p.clave));
+        const grupoInerte = params.filter(p => !MOTOR_USA.has(p.clave) && !DE_OTRA_PANTALLA.has(p.clave));
+        const grupoAjeno  = params.filter(p => DE_OTRA_PANTALLA.has(p.clave));
 
         const fmtDate = (iso) => {
             if (!iso) return '—';
@@ -4329,21 +4354,27 @@ const CostosModule = {
             .sort()
             .pop();
 
-        const renderRow = (p) => {
+        const renderRow = (p, inerte = false) => {
             const esPct = p.unidad === '%';
             // En % el valor se persiste como factor (0.30) pero en UI se ve como entero (30)
             const displayVal = esPct ? Math.round(p.valor * 1000) / 10 : p.valor;
             return `
-                <div class="costos-params-row">
+                <div class="costos-params-row${inerte ? ' costos-params-row-inerte' : ''}">
                     <label class="costos-params-label" title="${escAttr(p.descripcion || '')}">
-                        <span class="costos-params-clave">${p.clave}</span>
+                        <span class="costos-params-clave">${escHtml(p.clave)}</span>
                         ${p.descripcion ? `<span class="costos-params-desc">${escHtml(p.descripcion)}</span>` : ''}
                     </label>
                     <div class="costos-params-input-wrap">
                         <input class="costos-params-input"
-                            data-clave="${p.clave}"
+                            data-clave="${escAttr(p.clave)}"
                             data-pct="${esPct}"
                             data-original="${displayVal}"
+                            ${/* `disabled`, no `readonly`: en un type=number el readonly no frena
+                                 las flechitas del spinner ni la rueda del mouse en Chromium, así que
+                                 el valor cambiaba en pantalla, disparaba `input` y prendía el cartel
+                                 de "cambios sin guardar" por algo que nunca se iba a guardar. Un
+                                 input disabled además no es focable, así que no hace falta tabindex. */''}
+                            ${inerte ? 'data-inerte="true" disabled title="El motor de costos no lee este valor: cambiarlo no mueve ningún precio"' : ''}
                             type="number"
                             step="${esPct ? '0.1' : '0.01'}"
                             min="0"
@@ -4353,13 +4384,6 @@ const CostosModule = {
                 </div>
             `;
         };
-
-        const renderCard = (titulo, icono, items) => items.length ? `
-            <div class="costos-params-card">
-                <div class="costos-params-card-title">${icono} ${titulo}</div>
-                ${items.map(renderRow).join('')}
-            </div>
-        ` : '';
 
         container.innerHTML = `
             <div class="costos-params-wrap">
@@ -4375,9 +4399,38 @@ const CostosModule = {
                 </div>
 
                 <div class="costos-params-grid">
-                    ${renderCard('Valores económicos', '💰', grupoEconomico)}
-                    ${renderCard('Porcentajes', '📊', grupoPct)}
-                    ${renderCard('Otros', '🔧', grupoOtros)}
+                    ${grupoVivos.length ? `
+                    <div class="costos-params-card">
+                        <div class="costos-params-card-title">⚙️ Los que el motor usa</div>
+                        <div class="costos-params-card-nota">
+                            Estos tres entran en <code>calcular_receta</code>. Tocarlos mueve precios.
+                        </div>
+                        ${grupoVivos.map(p => renderRow(p, false)).join('')}
+                    </div>` : ''}
+
+                    ${grupoInerte.length ? `
+                    <div class="costos-params-card costos-params-card-inerte">
+                        <div class="costos-params-card-title">🚫 El motor no los lee</div>
+                        <div class="costos-params-card-nota">
+                            Quedaron de versiones anteriores del modelo. <strong>Cambiarlos no cambia ningún precio:</strong>
+                            se verificó contra producción que ninguna función de la base los menciona
+                            —incluida <code>calcular_receta</code>, que es la única que calcula— y que
+                            en el front sólo aparecen dentro de una función sin llamadores.
+                            Se muestran en sólo lectura para que el valor siga a la vista sin invitar
+                            a moverlo. Su baja definitiva está en <code>PENDIENTES.md</code> §D4.
+                        </div>
+                        ${grupoInerte.map(p => renderRow(p, true)).join('')}
+                    </div>` : ''}
+
+                    ${grupoAjeno.length ? `
+                    <div class="costos-params-card">
+                        <div class="costos-params-card-title">🔗 Los usa otra pantalla</div>
+                        <div class="costos-params-card-nota">
+                            Viven en esta tabla pero no son del modelo de costeo, y se editan desde
+                            donde se usan. Acá se muestran nada más que para que el valor sea visible.
+                        </div>
+                        ${grupoAjeno.map(p => renderRow(p, true)).join('')}
+                    </div>` : ''}
                 </div>
 
                 <div class="costos-params-actions">
@@ -4417,6 +4470,10 @@ const CostosModule = {
         // Construir lista de cambios: por cada input, comparar con su data-original
         const changes = [];
         document.querySelectorAll('.costos-params-input').forEach(inp => {
+            // Los inertes van en sólo lectura, así que su valor no puede cambiar;
+            // se saltean igual de forma explícita, para que si alguien les saca el
+            // `readonly` no se cuele una escritura sin querer.
+            if (inp.dataset.inerte === 'true') return;
             const clave = inp.dataset.clave;
             const isPct = inp.dataset.pct === 'true';
             const original = parseFloat(inp.dataset.original);
@@ -4428,6 +4485,12 @@ const CostosModule = {
         });
 
         if (!changes.length) {
+            // Si no hay nada distinto del original, tampoco hay nada pendiente:
+            // se apaga el cartel. Antes se salía por acá sin tocarlo y quedaba
+            // prendido para siempre, diciendo que había cambios sin guardar.
+            this._paramsGlobalesDirty = false;
+            const tag = document.getElementById('costosParamsDirtyTag');
+            if (tag) tag.style.display = 'none';
             Toast.info('No hay cambios para guardar');
             return;
         }
