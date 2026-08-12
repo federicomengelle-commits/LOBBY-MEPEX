@@ -137,13 +137,25 @@ kanban, la conversión por vendedor y el aging *"enviada hace más de 3 días"*.
 Conexo: **`vendedor_id` está NULL siempre** — el cotizador tampoco lo escribe, así que toda métrica por
 vendedor le da vacío a Noe. **Las dos son coordinación con el cotizador**, del lado del contrato de Supabase.
 
-### C4 · WhatsApp — E4 fase 2 *(bloqueado por la sesión con el celu)*
+### C4 · WhatsApp — E4 fase 2 *(EN CURSO — sesión del 2026-08-11, quedó a mitad)*
 
-El webhook está deployado y responde; falta **conectar el número** (runbook `docs/whatsapp-coexistence-runbook.md`:
-app Meta + App Secret + Business Verification con constancia AFIP + conectar → smoke contra `wa_eventos`, hoy en 0 filas).
-Traer: celu con WhatsApp Business App ≥2.24.17, constancia AFIP, 30-45 min.
-Apenas esté: procesador `wa_eventos` → timeline del CRM, y el botón de WhatsApp deja de abrir `wa.me` y manda
-por la Cloud API (el punto de enchufe ya está hecho en la ficha v4, sin rediseño).
+**Runbook al día con lo que se vio en pantalla: `docs/whatsapp-coexistence-runbook.md`** — tenía **tres cosas mal** y se corrigieron ahí.
+
+**✅ Lo que quedó hecho el 11/08:**
+- **Datos del negocio en el portfolio de Meta.** Estaban **los cuatro campos vacíos** (el runbook los daba por cargados). Ahora: `MEPEX S.A. · COLOMBIA 1173 · LANUS, BUENOS AIRES 1824 · Argentina · +541142184888 · https://www.mepex.com.ar/`, exacto según la constancia. **Y el CUIT `30-70999081-7` en el campo "Identificación fiscal"**, que no estaba documentado y es el que Meta usa para cruzarte contra el registro oficial.
+- **Webhook verificado end-to-end**: devolvió el `hub.challenge`. Meta lo va a validar en verde al primer intento.
+
+**⛔ Dónde se frenó:** Meta no deja completar el **registro de cuenta de desarrollador** desde la computadora de Fede — *"dispositivo que no usas habitualmente"*. **No es el mail**: se probó con la casilla de admin, con `mepex@mepex.com.ar` y con la que la cuenta ya tenía, y los códigos de verificación llegaron bien las dos veces. Los tres rebotan igual. **Que otra persona lea el mail desde la oficina no lo resuelve.**
+
+**Próximo paso:** hacer el registro **desde el celular de Fede** (su dispositivo habitual de Facebook). Una vez registrado queda en la cuenta, no en el aparato → se vuelve a la compu y se sigue con crear la app.
+
+**Lo que sigue después:** app de Meta bajo el portfolio MEPEX (⚠️ **esa elección queda fija para siempre**) → App Secret al `.env` → Business Verification con la constancia → configurar el webhook con el token → conectar el número desde el celu → smoke contra `wa_eventos`. **Traer de nuevo el celu MEPEX**, que se devolvió.
+
+Apenas esté: procesador `wa_eventos` → timeline del CRM, y el botón de WhatsApp deja de abrir `wa.me` y manda por la Cloud API (el punto de enchufe ya está hecho en la ficha v4, sin rediseño).
+
+**Pendiente chico derivado:** el mail de contacto de Meta for Developers va a quedar en `fede0610@hotmail.com`; cambiarlo a `mepex@mepex.com.ar` cuando el dispositivo esté confiado. No bloquea nada — lo institucional es el portfolio, que ya es de la empresa.
+
+**Sin resolver, para mirar cuando se cierre WhatsApp:** el portfolio tiene una tarjeta *"Administrador alternativo agregado"* en el Centro de Seguridad y **no quedó claro si está cumplida o si está ofreciendo agregar uno**. Importa: la cuenta de desarrollador cuelga del **perfil personal de Facebook de Fede**, así que si esa cuenta se pierde, MEPEX pierde el WhatsApp. Sumar a alguien más como admin del portfolio son 5 minutos.
 
 ### C5 · Ventas Fase 2 — lo que queda se hace con Fede mirando
 

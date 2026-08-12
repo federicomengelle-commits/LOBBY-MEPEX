@@ -28,25 +28,84 @@ el mismo formato de payload de Cloud API).
 (matchear caso del CRM → `crm_mensajes`, bajar media, mandar desde el CRM) es la **fase 2**,
 consume de `wa_eventos` y se diseña con Fede (decisiones de UI).
 
-## Prerequisitos (estado verificado 2026-06-21)
+## Prerequisitos — RE-VERIFICADOS EN VIVO 2026-08-11
+
+> ⚠️ **Los prerequisitos de 2026-06-21 estaban mal en dos puntos.** Lo de abajo es lo que se vio
+> en pantalla el 11/08 entrando a la cuenta real, no lo que se suponía.
 
 - ✅ El WhatsApp de MEPEX es **WhatsApp Business App** (requisito de Coexistence).
-- ✅ Business Manager **"MEPEX - Stands y Exposiciones"**, Fede admin. Meta muestra razón social "Mepex S.A." — ⚠️ al verificar debe coincidir EXACTO con la constancia de AFIP.
+- ✅ Portfolio **"MEPEX - Stands y Exposiciones"** (ID `646051252494229`), Fede admin.
+- ❌ **CORREGIDO — la razón social NO estaba cargada.** El runbook decía *"Meta muestra razón
+  social «Mepex S.A.», debe coincidir EXACTO con la constancia"*. Falso: **los cuatro campos
+  estaban vacíos** (`Sin nombre` / `Sin dirección` / `Sin teléfono` / `Sin sitio web`). Ese
+  "Mepex S.A." salía de la cuenta de Instagram vinculada, no del nombre legal. **Ya está
+  cargado** (11/08) tal cual la constancia:
+  ```
+  MEPEX S.A. · COLOMBIA 1173 · LANUS, BUENOS AIRES 1824 · Argentina
+  +541142184888 · https://www.mepex.com.ar/ · Identificación fiscal 30-70999081-7
+  ```
+  **★ El campo "Identificación fiscal (TIN)" no estaba documentado y vale oro:** Meta dice
+  textual que *"se usará para encontrar posibles registros comerciales coincidentes"*. Ahí va
+  el CUIT — es lo que hace que te crucen contra el registro oficial en vez de revisarte a mano.
+- ❌ **FALTABA UN PASO ENTERO: Fede no era una cuenta de Meta for Developers registrada.**
+  Por eso "Create App" no aparecía por ningún lado. Es un registro de 3 pantallas
+  (Register → Contact info → About you) en `developers.facebook.com` → "Empezar".
+  **Ver §BLOQUEO ACTUAL.**
 - ✅ Número activo en la app >7 días · Argentina soportada (todos los países desde may-2026).
-- 📄 Tener a mano: **constancia de inscripción AFIP** + el **celu** con la Business App actualizada (≥2.24.17).
+- 📄 Tener a mano: **constancia de inscripción AFIP** + el **celu** con la Business App
+  actualizada (≥2.24.17).
+
+## 🔴 BLOQUEO ACTUAL (2026-08-11) — registro de desarrollador
+
+Meta rechaza completar el registro **desde la computadora de Fede**:
+
+> *"No puedes realizar el cambio en este momento. Detectamos que estás usando un dispositivo
+> que no usas habitualmente y necesitamos proteger tu cuenta. Te permitiremos realizar el
+> cambio cuando ya hayas usado este dispositivo durante un tiempo."*
+
+Y al confirmar el mail que la cuenta YA tenía, devuelve `Se produjo un error inesperado`.
+
+**Lo que NO es el problema — probado, no supuesto:** el mail. Se probó con la casilla de admin,
+con `mepex@mepex.com.ar` y con el `fede0610@hotmail.com` que la cuenta ya tenía. **Los códigos
+de verificación llegaron bien las dos veces.** Los tres rebotan igual → el bloqueo es del
+dispositivo, no de la casilla. **Que otra persona lea el mail desde la oficina no lo resuelve.**
+
+**Camino a probar primero:** hacer el registro **desde el celular de Fede**, que es su
+dispositivo habitual de Facebook. Una vez registrado, **eso queda en la cuenta, no en el
+aparato** → se vuelve a la compu y se sigue. Si Meta también bloqueara la creación de la app
+desde la compu, se hace desde el celu (incómodo pero posible).
+
+**Pendiente chico derivado:** el mail de contacto quedará en `fede0610@hotmail.com`. Cambiarlo
+a `mepex@mepex.com.ar` cuando el dispositivo esté confiado. No bloquea nada: lo institucional
+es el portfolio, que ya es de la empresa.
+
+**Trampa de UI que va a volver a pasar:** en los formularios de Meta, cuando aparece o
+desaparece un mensaje de validación **todo el formulario se corre verticalmente**, así que un
+click por coordenada cae en el elemento de al lado (pasó dos veces: una tirando los datos al
+campo equivocado, otra tildando el checkbox de marketing en vez del botón). **Llenar por
+referencia de elemento, no por coordenada.**
 
 ## Sesión "con celu" (~30-45 min, con Claude guiando)
 
-**0 — SQL-first:** correr `sql/whatsapp_webhook_v1.sql` en el SQL Editor.
+**0 — SQL-first:** ✅ **HECHO.** `wa_eventos` existe en prod (0 filas, esperando el primer mensaje).
 
-**1 — Deploy del webhook (VPS):**
+**1 — Deploy del webhook (VPS):** ✅ **HECHO Y VERIFICADO 2026-08-11.** El webhook responde y
+el `WA_VERIFY_TOKEN` está generado: probado end-to-end contra prod, devolvió el `hub.challenge`.
+Meta lo va a validar en verde al primer intento.
+
+Comando usado (idempotente, se autotestea y **no expone el token en el chat**):
 ```bash
-~/pull-lobby.sh
-cp /home/mepex/lobby/tools/vps/server.js /home/mepex/api/server.js
-cp /home/mepex/lobby/tools/vps/whatsapp-webhook.js /home/mepex/api/whatsapp-webhook.js
-echo "WA_VERIFY_TOKEN=$(openssl rand -hex 24)" >> /home/mepex/api/.env   # guardar el valor: se pega en Meta en el paso 4
-pm2 restart mepex-api
+grep -q '^WA_VERIFY_TOKEN=' /home/mepex/api/.env || echo "WA_VERIFY_TOKEN=$(openssl rand -hex 24)" >> /home/mepex/api/.env; pm2 restart mepex-api >/dev/null; sleep 3; T=$(grep '^WA_VERIFY_TOKEN=' /home/mepex/api/.env | cut -d= -f2); curl -s "https://app.mepex.com.ar/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=$T&hub.challenge=PRUEBA123"; echo; echo "TOKEN (copiar a mano para pegarlo en Meta):"; echo "$T"
 ```
+Si devuelve `PRUEBA123`, está listo. **El token se copia a mano al configurar el webhook en
+Meta — no pasa por el chat.**
+
+**Sonda rápida del estado del webhook** (sin token, desde cualquier lado):
+`curl -o /dev/null -w "%{http_code}" https://app.mepex.com.ar/api/whatsapp/webhook`
+→ **403** = existe y rechaza bien · **404** = no está deployado.
+
+**1.5 — Registro de cuenta de Meta for Developers.** ⛔ **BLOQUEADO — ver §BLOQUEO ACTUAL.**
+Sin esto no existe "Create App" en ninguna parte.
 
 **2 — App de Meta:** developers.facebook.com → Create App → tipo **Business**, portfolio
 "MEPEX - Stands y Exposiciones" → agregar producto **WhatsApp**. Si ofrece el onboarding de
@@ -55,7 +114,17 @@ copiar **App Secret** → al `.env` como `WA_APP_SECRET` (⚠️ el chat enmasca
 en base64: `echo '<b64>' | base64 -d`) → `pm2 restart mepex-api`.
 
 **3 — Business Verification:** se dispara en este punto (Security Center). Cargar la
-constancia AFIP — razón social + dirección EXACTAS o Meta rebota.
+constancia AFIP — razón social + dirección EXACTAS o Meta rebota. Los datos del negocio ya
+están cargados y coinciden con el papel (ver Prerequisitos), así que sólo queda subir el PDF.
+
+> ⚠️ **El orden importa y el 11/08 casi lo invertimos.** En Security Center hay un selector
+> *"Selecciona tu caso de uso de verificación"* que hoy tiene **una sola opción**, "Acceder a
+> la plataforma de creadores" — que NO es la nuestra. La lista se arma con **los productos que
+> el negocio ya tiene conectados**, así que la opción de WhatsApp aparece recién **después** de
+> crear la app con el producto WhatsApp (paso 2). **No arrancar la verificación antes del paso
+> 2**, o Meta la evalúa contra los requisitos de colaboraciones con creadores de Instagram.
+> Ojo también con el botón "Verify business" que aparece en la pantalla *Plataforma de
+> creadores*: es el mismo camino equivocado.
 
 **4 — Configurar el webhook:** App Dashboard → WhatsApp → Configuration →
 Callback URL `https://app.mepex.com.ar/api/whatsapp/webhook` + Verify Token (el del paso 1)
