@@ -3707,14 +3707,17 @@ body {
    ═══════════════════════════════════════════ */
 
 /* ─── Base page ─── */
+/* Centrada, no pegada al sidebar: quedaban 750px de pantalla vacía al lado.
+   La comparten Mi Perfil y Notificaciones — "Usuarios y Roles" dejó de usarla
+   cuando se consolidó en admin-panel.js (2026-06-20) — así que el cambio las
+   toca a las dos y quedan del mismo ancho, que es la idea.
+   1040 y no 900: en Notificaciones las secciones estaban topeadas por el
+   contenedor y las descripciones de categoría se partían en dos renglones. */
 .settings-page {
     padding: 32px;
-    max-width: 900px;
+    max-width: 1040px;
+    margin: 0 auto;
     animation: fadeIn 0.25s ease;
-}
-
-.settings-page--wide {
-    max-width: 1100px;
 }
 
 .settings-page-header {
@@ -3746,6 +3749,11 @@ body {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 24px;
+    /* Cada card mide lo que su contenido: "Preferencias" tiene la mitad que
+       "Datos personales" y se estiraba a la altura de su vecina, quedando con
+       200px de card vacía abajo. Mismo criterio que .costos-params-grid.
+       Sólo la usa Mi Perfil (settings.js:29). */
+    align-items: start;
 }
 
 @media (max-width: 768px) {
