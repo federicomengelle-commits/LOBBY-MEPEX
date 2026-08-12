@@ -2018,9 +2018,9 @@ const CostosModule = {
                     <button class="costos-estado-chip chip-completa ${est === 'completa' ? 'active' : ''}" data-estado="completa">Completa</button>
                     <button class="costos-estado-chip chip-incompleta ${est === 'incompleta' ? 'active' : ''}" data-estado="incompleta">Incompleta</button>
                     <button class="costos-estado-chip chip-sin-receta ${est === 'sin-receta' ? 'active' : ''}" data-estado="sin-receta">Sin receta</button>
-                    ${desfN ? `<button class="costos-estado-chip ${est === 'desfasado' ? 'active' : ''}" data-estado="desfasado"
-                        title="${escAttr(desfTitle)}"
-                        ${est === 'desfasado' ? '' : 'style="color:#F28D15; border-color:#F28D15;"'}>⚠ ${desfN} desactualizado${desfN === 1 ? '' : 's'}</button>` : ''}
+                    ${desfN ? `<span class="costos-chip-sep" aria-hidden="true"></span>
+                    <button class="costos-estado-chip chip-desfasado ${est === 'desfasado' ? 'active' : ''}" data-estado="desfasado"
+                        title="${escAttr(desfTitle)}">⚠ ${desfN} desactualizado${desfN === 1 ? '' : 's'}</button>` : ''}
                 </div>
                 <button class="costos-filter-clear" id="costosClearFilters">Limpiar</button>
                 <div style="flex:1"></div>
@@ -4411,13 +4411,15 @@ const CostosModule = {
                     ${grupoInerte.length ? `
                     <div class="costos-params-card costos-params-card-inerte">
                         <div class="costos-params-card-title">🚫 El motor no los lee</div>
+                        ${/* La nota es corta a propósito: acá iba el detalle de CÓMO se
+                              verificó (qué funciones se revisaron en la base y en el front)
+                              y ocupaba cinco renglones de pantalla para contar una auditoría.
+                              Eso vive en el comentario de arriba y en PENDIENTES.md §D4;
+                              lo que el que mira necesita saber es que tocarlos no hace nada. */''}
                         <div class="costos-params-card-nota">
-                            Quedaron de versiones anteriores del modelo. <strong>Cambiarlos no cambia ningún precio:</strong>
-                            se verificó contra producción que ninguna función de la base los menciona
-                            —incluida <code>calcular_receta</code>, que es la única que calcula— y que
-                            en el front sólo aparecen dentro de una función sin llamadores.
-                            Se muestran en sólo lectura para que el valor siga a la vista sin invitar
-                            a moverlo. Su baja definitiva está en <code>PENDIENTES.md</code> §D4.
+                            Quedaron de versiones anteriores del modelo y ninguna fórmula los mira.
+                            <strong>Cambiarlos no cambia ningún precio.</strong>
+                            Quedan a la vista, en sólo lectura.
                         </div>
                         ${grupoInerte.map(p => renderRow(p, true)).join('')}
                     </div>` : ''}

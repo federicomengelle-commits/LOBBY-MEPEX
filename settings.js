@@ -368,18 +368,18 @@ const Settings = {
                     <h1 class="title-1">Notificaciones</h1>
                 </div>
 
-                <div class="settings-section" style="max-width:680px">
+                <div class="settings-section notif-page-sec">
                     <div class="settings-section-title">Tus dispositivos</div>
                     <div id="notifDevices"><div class="notif-page-empty">Cargando…</div></div>
                 </div>
 
-                <div class="settings-section" style="max-width:680px">
+                <div class="settings-section notif-page-sec">
                     <div class="settings-section-title">Qué querés recibir y por dónde</div>
                     <div class="settings-toggle-list" id="notifPrefList">
                         <div class="settings-toggle-row notif-pref-head">
                             <div class="settings-toggle-info"><span class="settings-toggle-desc">Categoría</span></div>
-                            <span class="notif-pref-canal">🔔<br>Campana</span>
-                            <span class="notif-pref-canal">📱<br>Celular</span>
+                            <span class="notif-pref-canal"><b>🔔</b>Campana</span>
+                            <span class="notif-pref-canal"><b>📱</b>Celular</span>
                         </div>
                         ${cats.map(c => {
                             const p = Notifications.getPref(c.key);
@@ -406,7 +406,7 @@ const Settings = {
                     <p class="notif-page-hint">Se guarda en tu cuenta, así que vale para todos tus dispositivos. El <b>celular</b> además necesita que hayas activado las notificaciones en ese aparato (Mi Perfil). Los <b>pendientes</b> (estado vivo) y los puntitos del menú no se silencian.</p>
                 </div>
 
-                <div class="settings-section" style="max-width:680px">
+                <div class="settings-section notif-page-sec">
                     <div class="notif-page-sec-head">
                         <div class="settings-section-title" style="margin:0">Actividad reciente</div>
                         <button class="notif-page-markall" id="notifPageMarkAll">Marcar todas leídas</button>
@@ -414,7 +414,7 @@ const Settings = {
                     <div id="notifPageFeed"><div class="notif-page-empty">Cargando…</div></div>
                 </div>
 
-                <div class="settings-section" style="max-width:680px">
+                <div class="settings-section notif-page-sec">
                     <div class="settings-section-title">Pendientes</div>
                     <div id="notifPagePend"><div class="notif-page-empty">Cargando…</div></div>
                 </div>
@@ -638,7 +638,11 @@ const Settings = {
         const s = document.createElement('style');
         s.id = 'notif-page-styles';
         s.textContent = `
-            .notif-page-hint { font-size:0.78rem; color:#888; margin-top:12px; line-height:1.5; }
+            /* Las secciones tenían max-width:680px inline y ahí adentro las
+               descripciones de categoría se partían en dos renglones y la matriz
+               quedaba apretada contra los switches. */
+            .notif-page-sec { max-width:980px; }
+            .notif-page-hint { font-size:0.78rem; color:#888; margin-top:12px; line-height:1.5; max-width:820px; }
             /* Matriz categoría × canal (N1). Grid de 3 columnas: info | campana | celular */
             #notifPrefList .settings-toggle-row {
                 display:grid; grid-template-columns:1fr 68px 68px; align-items:center; gap:8px;
@@ -646,11 +650,15 @@ const Settings = {
             #notifPrefList .settings-toggle-info { min-width:0; }
             #notifPrefList .settings-switch { justify-self:center; }
             .notif-pref-head { border-bottom:1px solid var(--border); padding-bottom:6px; }
+            /* El emoji iba al mismo 0.58rem que el rótulo y la campana se leía
+               como un triangulito naranja de advertencia. Va en su propia línea,
+               a tamaño de ícono. */
             .notif-pref-canal {
                 justify-self:center; text-align:center; line-height:1.25;
                 font-family:var(--font-mono, monospace); font-size:0.58rem;
                 color:var(--text-dim, #555); text-transform:uppercase; letter-spacing:0.5px;
             }
+            .notif-pref-canal b { display:block; font-size:1rem; line-height:1.2; margin-bottom:2px; }
             @media (max-width: 560px) {
                 #notifPrefList .settings-toggle-row { grid-template-columns:1fr 54px 54px; }
             }

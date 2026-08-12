@@ -12137,6 +12137,17 @@ a.ev-doc-link:hover { text-decoration: underline; }
 .costos-estado-chips {
     display: flex;
     gap: 4px;
+    align-items: center;
+}
+/* Los cuatro primeros chips son filtros de estado de receta, excluyentes entre
+   sí. El de "desactualizados" es una alerta que además filtra: va del otro lado
+   de una línea para que no se lea como un quinto estado. */
+.costos-chip-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border, #2a2a2a);
+    margin: 0 5px;
+    flex: 0 0 auto;
 }
 .costos-estado-chip {
     padding: 4px 10px;
@@ -12172,6 +12183,24 @@ a.ev-doc-link:hover { text-decoration: underline; }
     color: #ff4444;
     border-color: rgba(255, 68, 68, 0.4);
     background: rgba(255, 68, 68, 0.08);
+}
+/* Este chip avisa aunque no esté seleccionado: nace naranja, a diferencia de
+   los otros cuatro que arrancan apagados. El color estaba en un style inline y
+   al clickearlo ganaba `.active` —que es AZUL—, así que la alerta perdía el
+   naranja justo cuando estaba filtrando. */
+.costos-estado-chip.chip-desfasado {
+    color: #F28D15;
+    border-color: rgba(242, 141, 21, 0.4);
+    background: rgba(242, 141, 21, 0.06);
+}
+.costos-estado-chip.chip-desfasado:hover {
+    color: #F28D15;
+    border-color: rgba(242, 141, 21, 0.7);
+}
+.costos-estado-chip.chip-desfasado.active {
+    color: #F28D15;
+    border-color: #F28D15;
+    background: rgba(242, 141, 21, 0.16);
 }
 
 /* ═══════════════════════════════════════════
@@ -15029,6 +15058,10 @@ tr.cmp-proximo td { color: #F28D15; }
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 20px;
+    /* Sin esto la card de "los que el motor usa" —3 filas— se estiraba a la
+       altura de la de al lado —6 filas— y quedaba medio cuerpo vacío justo en
+       el grupo que importa. */
+    align-items: start;
 }
 @media (max-width: 900px) {
     .costos-params-grid { grid-template-columns: 1fr; }
@@ -15117,11 +15150,16 @@ tr.cmp-proximo td { color: #F28D15; }
     text-align: right;
     padding: 4px 0;
 }
+/* Ancho fijo: las unidades miden distinto ("%" vs "ARS/USD") y, con la fila en
+   space-between, cada caja terminaba de un ancho distinto y el borde izquierdo
+   de los inputs quedaba escalonado columna abajo. */
 .costos-params-suffix {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-muted);
     user-select: none;
+    min-width: 50px;
+    text-align: left;
 }
 .costos-params-impact {
     margin-top: 24px;

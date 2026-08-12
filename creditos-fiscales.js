@@ -74,33 +74,55 @@ const CreditosFiscales = {
         </div>`;
     },
 
+    /**
+     * Cuatro KPIs con el mismo lenguaje que Emitidos y Recibidos —viven en la
+     * misma barra de subtabs, tienen que verse de la misma familia—.
+     *
+     * El cuarto es "Sin certificado", no un total más: antes de armar una DDJJ
+     * lo que hace falta saber es qué retención no tiene su respaldo, y eso no
+     * se ve en una columna de importes. Es el mismo criterio con el que la
+     * columna "Adjunto" entró al CSV del contador.
+     */
     _kpis() {
-        const total = this._items.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+        let total = 0, sinComputar = 0, sinComputarN = 0, sinCert = 0, ret = 0, per = 0;
         const porImp = {};
-        let sinComputar = 0;
         for (const r of this._items) {
-            porImp[r.impuesto] = (porImp[r.impuesto] || 0) + (Number(r.monto) || 0);
-            if (r.estado !== 'computado') sinComputar += (Number(r.monto) || 0);
+            const m = Number(r.monto) || 0;
+            total += m;
+            porImp[r.impuesto] = (porImp[r.impuesto] || 0) + m;
+            if (r.estado !== 'computado') { sinComputar += m; sinComputarN++; }
+            if (!r.archivo_url) sinCert++;
+            if (r.tipo === 'percepcion') per++; else ret++;
         }
         const chips = Object.entries(porImp)
             .sort((a, b) => b[1] - a[1])
             .map(([imp, m]) => `<span class="cfi-chip">${escHtml(this.IMPUESTO_LABEL[imp] || imp)} ${this._money(m)}</span>`)
             .join('');
+        const n = this._items.length;
         return `
         <div class="cfi-kpis">
-            <div class="cfi-kpi">
-                <div class="cfi-kpi-label">A favor en el período</div>
-                <div class="cfi-kpi-valor">${this._money(total)}</div>
+            <div class="cfi-kpi" style="border-left-color:#4A90D9">
+                <div class="k-label">Créditos del período</div>
+                <div class="k-val">${n}</div>
+                <div class="k-sub">${ret} ret. · ${per} perc.</div>
             </div>
-            <div class="cfi-kpi">
-                <div class="cfi-kpi-label">Sin computar</div>
-                <div class="cfi-kpi-valor ${sinComputar > 0 ? 'cfi-alerta' : ''}">${this._money(sinComputar)}</div>
+            <div class="cfi-kpi" style="border-left-color:#00CC88">
+                <div class="k-label">A favor</div>
+                <div class="k-val">${this._money(total)}</div>
+                <div class="k-sub">se descuenta del impuesto</div>
             </div>
-            <div class="cfi-kpi cfi-kpi-ancho">
-                <div class="cfi-kpi-label">Por impuesto</div>
-                <div class="cfi-chips">${chips || '<span class="cfi-sub">—</span>'}</div>
+            <div class="cfi-kpi" style="border-left-color:${sinComputar > 0 ? '#F28D15' : '#2a2a2a'}">
+                <div class="k-label">Sin computar</div>
+                <div class="k-val ${sinComputar > 0 ? 'cfi-alerta' : ''}">${this._money(sinComputar)}</div>
+                <div class="k-sub">${sinComputarN} sin usar en una DDJJ</div>
             </div>
-        </div>`;
+            <div class="cfi-kpi" style="border-left-color:${sinCert > 0 ? '#ff4444' : '#2a2a2a'}">
+                <div class="k-label">Sin certificado</div>
+                <div class="k-val ${sinCert > 0 ? 'cfi-falta' : ''}">${sinCert}</div>
+                <div class="k-sub">${sinCert > 0 ? 'falta el respaldo' : 'todos con respaldo'}</div>
+            </div>
+        </div>
+        ${chips ? `<div class="cfi-porimp"><span class="cfi-porimp-lbl">Por impuesto</span>${chips}</div>` : ''}`;
     },
 
     _filtrosHTML() {
@@ -122,7 +144,7 @@ const CreditosFiscales = {
             ${sel('cfiEstado', 'Estado', [{ v: '', l: 'Todos' }, { v: 'pendiente', l: 'Sin computar' }, { v: 'computado', l: 'Computado' }], this._filtros.estado)}
             <div class="cfi-filtro cfi-filtro-acciones">
                 <button type="button" class="cfi-btn" id="cfiComputar" disabled>Marcar computados</button>
-                <button type="button" class="cfi-btn" id="cfiExport">Exportar</button>
+                <button type="button" class="cfi-btn cfi-btn-acento" id="cfiExport">Exportar</button>
             </div>
         </div>`;
     },
@@ -133,22 +155,26 @@ const CreditosFiscales = {
         }
         const filas = this._items.map(r => {
             const adj = this._adjuntoHref(r.archivo_url);
+            // El certificado y su adjunto son la misma cosa: el número y el
+            // papel. Van juntos en una celda, y la falta del papel se ve —antes
+            // era una columna vacía al final de la fila que no decía nada.
+            const cert = escHtml(r.numero_certificado || 'sin número');
+            const adjunto = adj
+                ? `<a class="cfi-clip" href="${escAttr(adj)}" target="_blank" rel="noopener" title="Ver certificado">📎</a>`
+                : `<span class="cfi-falta-cert" title="No tiene el certificado adjunto">falta</span>`;
             return `
-            <tr data-id="${escAttr(r.id)}">
+            <tr data-id="${escAttr(r.id)}" class="${r.archivo_url ? '' : 'cfi-row-sincert'}">
                 <td><input type="checkbox" class="cfi-check" data-id="${escAttr(r.id)}"></td>
-                <td>${escHtml(this._fecha(r.fecha))}</td>
-                <td><span class="cfi-tag cfi-tag-${escAttr(r.tipo)}">${r.tipo === 'retencion' ? 'Retención' : 'Percepción'}</span></td>
+                <td class="cfi-fecha">${escHtml(this._fecha(r.fecha))}</td>
+                <td><span class="cfi-tag cfi-tag-${escAttr(r.tipo)}">${r.tipo === 'retencion' ? 'Ret.' : 'Perc.'}</span></td>
                 <td>${escHtml(this.IMPUESTO_LABEL[r.impuesto] || r.impuesto)}${r.jurisdiccion ? `<div class="cfi-sub">${escHtml(r.jurisdiccion)}</div>` : ''}</td>
-                <td>${escHtml(r.numero_certificado || '—')}</td>
-                <td class="cfi-num">${r.base_imponible != null ? this._money(r.base_imponible) : '—'}</td>
-                <td class="cfi-num">${r.alicuota != null ? Number(r.alicuota).toFixed(2) + '%' : '—'}</td>
+                <td class="cfi-cert">${r.numero_certificado ? cert : `<span class="cfi-sub">${cert}</span>`} ${adjunto}</td>
+                <td class="cfi-num cfi-tenue">${r.base_imponible != null ? this._money(r.base_imponible) : '—'}</td>
+                <td class="cfi-num cfi-tenue">${r.alicuota != null ? Number(r.alicuota).toFixed(2) + '%' : '—'}</td>
                 <td class="cfi-num cfi-monto">${this._money(r.monto)}</td>
                 <td>${r.estado === 'computado'
-                        ? '<span class="cfi-estado cfi-ok">Computado</span>'
-                        : '<span class="cfi-estado cfi-pend">Sin computar</span>'}</td>
-                <td>${adj
-                        ? `<a href="${escAttr(adj)}" target="_blank" rel="noopener" title="Ver certificado">📎</a>`
-                        : ''}</td>
+                        ? '<span class="cfi-estado"><i class="cfi-dot cfi-dot-ok"></i>Computado</span>'
+                        : '<span class="cfi-estado"><i class="cfi-dot cfi-dot-pend"></i>Sin computar</span>'}</td>
             </tr>`;
         }).join('');
         return `
@@ -157,7 +183,7 @@ const CreditosFiscales = {
                 <th><input type="checkbox" id="cfiCheckAll"></th>
                 <th>Fecha</th><th>Tipo</th><th>Impuesto</th><th>Certificado</th>
                 <th class="cfi-num">Base</th><th class="cfi-num">Alíc.</th><th class="cfi-num">Importe</th>
-                <th>Estado</th><th></th>
+                <th>Estado</th>
             </tr></thead>
             <tbody>${filas}</tbody>
         </table>`;
@@ -320,13 +346,22 @@ const CreditosFiscales = {
         s.id = 'cfiStyles';
         s.textContent = `
         .cfi-wrap{display:flex;flex-direction:column;gap:14px}
-        .cfi-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
-        .cfi-kpi{background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:6px;padding:10px 12px}
-        .cfi-kpi-ancho{grid-column:span 2}
-        .cfi-kpi-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted,#888);margin-bottom:4px}
-        .cfi-kpi-valor{font-family:var(--font-mono,'Space Mono',monospace);font-size:1.1rem;color:var(--text-primary,#E8E8E8)}
+        /* Calcado de .fin-fact-kpi (finanzas.js): esta pantalla comparte la barra
+           de subtabs con Emitidos y Recibidos, y tiene que verse de la familia.
+           Se replica en vez de reusar la clase para que el módulo no dependa de
+           que finanzas.js haya inyectado sus estilos antes. */
+        .cfi-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+        .cfi-kpi{background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:13px 15px;border-left:3px solid #00A9C1}
+        .cfi-kpi .k-label{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:#888;margin-bottom:7px}
+        .cfi-kpi .k-val{font-family:var(--font-mono,'Space Mono',monospace);font-size:1.4rem;font-weight:700;color:#e8e8e8;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .cfi-kpi .k-sub{font-size:10.5px;color:#888;margin-top:4px}
+        @media (max-width:900px){.cfi-kpis{grid-template-columns:repeat(2,1fr)}}
         .cfi-alerta{color:var(--accent,#F28D15)}
-        .cfi-chips{display:flex;flex-wrap:wrap;gap:5px}
+        .cfi-falta{color:var(--color-error,#ff4444)}
+        /* "Por impuesto" era una caja del tamaño de dos KPIs para cuatro chips:
+           baja a una línea, que es lo que pesa. */
+        .cfi-porimp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:-4px}
+        .cfi-porimp-lbl{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--text-dim,#555);margin-right:2px}
         .cfi-chip{font-size:.7rem;font-family:var(--font-mono,'Space Mono',monospace);background:rgba(0,169,193,.10);color:var(--primary,#00A9C1);padding:2px 7px;border-radius:3px}
         .cfi-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
         .cfi-flabel{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted,#888);margin-bottom:3px}
@@ -335,18 +370,45 @@ const CreditosFiscales = {
         .cfi-btn{background:transparent;border:1px solid var(--border,#2a2a2a);color:var(--text-muted,#888);border-radius:4px;padding:6px 12px;font-size:.78rem;cursor:pointer}
         .cfi-btn:hover:not(:disabled){border-color:var(--primary,#00A9C1);color:var(--primary,#00A9C1)}
         .cfi-btn:disabled{opacity:.35;cursor:not-allowed}
-        .cfi-tabla{width:100%;border-collapse:collapse;font-size:.82rem}
+        /* Exportar lleva el acento porque HACE algo (el patrón info/acción del
+           resto de Facturación); "Marcar computados" ya se enciende solo al
+           seleccionar filas. */
+        .cfi-btn-acento{border-color:rgba(0,169,193,.45);color:var(--primary,#00A9C1)}
+        .cfi-tabla{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:fixed}
         .cfi-tabla th{text-align:left;font-size:.66rem;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted,#888);padding:6px;border-bottom:1px solid var(--border,#2a2a2a)}
-        .cfi-tabla td{padding:6px;border-bottom:1px solid rgba(255,255,255,.04)}
+        .cfi-tabla td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+        /* Anchos en % (nunca px con table-layout:fixed): sin esto las 9 columnas
+           se repartían el ancho de la pantalla y quedaban 200px de hueco entre
+           el impuesto y su certificado. */
+        .cfi-tabla th:nth-child(1),.cfi-tabla td:nth-child(1){width:3%}
+        .cfi-tabla th:nth-child(2),.cfi-tabla td:nth-child(2){width:8%}
+        .cfi-tabla th:nth-child(3),.cfi-tabla td:nth-child(3){width:7%}
+        .cfi-tabla th:nth-child(4),.cfi-tabla td:nth-child(4){width:17%}
+        .cfi-tabla th:nth-child(5),.cfi-tabla td:nth-child(5){width:23%}
+        .cfi-tabla th:nth-child(6),.cfi-tabla td:nth-child(6){width:13%}
+        .cfi-tabla th:nth-child(7),.cfi-tabla td:nth-child(7){width:8%}
+        .cfi-tabla th:nth-child(8),.cfi-tabla td:nth-child(8){width:12%}
+        .cfi-tabla th:nth-child(9),.cfi-tabla td:nth-child(9){width:9%}
+        .cfi-tabla tbody tr:hover{background:rgba(255,255,255,.02)}
         .cfi-num{text-align:right;font-family:var(--font-mono,'Space Mono',monospace)}
+        /* Base y alícuota son el cómo se llegó al importe, no el dato: van atrás
+           para que el importe —que es lo que se computa— resalte solo. */
+        .cfi-tenue{color:var(--text-muted,#888)}
         .cfi-monto{color:var(--text-primary,#E8E8E8);font-weight:700}
+        .cfi-fecha{font-family:var(--font-mono,'Space Mono',monospace);color:var(--text-muted,#888)}
+        .cfi-cert{font-family:var(--font-mono,'Space Mono',monospace);font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .cfi-clip{text-decoration:none;opacity:.75}
+        .cfi-clip:hover{opacity:1}
+        .cfi-falta-cert{font-family:var(--font-main,'Outfit',sans-serif);font-size:.66rem;text-transform:uppercase;letter-spacing:.4px;color:var(--color-error,#ff4444);background:rgba(255,68,68,.10);padding:1px 5px;border-radius:3px}
+        .cfi-row-sincert td{background:rgba(255,68,68,.03)}
         .cfi-sub{font-size:.68rem;color:var(--text-muted,#888)}
         .cfi-tag{font-size:.66rem;text-transform:uppercase;letter-spacing:.3px;padding:2px 6px;border-radius:3px}
         .cfi-tag-retencion{background:rgba(0,169,193,.12);color:var(--primary,#00A9C1)}
         .cfi-tag-percepcion{background:rgba(155,125,255,.12);color:#9B7DFF}
-        .cfi-estado{font-size:.7rem}
-        .cfi-ok{color:var(--color-success,#00CC88)}
-        .cfi-pend{color:var(--text-muted,#888)}
+        .cfi-estado{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-muted,#888);white-space:nowrap}
+        .cfi-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+        .cfi-dot-ok{background:var(--color-success,#00CC88)}
+        .cfi-dot-pend{background:var(--text-dim,#555)}
         .cfi-vacio,.cfi-loading{padding:24px;text-align:center;color:var(--text-muted,#888)}
         `;
         document.head.appendChild(s);

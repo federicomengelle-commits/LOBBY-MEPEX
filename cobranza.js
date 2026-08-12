@@ -59,6 +59,11 @@ const Cobranza = {
             onClose: () => this._limpiarCertificadosHuerfanos(),
         });
         this._modalId = inst && inst.id;
+        // Los tamaños del Modal son sm/md/lg (400/560/780px) y ninguno alcanza:
+        // la grilla de retenciones tiene 8 columnas y en 780px los importes se
+        // veían cortados ("121" por "1210000"). En vez de agregar un tamaño al
+        // Modal global —que comparten ~40 pantallas— se ensancha SOLO éste.
+        if (inst && inst.overlay) inst.overlay.querySelector('.modal')?.classList.add('cob-modal');
         this._onGuardado = onGuardado;
         const host = document.getElementById('cobranzaHost');
         await this.renderInto(host, { clienteId });
@@ -142,14 +147,32 @@ const Cobranza = {
     },
 
     // ─── Render ──────────────────────────────────────────────────
+    /**
+     * Dos columnas: a la izquierda lo que se lee en tablas anchas (facturas y
+     * retenciones), a la derecha la forma de pago y el candado.
+     *
+     * En una sola columna el candado era `sticky bottom` y quedaba flotando
+     * ENCIMA de la grilla de retenciones al scrollear: el pie que decide si se
+     * puede guardar tapaba justo los importes que hacen que cuadre. Ahora vive
+     * en su propia columna, siempre a la vista y sin pisar nada.
+     */
     _buildHTML() {
+        if (!this._clienteId) {
+            return `<div class="cob-wrap">${this._bloqueCliente()}</div>`;
+        }
         return `
         <div class="cob-wrap">
             ${this._bloqueCliente()}
-            ${this._clienteId ? this._bloqueAplicacion() : ''}
-            ${this._clienteId ? this._bloqueMedios() : ''}
-            ${this._clienteId ? this._bloqueRetenciones() : ''}
-            ${this._clienteId ? this._bloqueCandado() : ''}
+            <div class="cob-cols">
+                <div class="cob-col-main">
+                    ${this._bloqueAplicacion()}
+                    ${this._bloqueRetenciones()}
+                </div>
+                <div class="cob-col-side">
+                    ${this._bloqueMedios()}
+                    ${this._bloqueCandado()}
+                </div>
+            </div>
         </div>`;
     },
 
@@ -157,9 +180,11 @@ const Cobranza = {
         const opts = this._clientes.map(c =>
             `<option value="${escAttr(c.id)}" ${c.id === this._clienteId ? 'selected' : ''}>${escHtml(c.name || c.empresa || 'Sin nombre')}</option>`
         ).join('');
+        // En línea, no apilado: es un solo campo y ocupaba un renglón de etiqueta
+        // más uno de select en lo alto del modal, que es donde más se paga.
         return `
-        <div class="cob-bloque">
-            <label class="cob-label">Cliente</label>
+        <div class="cob-bloque cob-bloque-cliente">
+            <label class="cob-label" for="cobCliente">Cliente</label>
             <select id="cobCliente" class="cob-input">
                 <option value="">— Elegí un cliente —</option>
                 ${opts}
@@ -191,7 +216,7 @@ const Cobranza = {
         return `
         <div class="cob-bloque">
             <div class="cob-bloque-tit">Qué facturas cancela</div>
-            <table class="cob-tabla">
+            <table class="cob-tabla cob-tabla-fact">
                 <thead><tr><th>Factura</th><th>Fecha</th><th class="cob-num">Total</th><th class="cob-num">Saldo</th><th class="cob-num">Aplicar</th><th></th></tr></thead>
                 <tbody>${filas}</tbody>
             </table>
@@ -201,32 +226,36 @@ const Cobranza = {
     _bloqueMedios() {
         const cuentas = this._cuentas.map(c =>
             `<option value="${escAttr(c.id)}">${escHtml(c.nombre)}</option>`).join('');
+        // En la columna angosta los selects con texto largo van SOLOS a lo ancho:
+        // en media columna, "— Elegí la cuenta —" y los nombres de cuenta salían
+        // cortados, y un select cortado no se puede leer al pasar el mouse.
+        // Sólo comparten renglón fecha y canal, que son cortos por definición.
+        // El importe que entró va aparte y en grande: es el número que decide si
+        // la cobranza cuadra, no un campo más de la fila.
         return `
         <div class="cob-bloque">
             <div class="cob-bloque-tit">Cómo entró la plata</div>
-            <div class="cob-grid3">
-                <div>
-                    <label class="cob-label">Medio</label>
-                    <select id="cobMedio" class="cob-input">
-                        <option value="transferencia">Transferencia</option>
-                        <option value="efectivo">Efectivo</option>
-                        <option value="cheque">Cheque / e-cheq</option>
-                        <option value="mercadopago">MercadoPago</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="cob-label">Cuenta</label>
-                    <select id="cobCuenta" class="cob-input">
-                        <option value="">— Elegí la cuenta —</option>
-                        ${cuentas}
-                    </select>
-                </div>
-                <div>
-                    <label class="cob-label">Importe que entró</label>
-                    <input type="text" inputmode="decimal" id="cobEfectivo" class="cob-input cob-input-num" placeholder="0">
-                </div>
+            <div class="cob-campo-ancho">
+                <label class="cob-label">Medio</label>
+                <select id="cobMedio" class="cob-input">
+                    <option value="transferencia">Transferencia</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="cheque">Cheque / e-cheq</option>
+                    <option value="mercadopago">MercadoPago</option>
+                </select>
             </div>
-            <div class="cob-grid3">
+            <div class="cob-campo-ancho">
+                <label class="cob-label">Cuenta</label>
+                <select id="cobCuenta" class="cob-input">
+                    <option value="">— Elegí la cuenta —</option>
+                    ${cuentas}
+                </select>
+            </div>
+            <div class="cob-campo-ancho">
+                <label class="cob-label">Importe que entró</label>
+                <input type="text" inputmode="decimal" id="cobEfectivo" class="cob-input cob-input-num cob-input-destacado" placeholder="0">
+            </div>
+            <div class="cob-grid2">
                 <div>
                     <label class="cob-label">Fecha</label>
                     <input type="date" id="cobFecha" class="cob-input" value="${hoyLocal()}">
@@ -238,10 +267,10 @@ const Cobranza = {
                         <option value="interno">Interno</option>
                     </select>
                 </div>
-                <div>
-                    <label class="cob-label">Concepto</label>
-                    <input type="text" id="cobConcepto" class="cob-input" placeholder="Cobranza">
-                </div>
+            </div>
+            <div class="cob-campo-ancho">
+                <label class="cob-label">Concepto</label>
+                <input type="text" id="cobConcepto" class="cob-input" placeholder="Cobranza">
             </div>
         </div>`;
     },
@@ -329,10 +358,10 @@ const Cobranza = {
         return `
         <div class="cob-bloque" id="cobBloqueRet">
             <div class="cob-bloque-tit">Retenciones que le practicaron
-                <span class="cob-sub">— lo que el cliente no depositó porque lo deposita a la AFIP en nuestro nombre</span>
+                <span class="cob-sub">Lo que el cliente no depositó porque lo deposita a la AFIP en nuestro nombre</span>
             </div>
             ${this._retenciones.length ? `
-            <table class="cob-tabla">
+            <table class="cob-tabla cob-tabla-ret">
                 <thead><tr><th>Impuesto</th><th>Jurisdicción</th><th>Certificado</th><th class="cob-num">Base</th><th class="cob-num">Alícuota</th><th class="cob-num">Importe</th><th>Adjunto</th><th></th></tr></thead>
                 <tbody>${filas}</tbody>
             </table>` : '<div class="cob-vacio">Sin retenciones.</div>'}
@@ -738,25 +767,61 @@ const Cobranza = {
         const s = document.createElement('style');
         s.id = 'cobranzaStyles';
         s.textContent = `
-        .cob-wrap{display:flex;flex-direction:column;gap:14px}
+        /* El modal ancho: la grilla de retenciones no entra en los 780px de --lg */
+        .cob-modal{width:1280px;max-width:calc(100vw - 48px)}
+        .cob-wrap{display:flex;flex-direction:column;gap:12px}
+        .cob-cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}
+        .cob-col-main{display:flex;flex-direction:column;gap:12px;min-width:0}
+        .cob-bloque-cliente{display:flex;align-items:center;gap:12px;padding:10px 12px}
+        .cob-bloque-cliente .cob-label{margin:0;flex:0 0 auto}
+        /* La columna acompaña el scroll: el candado queda siempre a la vista sin
+           taparle la grilla a nadie, que era lo que hacía el sticky de antes. */
+        .cob-col-side{display:flex;flex-direction:column;gap:12px;position:sticky;top:0}
         .cob-bloque{background:var(--bg-card,#111);border:1px solid var(--border,#2a2a2a);border-radius:6px;padding:12px}
         .cob-bloque-tit{font-size:.8rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--primary,#00A9C1);margin-bottom:10px}
+        /* La aclaración larga no es un título: baja de renglón y sale de las mayúsculas */
+        .cob-bloque-tit .cob-sub{display:block;text-transform:none;letter-spacing:0;font-weight:400;margin-top:3px}
         .cob-label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted,#888);margin-bottom:4px}
         .cob-input{width:100%;background:#0b0b0b;border:1px solid var(--border,#2a2a2a);color:var(--text-primary,#E8E8E8);border-radius:4px;padding:7px 9px;font-size:.85rem}
         .cob-input:focus{outline:none;border-color:var(--primary,#00A9C1)}
         .cob-input-num{text-align:right;font-family:var(--font-mono,'Space Mono',monospace)}
+        .cob-input-destacado{font-size:1.05rem;padding:9px;letter-spacing:.5px}
         .cob-manual{border-color:var(--accent,#F28D15)}
-        .cob-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
-        .cob-tabla{width:100%;border-collapse:collapse;font-size:.82rem}
+        .cob-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+        .cob-campo-ancho{margin-bottom:10px}
+        .cob-tabla{width:100%;border-collapse:collapse;font-size:.82rem;table-layout:fixed}
         .cob-tabla th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted,#888);padding:4px 6px;border-bottom:1px solid var(--border,#2a2a2a)}
         .cob-tabla td{padding:5px 6px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+        /* En una fila de tabla los botones van a la línea de los inputs: el
+           margin-top de .cob-btn-mini —que existe para el "+ Agregar"— hundía
+           "Adjuntar" y "✕" 12px por debajo del resto de la fila. */
+        .cob-tabla .cob-btn-mini{margin-top:0}
+        /* Anchos en PORCENTAJE, no en px: con table-layout:fixed unos anchos
+           fijos que sumen más que la tabla dejan la última columna elástica en
+           CERO —le pasó a "Certificado", que desapareció y dejó el encabezado
+           "Base" montado encima del suyo—. En % siempre suman 100 y ninguna
+           columna se puede quedar sin ancho. */
+        .cob-tabla-ret th:nth-child(1),.cob-tabla-ret td:nth-child(1){width:15%}
+        .cob-tabla-ret th:nth-child(2),.cob-tabla-ret td:nth-child(2){width:14%}
+        .cob-tabla-ret th:nth-child(3),.cob-tabla-ret td:nth-child(3){width:18%}
+        .cob-tabla-ret th:nth-child(4),.cob-tabla-ret td:nth-child(4){width:14%}
+        .cob-tabla-ret th:nth-child(5),.cob-tabla-ret td:nth-child(5){width:10%}
+        .cob-tabla-ret th:nth-child(6),.cob-tabla-ret td:nth-child(6){width:14%}
+        .cob-tabla-ret th:nth-child(7),.cob-tabla-ret td:nth-child(7){width:11%}
+        .cob-tabla-ret th:nth-child(8),.cob-tabla-ret td:nth-child(8){width:4%}
+        .cob-tabla-fact th:nth-child(1),.cob-tabla-fact td:nth-child(1){width:28%}
+        .cob-tabla-fact th:nth-child(2),.cob-tabla-fact td:nth-child(2){width:12%}
+        .cob-tabla-fact th:nth-child(3),.cob-tabla-fact td:nth-child(3){width:16%}
+        .cob-tabla-fact th:nth-child(4),.cob-tabla-fact td:nth-child(4){width:16%}
+        .cob-tabla-fact th:nth-child(5),.cob-tabla-fact td:nth-child(5){width:20%}
+        .cob-tabla-fact th:nth-child(6),.cob-tabla-fact td:nth-child(6){width:8%}
         .cob-num{text-align:right;font-family:var(--font-mono,'Space Mono',monospace)}
         .cob-sub{font-size:.7rem;color:var(--text-muted,#888)}
         .cob-vacio{color:var(--text-muted,#888);font-size:.85rem;padding:6px 0}
         .cob-btn-mini{background:transparent;border:1px solid var(--border,#2a2a2a);color:var(--text-muted,#888);border-radius:4px;padding:4px 9px;font-size:.75rem;cursor:pointer;margin-top:8px}
         .cob-btn-mini:hover{border-color:var(--primary,#00A9C1);color:var(--primary,#00A9C1)}
-        .cob-candado{position:sticky;bottom:0;background:#0d0d0d}
-        .cob-candado-linea{display:flex;justify-content:space-between;font-size:.85rem;padding:3px 0;color:var(--text-muted,#888)}
+        .cob-candado{background:#0d0d0d;border-color:#333}
+        .cob-candado-linea{display:flex;justify-content:space-between;gap:10px;font-size:.85rem;padding:3px 0;color:var(--text-muted,#888)}
         .cob-candado-linea b{font-family:var(--font-mono,'Space Mono',monospace);color:var(--text-primary,#E8E8E8)}
         .cob-candado-dif{margin-top:8px;padding:7px 10px;border-radius:4px;font-size:.82rem;text-align:center}
         .cob-candado-nota{margin-top:6px;font-size:.75rem;text-align:center;color:var(--accent,#F28D15)}
@@ -767,8 +832,8 @@ const Cobranza = {
         .cob-bien{background:rgba(0,204,136,.12);color:var(--color-success,#00CC88)}
         .cob-mal{background:rgba(255,68,68,.10);color:var(--color-error,#ff4444)}
         .cob-neutro{background:rgba(255,255,255,.04);color:var(--text-muted,#888)}
-        .cob-acciones{margin-top:10px;display:flex;justify-content:flex-end}
-        .cob-btn-primary{background:var(--primary,#00A9C1);color:#001; border:none;border-radius:4px;padding:9px 18px;font-family:var(--font-mono,'Space Mono',monospace);font-weight:700;font-size:.82rem;cursor:pointer}
+        .cob-acciones{margin-top:10px;display:flex}
+        .cob-btn-primary{flex:1;background:var(--primary,#00A9C1);color:#001; border:none;border-radius:4px;padding:10px 18px;font-family:var(--font-mono,'Space Mono',monospace);font-weight:700;font-size:.82rem;cursor:pointer}
         .cob-btn-primary:disabled{opacity:.4;cursor:not-allowed}
         .cob-loading,.cob-error{padding:20px;text-align:center;color:var(--text-muted,#888)}
         `;
