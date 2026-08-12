@@ -65,15 +65,29 @@ Meta rechaza completar el registro **desde la computadora de Fede**:
 
 Y al confirmar el mail que la cuenta YA tenía, devuelve `Se produjo un error inesperado`.
 
-**Lo que NO es el problema — probado, no supuesto:** el mail. Se probó con la casilla de admin,
-con `mepex@mepex.com.ar` y con el `fede0610@hotmail.com` que la cuenta ya tenía. **Los códigos
-de verificación llegaron bien las dos veces.** Los tres rebotan igual → el bloqueo es del
-dispositivo, no de la casilla. **Que otra persona lea el mail desde la oficina no lo resuelve.**
+**★ DIAGNÓSTICO REAL — no es el registro de desarrollador, es un candado de cuenta.**
+Se entró a una pantalla que **no tiene nada que ver con desarrolladores** —la configuración de
+autenticación en dos pasos de la cuenta personal de Facebook, en `accountscenter.facebook.com`—
+y **salió exactamente el mismo cartel**. Meta tiene bloqueada **cualquier modificación de la
+cuenta**; el registro de desarrollador es sólo una de las cosas que caen adentro.
 
-**Camino a probar primero:** hacer el registro **desde el celular de Fede**, que es su
-dispositivo habitual de Facebook. Una vez registrado, **eso queda en la cuenta, no en el
-aparato** → se vuelve a la compu y se sigue. Si Meta también bloqueara la creación de la app
-desde la compu, se hace desde el celu (incómodo pero posible).
+**Lo que se descartó probándolo, no suponiéndolo:**
+- **No es el mail.** Se probó con la casilla de admin, con `mepex@mepex.com.ar` y con el
+  `fede0610@hotmail.com` que la cuenta ya tenía. **Los códigos de verificación llegaron bien
+  las dos veces.** Los tres rebotan igual. → **Que otra persona lea el mail desde la oficina
+  no lo resuelve.**
+- **No es el dispositivo puntual.** Rebota desde la computadora **y** desde el celular.
+- **No es el formulario ni el paso.** Rebota también en una pantalla sin relación.
+
+**Qué hacer:** es un enfriamiento del lado de Meta, no algo que se destrabe con un truco. El
+propio cartel dice el remedio: *"cuando ya hayas usado este dispositivo durante un tiempo"*.
+1. **Dejar de reintentar** — los intentos fallidos repetidos suelen alargar el bloqueo.
+2. **Usar Facebook normalmente** en el dispositivo elegido durante unos días.
+3. **Test que vale la pena al retomar:** intentar un cambio chico desde la **app de Facebook
+   del celular**, no desde el navegador. La app suele ser la superficie más confiada; si ahí
+   deja, el problema está acotado al navegador.
+
+Suele dispararse tras un login desde un lugar nuevo o un cambio reciente en la cuenta.
 
 **Pendiente chico derivado:** el mail de contacto quedará en `fede0610@hotmail.com`. Cambiarlo
 a `mepex@mepex.com.ar` cuando el dispositivo esté confiado. No bloquea nada: lo institucional

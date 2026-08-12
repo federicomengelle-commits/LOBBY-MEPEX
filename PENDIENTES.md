@@ -145,9 +145,11 @@ vendedor le da vacío a Noe. **Las dos son coordinación con el cotizador**, del
 - **Datos del negocio en el portfolio de Meta.** Estaban **los cuatro campos vacíos** (el runbook los daba por cargados). Ahora: `MEPEX S.A. · COLOMBIA 1173 · LANUS, BUENOS AIRES 1824 · Argentina · +541142184888 · https://www.mepex.com.ar/`, exacto según la constancia. **Y el CUIT `30-70999081-7` en el campo "Identificación fiscal"**, que no estaba documentado y es el que Meta usa para cruzarte contra el registro oficial.
 - **Webhook verificado end-to-end**: devolvió el `hub.challenge`. Meta lo va a validar en verde al primer intento.
 
-**⛔ Dónde se frenó:** Meta no deja completar el **registro de cuenta de desarrollador** desde la computadora de Fede — *"dispositivo que no usas habitualmente"*. **No es el mail**: se probó con la casilla de admin, con `mepex@mepex.com.ar` y con la que la cuenta ya tenía, y los códigos de verificación llegaron bien las dos veces. Los tres rebotan igual. **Que otra persona lea el mail desde la oficina no lo resuelve.**
+**⛔ Dónde se frenó — y el diagnóstico es mejor de lo que parecía:** no es el registro de desarrollador, es **un candado de cuenta de Meta**. Se entró a una pantalla sin relación —la config de autenticación en dos pasos de la cuenta personal de Facebook— y **salió el mismo cartel**: *"dispositivo que no usas habitualmente"*. Meta tiene bloqueada **cualquier modificación de la cuenta**.
 
-**Próximo paso:** hacer el registro **desde el celular de Fede** (su dispositivo habitual de Facebook). Una vez registrado queda en la cuenta, no en el aparato → se vuelve a la compu y se sigue con crear la app.
+**Descartado probándolo, no suponiéndolo:** no es el mail (tres casillas distintas, los códigos llegaron bien las dos veces) · no es el dispositivo puntual (rebota desde la compu **y** desde el celular) · no es el formulario (rebota en pantallas sin relación).
+
+**Próximo paso: esperar, no insistir.** Es un enfriamiento del lado de Meta. **Dejar de reintentar** (los intentos fallidos suelen alargarlo), **usar Facebook normalmente** unos días en el dispositivo elegido, y al retomar probar un cambio chico desde la **app** del celular antes que desde el navegador.
 
 **Lo que sigue después:** app de Meta bajo el portfolio MEPEX (⚠️ **esa elección queda fija para siempre**) → App Secret al `.env` → Business Verification con la constancia → configurar el webhook con el token → conectar el número desde el celu → smoke contra `wa_eventos`. **Traer de nuevo el celu MEPEX**, que se devolvió.
 
