@@ -1,6 +1,26 @@
 /* =============================================
-   MEPEX Lobby — Modules View (Parte 3)
+   ⚠️ ARCHIVO MUERTO — DESCONECTADO DEL LOADER (2026-08-14)
    =============================================
+   NO se carga: se sacó de `App._APP_SCRIPTS` (app.js). No tiene puerta de
+   entrada desde hace tiempo:
+     · `#clientes` es un redirect a `crm` (router.js) — Clientes vive en el CRM.
+     · Ninguna de las ~35 rutas del router llama a `Modules`.
+     · La acción rápida `action:'create'` que abría `_openCreateModal` no existe
+       en `Data.quickActions` (borrada la rama en app.js).
+     · Lo que queda afuera son llamadas defensivas a `Modules.refreshCurrentView`
+       (undo.js, audit-log.js), todas con `typeof … !== 'undefined'`, y que ya
+       eran no-op: `currentModule` nunca se seteaba porque `render()` no corría.
+
+   Se conserva sólo como referencia de las fichas genéricas. Ojo si se resucita
+   algo de acá: el render de la ficha de Cliente quedó a mitad del rename de
+   mayo — pasa `item.name` donde `API.getProjectsByClient` espera el UUID, y lee
+   `p.status`/`p.eventName`/`p.type`/`p.responsible`, campos que la API ya no
+   devuelve (son `estado`/`tipo`/`eventoId`/`responsableId`). Ver
+   `docs/frisados/TODO-POST-RENAME.md` §4 y §5.
+
+   ---------------------------------------------
+   MEPEX Lobby — Modules View (Parte 3)
+   ---------------------------------------------
    Renderiza DENTRO de #mainContent.
    Module sub-header + section sidebar + content.
    Secciones "ficha", "evento", "proyecto" ahora

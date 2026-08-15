@@ -1,13 +1,14 @@
 # PENDIENTES — LOBBY MEPEX
 
-> **Este es el archivo único de lo que falta.** Nace el **2026-08-05** juntando `PLAN-SUPERIOR.md`,
+> **Este es el archivo único de lo que falta.** Nace el **2026-08-05** juntando `PLAN-SUPERIOR.md`
+> (hoy en `docs/frisados/`),
 > los ítems abiertos de la auditoría del 31/07 y los cabos sueltos que estaban desperdigados.
 >
 > **Los otros archivos pasan a ser referencia, no lista de tareas:**
 > · `docs/auditoria-2026-07-31/05-EJECUCION.md` = el **registro** de la auditoría (qué se arregló y por qué) + el plan de la **Tanda 7**
 > · `PROGRESO.md` = lo hecho, sesión por sesión
 > · `docs/PUESTA-A-PUNTO-2027.md` = el camino largo a enero 2027 (las 8 etapas)
-> · `PLAN-SUPERIOR.md` = **superado por este archivo**
+> · `docs/frisados/` = **los planes y auditorías ya ejecutados** (entre ellos `PLAN-SUPERIOR.md`, superado por este archivo). Su `README.md` cuenta qué fue cada uno. **Nada de ahí es tarea**
 >
 > **Regla:** todo lo que se cierre se saca de acá y se anota en `PROGRESO.md`. Si algo no está en este archivo, no está pendiente.
 
@@ -164,6 +165,13 @@ Apenas esté: procesador `wa_eventos` → timeline del CRM, y el botón de Whats
 - **Matriz de 13 escenarios por UI** — escribe en la contabilidad de producción, así que va con cleanup exacto contra la foto de integridad. **Es lo único que queda de C5.**
 - ~~Pulido visual de `cobranza.js` y `creditos-fiscales.js`~~ ✅ **HECHO 2026-08-11** (`f014a3b`). La sospecha de que la grilla de 8 columnas iba a pedir reacomodo era correcta, pero **el problema grande era otro y sólo se veía renderizado**: el candado era `sticky bottom` y flotaba **encima** de la grilla de retenciones — el pie que decide si se puede guardar tapaba justo los importes que lo hacen cuadrar. El modal pasó a 1280px y a dos columnas (tablas a la izquierda, forma de pago y candado a la derecha). En créditos fiscales, los KPIs pasaron al formato de Emitidos/Recibidos —comparten barra de subtabs— y el cuarto es **"Sin certificado"**, que es lo accionable antes de una DDJJ.
 - ~~Pasada estética de `#notificaciones`~~ ✅ **HECHO 2026-08-11.** Las secciones tenían `max-width:680px` **inline** y ahí las descripciones de categoría se partían en dos renglones.
+
+### C6 · Los dos cabos del orden documental *(2026-08-14)*
+
+Salieron de frisar los archivos sueltos de la raíz (ver `docs/frisados/README.md` §3). Ninguno urge.
+
+- **Borrar `modules.js`.** El 14/8 se sacó del loader: eran **216 KB muertos** que se bajaban y ejecutaban en cada carga (el renderer genérico se quedó sin puerta de entrada — `#clientes` redirige a `crm`, ninguna ruta llama a `Modules`). El archivo sigue en el repo con la cabecera que lo explica. **Borrarlo cuando lleve unas semanas en producción sin que nadie note nada** — mismo criterio que los DROPs de D4.
+- **Verificar en prod la ficha de cliente del CRM.** Mismo día se arregló `crm.js:5484`: filtraba los proyectos por **nombre** de cliente cuando la API devuelve el **UUID** desde el rename de mayo, así que la ficha decía **"0 proy." y "Sin proyectos" para todos**. El fix es de una línea y calca el idioma que ya usaba el contador de la tabla, pero **la pantalla necesita sesión iniciada y el preview local no la tiene** → se mira en el próximo rato con Fede logueado (abrir un cliente que tenga proyectos y ver que los liste).
 
 ---
 

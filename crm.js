@@ -5481,7 +5481,10 @@ const CRM = {
         const casos = this._casos.filter(k => k.clienteId === c.id);
         const casosActivos = casos.filter(k => !['ganado', 'perdido'].includes(k.estado));
         const cots = this._cotizaciones.filter(q => q.clienteId === c.id || (q.clienteNombre && c.name && q.clienteNombre.toLowerCase() === c.name.toLowerCase()));
-        const projs = this._projects.filter(p => p.clientName && c.name && p.clientName.toLowerCase() === c.name.toLowerCase());
+        // Match por clientId (FK real), igual que el contador de la tabla (línea ~353).
+        // Filtraba por `p.clientName`, clave que `getProjects()` NO devuelve desde el rename
+        // de mayo → la ficha decía "0 proy." y "Sin proyectos" para TODOS los clientes.
+        const projs = this._projects.filter(p => p.clientId && String(p.clientId) === String(c.id));
         const contactos = this._clienteContactos || [];
         const wa = (() => { const d = (c.phone || '').replace(/[^\d]/g, ''); if (!d) return ''; return 'https://wa.me/' + (d.length <= 10 ? '54' + d : d); })();
         // Sin montos en las listas (los importes viven en el presupuesto): a la derecha va la recencia.

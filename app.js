@@ -50,7 +50,7 @@ const App = {
         'eventos.js?v=49',
         'proyectos.js?v=6',
         'proyecto-detalle.js?v=23',
-        'crm.js?v=43',
+        'crm.js?v=44',
         'catalogo.js?v=9',
         'stands.js?v=6',
         'compositor-piezas.js?v=2',
@@ -90,7 +90,12 @@ const App = {
         'admin-panel.js?v=18',
         'importar-cotizacion.js?v=2',
         'importar-contactos.js?v=3',
-        'modules.js?v=12',
+        // `modules.js` DESCONECTADO (2026-08-14): el renderer genérico quedó sin
+        // puerta de entrada — `#clientes` redirige a `crm` (router.js), ninguna ruta
+        // llama a `Modules`, y la acción rápida `create` que lo abría no existe en
+        // `Data.quickActions`. Eran 216 KB que se bajaban y ejecutaban en cada carga
+        // para nada. El archivo sigue en el repo con la cabecera que lo explica; se
+        // borra cuando lleve unas semanas en prod sin ruido (anotado en PENDIENTES).
         'notifications.js?v=15',
         'tareas.js?v=16',
         // PostHog Analytics (consultoría Jordi 2026-07-17) — al final a propósito:
@@ -549,11 +554,11 @@ const App = {
                 } else if (type === 'registrar-pago') {
                     if (typeof FinanzasModule !== 'undefined') FinanzasModule._activeTab = 'egresos';
                     Router.navigate('finanzas');
-                } else if (type === 'create') {
-                    const entity = btn.dataset.actionEntity;
-                    if (entity && typeof Modules._openCreateModal === 'function') {
-                        Modules._openCreateModal(entity);
-                    }
+                // La rama `create` (abría `Modules._openCreateModal`) se borró junto con
+                // la desconexión de `modules.js`: ninguna acción de `Data.quickActions`
+                // usa `action:'create'` desde que las altas viven en cada módulo. Además
+                // `typeof Modules._openCreateModal` NO era un guard — con `Modules` ya no
+                // declarado tiraba ReferenceError, no `undefined`.
                 } else if (type === 'alert') {
                     this._showToast(btn.dataset.actionMsg);
                 }
