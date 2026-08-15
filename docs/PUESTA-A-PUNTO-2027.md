@@ -72,6 +72,8 @@ Ocho cosas chicas que hoy hacen que el sistema **mienta o esté abierto**. Ningu
 >
 > Y el dato que reencuadra la Etapa 2: **de 227 ítems, sólo 9 son cotizables y 28 tienen receta.** Los otros ~199 están en **$0**. Así que la carga masiva **no es "cargar 200 precios": es decidir 200 vidas útiles.**
 >
+> ✅ **ACTUALIZACIÓN 2026-08-15 — esto se destrabó.** Hoy son **351 ítems · 63 cotizables · 245 con precio · 222 con receta**. Y la frase de arriba resultó exacta en su diagnóstico: lo que resolvió la carga masiva **no fue cargar precios uno por uno, fue escribir las reglas** — la política de márgenes por rubro (6/8), el criterio de vida útil por familia (6/8) y la fórmula geométrica de OCTEXA (13/8), que permitió costear 175 piezas de una sola pasada en vez de a mano. Ver `docs/costos-modelo-decidido.md` y `docs/costos-octexa-piezas-y-nomenclatura.md`.
+>
 > ⏸️ **El ítem 89 queda congelado hasta esa sesión** (decisión de Fede, 3/8): recalcularlo no arregla un precio, *afirma que el panel dura 5 usos* — y lo lleva de $22.944 a $63.184.
 
 | # | Qué | Detalle |

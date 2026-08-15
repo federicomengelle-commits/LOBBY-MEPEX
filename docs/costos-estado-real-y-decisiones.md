@@ -8,8 +8,13 @@
 >
 > **Ojo con los números de acá abajo: son del 2026-08-03 y varios ya no valen.** Los márgenes
 > cambiaron (política nueva por rubro), las tarimas pasaron a subalquiladas y nació el rubro
-> Marketing. Lo que sigue en pie: el diagnóstico del ítem 89 y el hecho de que las vidas útiles
-> reales las tiene que decir el taller — para eso está `docs/costos-preguntas-taller.md`.
+> Marketing. Lo que sigue en pie: el hecho de que las vidas útiles reales las tiene que decir el
+> taller — para eso está `docs/costos-preguntas-taller.md`.
+>
+> 🟥 **Y el título de la §2 ya no describe nada: "los 9 cotizables" hoy son 63.** Al 2026-08-15
+> el catálogo tiene **351 ítems · 63 cotizables · 245 con precio · 222 con receta**.
+> El **ítem 89 tampoco sigue congelado**: la sesión del Cotizador le sacó la vida útil de armado
+> y lo dejó al mismo margen que el blanco, así que hoy los dos valen **$25.183,27**.
 
 > Escrito el **2026-08-03**, con datos leídos de producción (no de la documentación).
 > Nace de T5.1 de la auditoría: el plan decía *"recalcular el ítem 89, un clic, $40.240"* y al mirarlo

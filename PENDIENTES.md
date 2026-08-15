@@ -67,12 +67,19 @@ Son 6, y **ninguna es de código**. Las dos primeras son las que más cambian lo
 
 ## B · El cuello de botella de todo lo comercial: el catálogo
 
-**Lo marcaste como importante dos veces, y los números lo confirman** (medidos hoy):
+**Lo marcaste como importante dos veces.** Los números de agosto (medidos el 2026-08-15):
 
 ```
-226 ítems en el catálogo   ·   9 cotizables   ·   27 con precio > 0   ·   28 con receta
- 80 insumos base
+351 ítems en el catálogo   ·   63 cotizables   ·   245 con precio > 0   ·   222 con receta
+ 83 insumos base
 ```
+
+> 📈 **En dos semanas el catálogo dejó de ser el cuello de botella que era.** Arrancó agosto con
+> **226 ítems, 9 cotizables, 27 con precio y 28 con receta**. Lo que lo movió: la sesión del
+> Cotizador del 15/8 (29 altas de subalquiler, 22 precios de mercado, +54 cotizables) y las dos
+> tandas OCTEXA del 13 y 15/8 (92 placas + 83 perfiles costeados por fórmula).
+> Detalle en `docs/HANDOFF-desde-cotizador-2026-08-15.md` y
+> `docs/costos-octexa-piezas-y-nomenclatura.md`.
 
 Sin esto, ni el cotizador ni la fórmula de precio por m² se paran en datos reales — todo queda a ojo.
 
