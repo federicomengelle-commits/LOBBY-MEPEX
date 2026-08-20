@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El proceso MEPEX · de la consulta al cobro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>:root{--bg:#050505;--bg-card:#111;--bg-2:#0c0c0c;--primary:#00A9C1;--accent:#F28D15;
+--border:#2a2a2a;--border-soft:#1c1c1c;--text:#E8E8E8;--muted:#888;--dim:#555;
+--ok:#00CC88;--err:#ff4444;--violet:#9B7DFF;--blue:#4A90D9;
+--font:'Outfit',system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'Space Mono',ui-monospace,Consolas,monospace;
+--r:4px;--r2:6px;--r3:10px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15.5px;line-height:1.62;
+-webkit-font-smoothing:antialiased;
+background-image:linear-gradient(rgba(255,255,255,.016) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.016) 1px,transparent 1px);
+background-size:44px 44px}
+h1,h2,h3,h4{margin:0;text-wrap:balance;font-weight:600;letter-spacing:-.015em}
+p{margin:0}
+::selection{background:rgba(0,169,193,.3)}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-track{background:#000}
+::-webkit-scrollbar-thumb{background:#1e4a52;border-radius:6px}::-webkit-scrollbar-thumb:hover{background:var(--primary)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+.lbl{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.hero{border-bottom:1px solid var(--border);padding:70px 0 0;
+background:radial-gradient(120% 130% at 50% -30%,rgba(0,169,193,.13),transparent 62%)}
+.hero-in{display:flex;flex-direction:column;gap:24px}
+.logo{width:200px;height:auto;display:block}
+.logo path,.logo polygon{fill:var(--primary)}
+.kicker{display:flex;align-items:center;gap:12px}
+.kicker .bar{width:32px;height:2px;background:var(--primary)}
+h1{font-size:clamp(36px,6vw,64px);line-height:1.04;font-weight:800;letter-spacing:-.03em;max-width:16ch}
+h1 em{font-style:normal;color:var(--primary)}
+.lead{font-size:clamp(15.5px,1.8vw,19px);color:#bdbdbd;max-width:70ch;font-weight:300}
+.lead b{color:var(--text);font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));border-top:1px solid var(--border);margin-top:42px}
+.stat{padding:20px 22px;border-right:1px solid var(--border)}
+.stat:last-child{border-right:0}
+.stat .v{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--primary);line-height:1.1}
+.stat .k{font-size:12px;color:var(--muted);margin-top:3px}
+
+.ramas-sec{padding:64px 0 10px;border-bottom:1px solid var(--border-soft)}
+.sec-h{display:flex;flex-direction:column;gap:10px;margin-bottom:28px}
+.sec-h h2{font-size:clamp(24px,3.4vw,34px);font-weight:700;letter-spacing:-.025em}
+.sec-h p{color:#a8a8a8;max-width:74ch;font-weight:300}
+.ramas{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;padding-bottom:56px}
+.rama{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r3);padding:20px 20px 22px;
+border-top:2px solid var(--primary)}
+.rama h4{font-size:19px;margin:8px 0 8px;font-weight:700}
+.rama p{font-size:13.5px;color:#a5a5a5;line-height:1.5}
+
+.tl{padding:56px 0 40px;position:relative}
+.tl:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;
+background:linear-gradient(180deg,transparent,var(--border) 6%,var(--border) 94%,transparent);transform:translateX(-.5px)}
+.row{display:grid;grid-template-columns:1fr 76px 1fr;align-items:center;margin-bottom:16px;
+grid-template-areas:"cd ax sp"}
+.row.Rt{grid-template-areas:"sp ax cd"}
+.spacer{grid-area:sp}
+.axis{grid-area:ax;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;z-index:2}
+.card{grid-area:cd}
+.dot{width:13px;height:13px;border-radius:50%;background:var(--bg);border:2px solid var(--primary);box-shadow:0 0 0 5px var(--bg)}
+.dot.ok{border-color:var(--ok)}
+.dot.warn{border-color:var(--accent)}
+.dot.err{border-color:var(--err);background:var(--err)}
+.dot.dim{border-color:var(--dim)}
+.n{font-size:11px;color:var(--muted);letter-spacing:.06em}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r3);padding:18px 20px 19px;
+transition:border-color .2s,transform .2s}
+.card:hover{border-color:#3a3a3a;transform:translateY(-1px)}
+.chead{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+.dom{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--c);
+border:1px solid var(--c);border-radius:99px;padding:2.5px 9px;opacity:.9}
+.st{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;padding:2.5px 8px;border-radius:99px}
+.st.ok{color:var(--ok);background:rgba(0,204,136,.1)}
+.st.warn{color:var(--accent);background:rgba(242,141,21,.12)}
+.st.err{color:var(--err);background:rgba(255,68,68,.12)}
+.st.dim{color:var(--dim);background:rgba(255,255,255,.04)}
+.card h3{font-size:18.5px;font-weight:700;letter-spacing:-.02em;margin-bottom:7px}
+.card .d{font-size:14px;color:#adadad;line-height:1.55}
+.meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.where{font-size:11px;color:var(--muted);background:var(--bg-2);border:1px solid var(--border-soft);
+border-radius:var(--r);padding:3px 8px}
+.ag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--primary);
+background:rgba(0,169,193,.09);border:1px solid rgba(0,169,193,.32);border-radius:99px;padding:3px 9px}
+.nota{font-size:12.8px;color:#8e8e8e;line-height:1.5;margin-top:11px;padding-top:11px;border-top:1px solid var(--border-soft)}
+
+.cierre{border-top:1px solid var(--border);padding:60px 0 80px;background:linear-gradient(180deg,transparent,rgba(0,169,193,.03))}
+.ags{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-top:26px}
+.agc{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r3);padding:20px}
+.agc h4{font-size:17px;font-weight:700;margin-bottom:6px}
+.agc .est{display:inline-block;margin-bottom:10px}
+.agc p{font-size:13.4px;color:#a5a5a5;line-height:1.52}
+.foot{border-top:1px solid var(--border-soft);padding:26px 0 60px;color:var(--dim);font-size:12.5px;
+display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.iso{width:20px;height:20px;opacity:.5}
+.iso polygon{fill:var(--primary)}
+
+@media(max-width:860px){
+ .tl:before{left:26px}
+ .row,.row.Rt{grid-template-columns:52px 1fr;grid-template-areas:"ax cd"}
+ .spacer{display:none}
+ .stat{border-right:0;border-bottom:1px solid var(--border)}
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap hero-in">
+    <svg class="logo" viewBox="0 0 13238.69 5669.29" xmlns="http://www.w3.org/2000/svg" aria-label="MEPEX">
+      <path d="m3527.62,3608.94v-1394.88h1284.48v257.68h-1026.81v309.96h1026.81v259.63h-1026.81v309.98h1026.81v257.63h-1284.48Z"/>
+      <path d="m6138.26,3608.94v-1392.94h1123.62c74.96,0,138.89,26.85,191.81,80.42,52.97,53.63,79.5,116.55,79.5,188.85v375.86c0,73.63-26.53,136.93-79.5,189.86-52.91,52.96-116.85,79.46-191.81,79.46l-867.9,1.94v476.54h-255.71Zm323.54-736.17h745.88c34.87,0,54.89-1.96,60.02-5.86,5.2-3.84,7.79-23.82,7.79-60.05v-267.32c0-36.14-2.59-56.49-7.79-61.02-5.13-4.48-25.15-6.78-60.02-6.78h-745.88c-36.2,0-56.51,2.3-61.06,6.78-4.52,4.53-6.76,24.88-6.76,61.02v267.32c0,36.22,2.25,56.21,6.76,60.05,4.55,3.9,24.86,5.86,61.06,5.86Z"/>
+      <path d="m8772.35,3608.94v-1394.88h1284.4v257.68h-1026.74v309.96h1026.74v259.63h-1026.74v309.98h1026.74v257.63h-1284.4Z"/>
+      <polygon points="2274.91 2214.05 2023.1 2214.05 2021.15 2214.05 1488.6 3349.14 957.58 2214.05 703.79 2214.05 703.79 3608.94 957.58 3608.94 957.58 2756.59 1356.31 3608.94 1366.69 3608.94 1610.16 3608.94 1620.5 3608.94 2023.1 2750.75 2023.1 3608.94 2276.92 3608.94 2276.92 2214.05 2274.91 2214.05"/>
+      <polygon points="12120.25 2568.97 12326.13 2740.09 12870.01 2286.51 12870.01 1943.86 12120.25 2568.97"/>
+      <polygon points="11255.94 2533.32 11709.53 2911.5 11255.94 3289.63 11255.94 3632.34 11914.98 3082.78 12870.01 3879.12 12870.01 3536.38 11255.94 2190.63 11255.94 2533.32"/>
+    </svg>
+    <div class="kicker"><span class="bar"></span><span class="lbl">Documento interno &middot; 20 de agosto de 2026</span></div>
+    <h1>El proceso, <em>de la consulta al cobro</em></h1>
+    <p class="lead">Los <b>16 eslabones</b> del negocio, y en cuáles de ellos el sistema ya trabaja solo.
+    Lo dictó Fede el 19/8 y no estaba escrito entero en ningún lado: hay blueprints por módulo, pero el
+    hilo completo no existía. <b>Del 7 al 16 está bien cubierto. Los flojos son los cuatro primeros</b> —
+    que es justo por donde entra la plata.</p>
+    <div class="stats">
+      <div class="stat"><div class="v">16</div><div class="k">eslabones</div></div>
+      <div class="stat"><div class="v">4</div><div class="k">ramas del trabajo</div></div>
+      <div class="stat"><div class="v">8</div><div class="k">andan solos</div></div>
+      <div class="stat"><div class="v">5</div><div class="k">a medias</div></div>
+      <div class="stat"><div class="v">3</div><div class="k">rotos, faltantes o afuera</div></div>
+    </div>
+  </div>
+</header>
+
+<section class="ramas-sec">
+  <div class="wrap">
+    <div class="sec-h">
+      <span class="lbl">Eslabón 5 &middot; la bifurcación</span>
+      <h2>Todo trabajo es una de estas cuatro cosas</h2>
+      <p>Define qué se cotiza, si hay diseño de por medio y qué circuito sigue. <b>Las cuatro ya existen
+      al final del recorrido</b> —al facturar, cada una tiene su propia cuenta contable— pero el sistema
+      todavía no las pregunta al principio. Ése es el hueco.</p>
+    </div>
+    <div class="ramas"><div class="rama"><span class="lbl">rama 1</span><h4>Stand</h4><p>Diseño y armado a medida. El circuito completo, con taller de por medio.</p></div><div class="rama"><span class="lbl">rama 2</span><h4>Expo</h4><p>La estructura de toda una exposición. Muchos módulos, un solo cliente.</p></div><div class="rama"><span class="lbl">rama 3</span><h4>Alquiler</h4><p>Equipamiento que sale y vuelve. Sin taller, sin diseño.</p></div><div class="rama"><span class="lbl">rama 4</span><h4>Electricidad</h4><p>La rama nueva. Se decidió el 19/8 que es rama propia, no un rubro.</p></div></div>
+  </div>
+</section>
+
+<section class="tl">
+  <div class="wrap"><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#F28D15">Comercial</span><span class="st warn">a mano</span></div><h3>Entra el cliente</h3><p class="d">Una consulta por WhatsApp, mail, referido o feria. Hoy alguien la anota a mano en el CRM.</p><div class="meta"><span class="mono where">Caso de CRM</span><span class="ag">Comercial</span></div><p class="nota">El agente atiende antes que Noe, no en lugar de Noe.</p></div><div class="axis"><span class="dot warn"></span><span class="n mono">01</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#F28D15">Comercial</span><span class="st warn">a medias</span></div><h3>Toma de requerimiento</h3><p class="d">Qué feria, qué fechas, cuántos m², qué marca, qué presupuesto. Hoy vive en la cabeza de Noe.</p><div class="meta"><span class="mono where">brief.js del Cotizador · 10 preguntas</span><span class="ag">Comercial</span></div><p class="nota">⚠️ El guion existe sólo para la rama STAND. Expo, alquiler y electricidad no lo tienen — y ése es el 70% del trabajo del agente.</p></div><div class="axis"><span class="dot warn"></span><span class="n mono">02</span></div><div class="spacer"></div></div><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#9B7DFF">Cotizador</span><span class="st ok">anda</span></div><h3>Presupuesto</h3><p class="d">El cotizador arma precio y saca dos PDF: el presupuesto y la propuesta comercial con renders.</p><div class="meta"><span class="mono where">App aparte · VPS</span><span class="ag">Comercial</span></div><p class="nota">El agente prearma el borrador. No manda nada.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">03</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#9B7DFF">Cotizador</span><span class="st err">roto</span></div><h3>Aprobación del cliente</h3><p class="d">El cliente dice que sí. Debería mover la cotización de estado y encender el embudo.</p><div class="meta"><span class="mono where">cotizaciones.estado</span></div><p class="nota">🔴 Nace en «borrador» y nada lo promueve. Con eso apagados quedan el kanban, la conversión por vendedor y el aging.</p></div><div class="axis"><span class="dot err"></span><span class="n mono">04</span></div><div class="spacer"></div></div><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#F28D15">Comercial</span><span class="st warn">a medias</span></div><h3>¿Qué tipo de trabajo es?</h3><p class="d">La bifurcación del negocio: stand, expo, alquiler o electricidad. Define qué se cotiza, si hay diseño y qué circuito sigue.</p><div class="meta"><span class="mono where">comprobantes.servicio · proyectos.tipo</span></div><p class="nota">Las cuatro ramas ya existen al FINAL del circuito (al facturar). Falta modelarlas al principio.</p></div><div class="axis"><span class="dot warn"></span><span class="n mono">05</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st dim">fuera del sistema</span></div><h3>Diseño y planos</h3><p class="d">3ds Max. Sale el render, el plano y la lista de materiales.</p><div class="meta"><span class="mono where">importar-3dsmax.js</span><span class="ag">Big-O prepara</span></div><p class="nota">Construido y testeado (24/24). Espera un CSV real de Meli para fijar el formato.</p></div><div class="axis"><span class="dot dim"></span><span class="n mono">06</span></div><div class="spacer"></div></div><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#4A90D9">Costos</span><span class="st ok">anda</span></div><h3>Parte técnica y económica</h3><p class="d">Qué cuesta armarlo y cuánto deja. Receta, costo por uso, margen.</p><div class="meta"><span class="mono where">calcular_receta · Rendimiento</span><span class="ag">Integridad</span></div><p class="nota">El motor de costos es una sola función en la base. El frontend nunca calcula precios.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">07</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st ok">anda</span></div><h3>Pase a taller</h3><p class="d">El proyecto entra al galpón con su lista de materiales, su checklist y sus fotos.</p><div class="meta"><span class="mono where">proyecto_componentes · Tareas</span><span class="ag">Obra</span></div><p class="nota">Las pantallas están. Falta que el taller no tenga que entrar a la app.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">08</span></div><div class="spacer"></div></div><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st ok">anda</span></div><h3>Lista de mobiliario por proveedor</h3><p class="d">Recorre los stands del evento, junta lo subalquilado y lo agrupa por proveedor.</p><div class="meta"><span class="mono where">getSubalquileresByEvento · pedido-pdf</span><span class="ag">Big-O arma</span></div><p class="nota">Ya construido, con PDF brandeado por proveedor.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">09</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st warn">a medias</span></div><h3>Pedido al proveedor</h3><p class="d">Mandarlo y perseguirlo hasta que confirme.</p><div class="meta"><span class="mono where">—</span><span class="ag">Big-O arma</span></div><p class="nota">El PDF sale solo; mandarlo y hacer el seguimiento a los 2 días es manual.</p></div><div class="axis"><span class="dot warn"></span><span class="n mono">10</span></div><div class="spacer"></div></div><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st ok">anda</span></div><h3>Pedido a taller</h3><p class="d">Qué tiene que armar cada uno y para cuándo.</p><div class="meta"><span class="mono where">Tareas · Proyectos</span><span class="ag">Big-O vigila</span></div><p class="nota">Centro de tareas con claim por pool.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">11</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st err">falta</span></div><h3>Lista de reparto</h3><p class="d">El papel que entienden los chicos del camión: cuadritos con ítems, no una planilla.</p><div class="meta"><span class="mono where">remito-pdf.js (primo hermano)</span><span class="ag">Big-O arma</span></div><p class="nota">No existe con ese formato. Es una evolución del remito, no algo nuevo.</p></div><div class="axis"><span class="dot err"></span><span class="n mono">12</span></div><div class="spacer"></div></div><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st warn">a medias</span></div><h3>Montaje en el predio</h3><p class="d">Armado, checklist, fotos, incidencias. En la feria, con el celular en la mano.</p><div class="meta"><span class="mono where">Checklist · fotos · novedades</span><span class="ag">Obra</span></div><p class="nota">Todo construido como pantallas. Bloqueado sólo por WhatsApp.</p></div><div class="axis"><span class="dot warn"></span><span class="n mono">13</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#00CC88">Operaciones</span><span class="st ok">anda</span></div><h3>Entrega</h3><p class="d">El cliente recibe y firma. Acta con firma digital en pantalla.</p><div class="meta"><span class="mono where">conforme-pdf.js</span></div><p class="nota">Firma en canvas, acta PDF con membrete.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">14</span></div><div class="spacer"></div></div><div class="row L"><div class="card"><div class="chead"><span class="dom" style="--c:#F28D15">Comercial</span><span class="st ok">anda</span></div><h3>Cierre y encuesta</h3><p class="d">NPS al cliente. Si puntúa 8 o más, se lo invita a dejar la reseña en Google.</p><div class="meta"><span class="mono where">encuesta.html</span></div><p class="nota">Verificado punta a punta en producción.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">15</span></div><div class="spacer"></div></div><div class="row Rt"><div class="card"><div class="chead"><span class="dom" style="--c:#00A9C1">Plata</span><span class="st ok">anda</span></div><h3>Facturación y cobranza</h3><p class="d">Factura con CAE real de ARCA, cobro, retenciones y el asiento contable que sale solo.</p><div class="meta"><span class="mono where">ARCA · cobranza · contabilidad</span><span class="ag">Big-O prepara</span></div><p class="nota">10 asientos automáticos verificados el 20/8, los 10 balanceados.</p></div><div class="axis"><span class="dot ok"></span><span class="n mono">16</span></div><div class="spacer"></div></div></div>
+</section>
+
+<section class="cierre">
+  <div class="wrap">
+    <div class="sec-h">
+      <span class="lbl">Dónde entra cada agente</span>
+      <h2>Quién se ocupa de qué</h2>
+      <p>El plan completo vive en <b>docs/agentes-roadmap-v2.md</b>. En una línea: el agente no es el que
+      contesta, <b>es el que prepara</b> — y la firma es siempre de una persona.</p>
+    </div>
+    <div class="ags">
+      <div class="agc"><span class="est st ok">andando</span>
+        <h4>Integridad</h4>
+        <p>Read-only, nocturno. Mira que los números no se contradigan entre sí. No depende de nadie y no
+        puede romper nada porque no escribe. En su primera corrida encontró seis cosas reales.</p></div>
+      <div class="agc"><span class="est st warn">por construir</span>
+        <h4>Big-O</h4>
+        <p>Prepara, arma, vigila y —último— contesta. Ingiere planillas y fotos y deja un borrador para
+        aprobar. Vive adentro del Lobby, no en WhatsApp.</p></div>
+      <div class="agc"><span class="est st warn">copiloto andando</span>
+        <h4>Comercial</h4>
+        <p>Ya existe a medias en la ficha del CRM: resume solo y redacta borradores que nunca se envían
+        solos. Falta que atienda antes que Noe, no en lugar de Noe.</p></div>
+      <div class="agc"><span class="est st err">bloqueado</span>
+        <h4>Obra</h4>
+        <p>Las pantallas están todas construidas. Falta sólo la boca de WhatsApp para que el taller no
+        tenga que entrar a la app. Depende de Meta.</p></div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap foot">
+  <span>MEPEX &middot; Montaje y Equipamiento para Exposiciones &middot; desde 1983</span>
+  <span style="display:flex;align-items:center;gap:8px">
+    <svg class="iso" viewBox="0 0 9024.99 9024.99" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polygon points="4602.93 3267.07 5351.47 3889.2 7328.81 2240.09 7328.81 994.34 4602.93 3267.07"/><polygon points="1460.52 3137.38 3109.7 4512.49 1460.52 5887.36 1460.52 7133.35 3856.65 5135.28 7328.81 8030.66 7328.81 6784.47 1460.52 1891.47 1460.52 3137.38"/></svg>
+    docs/proceso-mepex.html</span>
+</div>
+
+</body></html>
