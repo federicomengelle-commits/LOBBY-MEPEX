@@ -63,6 +63,8 @@ Que producción esté sirviendo lo mismo que el repo. **Se compara por contenido
 número de versión puede estar bumpeado y el archivo servido ser el viejo, o al revés. Va cada vez que
 alguien dice que pulleó; el 20/8 sirvió para confirmar en diez segundos que el pull ya estaba hecho.
 
+> ⚠️ **Normalizar los retornos de carro antes de comparar.** El repo local está en CRLF (Windows) y prod sirve LF: sin `tr -d ''` el chequeo marca como distintos archivos que son idénticos. Pasó la misma noche que se escribió, con `crm.js` — 8.547 bytes de diferencia que eran todos ``.
+
 ### Bloque 5 · Residuos de prueba
 
 Cuenta filas cuyo nombre, concepto o número contenga marcadores de prueba (`ZZQA`, `TEST`, `PRUEBA`).
