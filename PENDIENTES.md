@@ -180,6 +180,15 @@ Salieron de frisar los archivos sueltos de la raíz (ver `docs/frisados/README.m
 - **Borrar `modules.js`.** El 14/8 se sacó del loader: eran **216 KB muertos** que se bajaban y ejecutaban en cada carga (el renderer genérico se quedó sin puerta de entrada — `#clientes` redirige a `crm`, ninguna ruta llama a `Modules`). El archivo sigue en el repo con la cabecera que lo explica. **Borrarlo cuando lleve unas semanas en producción sin que nadie note nada** — mismo criterio que los DROPs de D4.
 - **Verificar en prod la ficha de cliente del CRM.** Mismo día se arregló `crm.js:5484`: filtraba los proyectos por **nombre** de cliente cuando la API devuelve el **UUID** desde el rename de mayo, así que la ficha decía **"0 proy." y "Sin proyectos" para todos**. El fix es de una línea y calca el idioma que ya usaba el contador de la tabla, pero **la pantalla necesita sesión iniciada y el preview local no la tiene** → se mira en el próximo rato con Fede logueado (abrir un cliente que tenga proyectos y ver que los liste).
 
+**Qué hace cada arreglo, en una línea:**
+
+- **F1 · Electricidad como rama fiscal** — cuenta nueva `4.1.05 Ventas — Electricidad`, `SRV-ELEC` sumado al CHECK de `comprobantes.servicio` y a su mapeo, y la opción "Instalación eléctrica" en el wizard de emisión y en el editor de mapeos. Verificado: una factura de electricidad ahora postea a su propia cuenta.
+- **F2 · Costo directo vs. estructura** — `campo_origen` nuevo `categoria_directo` en `mapeo_cuentas`, que sólo aplica cuando el egreso está imputado a un proyecto o evento. Verificado con los cuatro casos: *jornales del evento* → `5.1.04 Mano de obra directa` · *sueldo de administración* → `5.2.01 Sueldos` · *subalquiler para el evento* → `5.1.02 Proveedores/subcontratistas` · *alquiler de la oficina* → `5.2.02 Alquiler oficina`. **Estrena la cuenta `5.1.04`, que existía desde el diseño del plan y nunca había recibido un movimiento** — con esto el Estado de Resultados puede mostrar margen bruto de verdad.
+- **F3 · El proyecto que nace del CRM** — nombre `<Rama> <Cliente> — <Evento>` (verificado: *"Electricidad ZZQA Retest SA — ZZQA Retest Expo"*, antes se llamaba sólo como el evento), copia la rama a `proyectos.tipo` y hereda el vendedor como responsable. **Y deja de escribir `proyecto_tipos`**: se verificó que es OTRA taxonomía (`stand_full`, `alquiler_equipamiento`, `infraestructura`, `iluminacion`, `grafica`, `mas_servicios` = los servicios del proyecto, no la rama), así que meter la rama ahí mezclaba dos clasificaciones.
+- **F4 · Sync cuota↔cobro** — se generalizó el recálculo existente en una función única (`fn_recalcular_cuota_plan`) que mira **las dos** fuentes (`cobro_aplicaciones` e `ingresos.plan_cobro_item_id`, sin doble contar), y se la disparó también desde `ingresos`. **No se agregó un segundo motor.** Verificado: cobrar deja la cuota en `cobrado` con el monto, y anular el cobro la devuelve a `pendiente` en $0 — un caso que antes ni siquiera se actualizaba.
+
+**Lo que el `sql-reviewer` cazó y no se me había ocurrido:** el rollback de F4 dropeaba `fn_recalcular_cuota_plan` **antes** de restaurar la función vieja, y como Postgres no trackea la dependencia de una llamada dentro del cuerpo de otra función plpgsql, el DROP pasaba sin error y **la próxima cobranza reventaba**. El rollback ahora restaura primero y no dropea esa función. Más: `REVOKE` de la función nueva (toda función nueva nace con EXECUTE para PUBLIC ⊃ `anon`), y el branch de `cobro_aplicaciones` no descartaba cobros anulados — gap heredado que se cerró de paso.
+
 ---
 
 ## D · Decisiones pendientes (una palabra tuya y las ejecuto)
@@ -230,6 +239,84 @@ Salieron de frisar los archivos sueltos de la raíz (ver `docs/frisados/README.m
 - **Marketing / base de clientes** — el norte del frente CRM. **Falta el combustible:** 254 clientes y sólo ~15% con datos de contacto útiles. Lo único que falta para arrancar son **archivos tuyos** (export de Google Contacts, agenda de WhatsApp, listas de expositores, facturas con CUIT). El importador ya está construido. Plan: `docs/PLAN-BASE-CLIENTES.md` y `docs/PLAN-MARKETING.md`.
 - **Cotizador → leer `cotizacion_items` estructurada** en vez de parsear el PDF, cuando su refactor se asiente.
 - **Opcionales de seguridad** (sólo si Jordi los pide): MFA obligatorio para admin + gate AAL2 en finanzas · sacar `'unsafe-eval'` de la CSP · PII de RRHH por `fn_role_can` · budget cap en la consola de Anthropic.
+
+---
+
+## G · De la charla de agentes (2026-08-19/20)
+
+Salió de contrastar `MEPEX_Agentes_IA_Roadmap_2026_1.pdf` (marzo) con el sistema de hoy. El análisis
+completo vive en la memoria `project_agentes_ia_roadmap_v2`; el hilo del negocio, en
+`project_proceso_end_to_end_mepex`. **Nada de esto es urgente — lo urgente es §H.**
+
+- **G1 · Modelar el eslabón 5 — las cuatro ramas.** El trabajo se bifurca en **stand · expo ·
+  alquiler · electricidad**, y el sistema no modela esa decisión en ningún lado. Electricidad quedó
+  decidida como **rama propia**, no como rubro dentro de alquiler. Va con documentación de negocio:
+  qué es cada rama y con qué se cotiza, escrito para la gente.
+- **G2 · El brief sólo cubre una rama.** `brief.js` del Cotizador ("BRIEF EXPRESS — 10 preguntas":
+  superficie, ubicación, altura, piso, gráfica, iluminación, atención, electrónica, servicios) está
+  escrito **para stand**. Faltan los guiones de expo, alquiler y electricidad. Es el prerequisito del
+  agente de onboarding: sin guion no hay chatbot que tome un requerimiento.
+- **G3 · Hoja membretada MEPEX única.** Hay **8 archivos generando PDF con jsPDF**, cada uno con su
+  header a mano (`conforme-pdf`, `pedido-pdf`, `remito-pdf`, `plano-pdf` + embebidos en costos,
+  finanzas, contabilidad y catálogo). Unificar en una hoja base de la que hereden los ocho. Pieza
+  chica con efecto en cascada: después, cada documento nuevo sale brandeado gratis.
+- **G4 · Plan de branding definitivo.** Pedido de Fede: meterle el branding definitivo a todo, no
+  sólo a los PDF. Hay que planearlo aparte.
+- **G5 · Lista de reparto para los chicos.** El formato que ellos entienden: cuadritos con ítems,
+  visual, funcional. Es una evolución de `remito-pdf.js`, no algo nuevo.
+- **G6 · Cadena de seguimiento del CRM.** Secuencias con trigger (a los N días, si no contestó) por
+  WhatsApp y mail — remarketing y seguimiento. **Ojo antes de traer Mailchimp: ya hay Listmonk en el
+  VPS** y el blueprint del CRM tenía a Brevo como candidato. Decidir con qué se hace antes de sumar
+  un tercero.
+- **G7 · Productizar el Lobby.** Visión de Fede: terminarlo, usarlo todos los días, y después
+  desvincularlo para venderlo modulado a otras empresas. Conecta con el carril 3 de Mira
+  (`APPS ANTIGRAVITY/Agencia Apps IA`), que hoy es el único sin producto armado.
+
+---
+
+## H · Lo urgente: la puesta en uso con el equipo (2026-08-20)
+
+Fede presenta el Lobby y **el equipo empieza a usarlo de verdad**, en las PC de la oficina.
+
+- **H1 · Cuatro egresos de prueba vivos en producción.** Del 7/8, no anulados: `Sofi` $120 (×2),
+  `Sofia Sueldo julio` $120, `SUELDO AGOSTO` $100. Todo el resto del libro está anulado y compensado
+  (partida doble cuadrada, DEBE = HABER = $35.970.720 sobre 33 asientos). **Con Sofi en la sala, esos
+  cuatro conceptos se ven mal.** Anularlos o dejarlos es decisión de Fede.
+- **H2 · La pasada de humo ✅ HECHA (2026-08-20).** 10 casos completos (2 stands, 2 expos, 2 alquileres,
+  1 de electricidad, 1 compra a proveedor, 1 de tesorería) recorriendo los eslabones 1 a 16: cliente →
+  cotización → aprobación → proyecto → plan de pagos → factura → cobro → taller → contabilidad. Medios
+  de pago: transferencia, efectivo, e-cheq, plan 50/50 y plan 30/40/30. Canales oficial e interno.
+  **Cleanup exacto verificado**: los 18 contadores volvieron idénticos a la foto previa (33 asientos,
+  DEBE=HABER=$35.970.720) y 0 residuos.
+
+  **Lo que anduvo perfecto:** 10 asientos automáticos, **todos balanceados** · IVA desglosado en las 10 ·
+  ruteo por servicio a la cuenta de venta correcta (Stands / Alquileres / Estructura Expo / Adicionales) ·
+  cobro sin factura → **Anticipos de clientes**, no Ventas (criterio contable correcto) · e-cheq →
+  **Cheques a cobrar sin tocar el banco** · IVA crédito fiscal en la compra · transferencia interna ·
+  ciclo de taller con completitud 25/50/100 · partida doble $0, 0 drift, 0 movimientos sin asiento ·
+  el trigger de creación de proyecto **es idempotente** (no duplicó ninguno de los 7 que ya existían).
+
+### Hallazgos de la pasada de humo (2026-08-20)
+
+> **✅ Los cuatro estructurales ya están arreglados, aplicados a producción y re-verificados**
+> (`sql/fixes_pasada_humo_20260820.sql`, pasó por el `sql-reviewer` — Block con 1 HIGH real, corregido).
+> Lo que sigue abierto está marcado como **abierto** en la tabla.
+>
+> **Además se limpiaron los movimientos de prueba del 7/8**: se anularon los 4 egresos (`Sofi`,
+> `Sofia Sueldo julio`, `SUELDO AGOSTO`) y se borraron **3 asientos manuales huérfanos** que el
+> mismo día habían cargado el mismo sueldo por la otra puerta — nadie podía anularlos desde
+> Finanzas porque no colgaban de ningún movimiento. **Todas las cuentas quedaron en $0,00.**
+
+
+| | Hallazgo | Gravedad |
+|---|---|---|
+| **H3** ✅ | **ARREGLADO.** El proyecto que nacía de una cotización aprobada nacía inservible: `trigger_cotizacion_aprobada_crea_proyecto` lo llama **con el nombre del EVENTO** (tres stands de la misma expo → tres proyectos llamados igual), **sin `tipo`** (se pierde la rama), y **sin responsable**. Además intenta escribir `proyecto_tipos` desde `NEW.tipo_evento`, que **viene NULL siempre** — y el `EXCEPTION WHEN OTHERS THEN NULL` se traga el fallo **en silencio**. Verificado: el proyecto creado por el trigger quedó con `tipo=null` y 0 filas en `proyecto_tipos`. Es el único punto donde el sistema intenta clasificar la rama, y falla callado | **Alta** |
+| **H4** ✅ | **ARREGLADO.** Un subalquiler de mobiliario para un stand se contabilizaba en `5.2.02 Alquiler oficina`. El `mapeo_cuentas` manda la categoría `alquiler` a la cuenta de alquiler de estructura. Efecto: **infla el gasto de estructura y subestima el costo directo del evento** → el margen por evento sale mal en los dos sentidos. Es un mapeo, no código | **Alta** |
+| **H5** ✅ | **ARREGLADO.** El sync cuota↔cobro vivía sólo en JavaScript. Un cobro vinculado a su cuota (`plan_cobro_item_id` correcto) dejó la cuota en `monto_cobrado = 0` / `estado = pendiente`. Por la pantalla anda (lo hace `api.js`), pero **cualquier carga que no pase por ahí** —un importador, una carga masiva, un agente— deja el plan de pagos desactualizado **sin ningún error**. Es exactamente el riesgo que introduce un agente que escribe (ver `project_agentes_ia_roadmap_v2`) | **Media** |
+| **H6** ✅ | **ARREGLADO.** Electricidad no tenía rama fiscal: Al facturar cae en `SRV-ADIC` → cuenta **"Ventas — Servicios adicionales"**, mezclada con cualquier otro adicional. Si es una rama de negocio, **hoy no se puede medir su rentabilidad por separado**. Confirma G1 con evidencia contable | **Media** |
+| **H7** ⏳ | **ABIERTO** (necesita columna + UI de vinculación). **La nota de crédito no baja la factura** (pendiente ya conocido, ahora medido): emití $38.720.000 en facturas y una NC por $7.260.000 que anula una de ellas; la factura anulada **sigue figurando como cobrable** y el facturado sigue contándola | **Media** |
+| **H8** ✅ | **ARREGLADO** (los 4 egresos anulados + los 3 asientos huérfanos borrados). `1.1.01 Efectivo (mano)` tenía saldo −$100. Una caja de efectivo no puede estar en negativo. Viene de los egresos de prueba del 7/8 (ver H1) | Baja |
+| **H9** ⏳ | *Observación abierta, no bug:* una transferencia interna **hereda el canal del origen**, así que plata que entra a una cuenta con `canal_default='interno'` queda contabilizada en canal oficial y la cuenta aparece partida en dos canales. Contablemente es defendible (una transferencia no debería cambiar de canal), pero conviene decidirlo a propósito | Baja |
 
 ---
 

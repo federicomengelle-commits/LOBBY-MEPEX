@@ -5436,20 +5436,26 @@ const ContabilidadModule = {
         const tipo0 = m.tipo_movimiento || 'ingreso';
 
         // Valores válidos que leen los triggers fn_asiento_auto_ingreso/egreso:
-        //   ingreso → campo_origen='servicio' (SRV-*) | 'default' (genérico)
-        //   egreso  → campo_origen='categoria'        | NULL      (genérico)
-        const SERVICIOS = ['SRV-STAND', 'SRV-ALQUILER', 'SRV-EXPO', 'SRV-ADIC'];
+        //   ingreso → campo_origen='servicio' (SRV-*)     | 'default' (genérico)
+        //   egreso  → campo_origen='categoria'            | 'default' (genérico)
+        //             + 'categoria_directo' (2026-08-20): misma categoría, pero
+        //               sólo cuando el egreso está imputado a un proyecto o evento
+        //               → manda a la cuenta de COSTO DIRECTO en vez de estructura.
+        //               Tiene prioridad sobre 'categoria' en el lookup del trigger.
+        const SERVICIOS = ['SRV-STAND', 'SRV-ALQUILER', 'SRV-EXPO', 'SRV-ELEC', 'SRV-ADIC'];
         const CATEGORIAS = ['proveedor', 'rrhh', 'impuesto', 'servicio', 'credito_fiscal', 'alquiler', 'logistica', 'otro'];
         const campoOpts = (t, sel) => t === 'ingreso'
             ? `<option value="servicio" ${sel === 'servicio' ? 'selected' : ''}>Por servicio del comprobante</option>
                <option value="default"  ${sel !== 'servicio' ? 'selected' : ''}>Genérico — cobro sin factura</option>`
             : `<option value="categoria" ${sel === 'categoria' ? 'selected' : ''}>Por categoría del egreso</option>
-               <option value=""          ${sel !== 'categoria' ? 'selected' : ''}>Genérico — cualquier egreso</option>`;
+               <option value="categoria_directo" ${sel === 'categoria_directo' ? 'selected' : ''}>Por categoría — sólo si está imputado a proyecto/evento (costo directo)</option>
+               <option value=""          ${(sel !== 'categoria' && sel !== 'categoria_directo') ? 'selected' : ''}>Genérico — cualquier egreso</option>`;
         const valorOpts = (t) => (t === 'ingreso' ? SERVICIOS : CATEGORIAS).map(v => `<option value="${v}"></option>`).join('');
 
-        const isEspEx = m.campo_origen === 'servicio' || m.campo_origen === 'categoria';
+        const isEspEx = m.campo_origen === 'servicio' || m.campo_origen === 'categoria'
+                     || m.campo_origen === 'categoria_directo';
         const campoSel0 = isEdit ? (isEspEx ? m.campo_origen : '') : (tipo0 === 'ingreso' ? 'servicio' : 'categoria');
-        const esEspecifico0 = campoSel0 === 'servicio' || campoSel0 === 'categoria';
+        const esEspecifico0 = campoSel0 === 'servicio' || campoSel0 === 'categoria' || campoSel0 === 'categoria_directo';
 
         const cuentaOptions = (this._cuentasImputables || []).map(c =>
             `<option value="${c.id}" ${String(c.id) === String(m.cuenta_contable_id) ? 'selected' : ''}>${c.codigo} · ${escHtml(c.nombre)}</option>`
@@ -5516,7 +5522,8 @@ const ContabilidadModule = {
             const valorWrap = document.getElementById('mapeoValorWrap');
             const valorListEl = document.getElementById('mapeoValorList');
             const toggleValor = () => {
-                const esp = campoEl?.value === 'servicio' || campoEl?.value === 'categoria';
+                const v = campoEl?.value;
+                const esp = v === 'servicio' || v === 'categoria' || v === 'categoria_directo';
                 if (valorWrap) valorWrap.style.display = esp ? '' : 'none';
             };
             document.getElementById('mapeoTipo')?.addEventListener('change', (e) => {
@@ -5555,8 +5562,11 @@ const ContabilidadModule = {
             if (campoRaw === 'servicio') { campo = 'servicio'; valor = valorRaw || null; }
             else                         { campo = 'default';  valor = 'default'; }
         } else {
-            if (campoRaw === 'categoria') { campo = 'categoria'; valor = valorRaw || null; }
-            else                          { campo = 'default';   valor = 'default'; }
+            if (campoRaw === 'categoria' || campoRaw === 'categoria_directo') {
+                campo = campoRaw; valor = valorRaw || null;
+            } else {
+                campo = 'default'; valor = 'default';
+            }
         }
         // posicion (text NOT NULL) = lado donde cae la cuenta mapeada. Los triggers
         // hoy lo hardcodean; lo dejamos coherente: ingreso→haber, egreso→debe.
@@ -5564,7 +5574,7 @@ const ContabilidadModule = {
 
         if (!tipo) { Toast.error('Tipo de movimiento es obligatorio'); return; }
         if (!cuenta) { Toast.error('Tenés que elegir la cuenta contable destino'); return; }
-        const esEspecifico = campo === 'servicio' || campo === 'categoria';
+        const esEspecifico = campo === 'servicio' || campo === 'categoria' || campo === 'categoria_directo';
         if (esEspecifico && !valor) {
             Toast.error(tipo === 'ingreso' ? 'Elegí el servicio a matchear (SRV-…)' : 'Elegí la categoría a matchear');
             return;

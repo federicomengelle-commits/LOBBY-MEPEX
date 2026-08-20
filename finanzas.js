@@ -7204,6 +7204,7 @@ const FinanzasModule = {
         'SRV-STAND':    'Stand / Montaje',
         'SRV-ALQUILER': 'Alquiler equipamiento',
         'SRV-EXPO':     'Servicio exposición',
+        'SRV-ELEC':     'Instalación eléctrica',
         'SRV-ADIC':     'Adicionales',
     },
 
