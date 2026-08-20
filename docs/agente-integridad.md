@@ -44,6 +44,8 @@ Tarda menos de un minuto. Se puede correr cuando se quiera; lo natural es:
 | **Ítems cotizables con precio < costo** | Se está cotizando a pérdida |
 | **Ítems cotizables en $0** | Se puede cotizar gratis sin que nada avise |
 | **Precios desfasados** | El precio cacheado no coincide con la receta. Ya tiene su chip en la pantalla de Costos (`v_catalogo_precio_desfasado`), acá va el conteo |
+| **Cotizables sin costo cargado** | Un ítem marcado `es_cotizable` que no tiene ni componentes ni `costo_proveedor_directo`. **Es peor que «precio en $0»**: ése se puede corregir recalculando, éste no tiene de dónde sacar el número. Agregado el 20/8 tras encontrar `Silla Jacobsen` publicada al Cotizador en cero |
+| **Cotizaciones sin líneas** | Una cotización sin filas en `cotizacion_items`: tiene monto total y nadie sabe qué se cotizó. Agregado el 20/8, cuando resultó que **las tres cotizaciones vivas estaban así** |
 
 ### Bloque 3 · Operación
 
@@ -55,7 +57,13 @@ Tarda menos de un minuto. Se puede correr cuando se quiera; lo natural es:
 | **Cotizaciones en borrador** | El embudo comercial no avanza (ver §C3 de `PENDIENTES.md`) |
 | **Tareas vencidas sin cerrar** | Trabajo caído |
 
-### Bloque 4 · Residuos de prueba
+### Bloque 4 · El deploy
+
+Que producción esté sirviendo lo mismo que el repo. **Se compara por contenido, no por el `?v=`** — el
+número de versión puede estar bumpeado y el archivo servido ser el viejo, o al revés. Va cada vez que
+alguien dice que pulleó; el 20/8 sirvió para confirmar en diez segundos que el pull ya estaba hecho.
+
+### Bloque 5 · Residuos de prueba
 
 Cuenta filas cuyo nombre, concepto o número contenga marcadores de prueba (`ZZQA`, `TEST`, `PRUEBA`).
 **La convención del repo es que toda carga de prueba lleve `ZZQA` en el nombre**, justamente para que
@@ -104,3 +112,7 @@ de sobra, porque todo esto es lectura.
   actualizaba, la electricidad sin cuenta propia, 3 asientos manuales huérfanos que dejaban una caja
   en negativo, y 11 componentes de receta apuntando a insumos borrados (uno dentro de 66 recetas).
   Los cuatro primeros se arreglaron ese día; los otros dos se limpiaron.
+- **2026-08-20b · crece con lo aprendido.** Se le suman tres chequeos que esa noche hubo que hacer a
+  mano: **cotizables sin costo cargado** (encontró `Silla Jacobsen` publicada al Cotizador en $0),
+  **cotizaciones sin líneas** (las tres vivas lo estaban) y **el deploy comparado por contenido**.
+  La regla que queda: *lo que se encontró a mano una vez, la próxima lo encuentra el agente.*
