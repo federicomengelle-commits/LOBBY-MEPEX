@@ -437,7 +437,7 @@ Defaults: si no hay snapshot del item, usa `parametros_globales` actuales. Si es
 | `parametros_globales` | Key-value de defaults globales. Activos: `hora_taller_ars`, `pct_indirectos_fabrica`, `pct_margen_default`. Resto legacy. |
 | `proveedor` | Catálogo de proveedores (id es **UUID**, no integer). Usado en combobox de Insumos y Subalquilado. |
 | `cotizaciones` | Cotizaciones del pipeline comercial |
-| `pipeline_comercial` | Estados y seguimiento de cotizaciones |
+| ~~`pipeline_comercial`~~ | ⚠️ **NO EXISTE en producción** (verificado 2026-08-20). La crea `sql/v4_pyme_integration.sql`, que es de la integración con **La PyME — deprecada**, y ese SQL nunca se corrió o se revirtió. **Ningún JS la consulta.** El pipeline comercial real vive en `crm_casos` (estado del caso) y en `cotizaciones.estado`. |
 | `audit_logs` | Registro de auditoría del sistema. Tabla creada en Fase A contabilidad (2026-05-19). Trigger automático en `asientos` (INSERT/UPDATE/DELETE). Solo admin/superadmin lee. |
 
 ### Schema real de Finanzas y Contabilidad (verificado 2026-05-19)
