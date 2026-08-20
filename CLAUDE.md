@@ -151,12 +151,12 @@ LOBBY-MEPEX/
 ├── auth.js                 # Supabase Auth: login/logout/session restore, perfiles, RBAC
 │
 ├── components.js           # UI reutilizables: Toast, Modal, ContextMenu, Confirm, FormBuilder
-├── sidebar-editor.js       # Editor de sidebar: drag & drop, inline rename, color picker, undo
 ├── undo.js                 # Sistema undo/redo: UndoManager + UndoUI + UndoHelpers
 │
 ├── app.js                  # App Shell: header global + sidebar + search global + bootstrap
 ├── lobby.js                # Vista Lobby: KPIs reales, mini calendario, bloques de categorias
-├── calendar.js             # Calendario global: grilla mensual CSS, filtros por tipo
+├── compositor.js           # Compositor OCTEXA (83 KB) + compositor-piezas.js + plano-pdf.js
+├── badges.js               # Contadores de las entradas del sidebar
 ├── calendario-operativo.js # Timeline vertical operativo: carriles por evento, fases, zoom
 ├── eventos.js              # Modulo Eventos: tabla + cards + ficha con secciones editables
 ├── modules.js              # Renderer generico de modulos (~4350 lineas): tablas, fichas, CRUD
@@ -229,7 +229,7 @@ y `f275601` tienen el mismo olvido, o sea que no era un desliz aislado.)*
 | **Proyectos** | `modules.js` | Completo | Tabla + ficha, vinculacion a eventos y clientes |
 | **Eventos** | `eventos.js` | Completo | Tabla + cards + ficha por secciones editables, deteccion conflictos |
 | **Calendario Operativo** | `calendario-operativo.js` | Completo | Timeline vertical, carriles, fases (armado/func/desarme), zoom, filtros, card view |
-| **Calendario Global** | `calendar.js` | Completo | Grilla mensual CSS, filtros por tipo, panel detalle |
+| ~~**Calendario Global**~~ | ~~`calendar.js`~~ | ⚠️ **NO EXISTE — borrado.** Verificado el 2026-08-20: el archivo no está en el repo, no hay global `Calendar` y **no hay ruta**; `#calendario` va a `CalendarioOperativo`. §10 ya decía *«está muerto y borrado»* desde el 2026-06-20, pero esta tabla lo seguía dando por **Completo** — o sea que CLAUDE.md se contradecía a sí mismo. | — |
 | **Produccion** | `modules.js` | En desarrollo | Tabla basica, ficha |
 | **Inventario** | `modules.js` | En desarrollo | Insumos base + catalogo items con receta, selects editables |
 | **Costos** | `costos.js` | **Completo** | 4 tabs (Insumos / Recetas / Listas de precio / Parámetros). Cálculo via RPC PL/pgSQL `calcular_receta`. Soporta items propios y subalquilados, BOM jerárquico, snapshots, márgenes por item, VU armado "duro" (regla 1:N), exportar PDF en 3 modos. **Ver sección 6.5 — Modelo de Costeo.** |
@@ -240,7 +240,9 @@ y `f275601` tienen el mismo olvido, o sea que no era un desliz aislado.)*
 | **Proveedores** | `modules.js` | Pendiente | Estructura registrada, sin funcionalidad |
 | **Admin Panel** | `admin-panel.js` | Completo | Metricas del sistema, tabla usuarios, audit log feed |
 | **Settings** | `settings.js` | Completo | Mi Perfil, Usuarios y Roles (admin), Notificaciones |
-| **Sidebar Editor** | `sidebar-editor.js` | Completo | Drag & drop secciones/items, inline rename, color picker, undo |
+| ~~**Sidebar Editor**~~ | ~~`sidebar-editor.js`~~ | ⚠️ **NO EXISTE — borrado.** Mismo caso: sin archivo, sin global `SidebarEditor`, sin ruta. §10 lo dice desde el 2026-07-28 (*«`_configVersion`/`sidebar-editor.js` ya no existen`»*): hoy `app.js` arma el sidebar directo de `Data.categories`. | — |
+| **Compositor OCTEXA** | `compositor.js` (83 KB) + `compositor-piezas.js` + `plano-pdf.js` | Parkeado | Vive dentro de `#stands`. **Fede decidió que el diseño se hace en 3ds Max** y el compositor 2D no se prioriza — ver memoria `feedback_compositor_vs_3dsmax`. Sigue cargándose. |
+| **Badges** | `badges.js` | Completo | Los contadores que aparecen en las entradas del sidebar |
 | **Undo System** | `undo.js` | Completo | Undo/redo en memoria + audit_log persistente + soft delete |
 
 ### Roles y permisos
