@@ -268,6 +268,13 @@ completo vive en la memoria `project_agentes_ia_roadmap_v2`; el hilo del negocio
   WhatsApp y mail — remarketing y seguimiento. **Ojo antes de traer Mailchimp: ya hay Listmonk en el
   VPS** y el blueprint del CRM tenía a Brevo como candidato. Decidir con qué se hace antes de sumar
   un tercero.
+- **G8 · La rama Electricidad, también en el Cotizador** *(pedido de Fede, 2026-08-20)*. El lobby ya
+  la tiene: cuenta `4.1.05 Ventas — Electricidad` y servicio `SRV-ELEC` (aplicados y verificados el
+  20/8). Falta el otro lado. **Cómo tiene que comportarse, según Fede: igual que los stands** — la
+  rama puede llevar un montón de ítems adentro, pero **el presupuesto NO los discrimina**: muestra
+  **un número total**. A lo sumo se puede abrir **por zona o espacio**, nunca ítem por ítem. Es
+  coordinación con el repo del Cotizador (`COTIZADOR-MEPEX`), no trabajo del lobby; entra en el
+  mismo lote que C3 (que el Cotizador escriba `estado` y `vendedor_id`).
 - **G7 · Productizar el Lobby.** Visión de Fede: terminarlo, usarlo todos los días, y después
   desvincularlo para venderlo modulado a otras empresas. Conecta con el carril 3 de Mira
   (`APPS ANTIGRAVITY/Agencia Apps IA`), que hoy es el único sin producto armado.
