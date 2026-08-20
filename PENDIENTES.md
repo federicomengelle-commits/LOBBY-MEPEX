@@ -119,6 +119,18 @@ Los 9 circuitos: venta · compra · evento · proyecto-taller · costos · inven
 **Va después de A y B**, porque varios circuitos necesitan datos reales (jornales, stock mínimo) y un usuario
 `taller` de verdad para probarse.
 
+> **📉 La pasada de humo del 2026-08-20 le comió una buena parte, pero conviene saber exactamente cuál.**
+> Cubrió **6 de los 9 circuitos** —venta, compra, evento, proyecto-taller, tesorería y contabilidad—
+> con 10 casos completos y cleanup exacto. **Pero los probó por la base, no por las pantallas:** SQL,
+> triggers, RPCs y mapeos contables. **Lo que queda de la Tanda 7 es, sobre todo, lo que sólo se ve
+> usándolo:**
+> - **los mismos 6 circuitos por UI** — que la pantalla haga lo que hace la base (ahí vivían los tres
+>   últimos bugs de cobranza que se cazaron: modales, races y filtros, no plomería)
+> - **inventario** — no se tocó, y además hoy no tiene datos con los que probarse
+> - **costos** — sólo se verificó integridad, no el flujo de editar una receta
+> - **el transversal completo** — 28 tipos de notificación × canales, los 5 roles, PWA, push y RLS.
+>   **Es el circuito más grande de los nueve y el que menos se puede cubrir por SQL**
+
 ### C2 · Ver las PROPUESTAS del cotizador desde el lobby *(pedido nuevo, 2026-08-05)*
 
 El cotizador arma propuestas comerciales brandeadas con **renders de stands**, y desde el lobby **no se ven**:
@@ -128,7 +140,7 @@ se ven los presupuestos, no las propuestas — que es la pieza que el cliente ef
 trae `cliente`, `evento`, `modo`, `total`, `ref` y **`pdf_url`**, y **ya tiene sus 4 policies** — la nota de T0.2
 que decía "cero policies" quedó vieja, se arregló en la misma tanda. No hace falta SQL.
 
-**⚠️ Pero falta el cableado, y ahí hay una decisión:** `cotizacion_id` está **NULL en las 5** y `ref` sólo en una,
+**⚠️ Pero falta el cableado, y ahí hay una decisión — re-medido el 2026-08-20, sigue exactamente igual: 5 propuestas, las 5 con `pdf_url`, `cotizacion_id` NULL en las 5, `ref` en una sola, y el bucket sigue público:** `cotizacion_id` está **NULL en las 5** y `ref` sólo en una,
 así que **no hay join confiable con la cotización ni con el cliente** (`cliente` y `evento` son texto libre).
 Las opciones: matchear por `ref` cuando esté · matchear por nombre de cliente (frágil) · **pedirle al cotizador
 que escriba el `cotizacion_id`**, que es la buena. Es un flujo a diagramar juntos antes de codear.
@@ -178,10 +190,7 @@ Apenas esté: procesador `wa_eventos` → timeline del CRM, y el botón de Whats
 Salieron de frisar los archivos sueltos de la raíz (ver `docs/frisados/README.md` §3). Ninguno urge.
 
 - **Borrar `modules.js`.** El 14/8 se sacó del loader: eran **216 KB muertos** que se bajaban y ejecutaban en cada carga (el renderer genérico se quedó sin puerta de entrada — `#clientes` redirige a `crm`, ninguna ruta llama a `Modules`). El archivo sigue en el repo con la cabecera que lo explica. **Borrarlo cuando lleve unas semanas en producción sin que nadie note nada** — mismo criterio que los DROPs de D4.
-- **Verificar en prod la ficha de cliente del CRM.** Mismo día se arregló `crm.js:5484`: filtraba los proyectos por **nombre** de cliente cuando la API devuelve el **UUID** desde el rename de mayo, así que la ficha decía **"0 proy." y "Sin proyectos" para todos**. El fix es de una línea y calca el idioma que ya usaba el contador de la tabla, pero **la pantalla necesita sesión iniciada y el preview local no la tiene** → se mira en el próximo rato con Fede logueado (abrir un cliente que tenga proyectos y ver que los liste).
-
-**Qué hace cada arreglo, en una línea:**
-
+- **Verificar en prod la ficha de cliente del CRM.** El 14/8 se arregló `crm.js:5484`, que filtraba los proyectos por **nombre** de cliente cuando la API devuelve el **UUID** desde el rename de mayo — la ficha decía **"0 proy." y "Sin proyectos" para todos**. **Verificado el 2026-08-20: el fix está en el `crm.js` que sirve producción** (comparado por contenido, normalizando CRLF: prod y repo son idénticos, y el patrón del fix aparece 3 veces en el archivo servido). **Lo único que queda es tu mirada**: abrir un cliente que tenga proyectos y ver que los liste — necesita sesión iniciada y el preview local no la tiene.
 - **F1 · Electricidad como rama fiscal** — cuenta nueva `4.1.05 Ventas — Electricidad`, `SRV-ELEC` sumado al CHECK de `comprobantes.servicio` y a su mapeo, y la opción "Instalación eléctrica" en el wizard de emisión y en el editor de mapeos. Verificado: una factura de electricidad ahora postea a su propia cuenta.
 - **F2 · Costo directo vs. estructura** — `campo_origen` nuevo `categoria_directo` en `mapeo_cuentas`, que sólo aplica cuando el egreso está imputado a un proyecto o evento. Verificado con los cuatro casos: *jornales del evento* → `5.1.04 Mano de obra directa` · *sueldo de administración* → `5.2.01 Sueldos` · *subalquiler para el evento* → `5.1.02 Proveedores/subcontratistas` · *alquiler de la oficina* → `5.2.02 Alquiler oficina`. **Estrena la cuenta `5.1.04`, que existía desde el diseño del plan y nunca había recibido un movimiento** — con esto el Estado de Resultados puede mostrar margen bruto de verdad.
 - **F3 · El proyecto que nace del CRM** — nombre `<Rama> <Cliente> — <Evento>` (verificado: *"Electricidad ZZQA Retest SA — ZZQA Retest Expo"*, antes se llamaba sólo como el evento), copia la rama a `proyectos.tipo` y hereda el vendedor como responsable. **Y deja de escribir `proyecto_tipos`**: se verificó que es OTRA taxonomía (`stand_full`, `alquiler_equipamiento`, `infraestructura`, `iluminacion`, `grafica`, `mas_servicios` = los servicios del proyecto, no la rama), así que meter la rama ahí mezclaba dos clasificaciones.
