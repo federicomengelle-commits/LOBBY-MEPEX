@@ -44,7 +44,7 @@ Tarda menos de un minuto. Se puede correr cuando se quiera; lo natural es:
 | **Ítems cotizables con precio < costo** | Se está cotizando a pérdida |
 | **Ítems cotizables en $0** | Se puede cotizar gratis sin que nada avise |
 | **Precios desfasados** | El precio cacheado no coincide con la receta. Ya tiene su chip en la pantalla de Costos (`v_catalogo_precio_desfasado`), acá va el conteo |
-| **Cotizables sin costo cargado** | Un ítem marcado `es_cotizable` que no tiene ni componentes ni `costo_proveedor_directo`. **Es peor que «precio en $0»**: ése se puede corregir recalculando, éste no tiene de dónde sacar el número. Agregado el 20/8 tras encontrar `Silla Jacobsen` publicada al Cotizador en cero |
+| **Cotizables sin costo NI precio** | Un ítem marcado `es_cotizable` sin componentes, sin `costo_proveedor_directo` **y sin precio**. No tiene de dónde sacar el número. Agregado el 20/8 tras encontrar `Silla Jacobsen` publicada al Cotizador en cero. ⚠️ **La condición de precio es la que lo hace útil**: sin ella devuelve 24 en vez de 1, porque hay 23 ítems con precio de mercado cargado a mano y sin receta, que son legítimos |
 | **Cotizaciones sin líneas** | Una cotización sin filas en `cotizacion_items`: tiene monto total y nadie sabe qué se cotizó. Agregado el 20/8, cuando resultó que **las tres cotizaciones vivas estaban así** |
 
 ### Bloque 3 · Operación
