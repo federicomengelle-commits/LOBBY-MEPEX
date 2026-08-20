@@ -51,6 +51,39 @@ renombró); el último barrido fue en junio y desde entonces hubo muchas migraci
 
 ## A · Lo que sólo puede hacer Fede
 
+> **📏 Re-medido el 2026-08-20 de madrugada. Tres números cambiaron desde el 6/8 y uno es de seguridad:**
+>
+> | | 6/8 | Hoy | |
+> |---|---|---|---|
+> | Personas sin jornal | 24 de 24 | **24 de 24** | la planilla de Lelean no volvió |
+> | Insumos con stock 0 | 79 de 80 | **82 de 83** | **entraron 3 insumos nuevos y ninguno con stock** |
+> | Insumos sin mínimo | 80 de 80 | **83 de 83** | ninguno |
+> | Suscripciones push | 4 | **4** | sigue sin haber un solo Android ni un equipo de taller |
+> | Cuentas admin-level activas | 8 | **9** | ⚠️ **hay una más** |
+> | Con MFA | 1 (Fede) | **1 (Fede)** | de 9 |
+>
+> 🔴 **La cuenta nueva es `Colore`, admin, creada el 2026-08-07 — y nunca se logueó** (`last_sign_in_at`
+> en NULL). Es el mismo patrón exacto por el que el 6/8 se dieron de baja Mariano Arga, Bruno Caruso y
+> Luqui: *cuentas que entraron una sola vez, el día que se las creó* — sólo que ésta ni siquiera esa vez.
+> **¿La creaste vos y para qué?** Si no tiene dueño, es una llave de admin dando vueltas.
+>
+> **El cuadro completo de las 9, para el ítem 6:**
+>
+> | Cuenta | Rol | Último acceso | MFA |
+> |---|---|---|---|
+> | Federico Mengelle | superadmin | 30/07 | ✅ |
+> | Jordi | superadmin | 30/07 | ❌ |
+> | Ana (`test@`) | superadmin | 11/07 | ❌ |
+> | Lex@ | superadmin | 26/06 | ❌ |
+> | Sofía Ramilo | admin | 28/07 | ❌ |
+> | Liliana Lopez | admin | 17/07 | ❌ |
+> | Noelia El Juri | admin | 26/06 | ❌ |
+> | Budie (prueba) | admin | **02/04, el día que se creó** | ❌ |
+> | **Colore** | admin | **nunca** | ❌ |
+>
+> El ítem 6 hablaba de **6 personas** por enrolar; con Budie y Colore adentro son **8**. Vale la pena
+> decidir esas dos antes de ponerse a enrolar, porque enrolar una cuenta que nadie usa es trabajo tirado.
+
 Son 6, y **ninguna es de código**. Las dos primeras son las que más cambian lo que el sistema muestra.
 
 | | Qué | Dónde | Por qué importa |
