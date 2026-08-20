@@ -268,6 +268,14 @@ completo vive en la memoria `project_agentes_ia_roadmap_v2`; el hilo del negocio
   WhatsApp y mail — remarketing y seguimiento. **Ojo antes de traer Mailchimp: ya hay Listmonk en el
   VPS** y el blueprint del CRM tenía a Brevo como candidato. Decidir con qué se hace antes de sumar
   un tercero.
+- **G9 · Corregir los guiones de brief de las otras tres ramas** *(2026-08-20)*. `brief.js` del
+  Cotizador tiene las 10 preguntas de **stand** y nada más. En `docs/las-cuatro-ramas.md` quedaron
+  **propuestos** los de expo, alquiler y electricidad — derivados del guion de stand, del catálogo
+  real y de las cuentas contables, pero **sin validar por nadie del área comercial**. Media hora con
+  Noe alcanza. **Es el prerequisito del agente de onboarding**: sin guion no hay chatbot que tome un
+  requerimiento, y ese guion no es trabajo de IA — es saber qué se le pregunta a un cliente. Dos
+  decisiones adentro: si **alquiler** va con brief o con catálogo visual (el Showroom se construyó
+  para eso), y si el precio de **expo** se arma por módulo o por m² totales.
 - **G8 · La rama Electricidad, también en el Cotizador** *(pedido de Fede, 2026-08-20)*. El lobby ya
   la tiene: cuenta `4.1.05 Ventas — Electricidad` y servicio `SRV-ELEC` (aplicados y verificados el
   20/8). Falta el otro lado. **Cómo tiene que comportarse, según Fede: igual que los stands** — la
