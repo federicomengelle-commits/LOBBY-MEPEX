@@ -41,7 +41,9 @@ Los cuatro momentos en que sí vale:
 | **Asientos desbalanceados** | Un asiento suelto con debe ≠ haber |
 | **Drift asiento vs. líneas** | La cabecera del asiento dice un total y sus líneas suman otro. Pasa si alguien edita líneas sin recalcular |
 | **Movimientos confirmados sin asiento** | Plata que se movió y no llegó a la contabilidad. Es el peor de los cuatro: no se ve en ningún lado hasta que no cuadra el balance |
-| **Cuentas con saldo ≠ 0** | Sólo tiene sentido como cero **mientras la base esté en blanco** (hoy lo está, desde el blanqueo del 5/8). En cuanto arranque la operación real este chequeo hay que cambiarlo por *"cuentas de caja o banco en negativo"*, que es lo que nunca puede pasar |
+| **Cuentas con saldo ≠ 0** | Sólo tiene sentido como cero **mientras la base esté en blanco**. ⚠️ **Ya dejó de estarlo**: el 20/8 se cargó el primer gasto real. Se mantiene hasta el blanqueo previo al arranque definitivo, para seguir cazando residuos de prueba; después se retira |
+| **Cuentas de tesorería en NEGATIVO** *(nuevo 23/8)* | Una caja o un banco con saldo negativo. **Es lo que nunca puede pasar**: no se puede pagar con plata que no está. Reemplaza al de arriba cuando la base tenga operación real. Lo encendió el 23/8 con `1.1.06 PagoFácil` en −$61.451,60 |
+| **Cuentas de tesorería sin contabilidad** *(nuevo 23/8)* | Una cuenta de Finanzas que **no está vinculada a ninguna cuenta del plan**. Suena menor y es de los peores: `fn_asiento_auto_egreso` busca la cuenta contable por `plan_cuentas.cuenta_financiera_id`, y si no la encuentra hace `RETURN NEW` — **el egreso se guarda y no genera asiento, en silencio**. Y el vínculo no se crea solo: crear la cuenta se hace en Finanzas, pero vincularla se hace en **Contabilidad → Plan de cuentas**, que es otro módulo. Todo lo que se pague por una cuenta sin vincular desaparece de la contabilidad sin un solo error |
 
 ### Bloque 2 · Costos y catálogo
 
