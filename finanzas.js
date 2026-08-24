@@ -5546,7 +5546,15 @@ const FinanzasModule = {
         let q = supabaseClient
             .from('comprobantes')
             .select('id, fecha, tipo, punto_venta, numero, total, cliente_id')
-            .eq('_deleted', false);
+            .eq('_deleted', false)
+            // Sólo una factura realmente EMITIDA documenta una cuota a cobrar. Un
+            // intento fallido queda como fila con estado 'error' (:8210) con su
+            // total y su cliente, y sin este filtro se ofrecía para vincular:
+            // la cuota quedaba "Facturada" contra un comprobante que no existe
+            // ante AFIP. Mismo criterio que v_saldo_comprobante (H7); acá es más
+            // estricto que en el Libro IVA a propósito, porque la pregunta es
+            // "¿esto se puede cobrar?" y no "¿esto existió?".
+            .eq('estado', 'emitida');
 
         if (plan.proyecto_id) {
             q = q.eq('proyecto_id', plan.proyecto_id);
@@ -7420,7 +7428,19 @@ const FinanzasModule = {
         let asocBlock = '';
         if (isNota) {
             const facTipo = letra === 'a' ? 'factura_a' : 'factura_b';
-            const cands = (this._factEmitidos || []).filter(c => c.tipo === facTipo && c.estado === 'emitida' && c.cae);
+            // ⚠️ SÓLO facturas DEL MISMO CLIENTE. `_factEmitidos` es el caché de
+            // TODOS los comprobantes emitidos de TODOS los clientes, y hasta el
+            // 2026-08-24 este combo los listaba a todos (por eso el label incluye
+            // el nombre del cliente). Elegir mal era inofensivo mientras el dato
+            // se descartaba; desde que `comprobante_asociado_id` baja el saldo de
+            // la factura, un click equivocado dejaría la factura de otro cliente
+            // en $0. Un trigger en la base lo rechaza igual — esto es la puerta,
+            // aquél la cerradura.
+            const mismoCliente = (c) => d.cliente_id
+                ? c.cliente_id === d.cliente_id
+                : (d.cuit_dni ? String(c.cuit_dni || '') === String(d.cuit_dni) : false);
+            const cands = (this._factEmitidos || [])
+                .filter(c => c.tipo === facTipo && c.estado === 'emitida' && c.cae && mismoCliente(c));
             const asocOpts = cands.map(c => {
                 const cli = this._clientesMap[c.cliente_id] || c.cuit_dni || '—';
                 return `<option value="${c.id}" ${d.cbte_asoc_id === c.id ? 'selected' : ''}>${(this._tipoComprobante[c.tipo] || {}).short || ''} ${c.numero || ''} · ${cli} · ${this._formatMoney(c.total)}</option>`;
@@ -7432,7 +7452,7 @@ const FinanzasModule = {
                         <option value="">— Seleccionar factura ${letra.toUpperCase()} —</option>
                         ${asocOpts}
                     </select>
-                    ${cands.length === 0 ? `<div style="color:#F28D15;font-size:0.78rem;margin-top:4px;">No hay facturas ${letra.toUpperCase()} emitidas para asociar.</div>` : ''}
+                    ${cands.length === 0 ? `<div style="color:#F28D15;font-size:0.78rem;margin-top:4px;">No hay facturas ${letra.toUpperCase()} emitidas de este cliente para asociar. Elegí primero el cliente correcto.</div>` : ''}
                 </div>
             `;
         }
@@ -7904,6 +7924,15 @@ const FinanzasModule = {
                     if (entry && cuitInput && !cuitInput.value.trim()) cuitInput.value = entry.cuit;
                 }
                 this._updateCliStatus();
+                // Si es NC/ND, el combo "Comprobante asociado" está filtrado por
+                // cliente → cambiar el cliente lo deja mostrando las facturas del
+                // anterior. Se re-renderiza (leyendo antes lo tipeado, que si no
+                // se pierde). Sólo en notas: en una factura común no hay combo que
+                // refrescar y re-renderizar costaría el foco del campo.
+                if (String(this._factWizardData.tipo || '').startsWith('nota_')) {
+                    this._readStep1();
+                    this._rerenderWizard();
+                }
             });
 
             // Estado inicial del receptor
@@ -8476,6 +8505,11 @@ const FinanzasModule = {
             estado: 'emitida',
             pdf_url: null,
             proyecto_id: d.proyecto_id || null,
+            // La factura que esta NC/ND ajusta. El wizard ya la exige (es el
+            // `CbtesAsoc` que pide AFIP) y hasta el 2026-08-24 se descartaba:
+            // por eso una nota de crédito no anulaba nada y su factura seguía
+            // apareciendo como cobrable. `v_saldo_comprobante` netea con esto.
+            comprobante_asociado_id: d.cbte_asoc_id || null,
             lapyme_response: result,   // greenfield: reusamos la columna JSONB para la respuesta ARCA
             canal: 'oficial',
             created_by: uid,

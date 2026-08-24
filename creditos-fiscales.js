@@ -333,7 +333,14 @@ const CreditosFiscales = {
         return this._safeUrl(this._urls[u]);
     },
 
-    _money(n) { return '$' + (Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 }); },
+    // Con sólo `maximumFractionDigits`, una retención de $1.210,50 se imprimía
+    // "$1.210,5". Es el libro que se le manda al contador: entero → sin
+    // decimales; con centavos → los dos, nunca uno suelto.
+    _money(n) {
+        const v = Number(n) || 0;
+        const dec = Number.isInteger(v) ? 0 : 2;
+        return '$' + v.toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    },
     _fecha(f) {
         if (!f) return '—';
         const d = new Date(String(f) + 'T00:00:00');

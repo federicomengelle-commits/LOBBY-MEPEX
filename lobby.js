@@ -894,7 +894,10 @@ const HomeModule = {
                 // resta. Sin esto, junio 2026 daba $347,10 de débito con la
                 // posición real en $0,00 (una FC B y su NC B sumándose).
                 const [v, c] = await Promise.all([
-                    db.from('comprobantes').select('iva, tipo').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta),
+                    // .neq('estado','error'): un intento fallido de emisión conserva su IVA
+                    // y sumaba a la posición como si el comprobante existiera. Mismo criterio
+                    // que el Libro IVA Ventas de contabilidad.js.
+                    db.from('comprobantes').select('iva, tipo').eq('_deleted', false).eq('canal', 'oficial').neq('estado', 'error').gte('fecha', desde).lte('fecha', hasta),
                     db.from('comprobantes_recibidos').select('iva, tipo').eq('_deleted', false).eq('canal', 'oficial').gte('fecha', desde).lte('fecha', hasta),
                 ]);
                 const sumFirmada = (rows) => (rows || []).reduce((s, r) => s + (Number(r.iva) || 0) * signoComprobante(r.tipo), 0);

@@ -4198,6 +4198,17 @@ const ContabilidadModule = {
             .select('*')
             .eq('canal', 'oficial')
             .eq('_deleted', false)
+            // Un intento FALLIDO de emisión queda como fila con estado 'error'
+            // (finanzas.js:8210) conservando neto e IVA. Sin este filtro entraba
+            // al Libro IVA Ventas —que va a la DDJJ— un comprobante que nunca
+            // existió ante AFIP. Se produce solo: cada caída de ARCA deja uno.
+            // ⚠️ Se excluye SÓLO 'error', no se exige 'emitida': un comprobante
+            // marcado 'anulada' pudo haberse emitido de verdad (AFIP lo tiene y
+            // se anula con una nota de crédito, no borrándolo), y sacarlo del
+            // libro sería el error opuesto y peor. Criterio distinto al de
+            // v_saldo_comprobante, donde la pregunta es "¿se puede cobrar?" y
+            // ahí sí sólo vale 'emitida'.
+            .neq('estado', 'error')
             .gte('fecha', desde)
             .lte('fecha', hasta)
             .order('fecha')

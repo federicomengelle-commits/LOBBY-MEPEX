@@ -34,7 +34,8 @@ const Cobranza = {
     _clienteId: null,
     _clientes: [],
     _cuentas: [],
-    _facturas: [],          // filas de v_saldo_comprobante + numero
+    _facturas: [],          // filas de v_saldo_comprobante + numero (saldo > 0: cobrables)
+    _creditos: [],          // notas de crédito sin atar a una factura = crédito a favor del cliente
     _aplic: {},             // comprobante_id -> monto aplicado (string del input)
     _retenciones: [],       // filas de la grilla
     _guardando: false,
@@ -125,13 +126,21 @@ const Cobranza = {
     /** Facturas del cliente con saldo. La vista no trae el número → se busca aparte. */
     async _cargarFacturas(token) {
         this._facturas = [];
+        this._creditos = [];
         if (!this._clienteId) return;
         try {
-            const saldos = await API.getSaldosComprobantesPorCliente(this._clienteId, { soloPendientes: true });
+            // Se piden TODOS, no sólo los pendientes, para poder separar dos cosas
+            // que el operador necesita ver juntas: lo que se puede cobrar (saldo
+            // positivo) y lo que el cliente tiene a favor (una nota de crédito que
+            // no quedó atada a ninguna factura = saldo negativo). Antes se filtraba
+            // en la query y ese crédito no aparecía en ningún lado.
+            const todos = await API.getSaldosComprobantesPorCliente(this._clienteId, { soloPendientes: false });
             if (token !== this._reqId) return;
-            if (!saldos.length) return;
+            const saldos   = (todos || []).filter(s => Number(s.saldo) >  0.01);
+            const creditos = (todos || []).filter(s => Number(s.saldo) < -0.01);
+            if (!saldos.length && !creditos.length) return;
 
-            const ids = saldos.map(s => s.comprobante_id).filter(Boolean);
+            const ids = [...saldos, ...creditos].map(s => s.comprobante_id).filter(Boolean);
             const { data: comps, error } = await supabaseClient
                 .from('comprobantes').select('id, numero, servicio, descripcion')
                 .in('id', ids);
@@ -140,9 +149,11 @@ const Cobranza = {
 
             const porId = new Map((comps || []).map(c => [c.id, c]));
             this._facturas = saldos.map(s => ({ ...s, ...(porId.get(s.comprobante_id) || {}) }));
+            this._creditos = creditos.map(s => ({ ...s, ...(porId.get(s.comprobante_id) || {}) }));
         } catch (e) {
             console.warn('[Cobranza] _cargarFacturas:', e.message);
             this._facturas = [];
+            this._creditos = [];
         }
     },
 
@@ -192,9 +203,30 @@ const Cobranza = {
         </div>`;
     },
 
+    /**
+     * Aviso de crédito a favor. Una nota de crédito que no quedó atada a ninguna
+     * factura es plata que el cliente tiene a favor, y hasta el 2026-08-24 no se
+     * veía en ningún lado: la grilla filtraba por saldo positivo. No se puede
+     * "aplicar" desde acá —una NC no se cobra— pero quien está registrando el
+     * cobro tiene que saber que existe antes de pedirle plata al cliente.
+     */
+    _bloqueCreditosHTML() {
+        if (!this._creditos || !this._creditos.length) return '';
+        const total = this._creditos.reduce((a, c) => a + Math.abs(Number(c.saldo) || 0), 0);
+        const detalle = this._creditos
+            .map(c => `${escHtml(c.numero || this._tipoLabel(c.tipo))} ${this._money(Math.abs(Number(c.saldo) || 0))}`)
+            .join(' · ');
+        return `<div class="cob-bloque cob-credito">
+            <div class="cob-credito-tit">Este cliente tiene ${this._money(total)} a favor</div>
+            <div class="cob-credito-det">${detalle}</div>
+            <div class="cob-credito-pie">Notas de crédito sin aplicar a ninguna factura. Descontalo de lo que le vayas a pedir.</div>
+        </div>`;
+    },
+
     _bloqueAplicacion() {
         if (!this._facturas.length) {
-            return `<div class="cob-bloque"><div class="cob-vacio">Este cliente no tiene facturas con saldo pendiente.</div></div>`;
+            return this._bloqueCreditosHTML()
+                + `<div class="cob-bloque"><div class="cob-vacio">Este cliente no tiene facturas con saldo pendiente.</div></div>`;
         }
         const filas = this._facturas.map(f => {
             const saldo = Number(f.saldo) || 0;
@@ -213,7 +245,7 @@ const Cobranza = {
                 <td><button type="button" class="cob-btn-mini cob-todo" data-comp="${escAttr(f.comprobante_id)}">Todo</button></td>
             </tr>`;
         }).join('');
-        return `
+        return this._bloqueCreditosHTML() + `
         <div class="cob-bloque">
             <div class="cob-bloque-tit">Qué facturas cancela</div>
             <table class="cob-tabla cob-tabla-fact">
@@ -685,7 +717,10 @@ const Cobranza = {
                 const saldo = saldoDe.has(a.comprobante_id) ? saldoDe.get(a.comprobante_id) : null;
                 if (saldo === null) throw new Error('Una de las facturas ya no está disponible. Recargá y probá de nuevo.');
                 if (a.monto_aplicado - saldo > 0.01) {
-                    throw new Error(`Alguien cobró esa factura mientras tanto: el saldo ahora es ${this._money(saldo)}. Recargá y revisá.`);
+                    // El motivo ya no es unívoco: desde H7 el saldo también baja cuando
+                    // una nota de crédito anula la factura (v_saldo_comprobante netea).
+                    // Afirmar "alguien la cobró" mandaba a buscar una carrera que no existe.
+                    throw new Error(`El saldo de esa factura ya no es el que veías: ahora es ${this._money(saldo)}. Puede que la hayan cobrado o que una nota de crédito la haya anulado. Recargá y revisá.`);
                 }
             }
 
@@ -751,7 +786,12 @@ const Cobranza = {
     // ─── Helpers ─────────────────────────────────────────────────
     _money(n) {
         const v = Number(n) || 0;
-        return '$' + v.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+        // Con sólo `maximumFractionDigits`, $1.500,50 se imprimía "$1.500,5":
+        // un decimal suelto, justo en la pantalla donde el candado exige que la
+        // suma cuadre al centavo. Entero → sin decimales (convención MEPEX,
+        // $68.000); con centavos → los dos.
+        const dec = Number.isInteger(v) ? 0 : 2;
+        return '$' + v.toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
     },
     _fecha(f) {
         if (!f) return '—';
@@ -818,6 +858,13 @@ const Cobranza = {
         .cob-num{text-align:right;font-family:var(--font-mono,'Space Mono',monospace)}
         .cob-sub{font-size:.7rem;color:var(--text-muted,#888)}
         .cob-vacio{color:var(--text-muted,#888);font-size:.85rem;padding:6px 0}
+        /* Crédito a favor: naranja de acento, que es el color de aviso de la marca.
+           No es un error (no va en rojo) ni una confirmación: es algo que hay que
+           tener en cuenta antes de pedirle plata al cliente. */
+        .cob-credito{border:1px solid rgba(242,141,21,.35);background:rgba(242,141,21,.07);border-radius:6px;padding:10px 12px}
+        .cob-credito-tit{color:var(--accent,#F28D15);font-family:var(--font-mono,monospace);font-size:.9rem;font-weight:700;margin-bottom:4px}
+        .cob-credito-det{color:var(--text-primary,#E8E8E8);font-size:.82rem;font-family:var(--font-mono,monospace)}
+        .cob-credito-pie{color:var(--text-muted,#888);font-size:.75rem;margin-top:5px;line-height:1.35}
         .cob-btn-mini{background:transparent;border:1px solid var(--border,#2a2a2a);color:var(--text-muted,#888);border-radius:4px;padding:4px 9px;font-size:.75rem;cursor:pointer;margin-top:8px}
         .cob-btn-mini:hover{border-color:var(--primary,#00A9C1);color:var(--primary,#00A9C1)}
         .cob-candado{background:#0d0d0d;border-color:#333}
