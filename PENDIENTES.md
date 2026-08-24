@@ -318,6 +318,17 @@ completo vive en la memoria `project_agentes_ia_roadmap_v2`; el hilo del negocio
   requerimiento, y ese guion no es trabajo de IA — es saber qué se le pregunta a un cliente. Dos
   decisiones adentro: si **alquiler** va con brief o con catálogo visual (el Showroom se construyó
   para eso), y si el precio de **expo** se arma por módulo o por m² totales.
+- **G10 · Un solo vocabulario para las cuatro ramas** *(autorizado por Fede, 2026-08-20)*. Hoy
+  conviven tres nombres para la misma cosa: el código (`SRV-STAND`), la etiqueta de pantalla (*Stand /
+  Montaje*) y la cuenta contable (*Ventas — Stands*). Fede: *«si tiene que ser stand, tendría que ser
+  electricidad o energía o equipamiento, no el código que queda para el culo»*. **El objetivo no es el
+  código: es que la misma rama se llame igual en el servicio, la etiqueta, la cuenta contable, el
+  rubro del catálogo y el título del presupuesto.** Candidatas: **Stand · Expo · Equipamiento ·
+  Energía**. **Superficie medida el 20/8:** 2 comprobantes vivos (los dos con CAE real), 5 filas de
+  `mapeo_cuentas`, 1 CHECK y 2 lugares en el JS. **Dos caminos, y el barato alcanza:** renombrar en la
+  base, o —recomendado— **dejar el código como identificador interno y unificar sólo donde se ve**,
+  porque el usuario nunca ve el `SRV-*` salvo en el editor de mapeos de Contabilidad. Detalle y
+  decisión en `docs/handoff-continuar-20260820.md` §1.A.
 - **G8 · Electricidad en el Cotizador — como RAMA y como RUBRO** *(pedido de Fede, 2026-08-20;
   precisado el mismo día)*. El lobby ya tiene la rama: cuenta `4.1.05 Ventas — Electricidad` y
   servicio `SRV-ELEC`. Faltan **dos cosas distintas**, y conviene no confundirlas:
