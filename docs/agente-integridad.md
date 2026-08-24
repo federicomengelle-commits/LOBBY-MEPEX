@@ -15,7 +15,14 @@
 `.claude/skills/chequeo-integridad/` — es **local y gitignored**, así que no viaja con el repo:
 si se clona en otra máquina hay que recrearla desde este documento.
 
-Tarda menos de un minuto. Se puede correr cuando se quiera; lo natural es:
+Tarda menos de un minuto. **No es un servicio ni corre de fondo**: es una consulta guardada que se
+ejecuta sólo cuando alguien la invoca.
+
+⚠️ **No conviene correrlo en cada arranque.** Trabaja sobre datos: si nadie tocó la base desde la
+última vez, va a dar idéntico. Y **un chequeo que siempre da verde deja de leerse** — es el mismo
+principio de la sección «no alarmar de más», aplicado a *cuándo* se corre en vez de a *qué* reporta.
+
+Los cuatro momentos en que sí vale:
 
 - **antes de una demo o de que entre gente nueva** — que nadie se encuentre con basura
 - **después de una carga masiva** (catálogo, jornales, stock)
@@ -63,7 +70,9 @@ Que producción esté sirviendo lo mismo que el repo. **Se compara por contenido
 número de versión puede estar bumpeado y el archivo servido ser el viejo, o al revés. Va cada vez que
 alguien dice que pulleó; el 20/8 sirvió para confirmar en diez segundos que el pull ya estaba hecho.
 
-> ⚠️ **Normalizar los retornos de carro antes de comparar.** El repo local está en CRLF (Windows) y prod sirve LF: sin `tr -d ''` el chequeo marca como distintos archivos que son idénticos. Pasó la misma noche que se escribió, con `crm.js` — 8.547 bytes de diferencia que eran todos ``.
+> ⚠️ **Normalizar los retornos de carro antes de comparar.** El repo local está en CRLF (Windows) y prod sirve LF: sin `tr -d '
+'` el chequeo marca como distintos archivos que son idénticos. Pasó la misma noche que se escribió, con `crm.js` — 8.547 bytes de diferencia que eran todos `
+`.
 
 ### Bloque 5 · Residuos de prueba
 

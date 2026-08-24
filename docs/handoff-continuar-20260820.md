@@ -8,9 +8,17 @@
 ## 0 · Lo primero que hay que hacer al arrancar
 
 1. **`git fetch && git reset --hard origin/main`** (regla de arranque del proyecto).
-2. **Correr `/chequeo-integridad`.** Es una skill local del repo. Tarda menos de un minuto y te dice
-   en qué estado está la base antes de tocar nada.
-3. Leer, en este orden: este archivo → `PENDIENTES.md` §G y §H → `CLAUDE.md` §10 (entrada del 20/8).
+2. Leer, en este orden: este archivo → `PENDIENTES.md` §G y §H → `CLAUDE.md` §10 (entrada del 20/8).
+
+> **El chequeo de integridad NO va en el arranque por defecto.** *(Corregido el 2026-08-20 a pedido de
+> Fede, y tenía razón.)* No hay ningún proceso corriendo de fondo: es una consulta guardada que se
+> ejecuta cuando alguien la pide. **Corre sobre datos**, así que si entre una charla y otra nadie tocó
+> la base, va a decir exactamente lo mismo que la vez anterior — y **un chequeo que siempre da verde
+> deja de leerse**, que es el mismo principio de «no alarmar de más» aplicado al *cuándo*.
+>
+> **Se corre cuando algo cambió:** después de escribir en producción (SQL, carga masiva, la matriz de
+> escenarios) · después de un pull, para confirmar que llegó · antes de sentar gente nueva a usarlo ·
+> a la mañana **si el día anterior hubo movimiento real**, no si sólo hubo charla.
 
 **Estado al cierre:** prod y repo sirven lo mismo (verificado por contenido, los 10 módulos).
 Partida doble **$0,00**, cero cuentas con saldo, cero residuos de prueba. `app.js?v=43` ·
