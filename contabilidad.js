@@ -5442,7 +5442,16 @@ const ContabilidadModule = {
         //               sólo cuando el egreso está imputado a un proyecto o evento
         //               → manda a la cuenta de COSTO DIRECTO en vez de estructura.
         //               Tiene prioridad sobre 'categoria' en el lookup del trigger.
-        const SERVICIOS = ['SRV-STAND', 'SRV-ALQUILER', 'SRV-EXPO', 'SRV-ELEC', 'SRV-ADIC'];
+        // Este datalist es el ÚNICO lugar de toda la app donde el código SRV-* se ve
+        // crudo, así que va acompañado de la etiqueta de su rama — el mismo vocabulario
+        // que usan finanzas.js (_servicioLabel), el CRM y las cuentas 4.1.x (G10).
+        const SERVICIOS = [
+            ['SRV-STAND',    'Stand'],
+            ['SRV-EXPO',     'Expo'],
+            ['SRV-ALQUILER', 'Equipamiento'],
+            ['SRV-ELEC',     'Energía'],
+            ['SRV-ADIC',     'Adicionales'],
+        ];
         const CATEGORIAS = ['proveedor', 'rrhh', 'impuesto', 'servicio', 'credito_fiscal', 'alquiler', 'logistica', 'otro'];
         const campoOpts = (t, sel) => t === 'ingreso'
             ? `<option value="servicio" ${sel === 'servicio' ? 'selected' : ''}>Por servicio del comprobante</option>
@@ -5450,7 +5459,9 @@ const ContabilidadModule = {
             : `<option value="categoria" ${sel === 'categoria' ? 'selected' : ''}>Por categoría del egreso</option>
                <option value="categoria_directo" ${sel === 'categoria_directo' ? 'selected' : ''}>Por categoría — sólo si está imputado a proyecto/evento (costo directo)</option>
                <option value=""          ${(sel !== 'categoria' && sel !== 'categoria_directo') ? 'selected' : ''}>Genérico — cualquier egreso</option>`;
-        const valorOpts = (t) => (t === 'ingreso' ? SERVICIOS : CATEGORIAS).map(v => `<option value="${v}"></option>`).join('');
+        const valorOpts = (t) => t === 'ingreso'
+            ? SERVICIOS.map(([v, lbl]) => `<option value="${v}">${escHtml(lbl)}</option>`).join('')
+            : CATEGORIAS.map(v => `<option value="${v}"></option>`).join('');
 
         const isEspEx = m.campo_origen === 'servicio' || m.campo_origen === 'categoria'
                      || m.campo_origen === 'categoria_directo';

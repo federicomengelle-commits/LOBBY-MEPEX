@@ -35,13 +35,24 @@ equipamiento, no el código que queda para el culo»*.
 
 Hoy conviven tres vocabularios distintos para la misma cosa:
 
-| Rama | Código interno | Etiqueta en pantalla | Cuenta contable |
+> ## ✅ RESUELTO el 2026-08-23 — las palabras son **Stand · Expo · Equipamiento · Energía**
+>
+> Fede eligió esas cuatro y el alcance medio: **etiquetas + cuentas contables + las 4 líneas del CRM**,
+> dejando los códigos `SRV-*` como identificador interno (no se migró ningún comprobante con CAE).
+> Aplicado y verificado en prod. Detalle en `docs/las-cuatro-ramas.md` y, para la charla del Cotizador,
+> en `docs/handoff-cotizador-vocabulario-y-detalle.md`.
+>
+> **Lo que se encontró al medirlo y este handoff no sabía:** no eran tres vocabularios sino **siete**,
+> y dos no tenían las cuatro ramas — el CRM sólo conocía `stand` y `expo`, y ahí `expo` significaba
+> *equipamiento/alquiler/subalquileres*, o sea **lo contrario que en facturación**.
+
+| Rama | Código interno | Etiqueta (desde el 23/8) | Cuenta contable (desde el 23/8) |
 |---|---|---|---|
-| Stand | `SRV-STAND` | Stand / Montaje | `4.1.01 Ventas — Stands` |
-| Expo | `SRV-EXPO` | Servicio exposición | `4.1.03 Ventas — Estructura Expo` |
-| Alquiler | `SRV-ALQUILER` | Alquiler equipamiento | `4.1.02 Ventas — Alquileres` |
-| Electricidad | `SRV-ELEC` | Instalación eléctrica | `4.1.05 Ventas — Electricidad` |
-| *(adicionales)* | `SRV-ADIC` | Adicionales | `4.1.04 Ventas — Servicios adicionales` |
+| Stand | `SRV-STAND` | **Stand** | `4.1.01 Ventas — Stand` |
+| Expo | `SRV-EXPO` | **Expo** | `4.1.03 Ventas — Expo` |
+| Equipamiento | `SRV-ALQUILER` | **Equipamiento** | `4.1.02 Ventas — Equipamiento` |
+| Energía | `SRV-ELEC` | **Energía** | `4.1.05 Ventas — Energía` |
+| *(adicionales)* | `SRV-ADIC` | Adicionales | `4.1.04 Ventas — Adicionales` |
 
 **El trabajo:** que las cuatro se llamen igual en todos lados. Decidir **una** palabra por rama y
 propagarla. Candidatas que salieron de la charla: **Stand · Expo · Equipamiento · Energía**.

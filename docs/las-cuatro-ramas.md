@@ -5,9 +5,29 @@
 > (`docs/proceso-mepex.html`) es justamente esta bifurcación.
 >
 > ⚠️ **La primera mitad es definición y está cerrada. La segunda mitad —los guiones de brief de expo,
-> alquiler y electricidad— es una PROPUESTA para que la corrijan Fede y Noe.** Está derivada del
+> equipamiento y energía— es una PROPUESTA para que la corrijan Fede y Noe.** Está derivada del
 > guion de stand que ya existe, del catálogo real y de las cuentas contables, pero **nadie del área
 > comercial la validó todavía**. Lo que está inventado está marcado.
+
+> ## 📌 Las cuatro palabras (decidido el 2026-08-23)
+>
+> ### **Stand · Expo · Equipamiento · Energía**
+>
+> Estas cuatro palabras son **las mismas en todos lados**: la etiqueta al facturar, el nombre de la
+> cuenta contable, la línea del caso en el CRM, el rubro del catálogo y el título del presupuesto que
+> ve el cliente. Si una cambia, cambian todas — no hay sinónimos permitidos.
+>
+> **Qué cambió respecto de la primera versión de este documento** (era el ítem G10 de `PENDIENTES.md`):
+> *Alquiler* → **Equipamiento**, y *Electricidad* → **Energía**, que era la decisión de marca que este
+> mismo documento dejaba abierta más abajo. Los códigos internos (`SRV-ALQUILER`, `SRV-ELEC`) **no se
+> tocaron a propósito**: son identificadores que el usuario nunca ve, y renombrarlos obligaba a migrar
+> los dos únicos comprobantes con CAE real de AFIP.
+>
+> **Por qué «Equipamiento» y no «Alquiler»:** hasta el 23/8 la palabra *expo* significaba dos cosas
+> opuestas según el módulo. En el CRM, un comentario del código decía literalmente `'expo' =
+> equipamiento/alquiler/subalquileres`; en facturación, `SRV-EXPO` va a *Ventas — Expo*, que es la
+> estructura de una exposición entera. **Un caso marcado «expo» en el CRM facturaba normalmente como
+> alquiler.** Separar las palabras deshace ese nudo.
 
 ---
 
@@ -17,7 +37,7 @@
 El trabajo clásico: se diseña y se construye un espacio a medida para un expositor dentro de una
 feria. Pasa por taller, tiene planos, tiene armado y desarme. **Es la rama con el circuito completo.**
 
-Cuenta contable: `4.1.01 Ventas — Stands` · Servicio al facturar: `SRV-STAND`
+Cuenta contable: `4.1.01 Ventas — Stand` · Servicio al facturar: `SRV-STAND`
 
 ### Expo
 La estructura de **toda una exposición**, no de un expositor. Muchos módulos repetidos para el
@@ -25,24 +45,25 @@ organizador del evento, en lugar de un stand a medida para una marca. Cambia la 
 es el cliente (el organizador, no el expositor) y cambia la lógica de precio: se cotiza por cantidad
 de módulos y superficie total, no por diseño.
 
-Cuenta contable: `4.1.03 Ventas — Estructura Expo` · Servicio: `SRV-EXPO`
+Cuenta contable: `4.1.03 Ventas — Expo` · Servicio: `SRV-EXPO`
 
-### Alquiler
+### Equipamiento
 Equipamiento que **sale y vuelve**: mobiliario, electrodomésticos, pantallas, vitrinas, alfombras.
 Sin diseño, sin taller, sin planos. El trabajo es logístico: que llegue, que funcione y que vuelva
 entero. **Es la rama de mayor volumen del catálogo** — 41 de los 63 ítems cotizables son equipamiento.
 
-Cuenta contable: `4.1.02 Ventas — Alquileres` · Servicio: `SRV-ALQUILER`
+Cuenta contable: `4.1.02 Ventas — Equipamiento` · Servicio: `SRV-ALQUILER`
 
-### Electricidad
+### Energía
 La rama nueva. Fede decidió el 19/8 que **no es algo que cuelgue de alquiler: se sostiene sola**, y el
 20/8 se aplicó en producción. Cubre la instalación eléctrica del espacio: tableros, tomas de potencia,
 redes, fuerza motriz, grupo electrógeno. **Es rama y además rubro** — ver el recuadro de abajo, que es
 la parte que más se malinterpreta.
 
-Cuenta contable: `4.1.05 Ventas — Electricidad` · Servicio: `SRV-ELEC`
+Cuenta contable: `4.1.05 Ventas — Energía` · Servicio: `SRV-ELEC`
 
-> ### ⚠️ Electricidad es rama **y** rubro. No son lo mismo ni se excluyen.
+> ### ⚠️ Energía es rama **y** rubro. No son lo mismo ni se excluyen.
+> *(El oficio se sigue llamando electricidad — matrícula, electricista. La RAMA y el RUBRO se llaman Energía.)*
 >
 > *(Aclaración de Fede, 2026-08-20. La primera versión de este documento las presentaba como una
 > disyuntiva —«es rama, no rubro»— y eso estaba mal planteado.)*
@@ -54,17 +75,17 @@ Cuenta contable: `4.1.05 Ventas — Electricidad` · Servicio: `SRV-ELEC`
 > | **Rubro** | Cómo se **agrupa el catálogo** | Que el presupuesto salga ordenado por bloques, y poder medir qué se vendió de cada cosa |
 > | **Rama** | Qué **tipo de trabajo** es | Que se pueda cotizar y facturar por separado, con su circuito y su cuenta contable |
 >
-> No es exclusivo de electricidad: **Infraestructura** es un rubro y **stand** es una rama; los
-> paneles son rubro Infraestructura dentro de una cotización de rama stand. Lo mismo acá — un tablero
-> seccional es **rubro electricidad**, y puede ir dentro de un stand *o* dentro de un presupuesto que
-> sea sólo de electricidad.
+> No es exclusivo de Energía: **Infraestructura** es un rubro y **stand** es una rama; los paneles son
+> rubro Infraestructura dentro de una cotización de rama stand. Lo mismo acá — un tablero seccional es
+> **rubro Energía**, y puede ir dentro de un stand *o* dentro de un presupuesto que sea sólo de energía.
 >
 > **Lo que la rama habilita, en palabras de Fede:** *«poder hacer después hasta un presupuesto que sea
 > tipo Energía o algo así»* — un presupuesto que va solo, sin stand alrededor.
 >
-> 🟠 **Decisión abierta: cómo se llama de cara al cliente.** Adentro es `SRV-ELEC` / *Ventas —
-> Electricidad*, pero el presupuesto que ve el cliente podría llamarse **Energía**, que suena a
-> servicio y no a rubro de ferretería. Es marca, no sistema; se decide cuando se arme el primero.
+> ✅ **Cómo se llama de cara al cliente: DECIDIDO el 2026-08-23 — «Energía».** El código interno
+> sigue siendo `SRV-ELEC` (no se ve), pero la cuenta contable, la etiqueta de facturación, la línea
+> del CRM y el presupuesto dicen **Energía**. Suena a servicio y no a rubro de ferretería, que era el
+> argumento; y el rubro del catálogo va a llamarse igual.
 >
 > **El dato duro que justificó separarla:** hasta el 20/8, una instalación eléctrica se facturaba como
 > `SRV-ADIC` y caía en *«Ventas — Servicios adicionales»*, mezclada con cualquier otro adicional.
@@ -78,9 +99,9 @@ En orden, y la primera que da que sí gana:
 
 1. **¿El cliente es el organizador de la feria, y lo que pide son muchos módulos iguales?** → **Expo**
 2. **¿Hay que diseñar y construir algo a medida, que pase por taller?** → **Stand**
-3. **¿Lo que se vende es la instalación eléctrica del espacio, sin construcción de por medio?** → **Electricidad**
-   *(si la electricidad va adentro de un stand, no es rama aparte: es el rubro electricidad dentro de la cotización del stand)*
-4. **¿Es equipamiento que sale y vuelve, sin diseño ni taller?** → **Alquiler**
+3. **¿Lo que se vende es la instalación eléctrica del espacio, sin construcción de por medio?** → **Energía**
+   *(si la instalación va adentro de un stand, no es rama aparte: es el rubro Energía dentro de la cotización del stand)*
+4. **¿Es equipamiento que sale y vuelve, sin diseño ni taller?** → **Equipamiento**
 
 **Un mismo evento puede tener varias ramas a la vez** — un stand que además lleva su instalación
 eléctrica y alquila mobiliario extra son tres líneas, no una. La rama se define **por proyecto**, no
@@ -133,7 +154,7 @@ un plano de predio y una grilla de módulos repetidos.
 > básico» / «puesto»; y si el precio de expo se arma por módulo o por m² totales, porque eso cambia
 > qué pregunta va primero.
 
-### 3.3 · Alquiler — 🟠 **propuesta, sin validar**
+### 3.3 · Equipamiento — 🟠 **propuesta, sin validar**
 
 La más corta de las cuatro: no hay diseño, hay una lista y unas fechas. **Diez preguntas acá sería
 un interrogatorio** — la propuesta son siete.
@@ -152,7 +173,7 @@ un interrogatorio** — la propuesta son siete.
 > categorías — el módulo Catálogo→Showroom fue construido justamente para eso, y para alquiler puede
 > ser mejor que un cuestionario. **Es la única rama donde el brief podría no ser lo correcto.**
 
-### 3.4 · Electricidad — 🟠 **propuesta, y la más incierta de las cuatro**
+### 3.4 · Energía — 🟠 **propuesta, y la más incierta de las cuatro**
 
 Derivada del catálogo (`Tablero seccional monofásico/trifásico`, `Tomacorriente doble`) y del spec de
 la web, que lista *electricidad y fuerza motriz · redes eléctricas · tomas de potencia · grupo
@@ -182,15 +203,15 @@ electrógeno*. **Yo no sé cómo se cotiza esto** — las preguntas son de forma
 | | Qué | Quién |
 |---|---|---|
 | **1** | **Corregir los tres guiones propuestos.** Media hora con Noe alcanza | Fede + Noe |
-| **2** | Decidir si alquiler va con brief o con catálogo visual | Fede |
-| **3** | Confirmar la matrícula de electricidad | Fede |
+| **2** | Decidir si equipamiento va con brief o con catálogo visual | Fede |
+| **3** | Confirmar la matrícula de electricidad (el oficio sigue llamándose así) | Fede |
 | **4** | Cargar los guiones en el Cotizador, junto a la rama nueva (§G8 de `PENDIENTES.md`) | coordinación con el Cotizador |
 | **5** | Escribir la versión corta de la §1 para el equipo — media carilla, para que todos sepan clasificar | Fede |
 
 **Y el trabajo concreto que sale de esto:** en el catálogo, los ítems eléctricos (`Tablero seccional
 monofásico`, `Tablero seccional trifásico`, `Tomacorriente doble`) están cargados bajo el rubro
-**Iluminación**, mezclados con los reflectores. **Como electricidad también es rubro, esos tres —y los
-que se sumen— van a un rubro propio.** No es cosmético: **el rubro es lo que agrupa el presupuesto en
+**Iluminación**, mezclados con los reflectores. **Como Energía también es rubro, esos tres —y los
+que se sumen— van a un rubro propio, llamado igual que la rama: Energía.** No es cosmético: **el rubro es lo que agrupa el presupuesto en
 bloques**, así que sin él, un presupuesto de energía saldría con sus ítems desparramados entre las
 luces, y medir qué se vendió de electricidad daría mezclado con los reflectores.
 

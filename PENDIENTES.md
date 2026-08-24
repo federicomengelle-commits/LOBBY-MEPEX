@@ -318,7 +318,14 @@ completo vive en la memoria `project_agentes_ia_roadmap_v2`; el hilo del negocio
   requerimiento, y ese guion no es trabajo de IA — es saber qué se le pregunta a un cliente. Dos
   decisiones adentro: si **alquiler** va con brief o con catálogo visual (el Showroom se construyó
   para eso), y si el precio de **expo** se arma por módulo o por m² totales.
-- **G10 · Un solo vocabulario para las cuatro ramas** *(autorizado por Fede, 2026-08-20)*. Hoy
+- **G10 · Un solo vocabulario para las cuatro ramas** ✅ **HECHO el 2026-08-23.** Las palabras son
+  **Stand · Expo · Equipamiento · Energía**; alcance: etiquetas + cuentas contables + las 4 líneas del
+  CRM, con los códigos `SRV-*` intactos como identificador interno. Aplicado y verificado en prod
+  (`sql/vocabulario_ramas_20260823.sql`, sql-reviewer APPROVE 0C/0H). **Lo que apareció al medirlo:**
+  no eran tres vocabularios sino **siete**, y el CRM sólo conocía 2 de las 4 ramas — donde además
+  `expo` significaba *equipamiento/alquiler*, lo contrario que en facturación. **Queda pendiente del
+  lado del Cotizador**, con su propio detalle en `docs/handoff-cotizador-vocabulario-y-detalle.md`
+  (que incluye el **toggle de nivel de detalle** que pidió Fede el 23/8). El texto original: Hoy
   conviven tres nombres para la misma cosa: el código (`SRV-STAND`), la etiqueta de pantalla (*Stand /
   Montaje*) y la cuenta contable (*Ventas — Stands*). Fede: *«si tiene que ser stand, tendría que ser
   electricidad o energía o equipamiento, no el código que queda para el culo»*. **El objetivo no es el

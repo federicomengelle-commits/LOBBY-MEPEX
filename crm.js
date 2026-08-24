@@ -62,7 +62,7 @@ const CRM = {
     _casosFlagFilter: null,     // null | 'sinresp' | 'noleido' (filtro rápido de la bandeja)
     _lecturas: {},              // {casoId: last_read_at} del usuario actual (leído/no-leído)
     _snoozes: {},               // {casoId: snoozed_until ISO} del usuario actual (Bandeja v2)
-    _casosLinea: null,          // null = todas | 'stand' | 'expo' (segmento línea de negocio)
+    _casosLinea: null,          // null = todas | uno de los `value` de _lineas (segmento de rama)
     _casosSoloMios: false,      // toggle: ver solo los casos donde soy owner
     _casosPospuestosOpen: false,// grupo "Pospuestos" colapsado/expandido
     _casoActivoId: null,        // si hay ficha de caso abierta (takeover de crm-main)
@@ -154,11 +154,24 @@ const CRM = {
         { value: 'perdido',     label: 'Perdido',     color: '#E94B4B' },
     ],
 
-    // ─── Casos: líneas de negocio (segmento de la Bandeja v2) ───
-    // 'stand' = diseño/construcción de stands (PMs) · 'expo' = equipamiento/alquiler/subalquileres (comercial)
+    // ─── Casos: LAS CUATRO RAMAS del negocio (segmento de la Bandeja v2) ───
+    // Vocabulario único (G10, 2026-08-23): estas cuatro palabras son las mismas
+    // en la cuenta contable (plan_cuentas 4.1.x), en la etiqueta de facturación
+    // (finanzas.js _servicioLabel) y en el presupuesto que ve el cliente.
+    //
+    // ⚠️ Hasta el 2026-08-23 acá había DOS líneas y 'expo' significaba
+    //    "equipamiento/alquiler/subalquileres" — o sea lo contrario de lo que
+    //    significa en facturación, donde SRV-EXPO va a "Ventas — Expo". Por eso
+    //    'equipamiento' hereda el naranja que tenía 'expo': es la continuidad
+    //    de lo que aquella etiqueta realmente nombraba.
+    //
+    // Sumar una rama = agregar una fila acá. El segmento, los buckets del
+    // pipeline y el menú de clasificar se derivan de este array.
     _lineas: [
-        { value: 'stand', label: 'Stands',          color: '#00CC88', icon: '🏗️' },
-        { value: 'expo',  label: 'Expo / Subalq.',  color: '#F28D15', icon: '📦' },
+        { value: 'stand',        label: 'Stand',        color: '#00CC88', icon: '🏗️' },
+        { value: 'expo',         label: 'Expo',         color: '#00A9C1', icon: '🏛️' },
+        { value: 'equipamiento', label: 'Equipamiento', color: '#F28D15', icon: '📦' },
+        { value: 'energia',      label: 'Energía',      color: '#9B7DFF', icon: '⚡' },
     ],
     _lineaConfig(v) { return this._lineas.find(l => l.value === v) || null; },
 
@@ -3515,10 +3528,11 @@ const CRM = {
         </div>`;
     },
 
-    // Segmento de línea de negocio (Stands · Expo · Todo). Los contadores son sobre activos.
+    // Segmento de rama del negocio (las 4 de _lineas · Todo). Contadores sobre activos.
     _lineaSegmentHtml(all) {
-        const counts = { stand: 0, expo: 0 };
-        all.forEach(c => { if (c.linea === 'stand') counts.stand++; else if (c.linea === 'expo') counts.expo++; });
+        const counts = {};
+        this._lineas.forEach(l => { counts[l.value] = 0; });
+        all.forEach(c => { if (c.linea && counts[c.linea] !== undefined) counts[c.linea]++; });
         const seg = (val, label, color, n) => {
             const active = this._casosLinea === val;
             const style = active && color ? ` style="background:${color}1f;color:${color};border-color:${color}66"` : '';
@@ -3562,16 +3576,21 @@ const CRM = {
             return html + this._pospuestosHtml(pospuestos);
         }
 
-        // VISTA "TODO" → secciones por línea (con encabezado); urgentes floteados por score.
+        // VISTA "TODO" → secciones por rama (con encabezado); urgentes floteados por score.
         if (!activos.length && !pospuestos.length) return this._casosEmptyHtml();
         const buckets = [
-            { val: 'stand', cfg: this._lineaConfig('stand') },
-            { val: 'expo',  cfg: this._lineaConfig('expo') },
-            { val: null,    cfg: { label: 'Sin clasificar', color: '#888888', icon: '🏷️' } },
+            ...this._lineas.map(l => ({ val: l.value, cfg: l })),
+            { val: null, cfg: { label: 'Sin clasificar', color: '#888888', icon: '🏷️' } },
         ];
+        // "Sin clasificar" atrapa TODO lo que no cayó en una rama conocida, no sólo el
+        // null: un caso con una `linea` que ya no está en _lineas (rama retirada, o un
+        // valor escrito por fuera de la app) desaparecía de la vista sin dejar rastro.
+        const conocidas = new Set(this._lineas.map(l => l.value));
         let html = '';
         buckets.forEach(b => {
-            const items = activos.filter(c => (c.linea || null) === b.val);
+            const items = b.val === null
+                ? activos.filter(c => !c.linea || !conocidas.has(c.linea))
+                : activos.filter(c => c.linea === b.val);
             if (items.length) html += this._grupoHtml(b.cfg.label, b.cfg.color, items, b.cfg.icon);
         });
         return (html || this._casosEmptyHtml()) + this._pospuestosHtml(pospuestos);

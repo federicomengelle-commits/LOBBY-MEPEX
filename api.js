@@ -1315,7 +1315,7 @@ const API = {
             motivoPerdida: c.motivo_perdida || '',
             proyectoId: c.proyecto_id || null,
             ventaId: c.venta_id || null,   // circuito de venta Fase 1 — sin esto el gate de "ganado" del CRM no ve la venta
-            linea: c.linea || null,   // 'stand' | 'expo' | null (sin clasificar)
+            linea: c.linea || null,   // una de las 4 ramas (ver CRM._lineas) | null (sin clasificar)
             driveFolderUrl: c.drive_folder_url || null,   // ficha v3 (sql/crm_ficha_v3.sql)
             driveFolderId: c.drive_folder_id || null,
             resumenIa: c.resumen_ia || '',

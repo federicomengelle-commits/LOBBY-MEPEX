@@ -6419,24 +6419,55 @@ const FinanzasModule = {
         const canvas = document.getElementById('finChartDonut');
         if (!canvas) return;
 
-        // Group ingresos by broad category
-        const cats = { 'Stands': 0, 'Alquileres': 0, 'Expo': 0, 'Adicionales': 0, 'Otros': 0 };
+        // Ingresos agrupados por RAMA del negocio (G10: Stand · Expo · Equipamiento · Energía).
+        //
+        // La rama sale del COMPROBANTE (`comprobantes.servicio`), que es el dato estructurado,
+        // traducido con el MISMO diccionario que usa la facturación → una sola fuente de verdad:
+        // si mañana cambia una etiqueta, este gráfico la sigue solo.
+        //
+        // El heurístico de palabras es sólo el fallback para lo que no tiene comprobante (un
+        // cobro sin factura, un ingreso tipeado a mano). Antes era lo ÚNICO que había, y por eso
+        // el gráfico mandaba las ventas facturadas a "Otros": el concepto que escribe el sistema
+        // al cobrar una factura es "Cobro factura 00005-…", donde no aparece la rama por ningún
+        // lado. Orden y palabras del heurístico conservados como estaban (sólo se sumó Energía).
+        const cats = { 'Stand': 0, 'Expo': 0, 'Equipamiento': 0, 'Energía': 0, 'Adicionales': 0, 'Otros': 0 };
+        const porPalabra = [
+            ['Stand',        ['stand', 'montaje']],
+            ['Equipamiento', ['alquiler', 'equip', 'mobiliario']],
+            ['Expo',         ['expo', 'feria']],
+            ['Energía',      ['energ', 'electric', 'eléctric', 'tablero']],
+            ['Adicionales',  ['adic', 'extra']],
+        ];
         try {
-            const { data } = await supabaseClient.from('ingresos').select('concepto, monto, total_en_ars').eq('_deleted', false).eq('estado', 'confirmado');
-            (data || []).forEach(r => {
-                const c = (r.concepto || '').toLowerCase();
-                if (c.includes('stand') || c.includes('montaje')) cats['Stands'] += montoARS(r);
-                else if (c.includes('alquiler') || c.includes('equip')) cats['Alquileres'] += montoARS(r);
-                else if (c.includes('expo') || c.includes('feria')) cats['Expo'] += montoARS(r);
-                else if (c.includes('adic') || c.includes('extra')) cats['Adicionales'] += montoARS(r);
-                else cats['Otros'] += montoARS(r);
+            const { data } = await supabaseClient.from('ingresos')
+                .select('concepto, monto, total_en_ars, comprobante_id')
+                .eq('_deleted', false).eq('estado', 'confirmado');
+            const filas = data || [];
+
+            // Rama estructurada: comprobante_id → servicio → etiqueta (= la key de `cats`)
+            const srvPorComp = {};
+            const compIds = [...new Set(filas.map(r => r.comprobante_id).filter(Boolean))];
+            if (compIds.length) {
+                const { data: comps } = await supabaseClient.from('comprobantes')
+                    .select('id, servicio').in('id', compIds);
+                (comps || []).forEach(c => { srvPorComp[c.id] = c.servicio; });
+            }
+
+            filas.forEach(r => {
+                let rama = this._servicioLabel[srvPorComp[r.comprobante_id]];
+                if (!rama || cats[rama] === undefined) {
+                    const c = (r.concepto || '').trim().toLowerCase();
+                    rama = (porPalabra.find(([, ws]) => ws.some(w => c.includes(w))) || [])[0];
+                }
+                cats[rama || 'Otros'] += montoARS(r);
             });
         } catch (_) {}
 
         const entries = Object.entries(cats).filter(([, v]) => v > 0);
         if (entries.length === 0) entries.push(['Sin datos', 1]);
 
-        const colors = ['#00A9C1', '#F28D15', '#00CC88', '#9B7DFF', '#888'];
+        // 6 colores para 6 ramas (antes eran 5 y la última quedaba sin color).
+        const colors = ['#00A9C1', '#F28D15', '#00CC88', '#9B7DFF', '#4A90D9', '#888'];
 
         this._charts.donut = new Chart(canvas, {
             type: 'doughnut',
@@ -7200,11 +7231,17 @@ const FinanzasModule = {
         otro:         { label: 'Otro',          color: '#555' },
     },
 
+    // Las CUATRO RAMAS del negocio, con el vocabulario único (G10, 2026-08-23).
+    // Estas palabras son las mismas en la cuenta contable (plan_cuentas 4.1.x),
+    // en la línea del CRM (crm.js _lineas) y en el presupuesto que ve el cliente.
+    // Si cambia una, cambian las cuatro: no inventar sinónimos acá.
+    // El código 'SRV-*' es identificador interno y no se muestra (salvo en el
+    // editor de mapeos de Contabilidad, que lo acompaña con esta misma etiqueta).
     _servicioLabel: {
-        'SRV-STAND':    'Stand / Montaje',
-        'SRV-ALQUILER': 'Alquiler equipamiento',
-        'SRV-EXPO':     'Servicio exposición',
-        'SRV-ELEC':     'Instalación eléctrica',
+        'SRV-STAND':    'Stand',
+        'SRV-EXPO':     'Expo',
+        'SRV-ALQUILER': 'Equipamiento',
+        'SRV-ELEC':     'Energía',
         'SRV-ADIC':     'Adicionales',
     },
 
