@@ -35,20 +35,40 @@ entero. **Es la rama de mayor volumen del catálogo** — 41 de los 63 ítems co
 Cuenta contable: `4.1.02 Ventas — Alquileres` · Servicio: `SRV-ALQUILER`
 
 ### Electricidad
-La rama nueva. Fede decidió el 19/8 que **merece rama propia y no ser un rubro dentro de alquiler**,
-y el 20/8 se aplicó en producción. Cubre la instalación eléctrica del espacio: tableros, tomas de
-potencia, redes, fuerza motriz, grupo electrógeno.
+La rama nueva. Fede decidió el 19/8 que **no es algo que cuelgue de alquiler: se sostiene sola**, y el
+20/8 se aplicó en producción. Cubre la instalación eléctrica del espacio: tableros, tomas de potencia,
+redes, fuerza motriz, grupo electrógeno. **Es rama y además rubro** — ver el recuadro de abajo, que es
+la parte que más se malinterpreta.
 
 Cuenta contable: `4.1.05 Ventas — Electricidad` · Servicio: `SRV-ELEC`
 
-> **Por qué es rama y no rubro** — el criterio que la justifica: *una rama se justifica cuando cambia
-> el circuito, no cuando cambia el precio.* La iluminación es un rubro del catálogo: misma receta,
-> mismo camino, se cotiza junto con el stand. La electricidad, cuando se vende sola, tiene otro
-> cliente, otro brief, otra gente y probablemente responsable técnico. Eso no es un rubro.
+> ### ⚠️ Electricidad es rama **y** rubro. No son lo mismo ni se excluyen.
 >
-> **Antes valía la pena verificarlo con un dato duro y se verificó:** hasta el 20/8, una instalación
-> eléctrica se facturaba como `SRV-ADIC` y caía en *«Ventas — Servicios adicionales»*, mezclada con
-> cualquier otro adicional. **Su rentabilidad no se podía medir por separado.**
+> *(Aclaración de Fede, 2026-08-20. La primera versión de este documento las presentaba como una
+> disyuntiva —«es rama, no rubro»— y eso estaba mal planteado.)*
+>
+> **Son dos ejes distintos y cada ítem vive en los dos:**
+>
+> | | Qué es | Para qué sirve |
+> |---|---|---|
+> | **Rubro** | Cómo se **agrupa el catálogo** | Que el presupuesto salga ordenado por bloques, y poder medir qué se vendió de cada cosa |
+> | **Rama** | Qué **tipo de trabajo** es | Que se pueda cotizar y facturar por separado, con su circuito y su cuenta contable |
+>
+> No es exclusivo de electricidad: **Infraestructura** es un rubro y **stand** es una rama; los
+> paneles son rubro Infraestructura dentro de una cotización de rama stand. Lo mismo acá — un tablero
+> seccional es **rubro electricidad**, y puede ir dentro de un stand *o* dentro de un presupuesto que
+> sea sólo de electricidad.
+>
+> **Lo que la rama habilita, en palabras de Fede:** *«poder hacer después hasta un presupuesto que sea
+> tipo Energía o algo así»* — un presupuesto que va solo, sin stand alrededor.
+>
+> 🟠 **Decisión abierta: cómo se llama de cara al cliente.** Adentro es `SRV-ELEC` / *Ventas —
+> Electricidad*, pero el presupuesto que ve el cliente podría llamarse **Energía**, que suena a
+> servicio y no a rubro de ferretería. Es marca, no sistema; se decide cuando se arme el primero.
+>
+> **El dato duro que justificó separarla:** hasta el 20/8, una instalación eléctrica se facturaba como
+> `SRV-ADIC` y caía en *«Ventas — Servicios adicionales»*, mezclada con cualquier otro adicional.
+> **Su rentabilidad no se podía medir por separado.**
 
 ---
 
@@ -59,6 +79,7 @@ En orden, y la primera que da que sí gana:
 1. **¿El cliente es el organizador de la feria, y lo que pide son muchos módulos iguales?** → **Expo**
 2. **¿Hay que diseñar y construir algo a medida, que pase por taller?** → **Stand**
 3. **¿Lo que se vende es la instalación eléctrica del espacio, sin construcción de por medio?** → **Electricidad**
+   *(si la electricidad va adentro de un stand, no es rama aparte: es el rubro electricidad dentro de la cotización del stand)*
 4. **¿Es equipamiento que sale y vuelve, sin diseño ni taller?** → **Alquiler**
 
 **Un mismo evento puede tener varias ramas a la vez** — un stand que además lleva su instalación
@@ -166,7 +187,13 @@ electrógeno*. **Yo no sé cómo se cotiza esto** — las preguntas son de forma
 | **4** | Cargar los guiones en el Cotizador, junto a la rama nueva (§G8 de `PENDIENTES.md`) | coordinación con el Cotizador |
 | **5** | Escribir la versión corta de la §1 para el equipo — media carilla, para que todos sepan clasificar | Fede |
 
-**Hallazgo lateral, anotado:** en el catálogo, los ítems eléctricos (`Tablero seccional monofásico`,
-`Tablero seccional trifásico`, `Tomacorriente doble`) están cargados bajo el rubro **Iluminación**,
-mezclados con los reflectores. Si electricidad es una rama, esos tres deberían tener rubro propio —
-si no, el día que se quiera medir qué se vendió de electricidad, van a estar contados como luces.
+**Y el trabajo concreto que sale de esto:** en el catálogo, los ítems eléctricos (`Tablero seccional
+monofásico`, `Tablero seccional trifásico`, `Tomacorriente doble`) están cargados bajo el rubro
+**Iluminación**, mezclados con los reflectores. **Como electricidad también es rubro, esos tres —y los
+que se sumen— van a un rubro propio.** No es cosmético: **el rubro es lo que agrupa el presupuesto en
+bloques**, así que sin él, un presupuesto de energía saldría con sus ítems desparramados entre las
+luces, y medir qué se vendió de electricidad daría mezclado con los reflectores.
+
+⚠️ **Ojo al hacerlo: el Cotizador es una app aparte y también agrupa por rubro.** Mover esos ítems
+cambia lo que muestra. Es coordinación, no un `UPDATE` suelto — mismo cuidado que se tuvo cuando nació
+el rubro *Marketing* el 6/8.

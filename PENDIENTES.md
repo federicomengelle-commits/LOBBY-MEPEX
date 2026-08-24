@@ -318,13 +318,24 @@ completo vive en la memoria `project_agentes_ia_roadmap_v2`; el hilo del negocio
   requerimiento, y ese guion no es trabajo de IA — es saber qué se le pregunta a un cliente. Dos
   decisiones adentro: si **alquiler** va con brief o con catálogo visual (el Showroom se construyó
   para eso), y si el precio de **expo** se arma por módulo o por m² totales.
-- **G8 · La rama Electricidad, también en el Cotizador** *(pedido de Fede, 2026-08-20)*. El lobby ya
-  la tiene: cuenta `4.1.05 Ventas — Electricidad` y servicio `SRV-ELEC` (aplicados y verificados el
-  20/8). Falta el otro lado. **Cómo tiene que comportarse, según Fede: igual que los stands** — la
-  rama puede llevar un montón de ítems adentro, pero **el presupuesto NO los discrimina**: muestra
-  **un número total**. A lo sumo se puede abrir **por zona o espacio**, nunca ítem por ítem. Es
-  coordinación con el repo del Cotizador (`COTIZADOR-MEPEX`), no trabajo del lobby; entra en el
-  mismo lote que C3 (que el Cotizador escriba `estado` y `vendedor_id`).
+- **G8 · Electricidad en el Cotizador — como RAMA y como RUBRO** *(pedido de Fede, 2026-08-20;
+  precisado el mismo día)*. El lobby ya tiene la rama: cuenta `4.1.05 Ventas — Electricidad` y
+  servicio `SRV-ELEC`. Faltan **dos cosas distintas**, y conviene no confundirlas:
+  - **La rama**, en el Cotizador: poder armar **un presupuesto que sea sólo de electricidad**, sin
+    stand alrededor. **Se comporta como los stands**: lleva muchos ítems adentro pero el presupuesto
+    **NO los discrimina** — muestra **un número total**; a lo sumo se abre **por zona o espacio**,
+    nunca ítem por ítem. 🟠 *De cara al cliente podría llamarse **Energía** en vez de Electricidad —
+    decisión de marca, se define cuando se arme el primero.*
+  - **El rubro**, en el catálogo: hoy `Tablero seccional monofásico`, `Tablero seccional trifásico` y
+    `Tomacorriente doble` están bajo **Iluminación**, mezclados con los reflectores. **El rubro es lo
+    que agrupa el presupuesto en bloques**, así que sin rubro propio un presupuesto de energía saldría
+    desparramado entre las luces, y medir qué se vendió de electricidad daría mezclado. ⚠️ **El
+    Cotizador también agrupa por rubro**: mover esos ítems cambia lo que muestra → es coordinación, no
+    un `UPDATE` suelto (mismo cuidado que cuando nació el rubro *Marketing* el 6/8).
+
+  **Rama y rubro no se excluyen** — son ejes distintos, igual que *Infraestructura* (rubro) y *stand*
+  (rama). Un tablero puede ir dentro de un stand **o** dentro de un presupuesto de energía. Detalle en
+  `docs/las-cuatro-ramas.md` §1.
 - **G7 · Productizar el Lobby.** Visión de Fede: terminarlo, usarlo todos los días, y después
   desvincularlo para venderlo modulado a otras empresas. Conecta con el carril 3 de Mira
   (`APPS ANTIGRAVITY/Agencia Apps IA`), que hoy es el único sin producto armado.
