@@ -49,6 +49,18 @@ renombró); el último barrido fue en junio y desde entonces hubo muchas migraci
 
 ---
 
+> # ⚡ EL DOCUMENTO QUE MANDA AHORA ES OTRO
+>
+> **`docs/handoff-puesta-en-marcha.md`** (2026-08-24). Fede cambió la prioridad: *«quiero ponerle moño
+> y empezar a usarlo. Después sí ir arreglando, que ya va a ser más fácil con uso.»*
+>
+> Ese documento filtra TODO lo de acá abajo por una sola pregunta —**¿bloquea instalar, o se arregla
+> usando?**— y la respuesta es que **sólo tres cosas bloquean**, ninguna de código. Lo demás de este
+> archivo sigue siendo cierto, pero **no es lo próximo**.
+>
+> **Cambió también la base:** el 24/8 se borró el último movimiento inventado. Partida doble $0,00,
+> cero cuentas con saldo, cero movimientos vivos. El primer asiento real va a ser en septiembre.
+
 ## A · Lo que sólo puede hacer Fede
 
 > **📏 Re-medido el 2026-08-20 de madrugada. Tres números cambiaron desde el 6/8 y uno es de seguridad:**
@@ -81,8 +93,13 @@ renombró); el último barrido fue en junio y desde entonces hubo muchas migraci
 > | Budie (prueba) | admin | **02/04, el día que se creó** | ❌ |
 > | **Colore** | admin | **nunca** | ❌ |
 >
-> El ítem 6 hablaba de **6 personas** por enrolar; con Budie y Colore adentro son **8**. Vale la pena
-> decidir esas dos antes de ponerse a enrolar, porque enrolar una cuenta que nadie usa es trabajo tirado.
+> ✅ **RESUELTO el 2026-08-24.** Fede decidió dar de baja las cuatro: **`Ana` (`test@`), `Budie`
+> (`test3@`), `Colore` y `Lex@`** — inactivas, sin sesiones y con el rol bajado por si alguien las
+> reactiva. **Quedan 10 cuentas activas y sólo DOS superadmin: Fede y Jordi.** El ítem 6 (MFA) pasa de
+> 8 personas a **4**: Jordi, Lelean, Sofi y Noe.
+>
+> *(No se borraron físicamente: `audit_log` referencia una de ellas y el borrado no tiene vuelta. Si
+> hace falta eliminarlas del todo, se pide.)*
 
 Son 6, y **ninguna es de código**. Las dos primeras son las que más cambian lo que el sistema muestra.
 
