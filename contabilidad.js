@@ -5114,7 +5114,7 @@ const ContabilidadModule = {
         }
         const { jsPDF } = window.jspdf;
 
-        const logo = await this._loadLogoForPDF();
+        /* logo: ahora lo pone HojaMEPEX (vectorial). Antes esto bajaba assets/logo_full.png para tirarlo. */
         const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
         const PAGE_W = 210, PAGE_H = 297, MARGIN = 18;
         const TURQUESA = [0, 169, 193];
@@ -5132,37 +5132,19 @@ const ContabilidadModule = {
 
         let y = MARGIN;
 
-        // ═══ HEADER ═══
-        if (logo) {
-            try { doc.addImage(logo.dataUrl, 'JPEG', MARGIN, y, 45, 14); }
-            catch (e) { /* fallback texto */ }
-        } else {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(22);
-            doc.setTextColor(...TURQUESA);
-            doc.text('MEPEX', MARGIN, y + 10);
-        }
-
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
-        doc.setTextColor(...TURQUESA);
-        doc.text('ESTADO DE RESULTADOS', PAGE_W - MARGIN, y + 8, { align: 'right' });
-
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9.5);
-        doc.setTextColor(...MUTED);
-        doc.text(`Período: ${d.periodoLabel}`, PAGE_W - MARGIN, y + 14, { align: 'right' });
-        doc.text(`Modo: ${d.canalLabel}`,      PAGE_W - MARGIN, y + 18, { align: 'right' });
-        doc.text(`Emitido: ${new Date().toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })}`,
-                 PAGE_W - MARGIN, y + 22, { align: 'right' });
-
-        y += 28;
-        hr(y, TURQUESA, 0.6);
-        y += 8;
+        // ═══ Membrete común, nivel MÍNIMO ═══
+        // Es un papel interno que además va al contador: no lleva membrete
+        // comercial. Fede, 2026-08-24: "re simplificado, loguitos apenas".
+        y = await HojaMEPEX.encabezado(doc, {
+            nivel:  'minimo',
+            titulo: 'Estado de resultados',
+            numero: `${d.periodoLabel} · ${d.canalLabel}`,
+            fecha:  new Date().toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' }),
+        });
 
         // Helper para una sección con sus filas
         const renderSection = (title, items, total, totalColor = TEXTO) => {
-            if (y > PAGE_H - 40) { doc.addPage(); y = MARGIN; }
+            if (y > PAGE_H - 46) { doc.addPage(); y = MARGIN; }
 
             // Título sección
             doc.setFont('helvetica', 'bold');
@@ -5176,7 +5158,7 @@ const ContabilidadModule = {
             // Filas
             doc.setFontSize(9.5);
             items.forEach((c, idx) => {
-                if (y > PAGE_H - 25) { doc.addPage(); y = MARGIN; }
+                if (y > PAGE_H - 31) { doc.addPage(); y = MARGIN; }
                 if (idx % 2 === 1) {
                     doc.setFillColor(250, 250, 250);
                     doc.rect(MARGIN, y - 4, PAGE_W - 2 * MARGIN, 6, 'F');
@@ -5214,7 +5196,7 @@ const ContabilidadModule = {
         renderSection('Costos Operativos', d.costosOp, d.totalCostosOp, ROJO);
 
         // Resultado bruto — caja destacada
-        if (y > PAGE_H - 50) { doc.addPage(); y = MARGIN; }
+        if (y > PAGE_H - 56) { doc.addPage(); y = MARGIN; }
         const brutoColor = d.resultadoBruto >= 0 ? VERDE : ROJO;
         doc.setFillColor(245, 250, 251);
         doc.setDrawColor(...TURQUESA);
@@ -5232,7 +5214,7 @@ const ContabilidadModule = {
         renderSection('Gastos Administrativos', d.gastosAdmin, d.totalGastosAdmin, ROJO);
 
         // Resultado neto — caja destacada en turquesa
-        if (y > PAGE_H - 30) { doc.addPage(); y = MARGIN; }
+        if (y > PAGE_H - 36) { doc.addPage(); y = MARGIN; }
         const netoColor = d.resultadoNeto >= 0 ? VERDE : ROJO;
         doc.setFillColor(...TURQUESA);
         doc.rect(MARGIN, y, PAGE_W - 2 * MARGIN, 12, 'F');
@@ -5254,14 +5236,15 @@ const ContabilidadModule = {
             doc.text('⚠ Resultado negativo del período', MARGIN + 4, y + 5.5);
         }
 
-        // Footer
-        doc.setFontSize(7.5);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(...MUTED);
-        doc.text(
-            `MEPEX · Montaje y Equipamiento para Exposiciones · Generado ${new Date().toLocaleString('es-AR')}`,
-            PAGE_W / 2, PAGE_H - 8, { align: 'center' }
-        );
+        // ═══ Pie común, nivel MÍNIMO ═══
+        // ⚠️ La aclaración NO es cosmética y la pidió Fede expresamente: este papel
+        // sale con el mismo logo que una factura, y sin decirlo alguien lo puede
+        // tomar por un estado contable certificado. No lo es: es un resumen que
+        // arma el sistema con los asientos cargados.
+        await HojaMEPEX.pie(doc, {
+            nivel:   'minimo',
+            leyenda: 'Documento interno · no es un comprobante fiscal ni un estado contable certificado',
+        });
 
         const filename = `MEPEX_EERR_${this._reportePeriodo}.pdf`;
         doc.save(filename);

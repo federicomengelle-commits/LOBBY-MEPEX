@@ -153,13 +153,58 @@ trabajarse.
 
 ---
 
-## 7 · El orden de trabajo que se desprende
+## 7 · Lo que quedó CONSTRUIDO el 2026-08-24
+
+**La pieza en cascada: `hoja-mepex.js`.** Un solo membrete para todos los PDF del
+Lobby, con los dos niveles. Trae las constantes de marca (el cyan canónico, el
+domicilio comercial, la bajada, el contacto), el **logo vectorial** —que existía en
+`finanzas.js` y sólo usaba la factura mientras los otros ocho imprimían un PNG de
+baja— y `encabezado()` / `pie()`.
+
+| Documento | Nivel | Qué cambió |
+|---|---|---|
+| **Remito de carga** | mínimo | Membrete común. **Sin leyenda de transporte**, por decisión |
+| **Pedido a proveedor** | completo | Membrete común. `_render` pasó a async y su `forEach` a `for` — un `forEach` no espera promesas |
+| **Acta de entrega** | completo | Membrete común |
+| **Estado de resultados** | mínimo | Membrete común + **la aclaración de que no es un comprobante** |
+| **Catálogo** | — | La leyenda dictada: *«Precios expresados sin IVA · Sujeto a disponibilidad»* |
+| **Orden de compra** | completo | 🆕 **NUEVA** — `orden-compra-pdf.js` + botón en Compras |
+
+### ★ Un hallazgo que valía más que el membrete: los PDF pesaban 20 veces de más
+
+`jsPDF` embebe las imágenes **sin comprimir** salvo que se le pase el 8º parámetro
+de `addImage`. Medido sobre el mismo logo: **255 KB sin comprimir contra 8 KB con
+`'FAST'`**, al mismo tamaño y con 15 ms de costo. Un PNG de 388×166 px por 4 canales
+son 252 KB exactos — el bitmap crudo.
+
+| | Antes | Ahora |
+|---|---|---|
+| Pedido a proveedor | 309 KB | **16 KB** |
+| Acta de entrega | 308 KB | **15 KB** |
+| Remito × 5 vehículos | 96 KB | **11 KB** |
+
+Se corrigió también en **la factura**, que tenía el mismo problema en sus tres
+imágenes (logo, QR e isotipo) y es el papel que más se manda por mail.
+
+*(De paso: el logo se cachea por tamaño y color. El remito consolidado dibuja un
+membrete por vehículo, así que sin cache el mismo logo se rasterizaba y se embebía
+una vez por página.)*
+
+---
+
+## 8 · El orden de trabajo que sigue
 
 ```
-1. Llevar la hoja del generador al Lobby        ← una sola pieza, hereda en cascada
-2. Los dos niveles: completo vs mínimo          ← la regla de §1
-3. Corregir el domicilio del Lobby a Pallares   ← una constante
-4. La orden de compra (nueva)                   ← el hueco más grande
-5. La lista de reparto (nueva)                  ← necesita al taller
-6. Perfeccionar el compositor de planos         ← §6.bis, para mobiliario
+1. ✅ La hoja del generador llevada al Lobby
+2. ✅ Los dos niveles: completo vs mínimo
+3. ✅ El domicilio del Lobby → Pallares
+4. ✅ La orden de compra (nueva)
+5. ⏳ La lista de precios y el plan de pagos al membrete común
+6. ⏳ La lista de reparto (nueva)                ← necesita al taller
+7. ⏳ Perfeccionar el compositor de planos       ← §6.bis, para mobiliario
 ```
+
+**Lo que falta del punto 5:** la lista de precios (`costos.js`) y el plan de pagos
+(`finanzas.js`) tienen portada y layout propios más elaborados que los cuatro
+migrados; pasarlos al membrete común es una pasada aparte, no un reemplazo de
+encabezado. La leyenda de la lista ya es la correcta y Fede la aprobó.

@@ -8319,7 +8319,11 @@ const FinanzasModule = {
         // ── Logo grande (izquierda) ──
         try {
             const logoPng = await this._svgToPng('logo', 620, 279, null, '640 0 12598.69 5669.29');
-            doc.addImage(logoPng, 'PNG', 11, 8.6, 64, 28.8);
+            // Compresión: sin el 8º parámetro jsPDF embebe el bitmap CRUDO. Medido
+            // el 2026-08-24 sobre el mismo logo: 255 KB sin comprimir contra 8 KB
+            // con 'FAST', al mismo tamaño y en 15 ms. La factura es el papel que
+            // más se manda por mail.
+            doc.addImage(logoPng, 'PNG', 11, 8.6, 64, 28.8, undefined, 'FAST');
         } catch (le) { doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...TURQ); doc.text('MEPEX', L, 28); }
 
         // ── Caja de letra (centrada) ──
@@ -8422,7 +8426,7 @@ const FinanzasModule = {
         try {
             const qrUrl = this._buildAfipQR(comp, r);
             const dataUrl = qrUrl ? await this._qrDataUrl(qrUrl) : null;
-            if (dataUrl) doc.addImage(dataUrl, 'PNG', L, fy, 26, 26);
+            if (dataUrl) doc.addImage(dataUrl, 'PNG', L, fy, 26, 26, undefined, 'FAST');
         } catch (qe) { console.warn('[Finanzas] QR:', qe.message); }
         doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...DARK);
         doc.text(`CAE N°: ${comp.cae || '—'}`, L + 30, fy + 6);
@@ -8432,7 +8436,7 @@ const FinanzasModule = {
         doc.text('Comprobante autorizado por ARCA (AFIP)', L + 30, fy + 16);
         try {
             const isoPng = await this._svgToPng('iso', 240, 240);
-            doc.addImage(isoPng, 'PNG', R - 18, fy + 4, 18, 18);
+            doc.addImage(isoPng, 'PNG', R - 18, fy + 4, 18, 18, undefined, 'FAST');
         } catch (ie) { /* ignore */ }
 
         const fname = `MEPEX_${(this._tipoComprobante[tipo] || {}).short || tipo}_${(comp.numero || '').replace(/[^\d-]/g, '') || 's-n'}.pdf`;

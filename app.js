@@ -51,7 +51,7 @@ const App = {
         'proyectos.js?v=6',
         'proyecto-detalle.js?v=23',
         'crm.js?v=45',
-        'catalogo.js?v=9',
+        'catalogo.js?v=10',
         'stands.js?v=6',
         'compositor-piezas.js?v=2',
         'compositor.js?v=18',
@@ -64,23 +64,28 @@ const App = {
         // oculto a superadmin— y ese módulo ya muestra su propio cartel cuando el
         // motor OCTEXA no está (`disenador.js:33`). OCTEXA vive en su repo propio.
         'disenador.js?v=3',
+        // La hoja membretada comun: va ANTES que todo lo que genera PDF.
+        // docs/papeleria-mepex-inventario.md
+        'hoja-mepex.js?v=1',
         'plano-pdf.js?v=9',
-        'remito-pdf.js?v=4',
-        'pedido-pdf.js?v=2',
-        'conforme-pdf.js?v=2',
-        'compras.js?v=25',
+        'remito-pdf.js?v=5',
+        'pedido-pdf.js?v=3',
+        'conforme-pdf.js?v=3',
+        'orden-compra-pdf.js?v=1',   // el pedido confirmado al proveedor
+
+        'compras.js?v=26',
         'inventario.js?v=21',
         'locaciones.js?v=14',
         'flota.js?v=8',
         'rrhh.js?v=19',
         'costos.js?v=43',
         'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
-        'contabilidad.js?v=25',
+        'contabilidad.js?v=26',
         'ventas.js?v=2',
         'venta-detalle.js?v=3',
         'cobranza.js?v=5',
         'creditos-fiscales.js?v=6',
-        'finanzas.js?v=78',
+        'finanzas.js?v=79',
         'rendimiento.js?v=14',
         'calendario-adm.js?v=5',
         'carga-comprobante.js?v=5',

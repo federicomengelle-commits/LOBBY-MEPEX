@@ -1640,8 +1640,16 @@ const CatalogoModule = {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(7.5);
             doc.setTextColor(150, 150, 150);
+            // Dos renglones, no tres textos en la misma línea: medido a 7,5 pt, el
+            // texto de la izquierda termina en x=81,7 mm y uno centrado arrancaría
+            // en 74,8 — se pisaban 6,9 mm en TODAS las páginas.
             doc.text('MEPEX — Montaje y Equipamiento para Exposiciones', M, fy);
             doc.text(`Página ${p} de ${total}`, PAGE_W - M, fy, { align: 'right' });
+            // La leyenda que dictó Fede el 2026-08-24. No es adorno: un catálogo con
+            // precios que no aclara el IVA ni que el stock puede no estar es una
+            // promesa que después hay que sostener.
+            doc.setTextColor(...NARANJA);
+            doc.text('Precios expresados sin IVA · Sujeto a disponibilidad', M, fy + 4);
         }
 
         const safe  = (s) => (s || '').replace(/[^\wáéíóúñ\s-]/gi, '').trim().replace(/\s+/g, '-').slice(0, 60);

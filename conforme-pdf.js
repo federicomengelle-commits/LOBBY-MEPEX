@@ -18,7 +18,10 @@ const ConformePDF = {
     _logoFormat: 'PNG',
     _logoRatio: 0.16, // alto/ancho real del logo (2926×466) — para no estirarlo
 
-    _MARGIN: 18,
+    // Igual al de HojaMEPEX (16mm): con 18 el filete del membrete corría de
+    // x=16 a 194 y el cuerpo de 18 a 192 — dos milímetros de desalineación
+    // entre el encabezado y todo lo de abajo, en cada hoja.
+    _MARGIN: 16,
     _PAGE_W: 210,
     _PAGE_H: 297,
     _TURQUESA: [0, 169, 193],
@@ -69,43 +72,35 @@ const ConformePDF = {
     },
 
     async generate(opts) {
+        if (typeof HojaMEPEX === 'undefined') { console.warn('[ConformePDF] falta hoja-mepex.js'); return null; }
         if (typeof window.jspdf === 'undefined') { console.warn('[ConformePDF] jsPDF no está cargado'); return null; }
         const { proyecto = {}, conforme = {} } = opts || {};
-        await this._loadLogo();
+        /* logo: ahora lo pone HojaMEPEX (vectorial). Antes esto bajaba assets/logo_full.png para tirarlo. */
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-        this._render(doc, proyecto, conforme);
+        await this._render(doc, proyecto, conforme);
         try { return doc.output('blob'); }
         catch (e) { console.warn('[ConformePDF] output blob error:', e.message); return null; }
     },
 
-    _render(doc, proyecto, conforme) {
+    async _render(doc, proyecto, conforme) {
         const PAGE_W = this._PAGE_W, PAGE_H = this._PAGE_H, MARGIN = this._MARGIN;
         const TURQUESA = this._TURQUESA, TEXTO = this._TEXTO, MUTED = this._MUTED;
         const tipo = conforme.tipo === 'devolucion' ? 'devolucion' : 'recepcion';
         let y = MARGIN;
 
-        // ─── Header ───
-        if (this._logoDataUrl) {
-            try {
-                const logoW = 46, logoH = logoW * (this._logoRatio || 0.16);
-                doc.addImage(this._logoDataUrl, this._logoFormat || 'JPEG', MARGIN, y + 3, logoW, logoH);
-            }
-            catch (e) { console.warn('[ConformePDF] addImage logo failed:', e.message); }
-        } else {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TURQUESA);
-            doc.text('MEPEX', MARGIN, y + 10);
-        }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...TURQUESA);
-        doc.text(this._titulo(tipo), PAGE_W - MARGIN, y + 8, { align: 'right' });
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...MUTED);
+        // ─── Membrete común, nivel COMPLETO ───
+        // Lo firma el cliente: es de los pocos papeles que quedan en su poder.
         const fFirma = conforme.firmado_at ? new Date(conforme.firmado_at) : new Date();
-        doc.text(`Fecha: ${fFirma.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`, PAGE_W - MARGIN, y + 14, { align: 'right' });
-        doc.text('Entrega de stand', PAGE_W - MARGIN, y + 18, { align: 'right' });
-
-        y += 24;
-        this._hr(doc, MARGIN, PAGE_W - MARGIN, y, TURQUESA);
-        y += 7;
+        y = await HojaMEPEX.encabezado(doc, {
+            nivel:  'completo',
+            titulo: this._titulo(tipo),
+            numero: 'Entrega de stand',
+            fecha:  fFirma.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        });
+        // Sin _hr acá: HojaMEPEX.encabezado() ya dibuja su filete y devuelve la Y
+        // de después. El de antes quedó al borrar el `y += 24` del header viejo y
+        // pintaba un SEGUNDO filete pegado, además en otro tono de turquesa.
 
         // ─── Stand / Proyecto ───
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...TURQUESA);
@@ -153,7 +148,7 @@ const ConformePDF = {
 
         // ─── Observaciones ───
         if (conforme.observaciones) {
-            if (y > PAGE_H - 30) { doc.addPage(); y = MARGIN; }
+            if (y > PAGE_H - 46) { doc.addPage(); y = MARGIN; }
             doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...MUTED);
             doc.text('OBSERVACIONES', MARGIN, y); y += 5;
             doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...TEXTO);
@@ -163,15 +158,15 @@ const ConformePDF = {
         }
 
         // ─── Compromiso ───
-        if (y > PAGE_H - 26) { doc.addPage(); y = MARGIN; }
+        if (y > PAGE_H - 42) { doc.addPage(); y = MARGIN; }
         doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...TEXTO);
         const comp = doc.splitTextToSize(this._compromiso(tipo), PAGE_W - 2 * MARGIN);
         doc.text(comp, MARGIN, y);
         y += comp.length * 4.4;
 
         // ─── Firma (anclada al pie) ───
-        const firmaTop = PAGE_H - 56;
-        let fy = (y > firmaTop - 6) ? (function () { doc.addPage(); return PAGE_H - 56; })() : firmaTop;
+        const firmaTop = PAGE_H - 72;
+        let fy = (y > firmaTop - 6) ? (function () { doc.addPage(); return PAGE_H - 72; })() : firmaTop;
         this._hr(doc, MARGIN, PAGE_W - MARGIN, fy, [220, 220, 220]);
         fy += 6;
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...TURQUESA);
@@ -192,12 +187,10 @@ const ConformePDF = {
         doc.setFontSize(8); doc.setTextColor(...MUTED);
         doc.text(`Firmado: ${fFirma.toLocaleString('es-AR')}`, MARGIN, lineY + 10);
 
-        // ─── Footer ───
-        doc.setFontSize(7.5); doc.setTextColor(...MUTED);
-        doc.text(
-            `MEPEX · Montaje y Equipamiento para Exposiciones · Generado ${new Date().toLocaleString('es-AR')}`,
-            PAGE_W / 2, PAGE_H - 8, { align: 'center' }
-        );
+        // ─── Pie común, nivel COMPLETO ───
+        // El compromiso de devolución ya está en el CUERPO del acta, que es donde
+        // corresponde: es lo que el cliente firma, no letra chica al pie.
+        await HojaMEPEX.pie(doc, { nivel: 'completo' });
     },
 
     // ─── Helpers ───

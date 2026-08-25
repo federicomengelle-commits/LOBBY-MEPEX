@@ -332,6 +332,46 @@ const ComprasModule = {
     },
 
     // arg = una OC (desde su ficha) O { standaloneItems:[...], titulo } (desde un ítem).
+    /**
+     * Orden de compra en PDF: el pedido CONFIRMADO.
+     * Es el paso siguiente a "Pedir precio" — aquél pregunta cuánto sale, éste
+     * dice qué se compra, en cuánto tiempo se espera y cómo se paga.
+     * Hasta el 2026-08-24 esto no existía: lo único que salía al proveedor era
+     * un mailto con texto plano. Ver docs/papeleria-mepex-inventario.md §4.4.
+     */
+    async _descargarOrdenCompra(oc) {
+        if (typeof OrdenCompraPDF === 'undefined') { Toast.error('Falta orden-compra-pdf.js'); return; }
+        try {
+            // El proveedor sale del presupuesto ganador si lo hay; si no, del que
+            // tenga cargado la orden. Sin proveedor el documento igual se emite:
+            // sirve para imprimirlo y completarlo a mano.
+            let prov = null;
+            const provId = oc.proveedor_uuid || oc.proveedor_id;
+            if (provId && API.getProveedores) {
+                const todos = await API.getProveedores();
+                prov = (todos || []).find(p => String(p.id) === String(provId)) || null;
+            }
+            const blob = await OrdenCompraPDF.generate({
+                ordenes:   [oc],
+                proveedor: prov,
+                condiciones: {
+                    referencia: oc.descripcion && oc.evento_id ? oc.descripcion : (oc.notas || ''),
+                },
+            });
+            if (!blob) { Toast.error('No se pudo generar la orden'); return; }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `MEPEX_OC_${(oc.numero_oc || oc.id || '').toString().slice(0, 24)}.pdf`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+            Toast.success('Orden de compra generada');
+        } catch (e) {
+            console.warn('[Compras] orden de compra:', e.message);
+            Toast.error('No se pudo generar la orden');
+        }
+    },
+
     async _openPedirPrecioModal(arg) {
         let oc = null, items = [], titulo = '';
         if (arg && arg.standaloneItems) {
@@ -1544,6 +1584,7 @@ const ComprasModule = {
                         Presupuestos de proveedor
                         <span style="display:inline-flex;gap:8px;">
                             <button class="cmp-btn-add-sm cmp-btn-pedir" id="cmpPedirPrecio">📧 Pedir precio</button>
+                            <button class="cmp-btn-add-sm" id="cmpOrdenCompra" title="El pedido confirmado, en PDF con membrete">📄 Orden de compra</button>
                             <button class="cmp-btn-add-sm" id="cmpAddPresu">+ Agregar</button>
                         </span>
                     </h3>
@@ -1606,6 +1647,7 @@ const ComprasModule = {
 
         // Presupuestos (5.B) + Generar egreso (5.C)
         document.getElementById('cmpPedirPrecio')?.addEventListener('click', () => this._openPedirPrecioModal(oc));
+        document.getElementById('cmpOrdenCompra')?.addEventListener('click', () => this._descargarOrdenCompra(oc));
         document.getElementById('cmpAddPresu')?.addEventListener('click', () => this._showPresupuestoModal(oc.id));
         document.querySelectorAll('[data-presu-cargar]').forEach(b => b.addEventListener('click', () => this._cargarPrecioModal(b.dataset.presuCargar)));
         document.querySelectorAll('[data-presu-win]').forEach(b => b.addEventListener('click', async () => {

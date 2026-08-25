@@ -164,6 +164,7 @@ const RemitoPDF = {
     // ─────────────────────────────────────────────────────────────
     async generate(id) {
         if (!id) { console.warn('[RemitoPDF] id requerido'); return null; }
+        if (typeof HojaMEPEX === 'undefined') { console.warn('[RemitoPDF] falta hoja-mepex.js'); return null; }
         if (typeof window.jspdf === 'undefined') { console.warn('[RemitoPDF] jsPDF no está cargado'); return null; }
 
         let model = null;
@@ -179,10 +180,10 @@ const RemitoPDF = {
         }
         if (!model) { console.warn('[RemitoPDF] no se encontró transporte ni carga:', id); return null; }
 
-        await this._loadLogo();
+        /* logo: ahora lo pone HojaMEPEX (vectorial). Antes esto bajaba assets/logo_full.png para tirarlo. */
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-        this._renderBloque(doc, model, this._MARGIN, true);
+        await this._renderBloque(doc, model, this._MARGIN, true);
         try { return doc.output('blob'); }
         catch (e) { console.warn('[RemitoPDF] output blob error:', e.message); return null; }
     },
@@ -198,21 +199,24 @@ const RemitoPDF = {
         const transportes = await API.getTransporteByEvento(eventoId);
         if (!transportes || !transportes.length) { console.warn('[RemitoPDF] sin transporte para el evento'); return null; }
 
-        await this._loadLogo();
+        /* logo: ahora lo pone HojaMEPEX (vectorial). Antes esto bajaba assets/logo_full.png para tirarlo. */
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
         for (let idx = 0; idx < transportes.length; idx++) {
             if (idx > 0) doc.addPage();
             const model = await this._modelFromTransporte(transportes[idx]);
-            this._renderBloque(doc, model, this._MARGIN, true);
+            await this._renderBloque(doc, model, this._MARGIN, true);
         }
         try { return doc.output('blob'); }
         catch (e) { console.warn('[RemitoPDF] output blob error:', e.message); return null; }
     },
 
     // ─── Constantes de layout ───
-    _MARGIN: 18,
+    // Igual al de HojaMEPEX (16mm): con 18 el filete del membrete corría de
+    // x=16 a 194 y el cuerpo de 18 a 192 — dos milímetros de desalineación
+    // entre el encabezado y todo lo de abajo, en cada hoja.
+    _MARGIN: 16,
     _PAGE_W: 210,
     _PAGE_H: 297,
     _TURQUESA: [0, 169, 193],
@@ -220,29 +224,24 @@ const RemitoPDF = {
     _MUTED: [120, 120, 120],
 
     // Renderiza UN remito (un vehículo) en la página actual a partir del modelo común.
-    _renderBloque(doc, m, startY) {
+    // Es async desde que el membrete es común: HojaMEPEX rasteriza el logo vectorial
+    // al tamaño final, y eso pasa por un canvas.
+    async _renderBloque(doc, m, startY) {
         const PAGE_W = this._PAGE_W, PAGE_H = this._PAGE_H, MARGIN = this._MARGIN;
         const TURQUESA = this._TURQUESA, TEXTO = this._TEXTO, MUTED = this._MUTED;
         let y = startY;
 
-        // ─── Header: logo + título ───
-        if (this._logoDataUrl) {
-            try { doc.addImage(this._logoDataUrl, this._logoFormat || 'JPEG', MARGIN, y, 45, 14); }
-            catch (e) { console.warn('[RemitoPDF] addImage failed:', e.message); }
-        } else {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TURQUESA);
-            doc.text('MEPEX', MARGIN, y + 10);
-        }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(...TURQUESA);
-        doc.text('REMITO DE CARGA', PAGE_W - MARGIN, y + 8, { align: 'right' });
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...MUTED);
-        doc.text(`Nº ${m.num}`, PAGE_W - MARGIN, y + 14, { align: 'right' });
+        // ─── Membrete común, nivel MÍNIMO ───
+        // El remito es un papel interno que se firma parado, en el galpón o en la
+        // puerta del predio: no lleva membrete comercial ni datos de contacto.
+        // Fede, 2026-08-24: "tiene que ser simplificado".
         const fechaEmision = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        doc.text(`Emitido: ${fechaEmision}`, PAGE_W - MARGIN, y + 18, { align: 'right' });
-
-        y += 24;
-        this._hr(doc, MARGIN, PAGE_W - MARGIN, y, TURQUESA);
-        y += 6;
+        y = await HojaMEPEX.encabezado(doc, {
+            nivel:  'minimo',
+            titulo: 'Remito de carga',
+            numero: m.num ? `N° ${m.num}` : '',
+            fecha:  fechaEmision,
+        });
 
         // ─── Evento + Destino ───
         const fechaCarga = m.fecha
@@ -339,12 +338,15 @@ const RemitoPDF = {
         signY += 6;
         doc.line(col2X, signY, col2X + colW, signY);
 
-        // ─── Footer ───
-        doc.setFontSize(7.5); doc.setTextColor(...MUTED);
-        doc.text(
-            `MEPEX · Montaje y Equipamiento para Exposiciones · Generado ${new Date().toLocaleString('es-AR')}`,
-            PAGE_W / 2, PAGE_H - 8, { align: 'center' }
-        );
+        // ─── Pie común, nivel MÍNIMO ───
+        // Sin leyenda de transporte a propósito: es un remito de MEPEX y lo
+        // transporta MEPEX — explicarlo es decir lo obvio (Fede, 2026-08-24).
+        // Se conserva el sello de generación, que sí sirve: dice de cuándo es
+        // el papel que alguien tiene en la mano.
+        await HojaMEPEX.pie(doc, {
+            nivel:   'minimo',
+            leyenda: `Generado ${new Date().toLocaleString('es-AR')}`,
+        });
     },
 
     // ─── Helpers ───

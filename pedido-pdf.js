@@ -17,7 +17,10 @@ const PedidoPDF = {
     _logoDataUrl: null,
     _logoFormat: 'PNG',
 
-    _MARGIN: 18,
+    // Igual al de HojaMEPEX (16mm): con 18 el filete del membrete corría de
+    // x=16 a 194 y el cuerpo de 18 a 192 — dos milímetros de desalineación
+    // entre el encabezado y todo lo de abajo, en cada hoja.
+    _MARGIN: 16,
     _PAGE_W: 210,
     _PAGE_H: 297,
     _TURQUESA: [0, 169, 193],
@@ -58,12 +61,13 @@ const PedidoPDF = {
     },
 
     async generate(opts) {
+        if (typeof HojaMEPEX === 'undefined') { console.warn('[PedidoPDF] falta hoja-mepex.js'); return null; }
         if (typeof window.jspdf === 'undefined') { console.warn('[PedidoPDF] jsPDF no está cargado'); return null; }
         const { evento = {}, proveedor = {} } = opts || {};
-        await this._loadLogo();
+        /* logo: ahora lo pone HojaMEPEX (vectorial). Antes esto bajaba assets/logo_full.png para tirarlo. */
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-        this._render(doc, evento, proveedor);
+        await this._render(doc, evento, proveedor);
         try { return doc.output('blob'); }
         catch (e) { console.warn('[PedidoPDF] output blob error:', e.message); return null; }
     },
@@ -73,40 +77,33 @@ const PedidoPDF = {
         if (typeof window.jspdf === 'undefined') { console.warn('[PedidoPDF] jsPDF no está cargado'); return null; }
         const { evento = {}, proveedores = [] } = opts || {};
         if (!proveedores.length) { console.warn('[PedidoPDF] sin proveedores'); return null; }
-        await this._loadLogo();
+        /* logo: ahora lo pone HojaMEPEX (vectorial). Antes esto bajaba assets/logo_full.png para tirarlo. */
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-        proveedores.forEach((prov, idx) => {
+        // for..of y no forEach: el membrete es async y un forEach no espera —
+        // las páginas salían en cualquier orden, o vacías.
+        for (let idx = 0; idx < proveedores.length; idx++) {
             if (idx > 0) doc.addPage();
-            this._render(doc, evento, prov);
-        });
+            await this._render(doc, evento, proveedores[idx]);
+        }
         try { return doc.output('blob'); }
         catch (e) { console.warn('[PedidoPDF] output blob error:', e.message); return null; }
     },
 
-    _render(doc, evento, proveedor) {
+    async _render(doc, evento, proveedor) {
         const PAGE_W = this._PAGE_W, PAGE_H = this._PAGE_H, MARGIN = this._MARGIN;
         const TURQUESA = this._TURQUESA, TEXTO = this._TEXTO, MUTED = this._MUTED;
         let y = MARGIN;
 
-        // ─── Header: logo + título ───
-        if (this._logoDataUrl) {
-            try { doc.addImage(this._logoDataUrl, this._logoFormat || 'JPEG', MARGIN, y, 45, 14); }
-            catch (e) { console.warn('[PedidoPDF] addImage failed:', e.message); }
-        } else {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(...TURQUESA);
-            doc.text('MEPEX', MARGIN, y + 10);
-        }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...TURQUESA);
-        doc.text('PEDIDO A PROVEEDOR', PAGE_W - MARGIN, y + 8, { align: 'right' });
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...MUTED);
+        // ─── Membrete común, nivel COMPLETO ───
+        // Sale hacia afuera y compromete plata: lleva toda la marca y el contacto.
         const fechaEmision = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        doc.text(`Emitido: ${fechaEmision}`, PAGE_W - MARGIN, y + 14, { align: 'right' });
-        doc.text('Subalquiler de equipamiento', PAGE_W - MARGIN, y + 18, { align: 'right' });
-
-        y += 24;
-        this._hr(doc, MARGIN, PAGE_W - MARGIN, y, TURQUESA);
-        y += 7;
+        y = await HojaMEPEX.encabezado(doc, {
+            nivel:  'completo',
+            titulo: 'Pedido a proveedor',
+            numero: 'Subalquiler de equipamiento',
+            fecha:  fechaEmision,
+        });
 
         // ─── Proveedor ───
         doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...TURQUESA);
@@ -162,14 +159,14 @@ const PedidoPDF = {
 
         // ─── Totales ───
         const totalU = items.reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
-        if (y > PAGE_H - 20) { doc.addPage(); y = MARGIN; }
+        if (y > PAGE_H - 36) { doc.addPage(); y = MARGIN; }
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...TEXTO);
         doc.text(`TOTAL:  ${items.length} ítem${items.length === 1 ? '' : 's'}  ·  ${totalU} unidad${totalU === 1 ? '' : 'es'}`,
             PAGE_W - MARGIN, y, { align: 'right' });
 
         // ─── Confirmación (al pie) ───
         let cy = y + 18;
-        if (cy > PAGE_H - 38) { doc.addPage(); cy = MARGIN + 14; }
+        if (cy > PAGE_H - 54) { doc.addPage(); cy = MARGIN + 14; }
         this._hr(doc, MARGIN, PAGE_W - MARGIN, cy, [220, 220, 220]);
         cy += 6;
         doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...TURQUESA);
@@ -181,12 +178,12 @@ const PedidoPDF = {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);
         doc.text('Aclaración / Fecha', MARGIN, cy);
 
-        // ─── Footer ───
-        doc.setFontSize(7.5); doc.setTextColor(...MUTED);
-        doc.text(
-            `MEPEX · Montaje y Equipamiento para Exposiciones · Generado ${new Date().toLocaleString('es-AR')}`,
-            PAGE_W / 2, PAGE_H - 8, { align: 'center' }
-        );
+        // ─── Pie común ───
+        // ⚠️ La leyenda de este documento todavía NO está escrita: define qué se
+        // le promete a un proveedor (si el precio queda en firme, en qué plazo y
+        // cómo se paga). Hasta que Fede la dicte, va sin leyenda antes que con una
+        // inventada — ver docs/papeleria-mepex-inventario.md §6.
+        await HojaMEPEX.pie(doc, { nivel: 'completo' });
     },
 
     // ─── Helpers ───
