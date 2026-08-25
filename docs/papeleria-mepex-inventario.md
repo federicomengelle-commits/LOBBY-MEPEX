@@ -1,27 +1,40 @@
-# Papelería MEPEX — qué documentos existen, quién los recibe y qué dicen
+# Papelería MEPEX — inventario y decisiones
 
-> **Relevamiento, no propuesta.** Escrito el **2026-08-24** a pedido de Fede: *«primero yo vería bien
-> todos los documentos que necesitamos… primero listemos todo eso y después ya iremos viendo bien qué
-> es lo que terminamos haciendo»*.
+> **Relevamiento del 2026-08-24, con las decisiones de Fede del mismo día incorporadas.**
 >
-> **Todas las leyendas de acá están copiadas del código, no inventadas.** Donde falta una, dice que
-> falta — no hay ninguna redactada por mí. *(La versión anterior de este trabajo sí las inventaba, y
-> una era directamente falsa: decía que la mercadería viaja por cuenta del cliente cuando el
-> transporte lo hace MEPEX.)*
+> Todas las leyendas que figuran como existentes están **copiadas del código**. Las que Fede dictó
+> están marcadas como tales. Donde falta una, dice que falta — no hay ninguna redactada por mí.
+> *(La primera versión de este trabajo sí las inventaba, y una era falsa: decía que la mercadería
+> viaja por cuenta del cliente cuando el transporte lo hace MEPEX.)*
 
 ---
 
-## 1 · ★ La hoja membretada YA EXISTE, y está bien hecha
+## 1 · ★ La regla que ordena todo: hay DOS niveles de hoja, no uno
 
-Está en **`GENERADOR-PROPUESTA-MEPEX/app/render.py`**, el motor weasyprint de la propuesta comercial.
-No hay que diseñarla: hay que **extenderla al resto**.
+Salió de las respuestas de Fede, que lo dijo tres veces sobre tres documentos distintos:
+*«tiene que ser simplificado»* · *«re simplificado tiene que ser, loguitos apenas»* ·
+*«que no sea tan tan así y dejarlo más simple como está ahora»*.
+
+| Nivel | Para qué documentos | Cómo es |
+|---|---|---|
+| **Completo** | Lo que ve un **cliente** o un **proveedor** | El membrete a sangre de §2, con toda la marca |
+| **Mínimo** | Lo **interno** y lo **operativo** | Encabezado y pie muy simples. *«Loguitos apenas»* |
+
+**Esto responde la objeción original** —*«no son todas iguales, no son las mismas leyendas»*— con un
+criterio y no con una lista de excepciones: **la hoja la decide quién la recibe.**
+
+---
+
+## 2 · La hoja membretada ya existe
+
+Está en **`GENERADOR-PROPUESTA-MEPEX/app/render.py`**. No hay que diseñarla: hay que **extenderla**.
 
 | Qué | Valor real |
 |---|---|
-| Turquesa | **`#00ABC8`** — y el código aclara: *«del SVG canónico, NO del raster»* |
+| Turquesa | **`#00ABC8`** — el código aclara: *«del SVG canónico, NO del raster»* |
 | Membrete | **A sangre**: banda de 7 mm arriba y abajo, `@page A4 margin:0` |
 | Contenido | Caja a 16 mm |
-| Pie | Filete cyan 1,6 mm · isotipo 7 mm · condiciones 7 pt `#7b8186` · contacto 7 pt `#3f4143` a la derecha |
+| Pie | Filete cyan 1,6 mm · isotipo 7 mm · condiciones 7 pt `#7b8186` · contacto 7 pt `#3f4143` derecha |
 | Tipografías | **Inter** (400/700/italic) + **Archivo** (700/800), embebidas como data-URI |
 | Bajada | `MONTAJE Y EQUIPAMIENTO PARA EXPOSICIONES` |
 | Contacto | WhatsApp **11 4970 7000** · **www.mepex.com.ar** · Pallares 549 - Dpto 1, CP 1824, Lanús Oeste |
@@ -33,104 +46,96 @@ No hay que diseñarla: hay que **extenderla al resto**.
 
 ---
 
-## 2 · ⚠️ Las tres apps no dicen lo mismo
+## 3 · Las divergencias entre las tres apps
 
-Cada una armó su propia versión de la marca. Antes de unificar hay que decidir cuál gana en cada eje.
-
-| | **Lobby** | **Cotizador** (jsPDF) | **Generador propuesta** |
+| | **Lobby** | **Cotizador** | **Generador propuesta** |
 |---|---|---|---|
-| Turquesa | `#00A9C1` · y `[0,171,200]` en la factura | — | **`#00ABC8`** *(el canónico)* |
-| Tipografía | Outfit + Space Mono | Helvetica (default de jsPDF) | **Inter + Archivo** |
-| Domicilio | **Colombia 1173**, Lanús | **Pallares 549**, Lanús Oeste | **Pallares 549**, Lanús Oeste |
-| Logo | PNG en 8 de 9 · vectorial sólo en la factura | PNG base64 | PNG base64 + isotipo |
+| Turquesa | `#00A9C1` · `[0,171,200]` en la factura | — | **`#00ABC8`** *(el canónico)* |
+| Tipografía | Outfit + Space Mono | Helvetica (default jsPDF) | **Inter + Archivo** |
+| Domicilio | Colombia 1173, Lanús | Pallares 549, Lanús Oeste | Pallares 549, Lanús Oeste |
+| Logo | PNG en 8 de 9 · vectorial sólo en la factura | PNG | PNG + isotipo |
 
-**Las dos que hay que resolver sí o sí:**
-
-1. **Son dos domicilios distintos.** Puede ser correcto —fiscal vs. comercial— pero hoy nada dice
-   cuál va en qué papel. La factura usa Colombia 1173; todo lo comercial usa Pallares 549.
-2. **Son tres turquesas.** `#00ABC8` es el del SVG canónico según el propio código del generador.
+> ✅ **DECIDIDO (Fede, 24/8): va el domicilio COMERCIAL — Pallares 549.**
+> El Lobby es el que está fuera de línea: usa Colombia 1173 en todo, cuando ése es el fiscal.
 
 ---
 
-## 3 · El inventario, por quién lo recibe
+## 4 · El inventario, con las decisiones
 
-### 3.1 · Al cliente — comerciales
+### 4.1 · Al cliente — comerciales · **hoja completa**
 
-| | Documento | Dónde vive | Leyenda que tiene HOY |
+| | Documento | Dónde | Estado |
 |---|---|---|---|
-| 1 | **Propuesta de cotización** | Cotizador · `script.js` | *«Presupuesto en concepto de alquiler. Incluye armado, desarme y logística.»* + *«No incluye diseño del material gráfico. Vigencia: 15 días. Forma de pago a convenir.»* |
-| 2 | **Propuesta comercial** (carátula + renders) | Generador · `render.py` | La de §1 |
-| 3 | **Presupuesto · Detalle de provisión** | Cotizador · `gen_final.py` | La de §1 |
-| 4 | **Presupuesto · Distribución** (por sector y por espacio) | Cotizador · `gen_final.py` | La de §1 |
-| 5 | **Propuesta de equipamiento** (catálogo con fotos) | Lobby · `catalogo.js` | *(sin leyenda)* |
-| 6 | **Lista de precios** — sale en 3 versiones: cliente / socio / interno | Lobby · `costos.js` | *«Precios expresados sin IVA»* |
-| 7 | **Plan de pagos** | Lobby · `finanzas.js` | *(sin leyenda; sí imprime datos bancarios)* |
+| 1 | **Propuesta de cotización** | Cotizador | ✅ OK — leyenda propia ya escrita |
+| 2 | **Propuesta comercial** (carátula + renders) | Generador | ✅ OK |
+| 3 | **Presupuesto · Detalle de provisión** | Cotizador | ✅ OK |
+| 4 | **Presupuesto · Distribución** (por sector y por espacio) | Cotizador | ✅ OK |
+| 5 | **Propuesta de equipamiento** (catálogo con fotos) | Lobby · `catalogo.js` | ✅ **Leyenda dictada: «Precios expresados sin IVA / Sujeto a disponibilidad»** |
+| 6 | **Lista de precios** — cliente / socio / interna | Lobby · `costos.js` | ✅ OK. **Las tres llevan la MISMA leyenda**: *«tiene que ser la misma cosa, la onda de diferencias en los precios»* — lo que cambia son los precios, no el papel |
+| 7 | **Plan de pagos** | Lobby · `finanzas.js` | ⏳ **Va con un selector de cuenta/destino**: que se elija a qué cuenta se transfiere, en vez de imprimir una fija |
 
-> Los 1 a 4 comparten la misma leyenda comercial y ya están alineados entre sí. Los 5, 6 y 7 salen del
-> Lobby y **no tienen ninguna**.
+### 4.2 · Al cliente — fiscales · **forma propia, no se tocan**
 
-### 3.2 · Al cliente — fiscales *(forma propia, no se toca)*
-
-| | Documento | Dónde vive | Leyenda |
-|---|---|---|---|
-| 8 | **Factura A / B / C** | Lobby · `finanzas.js` | *«Comprobante autorizado por ARCA (AFIP)»* · *«Condición de venta: Contado»* · *«IVA incluido»* (en B) |
-| 9 | **Nota de crédito A / B** | Lobby · `finanzas.js` | ídem |
-| 10 | **Nota de débito A / B** | Lobby · `finanzas.js` | ídem |
-
-> Layout AFIP ya resuelto: `ORIGINAL` centrado, letra y código en caja al medio, CAE + QR al pie,
-> márgenes 14 mm. **Esta hoja no entra en la unificación**: su forma la fija la resolución, no la marca.
-
-### 3.3 · Al cliente — operativos *(se firman)*
-
-| | Documento | Dónde vive | Leyenda que tiene HOY |
-|---|---|---|---|
-| 11 | **Acta de entrega del stand** ✍ | Lobby · `conforme-pdf.js` | Compromiso de devolución *(en el cuerpo, no al pie)* |
-| 12 | **Plano del stand** — **el único horizontal** | Lobby · `plano-pdf.js` | *(sin leyenda)* |
-
-### 3.4 · A proveedores
-
-| | Documento | Dónde vive | Estado |
-|---|---|---|---|
-| 13 | **Pedido a proveedor** (subalquiler por evento) | Lobby · `pedido-pdf.js` | Existe, **sin leyenda** |
-| 14 | **Orden de compra** | Lobby · `compras.js` | 🔴 **NO EXISTE COMO DOCUMENTO.** Hoy sale por `mailto:` con texto plano: sin membrete, sin número, sin condiciones |
-
-> ⚠️ **El 14 es el hueco más grande del relevamiento**, y es justo lo que marcaste: *«lo que más
-> conviene es mandar pedido confirmado, con nuestra info y todo»*. Hoy el proveedor recibe un mail
-> suelto. Falta decidir qué dice ese papel: si compromete precio, en qué plazo se entrega, cómo y
-> cuándo se paga, y quién autoriza.
-
-### 3.5 · Internos
-
-| | Documento | Dónde vive | Estado |
-|---|---|---|---|
-| 15 | **Remito de carga** ✍ | Lobby · `remito-pdf.js` | Existe. ⚠️ **Su leyenda hay que escribirla de cero**: la que había puesto yo decía que la mercadería viaja por cuenta del cliente, y es al revés — **el transporte lo hace MEPEX** |
-| 16 | **Estado de resultados** | Lobby · `contabilidad.js` | Existe, sin leyenda |
-| 17 | **Libros IVA** (compras y ventas) | Lobby · `contabilidad.js` | Salen en PDF y en CSV para el contador |
-| 18 | **Libro de retenciones y percepciones** | Lobby · `creditos-fiscales.js` | Sale en CSV para el contador |
-| 19 | **Lista de reparto para el taller** | — | 🔴 **NO EXISTE.** Es el ítem G5 de `PENDIENTES.md`: *«el formato que ellos entienden: cuadritos con ítems, visual, funcional»* |
-
----
-
-## 4 · Lo que hay que decidir antes de tocar nada
-
-| | Decisión | Por qué no la puedo tomar yo |
+| | Documento | Estado |
 |---|---|---|
-| **1** | **Qué domicilio va en qué documento** | Son dos y ninguno está marcado como fiscal o comercial |
-| **2** | **Qué dice el remito** | Lo transporta MEPEX: la leyenda tiene que decir qué pasa si algo llega roto o falta, y eso es criterio del negocio |
-| **3** | **Qué dice la orden de compra** | Compromete plata con un tercero. Precio, plazo, forma de pago y quién autoriza |
-| **4** | **Si la lista de precios interna dice lo mismo que la del cliente** | Sale en tres versiones y hoy las tres llevan el mismo pie |
-| **5** | **Si el estado de resultados aclara que no es un comprobante** | Es el único riesgo que vi solo: con el mismo membrete que una factura, se puede confundir con un papel oficial |
-| **6** | **Cuáles de los 19 valen el trabajo** | Unificar los 19 es mucho. Los comerciales ya están alineados entre sí; el Lobby es el que está suelto |
+| 8 | **Factura A / B** | ✅ OK. ⚠️ **MEPEX NO hace factura C.** Y hay una razón de fondo: es **Responsable Inscripto**, y un RI no puede emitir C — es de monotributistas y exentos. Verificado: **ARCA tampoco la emite** (`_arcaTipos` no la incluye), así que la opción está en el selector sin corresponder |
+| 9 | **Nota de crédito A / B** | ✅ OK |
+| 10 | **Nota de débito A / B** | ✅ OK |
+
+### 4.3 · Al cliente — operativos · se firman
+
+| | Documento | Estado |
+|---|---|---|
+| 11 | **Acta de entrega del stand** ✍ | ✅ OK — *«está linda esa, está buena»* |
+| 12 | **Plano del stand** | 🗑️ **SE PUEDE SACAR.** *«Se hace por afuera, con CAD directamente, se imprime desde el CAD y ya tiene su frame armado adentro. De ésa podemos disponer.»* **Y el código lo confirma:** `plano-pdf.js` sólo lo invoca `compositor.js`, que está **parkeado** desde que el diseño pasó a 3ds Max — son 298 líneas cargándose en cada arranque para nada |
+
+### 4.4 · A proveedores · **hoja completa**
+
+| | Documento | Estado |
+|---|---|---|
+| 13 | **Pedido a proveedor** (subalquiler por evento) | ✅ OK |
+| 14 | **Orden de compra** | 🔨 **SE CREA**, *«adaptada y simplificada, que incluya la lista necesaria nomás»* y *«más simple como está ahora, pero está bueno que tenga su forma»*. **Contenido dictado: las cosas a comprar + plazo de entrega + forma de pago.** Hoy sale por `mailto:` con texto plano — sin membrete, sin número, sin condiciones |
+
+### 4.5 · Internos · **hoja mínima**
+
+| | Documento | Estado |
+|---|---|---|
+| 15 | **Remito de carga** ✍ | ⏳ Simplificado. ✅ **NO lleva leyenda de transporte:** *«no hace falta aclarar que lo transporta MEPEX porque se sabe — es un remito de MEPEX y va a transportar MEPEX»*. Falta ver si necesita alguna otra |
+| 16 | **Estado de resultados** | ⏳ **Re simplificado, «loguitos apenas»**. ✅ **Sí lleva la aclaración** de que no es un comprobante |
+| 17 | **Libros IVA** (compras y ventas) | ✅ OK — PDF + CSV para el contador |
+| 18 | **Libro de retenciones y percepciones** | ✅ OK — CSV para el contador |
+| 19 | **Lista de reparto para el taller** | 🔨 **HAY QUE LABURARLO.** *«Son las listas de todo el equipamiento de alquileres y de stands.»* Es el G5 de `PENDIENTES.md`: el formato que el taller entiende — cuadritos con ítems, visual, funcional |
 
 ---
 
-## 5 · Lo que este relevamiento corrige de la versión anterior
+## 5 · El veredicto de Fede sobre el conjunto
 
-- **La hoja no había que diseñarla**: ya existe en el generador de propuestas, con sus fuentes, su
-  cyan canónico y su membrete a sangre. Las dos «direcciones» que propuse (banda vs. filete) eran
-  innecesarias — la banda a sangre de 7 mm ya es la decisión tomada.
-- **Eran 19 documentos, no 9.** Faltaban los cuatro del Cotizador y del generador, los dos que no
-  existen, y los libros del contador.
-- **La agrupación correcta es por destinatario** (cliente comercial · cliente fiscal · cliente
-  operativo · proveedor · interno), no por orientación de la hoja.
-- **Ninguna leyenda se inventa.** Las que faltan, faltan.
+> *«Valen todas, básicamente. Y si puede llegar a sobrar alguna… no, en este momento no están
+> sobrando. Parece que no está sobrando tanto.»*
+
+**De 19, se saca uno** (el plano, §4.12) y **se crean dos** (la orden de compra y la lista de reparto).
+Quedan **20 documentos vivos**.
+
+---
+
+## 6 · Lo que sigue abierto
+
+| | Qué falta | De quién |
+|---|---|---|
+| 1 | **Si el remito necesita alguna leyenda** más allá de no explicar lo obvio | Fede — *«veremos»* |
+| 2 | **Cómo es la lista de reparto**: qué campos, qué agrupación, cuántas hojas | Fede + el taller |
+| 3 | **Qué tan simple es «simple»** para el estado de resultados y el remito | Se define dibujándolo |
+| 4 | Sacar la **factura C** del selector, o dejarla | Fede |
+
+---
+
+## 7 · El orden de trabajo que se desprende
+
+```
+1. Llevar la hoja del generador al Lobby        ← una sola pieza, hereda en cascada
+2. Los dos niveles: completo vs mínimo          ← la regla de §1
+3. Corregir el domicilio del Lobby a Pallares   ← una constante
+4. La orden de compra (nueva)                   ← el hueco más grande
+5. La lista de reparto (nueva)                  ← necesita al taller
+6. Sacar el plano y su compositor parkeado      ← limpieza, 298 líneas
+```
