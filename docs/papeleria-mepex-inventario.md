@@ -87,7 +87,7 @@ Está en **`GENERADOR-PROPUESTA-MEPEX/app/render.py`**. No hay que diseñarla: h
 | | Documento | Estado |
 |---|---|---|
 | 11 | **Acta de entrega del stand** ✍ | ✅ OK — *«está linda esa, está buena»* |
-| 12 | **Plano del stand** | 🗑️ **SE PUEDE SACAR.** *«Se hace por afuera, con CAD directamente, se imprime desde el CAD y ya tiene su frame armado adentro. De ésa podemos disponer.»* **Y el código lo confirma:** `plano-pdf.js` sólo lo invoca `compositor.js`, que está **parkeado** desde que el diseño pasó a 3ds Max — son 298 líneas cargándose en cada arranque para nada |
+| 12 | **Plano del stand** | ✅ **SE QUEDA.** *(Corregido por Fede el 24/8: yo había propuesto sacarlo y estaba mal.)* Su valor no es el stand a medida —ése se dibuja en CAD, que ya lo imprime con su frame— sino **el alquiler de mobiliario**: un planito rápido de cómo se distribuyen los muebles, que **lo hace quien vende, sin pasar por diseño**. Fede lo construyó justamente para eso: son cuadraditos y círculos configurables. Ver §6.bis, que es adónde va el trabajo |
 
 ### 4.4 · A proveedores · **hoja completa**
 
@@ -113,8 +113,8 @@ Está en **`GENERADOR-PROPUESTA-MEPEX/app/render.py`**. No hay que diseñarla: h
 > *«Valen todas, básicamente. Y si puede llegar a sobrar alguna… no, en este momento no están
 > sobrando. Parece que no está sobrando tanto.»*
 
-**De 19, se saca uno** (el plano, §4.12) y **se crean dos** (la orden de compra y la lista de reparto).
-Quedan **20 documentos vivos**.
+**No se saca ninguno** y **se crean dos** (la orden de compra y la lista de reparto): **21 documentos
+vivos**. *(La versión anterior daba de baja el plano; Fede lo corrigió — ver §4.12 y §6.bis.)*
 
 ---
 
@@ -129,6 +129,30 @@ Quedan **20 documentos vivos**.
 
 ---
 
+## 6.bis · El compositor de planos: no se saca, se perfecciona
+
+*(Pedido de Fede, 2026-08-24. Anotado también en `PENDIENTES.md`.)*
+
+**Para qué es, en sus palabras:** *«para los alquileres de mobiliario puede rendir mucho. Si hacemos
+nosotros un planito rápido de cómo se distribuyen los muebles, lo puede hacer quien venda los muebles
+directamente y no jode a diseño. Es una cosa que yo implementé con ese objetivo: simplificar los
+planos, porque son cuadraditos o circulitos en un lote que es todo configurable.»*
+
+**Lo que hay que mejorarle:**
+
+1. **Que tenga la misma onda que todos los planos que usa MEPEX** — no un dibujo aparte.
+2. **El nombre del ítem adentro** de cada pieza.
+3. **Las dimensiones bien puestas.**
+4. **La interfaz más intuitiva**, para manejar todo desde adentro: *«tienen que poder hacerlo mono,
+   básicamente»* — o sea, que lo use un vendedor sin saber dibujar.
+
+⚠️ Esto **cambia la conclusión anterior** de que `plano-pdf.js` colgaba de algo muerto. Es cierto que
+su único invocador es `compositor.js` y que el compositor está parkeado — pero está parkeado **para
+stands**, que se dibujan en 3ds Max. **Para mobiliario nunca dejó de tener sentido**, y es donde va a
+trabajarse.
+
+---
+
 ## 7 · El orden de trabajo que se desprende
 
 ```
@@ -137,5 +161,5 @@ Quedan **20 documentos vivos**.
 3. Corregir el domicilio del Lobby a Pallares   ← una constante
 4. La orden de compra (nueva)                   ← el hueco más grande
 5. La lista de reparto (nueva)                  ← necesita al taller
-6. Sacar el plano y su compositor parkeado      ← limpieza, 298 líneas
+6. Perfeccionar el compositor de planos         ← §6.bis, para mobiliario
 ```

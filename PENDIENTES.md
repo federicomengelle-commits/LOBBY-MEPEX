@@ -354,6 +354,26 @@ completo vive en la memoria `project_agentes_ia_roadmap_v2`; el hilo del negocio
   **Rama y rubro no se excluyen** — son ejes distintos, igual que *Infraestructura* (rubro) y *stand*
   (rama). Un tablero puede ir dentro de un stand **o** dentro de un presupuesto de energía. Detalle en
   `docs/las-cuatro-ramas.md` §1.
+- **G11 · Perfeccionar el compositor de planos — para MOBILIARIO, no para stands** *(pedido de Fede,
+  2026-08-24)*. El compositor está parkeado **para stands**, que se dibujan en 3ds Max — pero para
+  **alquiler de mobiliario nunca dejó de tener sentido**, y es ahí donde rinde: *«un planito rápido de
+  cómo se distribuyen los muebles, que lo puede hacer quien venda los muebles directamente y no jode a
+  diseño»*. Fede lo construyó con ese objetivo: **son cuadraditos y círculos en un lote configurable**.
+  Lo que hay que mejorarle: **(1)** que tenga **la misma onda que todos los planos que usa MEPEX**, no
+  un dibujo aparte · **(2)** el **nombre del ítem adentro** de cada pieza · **(3)** las **dimensiones
+  bien puestas** · **(4)** la **interfaz más intuitiva**, para manejar todo desde adentro —
+  *«tienen que poder hacerlo mono, básicamente»*, o sea que lo use un vendedor sin saber dibujar.
+  ⚠️ **Corrige una conclusión mía del mismo día:** yo había propuesto dar de baja `plano-pdf.js`
+  porque su único invocador (`compositor.js`) está parkeado. El dato era cierto y la conclusión
+  estaba mal — está parkeado para una rama, no para la otra. Contexto: `docs/papeleria-mepex-inventario.md` §6.bis.
+- **G12 · Unificar la papelería — LAS HOJAS** *(relevado y decidido el 2026-08-24)*. **21 documentos**
+  entre el Lobby, el Cotizador y el generador de propuestas. **La hoja membretada YA existe** —
+  `GENERADOR-PROPUESTA-MEPEX/app/render.py`, con su cyan canónico `#00ABC8`, membrete a sangre de 7 mm
+  y las fuentes Inter + Archivo embebidas — así que el trabajo es **extenderla, no diseñarla**.
+  **★ La regla: hay DOS niveles y los decide quién recibe el papel** — completo para el cliente y el
+  proveedor, mínimo (*«loguitos apenas»*) para lo interno y operativo. Inventario, leyendas dictadas
+  y decisiones en **`docs/papeleria-mepex-inventario.md`**.
+
 - **G7 · Productizar el Lobby.** Visión de Fede: terminarlo, usarlo todos los días, y después
   desvincularlo para venderlo modulado a otras empresas. Conecta con el carril 3 de Mira
   (`APPS ANTIGRAVITY/Agencia Apps IA`), que hoy es el único sin producto armado.
