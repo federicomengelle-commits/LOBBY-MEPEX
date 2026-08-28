@@ -320,6 +320,7 @@ const StandsModule = {
                     <button class="btn-back-circ" id="stdBack" title="Volver" aria-label="Volver"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
                     <div class="std-ficha-actions">
                         ${this._canWrite ? `<button class="std-btn-primary" id="stdUsar">Usar en cotización</button>` : ''}
+                        ${(this._canWrite && p.compositor_escena) ? `<button class="std-btn-ghost" id="stdPlano" title="Retomar el plano en el compositor">✏️ Abrir el plano</button>` : ''}
                         ${this._canWrite ? `<button class="std-btn-ghost" id="stdEdit">Editar</button>` : ''}
                         ${this._canWrite ? `<button class="std-btn-danger" id="stdDel">Eliminar</button>` : ''}
                     </div>
@@ -360,6 +361,7 @@ const StandsModule = {
 
         document.getElementById('stdBack')?.addEventListener('click', () => this._closeFicha());
         document.getElementById('stdUsar')?.addEventListener('click', () => this._usarEnCotizacion(p));
+        document.getElementById('stdPlano')?.addEventListener('click', () => this._abrirEnCompositor(p));
         document.getElementById('stdEdit')?.addEventListener('click', () => this._startEdit(p));
         document.getElementById('stdDel')?.addEventListener('click', () => this._eliminar(p));
 
@@ -409,6 +411,30 @@ const StandsModule = {
     },
 
     // ── "Usar en cotización": crea cotización borrador + cotizacion_items del BOM ──
+    // Retoma un prediseño guardado en el compositor (posiciones, zonas, textos y
+    // modulación). Requiere que el prediseño se haya guardado con la escena; los
+    // creados antes de que el compositor la persistiera no tienen dibujo que abrir.
+    async _abrirEnCompositor(p) {
+        if (typeof CompositorModule === 'undefined') { Toast.error('El compositor no está cargado'); return; }
+        if (!p || !p.compositor_escena) { Toast.warning('Este prediseño no tiene plano guardado'); return; }
+        // abrir otro plano pisa lo que haya en el compositor Y vacía el undo, así que
+        // ni Ctrl+Z lo devuelve: si hay algo armado sin guardar, se avisa primero
+        const enCurso = (CompositorModule._state.placed || []).length;
+        if (enCurso) {
+            const ok = await Modal.confirm({
+                title: 'Hay un plano abierto',
+                message: `El compositor tiene ${enCurso} ${enCurso === 1 ? 'pieza colocada' : 'piezas colocadas'} sin guardar. Si abrís este prediseño se descartan, y no se puede deshacer.`,
+                confirmText: 'Abrir igual', cancelText: 'Cancelar', danger: true,
+            });
+            if (!ok) return;
+        }
+        if (!CompositorModule.cargarEscena(p.compositor_escena)) { Toast.error('No se pudo leer el plano guardado'); return; }
+        this._fichaId = null;
+        this._activeTab = 'compositor';
+        this._renderActive();
+        Toast.success(`Plano de "${p.nombre || 'sin nombre'}" abierto`);
+    },
+
     async _usarEnCotizacion(p) {
         const comps = await this._fetchBOM(p.id);
         if (!comps.length) { Toast.error('Este prediseño no tiene BOM cargado. Editalo y agregá ítems.'); return; }

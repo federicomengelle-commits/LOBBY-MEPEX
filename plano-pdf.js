@@ -81,7 +81,7 @@ const PlanoPDF = {
         doc.text(fecha, PW - M - 13, 17, { align: 'right' });
 
         // ─── zonas verticales: dibujo+cotas arriba, franja de carátula abajo (no se pisan) ───
-        const caratH = 18, zoneBot = PH - caratH;          // carátula vive en [zoneBot .. PH]
+        const caratH = 24, zoneBot = PH - caratH;          // carátula vive en [zoneBot .. escuadra]
         const gutT = 7, gutB = 13, gutL = 8, gutR = 14;    // reservas para las cotas alrededor del plan
         const areaX0 = M + 2 + gutL, areaX1 = PW - M - 2 - gutR;
         const areaY0 = 27 + gutT, areaY1 = zoneBot - gutB;
@@ -96,12 +96,15 @@ const PlanoPDF = {
         // piso (apenas un tono) + contorno fino
         doc.setFillColor(250, 251, 252); doc.rect(ox, oy, planW, planH, 'F');
 
-        // grilla: octexa por eje (990) · área cada 1 m
-        const eje = o.ejeMM || 990;
-        const stepX = o.modulos ? eje : 1000, stepY = o.modulos ? eje : 1000;
+        // grilla: en OCTEXA son los ejes de columna reales (vienen del compositor, ya
+        // acumulados según los vanos); en área libre, cada metro.
         doc.setDrawColor(226, 230, 235); doc.setLineWidth(0.1);
-        for (let x = stepX; x < Wmm - 1; x += stepX) doc.line(mapX(x), oy, mapX(x), oy + planH);
-        for (let y = stepY; y < Dmm - 1; y += stepY) doc.line(ox, mapY(y), ox + planW, mapY(y));
+        const gx = (o.nodesX && o.nodesX.length) ? o.nodesX : null;
+        const gy = (o.nodesY && o.nodesY.length) ? o.nodesY : null;
+        if (gx) gx.forEach(x => { if (x > 1 && x < Wmm - 1) doc.line(mapX(x), oy, mapX(x), oy + planH); });
+        else for (let x = 1000; x < Wmm - 1; x += 1000) doc.line(mapX(x), oy, mapX(x), oy + planH);
+        if (gy) gy.forEach(y => { if (y > 1 && y < Dmm - 1) doc.line(ox, mapY(y), ox + planW, mapY(y)); });
+        else for (let y = 1000; y < Dmm - 1; y += 1000) doc.line(ox, mapY(y), ox + planW, mapY(y));
 
         // contorno del footprint (en "líneas" es la forma protagonista, un poco más marcado)
         const paneleado = o.vista !== 'lineas';
@@ -172,10 +175,15 @@ const PlanoPDF = {
         // cotas de módulo (azul) en cada lado con panel — anchos reales de o.mods
         if (paneleado && o.mods) {
             const g = { ox, oy, planW, planH };
-            if (o.mods.back) this._dimModSide(doc, 'back', g, o.mods.back, BLUE, 4);
-            if (o.mods.left) this._dimModSide(doc, 'left', g, o.mods.left, BLUE, 4);
-            if (o.mods.right) this._dimModSide(doc, 'right', g, o.mods.right, BLUE, 4);
-            if (o.mods.front) this._dimModSide(doc, 'front', g, o.mods.front, BLUE, 4);
+            // `nodes` = ejes de columna reales ⇒ cada cota se dibuja del largo que dice.
+            // Sin esto el lado se repartía en partes iguales y un módulo de 455 salía
+            // dibujado igual de ancho que uno de 950: la cota mentía en el papel.
+            const nX = { nodes: o.nodesX || null, total: Wmm };
+            const nY = { nodes: o.nodesY || null, total: Dmm };
+            if (o.mods.back) this._dimModSide(doc, 'back', g, o.mods.back, BLUE, 4, nX);
+            if (o.mods.left) this._dimModSide(doc, 'left', g, o.mods.left, BLUE, 4, nY);
+            if (o.mods.right) this._dimModSide(doc, 'right', g, o.mods.right, BLUE, 4, nY);
+            if (o.mods.front) this._dimModSide(doc, 'front', g, o.mods.front, BLUE, 4, nX);
         }
         // overall (rosa): ancho abajo + fondo a la derecha, en metros NOMINALES (se corren si hay módulos en ese lado)
         const wNom = (o.wNom != null) ? o.wNom : Wmm / 1000, dNom = (o.dNom != null) ? o.dNom : Dmm / 1000;
@@ -184,11 +192,19 @@ const PlanoPDF = {
         this._dimH(doc, ox, ox + planW, oy + planH + wOff, this._fmtM(wNom), PINK);
         this._dimV(doc, oy, oy + planH, ox + planW + dOff, this._fmtM(dNom), PINK);
 
-        // ─── carátula (franja inferior reservada): CLIENTE / PROYECTO · LOTE — sin líneas que toquen las escuadras ───
-        doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(12);
+        // ─── carátula (franja inferior reservada): CLIENTE / PROYECTO · LOTE ───
+        // La escuadra inferior-izquierda vive en y=200 con trazo de 1 mm: el texto tiene
+        // que terminar ARRIBA de 199. Antes la 2ª línea se dibujaba en y=206, o sea
+        // afuera del marco, y sin cliente la única línea quedaba justo debajo del trazo.
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY); doc.setFontSize(11);
+        const xCar = M + 3, maxCar = PW - M - 3 - xCar;
         const l2 = `PROYECTO: ${o.nombre || '—'}` + (o.lote ? `   ·   LOTE: ${o.lote}` : '');
-        if (o.cliente) { doc.text(`CLIENTE: ${o.cliente}`, M + 3, zoneBot + 7); doc.text(l2, M + 3, zoneBot + 14); }
-        else { doc.text(l2, M + 3, zoneBot + 10); }
+        if (o.cliente) {
+            doc.text(this._fitWidth(doc, `CLIENTE: ${o.cliente}`, maxCar), xCar, zoneBot + 5);
+            doc.text(this._fitWidth(doc, l2, maxCar), xCar, zoneBot + 11);
+        } else {
+            doc.text(this._fitWidth(doc, l2, maxCar), xCar, zoneBot + 8);
+        }
     },
 
     // ─── escuadras del marco (4 esquinas) ───
@@ -218,28 +234,41 @@ const PlanoPDF = {
         doc.text(String(label), x + 1.7, (y1 + y2) / 2, { align: 'center', angle: 90, baseline: 'middle' });
     },
     // cotas de módulo a lo largo de un lado con panel (anchos reales del array `arr`)
-    _dimModSide(doc, side, g, arr, color, off) {
+    _dimModSide(doc, side, g, arr, color, off, ax) {
         if (!arr || !arr.length) return;
         const n = arr.length;
+        // fracción [0..1] del lado donde arranca y termina el vano i
+        const nodes = (ax && ax.nodes && ax.nodes.length === n + 1 && ax.total > 0) ? ax.nodes : null;
+        const total = nodes ? ax.total : 0;
+        const f = (i) => nodes ? (nodes[i] / total) : (i / n);
         doc.setDrawColor(...color); doc.setLineWidth(0.2);
         doc.setTextColor(...color); doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
         if (side === 'back' || side === 'front') {
-            const y = side === 'back' ? g.oy - off : g.oy + g.planH + off, seg = g.planW / n;
+            const y = side === 'back' ? g.oy - off : g.oy + g.planH + off;
             for (let i = 0; i < n; i++) {
-                const xa = g.ox + i * seg, xb = g.ox + (i + 1) * seg;
+                const xa = g.ox + f(i) * g.planW, xb = g.ox + f(i + 1) * g.planW;
                 doc.line(xa, y, xb, y); doc.line(xa, y - 0.9, xa, y + 0.9); doc.line(xb, y - 0.9, xb, y + 0.9);
                 doc.text(String(arr[i]), (xa + xb) / 2, side === 'back' ? y - 1.1 : y + 2.6, { align: 'center' });
             }
         } else {
-            const x = side === 'left' ? g.ox - off : g.ox + g.planW + off, seg = g.planH / n;
+            const x = side === 'left' ? g.ox - off : g.ox + g.planW + off;
             for (let i = 0; i < n; i++) {
-                const ya = g.oy + i * seg, yb = g.oy + (i + 1) * seg;
+                const ya = g.oy + f(i) * g.planH, yb = g.oy + f(i + 1) * g.planH;
                 doc.line(x, ya, x, yb); doc.line(x - 0.9, ya, x + 0.9, ya); doc.line(x - 0.9, yb, x + 0.9, yb);
                 doc.text(String(arr[i]), x + (side === 'left' ? -1.4 : 1.4), (ya + yb) / 2, { align: 'center', angle: 90, baseline: 'middle' });
             }
         }
     },
     _fmtM(m) { return (Number(m) || 0).toFixed(2).replace('.', ',') + ' m'; },
+    // recorta al ancho disponible con la tipografía/tamaño activos
+    _fitWidth(doc, txt, maxW) {
+        let t = String(txt == null ? '' : txt);
+        try {
+            if (doc.getTextWidth(t) <= maxW) return t;
+            while (t.length > 4 && doc.getTextWidth(t + '…') > maxW) t = t.slice(0, -1);
+            return t.trim() + '…';
+        } catch (_) { return t; }
+    },
     // abrevia un rótulo para que entre en `alongMM` (mm de página) y devuelve {txt, fs}
     _fitLabel(name, alongMM) {
         name = String(name || '');
