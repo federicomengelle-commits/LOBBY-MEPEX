@@ -179,6 +179,13 @@ const CompositorModule = {
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
                             <span class="cmp-tool-sep"></span>
                             <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-danger" id="cmpVaciar">Vaciar</button>
+                            <span class="cmp-tool-sep"></span>
+                            <span class="cmp-zoom" title="Ctrl + rueda del mouse también">
+                                <button class="cmp-btn-ghost cmp-btn-xs" id="cmpZoomOut" aria-label="Alejar">−</button>
+                                <span class="cmp-zoom-lbl" id="cmpZoomLbl">100%</span>
+                                <button class="cmp-btn-ghost cmp-btn-xs" id="cmpZoomIn" aria-label="Acercar">+</button>
+                                <button class="cmp-btn-ghost cmp-btn-xs" id="cmpZoomFit" title="Ver todo" disabled>⤢</button>
+                            </span>
                             <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-help" id="cmpAyuda" title="Cómo se usa (atajos y gestos)">?</button>
                             <span class="cmp-hint">Botón derecho = menú · Shift-clic varias · Alt arrastra copia · flechas mueven</span>
                         </div>
@@ -263,6 +270,10 @@ const CompositorModule = {
         document.getElementById('cmpRotStand')?.addEventListener('click', () => this._rotateStand());
         document.getElementById('cmpEspejar')?.addEventListener('click', () => this._mirror());
         document.getElementById('cmpVaciar')?.addEventListener('click', () => this._clearAll());
+        document.getElementById('cmpZoomIn')?.addEventListener('click', () => this._setZoom((this._zoom || 1) * 1.25));
+        document.getElementById('cmpZoomOut')?.addEventListener('click', () => this._setZoom((this._zoom || 1) / 1.25));
+        document.getElementById('cmpZoomFit')?.addEventListener('click', () => this._setZoom(1));
+        this._renderZoomUI();
         document.getElementById('cmpAyuda')?.addEventListener('click', () => this._openAyuda());
         document.getElementById('cmpUndo')?.addEventListener('click', () => this._undo());
         document.getElementById('cmpRedo')?.addEventListener('click', () => this._redo());
@@ -611,8 +622,9 @@ const CompositorModule = {
             return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">${inner}${handle}</g>`;
         }).join('');
 
+        const vb = this._viewBox(vbW, vbH);
         host.innerHTML = `
-            <svg id="cmpSvg" viewBox="0 0 ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet" class="cmp-svg">
+            <svg id="cmpSvg" viewBox="${vb}" preserveAspectRatio="xMidYMid meet" class="cmp-svg">
                 <g transform="translate(${M},${M})">
                     ${this._isArea() ? '' : `<rect x="0" y="0" width="${Wmm}" height="${Dmm}" class="cmp-foot"/>`}
                     ${grid}${bordes}${cenefas}${cols}${modlabels}${comps}
@@ -622,6 +634,8 @@ const CompositorModule = {
         this._attachDrag();
         this._attachEdges();
         this._attachContextMenu();
+        this._attachDrop();
+        this._attachZoom();
     },
 
     // Lo que se colocó a mano adentro del stand (paredes internas, dinteles, columnas),
@@ -691,6 +705,52 @@ const CompositorModule = {
         return out.join('');
     },
 
+    // ─── zoom ────────────────────────────────────────────────────────────────
+    _zoom: 1, _zoomC: null,   // _zoomC = punto del modelo que queda al centro
+    ZOOM_MIN: 1, ZOOM_MAX: 6,
+    _viewBox(vbW, vbH) {
+        const z = Math.max(this.ZOOM_MIN, Math.min(this.ZOOM_MAX, this._zoom || 1));
+        if (z === 1) { this._zoomC = null; return `0 0 ${vbW} ${vbH}`; }
+        const w = vbW / z, h = vbH / z;
+        const c = this._zoomC || { x: vbW / 2, y: vbH / 2 };
+        // el encuadre no se puede ir de la hoja
+        const x = Math.max(0, Math.min(vbW - w, c.x - w / 2));
+        const y = Math.max(0, Math.min(vbH - h, c.y - h / 2));
+        return `${Math.round(x)} ${Math.round(y)} ${Math.round(w)} ${Math.round(h)}`;
+    },
+    // centro: punto en coordenadas del viewBox completo (con el margen M incluido)
+    _setZoom(z, centro) {
+        const antes = this._zoom;
+        this._zoom = Math.max(this.ZOOM_MIN, Math.min(this.ZOOM_MAX, Math.round(z * 100) / 100));
+        if (this._zoom === 1) this._zoomC = null;
+        else if (centro) this._zoomC = centro;
+        else if (!this._zoomC) {
+            const M = 700;
+            this._zoomC = { x: M + this._wmm() / 2, y: M + this._dmm() / 2 };
+        }
+        if (this._zoom !== antes) { this._renderPlanta(); this._renderZoomUI(); }
+    },
+    _renderZoomUI() {
+        const el = document.getElementById('cmpZoomLbl');
+        if (el) el.textContent = Math.round((this._zoom || 1) * 100) + '%';
+        const btn = document.getElementById('cmpZoomFit');
+        if (btn) btn.disabled = (this._zoom || 1) === 1;
+    },
+    _attachZoom() {
+        const svg = document.getElementById('cmpSvg'); if (!svg) return;
+        svg.addEventListener('wheel', (e) => {
+            if (!(e.ctrlKey || e.metaKey)) return;   // sin Ctrl la rueda scrollea la página, como siempre
+            e.preventDefault();
+            let centro = null;
+            try {
+                const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+                const m = svg.getScreenCTM();
+                if (m) { const l = pt.matrixTransform(m.inverse()); centro = { x: l.x, y: l.y }; }
+            } catch (_) {}
+            this._setZoom((this._zoom || 1) * (e.deltaY < 0 ? 1.2 : 1 / 1.2), centro);
+        }, { passive: false });
+    },
+
     // rótulos de módulo clickeables a lo largo de cada lado con panel
     _modLabelsSVG(closed, Wmm, Dmm) {
         const out = [], nx = this._nodesX(), ny = this._nodesY();
@@ -707,6 +767,52 @@ const CompositorModule = {
         if (closed.includes('right')) for (let j = 0; j < nY; j++) lbl('right', j, Wmm + 260, midY(j) + 40);
         return out.join('');
     },
+    // Soltar un chip de la paleta sobre el plano lo coloca ahí mismo.
+    _attachDrop() {
+        const svg = document.getElementById('cmpSvg'); if (!svg) return;
+        const M = 700;   // el mismo offset que usa el grupo del viewBox
+        svg.addEventListener('dragover', (e) => { e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (_) {} });
+        svg.addEventListener('drop', (e) => {
+            e.preventDefault();
+            let carga = '';
+            try { carga = e.dataTransfer.getData('text/plain') || ''; } catch (_) {}
+            const i = carga.indexOf(':');
+            if (i < 0) return;
+            const tipo = carga.slice(0, i), key = carga.slice(i + 1);
+            // coordenadas del cursor en milímetros reales del stand
+            let loc;
+            try {
+                const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+                const m = svg.getScreenCTM(); if (!m) return;
+                const l = pt.matrixTransform(m.inverse());
+                loc = { x: l.x - M, y: l.y - M };
+            } catch (_) { return; }
+            this._dropPos = loc;
+            try {
+                if (tipo === 'item') this._placeItem(key);
+                else if (tipo === 'pieza') this._placePieza(key);
+                else if (tipo === 'zona') this._placeZona(key);
+                else if (tipo === 'estr') this._placeEstructura(key);
+                else if (tipo === 'kit') this._colocarKitSuelto(key, loc);
+            } finally {
+                this._dropPos = null;   // el próximo que se coloque por clic vuelve al orden normal
+            }
+        });
+    },
+    // Un kit soltado va centrado en el cursor, no desde la esquina
+    _colocarKitSuelto(key, loc) {
+        const t = this._tamKitReal(key) || { w: 2000, h: 2000 };
+        const x = Math.max(0, Math.min(this._wmm() - t.w, this._snap(loc.x - t.w / 2)));
+        const y = Math.max(0, Math.min(this._dmm() - t.h, this._snap(loc.y - t.h / 2)));
+        this._pushHist();
+        const antes = this._state.placed.length;
+        this._colocarKitEn(key, x, y);
+        if (this._state.placed.length === antes) return;
+        this._clampAll();
+        this._selectMany(this._state.placed.slice(antes).map(p => p.uid));
+        this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip(); this._renderAvisos();
+    },
+
     _attachEdges() {
         const svg = document.getElementById('cmpSvg'); if (!svg) return;
         const nombreLado = { back: 'fondo', front: 'frente', left: 'izquierdo', right: 'derecho' };
@@ -1220,6 +1326,8 @@ const CompositorModule = {
     // ─── ayuda: todos los gestos y atajos en un solo lado ───
     _AYUDA: {
         'Con el mouse': [
+            ['Arrastrar de la paleta', 'lo coloca justo donde lo soltás'],
+            ['Ctrl + rueda', 'acerca y aleja el plano'],
             ['Clic', 'selecciona una pieza'],
             ['Arrastrar', 'la mueve (se engancha sola a los bordes, al centro y a las otras)'],
             ['Alt + arrastrar', 'la DUPLICA: arrastrás una copia y la original queda'],
@@ -1687,6 +1795,7 @@ const CompositorModule = {
     // Hidrata el compositor con una escena guardada. Defensivo a propósito: una escena
     // vieja o incompleta tiene que abrir igual, nunca romper la pantalla.
     cargarEscena(escena) {
+        this._zoom = 1; this._zoomC = null;   // el encuadre no es parte del plano
         try {
             const e = (typeof escena === 'string') ? JSON.parse(escena) : escena;
             if (!e || typeof e !== 'object') return false;
@@ -1789,6 +1898,21 @@ const CompositorModule = {
             else html = list.map(c => `<button class="cmp-pal-item" data-id="${escAttr(c.id)}"><span class="cmp-pal-name">${escHtml(c.nombre)}${c.tipoReceta === 'subalquilado' ? ' <span class="cmp-chip cmp-chip-sub">subalq</span>' : ''}</span><span class="cmp-pal-price">$${this._fmt(c.precioAlquiler)}</span></button>`).join('');
         }
         cont.innerHTML = html;
+        // arrastrar desde la paleta al plano: el clic sigue funcionando igual, esto es
+        // el atajo para el que ya sabe dónde lo quiere
+        cont.querySelectorAll('[data-id],[data-pieza],[data-zona],[data-estr],[data-kit]').forEach(b => {
+            b.setAttribute('draggable', 'true');
+            b.addEventListener('dragstart', (e) => {
+                const d = b.dataset;
+                const carga = d.id ? 'item:' + d.id : d.pieza ? 'pieza:' + d.pieza
+                    : d.zona ? 'zona:' + d.zona : d.estr ? 'estr:' + d.estr
+                    : d.kit ? 'kit:' + d.kit : '';
+                if (!carga) return;
+                try { e.dataTransfer.setData('text/plain', carga); e.dataTransfer.effectAllowed = 'copy'; } catch (_) {}
+                b.classList.add('cmp-dragging');
+            });
+            b.addEventListener('dragend', () => b.classList.remove('cmp-dragging'));
+        });
         cont.querySelectorAll('.cmp-kit-chip').forEach(b => b.addEventListener('click', () => this._placeKit(b.dataset.kit)));
         cont.querySelectorAll('.cmp-kit-del').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); this._borrarKit(b.dataset.kitdel); }));
         document.getElementById('cmpKitSave')?.addEventListener('click', () => this._guardarKit());
@@ -1812,6 +1936,12 @@ const CompositorModule = {
 
     // tamaño/posición default para algo nuevo (barrido para no apilar exacto)
     _spawnXY(w, d, pieza) {
+        // si viene de un drop, nace donde lo soltaste (centrado en el cursor)
+        if (this._dropPos) {
+            const x = this._snap(this._dropPos.x - w / 2, pieza);
+            const y = this._snap(this._dropPos.y - d / 2, pieza);
+            return { x: Math.max(0, Math.min(this._wmm() - w, x)), y: Math.max(0, Math.min(this._dmm() - d, y)) };
+        }
         const n = this._state.placed.length, step = this._isArea() ? 500 : this.OCTEXA.medioEjeMM;
         const perRow = Math.max(1, Math.floor((this._wmm() - w) / step) || 1);
         let x = this._snap((n % perRow) * step, pieza);
@@ -2392,6 +2522,11 @@ const CompositorModule = {
             .cmp-bnota.duda strong{color:#ff6b6b}
             .cmp-bnota.notas strong{color:var(--text-muted)}
             .cmp-bres-pie{color:var(--text-dim);font-size:.68rem;border-top:1px solid var(--border);padding-top:9px;margin-top:4px}
+            .cmp-zoom{display:inline-flex;align-items:center;gap:4px}
+            .cmp-zoom-lbl{font-size:.68rem;color:var(--text-muted);font-family:var(--font-mono);min-width:38px;text-align:center}
+            .cmp-dragging{opacity:.45}
+            .cmp-pal-item,.cmp-pieza-chip,.cmp-zona-chip,.cmp-estr-chip,.cmp-kit-chip{cursor:grab}
+            .cmp-pal-item:active,.cmp-pieza-chip:active,.cmp-zona-chip:active,.cmp-estr-chip:active,.cmp-kit-chip:active{cursor:grabbing}
             .cmp-avisos{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0}
             .cmp-av-m2{font-size:.7rem;color:var(--text-muted);font-family:var(--font-mono);padding:4px 9px;background:#131313;border:1px solid var(--border);border-radius:5px}
             .cmp-av-m2 strong{color:var(--primary);font-weight:600}
