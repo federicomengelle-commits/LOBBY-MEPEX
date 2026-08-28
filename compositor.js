@@ -118,6 +118,7 @@ const CompositorModule = {
         this._renderEstructura();
         this._renderBOM();
         this._renderSelStrip();
+        this._renderAvisos();
     },
     _rebuild() { if (this._container) this.renderInto(this._container, this._host); },
 
@@ -177,8 +178,9 @@ const CompositorModule = {
                             <span class="cmp-tool-sep"></span>
                             <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-danger" id="cmpVaciar">Vaciar</button>
                             <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-help" id="cmpAyuda" title="Cómo se usa (atajos y gestos)">?</button>
-                            <span class="cmp-hint">Botón derecho = menú · Shift-clic varias · Alt arrastra libre · flechas mueven</span>
+                            <span class="cmp-hint">Botón derecho = menú · Shift-clic varias · Alt arrastra copia · flechas mueven</span>
                         </div>
+                        <div id="cmpAvisos"></div>
                         <div id="cmpSelStrip" class="cmp-sel-strip"></div>
                         <div id="cmpPlanta" class="cmp-planta"></div>
                         <div id="cmpEstructura" class="cmp-estructura"></div>
@@ -751,18 +753,44 @@ const CompositorModule = {
                     this._selSet = this._expandGroup(uid); this._selUid = uid;   // grupo de la pieza (o solo ella)
                 }
                 this._refreshSel(); this._renderSelStrip();
-                const p = this._state.placed.find(x => x.uid === uid); if (!p || p.locked) return;
+                let p = this._state.placed.find(x => x.uid === uid); if (!p || p.locked) return;
                 const st = toLocal(e);
-                this._drag = { uid, g, dx: st.x - p.x, dy: st.y - p.y };
+                // Alt al empezar = arrastrás una COPIA y el original queda donde estaba
+                this._drag = { uid, g, dx: st.x - p.x, dy: st.y - p.y, dupPend: e.altKey && !multi };
                 g.setPointerCapture(e.pointerId);
             });
             g.addEventListener('pointermove', (e) => {
-                if (!this._drag || this._drag.uid !== parseInt(g.dataset.uid, 10)) return;
-                const p = this._state.placed.find(x => x.uid === this._drag.uid); if (!p) return;
+                if (!this._drag) return;
+                const mio = this._drag.uid === parseInt(g.dataset.uid, 10) || this._drag.g === g;
+                if (!mio) return;
+                let p = this._state.placed.find(x => x.uid === this._drag.uid); if (!p) return;
                 if (!this._drag.moved) {
                     this._pushHist(); this._drag.moved = true;
                     const inSet = this._selSet.length > 1 && this._selSet.includes(this._drag.uid);
-                    this._drag.group = (inSet ? this._selectedPieces() : [p]).filter(it => !it.locked);
+                    // el duplicado se materializa recién al mover: un Alt+clic sin arrastrar
+                    // no debe dejar una copia encima de la original
+                    if (this._drag.dupPend) {
+                        const orig = (inSet ? this._selectedPieces() : [p]).filter(it => !it.locked);
+                        const gid = orig.length > 1 ? ('g' + this._nextUid()) : null;
+                        const copias = orig.map(src => {
+                            const c = JSON.parse(JSON.stringify(src));
+                            c.uid = this._nextUid(); c.locked = false;
+                            if (gid) c.groupId = gid; else delete c.groupId;
+                            this._state.placed.push(c);
+                            return c;
+                        });
+                        this._selectMany(copias.map(c => c.uid), copias[0].uid);
+                        this._drag.uid = copias[0].uid;
+                        this._drag.group = copias;
+                        this._drag.dupPend = false;
+                        this._renderPlanta(); this._renderBOM();
+                        // el nodo del SVG cambió: re-agarrar el puntero sobre la copia
+                        const ng = document.querySelector(`.cmp-comp[data-uid="${copias[0].uid}"]`);
+                        if (ng) { try { ng.setPointerCapture(e.pointerId); } catch (_) {} this._drag.g = ng; }
+                        p = copias[0];
+                    } else {
+                        this._drag.group = (inSet ? this._selectedPieces() : [p]).filter(it => !it.locked);
+                    }
                 }
                 const loc = toLocal(e);
                 // delta del cursor → desplaza todo el grupo, recortado para que ninguno se salga.
@@ -772,8 +800,10 @@ const CompositorModule = {
                 const bb = this._bbox(p);
                 const wantL = bb.left + (rawX - p.x), wantT = bb.top + (rawY - p.y);
                 const ex = this._drag.group.map(it => it.uid);
-                const sx = e.altKey ? { pos: wantL, guide: null } : this._snapAxis(wantL, bb.w, 'x', ex, p);
-                const sy = e.altKey ? { pos: wantT, guide: null } : this._snapAxis(wantT, bb.h, 'y', ex, p);
+                // Ctrl mientras movés = libre, sin enganche (Alt quedó para duplicar)
+                const libre = e.ctrlKey || e.metaKey;
+                const sx = libre ? { pos: wantL, guide: null } : this._snapAxis(wantL, bb.w, 'x', ex, p);
+                const sy = libre ? { pos: wantT, guide: null } : this._snapAxis(wantT, bb.h, 'y', ex, p);
                 this._drawGuides(sx.guide, sy.guide, { left: sx.pos, top: sy.pos, w: bb.w, h: bb.h });
                 let ddx = sx.pos - bb.left;
                 let ddy = sy.pos - bb.top;
@@ -786,7 +816,13 @@ const CompositorModule = {
                 this._drag.group.forEach(it => { it.x += ddx; it.y += ddy; });
                 this._applyGroupTransforms(this._drag.group);
             });
-            const end = (e) => { if (this._drag) { try { g.releasePointerCapture(e.pointerId); } catch (_) {} this._drag = null; this._clearGuides(); } };
+            const end = (e) => {
+                if (!this._drag) return;
+                try { (this._drag.g || g).releasePointerCapture(e.pointerId); } catch (_) {}
+                const hubo = this._drag.moved;
+                this._drag = null; this._clearGuides();
+                if (hubo) { this._renderBOM(); this._renderAvisos(); }
+            };
             g.addEventListener('pointerup', end);
             g.addEventListener('pointercancel', end);
         });
@@ -910,12 +946,93 @@ const CompositorModule = {
         ]);
     },
 
+    // ─── validador: qué tiene de raro este plano ────────────────────────────
+    // Corre solo en cada render. NO bloquea nada: avisa, que es la regla de la casa.
+    // Todo lo que revisa se puede ignorar a conciencia (un mueble puede pisar a otro
+    // a propósito, una silla puede estar arrimada). Sirve sobre todo cuando el plano
+    // lo armó el motor de brief y nadie lo miró todavía.
+    CIRCULACION_MIN: 900,      // mm — pasillo mínimo entre bultos, criterio de feria
+    _avisos() {
+        const out = [], W = this._wmm(), D = this._dmm();
+        const piezas = this._state.placed.filter(p => p.kind !== 'zona' && p.kind !== 'texto');
+
+        // 1) algo que se salió del recinto
+        const afuera = piezas.filter(p => {
+            const b = this._bbox(p);
+            return b.left < -1 || b.top < -1 || (b.left + b.w) > W + 1 || (b.top + b.h) > D + 1;
+        });
+        if (afuera.length) out.push({ t: 'error', m: `${afuera.length} ${afuera.length === 1 ? 'pieza se sale' : 'piezas se salen'} del stand`, uids: afuera.map(x => x.uid) });
+
+        // 2) superposiciones (sin contar la estructura, que se pega a propósito)
+        const solapes = [];
+        const sup = piezas.filter(p => p.kind !== 'estructura');
+        for (let i = 0; i < sup.length; i++) {
+            for (let j = i + 1; j < sup.length; j++) {
+                const a = this._bbox(sup[i]), b = this._bbox(sup[j]);
+                const ox = Math.min(a.left + a.w, b.left + b.w) - Math.max(a.left, b.left);
+                const oy = Math.min(a.top + a.h, b.top + b.h) - Math.max(a.top, b.top);
+                if (ox > 50 && oy > 50) solapes.push([sup[i].uid, sup[j].uid]);
+            }
+        }
+        if (solapes.length) out.push({ t: 'warn', m: `${solapes.length} ${solapes.length === 1 ? 'par de piezas se pisa' : 'pares de piezas se pisan'}`, uids: solapes.flat() });
+
+        // 3) circulación: cuánto queda libre de verdad
+        const m2 = this._m2Ocupado();
+        if (m2.libre_pct < 35 && m2.total > 0) out.push({ t: 'warn', m: `Queda ${m2.libre_pct}% libre para circular (menos de 35%)` });
+
+        // 4) cenefa sin altura
+        if (this._cenefaSides().length && !this._cenefaCabe()) {
+            out.push({ t: 'error', m: `La cenefa necesita ${this._numero(this.OCTEXA.cenefa.hasta / 1000)} m y el stand mide ${this._numero(this._state.altura / 1000)} m` });
+        }
+
+        // 5) un stand sin ningún lado cerrado y con topología que los pide
+        if (!this._isArea() && !this._closedSides().length && this.OCTEXA.tipos[this._state.tipo].paredes.length) {
+            out.push({ t: 'warn', m: 'Sacaste todos los paños: el stand quedó sin paredes' });
+        }
+        return out;
+    },
+    // Superficie que ocupa el mobiliario vs la que queda para caminar.
+    _m2Ocupado() {
+        const total = this._wmm() * this._dmm() / 1e6;
+        const ocup = this._state.placed
+            .filter(p => p.kind === 'item' || p.kind === 'pieza' || p.kind === 'estructura')
+            .reduce((a, p) => { const b = this._bbox(p); return a + (b.w * b.h) / 1e6; }, 0);
+        const libre = Math.max(0, total - ocup);
+        return {
+            total: Math.round(total * 100) / 100,
+            ocupado: Math.round(ocup * 100) / 100,
+            libre: Math.round(libre * 100) / 100,
+            libre_pct: total > 0 ? Math.round((libre / total) * 100) : 100,
+        };
+    },
+    _renderAvisos() {
+        const el = document.getElementById('cmpAvisos'); if (!el) return;
+        const av = this._avisos();
+        const m2 = this._m2Ocupado();
+        const chipM2 = this._state.placed.length
+            ? `<span class="cmp-av-m2" title="Superficie que ocupa lo colocado, contra la que queda para circular">${this._numero(m2.ocupado)} m² ocupados · <strong>${m2.libre_pct}% libre</strong></span>`
+            : '';
+        if (!av.length) {
+            el.innerHTML = chipM2 ? `<div class="cmp-avisos ok">${chipM2}</div>` : '';
+            return;
+        }
+        el.innerHTML = `<div class="cmp-avisos">${chipM2}${av.map((a, i) =>
+            `<button class="cmp-av cmp-av-${a.t}" data-av="${i}"${a.uids ? '' : ' disabled'}>${a.t === 'error' ? '⚠' : '•'} ${escHtml(a.m)}</button>`).join('')}</div>`;
+        el.querySelectorAll('.cmp-av').forEach(b => b.addEventListener('click', () => {
+            const a = av[parseInt(b.dataset.av, 10)];
+            if (!a || !a.uids || !a.uids.length) return;
+            this._selectMany([...new Set(a.uids)]);
+            this._refreshSel(); this._renderSelStrip();
+        }));
+    },
+
     // ─── ayuda: todos los gestos y atajos en un solo lado ───
     _AYUDA: {
         'Con el mouse': [
             ['Clic', 'selecciona una pieza'],
             ['Arrastrar', 'la mueve (se engancha sola a los bordes, al centro y a las otras)'],
-            ['Alt + arrastrar', 'la mueve libre, sin ningún enganche'],
+            ['Alt + arrastrar', 'la DUPLICA: arrastrás una copia y la original queda'],
+            ['Ctrl + arrastrar', 'la mueve libre, sin ningún enganche'],
             ['Shift + clic', 'suma o saca piezas de la selección'],
             ['Botón derecho', 'menú con todo lo que se puede hacer'],
             ['Clic en un borde', 'pone o saca el paño de ese lado'],
@@ -1111,7 +1228,7 @@ const CompositorModule = {
         items.forEach(it => { it.x += dx; it.y += dy; });
         this._clampAll(); this._afterChange(false);
     },
-    _afterChange(bom) { this._renderPlanta(); if (bom) this._renderBOM(); this._refreshSel(); this._renderSelStrip(); },
+    _afterChange(bom) { this._renderPlanta(); if (bom) this._renderBOM(); this._refreshSel(); this._renderSelStrip(); this._renderAvisos(); },
     _cloneSel(dx, dy) {
         const p = this._sel(); if (!p) return null;
         const c = Object.assign({}, p);
@@ -1272,11 +1389,26 @@ const CompositorModule = {
         ]);
     },
     _mirror() {
-        if (!this._state.placed.length) return;
+        if (!this._state.placed.length && this._isArea()) return;
         this._pushHist();
         const W = this._wmm();
         this._state.placed.forEach(p => { p.x = Math.max(0, Math.min(W - p.w, W - p.x - p.w)); p.rot = (360 - (p.rot || 0)) % 360; });
-        this._afterChange(false);
+        if (!this._isArea()) {
+            // Espejar en X intercambia izquierda y derecha. No alcanza con dar vuelta el
+            // override: la topología base sale del TIPO de stand y el espejo no es una
+            // rotación, así que se materializa el estado actual ya espejado.
+            const esp = k => (k === 'left' ? 'right' : k === 'right' ? 'left' : k);
+            const cerrados = this._closedSides();
+            const ov = {};
+            ['back', 'front', 'left', 'right'].forEach(k => { ov[esp(k)] = cerrados.includes(k); });
+            this._state.panelOverride = ov;
+            const cen = {};
+            Object.keys(this._state.cenefas || {}).forEach(k => { if (this._state.cenefas[k]) cen[esp(k)] = true; });
+            this._state.cenefas = cen;
+            this._state.modsX = this._vanosX().slice().reverse();   // el orden de los vanos también
+        }
+        this._clampAll();
+        this._rebuild();
     },
 
     // Duplicar ×N en fila (modal de cantidad)
@@ -2044,6 +2176,14 @@ const CompositorModule = {
             .cmp-modo-txt em{font-style:normal;font-size:.68rem;color:var(--text-muted)}
             .cmp-live-bg{fill:rgba(10,10,10,.92);stroke:var(--accent);stroke-width:4}
             .cmp-live-txt{fill:#F28D15;font-size:130px;font-family:var(--font-mono);text-anchor:middle;dominant-baseline:middle}
+            .cmp-avisos{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0}
+            .cmp-av-m2{font-size:.7rem;color:var(--text-muted);font-family:var(--font-mono);padding:4px 9px;background:#131313;border:1px solid var(--border);border-radius:5px}
+            .cmp-av-m2 strong{color:var(--primary);font-weight:600}
+            .cmp-av{font-size:.7rem;border-radius:5px;padding:4px 9px;cursor:pointer;border:1px solid;background:transparent;transition:all 150ms;font-family:inherit}
+            .cmp-av[disabled]{cursor:default}
+            .cmp-av-warn{color:#F28D15;border-color:rgba(242,141,21,.4);background:rgba(242,141,21,.07)}
+            .cmp-av-error{color:#ff6b6b;border-color:rgba(255,68,68,.4);background:rgba(255,68,68,.08)}
+            .cmp-av:not([disabled]):hover{filter:brightness(1.25)}
             .cmp-guide{stroke:var(--accent);stroke-width:6;stroke-dasharray:40 26;opacity:.9;pointer-events:none}
             .cmp-dim-real{color:var(--text-dim);font-family:var(--font-mono);font-size:.68rem}
             .cmp-mod-lbl{fill:#6FA8DC;font-size:150px;font-family:var(--font-mono);text-anchor:middle;dominant-baseline:middle;pointer-events:none}
