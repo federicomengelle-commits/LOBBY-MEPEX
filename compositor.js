@@ -397,7 +397,7 @@ const CompositorModule = {
     _m2() { return Math.round(this._wNomM() * this._dNomM() * 100) / 100; },
     // Superficies (mobiliario, zonas, textos) → 25 cm, cómodo para acomodar.
     // Estructura (paños, dinteles, columnas) → medio módulo, que es como encastra.
-    _snapStep(p) { return (p && p.kind === 'estructura') ? this.OCTEXA.medioEjeMM : 250; },
+    _snapStep(p) { return (p && p.kind === 'estructura') ? this.OCTEXA.medioEjeMM : this._premisas().paso; },
     _snap(v, p) { const s = this._snapStep(p); return Math.round(v / s) * s; },
 
     // ─── snap inteligente ───────────────────────────────────────────────────
@@ -1051,6 +1051,8 @@ const CompositorModule = {
             { icon: '⟳', label: 'Girar todo 90°', action: () => this._rotateStand() },
             { icon: '⇋', label: 'Espejar', action: () => this._mirror() },
             { divider: true },
+            { icon: '⚙', label: 'Premisas de armado…', action: () => this._openPremisas() },
+            { divider: true },
             { icon: '🗑️', label: 'Vaciar el plano', danger: true, disabled: !hay, action: () => this._clearAll() },
         ]);
     },
@@ -1060,7 +1062,81 @@ const CompositorModule = {
     // Todo lo que revisa se puede ignorar a conciencia (un mueble puede pisar a otro
     // a propósito, una silla puede estar arrimada). Sirve sobre todo cuando el plano
     // lo armó el motor de brief y nadie lo miró todavía.
-    CIRCULACION_MIN: 900,      // mm — pasillo mínimo entre bultos, criterio de feria
+    // ─── premisas de armado ─────────────────────────────────────────────────
+    // Los números de oficio que antes estaban desparramados por el código. El motor
+    // de brief y el validador los obedecen: cambiarlos cambia cómo propone el sistema.
+    // Viven en el navegador (son criterio de trabajo, no dato de negocio); el día que
+    // se decidan a nivel empresa, el hogar natural es `parametros_globales` en Supabase.
+    PREMISAS_DEF: {
+        circulacion_pct: 35,     // % de superficie libre por debajo del cual avisa
+        separacion: 300,         // mm de aire entre bultos al proponer
+        margen: 200,             // mm contra el borde del stand
+        paso: 250,               // mm del paso de arrastre del mobiliario
+        mostrador_alto: 910,     // mm — la altura de mostrador/cartelería más usada (§3 de la visión)
+    },
+    PREMISAS_LS: 'mepex_cmp_premisas_v1',
+    _premisas() {
+        if (this.__prem) return this.__prem;
+        let g = {};
+        try { g = JSON.parse(localStorage.getItem(this.PREMISAS_LS) || '{}') || {}; } catch (_) { g = {}; }
+        const d = this.PREMISAS_DEF, out = {};
+        Object.keys(d).forEach(k => {
+            const v = Number(g[k]);
+            out[k] = isFinite(v) && v > 0 ? v : d[k];
+        });
+        this.__prem = out;
+        return out;
+    },
+    _guardarPremisas(nuevas) {
+        const d = this.PREMISAS_DEF, lim = {
+            circulacion_pct: [0, 90], separacion: [0, 2000], margen: [0, 2000],
+            paso: [10, 1000], mostrador_alto: [300, 2000],
+        };
+        const out = {};
+        Object.keys(d).forEach(k => {
+            const v = Number(nuevas[k]);
+            out[k] = isFinite(v) ? Math.max(lim[k][0], Math.min(lim[k][1], v)) : d[k];
+        });
+        try { localStorage.setItem(this.PREMISAS_LS, JSON.stringify(out)); } catch (_) { Toast.error('No se pudieron guardar'); return false; }
+        this.__prem = null;   // se relee en la próxima consulta
+        return true;
+    },
+    _openPremisas() {
+        const p = this._premisas(), d = this.PREMISAS_DEF;
+        const fila = (k, label, sufijo, ayuda) => `
+            <div class="cmp-prem-fila">
+                <label for="prem_${k}">${escHtml(label)}<em>${escHtml(ayuda)}</em></label>
+                <span class="cmp-prem-in"><input type="number" id="prem_${k}" value="${p[k]}" step="any"> ${escHtml(sufijo)}</span>
+            </div>`;
+        const body = `
+            <div class="cmp-prem">
+                <div class="cmp-prem-intro">Así propone el sistema cuando armás desde un brief, y así te avisa cuando algo queda apretado. No cambia nada de lo que ya está dibujado.</div>
+                ${fila('circulacion_pct', 'Circulación mínima', '%', 'por debajo de esto avisa que va cargado')}
+                ${fila('separacion', 'Aire entre muebles', 'mm', 'lo que deja el motor al proponer')}
+                ${fila('margen', 'Aire contra el borde', 'mm', 'nada nace pegado a la pared')}
+                ${fila('paso', 'Paso de arrastre', 'mm', 'del mobiliario; la estructura va siempre por módulo')}
+                ${fila('mostrador_alto', 'Alto de mostrador', 'mm', 'la medida más usada de mostrador y cartelería')}
+                <div class="cmp-prem-def">Valores de fábrica: ${Object.keys(d).map(k => d[k]).join(' · ')}</div>
+            </div>`;
+        const inst = Modal.open({
+            title: 'Premisas de armado', body, size: 'md',
+            footer: `<button class="btn btn-ghost" id="cmpPremReset">Volver a los de fábrica</button>
+                     <button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                     <button class="btn btn-primary" id="cmpPremGo">Guardar</button>`,
+        });
+        document.getElementById('cmpPremReset')?.addEventListener('click', () => {
+            Object.keys(d).forEach(k => { const el = document.getElementById('prem_' + k); if (el) el.value = d[k]; });
+        });
+        document.getElementById('cmpPremGo')?.addEventListener('click', () => {
+            const nuevas = {};
+            Object.keys(d).forEach(k => { nuevas[k] = (document.getElementById('prem_' + k) || {}).value; });
+            if (!this._guardarPremisas(nuevas)) return;
+            Modal.close(inst.id);
+            Toast.success('Premisas guardadas');
+            this._renderAvisos();
+        });
+    },
+
     _avisos() {
         const out = [], W = this._wmm(), D = this._dmm();
         const piezas = this._state.placed.filter(p => p.kind !== 'zona' && p.kind !== 'texto');
@@ -1091,7 +1167,8 @@ const CompositorModule = {
 
         // 3) circulación: cuánto queda libre de verdad
         const m2 = this._m2Ocupado();
-        if (m2.libre_pct < 35 && m2.total > 0) out.push({ t: 'warn', m: `Queda ${m2.libre_pct}% libre para circular (menos de 35%)` });
+        const minPct = this._premisas().circulacion_pct;
+        if (m2.libre_pct < minPct && m2.total > 0) out.push({ t: 'warn', m: `Queda ${m2.libre_pct}% libre para circular (menos de ${minPct}%)` });
 
         // 4) cenefa sin altura
         if (this._cenefaSides().length && !this._cenefaCabe()) {
@@ -1193,6 +1270,7 @@ const CompositorModule = {
                 // el tamaño REAL del kit, medido de sus piezas: la tabla del motor es una
                 // estimación y si queda corta los kits se pisan con lo de al lado
                 tamKit: (k) => this._tamKitReal(k),
+                premisas: this._premisas(),
             });
         } catch (e) {
             err = e; console.error('[Compositor] planificar:', e);
@@ -2522,6 +2600,13 @@ const CompositorModule = {
             .cmp-bnota.duda strong{color:#ff6b6b}
             .cmp-bnota.notas strong{color:var(--text-muted)}
             .cmp-bres-pie{color:var(--text-dim);font-size:.68rem;border-top:1px solid var(--border);padding-top:9px;margin-top:4px}
+            .cmp-prem-intro{color:var(--text-muted);font-size:.78rem;margin-bottom:16px;line-height:1.5}
+            .cmp-prem-fila{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--border)}
+            .cmp-prem-fila label{display:flex;flex-direction:column;gap:2px;font-size:.82rem;color:var(--text-primary)}
+            .cmp-prem-fila em{font-style:normal;font-size:.68rem;color:var(--text-dim)}
+            .cmp-prem-in{display:flex;align-items:center;gap:6px;color:var(--text-muted);font-size:.72rem;flex:0 0 auto}
+            .cmp-prem-in input{width:82px;background:#1A1A1A;border:1px solid var(--border);border-radius:5px;color:var(--text-primary);padding:6px 8px;font-family:var(--font-mono);font-size:.8rem;text-align:right}
+            .cmp-prem-def{color:var(--text-dim);font-size:.68rem;margin-top:12px;font-family:var(--font-mono)}
             .cmp-zoom{display:inline-flex;align-items:center;gap:4px}
             .cmp-zoom-lbl{font-size:.68rem;color:var(--text-muted);font-family:var(--font-mono);min-width:38px;text-align:center}
             .cmp-dragging{opacity:.45}

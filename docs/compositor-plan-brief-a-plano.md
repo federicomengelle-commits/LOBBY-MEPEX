@@ -142,5 +142,26 @@ después y sólo mejora la comprensión.
 - En una **isla no hay paredes**, así que "contra la pared" apilaba todo en el fondo y
   tapaba el centro. Los lados rotan en cada pieza.
 
-**Falta:** C (premisas editables, 3 presupuestos, aprender del histórico) y D (arrastrar
-desde la paleta, zoom, elevaciones).
+**2026-08-28 · FASE D1 y D2 — hechas** (`3efa20f`)
+- Arrastrar desde las cinco paletas y soltar donde lo querés; el clic sigue igual. Un
+  kit soltado cae centrado en el cursor, no desde su esquina.
+- Zoom por botones y Ctrl+rueda, hasta 6×, centrado en el mouse. **Va en el viewBox y
+  no en un transform de CSS a propósito**: así `getScreenCTM()` lo tiene en cuenta solo
+  y el arrastre, el snap, las guías y el drop siguen andando sin enterarse. El encuadre
+  no se sale de la hoja y el zoom no viaja en la escena — es cómo estás mirando, no qué
+  dibujaste.
+
+**2026-08-28 · FASE C1 — hecha**
+- **Premisas de armado** editables (botón derecho en el fondo → *Premisas de armado…*):
+  circulación mínima, aire entre muebles, aire contra el borde, paso de arrastre y alto
+  de mostrador. Eran números mágicos repartidos entre `compositor.js` y el motor de
+  brief; ahora hay un solo lugar y **el motor y el validador los obedecen**.
+- Viven en el navegador, como los kits propios. **El día que se decidan a nivel empresa
+  el hogar natural es `parametros_globales` en Supabase** — no se hizo ahora para no
+  tocar prod sin Fede.
+
+---
+
+**Falta:** C2 (tres presupuestos del mismo brief: económico / medio / premium) y C3
+(aprender del histórico), que necesitan definiciones de Fede sobre qué significa cada
+banda. Y D3, las elevaciones, que es la grande.

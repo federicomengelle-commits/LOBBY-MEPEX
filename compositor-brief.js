@@ -218,7 +218,10 @@ const CompositorBrief = {
         const W = ctx.wmm, D = ctx.dmm;
         const cerrados = (ctx.cerrados || []).slice();
         const abiertos = ['back', 'front', 'left', 'right'].filter(s => !cerrados.includes(s));
-        const M = this.MARGEN, SEP = this.SEPARACION;
+        // las premisas mandan si vienen; si no, los valores de fábrica del motor
+        const prem = ctx.premisas || {};
+        const M = prem.margen != null ? prem.margen : this.MARGEN;
+        const SEP = prem.separacion != null ? prem.separacion : this.SEPARACION;
         const ocupados = [];
 
         const choca = (x, y, w, h, sep) => {
@@ -355,8 +358,9 @@ const CompositorBrief = {
         const ocupM2 = ocupados.reduce((a, o) => a + (o.w * o.h) / 1e6, 0);
         const totM2 = (W * D) / 1e6;
         const librePct = Math.round(((totM2 - ocupM2) / totM2) * 100);
+        const minPct = prem.circulacion_pct != null ? prem.circulacion_pct : 35;
         notas.push(`Queda ${librePct}% de la superficie para circular`);
-        if (librePct < 35) notas.push('Va muy cargado: sacá algo o pedí más metros');
+        if (librePct < minPct) notas.push('Va muy cargado: sacá algo o pedí más metros');
 
         return { piezas, notas, librePct };
     },
