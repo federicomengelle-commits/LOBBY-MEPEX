@@ -4339,9 +4339,21 @@ const CostosModule = {
         // caso. Se la excluye de los dos grupos: no es del motor, y tampoco es basura.
         const DE_OTRA_PANTALLA = new Set(['proxima_revision_lista']);
 
-        const grupoVivos  = params.filter(p => MOTOR_USA.has(p.clave));
-        const grupoInerte = params.filter(p => !MOTOR_USA.has(p.clave) && !DE_OTRA_PANTALLA.has(p.clave));
-        const grupoAjeno  = params.filter(p => DE_OTRA_PANTALLA.has(p.clave));
+        // La pasarela de brief (CRM) guarda acá sus coeficientes, con prefijo
+        // `pasarela_`: bandas de m², upgrades, palanca, verticales y canon logístico.
+        // Van en su propio grupo y EDITABLES. Si cayeran en el grupo inerte —que es
+        // donde termina todo lo que `calcular_receta` no lee— saldrían deshabilitados
+        // y con el cartel de "cambiarlos no mueve ningún precio", que para éstos es
+        // exactamente al revés: son los únicos números del cálculo de la pasarela, y
+        // la gracia de tenerlos en esta tabla es justamente poder tocarlos sin tocar
+        // código. Ver docs/pasarela-brief-spec.md.
+        const ES_PASARELA = (clave) => typeof clave === 'string' && clave.startsWith('pasarela_');
+
+        const grupoVivos    = params.filter(p => MOTOR_USA.has(p.clave));
+        const grupoPasarela = params.filter(p => ES_PASARELA(p.clave))
+                                    .sort((a, b) => String(a.clave).localeCompare(String(b.clave)));
+        const grupoInerte   = params.filter(p => !MOTOR_USA.has(p.clave) && !DE_OTRA_PANTALLA.has(p.clave) && !ES_PASARELA(p.clave));
+        const grupoAjeno    = params.filter(p => DE_OTRA_PANTALLA.has(p.clave));
 
         const fmtDate = (iso) => {
             if (!iso) return '—';
@@ -4406,6 +4418,19 @@ const CostosModule = {
                             Estos tres entran en <code>calcular_receta</code>. Tocarlos mueve precios.
                         </div>
                         ${grupoVivos.map(p => renderRow(p, false)).join('')}
+                    </div>` : ''}
+
+                    ${grupoPasarela.length ? `
+                    <div class="costos-params-card">
+                        <div class="costos-params-card-title">🎚️ Pasarela de brief (CRM)</div>
+                        <div class="costos-params-card-nota">
+                            Los coeficientes con los que la pasarela arma un precio rápido: base
+                            constructiva por banda de m², upgrades, palanca, verticales y canon
+                            logístico. Salieron de los <strong>98 presupuestos reales</strong>
+                            (ver <code>MEPEX-COSTOS</code>). <strong>Tocarlos mueve lo que cotiza la
+                            pasarela</strong>, no las recetas de costos.
+                        </div>
+                        ${grupoPasarela.map(p => renderRow(p, false)).join('')}
                     </div>` : ''}
 
                     ${grupoInerte.length ? `
@@ -4497,11 +4522,22 @@ const CostosModule = {
             return;
         }
 
+        // El aviso depende de QUÉ se está tocando. Los `pasarela_*` no entran en
+        // `calcular_receta`: mueven lo que cotiza la pasarela del CRM, no las recetas.
+        // Decirle "esto afecta a recetas nuevas o recalculadas" a quien acaba de subir
+        // una banda de m² sería mentirle sobre el efecto de su propio cambio.
+        const tocaPasarela = changes.some(c => String(c.clave).startsWith('pasarela_'));
+        const tocaCosteo   = changes.some(c => !String(c.clave).startsWith('pasarela_'));
+        const efecto = [
+            tocaCosteo   ? '<p style="margin:0 0 8px 0">Afecta a recetas <strong>nuevas o recalculadas</strong>. Las existentes mantienen sus snapshots hasta recalcularlas.</p>' : '',
+            tocaPasarela ? '<p style="margin:0 0 8px 0">Cambia <strong>lo que cotiza la pasarela de brief</strong> en el CRM, desde la próxima cotización.</p>' : '',
+        ].join('');
+
         const confirmed = await Modal.confirm({
             title: '⚙️ Guardar parámetros globales',
             message: `<p style="margin:0 0 8px 0"><strong>${changes.length} parámetro${changes.length === 1 ? '' : 's'}</strong> con cambios.</p>
-                      <p style="margin:0 0 8px 0">Esto afecta a recetas <strong>nuevas o recalculadas</strong>. Las existentes mantienen sus snapshots hasta recalcularlas.</p>
-                      <p style="margin:0; color:var(--text-muted); font-size:13px;">Después de guardar, podés usar <strong>Recalcular todas las recetas</strong> para alinear precios.</p>`,
+                      ${efecto}
+                      ${tocaCosteo ? `<p style="margin:0; color:var(--text-muted); font-size:13px;">Después de guardar, podés usar <strong>Recalcular todas las recetas</strong> para alinear precios.</p>` : ''}`,
             confirmText: 'Guardar',
             cancelText: 'Cancelar',
         });
