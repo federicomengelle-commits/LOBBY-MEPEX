@@ -54,7 +54,7 @@ const App = {
         'catalogo.js?v=10',
         'stands.js?v=7',
         'compositor-piezas.js?v=2',
-        'compositor.js?v=19',
+        'compositor.js?v=20',
         // ⚠️ NO agregar acá nada bajo `tools/`, `sql/` ni `docs/`: nginx las bloquea
         // con `location ~* ^/(sql|tools|docs)/ { deny all; return 404; }` para no
         // publicar el schema ni el código del proxy. Un 404 en esta lista **tumba la

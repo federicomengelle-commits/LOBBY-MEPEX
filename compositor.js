@@ -19,8 +19,8 @@
 const CompositorModule = {
     OCTEXA: {
         ejeMM: 990, medioEjeMM: 495, columnaDiamMM: 40, profEstandarMM: 500,
-        alturas: [2400, 2900, 3400, 3900, 5000],
-        pisos: ['Alfombra nylon', 'Tarima 40mm', 'Tarima 80mm'],
+        alturas: [2400, 2500, 2900, 3400, 3900, 5000],
+        pisos: ['Sin piso', 'Alfombra nylon', 'Tarima 40mm', 'Tarima 80mm'],
         tipos: {
             isla:      { label: 'Isla',          frentesAbiertos: 4, paredes: [],                       retiroM: 0 },
             peninsula: { label: 'Península',     frentesAbiertos: 3, paredes: ['back'],                 retiroM: 1.0 },
@@ -63,6 +63,13 @@ const CompositorModule = {
         placed: [],               // {uid,catId,nombre,precio,x,y,w,d,rot}
     },
     // valores de arranque (los usa cargarEscena para no heredar basura de la sesión)
+    _cfgOpen: false,
+    // lo que muestra el chip cuando el panel de config está cerrado
+    _cfgResumen() {
+        const s = this._state, n = v => this._numero(v);
+        if (this._isArea()) return `Área ${n(s.areaW)} × ${n(s.areaD)} m · ${s.piso}`;
+        return `${this.OCTEXA.tipos[s.tipo].label} ${s.frente} × ${s.fondo} · ${(s.altura / 1000).toFixed(2).replace('.', ',')} m · ${s.piso}`;
+    },
     _defaultState() {
         return {
             modo: 'octexa', nombre: '', cliente: '', lote: '', tipo: 'isla',
@@ -104,6 +111,13 @@ const CompositorModule = {
                         <label>Nombre del layout</label>
                         <input type="text" id="cmpNombre" value="${escAttr(this._state.nombre)}" placeholder="${this._isArea() ? 'Layout salón Pabellón 3' : 'Stand Natura — Expo'}">
                     </div>
+                    <button class="cmp-cfg-chip ${this._cfgOpen ? 'on' : ''}" id="cmpCfgToggle" title="Medidas, altura y piso">
+                        <span class="cmp-cfg-res">${escHtml(this._cfgResumen())}</span>
+                        <span class="cmp-cfg-caret">${this._cfgOpen ? '▴' : '▾'}</span>
+                    </button>
+                    <div class="cmp-dims" id="cmpDims"></div>
+                </div>
+                <div class="cmp-cfg-panel ${this._cfgOpen ? 'on' : ''}" id="cmpCfgPanel">
                     <div class="cmp-ctl">
                         <label>Cliente (carátula)</label>
                         <input type="text" id="cmpCliente" value="${escAttr(this._state.cliente)}" placeholder="Ej. Cedent">
@@ -113,7 +127,6 @@ const CompositorModule = {
                         <input type="text" id="cmpLote" value="${escAttr(this._state.lote)}" placeholder="142">
                     </div>
                     ${this._controlsHTML()}
-                    <div class="cmp-dims" id="cmpDims"></div>
                 </div>
 
                 <div class="cmp-main">
@@ -184,6 +197,12 @@ const CompositorModule = {
             const m = b.dataset.modo; if (m === this._state.modo) return;
             this._state.modo = m; this._select(null); this._rebuild();
         }));
+        document.getElementById('cmpCfgToggle')?.addEventListener('click', () => {
+            this._cfgOpen = !this._cfgOpen;
+            document.getElementById('cmpCfgPanel')?.classList.toggle('on', this._cfgOpen);
+            document.getElementById('cmpCfgToggle')?.classList.toggle('on', this._cfgOpen);
+            const c = document.querySelector('.cmp-cfg-caret'); if (c) c.textContent = this._cfgOpen ? '▴' : '▾';
+        });
         document.getElementById('cmpNombre')?.addEventListener('input', (e) => { this._state.nombre = e.target.value; });
         document.getElementById('cmpCliente')?.addEventListener('input', (e) => { this._state.cliente = e.target.value; });
         document.getElementById('cmpLote')?.addEventListener('input', (e) => { this._state.lote = e.target.value; });
@@ -193,7 +212,10 @@ const CompositorModule = {
             document.querySelectorAll('.cmp-vista-seg').forEach(x => x.classList.toggle('active', x.dataset.vista === v));
             this._renderPlanta();
         }));
-        const reConfig = () => { this._readConfig(); this._clampAll(); this._renderPlanta(); this._renderEstructura(); this._renderBOM(); };
+        const reConfig = () => {
+            this._readConfig(); this._clampAll(); this._renderPlanta(); this._renderEstructura(); this._renderBOM();
+            const r = document.querySelector('.cmp-cfg-res'); if (r) r.textContent = this._cfgResumen();
+        };
         ['cmpTipo', 'cmpAltura', 'cmpPiso'].forEach(id => document.getElementById(id)?.addEventListener('change', reConfig));
         ['cmpFrente', 'cmpFondo', 'cmpAreaW', 'cmpAreaD'].forEach(id => document.getElementById(id)?.addEventListener('input', reConfig));
         document.getElementById('cmpPalQ')?.addEventListener('input', (e) => { this._paletteQ = e.target.value; this._renderPalette(); });
@@ -264,6 +286,10 @@ const CompositorModule = {
     // ─── geometría (mode-aware) ───
     _isArea() { return this._state.modo === 'area'; },
 
+    // Medidas de arranque de lo que se COLOCA (no de la estructura): siempre redondas
+    // y iguales en los dos modos. La modulación 990/495 es de los paños, no del sillón.
+    SPAWN: { item: 1000, itemFondo: 500, zona: 2000 },   // los muebles del catálogo traen su medida real
+
     // ─── modulación OCTEXA (fuente de verdad §1.1-1.4) ───
     // EE = perfil visible + 40 (la columna ø40 aporta 20 por lado) ⇒ cada vano ocupa
     // perfil+40 de entre-ejes. 6 vanos de 950 = 6×990 = 5.940 mm, que es el 6,00 m
@@ -302,7 +328,7 @@ const CompositorModule = {
     _wNomM() { return this._isArea() ? this._state.areaW : this._state.frente; },
     _dNomM() { return this._isArea() ? this._state.areaD : this._state.fondo; },
     _m2() { return Math.round(this._wNomM() * this._dNomM() * 100) / 100; },
-    _snapStep() { return this._isArea() ? 250 : this.OCTEXA.medioEjeMM; },
+    _snapStep() { return 250; },
     _snap(v) { const s = this._snapStep(); return Math.round(v / s) * s; },
 
     // ─── snap inteligente ───────────────────────────────────────────────────
@@ -734,20 +760,26 @@ const CompositorModule = {
         const textoFld = isTexto ? `<label class="cmp-sel-fld cmp-sel-txt">texto <input type="text" id="cmpSelTexto" value="${escAttr(p.texto || '')}" placeholder="Escribí…"></label>` : '';
         const bomChip = (p.kind === 'item') ? `<button class="cmp-mini cmp-bom-chip cmp-bom-${this._bomTipoDe(p)}" data-a="bom" title="Cambiar Infraestructura / Equipamiento">${this._bomTipoDe(p) === 'infra' ? '🏗 Infra' : '🪑 Equip'}</button>` : '';
         el.innerHTML = `
-            <span class="cmp-sel-name">${nameLabel}${p.locked ? ' 🔒' : ''}</span>
-            ${bomChip}${textoFld}
-            <label class="cmp-sel-fld">ancho <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"> cm</label>
-            <label class="cmp-sel-fld">${isTexto ? 'alto' : 'fondo'} <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
-            <span class="cmp-sel-acts">
-                <button class="cmp-mini" data-a="dup" title="Duplicar">⧉</button>
-                <button class="cmp-mini" data-a="row" title="Duplicar en fila ×N">⊞</button>
-                <button class="cmp-mini" data-a="rot" title="Girar 45°">↻</button>
-                <button class="cmp-mini" data-a="align" title="Alinear / centrar / pegar a un borde">⊹▾</button>
-                <button class="cmp-mini" data-a="front" title="Traer al frente">⤒</button>
-                <button class="cmp-mini" data-a="back" title="Enviar al fondo">⤓</button>
-                <button class="cmp-mini" data-a="lock" title="${p.locked ? 'Desbloquear' : 'Bloquear'}">${p.locked ? '🔓' : '🔒'}</button>
-                <button class="cmp-mini cmp-mini-del" data-a="del" title="Quitar">✕</button>
-            </span>`;
+            <div class="cmp-sel-head">
+                <span class="cmp-sel-name">${nameLabel}${p.locked ? ' 🔒' : ''}</span>
+                ${bomChip}
+            </div>
+            ${textoFld}
+            <div class="cmp-sel-flds">
+                <label class="cmp-sel-fld">ancho <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"> cm</label>
+                <label class="cmp-sel-fld">${isTexto ? 'alto' : 'fondo'} <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
+            </div>
+            <div class="cmp-sel-acts">
+                <button class="cmp-mini" data-a="dup" title="Ctrl+D"><b>⧉</b> Duplicar</button>
+                <button class="cmp-mini" data-a="row" title="Duplicar en fila ×N"><b>⊞</b> En fila</button>
+                <button class="cmp-mini" data-a="rot" title="Girar 45° (R)"><b>↻</b> Girar</button>
+                <button class="cmp-mini" data-a="align" title="Centrar o pegar a un borde"><b>⊹</b> Alinear ▾</button>
+                <button class="cmp-mini" data-a="front" title="Traer al frente"><b>⤒</b> Frente</button>
+                <button class="cmp-mini" data-a="back" title="Enviar al fondo"><b>⤓</b> Fondo</button>
+                <button class="cmp-mini" data-a="lock" title="${p.locked ? 'Desbloquear' : 'Bloquear'}"><b>${p.locked ? '🔓' : '🔒'}</b> ${p.locked ? 'Soltar' : 'Fijar'}</button>
+                <button class="cmp-mini cmp-mini-del" data-a="del" title="Supr"><b>✕</b> Quitar</button>
+            </div>
+            <div class="cmp-sel-foot">botón derecho para todo</div>`;
         let pushedSize = false;
         const upd = () => {
             if (!pushedSize) { this._pushHist(); pushedSize = true; }
@@ -847,15 +879,16 @@ const CompositorModule = {
         const gid = items[0] && items[0].groupId;
         const grouped = !!gid && items.every(it => it.groupId === gid);
         el.innerHTML = `
-            <span class="cmp-sel-name">${n} seleccionadas${grouped ? ' · 🔗 grupo' : ''}</span>
-            <span class="cmp-sel-acts">
-                <button class="cmp-mini" data-a="${grouped ? 'ungroup' : 'group'}" title="${grouped ? 'Desagrupar' : 'Agrupar (se mueven juntas)'}">${grouped ? '✂ Desagrupar' : '🔗 Agrupar'}</button>
-                <button class="cmp-mini" data-a="distrib" title="Distribuir parejo (3+)">⇿ Distribuir ▾</button>
-                <button class="cmp-mini" data-a="align" title="Alinear entre sí">⊹ Alinear ▾</button>
-                <button class="cmp-mini" data-a="dup" title="Duplicar todas">⧉ Duplicar</button>
-                <button class="cmp-mini" data-a="lock" title="Bloquear / desbloquear todas">🔒</button>
-                <button class="cmp-mini cmp-mini-del" data-a="del" title="Quitar todas">✕</button>
-            </span>`;
+            <div class="cmp-sel-head"><span class="cmp-sel-name">${n} seleccionadas${grouped ? ' · 🔗 grupo' : ''}</span></div>
+            <div class="cmp-sel-acts">
+                <button class="cmp-mini" data-a="${grouped ? 'ungroup' : 'group'}" title="${grouped ? 'Desagrupar' : 'Se mueven juntas (Ctrl+G)'}"><b>${grouped ? '✂' : '🔗'}</b> ${grouped ? 'Desagrupar' : 'Agrupar'}</button>
+                <button class="cmp-mini" data-a="distrib" title="Distribuir parejo (3+)"><b>⇿</b> Distribuir ▾</button>
+                <button class="cmp-mini" data-a="align" title="Alinear entre sí"><b>⊹</b> Alinear ▾</button>
+                <button class="cmp-mini" data-a="dup" title="Ctrl+D"><b>⧉</b> Duplicar</button>
+                <button class="cmp-mini" data-a="lock" title="Bloquear / desbloquear todas"><b>🔒</b> Fijar</button>
+                <button class="cmp-mini cmp-mini-del" data-a="del" title="Supr"><b>✕</b> Quitar</button>
+            </div>
+            <div class="cmp-sel-foot">botón derecho para todo</div>`;
         el.querySelectorAll('.cmp-mini').forEach(b => b.addEventListener('click', () => {
             const a = b.dataset.a;
             if (a === 'group') this._groupSelected();
@@ -1149,8 +1182,7 @@ const CompositorModule = {
     _placeItem(catId) {
         const ci = this._catalogo.find(c => String(c.id) === String(catId)); if (!ci) return;
         this._pushHist();
-        const w = this._isArea() ? 800 : this.OCTEXA.ejeMM;
-        const d = this._isArea() ? 800 : this.OCTEXA.profEstandarMM;
+        const w = this.SPAWN.item, d = this.SPAWN.itemFondo;
         const { x, y } = this._spawnXY(w, d);
         const uid = this._nextUid();
         this._state.placed.push({ uid, kind: 'item', catId: ci.id, nombre: ci.nombre, precio: ci.precioAlquiler || 0, bom: this._clasifBOM(ci), x, y, w, d, rot: 0 });
@@ -1161,7 +1193,7 @@ const CompositorModule = {
     _placeZona(key) {
         const z = this._ZONAS.find(x => x.key === key); if (!z) return;
         this._pushHist();
-        const base = this._isArea() ? 2000 : this.OCTEXA.ejeMM * 2;
+        const base = this.SPAWN.zona;
         const w = Math.min(base, this._wmm()), d = Math.min(base, this._dmm());
         const { x, y } = this._spawnXY(w, d);
         const uid = this._nextUid();
@@ -1482,19 +1514,30 @@ const CompositorModule = {
             .cmp-dim-sub{color:var(--text-muted);font-size:.74rem}
             .cmp-main{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,340px);gap:18px;align-items:start}
             @media(max-width:980px){.cmp-main{grid-template-columns:1fr}}
-            .cmp-canvas-col{display:flex;flex-direction:column;gap:10px}
+            .cmp-canvas-col{display:flex;flex-direction:column;gap:10px;position:relative}
+            .cmp-cfg-chip{background:#141414;border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text-muted);font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:9px;transition:all 150ms;align-self:flex-end;white-space:nowrap}
+            .cmp-cfg-chip:hover,.cmp-cfg-chip.on{border-color:var(--primary);color:var(--primary)}
+            .cmp-cfg-res{font-family:var(--font-mono)}
+            .cmp-cfg-caret{font-size:.66rem;opacity:.7}
+            .cmp-cfg-panel{display:none;gap:14px;flex-wrap:wrap;align-items:flex-end;padding:12px 14px;background:#0d0d0d;border:1px solid var(--border);border-radius:8px;margin-bottom:14px}
+            .cmp-cfg-panel.on{display:flex}
             .cmp-canvas-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
             .cmp-hint{color:var(--text-dim);font-size:.7rem;flex:1;min-width:120px;text-align:right}
-            .cmp-sel-strip{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;height:48px;box-sizing:border-box;padding:6px 12px;border:1px solid transparent;border-radius:8px}
-            .cmp-sel-strip::-webkit-scrollbar{height:4px}
-            .cmp-sel-strip.on{background:rgba(242,141,21,.08);border-color:rgba(242,141,21,.3)}
-            .cmp-sel-strip:not(.on)::before{content:'Seleccioná una pieza para editarla (Supr la borra · Shift-clic para varias)';color:var(--text-dim);font-size:.74rem;white-space:nowrap}
-            .cmp-sel-name{color:#F28D15;font-weight:600;font-size:.84rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 0 auto}
-            .cmp-sel-strip .cmp-sel-fld,.cmp-sel-strip .cmp-mini,.cmp-sel-strip .cmp-bom-chip{flex:0 0 auto}
-            .cmp-sel-fld{font-size:.7rem;color:var(--text-muted);display:flex;align-items:center;gap:6px}
-            .cmp-sel-fld input{width:62px;background:#1A1A1A;border:1px solid var(--border);border-radius:5px;color:var(--text-primary);padding:5px 7px;font-family:var(--font-mono);font-size:.8rem}
-            .cmp-sel-txt input{width:160px;font-family:var(--font-main)}
-            .cmp-sel-acts{display:flex;gap:5px;flex-wrap:wrap;margin-left:auto}
+            /* inspector flotante: vive sobre el canvas, no le come dos barras arriba */
+            .cmp-sel-strip{position:absolute;top:46px;right:14px;z-index:5;width:216px;box-sizing:border-box;display:none;flex-direction:column;gap:9px;padding:11px;background:rgba(15,15,15,.97);border:1px solid rgba(242,141,21,.35);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.55)}
+            .cmp-sel-strip.on{display:flex}
+            .cmp-sel-head{display:flex;align-items:center;justify-content:space-between;gap:7px}
+            .cmp-sel-name{color:#F28D15;font-weight:600;font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+            .cmp-sel-flds{display:flex;gap:8px}
+            .cmp-sel-fld{font-size:.68rem;color:var(--text-muted);display:flex;align-items:center;gap:5px}
+            .cmp-sel-fld input{width:52px;background:#1A1A1A;border:1px solid var(--border);border-radius:5px;color:var(--text-primary);padding:5px 6px;font-family:var(--font-mono);font-size:.78rem}
+            .cmp-sel-txt{display:flex}
+            .cmp-sel-txt input{width:100%;font-family:var(--font-main)}
+            .cmp-sel-acts{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+            .cmp-sel-strip .cmp-mini{display:flex;align-items:center;gap:5px;text-align:left;padding:6px 7px;font-size:.7rem}
+            .cmp-sel-strip .cmp-mini b{font-weight:400;opacity:.75;width:13px;flex:0 0 13px;text-align:center}
+            .cmp-sel-foot{color:var(--text-dim);font-size:.64rem;text-align:center;border-top:1px solid var(--border);padding-top:7px}
+            @media(max-width:640px){.cmp-sel-strip{position:static;width:auto;box-shadow:none}}
             .cmp-mini{background:#1A1A1A;border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:5px 9px;font-size:.74rem;cursor:pointer;transition:all 150ms}
             .cmp-mini:hover{border-color:var(--primary);color:var(--primary)}
             .cmp-mini-del:hover{border-color:var(--color-error);color:var(--color-error)}
