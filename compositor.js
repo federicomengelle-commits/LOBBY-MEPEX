@@ -172,6 +172,8 @@ const CompositorModule = {
                                 <button class="cmp-vista-seg ${this._state.vista !== 'lineas' ? 'active' : ''}" data-vista="paneleado">Paneleado</button>
                             </span>
                             <span class="cmp-tool-sep"></span>
+                            <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-brief" id="cmpBrief" title="Pegá lo que pidió el cliente y armo una propuesta">✨ Desde un brief</button>
+                            <span class="cmp-tool-sep"></span>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpTexto" title="Agregar etiqueta de texto">＋ Texto</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpRotStand">⟳ Girar todo 90°</button>
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
@@ -256,6 +258,7 @@ const CompositorModule = {
         ['cmpFrente', 'cmpFondo', 'cmpAreaW', 'cmpAreaD'].forEach(id => document.getElementById(id)?.addEventListener('input', reConfig));
         document.getElementById('cmpPalQ')?.addEventListener('input', (e) => { this._paletteQ = e.target.value; this._renderPalette(); });
         document.querySelectorAll('.cmp-pal-tab').forEach(b => b.addEventListener('click', () => { this._palTab = b.dataset.pt; this._renderPalette(); }));
+        document.getElementById('cmpBrief')?.addEventListener('click', () => this._openBrief());
         document.getElementById('cmpTexto')?.addEventListener('click', () => this._placeTexto());
         document.getElementById('cmpRotStand')?.addEventListener('click', () => this._rotateStand());
         document.getElementById('cmpEspejar')?.addEventListener('click', () => this._mirror());
@@ -966,9 +969,13 @@ const CompositorModule = {
         // 2) superposiciones (sin contar la estructura, que se pega a propósito)
         const solapes = [];
         const sup = piezas.filter(p => p.kind !== 'estructura');
+        const bb = sup.map(p => this._bbox(p));   // una vez cada una, no n veces
         for (let i = 0; i < sup.length; i++) {
             for (let j = i + 1; j < sup.length; j++) {
-                const a = this._bbox(sup[i]), b = this._bbox(sup[j]);
+                // las piezas de un mismo kit se tocan a propósito (la silla contra su
+                // mesa), así que un grupo no se denuncia a sí mismo
+                if (sup[i].groupId && sup[i].groupId === sup[j].groupId) continue;
+                const a = bb[i], b = bb[j];
                 const ox = Math.min(a.left + a.w, b.left + b.w) - Math.max(a.left, b.left);
                 const oy = Math.min(a.top + a.h, b.top + b.h) - Math.max(a.top, b.top);
                 if (ox > 50 && oy > 50) solapes.push([sup[i].uid, sup[j].uid]);
@@ -1024,6 +1031,190 @@ const CompositorModule = {
             this._selectMany([...new Set(a.uids)]);
             this._refreshSel(); this._renderSelStrip();
         }));
+    },
+
+    // ═══ DEL BRIEF AL PLANO ═══════════════════════════════════════════════
+    // Pegás lo que pidió el cliente y sale una PROPUESTA: medidas, tipo y qué va
+    // adentro. La lectura la hace `CompositorBrief` (reglas locales, IA opcional);
+    // acá se baja a geometría con la modulación real. Nada se guarda: el plano queda
+    // en pantalla para corregir y recién ahí se guarda como cualquier otro.
+    _openBrief() {
+        if (typeof CompositorBrief === 'undefined') { Toast.error('Falta compositor-brief.js'); return; }
+        const ej = 'Stand de 6x3 en esquina para Natura. Un mostrador, 4 vitrinas, depósito chico, sala de reunión y un TV. Altura 2,40 con cenefa.';
+        const hay = this._state.placed.length;
+        const aviso = hay
+            ? `<div class="cmp-brief-warn">Ya tenés ${hay} ${hay === 1 ? 'elemento' : 'elementos'} en el plano. Si montás una propuesta, la reemplaza (se puede deshacer con Ctrl+Z).</div>`
+            : '';
+        const body = `
+            <div class="cmp-brief">
+                ${aviso}
+                <label class="cmp-m-label">Pegá el pedido del cliente, como te llegó</label>
+                <textarea id="cmpBriefTxt" class="cmp-brief-txt" rows="5" placeholder="${escAttr(ej)}"></textarea>
+                <div class="cmp-brief-ej">Ejemplo: <button class="cmp-brief-usar" id="cmpBriefEj">${escHtml(ej)}</button></div>
+                <div id="cmpBriefOut"></div>
+            </div>`;
+        const inst = Modal.open({
+            title: 'Armar una propuesta desde el brief', body, size: 'lg',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button>
+                     <button class="btn btn-primary" id="cmpBriefGo">Leer el pedido</button>`,
+        });
+        this._briefInst = inst.id; this._briefPlan = null;
+        document.getElementById('cmpBriefEj')?.addEventListener('click', () => {
+            const ta = document.getElementById('cmpBriefTxt'); if (ta) { ta.value = ej; ta.focus(); }
+        });
+        document.getElementById('cmpBriefGo')?.addEventListener('click', () => this._briefLeer());
+    },
+
+    async _briefLeer() {
+        const ta = document.getElementById('cmpBriefTxt');
+        const txt = (ta && ta.value || '').trim();
+        if (!txt) { Toast.info('Pegá el pedido primero'); return; }
+        const btn = document.getElementById('cmpBriefGo');
+        if (btn) { btn.disabled = true; btn.textContent = 'Leyendo…'; }
+        let brief;
+        try { brief = await CompositorBrief.interpretar(txt, { ia: true }); }
+        catch (_) { brief = CompositorBrief.parse(txt); }
+
+        // El plan se calcula sobre las medidas del BRIEF, no sobre el stand actual, así
+        // que hay que aplicarlas y volver atrás. Si algo revienta en el medio, el state
+        // quedaría con las medidas nuevas pegadas y el botón trabado: por eso el finally.
+        const prev = JSON.parse(this._capture());
+        let plan = null, err = null;
+        try {
+            this._aplicarBriefState(brief);
+            plan = CompositorBrief.planificar(brief, {
+                wmm: this._wmm(), dmm: this._dmm(), cerrados: this._closedSides(),
+                // el tamaño REAL del kit, medido de sus piezas: la tabla del motor es una
+                // estimación y si queda corta los kits se pisan con lo de al lado
+                tamKit: (k) => this._tamKitReal(k),
+            });
+        } catch (e) {
+            err = e; console.error('[Compositor] planificar:', e);
+        } finally {
+            Object.assign(this._state, prev);   // el plano actual queda como estaba
+            this._syncMods();
+        }
+
+        if (err || !plan) {
+            Toast.error('No pude armar la propuesta con ese pedido');
+            if (btn) { btn.disabled = false; btn.textContent = 'Leer el pedido'; }
+            return;
+        }
+
+        this._briefPlan = { brief, plan };
+        const out = document.getElementById('cmpBriefOut');
+        if (out) out.innerHTML = this._briefResumenHTML(brief, plan);
+        if (btn) {
+            btn.disabled = false; btn.textContent = 'Montar el plano';
+            btn.replaceWith(btn.cloneNode(true));   // sacar el handler de "leer"
+            document.getElementById('cmpBriefGo')?.addEventListener('click', () => this._briefMontar());
+        }
+    },
+
+    _briefResumenHTML(brief, plan) {
+        const chips = brief.items.length
+            ? brief.items.map(i => `<span class="cmp-bchip">${i.cant > 1 ? i.cant + ' × ' : ''}${escHtml(i.label)}${i.tam ? ' <em>' + escHtml(i.tam) + '</em>' : ''}</span>`).join('')
+            : '<span class="cmp-bchip cmp-bchip-vacio">no reconocí qué va adentro</span>';
+        const medida = brief.area
+            ? `Área libre de ${this._numero(brief.medidas.a)} × ${this._numero(brief.medidas.b)} m`
+            : `${this.OCTEXA.tipos[brief.tipo].label} de ${brief.medidas.a} × ${brief.medidas.b} · ${this._numero(brief.altura / 1000)} m de alto${brief.cenefa ? ' · con cenefa' : ''}`;
+        const bloque = (t, arr, cls) => arr && arr.length
+            ? `<div class="cmp-bnota ${cls}"><strong>${t}</strong><ul>${arr.map(x => `<li>${escHtml(x)}</li>`).join('')}</ul></div>` : '';
+        return `
+            <div class="cmp-bres">
+                <div class="cmp-bres-head">
+                    <span class="cmp-bres-med">${escHtml(medida)}</span>
+                    ${brief.cliente ? `<span class="cmp-bres-cli">${escHtml(brief.cliente)}</span>` : ''}
+                    <span class="cmp-bres-fuente">${brief.fuente === 'ia' ? 'lectura asistida' : 'lectura local'}</span>
+                </div>
+                <div class="cmp-bchips">${chips}</div>
+                ${bloque('Esto lo asumí yo — corregilo si no va', brief.asumido, 'asum')}
+                ${bloque('Al armarlo', plan.notas, 'notas')}
+                ${bloque('Ojo', brief.dudas, 'duda')}
+                <div class="cmp-bres-pie">Se monta como propuesta editable. No se guarda nada hasta que le des Guardar.</div>
+            </div>`;
+    },
+
+    _briefMontar() {
+        const bp = this._briefPlan; if (!bp) return;
+        const { brief, plan } = bp;
+        this._pushHist();
+        this._aplicarBriefState(brief);
+        this._state.placed = [];
+
+        plan.piezas.forEach(pz => {
+            if (pz.zona) {
+                const z = this._ZONAS.find(x => x.key === pz.zona) || this._ZONAS[0];
+                this._state.placed.push({ uid: this._nextUid(), kind: 'zona', zonaKey: z.key, nombre: pz.nombre || z.label, color: z.color, x: pz.x, y: pz.y, w: pz.w, d: pz.d, rot: 0 });
+                return;
+            }
+            if (pz.kitKey) { this._colocarKitEn(pz.kitKey, pz.x, pz.y); return; }
+            const def = (typeof CompositorPiezas !== 'undefined') ? CompositorPiezas.get(pz.key) : null;
+            if (!def) return;
+            this._state.placed.push({ uid: this._nextUid(), kind: 'pieza', piezaKey: pz.key, glyph: def.glyph, nombre: def.label, color: '#00A9C1', x: pz.x, y: pz.y, w: def.w, d: def.d, rot: pz.rot || 0 });
+        });
+
+        // cenefa donde haya paño, si el brief la pedía
+        if (brief.cenefa && !this._isArea()) {
+            const cen = {};
+            this._closedSides().forEach(sd => { cen[sd] = true; });
+            this._state.cenefas = cen;
+        }
+        this._clampAll();
+        this._select(null);
+        if (this._briefInst) Modal.close(this._briefInst);
+        this._rebuild();
+        const n = this._state.placed.length;
+        Toast.success(`Propuesta armada: ${n} ${n === 1 ? 'elemento' : 'elementos'}. Revisala y ajustá lo que haga falta.`);
+    },
+
+    // medidas / tipo / carátula que dijo el brief
+    _aplicarBriefState(brief) {
+        const st = this._state;
+        if (brief.area) {
+            st.modo = 'area';
+            st.areaW = Math.max(1, Math.min(40, brief.medidas.a));
+            st.areaD = Math.max(1, Math.min(40, brief.medidas.b));
+        } else {
+            st.modo = 'octexa';
+            st.tipo = this.OCTEXA.tipos[brief.tipo] ? brief.tipo : 'esquina';
+            st.frente = Math.max(1, Math.min(20, Math.round(brief.medidas.a)));
+            st.fondo = Math.max(1, Math.min(20, Math.round(brief.medidas.b)));
+            st.altura = brief.altura || 2400;
+            st.modsX = null; st.modsY = null;
+            st.panelOverride = {}; st.cenefas = {};
+        }
+        if (brief.cliente) st.cliente = brief.cliente;
+        if (!st.nombre) st.nombre = brief.cliente ? `Propuesta ${brief.cliente}` : 'Propuesta';
+        this._syncMods();
+    },
+
+    // Caja que ocupa un kit de verdad, midiendo sus piezas (con rotación incluida).
+    _tamKitReal(key) {
+        const kit = this._kitsTodos().find(k => k.key === key);
+        if (!kit || typeof CompositorPiezas === 'undefined') return null;
+        let maxX = 0, maxY = 0;
+        kit.piezas.forEach(pz => {
+            const d = CompositorPiezas.get(pz.k); if (!d) return;
+            const b = this._bbox({ x: pz.x, y: pz.y, w: d.w, d: d.d, rot: pz.r || 0 });
+            maxX = Math.max(maxX, b.left + b.w);
+            maxY = Math.max(maxY, b.top + b.h);
+        });
+        return (maxX && maxY) ? { w: Math.ceil(maxX), h: Math.ceil(maxY) } : null;
+    },
+
+    // Coloca un kit en una posición dada (el _placeKit normal busca lugar solo)
+    _colocarKitEn(key, ox, oy) {
+        const kit = this._kitsTodos().find(k => k.key === key); if (!kit) return;
+        if (typeof CompositorPiezas === 'undefined') return;
+        const gid = 'g' + this._nextUid();
+        kit.piezas.forEach(pz => {
+            const def = CompositorPiezas.get(pz.k); if (!def) return;
+            this._state.placed.push({
+                uid: this._nextUid(), kind: 'pieza', piezaKey: pz.k, glyph: def.glyph, nombre: def.label,
+                color: '#00A9C1', x: ox + pz.x, y: oy + pz.y, w: def.w, d: def.d, rot: pz.r || 0, groupId: gid,
+            });
+        });
     },
 
     // ─── ayuda: todos los gestos y atajos en un solo lado ───
@@ -2176,6 +2367,31 @@ const CompositorModule = {
             .cmp-modo-txt em{font-style:normal;font-size:.68rem;color:var(--text-muted)}
             .cmp-live-bg{fill:rgba(10,10,10,.92);stroke:var(--accent);stroke-width:4}
             .cmp-live-txt{fill:#F28D15;font-size:130px;font-family:var(--font-mono);text-anchor:middle;dominant-baseline:middle}
+            .cmp-btn-brief{border-color:rgba(0,169,193,.45)!important;color:var(--primary)!important}
+            .cmp-btn-brief:hover{background:rgba(0,169,193,.12)!important}
+            .cmp-brief-txt{width:100%;box-sizing:border-box;background:#141414;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);padding:10px 12px;font-family:var(--font-main);font-size:.86rem;line-height:1.5;resize:vertical}
+            .cmp-brief-txt:focus{outline:none;border-color:var(--primary)}
+            .cmp-brief-warn{background:rgba(242,141,21,.1);border:1px solid rgba(242,141,21,.35);color:#F28D15;border-radius:6px;padding:8px 11px;font-size:.74rem;margin-bottom:12px}
+            .cmp-brief-ej{margin-top:8px;font-size:.7rem;color:var(--text-dim)}
+            .cmp-brief-usar{background:none;border:none;color:var(--text-muted);font-size:.7rem;text-align:left;cursor:pointer;padding:0;font-family:inherit;text-decoration:underline dotted}
+            .cmp-brief-usar:hover{color:var(--primary)}
+            .cmp-bres{margin-top:16px;border-top:1px solid var(--border);padding-top:14px}
+            .cmp-bres-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+            .cmp-bres-med{color:var(--primary);font-weight:600;font-size:.86rem}
+            .cmp-bres-cli{background:rgba(242,141,21,.14);color:#F28D15;border-radius:4px;padding:2px 8px;font-size:.74rem}
+            .cmp-bres-fuente{margin-left:auto;color:var(--text-dim);font-size:.66rem}
+            .cmp-bchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+            .cmp-bchip{background:#151515;border:1px solid var(--border);border-radius:5px;padding:4px 9px;font-size:.74rem;color:var(--text-primary)}
+            .cmp-bchip em{font-style:normal;color:var(--text-dim);font-size:.68rem}
+            .cmp-bchip-vacio{color:var(--text-dim);border-style:dashed}
+            .cmp-bnota{margin-bottom:10px;font-size:.74rem}
+            .cmp-bnota strong{display:block;font-weight:600;margin-bottom:4px;font-size:.72rem}
+            .cmp-bnota ul{margin:0;padding-left:18px;color:var(--text-muted)}
+            .cmp-bnota li{margin:2px 0}
+            .cmp-bnota.asum strong{color:#F28D15}
+            .cmp-bnota.duda strong{color:#ff6b6b}
+            .cmp-bnota.notas strong{color:var(--text-muted)}
+            .cmp-bres-pie{color:var(--text-dim);font-size:.68rem;border-top:1px solid var(--border);padding-top:9px;margin-top:4px}
             .cmp-avisos{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:2px 0}
             .cmp-av-m2{font-size:.7rem;color:var(--text-muted);font-family:var(--font-mono);padding:4px 9px;background:#131313;border:1px solid var(--border);border-radius:5px}
             .cmp-av-m2 strong{color:var(--primary);font-weight:600}

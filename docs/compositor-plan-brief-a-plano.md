@@ -109,4 +109,38 @@ después y sólo mejora la comprensión.
 
 ## 4. Bitácora
 
-*(se completa a medida que se ejecuta)*
+**2026-08-28 · FASE A — hecha y pusheada** (`b0b7b3c`)
+- A1 espejar da vuelta paños, cenefas y el orden de los vanos. No alcanzaba con dar
+  vuelta el override: la topología base sale del tipo de stand y el espejo no es una
+  rotación, así que hay que materializar el estado actual ya espejado.
+- A2 validador que avisa y no bloquea (se sale del stand · se pisan · circulación
+  bajo 35% · cenefa sin altura · stand sin paredes). Cada aviso selecciona las piezas.
+  Las piezas de un mismo kit no se denuncian entre sí: la silla contra su mesa va así.
+- A3 chip permanente de m² ocupados vs libres.
+- A4 Alt+arrastrar duplica; el snap libre pasó a Ctrl.
+
+**2026-08-28 · FASE B — B1, B2, B3 y B4 hechas**
+- `compositor-brief.js` nuevo: parser de vocabulario rioplatense + motor de layout con
+  ocupador real (reserva lo que coloca, busca hueco con separación decreciente, reparte
+  la exhibición por el perímetro rotando de lado, depósito a la esquina ciega, kits al
+  centro). **7 escenarios de layout sin un solo choque ni salida.**
+- UI: botón "Desde un brief" → pegás el pedido → muestra qué entendió, **qué asumió** y
+  qué no le cerró → "Montar el plano". El state no se toca hasta que aceptás.
+- `tools/vps/compositor-brief.js`: el endpoint de IA, escrito y **sin deployar**. El
+  front cae solo al parser de reglas si no responde, así que no bloquea nada.
+- Verificado con 8 briefs distintos montados end-to-end en el navegador: todos sin
+  avisos del validador, desde "hola, quería consultar precios" (no inventa nada) hasta
+  una isla de 12×6 con 35 piezas.
+
+**Trampas que costaron y quedan anotadas:**
+- `\b` de regex **no cierra después de una vocal acentuada** (`é` no es `\w`): "café"
+  nunca matcheaba. Van con `(?![a-záéíóúñ])`.
+- El tamaño de un kit **hay que medirlo de sus piezas**, no estimarlo en una tabla: la
+  estimación quedaba corta y los kits se pisaban con lo de al lado.
+- La ventana donde se busca "chico/grande" **tiene que cortarse en la puntuación**: sin
+  eso, "vitrinas, depósito chico" hacía chicas también a las vitrinas.
+- En una **isla no hay paredes**, así que "contra la pared" apilaba todo en el fondo y
+  tapaba el centro. Los lados rotan en cada pieza.
+
+**Falta:** C (premisas editables, 3 presupuestos, aprender del histórico) y D (arrastrar
+desde la paleta, zoom, elevaciones).

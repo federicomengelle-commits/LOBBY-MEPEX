@@ -54,7 +54,8 @@ const App = {
         'catalogo.js?v=10',
         'stands.js?v=7',
         'compositor-piezas.js?v=2',
-        'compositor.js?v=22',
+        'compositor-brief.js?v=1',
+        'compositor.js?v=23',
         // ⚠️ NO agregar acá nada bajo `tools/`, `sql/` ni `docs/`: nginx las bloquea
         // con `location ~* ^/(sql|tools|docs)/ { deny all; return 404; }` para no
         // publicar el schema ni el código del proxy. Un 404 en esta lista **tumba la
@@ -67,7 +68,7 @@ const App = {
         // La hoja membretada comun: va ANTES que todo lo que genera PDF.
         // docs/papeleria-mepex-inventario.md
         'hoja-mepex.js?v=1',
-        'plano-pdf.js?v=11',
+        'plano-pdf.js?v=12',
         'remito-pdf.js?v=5',
         'pedido-pdf.js?v=3',
         'conforme-pdf.js?v=3',

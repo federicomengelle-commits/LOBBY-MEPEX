@@ -209,8 +209,10 @@ const PlanoPDF = {
                 doc.setFillColor(245, 247, 250); doc.setDrawColor(...NAVY); doc.setLineWidth(0.35);
                 doc.lines(this._segs(corners), corners[0][0], corners[0][1], [1, 1], 'FD', true);
             }
-            // rótulo del item SOBRE la pieza (azul, rotado, abreviado para entrar)
-            if (p.kind === 'item') {
+            // rótulo SOBRE la pieza (azul, rotado, abreviado para entrar). Van también
+            // los muebles de la librería: el plano que arma un brief es todo `pieza`, y
+            // sin rótulo el taller no sabe qué está mirando.
+            if (p.kind === 'item' || p.kind === 'pieza') {
                 const alongMM = (((p.rot || 0) % 180) === 90 ? p.d : p.w) * scale;
                 const { txt, fs } = this._fitLabel(p.nombre, alongMM);
                 doc.setFont('helvetica', 'normal'); doc.setFontSize(fs); doc.setTextColor(...BLUE);
