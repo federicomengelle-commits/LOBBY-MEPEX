@@ -19,6 +19,10 @@
 const CompositorModule = {
     OCTEXA: {
         ejeMM: 990, medioEjeMM: 495, columnaDiamMM: 40, profEstandarMM: 500,
+        // Cenefa (§3.1): franja de 300 = perfil 50 + placa 200 visible (210 real) + perfil 50,
+        // típicamente de 2,10 a 2,40 m. La gráfica es una placa POR MÓDULO (§3.2: no existe
+        // la placa continua de 2 módulos, hay columna en el medio) y mide perfil + 10.
+        cenefa: { alto: 300, desde: 2100, hasta: 2400, placaAlto: 210, placaVisible: 200, encastre: 10 },
         alturas: [2400, 2500, 2900, 3400, 3900, 5000],
         pisos: ['Sin piso', 'Alfombra nylon', 'Tarima 40mm', 'Tarima 80mm'],
         tipos: {
@@ -28,6 +32,24 @@ const CompositorModule = {
             lineal:    { label: 'Centro / línea', frentesAbiertos: 1, paredes: ['back', 'left', 'right'], retiroM: 1.0 },
         },
     },
+
+    // Kits = combos que se colocan de una, ya agrupados. Cada pieza queda suelta (cuenta
+    // en el BOM y se puede mover), pero nacen juntas y como un grupo.
+    _KITS: [
+        { key: 'recepcion', label: 'Recepción', nota: 'mostrador + 2 banquetas',
+          piezas: [{ k: 'mostrador', x: 0, y: 0 }, { k: 'banqueta', x: 300, y: 800 }, { k: 'banqueta', x: 1100, y: 800 }] },
+        { key: 'reunion6', label: 'Sala de reunión 6', nota: 'mesa + 6 sillas',
+          piezas: [{ k: 'mesa_rect', x: 500, y: 400 }, { k: 'silla', x: 600, y: 0 }, { k: 'silla', x: 1150, y: 0 }, { k: 'silla', x: 1700, y: 0 },
+                   { k: 'silla', x: 600, y: 1300, r: 180 }, { k: 'silla', x: 1150, y: 1300, r: 180 }, { k: 'silla', x: 1700, y: 1300, r: 180 }] },
+        { key: 'cafe', label: 'Punto de café', nota: 'mesa alta + 3 banquetas',
+          piezas: [{ k: 'mesa_alta', x: 500, y: 500 }, { k: 'banqueta', x: 0, y: 600 }, { k: 'banqueta', x: 1400, y: 600 }, { k: 'banqueta', x: 700, y: 1400 }] },
+        { key: 'exhibicion', label: 'Isla de exhibición', nota: '2 vitrinas + estantería',
+          piezas: [{ k: 'vitrina', x: 0, y: 0 }, { k: 'vitrina', x: 1100, y: 0 }, { k: 'estanteria', x: 550, y: 700 }] },
+        { key: 'estar', label: 'Estar', nota: 'sofá + 2 sillones + ratona',
+          piezas: [{ k: 'sofa2', x: 300, y: 0 }, { k: 'sillon', x: 0, y: 1100, r: 90 }, { k: 'sillon', x: 1600, y: 1100, r: 270 }, { k: 'mesa_ratona', x: 700, y: 1200 }] },
+        { key: 'deposito', label: 'Depósito cerrado', nota: 'paños + puerta + estantería',
+          piezas: [{ k: 'panel', x: 0, y: 0 }, { k: 'panel', x: 1000, y: 0 }, { k: 'puerta_pivot', x: 0, y: 900, r: 90 }, { k: 'estanteria', x: 400, y: 400 }] },
+    ],
 
     // Zonas = bloques de espacio (no facturables) para distribuir el stand rápido.
     _ZONAS: [
@@ -52,6 +74,7 @@ const CompositorModule = {
         piso: 'Alfombra nylon',
         vista: 'paneleado',       // 'paneleado' (producción) | 'lineas' (distribuir) — toggle
         panelOverride: {},        // {back/front/left/right: true|false} pisa el default de la topología
+        cenefas: {},              // {back/front/left/right: true} franja de marca sobre ese paño
         mods: {},                 // LEGACY {side:[...]} — se migra a modsX/modsY (ver _syncMods)
         // Vanos por EJE, no por lado: back y front comparten la modulación horizontal y
         // left/right la vertical (si no, el rectángulo no cierra). Cada vano es el PERFIL
@@ -75,7 +98,7 @@ const CompositorModule = {
             modo: 'octexa', nombre: '', cliente: '', lote: '', tipo: 'isla',
             frente: 6, fondo: 3, areaW: 5, areaD: 4, altura: 2400,
             piso: 'Alfombra nylon', vista: 'paneleado',
-            panelOverride: {}, mods: {}, modsX: null, modsY: null,
+            panelOverride: {}, cenefas: {}, mods: {}, modsX: null, modsY: null,
             standRot: 0, placed: [],
         };
     },
@@ -103,8 +126,16 @@ const CompositorModule = {
         return `
             <div class="cmp">
                 <div class="cmp-modos">
-                    <button class="cmp-modo ${this._state.modo === 'octexa' ? 'active' : ''}" data-modo="octexa">🏗️ Stand OCTEXA</button>
-                    <button class="cmp-modo ${this._state.modo === 'area' ? 'active' : ''}" data-modo="area">🪑 Área libre (mobiliario)</button>
+                    <label class="cmp-modo-switch ${this._isArea() ? '' : 'on'}">
+                        <input type="checkbox" id="cmpTieneEstr" ${this._isArea() ? '' : 'checked'}>
+                        <span class="cmp-modo-box" aria-hidden="true"></span>
+                        <span class="cmp-modo-txt">
+                            <strong>Tiene estructura OCTEXA</strong>
+                            <em>${this._isArea()
+                                ? 'destildado: área libre, sólo mobiliario sobre el piso del predio'
+                                : 'paredes, columnas ø40, módulos y cenefa. Destildalo para un área libre de alquiler'}</em>
+                        </span>
+                    </label>
                 </div>
                 <div class="cmp-controls">
                     <div class="cmp-ctl cmp-ctl-grow">
@@ -145,6 +176,7 @@ const CompositorModule = {
                             <button class="cmp-btn-ghost cmp-btn-xs" id="cmpEspejar">⇋ Espejar</button>
                             <span class="cmp-tool-sep"></span>
                             <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-danger" id="cmpVaciar">Vaciar</button>
+                            <button class="cmp-btn-ghost cmp-btn-xs cmp-btn-help" id="cmpAyuda" title="Cómo se usa (atajos y gestos)">?</button>
                             <span class="cmp-hint">Botón derecho = menú · Shift-clic varias · Alt arrastra libre · flechas mueven</span>
                         </div>
                         <div id="cmpSelStrip" class="cmp-sel-strip"></div>
@@ -157,6 +189,8 @@ const CompositorModule = {
                             <div class="cmp-pal-tabs">
                                 <button class="cmp-pal-tab" data-pt="catalogo">Catálogo</button>
                                 <button class="cmp-pal-tab" data-pt="piezas">Piezas</button>
+                                <button class="cmp-pal-tab" data-pt="kits">Kits</button>
+                                <button class="cmp-pal-tab" data-pt="estructura">Estructura</button>
                                 <button class="cmp-pal-tab" data-pt="zonas">Zonas</button>
                             </div>
                             <input type="text" id="cmpPalQ" class="cmp-pal-search" placeholder="buscar ítem…" value="${escAttr(this._paletteQ)}">
@@ -193,10 +227,10 @@ const CompositorModule = {
     },
 
     _attach() {
-        document.querySelectorAll('.cmp-modo').forEach(b => b.addEventListener('click', () => {
-            const m = b.dataset.modo; if (m === this._state.modo) return;
-            this._state.modo = m; this._select(null); this._rebuild();
-        }));
+        document.getElementById('cmpTieneEstr')?.addEventListener('change', (e) => {
+            this._state.modo = e.target.checked ? 'octexa' : 'area';
+            this._select(null); this._rebuild();
+        });
         document.getElementById('cmpCfgToggle')?.addEventListener('click', () => {
             this._cfgOpen = !this._cfgOpen;
             document.getElementById('cmpCfgPanel')?.classList.toggle('on', this._cfgOpen);
@@ -224,6 +258,7 @@ const CompositorModule = {
         document.getElementById('cmpRotStand')?.addEventListener('click', () => this._rotateStand());
         document.getElementById('cmpEspejar')?.addEventListener('click', () => this._mirror());
         document.getElementById('cmpVaciar')?.addEventListener('click', () => this._clearAll());
+        document.getElementById('cmpAyuda')?.addEventListener('click', () => this._openAyuda());
         document.getElementById('cmpUndo')?.addEventListener('click', () => this._undo());
         document.getElementById('cmpRedo')?.addEventListener('click', () => this._redo());
         this._updateUndoButtons();
@@ -251,7 +286,7 @@ const CompositorModule = {
                 else if (!ctrl && hay && e.key.indexOf('Arrow') === 0) {
                     // flechas mueven; con Shift, fino de a 10 mm para el ajuste último
                     e.preventDefault();
-                    const paso = e.shiftKey ? 10 : this._snapStep();
+                    const paso = e.shiftKey ? 10 : this._snapStep(this._sel());
                     const dx = e.key === 'ArrowLeft' ? -paso : e.key === 'ArrowRight' ? paso : 0;
                     const dy = e.key === 'ArrowUp' ? -paso : e.key === 'ArrowDown' ? paso : 0;
                     this._nudge(dx, dy);
@@ -295,6 +330,22 @@ const CompositorModule = {
     // perfil+40 de entre-ejes. 6 vanos de 950 = 6×990 = 5.940 mm, que es el 6,00 m
     // comercial de los planos reales (verificado contra Cedent 6×3).
     VANOS: [207.5, 310, 455, 660, 702.5, 950, 1360, 1445, 1940],   // largos oficiales de dintel
+    // Estructura que se coloca ADENTRO del stand (paredes internas, depósitos, pasos
+    // de luz). Los largos salen de la lista oficial §1.4 — acá el snap va duro, que es
+    // lo que pidió Fede: modular en los perfiles, libre en las superficies.
+    ESTRUCTURA: [
+        { key: 'pano_455',  sub: 'pano',    label: 'Paño ½ (455)',   w: 455,  d: 40 },
+        { key: 'pano_660',  sub: 'pano',    label: 'Paño 660',       w: 660,  d: 40 },
+        { key: 'pano_950',  sub: 'pano',    label: 'Paño 1 (950)',   w: 950,  d: 40 },
+        { key: 'pano_1445', sub: 'pano',    label: 'Paño 1½ (1445)', w: 1445, d: 40 },
+        { key: 'pano_1940', sub: 'pano',    label: 'Paño 2 (1940)',  w: 1940, d: 40 },
+        { key: 'pano_2930', sub: 'pano',    label: 'Paño 3 (2930)',  w: 2930, d: 40 },
+        { key: 'dintel_950',  sub: 'dintel', label: 'Dintel 950',   w: 950,  d: 40 },
+        { key: 'dintel_1940', sub: 'dintel', label: 'Dintel 1940',  w: 1940, d: 40 },
+        { key: 'dintel_2930', sub: 'dintel', label: 'Dintel 2930',  w: 2930, d: 40 },
+        { key: 'dintel_3920', sub: 'dintel', label: 'Viga 3920',    w: 3920, d: 40 },
+        { key: 'columna',   sub: 'columna', label: 'Columna ø40',    w: 40,   d: 40 },
+    ],
     _COL: 40,
     // Ajusta los arrays de vanos a la cantidad de módulos nominal, preservando lo ya tocado.
     // Migra de una: si viene el `mods` viejo por lado, toma back/front → X y left/right → Y.
@@ -328,8 +379,10 @@ const CompositorModule = {
     _wNomM() { return this._isArea() ? this._state.areaW : this._state.frente; },
     _dNomM() { return this._isArea() ? this._state.areaD : this._state.fondo; },
     _m2() { return Math.round(this._wNomM() * this._dNomM() * 100) / 100; },
-    _snapStep() { return 250; },
-    _snap(v) { const s = this._snapStep(); return Math.round(v / s) * s; },
+    // Superficies (mobiliario, zonas, textos) → 25 cm, cómodo para acomodar.
+    // Estructura (paños, dinteles, columnas) → medio módulo, que es como encastra.
+    _snapStep(p) { return (p && p.kind === 'estructura') ? this.OCTEXA.medioEjeMM : 250; },
+    _snap(v, p) { const s = this._snapStep(p); return Math.round(v / s) * s; },
 
     // ─── snap inteligente ───────────────────────────────────────────────────
     // La grilla sola NO alcanza: redondear la ESQUINA a un paso fijo hace imposible
@@ -337,7 +390,7 @@ const CompositorModule = {
     // candidatos son los puntos que uno realmente quiere tocar: los bordes y el centro
     // del recinto, los ejes de columna y los bordes/centros de las demás piezas.
     // Alt mientras arrastrás = libre, sin ningún enganche.
-    _snapTol() { return this._snapStep() * 0.45; },
+    _snapTol(p) { return this._snapStep(p) * 0.45; },
     _snapTargets(axis, excludeUids) {
         const W = axis === 'x' ? this._wmm() : this._dmm();
         const t = [0, W / 2, W];
@@ -352,8 +405,8 @@ const CompositorModule = {
     },
     // Devuelve {pos, guide} — `guide` es la coordenada donde enganchó (para dibujar la
     // línea), o null si cayó en la grilla base.
-    _snapAxis(pos, size, axis, excludeUids) {
-        const tol = this._snapTol(), cands = this._snapTargets(axis, excludeUids);
+    _snapAxis(pos, size, axis, excludeUids, pieza) {
+        const tol = this._snapTol(pieza), cands = this._snapTargets(axis, excludeUids);
         let best = null;
         [0, size / 2, size].forEach(off => {
             cands.forEach(c => {
@@ -361,21 +414,33 @@ const CompositorModule = {
                 if (d <= tol && (!best || d < best.d)) best = { d, pos: c - off, guide: c };
             });
         });
-        const grid = this._snap(pos), dGrid = Math.abs(pos - grid);
+        const grid = this._snap(pos, pieza), dGrid = Math.abs(pos - grid);
         if (best && best.d <= dGrid) return { pos: best.pos, guide: best.guide };
         return { pos: grid, guide: null };
     },
     // Líneas de referencia mientras arrastrás (se limpian al soltar)
-    _drawGuides(gx, gy) {
+    _drawGuides(gx, gy, box) {
         const svg = document.getElementById('cmpSvg'); if (!svg) return;
         const host = svg.querySelector('#cmpGuides'); if (!host) return;
         const W = this._wmm(), D = this._dmm(), over = 400;
         let out = '';
         if (gx != null) out += `<line x1="${gx}" y1="${-over}" x2="${gx}" y2="${D + over}" class="cmp-guide"/>`;
         if (gy != null) out += `<line x1="${-over}" y1="${gy}" x2="${W + over}" y2="${gy}" class="cmp-guide"/>`;
+        // chip con lo que hace falta saber mientras acomodás: cuánto libre queda a
+        // cada lado (circulación) y el tamaño de lo que estás moviendo
+        if (box) {
+            const cm = v => Math.round(v / 10);
+            const izq = cm(box.left), der = cm(W - (box.left + box.w));
+            const arr = cm(box.top), aba = cm(D - (box.top + box.h));
+            const txt = `↔ ${izq} | ${der}   ↕ ${arr} | ${aba}   ·   ${cm(box.w)}×${cm(box.h)} cm`;
+            const tx = Math.min(Math.max(box.left + box.w / 2, 1200), W - 1200);
+            const ty = box.top - 240;
+            out += `<g class="cmp-live"><rect x="${tx - 1500}" y="${ty - 150}" width="3000" height="240" rx="40" class="cmp-live-bg"/>`
+                + `<text x="${tx}" y="${ty}" class="cmp-live-txt">${txt}</text></g>`;
+        }
         host.innerHTML = out;
     },
-    _clearGuides() { this._drawGuides(null, null); },
+    _clearGuides() { this._drawGuides(null, null, null); },
 
     _topoSides() {
         if (this._isArea()) return [];
@@ -387,10 +452,53 @@ const CompositorModule = {
         const base = this._topoSides(), ov = this._state.panelOverride || {};
         return ['back', 'front', 'left', 'right'].filter(s => (s in ov) ? !!ov[s] : base.includes(s));
     },
+    // ─── cenefa (franja de marca) ───────────────────────────────────────────
+    // Sólo sobre un lado que tenga paño: la cenefa se monta arriba del paño.
+    _cenefaSides() {
+        if (this._isArea()) return [];
+        const c = this._state.cenefas || {};
+        return this._closedSides().filter(s => !!c[s]);
+    },
+    _tieneCenefa(side) { return this._cenefaSides().includes(side); },
+    // Despiece de la cenefa de un lado: una placa por vano, de perfil+10 de ancho.
+    _cenefaDatos(side) {
+        const C = this.OCTEXA.cenefa, vanos = this._modsForSide(side);
+        const placas = vanos.map(v => Math.round(v) + C.encastre);
+        return {
+            placas,                                  // anchos de cada gráfica, en mm
+            cantidad: placas.length,
+            desarrolloMM: this._eeDe(vanos),         // largo del lado entre ejes
+            alto: C.alto, placaAlto: C.placaAlto,
+        };
+    },
+    _cenefaResumen() {
+        const sides = this._cenefaSides();
+        if (!sides.length) return null;
+        let placas = 0, mm = 0; const anchos = {};
+        sides.forEach(s => {
+            const d = this._cenefaDatos(s);
+            placas += d.cantidad; mm += d.desarrolloMM;
+            d.placas.forEach(a => { anchos[a] = (anchos[a] || 0) + 1; });
+        });
+        return { lados: sides.length, placas, metros: mm / 1000, anchos };
+    },
+    // La franja vive entre 2,10 y 2,40: por debajo de eso no entra.
+    _cenefaCabe() { return this._state.altura >= this.OCTEXA.cenefa.hasta; },
+    _toggleCenefa(side) {
+        if (!this._closedSides().includes(side)) { Toast.info('Ese lado no tiene paño: la cenefa se monta sobre el paño'); return; }
+        this._pushHist();
+        const c = Object.assign({}, this._state.cenefas);
+        if (c[side]) delete c[side]; else c[side] = true;
+        this._state.cenefas = c;
+        this._renderPlanta(); this._renderEstructura();
+    },
     _toggleSide(side) {
         this._pushHist();
         const has = this._closedSides().includes(side);
         this._state.panelOverride = Object.assign({}, this._state.panelOverride, { [side]: !has });
+        if (has && this._state.cenefas && this._state.cenefas[side]) {
+            const c = Object.assign({}, this._state.cenefas); delete c[side]; this._state.cenefas = c;   // sin paño no hay dónde montarla
+        }
         this._renderPlanta(); this._renderEstructura();
     },
     // módulos rotulados por lado (tamaño manda: el footprint NO cambia, esto es anotación)
@@ -436,7 +544,7 @@ const CompositorModule = {
         const vbW = Wmm + 2 * M, vbH = Dmm + 2 * M;
         const O = this.OCTEXA;
 
-        let grid = '', cols = '', bordes = '', modlabels = '';
+        let grid = '', cols = '', bordes = '', modlabels = '', cenefas = '';
         if (this._isArea()) {
             for (let x = 1000; x < Wmm; x += 1000) grid += `<line x1="${x}" y1="0" x2="${x}" y2="${Dmm}" class="cmp-grid"/>`;
             for (let y = 1000; y < Dmm; y += 1000) grid += `<line x1="0" y1="${y}" x2="${Wmm}" y2="${y}" class="cmp-grid"/>`;
@@ -458,16 +566,28 @@ const CompositorModule = {
             cols = this._columnsXY().map(c => `<circle cx="${c.x}" cy="${c.y}" r="${O.columnaDiamMM * 2.4}" class="cmp-col"/>`).join('');
             // módulos rotulados (clickeables: ciclan 950/455/660) en los lados con panel
             modlabels = this._modLabelsSVG(closed, Wmm, Dmm);
+            cenefas = this._cenefaSVG(Wmm, Dmm);
         }
 
         const comps = this._state.placed.map(p => {
             const sel = this._selSet.includes(p.uid);
             const rot = p.rot ? ` rotate(${p.rot},${p.w / 2},${p.d / 2})` : '';
+            const isEstr = p.kind === 'estructura';
             const isZona = p.kind === 'zona';
             const isPieza = p.kind === 'pieza';
             const isTexto = p.kind === 'texto';
             let inner;
-            if (isPieza && typeof CompositorPiezas !== 'undefined') {
+            if (isEstr) {
+                // paño = barra llena · dintel = punteado (va arriba, no llega al piso)
+                // · columna = círculo hueco, como en los planos reales
+                const col = (p.sub === 'columna');
+                const cls = `cmp-estr-el cmp-estr-${p.sub || 'pano'}`;
+                inner = col
+                    ? `<rect width="${p.w}" height="${p.d}" fill="transparent" class="cmp-hit"/><circle cx="${p.w / 2}" cy="${p.d / 2}" r="${Math.max(p.w, p.d) / 2}" class="${cls}"/>`
+                    : `<rect width="${p.w}" height="${p.d}" class="${cls}"/>`;
+                inner += `<title>${escHtml(p.nombre)}</title>`;
+                if (sel) inner += `<rect width="${p.w}" height="${p.d}" class="cmp-selbox"/>`;
+            } else if (isPieza && typeof CompositorPiezas !== 'undefined') {
                 // dibujito real + rect transparente para que toda la caja sea agarrable
                 inner = `<rect width="${p.w}" height="${p.d}" fill="transparent" class="cmp-hit"/>${CompositorPiezas.svg(p.glyph, p.w, p.d, this._color(p.color, '#00A9C1'))}${sel ? `<rect width="${p.w}" height="${p.d}" class="cmp-selbox"/>` : ''}`;
             } else if (isTexto) {
@@ -479,9 +599,10 @@ const CompositorModule = {
                 const rectStyle = isZona ? ` style="fill:${zc}22;stroke:${zc}"` : '';
                 inner = `<rect width="${p.w}" height="${p.d}" rx="20" class="cmp-comp-rect"${rectStyle}/><text x="${p.w / 2}" y="${p.d / 2}" class="cmp-comp-label">${escHtml(this._short(p.nombre))}</text>`;
             }
-            const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${isPieza ? ' cmp-pieza' : ''}${isTexto ? ' cmp-texto' : ''}${sel ? ' cmp-comp-sel' : ''}`;
+            const cls = `cmp-comp${isZona ? ' cmp-zona' : ''}${isPieza ? ' cmp-pieza' : ''}${isTexto ? ' cmp-texto' : ''}${isEstr ? ' cmp-estr-comp' : ''}${sel ? ' cmp-comp-sel' : ''}`;
             // handle de redimensionar (esquina inf-der) — solo con UNA pieza seleccionada, sin rotar ni bloqueado
-            const handle = (this._selSet.length === 1 && sel && !p.rot && !p.locked) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
+            // la estructura no se estira a mano: su largo sale del catálogo de perfiles
+            const handle = (this._selSet.length === 1 && sel && !p.rot && !p.locked && !isEstr) ? `<rect class="cmp-handle" data-uid="${p.uid}" x="${p.w - 150}" y="${p.d - 150}" width="200" height="200" rx="20"/>` : '';
             return `<g class="${cls}" data-uid="${p.uid}" transform="translate(${p.x},${p.y})${rot}">${inner}${handle}</g>`;
         }).join('');
 
@@ -489,13 +610,80 @@ const CompositorModule = {
             <svg id="cmpSvg" viewBox="0 0 ${vbW} ${vbH}" preserveAspectRatio="xMidYMid meet" class="cmp-svg">
                 <g transform="translate(${M},${M})">
                     ${this._isArea() ? '' : `<rect x="0" y="0" width="${Wmm}" height="${Dmm}" class="cmp-foot"/>`}
-                    ${grid}${bordes}${cols}${modlabels}${comps}
+                    ${grid}${bordes}${cenefas}${cols}${modlabels}${comps}
                     <g id="cmpGuides"></g>
                 </g>
             </svg>`;
         this._attachDrag();
         this._attachEdges();
         this._attachContextMenu();
+    },
+
+    // Lo que se colocó a mano adentro del stand (paredes internas, dinteles, columnas),
+    // agrupado por largo — que es como se pide el perfil.
+    _estrColocadaHTML() {
+        const els = this._state.placed.filter(x => x.kind === 'estructura');
+        if (!els.length) return '';
+        const porSub = {};
+        els.forEach(e => {
+            const k = e.sub || 'pano';
+            porSub[k] = porSub[k] || {};
+            const largo = Math.round(e.largo || e.w);
+            porSub[k][largo] = (porSub[k][largo] || 0) + 1;
+        });
+        const label = { pano: 'Paños internos', dintel: 'Dinteles / vigas', columna: 'Columnas ø40' };
+        const filas = Object.keys(porSub).map(k => {
+            const det = Object.keys(porSub[k]).sort((a, b) => b - a)
+                .map(l => `${porSub[k][l]} × ${l} mm`).join(' · ');
+            const tot = Object.keys(porSub[k]).reduce((a, l) => a + porSub[k][l], 0);
+            return `<div class="cmp-estr-it cmp-estr-it-wide"><span>${label[k] || k}</span><strong>${tot}</strong><em>${escHtml(det)}</em></div>`;
+        }).join('');
+        return `
+            <div class="cmp-cen-box">
+                <div class="cmp-cen-head cmp-estr-head2">Estructura interna <span class="cmp-estr-tag">${els.length} elemento${els.length === 1 ? '' : 's'} colocado${els.length === 1 ? '' : 's'}</span></div>
+                <div class="cmp-estr-grid">${filas}</div>
+            </div>`;
+    },
+
+    // Bloque de la cenefa en el panel de estructura: cuántas gráficas y de qué medida.
+    _cenefaBloqueHTML() {
+        const r = this._cenefaResumen();
+        if (!r) return `<div class="cmp-estr-note cmp-cen-hint">Botón derecho sobre un lado con paño → <strong>Poner cenefa</strong> (franja de marca de 300 mm, de 2,10 a 2,40 m).</div>`;
+        const C = this.OCTEXA.cenefa;
+        const medidas = Object.keys(r.anchos).sort((a, b) => b - a)
+            .map(a => `${r.anchos[a]} × ${a}×${C.placaAlto} mm`).join(' · ');
+        const aviso = this._cenefaCabe() ? '' :
+            `<div class="cmp-cen-warn">⚠ La cenefa va de ${this._numero(C.desde / 1000)} a ${this._numero(C.hasta / 1000)} m y el stand mide ${this._numero(this._state.altura / 1000)} m. Subí la altura a ${this._numero(C.hasta / 1000)} m o más.</div>`;
+        return `
+            <div class="cmp-cen-box">
+                <div class="cmp-cen-head">Cenefa <span class="cmp-estr-tag">${r.lados} lado${r.lados === 1 ? '' : 's'} · franja ${C.alto} mm</span></div>
+                <div class="cmp-estr-grid">
+                    <div class="cmp-estr-it"><span>Gráficas</span><strong>${r.placas}</strong></div>
+                    <div class="cmp-estr-it"><span>Desarrollo</span><strong>${this._numero(Math.round(r.metros * 100) / 100)} m</strong></div>
+                    <div class="cmp-estr-it"><span>Alto visible</span><strong>${C.placaVisible} mm</strong></div>
+                </div>
+                <div class="cmp-estr-note">${medidas} — una gráfica por módulo (entre columnas no hay placa continua). El ancho es el perfil + ${C.encastre} mm de encastre.</div>
+                ${aviso}
+            </div>`;
+    },
+
+    // Banda de cenefa sobre cada lado que la lleve (en planta se ve como una franja
+    // pegada al paño, del lado de adentro).
+    _cenefaSVG(Wmm, Dmm) {
+        const G = 150, out = [];   // grosor visual de la banda en el dibujo
+        this._cenefaSides().forEach(side => {
+            const d = this._cenefaDatos(side);
+            let x = 0, y = 0, w = Wmm, h = G;
+            if (side === 'front') y = Dmm - G;
+            else if (side === 'left') { w = G; h = Dmm; }
+            else if (side === 'right') { x = Wmm - G; w = G; h = Dmm; }
+            const cx = x + w / 2, cy = y + h / 2;
+            const vert = (side === 'left' || side === 'right');
+            out.push(`<g class="cmp-cenefa-g" data-side="${side}"><title>Cenefa ${side} · ${d.cantidad} placa${d.cantidad === 1 ? '' : 's'} · ${this._numero(d.desarrolloMM / 1000)} m</title>`
+                + `<rect x="${x}" y="${y}" width="${w}" height="${h}" class="cmp-cenefa"/>`
+                + `<text x="${cx}" y="${cy}" class="cmp-cenefa-lbl"${vert ? ` transform="rotate(-90,${cx},${cy})"` : ''}>CENEFA ${d.cantidad}×</text></g>`);
+        });
+        return out.join('');
     },
 
     // rótulos de módulo clickeables a lo largo de cada lado con panel
@@ -516,7 +704,25 @@ const CompositorModule = {
     },
     _attachEdges() {
         const svg = document.getElementById('cmpSvg'); if (!svg) return;
-        svg.querySelectorAll('.cmp-edge-hit').forEach(l => l.addEventListener('click', () => this._toggleSide(l.dataset.side)));
+        const nombreLado = { back: 'fondo', front: 'frente', left: 'izquierdo', right: 'derecho' };
+        svg.querySelectorAll('.cmp-edge-hit').forEach(l => {
+            l.addEventListener('click', () => this._toggleSide(l.dataset.side));
+            l.addEventListener('contextmenu', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (typeof ContextMenu === 'undefined') return;
+                const side = l.dataset.side, conPano = this._closedSides().includes(side), conCen = this._tieneCenefa(side);
+                const items = [
+                    { icon: conPano ? '▭' : '▯', label: conPano ? `Sacar el paño (lado ${nombreLado[side]})` : `Poner paño (lado ${nombreLado[side]})`, action: () => this._toggleSide(side) },
+                    { divider: true },
+                    { icon: '▤', label: conCen ? 'Sacar la cenefa' : 'Poner cenefa', disabled: !conPano, action: () => this._toggleCenefa(side) },
+                ];
+                if (conPano) {
+                    const d = this._cenefaDatos(side);
+                    items.push({ icon: '↔', label: `${d.cantidad} módulos · ${this._numero(d.desarrolloMM / 1000)} m`, disabled: true });
+                }
+                ContextMenu.show(e.clientX, e.clientY, items);
+            });
+        });
         svg.querySelectorAll('.cmp-mod').forEach(g => g.addEventListener('click', (e) => { e.stopPropagation(); this._cycleMod(g.dataset.side, parseInt(g.dataset.idx, 10)); }));
     },
 
@@ -566,9 +772,9 @@ const CompositorModule = {
                 const bb = this._bbox(p);
                 const wantL = bb.left + (rawX - p.x), wantT = bb.top + (rawY - p.y);
                 const ex = this._drag.group.map(it => it.uid);
-                const sx = e.altKey ? { pos: wantL, guide: null } : this._snapAxis(wantL, bb.w, 'x', ex);
-                const sy = e.altKey ? { pos: wantT, guide: null } : this._snapAxis(wantT, bb.h, 'y', ex);
-                this._drawGuides(sx.guide, sy.guide);
+                const sx = e.altKey ? { pos: wantL, guide: null } : this._snapAxis(wantL, bb.w, 'x', ex, p);
+                const sy = e.altKey ? { pos: wantT, guide: null } : this._snapAxis(wantT, bb.h, 'y', ex, p);
+                this._drawGuides(sx.guide, sy.guide, { left: sx.pos, top: sy.pos, w: bb.w, h: bb.h });
                 let ddx = sx.pos - bb.left;
                 let ddy = sy.pos - bb.top;
                 const W = this._wmm(), D = this._dmm();
@@ -595,8 +801,9 @@ const CompositorModule = {
                 if (!this._resize || this._resize.uid !== parseInt(h.dataset.uid, 10)) return;
                 const p = this._state.placed.find(x => x.uid === this._resize.uid); if (!p) return;
                 const loc = toLocal(e);
-                p.w = Math.max(200, Math.min(this._wmm() - p.x, this._snap(loc.x - p.x)));
-                p.d = Math.max(200, Math.min(this._dmm() - p.y, this._snap(loc.y - p.y)));
+                p.w = Math.max(200, Math.min(this._wmm() - p.x, this._snap(loc.x - p.x, p)));
+                p.d = Math.max(200, Math.min(this._dmm() - p.y, this._snap(loc.y - p.y, p)));
+                if (p.kind === 'estructura') p.largo = p.w;   // no se pueden separar
                 const g = h.parentNode;
                 const rect = g.querySelector('.cmp-comp-rect'); if (rect) { rect.setAttribute('width', p.w); rect.setAttribute('height', p.d); }
                 const lbl = g.querySelector('.cmp-comp-label'); if (lbl) { lbl.setAttribute('x', p.w / 2); lbl.setAttribute('y', p.d / 2); }
@@ -610,6 +817,7 @@ const CompositorModule = {
 
     _refreshSel() {
         document.querySelectorAll('.cmp-comp').forEach(g => g.classList.toggle('cmp-comp-sel', this._selSet.includes(parseInt(g.dataset.uid, 10))));
+        this._syncBomSel();
     },
 
     // ─── menú contextual (botón derecho) ────────────────────────────────────
@@ -682,6 +890,7 @@ const CompositorModule = {
             { divider: true },
             { icon: '⧉', label: `Duplicar las ${items.length}   (Ctrl+D)`, action: () => this._duplicateMulti() },
             { icon: '📋', label: 'Copiar   (Ctrl+C)', action: () => this._copySel() },
+            { icon: '💾', label: 'Guardar como kit…', action: () => this._guardarKit() },
             { icon: '🔒', label: 'Bloquear / desbloquear', action: () => this._toggleLockMulti() },
             { divider: true },
             { icon: '🗑️', label: `Quitar las ${items.length}`, danger: true, action: () => this._removeMulti() },
@@ -699,6 +908,52 @@ const CompositorModule = {
             { divider: true },
             { icon: '🗑️', label: 'Vaciar el plano', danger: true, disabled: !hay, action: () => this._clearAll() },
         ]);
+    },
+
+    // ─── ayuda: todos los gestos y atajos en un solo lado ───
+    _AYUDA: {
+        'Con el mouse': [
+            ['Clic', 'selecciona una pieza'],
+            ['Arrastrar', 'la mueve (se engancha sola a los bordes, al centro y a las otras)'],
+            ['Alt + arrastrar', 'la mueve libre, sin ningún enganche'],
+            ['Shift + clic', 'suma o saca piezas de la selección'],
+            ['Botón derecho', 'menú con todo lo que se puede hacer'],
+            ['Clic en un borde', 'pone o saca el paño de ese lado'],
+            ['Botón derecho en un borde', 'paño y cenefa de ese lado'],
+            ['Clic en el número del módulo', 'lo cicla 950 → 455 → 660'],
+            ['Esquina de la pieza', 'arrastrala para redimensionar'],
+        ],
+        'Con el teclado': [
+            ['Ctrl + Z / Ctrl + Y', 'deshacer y rehacer'],
+            ['Ctrl + D', 'duplicar'],
+            ['Ctrl + C / Ctrl + V', 'copiar y pegar'],
+            ['Ctrl + G', 'agrupar (Ctrl + Shift + G desagrupa)'],
+            ['Ctrl + A', 'seleccionar todo'],
+            ['R', 'girar 45°'],
+            ['Flechas', 'mover de a 25 cm'],
+            ['Shift + flechas', 'mover de a 1 cm, para el ajuste fino'],
+            ['Supr', 'quitar lo seleccionado'],
+            ['Esc', 'deseleccionar'],
+        ],
+        'Cómo se engancha': [
+            ['Mobiliario y zonas', 'de a 25 cm'],
+            ['Estructura (paños, dinteles)', 'de a medio módulo (495 mm)'],
+            ['Además', 'se pega al centro y a los bordes del stand, a los ejes de columna y a los bordes y centros de las otras piezas'],
+        ],
+    },
+    _openAyuda() {
+        if (typeof Modal === 'undefined') return;
+        const bloques = Object.keys(this._AYUDA).map(t => `
+            <div class="cmp-ayuda-bloque">
+                <div class="cmp-ayuda-tit">${escHtml(t)}</div>
+                ${this._AYUDA[t].map(([k, v]) => `<div class="cmp-ayuda-fila"><kbd>${escHtml(k)}</kbd><span>${escHtml(v)}</span></div>`).join('')}
+            </div>`).join('');
+        Modal.open({
+            title: 'Cómo se usa el compositor',
+            body: `<div class="cmp-ayuda">${bloques}</div>`,
+            size: 'lg',
+            footer: `<button class="btn btn-primary" data-modal-close>Entendido</button>`,
+        });
     },
 
     // ─── copiar / pegar ───
@@ -756,6 +1011,7 @@ const CompositorModule = {
         if (!p) { el.innerHTML = ''; el.classList.remove('on'); return; }
         el.classList.add('on');
         const isTexto = p.kind === 'texto';
+        const isEstr = p.kind === 'estructura';
         const nameLabel = isTexto ? 'Texto' : escHtml(p.nombre);
         const textoFld = isTexto ? `<label class="cmp-sel-fld cmp-sel-txt">texto <input type="text" id="cmpSelTexto" value="${escAttr(p.texto || '')}" placeholder="Escribí…"></label>` : '';
         const bomChip = (p.kind === 'item') ? `<button class="cmp-mini cmp-bom-chip cmp-bom-${this._bomTipoDe(p)}" data-a="bom" title="Cambiar Infraestructura / Equipamiento">${this._bomTipoDe(p) === 'infra' ? '🏗 Infra' : '🪑 Equip'}</button>` : '';
@@ -765,10 +1021,11 @@ const CompositorModule = {
                 ${bomChip}
             </div>
             ${textoFld}
+            ${isEstr ? this._estrLargoHTML(p) : `
             <div class="cmp-sel-flds">
                 <label class="cmp-sel-fld">ancho <input type="number" id="cmpSelW" value="${Math.round(p.w / 10)}" min="10" step="5"> cm</label>
                 <label class="cmp-sel-fld">${isTexto ? 'alto' : 'fondo'} <input type="number" id="cmpSelD" value="${Math.round(p.d / 10)}" min="10" step="5"> cm</label>
-            </div>
+            </div>`}
             <div class="cmp-sel-acts">
                 <button class="cmp-mini" data-a="dup" title="Ctrl+D"><b>⧉</b> Duplicar</button>
                 <button class="cmp-mini" data-a="row" title="Duplicar en fila ×N"><b>⊞</b> En fila</button>
@@ -790,6 +1047,15 @@ const CompositorModule = {
         };
         document.getElementById('cmpSelW')?.addEventListener('change', upd);
         document.getElementById('cmpSelD')?.addEventListener('change', upd);
+        document.getElementById('cmpSelLargo')?.addEventListener('change', (e) => {
+            const l = parseFloat(e.target.value); if (!isFinite(l) || l <= 0) return;
+            this._pushHist();
+            p.w = l; p.largo = l;                 // van siempre juntos, por eso no hay caja libre
+            p.nombre = this._estrNombre(p.sub, l); // si no, el rótulo seguiría cantando la medida vieja
+            const est = this.ESTRUCTURA.find(x => x.sub === p.sub && x.w === l);
+            p.estrKey = est ? est.key : '';
+            this._clampAll(); this._renderPlanta(); this._renderEstructura(); this._refreshSel();
+        });
         if (isTexto) {
             const ti = document.getElementById('cmpSelTexto');
             let pushedText = false;
@@ -816,6 +1082,24 @@ const CompositorModule = {
 
     // ─── acciones por pieza ───
     _sel() { return this._selUid != null ? this._state.placed.find(x => x.uid === this._selUid) : null; },
+    // Largo de un perfil: se elige de la lista oficial, no se tipea. Así `largo` y `w`
+    // no se pueden separar, que es lo que hace que el listado para pedir material sea fiable.
+    // Nombre que se ve en el plano y en el listado: tiene que decir la medida REAL.
+    _estrNombre(sub, largo) {
+        const est = this.ESTRUCTURA.find(x => x.sub === sub && x.w === largo);
+        if (est) return est.label;
+        const tit = { pano: 'Paño', dintel: 'Dintel', columna: 'Columna' }[sub] || 'Perfil';
+        return `${tit} ${Math.round(largo)}`;
+    },
+    _estrLargoHTML(p) {
+        if (p.sub === 'columna') return `<div class="cmp-sel-fld cmp-sel-fijo">columna ø40 · medida fija</div>`;
+        const largos = this.ESTRUCTURA.filter(x => x.sub === p.sub).map(x => x.w);
+        const actual = Math.round(p.largo || p.w);
+        if (!largos.includes(actual)) largos.push(actual);
+        largos.sort((a, b) => a - b);
+        return `<label class="cmp-sel-fld cmp-sel-largo">largo
+            <select id="cmpSelLargo">${largos.map(l => `<option value="${l}" ${l === actual ? 'selected' : ''}>${l} mm</option>`).join('')}</select></label>`;
+    },
     // Nudge con las flechas. Agrupa la ráfaga en UN solo paso de undo: si no, mover
     // una pieza 10 veces dejaba 10 entradas y deshacer se volvía inservible.
     _nudge(dx, dy) {
@@ -832,8 +1116,8 @@ const CompositorModule = {
         const p = this._sel(); if (!p) return null;
         const c = Object.assign({}, p);
         c.uid = this._nextUid(); c.locked = false;
-        c.x = Math.max(0, Math.min(this._wmm() - c.w, this._snap(p.x + dx)));
-        c.y = Math.max(0, Math.min(this._dmm() - c.d, this._snap(p.y + dy)));
+        c.x = Math.max(0, Math.min(this._wmm() - c.w, this._snap(p.x + dx, c)));
+        c.y = Math.max(0, Math.min(this._dmm() - c.d, this._snap(p.y + dy, c)));
         this._state.placed.push(c); this._select(c.uid);
         return c;
     },
@@ -919,8 +1203,8 @@ const CompositorModule = {
         const off = this._snapStep() * 2, W = this._wmm(), D = this._dmm(), neu = [];
         items.forEach(p => {
             const c = Object.assign({}, p); c.uid = this._nextUid(); c.locked = false; delete c.groupId;
-            c.x = Math.max(0, Math.min(W - c.w, this._snap(p.x + off)));
-            c.y = Math.max(0, Math.min(D - c.d, this._snap(p.y + off)));
+            c.x = Math.max(0, Math.min(W - c.w, this._snap(p.x + off, c)));
+            c.y = Math.max(0, Math.min(D - c.d, this._snap(p.y + off, c)));
             this._state.placed.push(c); neu.push(c.uid);
         });
         this._selectMany(neu);
@@ -1008,7 +1292,7 @@ const CompositorModule = {
             const gap = this._isArea() ? 200 : 0;
             for (let i = 1; i < n; i++) {
                 const c = Object.assign({}, b); c.uid = this._nextUid(); c.locked = false;
-                c.x = Math.max(0, Math.min(this._wmm() - c.w, this._snap(b.x + i * (b.w + gap))));
+                c.x = Math.max(0, Math.min(this._wmm() - c.w, this._snap(b.x + i * (b.w + gap), c)));
                 c.y = b.y;
                 this._state.placed.push(c);
             }
@@ -1027,12 +1311,12 @@ const CompositorModule = {
             modo: s.modo, tipo: s.tipo, frente: s.frente, fondo: s.fondo,
             areaW: s.areaW, areaD: s.areaD, altura: s.altura, piso: s.piso,
             standRot: s.standRot, vista: s.vista,
-            modsX: s.modsX, modsY: s.modsY, panelOverride: s.panelOverride,
+            modsX: s.modsX, modsY: s.modsY, panelOverride: s.panelOverride, cenefas: s.cenefas,
             nombre: s.nombre, cliente: s.cliente, lote: s.lote,
             placed: s.placed,
         });
     },
-    _KINDS: ['item', 'pieza', 'zona', 'texto'],
+    _KINDS: ['item', 'pieza', 'zona', 'texto', 'estructura'],
     _MAX_PIEZAS: 500,
     _num(v, def, min, max) {
         const n = Number(v);
@@ -1065,6 +1349,11 @@ const CompositorModule = {
             // glyph termina en un lookup `this['_g_'+glyph]`: sólo [a-z0-9_]
             p.glyph = /^[a-z0-9_]{1,40}$/.test(raw.glyph) ? raw.glyph : '';
         }
+        if (kind === 'estructura') {
+            p.sub = ['pano', 'dintel', 'columna'].includes(raw.sub) ? raw.sub : 'pano';
+            p.estrKey = this._str(raw.estrKey, 40);
+            p.largo = this._num(raw.largo, p.w, 1, 1e5);
+        }
         if (kind === 'item') {
             if (raw.catId != null) p.catId = raw.catId;   // id de catálogo, se compara como string
             p.precio = this._num(raw.precio, 0, 0, 1e12);
@@ -1093,6 +1382,7 @@ const CompositorModule = {
                 modsX: Array.isArray(e.modsX) ? e.modsX : null,
                 modsY: Array.isArray(e.modsY) ? e.modsY : null,
                 panelOverride: (e.panelOverride && typeof e.panelOverride === 'object') ? e.panelOverride : {},
+                cenefas: (e.cenefas && typeof e.cenefas === 'object') ? e.cenefas : {},
                 nombre: this._str(e.nombre), cliente: this._str(e.cliente), lote: this._str(e.lote, 40),
                 placed: (Array.isArray(e.placed) ? e.placed : []).slice(0, this._MAX_PIEZAS)
                     .map(x => this._sanearPieza(x)).filter(Boolean),
@@ -1135,7 +1425,30 @@ const CompositorModule = {
         document.querySelectorAll('.cmp-pal-tab').forEach(b => b.classList.toggle('active', b.dataset.pt === tab));
         const search = document.getElementById('cmpPalQ'); if (search) search.style.display = (tab === 'catalogo') ? '' : 'none';
         let html = '';
-        if (tab === 'zonas') {
+        if (tab === 'kits') {
+            const fila = (k) => `<button class="cmp-kit-chip${k.propio ? ' propio' : ''}" data-kit="${escAttr(k.key)}">
+                    <span class="cmp-kit-lbl">${escHtml(k.label)}</span><span class="cmp-kit-nota">${escHtml(k.nota || '')}</span>
+                </button>${k.propio ? `<button class="cmp-kit-del" data-kitdel="${escAttr(k.key)}" title="Borrar este kit">✕</button>` : ''}`;
+            const propios = this._kitsPropios();
+            html = `<div class="cmp-pal-note">Se colocan agrupados: cada mueble cuenta igual en el BOM.</div>`
+                + `<div class="cmp-kit-list">${this._KITS.map(fila).join('')}</div>`
+                + `<div class="cmp-pal-sub">Tus kits</div>`
+                + (propios.length
+                    ? `<div class="cmp-kit-list">${propios.map(fila).join('')}</div>`
+                    : `<div class="cmp-pal-note">Todavía no guardaste ninguno. Seleccioná varios muebles y usá <strong>Guardar como kit</strong>.</div>`)
+                + `<button class="cmp-kit-save" id="cmpKitSave">＋ Guardar la selección como kit</button>`;
+        } else if (tab === 'estructura') {
+            const grupo = (sub, titulo, nota) => {
+                const its = this.ESTRUCTURA.filter(x => x.sub === sub);
+                if (!its.length) return '';
+                return `<div class="cmp-pal-sub">${titulo}</div>${nota ? `<div class="cmp-pal-note">${nota}</div>` : ''}`
+                    + `<div class="cmp-pieza-chips">${its.map(x => `<button class="cmp-estr-chip" data-estr="${escAttr(x.key)}" title="${escAttr(x.label)} · ${x.w} mm">${escHtml(x.label)}</button>`).join('')}</div>`;
+            };
+            html = `<div class="cmp-pal-note">Paredes internas, depósitos y pasos de luz. Se mueven de a medio módulo (495 mm), no de a 25 cm.</div>`
+                + grupo('pano', 'Paños', '')
+                + grupo('dintel', 'Dinteles y vigas', 'van arriba: no llegan al piso')
+                + grupo('columna', 'Columnas', '');
+        } else if (tab === 'zonas') {
             html = `<div class="cmp-pal-note">Bloques de espacio (no facturan)</div><div class="cmp-zona-chips">${this._ZONAS.map(z => `<button class="cmp-zona-chip" data-zona="${z.key}" style="--zc:${z.color}">${escHtml(z.label)}</button>`).join('')}</div>`;
         } else if (tab === 'piezas') {
             html = (typeof CompositorPiezas !== 'undefined') ? CompositorPiezas.RUBROS.map(rb => {
@@ -1153,6 +1466,10 @@ const CompositorModule = {
             else html = list.map(c => `<button class="cmp-pal-item" data-id="${escAttr(c.id)}"><span class="cmp-pal-name">${escHtml(c.nombre)}${c.tipoReceta === 'subalquilado' ? ' <span class="cmp-chip cmp-chip-sub">subalq</span>' : ''}</span><span class="cmp-pal-price">$${this._fmt(c.precioAlquiler)}</span></button>`).join('');
         }
         cont.innerHTML = html;
+        cont.querySelectorAll('.cmp-kit-chip').forEach(b => b.addEventListener('click', () => this._placeKit(b.dataset.kit)));
+        cont.querySelectorAll('.cmp-kit-del').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); this._borrarKit(b.dataset.kitdel); }));
+        document.getElementById('cmpKitSave')?.addEventListener('click', () => this._guardarKit());
+        cont.querySelectorAll('.cmp-estr-chip').forEach(b => b.addEventListener('click', () => this._placeEstructura(b.dataset.estr)));
         cont.querySelectorAll('.cmp-zona-chip').forEach(b => b.addEventListener('click', () => this._placeZona(b.dataset.zona)));
         cont.querySelectorAll('.cmp-pieza-chip').forEach(b => b.addEventListener('click', () => this._placePieza(b.dataset.pieza)));
         cont.querySelectorAll('.cmp-pal-item').forEach(b => b.addEventListener('click', () => this._placeItem(b.dataset.id)));
@@ -1171,11 +1488,11 @@ const CompositorModule = {
     },
 
     // tamaño/posición default para algo nuevo (barrido para no apilar exacto)
-    _spawnXY(w, d) {
+    _spawnXY(w, d, pieza) {
         const n = this._state.placed.length, step = this._isArea() ? 500 : this.OCTEXA.medioEjeMM;
         const perRow = Math.max(1, Math.floor((this._wmm() - w) / step) || 1);
-        let x = this._snap((n % perRow) * step);
-        let y = this._snap(Math.floor(n / perRow) * step);
+        let x = this._snap((n % perRow) * step, pieza);
+        let y = this._snap(Math.floor(n / perRow) * step, pieza);
         return { x: Math.max(0, Math.min(this._wmm() - w, x)), y: Math.max(0, Math.min(this._dmm() - d, y)) };
     },
 
@@ -1188,6 +1505,81 @@ const CompositorModule = {
         this._state.placed.push({ uid, kind: 'item', catId: ci.id, nombre: ci.nombre, precio: ci.precioAlquiler || 0, bom: this._clasifBOM(ci), x, y, w, d, rot: 0 });
         this._select(uid);
         this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
+    },
+
+    _placeEstructura(key) {
+        const def = this.ESTRUCTURA.find(x => x.key === key); if (!def) return;
+        this._pushHist();
+        const w = Math.min(def.w, this._wmm()), d = def.d;
+        const { x, y } = this._spawnXY(w, d, { kind: 'estructura' });
+        const uid = this._nextUid();
+        this._state.placed.push({ uid, kind: 'estructura', estrKey: key, sub: def.sub, nombre: def.label, largo: def.w, x, y, w, d, rot: 0 });
+        this._select(uid);
+        this._renderPlanta(); this._renderEstructura(); this._refreshSel(); this._renderSelStrip();
+    },
+
+    // Coloca todas las piezas de un kit, agrupadas, centradas donde haya lugar.
+    _placeKit(key) {
+        const kit = this._kitsTodos().find(k => k.key === key); if (!kit) return;
+        if (typeof CompositorPiezas === 'undefined') { Toast.error('Falta la librería de piezas'); return; }
+        const defs = kit.piezas.map(pz => ({ pz, def: CompositorPiezas.get(pz.k) })).filter(o => o.def);
+        if (!defs.length) { Toast.error('Ese kit no tiene piezas válidas'); return; }
+        // caja que ocupa el kit entero, para spawnearlo sin que se salga
+        const ancho = Math.max(...defs.map(o => o.pz.x + o.def.w));
+        const alto = Math.max(...defs.map(o => o.pz.y + o.def.d));
+        const { x: ox, y: oy } = this._spawnXY(Math.min(ancho, this._wmm()), Math.min(alto, this._dmm()));
+        this._pushHist();
+        const gid = 'g' + this._nextUid();
+        const uids = [];
+        defs.forEach(({ pz, def }) => {
+            const uid = this._nextUid();
+            this._state.placed.push({
+                uid, kind: 'pieza', piezaKey: pz.k, glyph: def.glyph, nombre: def.label, color: '#00A9C1',
+                x: ox + pz.x, y: oy + pz.y, w: def.w, d: def.d, rot: pz.r || 0, groupId: gid,
+            });
+            uids.push(uid);
+        });
+        this._clampAll();
+        this._selectMany(uids);
+        this._renderPlanta(); this._renderBOM(); this._refreshSel(); this._renderSelStrip();
+        Toast.success(`${kit.label} · ${uids.length} piezas`);
+    },
+    // Kits propios: lo que armaste una vez, listo para reusar. Viven en el navegador
+    // (son una preferencia de trabajo, no un dato de negocio).
+    _KITS_LS: 'mepex_cmp_kits_v1',
+    _kitsPropios() {
+        try { const j = JSON.parse(localStorage.getItem(this._KITS_LS) || '[]'); return Array.isArray(j) ? j : []; }
+        catch (_) { return []; }
+    },
+    _kitsTodos() { return this._KITS.concat(this._kitsPropios()); },
+    _guardarKit() {
+        const sel = this._selectedPieces().filter(x => x.kind === 'pieza' && x.piezaKey);
+        if (sel.length < 2) { Toast.info('Elegí 2 o más muebles de la pestaña Piezas para guardarlos como kit'); return; }
+        const minX = Math.min(...sel.map(x => x.x)), minY = Math.min(...sel.map(x => x.y));
+        const body = `<div class="cmp-modal"><label class="cmp-m-label">Nombre del kit</label>
+            <input type="text" id="cmpKitName" class="cmp-m-input" placeholder="Ej. Recepción Natura" maxlength="40">
+            <div class="cmp-m-note">${sel.length} muebles · se guarda en este navegador</div></div>`;
+        const inst = Modal.open({ title: 'Guardar como kit', body, size: 'sm',
+            footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="cmpKitGo">Guardar</button>` });
+        document.getElementById('cmpKitGo')?.addEventListener('click', () => {
+            const nombre = (document.getElementById('cmpKitName')?.value || '').trim();
+            if (!nombre) { Toast.error('Poné un nombre'); return; }
+            const propios = this._kitsPropios();
+            propios.push({
+                key: 'mio_' + Date.now(), label: nombre, nota: `${sel.length} muebles`, propio: true,
+                piezas: sel.map(x => ({ k: x.piezaKey, x: Math.round(x.x - minX), y: Math.round(x.y - minY), r: x.rot || 0 })),
+            });
+            try { localStorage.setItem(this._KITS_LS, JSON.stringify(propios.slice(-30))); }
+            catch (_) { Toast.error('No se pudo guardar el kit'); return; }
+            Modal.close(inst.id);
+            Toast.success(`Kit "${nombre}" guardado`);
+            if (this._palTab === 'kits') this._renderPalette();
+        });
+    },
+    _borrarKit(key) {
+        const propios = this._kitsPropios().filter(k => k.key !== key);
+        try { localStorage.setItem(this._KITS_LS, JSON.stringify(propios)); } catch (_) {}
+        this._renderPalette();
     },
 
     _placeZona(key) {
@@ -1239,6 +1631,12 @@ const CompositorModule = {
             // cuando el array es null) y quedarían describiendo el stand sin rotar
             const mx = this._vanosX().slice(), my = this._vanosY().slice();
             this._state.modsX = my; this._state.modsY = mx;
+            // lo marcado a mano en un lado tiene que girar con el lado, si no el paño
+            // que pusiste al fondo aparece en el frente
+            const giro = { back: 'right', right: 'front', front: 'left', left: 'back' };
+            const mover = (o) => { const r = {}; Object.keys(o || {}).forEach(k => { r[giro[k] || k] = o[k]; }); return r; };
+            this._state.panelOverride = mover(this._state.panelOverride);
+            this._state.cenefas = mover(this._state.cenefas);
             this._state.standRot = ((this._state.standRot || 0) + 90) % 360;
         }
         this._clampAll();
@@ -1294,6 +1692,8 @@ const CompositorModule = {
                 <div class="cmp-estr-it"><span>Perfiles</span><strong>${perfiles}</strong></div>
                 <div class="cmp-estr-it"><span>Altura</span><strong>${this._numero(this._state.altura / 1000)} m</strong></div>
             </div>
+            ${this._estrColocadaHTML()}
+            ${this._cenefaBloqueHTML()}
             <div class="cmp-estr-note">Cada paño = 1 placa + 2 perfiles (≈0,95 m) + columnas ø40 en los nodos (compartidas). Estimación de perímetro v1; los paños internos / cruces y el precio entran al cargar los ítems OCTEXA en Costos.</div>`;
     },
 
@@ -1336,12 +1736,40 @@ const CompositorModule = {
         const section = (title, gs) => {
             if (!gs.length) return '';
             let sub = 0;
-            const rows = gs.map(g => { const s = (g.precio || 0) * g.cant; sub += s; return `<tr><td>${escHtml(g.nombre)}</td><td class="cmp-num">${g.cant}</td><td class="cmp-num">$${this._fmt(g.precio)}</td><td class="cmp-num">$${this._fmt(s)}</td></tr>`; }).join('');
+            const rows = gs.map(g => { const s = (g.precio || 0) * g.cant; sub += s; return `<tr class="cmp-bom-row" data-cat="${escAttr(g.catId)}" title="Pasá el mouse para verlas en el plano · clic para seleccionarlas"><td>${escHtml(g.nombre)}</td><td class="cmp-num">${g.cant}</td><td class="cmp-num">$${this._fmt(g.precio)}</td><td class="cmp-num">$${this._fmt(s)}</td></tr>`; }).join('');
             total += sub;
             return `<tr class="cmp-bom-sec"><td colspan="4">${title}</td></tr>${rows}<tr class="cmp-bom-subt"><td colspan="3" class="cmp-num">Subtotal</td><td class="cmp-num">$${this._fmt(sub)}</td></tr>`;
         };
         const body = section('🏗 Infraestructura', groups.filter(g => g.bom === 'infra')) + section('🪑 Equipamiento', groups.filter(g => g.bom !== 'infra'));
         cont.innerHTML = `<table class="cmp-bom-table"><thead><tr><th>Componente</th><th class="cmp-num">Cant</th><th class="cmp-num">$ unit</th><th class="cmp-num">$ sub</th></tr></thead><tbody>${body}</tbody><tfoot><tr><td colspan="3" class="cmp-num">TOTAL alquiler</td><td class="cmp-num cmp-total">$${this._fmt(total)}</td></tr></tfoot></table>`;
+        // el BOM y el plano son la misma cosa mirada de dos formas: que se toquen
+        cont.querySelectorAll('.cmp-bom-row').forEach(tr => {
+            const cat = tr.dataset.cat;
+            tr.addEventListener('mouseenter', () => this._resaltarCat(cat, true));
+            tr.addEventListener('mouseleave', () => this._resaltarCat(cat, false));
+            tr.addEventListener('click', () => {
+                const uids = this._state.placed.filter(x => x.kind === 'item' && String(x.catId) === String(cat)).map(x => x.uid);
+                if (!uids.length) return;
+                this._selectMany(uids);
+                this._refreshSel(); this._renderSelStrip();
+            });
+        });
+    },
+    // Ilumina en el plano todas las piezas de ese ítem del catálogo (y al revés: al
+    // seleccionar una pieza se marca su fila).
+    _resaltarCat(catId, on) {
+        const svg = document.getElementById('cmpSvg'); if (!svg) return;
+        this._state.placed.forEach(x => {
+            if (x.kind !== 'item' || String(x.catId) !== String(catId)) return;
+            const g = svg.querySelector(`.cmp-comp[data-uid="${x.uid}"]`);
+            if (g) g.classList.toggle('cmp-comp-hl', !!on);
+        });
+    },
+    // marca en el BOM la fila de lo que está seleccionado
+    _syncBomSel() {
+        const cont = document.getElementById('cmpBom'); if (!cont) return;
+        const cats = new Set(this._selectedPieces().filter(x => x.kind === 'item').map(x => String(x.catId)));
+        cont.querySelectorAll('.cmp-bom-row').forEach(tr => tr.classList.toggle('on', cats.has(String(tr.dataset.cat))));
     },
 
     // ═══ PLANO PDF ═══
@@ -1363,6 +1791,10 @@ const CompositorModule = {
                 // ejes de columna reales → el PDF dibuja cada cota con su ancho, no repartida
                 nodesX: this._isArea() ? null : this._nodesX(),
                 nodesY: this._isArea() ? null : this._nodesY(),
+                cenefas: this._isArea() ? null : this._cenefaSides().map(sd => {
+                    const d = this._cenefaDatos(sd);
+                    return { side: sd, cantidad: d.cantidad, desarrolloMM: d.desarrolloMM, alto: d.alto };
+                }),
                 ejeMM: this.OCTEXA.ejeMM,
                 modulos: this._isArea() ? null : { f: this._state.frente, d: this._state.fondo },
                 mods: this._isArea() ? null : this._closedSides().reduce((m, s) => { m[s] = this._modsForSide(s); return m; }, {}),
@@ -1370,7 +1802,7 @@ const CompositorModule = {
                 walls: this._closedSides(),
                 columns: this._columnsXY(),
                 zonas: this._state.placed.filter(p => p.kind === 'zona').map(p => ({ label: p.nombre, color: p.color, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
-                pieces: this._state.placed.filter(p => p.kind !== 'zona').map(p => ({ kind: p.kind, nombre: p.nombre, texto: p.texto || null, glyph: p.glyph || null, color: p.color || null, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
+                pieces: this._state.placed.filter(p => p.kind !== 'zona').map(p => ({ kind: p.kind, sub: p.sub || null, nombre: p.nombre, texto: p.texto || null, glyph: p.glyph || null, color: p.color || null, x: p.x, y: p.y, w: p.w, d: p.d, rot: p.rot || 0 })),
                 legend: this._bomGroups().map(g => ({ nombre: g.nombre, cant: g.cant })),
             };
             const blob = await PlanoPDF.generate(o);
@@ -1536,6 +1968,8 @@ const CompositorModule = {
             .cmp-sel-acts{display:grid;grid-template-columns:1fr 1fr;gap:5px}
             .cmp-sel-strip .cmp-mini{display:flex;align-items:center;gap:5px;text-align:left;padding:6px 7px;font-size:.7rem}
             .cmp-sel-strip .cmp-mini b{font-weight:400;opacity:.75;width:13px;flex:0 0 13px;text-align:center}
+            .cmp-sel-largo select{background:#1A1A1A;border:1px solid var(--border);border-radius:5px;color:var(--text-primary);padding:5px 6px;font-family:var(--font-mono);font-size:.76rem;width:100%}
+            .cmp-sel-fijo{color:var(--text-dim);font-size:.68rem;font-style:italic}
             .cmp-sel-foot{color:var(--text-dim);font-size:.64rem;text-align:center;border-top:1px solid var(--border);padding-top:7px}
             @media(max-width:640px){.cmp-sel-strip{position:static;width:auto;box-shadow:none}}
             .cmp-mini{background:#1A1A1A;border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:5px 9px;font-size:.74rem;cursor:pointer;transition:all 150ms}
@@ -1560,6 +1994,56 @@ const CompositorModule = {
             .cmp-edge-hit:hover{stroke:rgba(242,141,21,.2)}
             .cmp-mod{cursor:pointer}
             .cmp-mod rect{pointer-events:all}
+            .cmp-comp-hl .cmp-comp-rect,.cmp-comp-hl rect,.cmp-comp-hl circle{stroke:#F28D15!important;stroke-width:14!important}
+            .cmp-bom-row{cursor:pointer;transition:background 150ms}
+            .cmp-bom-row:hover,.cmp-bom-row.on{background:rgba(0,169,193,.1)}
+            .cmp-bom-row.on td:first-child{box-shadow:inset 3px 0 0 var(--primary)}
+            .cmp-btn-help{font-weight:700;min-width:26px}
+            .cmp-ayuda{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+            @media(max-width:700px){.cmp-ayuda{grid-template-columns:1fr}}
+            .cmp-ayuda-bloque:first-child{grid-row:span 2}
+            .cmp-ayuda-tit{font-size:.8rem;font-weight:600;color:var(--primary);margin-bottom:9px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+            .cmp-ayuda-fila{display:flex;gap:10px;align-items:baseline;padding:4px 0;font-size:.78rem}
+            .cmp-ayuda-fila kbd{flex:0 0 auto;min-width:96px;background:#1A1A1A;border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font-mono);font-size:.7rem;color:var(--text-primary)}
+            .cmp-ayuda-fila span{color:var(--text-muted)}
+            .cmp-estr-el{fill:#2E4A7D;stroke:#5b8cc4;stroke-width:6}
+            .cmp-estr-dintel{fill:none;stroke:#5b8cc4;stroke-width:10;stroke-dasharray:60 34}
+            .cmp-estr-columna{fill:#0d0d0d;stroke:#5b8cc4;stroke-width:8}
+            .cmp-estr-comp:hover .cmp-estr-el{stroke:var(--primary)}
+            .cmp-kit-list{display:flex;flex-direction:column;gap:5px;margin-bottom:10px;position:relative}
+            .cmp-kit-chip{width:100%;text-align:left;background:#141414;border:1px solid var(--border);border-radius:6px;padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px;transition:all 150ms}
+            .cmp-kit-chip:hover{border-color:var(--primary)}
+            .cmp-kit-chip.propio{border-style:dashed}
+            .cmp-kit-lbl{color:var(--text-primary);font-size:.78rem}
+            .cmp-kit-nota{color:var(--text-dim);font-size:.66rem}
+            .cmp-kit-del{position:absolute;right:6px;background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:4px 6px;font-size:.7rem}
+            .cmp-kit-del:hover{color:var(--color-error)}
+            .cmp-kit-save{width:100%;background:rgba(0,169,193,.1);border:1px dashed var(--primary);color:var(--primary);border-radius:6px;padding:8px;font-size:.74rem;cursor:pointer;margin-top:4px}
+            .cmp-kit-save:hover{background:rgba(0,169,193,.18)}
+            .cmp-m-note{color:var(--text-dim);font-size:.7rem;margin-top:7px}
+            .cmp-estr-chip{background:rgba(46,74,125,.22);border:1px solid #3d5a80;color:#a8c4e8;border-radius:6px;padding:6px 10px;font-size:.72rem;cursor:pointer;font-family:var(--font-mono);transition:all 150ms}
+            .cmp-estr-chip:hover{border-color:var(--primary);color:var(--primary)}
+            .cmp-estr-head2{color:#7fa8db}
+            .cmp-estr-it-wide{grid-column:1/-1;display:flex;align-items:baseline;gap:9px}
+            .cmp-estr-it-wide em{font-style:normal;color:var(--text-dim);font-size:.68rem;font-family:var(--font-mono)}
+            .cmp-cenefa{fill:rgba(242,141,21,.16);stroke:#F28D15;stroke-width:6;stroke-dasharray:30 18;pointer-events:none}
+            .cmp-cenefa-lbl{fill:#F28D15;font-size:110px;font-family:var(--font-mono);letter-spacing:14px;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+            .cmp-cen-box{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+            .cmp-cen-head{font-size:.82rem;font-weight:600;color:#F28D15;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+            .cmp-cen-warn{margin-top:8px;padding:7px 10px;background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.35);border-radius:6px;color:#ff8a8a;font-size:.72rem}
+            .cmp-cen-hint{margin-top:10px;opacity:.75}
+            .cmp-modo-switch{display:flex;align-items:center;gap:11px;cursor:pointer;background:#101010;border:1px solid var(--border);border-radius:8px;padding:10px 14px;transition:all 150ms}
+            .cmp-modo-switch.on{border-color:rgba(0,169,193,.45);background:rgba(0,169,193,.06)}
+            .cmp-modo-switch input{position:absolute;opacity:0;pointer-events:none}
+            .cmp-modo-box{width:38px;height:21px;border-radius:11px;background:#242424;border:1px solid var(--border);position:relative;flex:0 0 auto;transition:all 200ms}
+            .cmp-modo-box::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--text-dim);transition:all 200ms}
+            .cmp-modo-switch.on .cmp-modo-box{background:rgba(0,169,193,.3);border-color:var(--primary)}
+            .cmp-modo-switch.on .cmp-modo-box::after{left:19px;background:var(--primary)}
+            .cmp-modo-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+            .cmp-modo-txt strong{font-size:.82rem;color:var(--text-primary);font-weight:600}
+            .cmp-modo-txt em{font-style:normal;font-size:.68rem;color:var(--text-muted)}
+            .cmp-live-bg{fill:rgba(10,10,10,.92);stroke:var(--accent);stroke-width:4}
+            .cmp-live-txt{fill:#F28D15;font-size:130px;font-family:var(--font-mono);text-anchor:middle;dominant-baseline:middle}
             .cmp-guide{stroke:var(--accent);stroke-width:6;stroke-dasharray:40 26;opacity:.9;pointer-events:none}
             .cmp-dim-real{color:var(--text-dim);font-family:var(--font-mono);font-size:.68rem}
             .cmp-mod-lbl{fill:#6FA8DC;font-size:150px;font-family:var(--font-mono);text-anchor:middle;dominant-baseline:middle;pointer-events:none}

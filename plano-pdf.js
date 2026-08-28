@@ -16,7 +16,8 @@
        footprint:{wMM,dMM}, wNom, dNom, ejeMM, modulos:{f,d}|null,
        walls:['back'|'front'|'left'|'right'...], columns:[{x,y}],
        zonas:[{label,color,x,y,w,d,rot}],
-       pieces:[{kind:'item'|'pieza'|'texto', nombre, texto, glyph, color, x,y,w,d,rot}]
+       pieces:[{kind:'item'|'pieza'|'texto'|'estructura', sub, nombre, texto, glyph, color, x,y,w,d,rot}],
+       cenefas:[{side, cantidad, desarrolloMM, alto}]
      }) → Promise<Blob|null>
    ============================================= */
 
@@ -119,6 +120,24 @@ const PlanoPDF = {
             if (walls.includes('left')) wall(ox, oy, ox, oy + planH);
             if (walls.includes('right')) wall(ox + planW, oy, ox + planW, oy + planH);
 
+            // cenefa: franja de marca sobre el paño (se ve como una banda con su rótulo)
+            (o.cenefas || []).forEach(c => {
+                const G = Math.max(1.6, 150 * scale);   // grosor de la banda en la página
+                let x = ox, y = oy, w = planW, h = G;
+                if (c.side === 'front') y = oy + planH - G;
+                else if (c.side === 'left') { w = G; h = planH; }
+                else if (c.side === 'right') { x = ox + planW - G; w = G; h = planH; }
+                doc.setFillColor(...this._NARANJA); doc.setDrawColor(...this._NARANJA); doc.setLineWidth(0.3);
+                try { doc.setGState(new doc.GState({ opacity: 0.16 })); } catch (_) {}
+                doc.rect(x, y, w, h, 'F');
+                try { doc.setGState(new doc.GState({ opacity: 1 })); } catch (_) {}
+                doc.rect(x, y, w, h, 'S');
+                const vert = (c.side === 'left' || c.side === 'right');
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5); doc.setTextColor(...this._NARANJA);
+                doc.text(`CENEFA ${c.alto} · ${c.cantidad} graficas`, x + w / 2, y + h / 2,
+                    { align: 'center', baseline: 'middle', angle: vert ? 90 : 0 });
+            });
+
             // columnas = círculos huecos navy en los nodos
             (o.columns || []).forEach(c => {
                 doc.setDrawColor(...NAVY); doc.setFillColor(255, 255, 255); doc.setLineWidth(0.35);
@@ -149,6 +168,34 @@ const PlanoPDF = {
                 const targetMM = (p.d || 400) * 0.55 * scale, fs = Math.max(5, Math.min(42, targetMM / 0.3528));
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(...NAVY);
                 doc.text(String(p.texto), mapX(cx), mapY(cy), { align: 'center', baseline: 'middle', angle: ang });
+                return;
+            }
+            if (p.kind === 'estructura') {
+                // mismas 3 convenciones que en pantalla: si no, un paño, un dintel y una
+                // columna salían los tres como la misma caja y el plano no dice nada
+                doc.setDrawColor(...NAVY);
+                if (p.sub === 'columna') {
+                    doc.setFillColor(255, 255, 255); doc.setLineWidth(0.35);
+                    doc.circle(mapX(cx), mapY(cy), Math.max(0.7, (p.w / 2) * scale), 'FD');
+                } else {
+                    const cor = this._rotCorners(p.x, p.y, p.w, p.d, p.rot || 0).map(pt => [mapX(pt[0]), mapY(pt[1])]);
+                    if (p.sub === 'dintel') {
+                        doc.setLineWidth(0.5);
+                        try { doc.setLineDashPattern([1.4, 0.9], 0); } catch (_) {}
+                        doc.lines(this._segs(cor), cor[0][0], cor[0][1], [1, 1], 'S', true);
+                        try { doc.setLineDashPattern([], 0); } catch (_) {}
+                    } else {
+                        doc.setFillColor(...NAVY); doc.setLineWidth(0.3);
+                        doc.lines(this._segs(cor), cor[0][0], cor[0][1], [1, 1], 'FD', true);
+                    }
+                }
+                // rótulo al costado, para que el taller sepa qué perfil es
+                const alongMM = (((p.rot || 0) % 180) === 90 ? p.d : p.w) * scale;
+                if (alongMM > 6) {
+                    const { txt, fs } = this._fitLabel(p.nombre, alongMM);
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(Math.min(fs, 6)); doc.setTextColor(...BLUE);
+                    doc.text(txt, mapX(cx), mapY(cy) - 1.4, { align: 'center', baseline: 'middle', angle: ang });
+                }
                 return;
             }
             const rgb = p.color ? this._hexToRgb(p.color) : NAVY;
