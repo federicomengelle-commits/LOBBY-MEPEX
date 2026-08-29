@@ -342,3 +342,101 @@ Compras del hallazgo 17 es total), y el botón de recalcular se pone naranja con
 | **37** | **El modal "Nueva receta" nunca se cierra: queda clavado en "Creando…" con el ítem ya creado.** Causa exacta: `Modal.close(instance)` — pero `Modal.close(id)` busca por `m.id === id` y recibe el **objeto** que devuelve `Modal.open()` → `idx === -1` → **`return` silencioso**. El ítem se crea, el toast sale, la ficha se abre detrás… y el formulario sigue ahí diciendo "Creando…". El que lo usa piensa que falló y **lo vuelve a intentar → ítems duplicados**. 👉 **Es el hallazgo 3 explicado**: el overlay nunca sale del stack, así que el siguiente modal se apila arriba. Y ya estaba avisado: CLAUDE.md lo documenta desde el 2026-05-19 (*"Modal.close() requiere `instance.id`"*). **Barrido: son 11 lugares** — 7 en `costos.js` (1053, 1909, 1958, 3788, 3910, 3998, 4030), 1 en `contabilidad.js:5613`, y 3 en `flota.js` (388, 443, 612) donde la variable **se llama `modalId` pero guarda el objeto**. Contra 71 llamadas correctas con `.id` | `components.js` + 3 módulos | **Alta** |
 | **38** | **El KPI dice "351 RECETAS" y recetas hay 223.** Cuenta todos los ítems vivos del catálogo, tengan o no componentes: **128 de los 351 no tienen ni una línea de receta**. Al lado, "0 INCOMPLETAS" mientras la tabla muestra decenas de filas con costo "—" y el punto rojo. Es el mismo patrón del hallazgo 14 y del 24, pero al revés: **un número que tranquiliza porque sobra, no porque falte** | `costos.js` | Media |
 | **39** | **Dato para la sesión de costos, no bug:** los ítems cotizables pasaron de **9 (medidos el 6/8) a 63**. Alguien marcó 54 más como cotizables. De esos 63, **24 no tienen receta** (hallazgo 36) → el Cotizador está ofreciendo hoy 63 ítems, de los cuales el 38% tiene un precio que ningún cálculo respalda. **Esto es justo el gate que `PUESTA-A-PUNTO-2027.md` pone antes de la carga masiva del catálogo**, y ya está medido: el motor está sano, lo que falta son las recetas | datos | — |
+
+---
+
+## El transversal — roles, RLS, notificaciones, PWA y push
+
+**Cómo se probó** (cambió respecto de lo acordado, y conviene saber por qué): la idea era mirar los
+gates de la UI cambiándole el rol a la sesión viva. **No se puede: la CSP del propio Lobby bloquea
+inyectar script en la página** (probado — el `<script>` inyectado no ejecuta). O sea que la CSP que
+se puso en julio hace su trabajo. Entonces la capa de base se probó **simulando el JWT de cada rol
+por SQL** (`set local request.jwt.claims`), que no necesita ninguna contraseña y mide lo que
+realmente importa; y la capa de UI, leyendo los gates del código.
+
+### Lo que anduvo bien
+
+- **La plata está bien cerrada.** Con el JWT de un usuario `taller` y de un `pm`, las cuatro tablas
+  del dinero devuelven **0 filas**: `ingresos`, `egresos`, `comprobantes`, `asientos`. El `pm`
+  además no ve `cuentas_financieras`, `creditos_fiscales` ni `cartera_valores`.
+- **Los jornales están protegidos por privilegio de columna**: `select costo_dia_referencial from
+  personas` con JWT de taller da **`permission denied`**, aunque la tabla sí se puede contar. La
+  técnica fina existe y está bien aplicada acá.
+- **`proyectos` filtra por rol de verdad**: taller ve 6, pm ve 15.
+- **La PWA está sana**: `manifest.json` 200 con la marca correcta (standalone, `#00A9C1`, es-AR),
+  `sw.js` 200 con `Cache-Control: no-cache, no-store, must-revalidate`, y los **3 íconos existen**
+  (192, 512, 512-maskable). Los dos endpoints de push responden 401 → las rutas están montadas.
+
+---
+
+| # | Qué encontré | Dónde | Gravedad |
+|---|---|---|---|
+| **40** | 🔴 **Hoy un push no puede llegar a ningún teléfono de MEPEX.** Hay **4 suscripciones** en total: 2 de Fede y 2 de Jordi. Miré los user-agent: **las dos de Fede son Chrome en Windows — su celular no está suscripto**; las de Jordi son una Mac y un iPhone. Y el fan-out **siempre excluye al que dispara** (`if (excluirUid) ids.delete(excluirUid)`), así que **Fede no puede mandarse un push a sí mismo**. Sumado: la única forma de que alguien de MEPEX reciba un push hoy es que Jordi cree una tarea urgente. **La infraestructura está bien y el último metro no se caminó** — es el pendiente A4 (armar los 5 dispositivos), ahora medido | `push_subscriptions` | **Alta (bloquea la feature entera)** |
+| **41** | **El rol `venta` no existe y nunca existió.** Cero perfiles con ese rol, ni activos ni de baja. Pero el sistema está construido alrededor de él: `Data.rolePermissions` lo define, el router lo gatea y `lobby.js` tiene un layout entero de widgets para `venta`. **Y Noe —la comercial, para quien se diseñó ese rol— es `admin`**, o sea que entra a Finanzas, Contabilidad, Costos y RRHH. La tabla de roles de `CLAUDE.md` describe un reparto que la base no tiene | `profiles` vs `data.js` | **Media-alta** |
+| **42** | **El taller puede leer el libro comercial entero.** Con JWT de taller: **`catalogo_items` 353 filas con precio, costo por uso y margen** (máximos leídos: precio $630.000, costo/uso $420.000, **margen 125%**), **`cotizaciones` 17 con monto por un total de $173.173.684**, `clientes` 269 con datos de contacto, e `insumos_base` con el costo de compra. Ninguna pantalla del taller muestra eso —ve Proyectos (galpón) y Tareas— así que **es acceso que no necesita**. Pesa más de lo que parece porque **las cuentas de taller son genéricas y compartidas** (`Taller`, `Depósito`, `Energy`) y el plan de puesta a punto las pone en tablets en el galpón, en modo kiosko. 👉 **La forma de arreglarlo ya está en la casa**: es el mismo privilegio por columna que protege `personas.costo_dia_referencial` | RLS / grants | **Media-alta** |
+| **43** | **Las cuentas de taller no son personas.** `Taller`, `Depósito` y `Energy` son logins compartidos. Todo lo que firman —`audit_log`, `firmado_by` de un acta de entrega, quién tildó el checklist— queda a nombre de una cuenta, no de alguien. En un sistema cuyo valor es la trazabilidad, eso vacía la traza justo en el eslabón físico. (De paso: `CLAUDE.md` nombra a Diego, Juan, Carlos y Willy; la base no tiene a ninguno) | `profiles` | Media |
+| **44** | **La matriz de preferencias de notificación tiene 0 filas.** `notificacion_prefs` está vacía: **nadie configuró nunca nada**, así que toda la lógica de categoría × canal y el horario de silencio corre siempre por el camino del default y **nunca se ejerció contra una fila real**. Se construyó en julio y no se usó | `notificacion_prefs` | Media |
+| **45** | **De los ~28 tipos de aviso catalogados, sólo 10 llegaron a dispararse alguna vez**: `asignacion_pendiente_aprobacion`, `carga_pendiente_aprobacion`, `caso_nuevo`, `encuesta_respondida`, `evento_armado_proximo`, `pedido_compra`, `proyecto_a_taller`, `remito_firmado`, `tarea_asignada`, `vehiculo_tercero_creado`. Los otros 18 no se sabe si andan | `notifications` | Media |
+| **46** | **Jordi (consultor externo) es `superadmin` activo**, con acceso a toda la contabilidad y las finanzas. No es un bug —seguro fue a propósito para la consultoría— pero la sesión del 6/8 bajó los superadmin de 7 a 4 justo por esto, y conviene decidir si sigue. Quedan además **11 perfiles de baja**, entre ellos **`Colore` duplicado** (uno admin y uno taller, los dos de baja), que es la decisión que quedó abierta el 20/8 | `profiles` | Baja |
+
+### Nota de método
+
+`stock_minimo` y `equipo_fuera_servicio` aparecen como "nadie los emite" si se buscan con grep:
+**los emiten triggers de Postgres**, no el JS. El propio `notifications.js` avisa de esta trampa en
+un comentario. La caí igual y la anoto: **el grep del repo no ve los emisores que viven en la base.**
+
+---
+
+## Fase 0 CERRADA — qué va a triage
+
+Los 4 frentes que faltaban quedaron recorridos: **compras con OC · taller · costos · el transversal**.
+Total: **hallazgos 16 a 46** (31 nuevos), más 5 falsos positivos descartados y 2 reglas de método.
+
+### Los que son plata, en orden
+
+| # | Qué | Cuánto |
+|---|---|---|
+| **36** | "Recalcular todos" pone en $0 a 23 cotizables sin receta | **$1.253.750** de lista de precios |
+| **12** *(ya abierto)* | Comprobante recibido sin neto/IVA → Libro IVA en cero | **$315.000** de crédito fiscal sólo en 2 facturas |
+| **20** | El circuito de compra se bifurca: egreso de la OC (sin IVA) + egreso del comprobante, sin dedup | doble egreso posible; asiento sin crédito fiscal |
+| **40** | Ningún teléfono de MEPEX puede recibir un push | la feature entera, parada |
+
+### Cómo caen en las tandas por archivo de la Fase 2
+
+El orden de `tanda7-orden-de-correccion.md` sigue valiendo; esto es dónde entra lo nuevo.
+
+| tanda | archivo | se suma |
+|---|---|---|
+| **A** — sola y primero | `components.js` | **37** (`Modal.close(instance)` no-op) — **y ahora se sabe que ésta es la causa del hallazgo 3**. Tocar `close()` para que acepte objeto o id arregla los 11 lugares de una |
+| **B** | `finanzas.js` | 12 y 13 (neto/IVA y el prefijo del número) · **20** (atar comprobante ↔ egreso) · **21** (mostrar el evento en el detalle del egreso) |
+| **C** | `eventos.js` | sin cambios (1, 2, 4, 5, 6) |
+| **D** | `inventario.js` | 14, y **18** lo agranda: la fuente única de stock hay que decidirla **antes** del relevamiento físico del galpón |
+| **E** | SQL / datos | 7 · 8 · **22** (índice único de N° de OC) · **33** (completitud que se contradice) · **42** (grants por columna en `catalogo_items` y `cotizaciones`) |
+| **F** — al final | arquitectura | el bus de refresco, que ahora tiene **4 casos medidos**: hallazgo 9 (plan de cobro), **19** (monto de la OC), **29** (ciclo del taller), y el header de la OC. Y la fuente única de stock (18) |
+| **G** — nueva, `compras.js` | `compras.js` | **17** (el picker que descarta lo que elegís) · **19** · **23** (falta el estado Recibida) · **26** (XSS sin escapar) · **27** (código muerto de Pagos) · **16** (`_formatDate`) |
+| **H** — nueva, `proyectos.js` + `proyecto-detalle.js` | taller | **28** (nadie de oficina puede cerrar el ciclo) · **29** · **30** · **31** · **34** (vistas "Próximamente") · **35** (el acta) |
+| **I** — nueva, transversal | varios | **16** (las fechas −1 día, ~23 sitios) · **40** (dispositivos) · **41** (el rol `venta`) · **43** (cuentas compartidas) · **44** y **45** (notificaciones) |
+
+### Lo que sólo puede hacer Fede
+
+1. **Decidir sobre el hallazgo 36 antes de que alguien apriete el botón.** Las 24 recetas faltantes
+   son carga de datos, no código.
+2. **El rol `venta`** (41): o se le crea el rol a Noe, o se saca del sistema. Hoy son 5 roles en el
+   código y 4 en la realidad.
+3. **Los 5 dispositivos** (40) — sin eso el push no existe.
+4. **Jordi superadmin** y los 11 perfiles de baja, incluido `Colore` duplicado (46).
+5. **Las cuentas de taller compartidas** (43): decidir si el galpón entra con cuentas por persona.
+
+### Datos demo agregados hoy (para el borrado)
+
+| qué | id |
+|---|---|
+| OC-0002 + 2 ítems + 1 presupuesto | `compras_ordenes` **16** |
+| Movimiento de stock (+10 al insumo 84) | `inventario_movimientos` **10** |
+| Comprobante recibido Aglolam $605.000 | `comprobantes_recibidos` **7ea08fed** |
+| Egreso "OC OC-0002" $500.000 **pagado** | `egresos` **aeeebb95** → asiento **#124** |
+| Ítem de catálogo con receta | `catalogo_items` **365** (`DEMO-T7`, `es_cotizable=false`) |
+| Checklist 6/6 + conforme firmado + encuesta | proyecto `a5511ebe` |
+
+⚠️ El egreso **aeeebb95 está pagado y tiene asiento**: se **anula por UI**, no se borra (el candado
+de T4.2 lo rechaza, y con razón — anular genera el contra-asiento).
