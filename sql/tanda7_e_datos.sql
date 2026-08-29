@@ -34,12 +34,29 @@
 --
 -- ⚠️ Lo que NO hace, y por qué: no valida que el desarme sea posterior al
 -- armado (hallazgo 2). Esa validación vive en la pantalla. `API.setJornadas`
--- escribe **fila por fila**, con un HTTP por jornada, así que durante una
--- edición normal existen estados intermedios inconsistentes (movés el armado
--- para adelante y todavía no moviste el desarme). Un RAISE acá rechazaría esas
--- ediciones legítimas a mitad de camino. Si alguna vez se quiere el candado en
--- la base, primero hay que hacer que `setJornadas` escriba todo en una sola
--- transacción.
+-- borra en una sola sentencia (`.in('id', toDelete)`) pero **inserta y actualiza
+-- fila por fila, con un HTTP por jornada**, así que durante una edición normal
+-- existen estados intermedios inconsistentes (movés el armado para adelante y
+-- todavía no moviste el desarme). Un RAISE acá rechazaría esas ediciones
+-- legítimas a mitad de camino. Si alguna vez se quiere el candado en la base,
+-- primero hay que hacer que `setJornadas` escriba todo en una sola transacción.
+--
+-- (El delete múltiple no es problema para el guard de abajo: el trigger es
+--  AFTER ... FOR EACH ROW, y Postgres encola los AFTER-ROW y los dispara cuando
+--  la sentencia ya terminó — así que el COUNT ve el estado final aunque se
+--  hayan borrado varias jornadas de la misma fase de una. Se re-ejecuta N veces
+--  de más, redundante e inofensivo.)
+--
+-- ⚠️ Y es FORWARD-ONLY: sólo actúa en el próximo DELETE que vacíe una fase. No
+-- repara nada de lo que ya esté guardado. **Y no hace falta que lo haga**: hoy
+-- hay 3 eventos vivos con fechas y sin jornadas detrás —"Cumbre internacional de
+-- Jóvenes Líderes 2026", "Estetica" y "Salón Inmobiliario 2026 (demo)"— pero los
+-- tres tienen **cero jornadas en total**, o sea que nunca las tuvieron: son el
+-- camino manual del modal de "crear evento", que es justo el que el guard
+-- protege. Un backfill ciego les habría borrado las fechas a dos eventos reales.
+-- Desde `eventos` sola NO se puede distinguir "nunca tuvo jornadas" de "tuvo y
+-- se borraron todas", así que si algún día aparece un fantasma de verdad, se
+-- mira a mano.
 
 CREATE OR REPLACE FUNCTION public.fn_evento_jornadas_sync()
 RETURNS trigger
@@ -125,9 +142,43 @@ BEGIN
 END;
 $function$;
 
--- ROLLBACK bloque 1: volver a la versión anterior es sacar el bloque
--- `IF v_fase_borrada IS NOT NULL` y las dos variables declaradas. La definición
--- completa de antes está en el manifiesto de la tanda 7, sección "hallazgo 48".
+-- ROLLBACK bloque 1 — la definición que corre HOY en producción, completa y
+-- ejecutable (traída con `pg_get_functiondef`). Correr esto deshace el cambio:
+--
+-- CREATE OR REPLACE FUNCTION public.fn_evento_jornadas_sync()
+-- RETURNS trigger LANGUAGE plpgsql AS $function$
+-- DECLARE
+--     v UUID := COALESCE(NEW.evento_id, OLD.evento_id);
+-- BEGIN
+--     UPDATE public.eventos e SET
+--         fecha_armado_inicio=s.fmin, fecha_armado_fin=s.fmax,
+--         hora_armado_apertura=s.hini, hora_armado_cierre=s.hfin
+--     FROM (SELECT MIN(fecha) fmin, MAX(fecha) fmax,
+--         (SELECT hora_inicio FROM public.evento_jornadas WHERE evento_id=v AND fase='armado' ORDER BY fecha ASC,  orden ASC  LIMIT 1) hini,
+--         (SELECT hora_fin    FROM public.evento_jornadas WHERE evento_id=v AND fase='armado' ORDER BY fecha DESC, orden DESC LIMIT 1) hfin
+--         FROM public.evento_jornadas WHERE evento_id=v AND fase='armado') s
+--     WHERE e.id=v AND s.fmin IS NOT NULL;
+--
+--     UPDATE public.eventos e SET
+--         fecha_evento_inicio=s.fmin, fecha_evento_fin=s.fmax,
+--         hora_evento_apertura=s.hini, hora_evento_cierre=s.hfin
+--     FROM (SELECT MIN(fecha) fmin, MAX(fecha) fmax,
+--         (SELECT hora_inicio FROM public.evento_jornadas WHERE evento_id=v AND fase='evento' ORDER BY fecha ASC,  orden ASC  LIMIT 1) hini,
+--         (SELECT hora_fin    FROM public.evento_jornadas WHERE evento_id=v AND fase='evento' ORDER BY fecha DESC, orden DESC LIMIT 1) hfin
+--         FROM public.evento_jornadas WHERE evento_id=v AND fase='evento') s
+--     WHERE e.id=v AND s.fmin IS NOT NULL;
+--
+--     UPDATE public.eventos e SET
+--         fecha_desarme_inicio=s.fmin, fecha_desarme_fin=s.fmax,
+--         hora_desarme_apertura=s.hini, hora_desarme_cierre=s.hfin
+--     FROM (SELECT MIN(fecha) fmin, MAX(fecha) fmax,
+--         (SELECT hora_inicio FROM public.evento_jornadas WHERE evento_id=v AND fase='desarme' ORDER BY fecha ASC,  orden ASC  LIMIT 1) hini,
+--         (SELECT hora_fin    FROM public.evento_jornadas WHERE evento_id=v AND fase='desarme' ORDER BY fecha DESC, orden DESC LIMIT 1) hfin
+--         FROM public.evento_jornadas WHERE evento_id=v AND fase='desarme') s
+--     WHERE e.id=v AND s.fmin IS NOT NULL;
+--
+--     RETURN NULL;
+-- END; $function$;
 
 
 -- ───────────────────────────────────────────────────────────────────────────
@@ -186,6 +237,13 @@ WHERE COALESCE(p._deleted, false) = false
         ELSE COALESCE(p.completitud_pct, 0)
     END;
 
+-- Nota: `proyectos` tiene DOS triggers que ponen `updated_at = now()`
+-- (`set_updated_at` y `trg_proyectos_updated_at`, duplicados de antes de esta
+-- tanda), así que la fila va a quedar con `updated_at` reciente aunque el cambio
+-- sea cosmético. Ojo si algo ordena por "recientes".
+-- `trg_proyectos_completitud` NO se dispara: sólo actúa si cambia
+-- `estado_taller`, y este UPDATE no lo toca.
+--
 -- ROLLBACK bloque 3: el valor previo del único proyecto afectado era
 --   UPDATE public.proyectos SET completitud_pct = 50
 --   WHERE id = '415840e5-e348-45ee-ae36-42b3f5025e28';

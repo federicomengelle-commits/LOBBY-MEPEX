@@ -62,10 +62,10 @@ No los toco hasta que digas qué querés.
 
 ## E · DESPUÉS — reales pero no urgentes (9)
 
-**22** N° de OC no único → **SQL escrito, sin aplicar** (`sql/tanda7_e_datos.sql`) · **23** al modal de OC le falta el estado "Recibida" ·
+~~**22**~~ ✅ **APLICADO** (índice único parcial) · **23** al modal de OC le falta el estado "Recibida" ·
 **24** KPI "Bien calificados" sólo puede decir 0 · **25** datos de proveedor partidos entre columnas ·
 ~~**26**~~ ✅ hecho (tanda G) · **32** tabla `taller_checklist` muerta ·
-**33** completitud contradictoria → **SQL escrito, sin aplicar** · **34** dos vistas de Proyectos son "Próximamente" ·
+~~**33**~~ ✅ **APLICADO** (1 → 0 incoherentes) · **34** dos vistas de Proyectos son "Próximamente" ·
 **35** el encabezado del acta se parte ("ENTREGAD/O")
 
 ## F · DESPUÉS — dependen de que armes los dispositivos (3)

@@ -872,3 +872,65 @@ colisionante, pieza colisionante, insumo suelto, pieza suelta) precargan una eti
   sería el error opuesto. Se deja explícito para que no parezca un olvido.
 - **Checklist de un solo ítem**: el aviso de "checklist completo" quedaba después del `return` que
   repinta la cabecera, así que con un checklist de un ítem no salía. Se movió antes.
+
+---
+---
+
+# FASE 2 · TANDA E — datos y base *(aplicada en producción el 2026-08-29)*
+
+`sql/tanda7_e_datos.sql` · **sql-reviewer: APPROVE, 0 CRITICAL / 0 HIGH** · aplicado por MCP y
+verificado en el momento.
+
+| bloque | qué | resultado |
+|---|---|---|
+| **1** · hallazgo 48 | `fn_evento_jornadas_sync` no vaciaba las fechas de una fase cuando se borraban todas sus jornadas | aplicado y **probado funcionalmente** |
+| **2** · hallazgo 22 | índice único parcial sobre `compras_ordenes.numero_oc` para las filas vivas | creado |
+| **3** · hallazgo 33 | `completitud_pct` que contradecía su propio `estado_taller` | **1 → 0** proyectos incoherentes |
+
+## La prueba funcional del bloque 1
+
+No alcanzaba con mirar que la definición hubiera cambiado. Sobre el evento demo *Salón Inmobiliario
+2026* (0 jornadas, con la fecha del evento cargada a mano):
+
+1. Se insertó una jornada de **armado** → el trigger seteó `fecha_armado_inicio = 03/11/26` y
+   `hora_armado_apertura = 08:00`, **y la fecha del evento cargada a mano (05/11/26) sobrevivió**.
+2. Se borró esa jornada → **las tres columnas del armado quedaron en NULL** (antes se quedaban en
+   03/11/26 para siempre) **y la fecha manual del evento siguió intacta**.
+3. El evento quedó exactamente como estaba: `NULL / 05/11/26 / NULL`, 0 jornadas.
+
+**Foto antes → después:** proyectos incoherentes 1→0 · índice no→sí · función sin bloque→con bloque ·
+jornadas 67→67 · eventos vivos 12→12 · OC duplicadas 0→0 · **partida doble cuadrada, $46.320.740,
+0 asientos desbalanceados**.
+
+## Lo que encontró el reviewer y cambió la conclusión
+
+Reportó **3 eventos vivos con fechas y sin jornadas detrás**, dos de producción real
+(*Cumbre internacional de Jóvenes Líderes 2026* y *Estetica*), y planteó que el arreglo es
+forward-only y no los repara. **Al medirlo, la conclusión se dio vuelta: los tres tienen CERO
+jornadas en total** — nunca las tuvieron. Son el camino manual del modal de "crear evento", que es
+justo el que el guard protege.
+
+> **O sea que no hay ningún fantasma que reparar, y un backfill ciego —que era la reacción
+> natural— le habría borrado las fechas a dos eventos reales.** Es la mejor confirmación de que el
+> arreglo tenía que ser angosto: limpiar **sólo** cuando la operación fue un DELETE de esa fase.
+> Desde `eventos` sola no se puede distinguir "nunca tuvo jornadas" de "tuvo y se borraron todas".
+
+## Lo demás del review, aplicado
+
+- **El rollback apuntaba a un lugar que no tenía la función completa.** Ahora está entera y
+  ejecutable dentro del propio archivo: un cambio sin rollback usable no está listo.
+- **El comentario decía que `setJornadas` escribe "fila por fila" también en los deletes** — falso:
+  borra con un solo `.in('id', …)`. La conclusión se sostiene igual (los insert y update sí son fila
+  por fila, y por eso un `RAISE` en la base rechazaría ediciones legítimas a mitad de camino), pero
+  el comentario se corrigió para que nadie razone mañana desde una premisa falsa.
+- Anotado que `proyectos` tiene **dos** triggers de `updated_at` duplicados (de antes de esta tanda).
+
+## Hallazgo nuevo que salió del review — **49**
+
+**`notif_armado_7d_at` / `notif_armado_2d_at` pueden quedar quemadas para una fecha que ya no
+existe.** `api.js` sólo las resetea cuando `updateEvent()` recibe `fecha_armado_inicio` explícito —
+o sea, en la edición manual. El trigger nunca las toca. Si se borran las jornadas de armado y se
+cargan otras con **otra fecha** (el camino normal del modal de jornadas), el aviso de 7 y 2 días
+puede quedar consumido para la fecha vieja y **no salir nunca para la nueva**. Es previo, no lo crea
+ni lo empeora esta tanda, pero es exactamente el síntoma del que este trigger es la fuente. Va a la
+próxima.
