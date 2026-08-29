@@ -903,19 +903,32 @@ const ComprasModule = {
         });
         const etiqueta = (nombre, sufijo) => cuenta[norm(nombre)] > 1 ? `${nombre} · ${sufijo}` : nombre;
 
+        // `byId` es el mapa INVERSO: de un id guardado a la etiqueta que se ve en el
+        // desplegable. Hace falta porque hay pantallas que PRE-LLENAN el campo desde
+        // un vínculo ya guardado (la Recepción). Sin esto, precargaban el nombre crudo
+        // —que desde que hay sufijos ya no matchea ninguna clave— y el guard nuevo
+        // tomaba como "no encontrado" un ítem que estaba perfectamente vinculado,
+        // **bloqueando la recepción entera de la OC**. Lo cazó el reviewer, y era una
+        // regresión mía sobre los mismos 30 ítems que el arreglo venía a resolver.
+        const byId = { insumo: {}, item: {} };
         insumos.forEach(i => {
             if (!norm(i.nombre)) return;
             const visible = etiqueta(i.nombre, 'material');
-            byName[norm(visible)] = { insumo_id: i.id, unidad: i.unidad || null };
+            // "el primero gana", como antes: si hubiera dos insumos con el nombre
+            // exacto repetido (hoy no hay ninguno, medido), el segundo no pisa al
+            // primero en silencio.
+            if (!byName[norm(visible)]) byName[norm(visible)] = { insumo_id: i.id, unidad: i.unidad || null };
+            byId.insumo[String(i.id)] = visible;
             opts.push(`<option value="${this._escAttr(visible)}" label="material">`);
         });
         piezas.forEach(c => {
             if (!norm(c.nombre)) return;
             const visible = etiqueta(c.nombre, 'pieza');
-            byName[norm(visible)] = { catalogo_item_id: c.id, unidad: c.unidad_medida || c.unidad || null };
+            if (!byName[norm(visible)]) byName[norm(visible)] = { catalogo_item_id: c.id, unidad: c.unidad_medida || c.unidad || null };
+            byId.item[String(c.id)] = visible;
             opts.push(`<option value="${this._escAttr(visible)}" label="pieza">`);
         });
-        return { options: opts.join(''), byName };
+        return { options: opts.join(''), byName, byId };
     },
 
     // Tanda 7 · hallazgo 16 — `new Date('2026-08-29')` lo parsea JS como MEDIANOCHE
@@ -1801,10 +1814,12 @@ const ComprasModule = {
         const items = this._ordenItems.filter(i => String(i.orden_id) === String(oc.id));
         if (!items.length) { Toast.warning('Esta OC no tiene items cargados — agregá al menos uno antes de recibir'); return; }
 
-        const { options: invOpts, byName: invByName } = this._invRef();
+        const { options: invOpts, byName: invByName, byId: invById } = this._invRef();
+        // La etiqueta tiene que salir del MISMO mapa que arma el desplegable, para que
+        // lo precargado matchee. Leer `.nombre` crudo de la tabla es lo que rompía.
         const nombreRef = (it) => {
-            if (it.insumo_id) return (this._insumos || []).find(i => String(i.id) === String(it.insumo_id))?.nombre || '';
-            if (it.catalogo_item_id) return (this._catalogoPiezas || []).find(c => String(c.id) === String(it.catalogo_item_id))?.nombre || '';
+            if (it.insumo_id) return invById.insumo[String(it.insumo_id)] || '';
+            if (it.catalogo_item_id) return invById.item[String(it.catalogo_item_id)] || '';
             return '';
         };
         const rows = items.map((it, idx) => {

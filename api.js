@@ -5250,7 +5250,25 @@ const API = {
                 }
                 await supabaseClient.from('compras_ordenes').update({ proveedor_uuid: provUuid, proveedor_id: gan.proveedor_id ?? null, monto_total: gan.monto }).eq('id', ordenId);
             } else {
-                await supabaseClient.from('compras_ordenes').update({ proveedor_uuid: null, proveedor_id: null, monto_total: 0 }).eq('id', ordenId);
+                // Tanda 7 · hallazgo 19 — sin ganadora, `monto_total` vuelve a ser la
+                // SUMA DE LOS ÍTEMS, no cero. Poniendo 0 la ficha mostraba $0 con la OC
+                // llena de ítems hasta que alguien tocara uno (que es lo único que
+                // vuelve a llamar a `_recalcTotal`), y eso contradice lo que la columna
+                // pasó a significar: lo que nos comprometimos a pagar.
+                let totalItems = 0;
+                try {
+                    const { data: its, error: eIts } = await supabaseClient
+                        .from('compras_orden_items').select('subtotal').eq('orden_id', ordenId);
+                    if (eIts) throw eIts;
+                    totalItems = (its || []).reduce((acc, r) => acc + (Number(r.subtotal) || 0), 0);
+                } catch (e) {
+                    // Si no se pueden leer los ítems, mejor no tocar el monto que
+                    // escribir un cero que nadie pidió.
+                    console.warn('[API] _recomputeOCGanadora: no se pudieron sumar los ítems:', e.message);
+                    await supabaseClient.from('compras_ordenes').update({ proveedor_uuid: null, proveedor_id: null }).eq('id', ordenId);
+                    return;
+                }
+                await supabaseClient.from('compras_ordenes').update({ proveedor_uuid: null, proveedor_id: null, monto_total: totalItems }).eq('id', ordenId);
             }
         } catch (e) { console.warn('[API] _recomputeOCGanadora:', e.message); }
     },

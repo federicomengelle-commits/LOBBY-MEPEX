@@ -825,3 +825,50 @@ contado recibe **timestamps** (`created_at`, `crm_mensajes.fecha`, `asignaciones
 > **La regla que sale de las tres:** el patrón de la llamada no alcanza para saber si algo está mal.
 > Hay que ir a ver **el tipo de la columna** y **quién llama a qué**. Contar ocurrencias de un patrón
 > infla los hallazgos; medir la causa los define.
+
+---
+
+## La tercera pasada de reviewers — y una regresión que me cazó
+
+`BLOCK` con **1 HIGH que introduje yo**, y es el hallazgo más importante de las tres pasadas:
+
+> **El arreglo del hallazgo 17 rompía la Recepción para los mismos 30 ítems que venía a arreglar.**
+
+`_invRef()` pasó a sufijar los nombres colisionantes, pero `nombreRef()` —la función que
+**pre-llena** el campo de cada fila del modal de Recepción desde el vínculo ya guardado— seguía
+leyendo el `.nombre` **crudo** de la tabla. Era un **cuarto lector** de `byName` que no pasa por
+`_invRef()` y que yo no busqué. Con el guard nuevo, ese nombre sin sufijo se tomaba como "no
+encontrado" y **bloqueaba el "Confirmar recepción" de toda la OC**, sobre ítems que estaban
+perfectamente vinculados.
+
+**Arreglado de raíz:** `_invRef()` ahora devuelve también `byId` (el mapa inverso id → etiqueta
+visible) y la Recepción lo usa. La etiqueta sale del **mismo lugar** que arma el desplegable, así no
+puede volver a divergir. Verificado con el repro exacto del reviewer: los cuatro casos (insumo
+colisionante, pieza colisionante, insumo suelto, pieza suelta) precargan una etiqueta que matchea y
+**resuelven al mismo id que tenían**; el ítem sin vínculo queda vacío.
+
+> **La lección:** cambié el formato de una clave y busqué los llamadores **de la función**, no los
+> lectores **del formato**. El que rompía no llamaba a `_invRef()`: fabricaba la clave por su cuenta.
+> Cuando se cambia el formato de un identificador, hay que buscar quién lo *construye*, no sólo quién
+> lo *consume*.
+
+### Los dos MEDIUM, también aplicados
+
+- **`_recomputeOCGanadora` dejaba `monto_total` en `$0`** al borrar la ganadora, en vez de volver a
+  la suma de los ítems — contradiciendo la invariante que mi propio comentario acababa de declarar.
+  La ficha mostraba $0 con la OC llena de ítems hasta que alguien tocara uno. Ahora vuelve a sumar,
+  y si no puede leer los ítems **no escribe nada** en vez de escribir un cero que nadie pidió.
+- **`_buildShell()` sin guard si `_loadProject()` falla.** `_loadProject` deja `_project` en null y
+  `_buildShell` desreferencia `p.estado` en la primera línea: un blip de red justo después de un
+  guardado exitoso tiraba un TypeError. El agujero **ya existía** en `_changeStatus` desde antes; se
+  tapó en los tres lugares, no sólo en los dos que agregué.
+
+### Los LOW
+
+- **Nombres repetidos dentro de la misma tabla**: medido, **no hay ninguno** (ni en `insumos_base` ni
+  en `catalogo_items`), pero se restauró el "el primero gana" que tenía el código viejo.
+- **El modal de "Nuevo pedido" no lleva el guard de "no encontrado"** — y está bien así: un pedido es
+  una **lista de deseos con texto libre**. Tener que pedir sólo cosas que ya están en el catálogo
+  sería el error opuesto. Se deja explícito para que no parezca un olvido.
+- **Checklist de un solo ítem**: el aviso de "checklist completo" quedaba después del `return` que
+  repinta la cabecera, así que con un checklist de un ítem no salía. Se movió antes.
