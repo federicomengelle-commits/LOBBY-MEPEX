@@ -553,3 +553,78 @@ fiscal que no se puede justificar.
 lo toca: si se abre uno y se navega antes de cerrarlo, queda colgado. No es regresión de esta tanda
 —ya era así— pero es el mismo agujero que ésta cierra para los modales. Queda como **hallazgo 51
 (Baja)**, para la tanda F.
+
+---
+---
+
+# FASE 2 · TANDA J — `costos.js` *(2026-08-29)*
+
+## 🔴 Corrección grande: el hallazgo 36 era FALSO POSITIVO
+
+Lo había puesto **primero de todo el triage**, como el mayor riesgo de plata de la sesión
+(*"Recalcular todos pone en $0 a 23 cotizables, $1.253.750"*). **No es cierto: los dos caminos de
+recálculo ya los excluyen.** Lo verifiqué de tres formas.
+
+**1 · En el código.** `_recalcularTodasRecetas` no recorre el catálogo entero: filtra antes.
+
+```js
+const targets = items.filter(i => itemsConReceta.has(String(i.id)) || i.tipoReceta === 'subalquilado');
+```
+
+Y el botón "Recalcular precio" de la ficha tiene un guard explícito desde F.13.2, con el mismo
+razonamiento que yo creí estar descubriendo:
+
+```js
+// F.13.2 — Edge case: item propio sin componentes. La RPC devolvería
+// costo=0 y precio=0 silenciosamente. Avisamos y abortamos.
+```
+
+**2 · Probándolo, no leyéndolo.** Le saqué el componente a mi ítem demo (365) para dejarlo en la
+misma condición que los 23 —propio, sin receta, con precio cacheado— y apreté **Recalcular precio**.
+Salió el aviso *"Este item propio no tiene componentes"* y **la base quedó intacta**: precio
+$10.863,00 y `snapshot_costos_at` sin moverse. Después le devolví el componente.
+
+**3 · Midiendo el único hueco que quedaba.** El filtro de "Recalcular todos" deja pasar a los
+`subalquilado` **sin** componentes, que sí irían a $0. Pregunté a la base cuántos hay con precio
+mayor a cero: **ninguno**. El único subalquilado sin receta es la Silla Jacobsen, que ya está en $0
+(hallazgo 7).
+
+> **La lección, y me la aplico a mí:** encontré que la RPC devuelve $0 y salté a *"entonces el botón
+> los rompe"* sin preguntarme si algo llama a la RPC sobre esos ítems. **Un motor que puede devolver
+> un valor peligroso no es un bug si nadie lo llama con esos datos.** Fue leer el efecto en vez de
+> leer el camino. Es la misma clase de error que el hallazgo 8: una conclusión sacada de un lado
+> solo.
+
+### Lo que SÍ es verdad, y sigue importando
+
+De los **63 ítems cotizables, 24 no tienen ni una línea de receta**: 23 llevan un precio tipeado a
+mano por **$1.253.750** y el otro es la Silla Jacobsen en $0. **No hay ningún botón que los rompa** —
+pero tampoco hay forma de que el motor los mantenga al día: el día que cambie el precio del aluminio,
+esos 23 quedan viejos y **nadie se entera, porque el sistema los saltea en silencio**. Son todos
+`propio`, o sea que deberían tener receta.
+
+Deja de ser un bug y pasa a ser lo que `PUESTA-A-PUNTO-2027.md` ya decía: **el gate de costos va
+antes de la carga masiva del catálogo**, y ahora está medido. **Renumerado: hallazgo 36-bis, y es
+carga de datos, no código.**
+
+## Lo que sí se arregló acá — hallazgo 38
+
+El KPI decía **"351 RECETAS"** contando **ítems**, y **"0 INCOMPLETAS"** al lado. Ese cero era
+correcto según su propia definición (*receta CON componentes donde alguno cuesta $0*), pero pegado al
+351 se lee como "está todo bien", cuando **129 ítems no tienen ni una línea de receta**. Es el mismo
+patrón del semáforo de stock (14) y del Libro IVA (12): **un cero que tranquiliza**.
+
+Ahora la barra dice, con su tooltip cada uno:
+
+| | |
+|---|---|
+| **352** ítems | lo que hay en el catálogo (antes decía "recetas") |
+| **63** cotizables | |
+| **24** cotizables sin receta | **en rojo** — el número que decide si se puede cargar el catálogo |
+| **129** sin receta | en naranja |
+| **0** incompletas | recetas que sí tienen componentes pero alguno cuesta $0 |
+
+Los cinco valores verificados contra la base antes de tocar el código (223 con receta + 129 sin
+receta = 352). El contenedor ya era `flex-wrap`, así que pasar de 3 a 5 no rompe el layout.
+
+`costos.js?v=44`

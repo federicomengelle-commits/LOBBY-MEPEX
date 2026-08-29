@@ -2001,15 +2001,28 @@ const CostosModule = {
         }
 
         this._ensureTabKpiStyles();
+        // Tanda 7 · hallazgo 38 — el primer KPI decía "recetas" y contaba ÍTEMS: 352
+        // en pantalla contra 223 con receta de verdad. Y "incompletas" daba 0 —
+        // correcto según su propia definición (receta CON componentes donde alguno
+        // cuesta 0), pero al lado del 352 se leía como "está todo bien", cuando 129
+        // ítems no tienen ni una línea de receta. Un cero que tranquiliza es el mismo
+        // problema que el semáforo de stock (hallazgo 14) y el Libro IVA (12).
+        // El número que de verdad importa es el cuarto: los COTIZABLES sin receta,
+        // que son los que se cotizan con un precio que ningún cálculo respalda.
         const kpiTotal = this._catalogoItems.length;
         const kpiCotizables = this._catalogoItems.filter(i => i.esCotizable === true).length;
+        const kpiSinReceta = this._catalogoItems.filter(i => this._getRecetaStatus(i.id).status === 'sin-receta').length;
+        const kpiCotSinReceta = this._catalogoItems.filter(i =>
+            i.esCotizable === true && this._getRecetaStatus(i.id).status === 'sin-receta').length;
         const kpiIncompletas = this._catalogoItems.filter(i => this._getRecetaStatus(i.id).status === 'incompleta').length;
 
         filtersEl.innerHTML = `
             <div class="costos-tab-kpis">
-                <div class="costos-tab-kpi"><span class="n" style="color:#00A9C1">${kpiTotal}</span><span class="l">recetas</span></div>
+                <div class="costos-tab-kpi"><span class="n" style="color:#00A9C1">${kpiTotal}</span><span class="l">ítems</span></div>
                 <div class="costos-tab-kpi"><span class="n" style="color:#00CC88">${kpiCotizables}</span><span class="l">cotizables</span></div>
-                <div class="costos-tab-kpi"><span class="n" style="color:${kpiIncompletas ? '#F28D15' : '#00CC88'}">${kpiIncompletas}</span><span class="l">incompletas</span></div>
+                <div class="costos-tab-kpi" title="Ítems marcados cotizables que no tienen ni una línea de receta: su precio está puesto a mano y el motor de costos no lo mantiene al día."><span class="n" style="color:${kpiCotSinReceta ? '#ff4444' : '#00CC88'}">${kpiCotSinReceta}</span><span class="l">cotizables sin receta</span></div>
+                <div class="costos-tab-kpi" title="Ítems sin ninguna línea de receta (cotizables o no)."><span class="n" style="color:${kpiSinReceta ? '#F28D15' : '#00CC88'}">${kpiSinReceta}</span><span class="l">sin receta</span></div>
+                <div class="costos-tab-kpi" title="Recetas que SÍ tienen componentes, pero alguno cuesta $0."><span class="n" style="color:${kpiIncompletas ? '#F28D15' : '#00CC88'}">${kpiIncompletas}</span><span class="l">incompletas</span></div>
             </div>
             <div class="costos-filter-bar">
                 ${this._renderMultiFilter('rubro', 'Rubro', rubroOpts, this._filterRubro || [])}

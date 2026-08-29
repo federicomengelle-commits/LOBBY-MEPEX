@@ -13,7 +13,7 @@
 
 | # | Una línea | Cuánto duele |
 |---|---|---|
-| **36** | "Recalcular todos" pone en $0 a 23 cotizables sin receta | **$1.253.750** de lista de precios, y lo lee el Cotizador |
+| ~~**36**~~ | ~~"Recalcular todos" pone en $0 a 23 cotizables~~ → **FALSO POSITIVO, probado el 29/8**: los dos caminos de recálculo ya los excluyen (filtro en el masivo + guard F.13.2 en el individual). Lo probé sacándole el componente a un ítem demo: avisa y no escribe | — |
 | **12** | El comprobante recibido no calcula neto ni IVA → Libro IVA en cero | **$315.000** de crédito fiscal sólo en las 2 facturas cargadas. Se produce solo: cada factura que entra |
 | **20** | El circuito de compra se bifurca: egreso de la OC + egreso del comprobante, sin dedup ni forma de atarlos | doble egreso posible por la misma compra; asiento sin crédito fiscal |
 | **9** | Al cobrar una cuota el plan no se refresca → dice "Pendiente" con el botón activo | **doble cobro** |
@@ -34,7 +34,7 @@ Ninguno pierde plata, todos hacen que alguien tome una decisión con un número 
 | **16** | Todas las fechas `date` se muestran un día antes. ~23 lugares; el idioma correcto ya está aplicado en 66 |
 | ~~**3**~~ | ✅ **HECHO** (tanda A): eran dos causas — el `close()` mudo y que el router no cerraba al navegar |
 | **10** | "Cobrar cuota" prefill sin cliente → el cobro no aparece en su cuenta corriente |
-| **38** | El KPI dice "351 RECETAS" y recetas hay 223 |
+| ~~**38**~~ | ✅ **HECHO** (tanda J): ahora dice **352 ítems · 63 cotizables · 24 cotizables sin receta · 129 sin receta · 0 incompletas** |
 
 ## C · ENTRAN — operación que se traba (7)
 
@@ -87,5 +87,9 @@ No los toco hasta que digas qué querés.
 
 1. **¿Algo se mueve de grupo?** (ej: "el 22 entra", "el 16 lo dejo para después").
 2. **Los 5 de D**, que son decisiones y no código.
-3. Del **36**: las 24 recetas que faltan son carga de datos. ¿Las cargás vos, o querés que primero
-   deje el botón "Recalcular todos" a salvo para que nadie lo apriete mientras tanto?
+3. **36-bis** (lo que quedó del 36 después de probarlo): **24 de los 63 cotizables no tienen receta**
+   — 23 con precio a mano por **$1.253.750**. Ningún botón los rompe, pero el motor tampoco los
+   mantiene al día: cuando cambie el precio del aluminio, esos 23 quedan viejos **y el sistema los
+   saltea en silencio**. Es carga de datos, no código, y es el gate que `PUESTA-A-PUNTO-2027.md`
+   pone antes de cargar el catálogo. ¿Las armás vos, o querés que arme yo las recetas de los que
+   más se cotizan?
