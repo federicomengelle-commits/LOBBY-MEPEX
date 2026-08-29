@@ -14,9 +14,9 @@
 | # | Una línea | Cuánto duele |
 |---|---|---|
 | ~~**36**~~ | ~~"Recalcular todos" pone en $0 a 23 cotizables~~ → **FALSO POSITIVO, probado el 29/8**: los dos caminos de recálculo ya los excluyen (filtro en el masivo + guard F.13.2 en el individual). Lo probé sacándole el componente a un ítem demo: avisa y no escribe | — |
-| **12** | El comprobante recibido no calcula neto ni IVA → Libro IVA en cero | **$315.000** de crédito fiscal sólo en las 2 facturas cargadas. Se produce solo: cada factura que entra |
+| ~~**12**~~ | ✅ **HECHO** (tanda B): la entrada pasa a ser **Total + Alícuota**, con opción "mixta" para la factura de varias tasas, cartel de cuadre en vivo y rechazo al guardar si neto + IVA ≠ total | de paso salió que seguía vivo para una NC con total **negativo** |
 | **20** | El circuito de compra se bifurca: egreso de la OC + egreso del comprobante, sin dedup ni forma de atarlos | doble egreso posible por la misma compra; asiento sin crédito fiscal |
-| **9** | Al cobrar una cuota el plan no se refresca → dice "Pendiente" con el botón activo | **doble cobro** |
+| ~~**9**~~ | ✅ **HECHO** (tanda B): candado en el circuito único **antes** del insert + refresco del plan + candado de reentrancia en el botón | ⚠️ y el reviewer encontró que **"Duplicar" evadía el candado**: copiaba el vínculo a la cuota |
 | ~~**37**~~ | ✅ **HECHO** (tanda A). `Modal.close(instance)` era no-op en **13** lugares (no 11) | de paso salió el **50**: se podía borrar un certificado de retención mientras se guardaba la cobranza |
 | **7** | Silla Jacobsen cotizable en $0 | si entra a una cotización, sale gratis |
 | ~~**8**~~ | ~~8 cuotas de plan huérfanas~~ → **FALSO POSITIVO, verificado el 29/8**: las 8 están borradas junto con sus planes. La cascada funciona. **No hay nada que borrar** | — |
@@ -27,26 +27,26 @@ Ninguno pierde plata, todos hacen que alguien tome una decisión con un número 
 
 | # | Una línea |
 |---|---|
-| **19** | La ficha de la OC dice "(ganadora) $480.000" arriba del presupuesto que dice "$500.000 GANADORA". El KPI "Monto abierto" queda corto |
-| **29** | El ciclo del taller no se entera del checklist en la misma pantalla: dice "Pendiente 0%" con la base en "En armado 25%" |
-| **21** | La imputación a evento se guarda y no se muestra en ningún lado — y es la que decide el ruteo contable |
-| **14** | El semáforo de stock sólo puede decir "todo ok": 82 de 83 insumos en cero y ninguno con mínimo |
-| **16** | Todas las fechas `date` se muestran un día antes. ~23 lugares; el idioma correcto ya está aplicado en 66 |
+| ~~**19**~~ | ✅ **HECHO** (tanda G): `monto_total` pasa a significar una sola cosa — si hay ganadora manda la ganadora |
+| ~~**29**~~ | ✅ **HECHO** (tanda H): si el estado cambió, se repinta la cabecera |
+| ~~**21**~~ | ✅ **HECHO** (tanda B): se muestra en el detalle del egreso **y** se puede cargar desde el modal, que no tenía el campo |
+| ~~**14**~~ | ✅ **HECHO** (tanda D): distingue "nada bajo el mínimo" de "no hay contra qué comparar" |
+| ~~**16**~~ | ✅ **HECHO**. Y el número era menor de lo que dije: **4 archivos, ~16 llamadas** (compras, locaciones, crm, costos). El resto de los 51 sitios recibía **timestamps**, que estaban bien |
 | ~~**3**~~ | ✅ **HECHO** (tanda A): eran dos causas — el `close()` mudo y que el router no cerraba al navegar |
-| **10** | "Cobrar cuota" prefill sin cliente → el cobro no aparece en su cuenta corriente |
+| ~~**10**~~ | ✅ **HECHO** (tanda B) |
 | ~~**38**~~ | ✅ **HECHO** (tanda J): ahora dice **352 ítems · 63 cotizables · 24 cotizables sin receta · 129 sin receta · 0 incompletas** |
 
 ## C · ENTRAN — operación que se traba (7)
 
 | # | Una línea |
 |---|---|
-| **28** | Nadie de oficina puede cerrar el ciclo del taller: Listo/Despachado sólo existen en la vista del rol `taller` |
-| **17** | El picker de insumo/pieza no puede expresar la diferencia y descarta lo que elegís (30 ítems afectados) |
-| **1** | Una persona se asigna a dos eventos el mismo día sin ningún aviso |
-| **2** | Se acepta un desarme anterior al armado, sin validación en pantalla ni en la base |
-| **5** | El modal "Editar jornadas" no dice de qué evento es |
-| **4** | El filtro de predios acumula opciones en cada render (35 para 7 predios) |
-| **30 + 31** | Terminar el checklist al 100% y firmar la entrega no mueven el ciclo |
+| ~~**28**~~ | ✅ **HECHO** (tanda H): los pasos del ciclo son clickeables para admin/superadmin/pm, con confirmación y sello de quién y cuándo |
+| ~~**17**~~ | ✅ **HECHO** (tanda G): sólo los nombres repetidos llevan sufijo · material / · pieza, y si se tipea algo que no matchea se avisa |
+| ~~**1**~~ | ✅ **HECHO** (tanda C): el choque se ve **en la lista antes de elegir** + confirmación al guardar. No bloquea |
+| ~~**2**~~ | ✅ **HECHO** (tanda C): valida en el modal de jornadas. **Avisa, no bloquea** — el reviewer cazó que bloquear dejaba sin guardar un caso legítimo |
+| ~~**5**~~ | ✅ **HECHO** (tanda C): los 6 modales de la ficha llevan el nombre del evento |
+| ~~**4**~~ | ✅ **HECHO** (tanda C) |
+| ~~**30 + 31**~~ | ✅ **HECHO** (tanda H): no se avanza solo a propósito, pero se avisa que el paso quedó disponible |
 
 ## D · ENTRAN PERO SON DECISIÓN TUYA ANTES QUE CÓDIGO (5)
 
@@ -62,10 +62,10 @@ No los toco hasta que digas qué querés.
 
 ## E · DESPUÉS — reales pero no urgentes (9)
 
-**22** N° de OC no único (reusa los de las borradas) · **23** al modal de OC le falta el estado "Recibida" ·
+**22** N° de OC no único → **SQL escrito, sin aplicar** (`sql/tanda7_e_datos.sql`) · **23** al modal de OC le falta el estado "Recibida" ·
 **24** KPI "Bien calificados" sólo puede decir 0 · **25** datos de proveedor partidos entre columnas ·
-**26** XSS sin escapar en la tabla de ítems de la OC · **32** tabla `taller_checklist` muerta ·
-**33** un proyecto con completitud que se contradice · **34** dos vistas de Proyectos son "Próximamente" ·
+~~**26**~~ ✅ hecho (tanda G) · **32** tabla `taller_checklist` muerta ·
+**33** completitud contradictoria → **SQL escrito, sin aplicar** · **34** dos vistas de Proyectos son "Próximamente" ·
 **35** el encabezado del acta se parte ("ENTREGAD/O")
 
 ## F · DESPUÉS — dependen de que armes los dispositivos (3)
@@ -79,7 +79,7 @@ No los toco hasta que digas qué querés.
 ## G · NO ENTRAN — código muerto, barrido aparte (2)
 
 **27** la pestaña Pagos de Compras se retiró del shell pero sus ~150 líneas siguen viajando ·
-**6** el cartel manda al lápiz que sólo aparece con hover *(entra igual si se toca eventos.js por el 5)*
+~~**6**~~ ✅ hecho (tanda C), y resultó **más ancho**: en una tablet TODOS los lápices de la ficha eran invisibles, no sólo el de jornadas
 
 ---
 

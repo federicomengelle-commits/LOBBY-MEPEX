@@ -2672,13 +2672,21 @@ const FinanzasModule = {
         } catch (e) { /* ignore */ }
 
         // Proyectos (graceful)
+        // Tanda 7 · hallazgo 10 — se trae también el `cliente_id`: "Cobrar cuota"
+        // prefilleaba monto, concepto y proyecto pero NO el cliente, aunque el
+        // proyecto tiene uno. Si el operador no lo elegía a mano, el cobro quedaba
+        // sin cliente y no aparecía en su cuenta corriente.
+        this._proyectoClienteMap = this._proyectoClienteMap || {};
         try {
             const { data } = await supabaseClient
                 .from('proyectos')
-                .select('id, nombre')
+                .select('id, nombre, cliente_id')
                 .eq('_deleted', false)
                 .order('nombre');
-            (data || []).forEach(p => { this._proyectosMap[p.id] = p.nombre; });
+            (data || []).forEach(p => {
+                this._proyectosMap[p.id] = p.nombre;
+                if (p.cliente_id) this._proyectoClienteMap[p.id] = p.cliente_id;
+            });
         } catch (e) { /* table may not exist */ }
 
         // Clientes (graceful) — incluye cuit para el autocomplete del facturador
@@ -3031,6 +3039,14 @@ const FinanzasModule = {
                     // Confirmado), no ya-anulado — si no, el INSERT creaba plata
                     // invisible en todos los KPIs con toast de éxito.
                     if (dup.estado === 'anulado') dup.estado = null;
+                    // Tanda 7 · hallazgo 9 — la copia arrastraba `plan_cobro_item_id` y
+                    // `comprobante_id`. Al guardarla se insertaba un SEGUNDO cobro atado
+                    // a la MISMA cuota y a la misma factura, y el trigger de la base los
+                    // suma a los dos: la cuota quedaba sobre-cobrada sin un solo error en
+                    // pantalla. Duplicar sirve para repetir un movimiento parecido, no
+                    // para cobrar dos veces lo mismo: el vínculo se elige de nuevo.
+                    delete dup.plan_cobro_item_id;
+                    delete dup.comprobante_id;
                     this._showIngresoModal(dup);
                 } else if (action === 'del') {
                     // T4.2: un movimiento contabilizado no se borra (dejaría el asiento
@@ -3623,7 +3639,19 @@ const FinanzasModule = {
             toggleIngChq();
         }
 
-        document.getElementById('finBtnSaveIngreso')?.addEventListener('click', async () => {
+        document.getElementById('finBtnSaveIngreso')?.addEventListener('click', async (ev) => {
+            // Tanda 7 · hallazgo 9 — candado de reentrancia, el mismo que el modal de
+            // comprobante recibido ya tenía (y con el mismo motivo escrito al lado):
+            // dos clicks seguidos insertaban dos ingresos. El candado de
+            // `API.registrarCobro` compara contra lo ya cobrado, pero es
+            // check-then-act: dos llamadas que se solapan pueden leer las dos el mismo
+            // saldo antes de que escriba cualquiera. Esto cierra el camino realista —
+            // el doble click— sin pedirle una transacción a la base.
+            const btnIng = ev.currentTarget;
+            if (btnIng.dataset.guardando === '1') return;
+            btnIng.dataset.guardando = '1';
+            btnIng.disabled = true;
+            const soltarIng = () => { btnIng.dataset.guardando = ''; btnIng.disabled = false; };
             const fecha = document.getElementById('finIngFormFecha')?.value;
             const monto = parseFloat(document.getElementById('finIngFormMonto')?.value);
             const concepto = document.getElementById('finIngFormConcepto')?.value.trim();
@@ -3642,9 +3670,9 @@ const FinanzasModule = {
 
             if (!fecha || !concepto || !monto || isNaN(monto)) {
                 Toast.warning('Fecha, concepto y monto son obligatorios');
-                return;
+                soltarIng(); return;
             }
-            if (monedaData.error) { Toast.warning(monedaData.error); return; }
+            if (monedaData.error) { Toast.warning(monedaData.error); soltarIng(); return; }
 
             const payload = {
                 fecha, concepto, monto, medio, canal,
@@ -3717,12 +3745,29 @@ const FinanzasModule = {
                 Modal.closeAll();
                 await this._loadIngresos();
 
+                // Tanda 7 · hallazgo 9 — el cobro venía de una cuota y sólo se
+                // recargaban los INGRESOS, así que el plan seguía en pantalla
+                // diciendo "Pendiente" con el botón "Cobrar" activo. Ese botón
+                // invitaba al segundo click, y hasta ahora nada lo frenaba (el
+                // candado nuevo está en `API.registrarCobro`). Recargar el plan
+                // hace que la pantalla diga lo que dice la base.
+                // ⚠️ Esto es el síntoma, no la causa: la causa es que el que
+                // escribe no le avisa al que muestra. El bus de refresco de la
+                // tanda F se lleva esto puesto — está anotado ahí.
+                if (i._prefillPlanItem) {
+                    try { await this._loadPlanes(); }
+                    catch (e) { console.warn('[Finanzas] no se pudo refrescar el plan:', e.message); }
+                }
+
                 if (isEdit && ingreso.id) {
                     this._openIngresoPanel(ingreso.id);
                 }
             } catch (e) {
                 console.error('[Finanzas] Error guardando ingreso:', e);
-                Toast.error('Error al guardar: ' + (e.message || e));
+                // El mensaje del candado de cuota viene de acá y explica qué hacer:
+                // se muestra tal cual en vez de taparlo con un "Error al guardar".
+                Toast.error(e.message || 'Error al guardar', 6000);
+                soltarIng();
             }
         });
     },
@@ -4130,6 +4175,18 @@ const FinanzasModule = {
                             <span class="fin-info-label">Proyecto</span>
                             <span class="fin-info-value">${proyNombre}</span>
                         </div>
+                        <!-- Tanda 7 · hallazgo 21 — el evento se guardaba y no se mostraba
+                             en ningún lado. Y no es un dato de adorno: la imputación a
+                             proyecto O evento es lo que hace que el gasto rutee a costo
+                             directo (5.1.x) en vez de a estructura (5.2.x) — el fix H4 del
+                             20/8. Sin esta fila no había forma de ver por pantalla por qué
+                             un gasto cayó donde cayó. -->
+                        ${egreso.evento_id ? `
+                        <div class="fin-info-row">
+                            <span class="fin-info-label">Evento</span>
+                            <span class="fin-info-value">${escHtml((this._eventosMap || {})[egreso.evento_id] || 'Evento imputado')}</span>
+                        </div>
+                        ` : ''}
                         <div class="fin-info-row">
                             <span class="fin-info-label">Cuenta</span>
                             <span class="fin-info-value">${cuentaNombre}</span>
@@ -4380,6 +4437,20 @@ const FinanzasModule = {
                             <label class="fin-form-label">Proyecto</label>
                             ${proyOptions}
                         </div>
+                        <!-- Tanda 7 · hallazgo 21 — el modal tenía Proyecto y NO Evento,
+                             y el fix H4 del 20/8 rutea a costo directo (5.1.x) cuando el
+                             egreso está imputado a proyecto **o a evento**. Sin este campo,
+                             un gasto de un evento sin proyecto —los jornales de una expo,
+                             el flete del predio— no se podía imputar desde acá y caía en
+                             estructura. La OC y el comprobante recibido ya lo tenían. -->
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Evento (imputación)</label>
+                            <select class="fin-form-select" id="finEgrFormEvento">
+                                <option value="">— Sin evento —</option>
+                                ${Object.keys(this._eventosMap || {}).map(k =>
+                                    `<option value="${k}" ${e.evento_id === k ? 'selected' : ''}>${escHtml(this._eventosMap[k])}</option>`).join('')}
+                            </select>
+                        </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Medio *</label>
                             <select class="fin-form-select" id="finEgrFormMedio" ${lk}>
@@ -4562,6 +4633,9 @@ const FinanzasModule = {
 
             const proyEl = document.getElementById('finEgrFormProyecto');
             const proyecto_id = (proyEl && proyEl.tagName === 'SELECT') ? (proyEl.value || null) : null;
+            // Tanda 7 · hallazgo 21 — la imputación a evento, que hasta ahora sólo se
+            // podía poner desde la OC o desde el comprobante recibido.
+            const evento_id = document.getElementById('finEgrFormEvento')?.value || null;
 
             if (!fecha || !concepto || !monto || isNaN(monto) || !categoria) {
                 Toast.warning('Fecha, categoría, concepto y monto son obligatorios');
@@ -4588,7 +4662,7 @@ const FinanzasModule = {
             const payload = {
                 fecha, categoria, subcategoria, destinatario, concepto,
                 monto, medio, canal, cuenta_id, estado, fecha_programada,
-                proyecto_id, proveedor_id, notas,
+                proyecto_id, evento_id, proveedor_id, notas,
                 moneda: monedaData.moneda,
                 cotizacion: monedaData.cotizacion,
             };
@@ -5970,6 +6044,9 @@ const FinanzasModule = {
             concepto: item.concepto,
             monto: remaining,
             proyecto_id: plan.proyecto_id,
+            // Tanda 7 · hallazgo 10 — el cliente sale del proyecto de la cuota. Sin
+            // esto el cobro nacía sin cliente y no entraba en su cuenta corriente.
+            cliente_id: (this._proyectoClienteMap || {})[plan.proyecto_id] || null,
             plan_cobro_item_id: itemId,
             moneda: item.moneda || plan.moneda || 'ARS',
             cotizacion: item.cotizacion || plan.cotizacion || 1,
@@ -9838,6 +9915,65 @@ const FinanzasModule = {
         document.addEventListener('keydown', this._panelEscHandler);
     },
 
+    // ── Tanda 7 · hallazgo 20 ──
+    // El circuito de compra se bifurca en la plata: la OC genera su egreso por el
+    // monto de la GANADORA (un número solo, sin IVA y sin comprobante) y el
+    // comprobante recibido genera OTRO por el total CON IVA. Cada rama se cuida de sí
+    // misma —`_egresoForOC` mira el N° de OC en el concepto, y acá se mira el
+    // `egreso_id` del comprobante— pero **ninguna sabe de la otra**, así que apretar
+    // este botón sobre la factura de una compra que ya generó su egreso desde la OC
+    // deja dos egresos por la misma compra.
+    // Verificado en el relevamiento: egreso de $500.000 pagado (la ganadora, neta) +
+    // factura de $605.000 "Sin pago". Un click y quedaban $1.105.000.
+    // Antes de crear se buscan candidatos del mismo proveedor: se compara contra el
+    // TOTAL y también contra el NETO, porque el egreso de la OC nace por el monto
+    // neto de la cotización y el comprobante viene con IVA — si sólo se comparara el
+    // total, justo el caso real no aparecería.
+    // No bloquea: muestra lo que encontró y deja elegir. Vincular en vez de crear se
+    // hace con "Vincular a egreso" del modal de edición del comprobante.
+    async _buscarEgresoDeLaMismaCompra(comp) {
+        const prov = (comp.proveedor_nombre || '').trim();
+        if (!prov) return [];
+        const base = comp.fecha || hoyLocal();
+        const d = new Date(base + 'T00:00:00');
+        const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+        const desde = new Date(d); desde.setDate(desde.getDate() - 30);
+        const hasta = new Date(d); hasta.setDate(hasta.getDate() + 30);
+        try {
+            const { data, error } = await supabaseClient
+                .from('egresos')
+                .select('id, fecha, concepto, monto, estado, destinatario, comprobante_recibido_id')
+                .eq('_deleted', false)
+                .neq('estado', 'anulado')
+                .is('comprobante_recibido_id', null)   // los que ya tienen su comprobante no cuentan
+                .gte('fecha', iso(desde)).lte('fecha', iso(hasta));
+            if (error) throw error;
+            const total = Number(comp.total) || 0;
+            // Los montos contra los que se compara: el total, el neto si está, y —para
+            // los comprobantes viejos que quedaron con el neto en NULL (hallazgo 12)—
+            // el neto que saldría al 21% y al 10,5%. Sin esto, justo el caso real no
+            // matchea: el egreso de la OC es por el NETO de la cotización.
+            const montos = [total, Number(comp.neto) || 0, total / 1.21, total / 1.105]
+                .filter(x => x > 0);
+            const parecido = (m) => montos.some(b => Math.abs(m - b) <= Math.max(1, b * 0.01));
+            // "Aglolam" en el egreso y "Aglolam SA" en la factura son el mismo
+            // proveedor: se acepta que uno contenga al otro, no la igualdad exacta.
+            const provNorm = normStr(prov);
+            const mismoProveedor = (e) => {
+                const dest = normStr(e.destinatario || '');
+                const conc = normStr(e.concepto || '');
+                if (dest && (dest.includes(provNorm) || provNorm.includes(dest))) return true;
+                const token = provNorm.split(' ').filter(w => w.length >= 4)[0];
+                return !!token && (conc.includes(token) || dest.includes(token));
+            };
+            return (data || []).filter(e => mismoProveedor(e) && parecido(Number(e.monto) || 0));
+        } catch (e) {
+            // Que no se pueda avisar no puede impedir generar el pago.
+            console.warn('[Finanzas] no se pudo buscar el egreso de la misma compra:', e.message);
+            return [];
+        }
+    },
+
     _showGenerarEgresoModal(comp) {
         const cuentas = this._cuentas || [];
         const cuentaOpts = cuentas.map(c => `<option value="${c.id}">${escHtml(c.nombre)}${c.tipo ? ' (' + escHtml(c.tipo) + ')' : ''}</option>`).join('');
@@ -9858,6 +9994,19 @@ const FinanzasModule = {
             const cuenta_id = document.getElementById('finGenCuenta')?.value || null;
             const medio = document.getElementById('finGenMedio')?.value || 'transferencia';
             try {
+                // Hallazgo 20 — ¿esta compra ya tiene un egreso por la otra rama?
+                const yaHay = await this._buscarEgresoDeLaMismaCompra(comp);
+                if (yaHay.length) {
+                    const lista = yaHay.slice(0, 4).map(e =>
+                        `• ${this._formatDate(e.fecha)} — ${escHtml(e.concepto || '')} · <b>${this._formatMoney(e.monto)}</b> (${escHtml(e.estado || '')})`).join('<br>');
+                    const seguir = await Confirm.action(
+                        yaHay.length === 1 ? 'Puede que esta compra ya esté pagada' : 'Puede que esta compra ya esté pagada (varios candidatos)',
+                        `Encontré ${yaHay.length === 1 ? 'un egreso' : yaHay.length + ' egresos'} del mismo proveedor por un monto parecido:<br><br>${lista}<br><br>` +
+                        `Si es el mismo pago, <b>cancelá</b> y usá "Vincular a egreso" al editar el comprobante — así queda uno solo.<br>` +
+                        `Si es una compra distinta, seguí: se va a crear un egreso nuevo.`
+                    );
+                    if (!seguir) { Modal.close(inst.id); return; }
+                }
                 const res = await API.generarEgresoDeComprobante(comp.id, { cuenta_id, medio, estado: 'pagado' });
                 if (res.error) { Toast.error(res.error); return; }
                 Toast.success('Egreso generado' + (cuenta_id ? ' + asiento contable' : ' (sin cuenta: sin asiento)'));
@@ -10345,19 +10494,39 @@ const FinanzasModule = {
                         <label class="fin-form-label">Concepto *</label>
                         <input type="text" class="fin-form-input" id="finRecFormConcepto" value="${escHtml(c.concepto || '')}" placeholder="Descripción del comprobante">
                     </div>
+                    <!-- Tanda 7 · hallazgo 12 — Acá el Neto y el IVA se guardaban en NULL
+                         y el Libro IVA Compras salía en $0 con facturas de millones.
+                         El campo prometía "Auto si ponés total" y el único listener que
+                         existía iba al revés (calculaba desde el Neto). Ahora la entrada
+                         es Total + Alícuota, que es lo que uno tiene delante cuando mira
+                         la factura, y el Neto y el IVA se derivan. Los tres siguen
+                         editables a mano para la factura de alícuota mixta. -->
                     <div class="fin-form-row">
-                        <div class="fin-form-group">
-                            <label class="fin-form-label">Neto</label>
-                            <input type="number" class="fin-form-input" id="finRecFormNeto" value="${c.neto || ''}" step="0.01" placeholder="Auto si ponés total">
-                        </div>
-                        <div class="fin-form-group">
-                            <label class="fin-form-label">IVA</label>
-                            <input type="number" class="fin-form-input" id="finRecFormIva" value="${c.iva || ''}" step="0.01" placeholder="Auto">
-                        </div>
                         <div class="fin-form-group">
                             <label class="fin-form-label">Total *</label>
                             <input type="number" class="fin-form-input" id="finRecFormTotal" value="${c.total || ''}" step="0.01" placeholder="0.00">
                         </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Alícuota IVA</label>
+                            <select class="fin-form-select" id="finRecFormAlic">
+                                <option value="21">21%</option>
+                                <option value="10.5">10,5%</option>
+                                <option value="27">27%</option>
+                                <option value="0">Sin IVA discriminado</option>
+                                <option value="mixta">Mixta — la cargo a mano</option>
+                            </select>
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">Neto</label>
+                            <input type="number" class="fin-form-input" id="finRecFormNeto" value="${c.neto || ''}" step="0.01" placeholder="se calcula solo">
+                        </div>
+                        <div class="fin-form-group">
+                            <label class="fin-form-label">IVA</label>
+                            <input type="number" class="fin-form-input" id="finRecFormIva" value="${c.iva || ''}" step="0.01" placeholder="se calcula solo">
+                        </div>
+                    </div>
+                    <div class="fin-form-group">
+                        <span id="finRecFormCuadra" style="font-family:var(--font-mono,monospace);font-size:0.72rem;"></span>
                     </div>
                     ${this._renderMonedaFields('finRec', c)}
                     <!-- Circuito de venta · Fase 2: la percepción viene ADENTRO de la
@@ -10431,18 +10600,94 @@ const FinanzasModule = {
             `,
         });
 
-        // Auto-calc IVA from neto
-        const netoInput = document.getElementById('finRecFormNeto');
-        const ivaInput = document.getElementById('finRecFormIva');
+        // ── Tanda 7 · hallazgo 12 — Neto / IVA / Total, que ahora cierran ──
+        // Sólo la Factura A (y sus notas) discrimina IVA y da crédito fiscal. Una B
+        // lo lleva adentro del precio y no se recupera; una C y un recibo no tienen.
+        // Por eso la alícuota arranca en 21% para las A y en "sin discriminar" para
+        // el resto: así el que carga no tiene que acordarse, y si la factura es de
+        // 10,5% lo cambia con un click.
+        const netoInput  = document.getElementById('finRecFormNeto');
+        const ivaInput   = document.getElementById('finRecFormIva');
         const totalInput = document.getElementById('finRecFormTotal');
-        netoInput?.addEventListener('input', () => {
-            const neto = parseFloat(netoInput.value) || 0;
-            if (neto > 0) {
-                const iva = Math.round(neto * 0.21 * 100) / 100;
-                ivaInput.value = iva;
-                totalInput.value = Math.round((neto + iva) * 100) / 100;
+        const alicSelect = document.getElementById('finRecFormAlic');
+        const tipoSelect = document.getElementById('finRecFormTipo');
+        const cuadraEl   = document.getElementById('finRecFormCuadra');
+        const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+        const alicDeTipo = (t) => (String(t || '').endsWith('_a') || String(t || '').startsWith('nota_')) ? '21' : '0';
+
+        // Al editar un comprobante viejo se deduce la alícuota de lo que ya tiene
+        // guardado, para no pisarle el 10,5% a alguien que lo cargó bien a mano.
+        if (alicSelect) {
+            const nEd = parseFloat(c.neto), iEd = parseFloat(c.iva);
+            let alicInicial = alicDeTipo(c.tipo || (tipoSelect && tipoSelect.value));
+            if (nEd > 0 && iEd >= 0) {
+                const pct = r2((iEd / nEd) * 100);
+                const conocida = ['21', '10.5', '27', '0'].find(a => Math.abs(pct - Number(a)) < 0.6);
+                // Si el neto y el IVA guardados NO caen en ninguna banda limpia, es una
+                // factura de alícuota mixta cargada a mano. Adivinarle 21% y dejar el
+                // select ahí era una trampa: alcanzaba con que después tocara el Total
+                // por cualquier motivo para que el recálculo le pisara los números
+                // buenos con un split de una sola tasa. "Mixta" no deriva nada.
+                alicInicial = conocida || 'mixta';
             }
+            alicSelect.value = alicInicial;
+        }
+
+        // Total o alícuota → se derivan Neto e IVA. Es el camino normal: el número
+        // que uno tiene delante es el total de la factura.
+        const esMixta = () => alicSelect && alicSelect.value === 'mixta';
+        const desdeTotal = () => {
+            if (esMixta()) { marcarCuadre(); return; }   // el humano manda: no se le pisa nada
+            const total = parseFloat(totalInput?.value) || 0;
+            const alic = parseFloat(alicSelect?.value) || 0;
+            if (!total) return;
+            const neto = alic > 0 ? r2(total / (1 + alic / 100)) : r2(total);
+            if (netoInput) netoInput.value = neto;
+            if (ivaInput) ivaInput.value = r2(total - neto);
+            marcarCuadre();
+        };
+        // Neto → IVA y Total (el camino que ya existía, ahora respeta la alícuota).
+        const desdeNeto = () => {
+            if (esMixta()) { marcarCuadre(); return; }
+            const neto = parseFloat(netoInput?.value) || 0;
+            const alic = parseFloat(alicSelect?.value) || 0;
+            if (!neto) return;
+            const iva = r2(neto * alic / 100);
+            if (ivaInput) ivaInput.value = iva;
+            if (totalInput) totalInput.value = r2(neto + iva);
+            marcarCuadre();
+        };
+        // IVA a mano → el Neto sale del Total. Es la salida para la factura de
+        // alícuota mixta: se copia el total y el IVA que dice el papel, y listo.
+        const desdeIva = () => {
+            const total = parseFloat(totalInput?.value) || 0;
+            const iva = parseFloat(ivaInput?.value) || 0;
+            if (!total) return;
+            if (netoInput) netoInput.value = r2(total - iva);
+            marcarCuadre();
+        };
+        function marcarCuadre() {
+            if (!cuadraEl) return;
+            const n = parseFloat(netoInput?.value) || 0;
+            const i = parseFloat(ivaInput?.value) || 0;
+            const t = parseFloat(totalInput?.value) || 0;
+            if (!t) { cuadraEl.textContent = ''; return; }
+            const dif = Math.abs(r2(n + i) - r2(t));
+            cuadraEl.textContent = dif <= 0.02
+                ? `✓ neto + IVA = total`
+                : `⚠ neto + IVA da ${FinanzasModule._formatMoney(r2(n + i))} y el total dice ${FinanzasModule._formatMoney(t)}`;
+            cuadraEl.style.color = dif <= 0.02 ? 'var(--color-success,#00CC88)' : 'var(--color-error,#ff4444)';
+        }
+
+        totalInput?.addEventListener('input', desdeTotal);
+        alicSelect?.addEventListener('change', desdeTotal);
+        netoInput?.addEventListener('input', desdeNeto);
+        ivaInput?.addEventListener('input', desdeIva);
+        tipoSelect?.addEventListener('change', () => {
+            if (alicSelect) alicSelect.value = alicDeTipo(tipoSelect.value);
+            desdeTotal();
         });
+        marcarCuadre();
 
         // Multi-moneda: el campo base de monto es Total (no Monto)
         this._attachMonedaListeners('finRec', 'finRecFormTotal');
@@ -10465,9 +10710,34 @@ const FinanzasModule = {
             const proveedor_nombre = document.getElementById('finRecFormProveedor')?.value.trim();
             const cuit = document.getElementById('finRecFormCuit')?.value.trim() || null;
             const concepto = document.getElementById('finRecFormConcepto')?.value.trim();
-            const neto = parseFloat(document.getElementById('finRecFormNeto')?.value) || null;
-            const iva = parseFloat(document.getElementById('finRecFormIva')?.value) || null;
             const total = parseFloat(document.getElementById('finRecFormTotal')?.value);
+            // Tanda 7 · hallazgo 12 — red de la base, no sólo de la pantalla.
+            // Si el neto y el IVA llegan vacíos se derivan del total y la alícuota
+            // antes de guardar: un NULL acá es un $0 en el Libro IVA Compras, que es
+            // lo que se le presenta a AFIP. Y va `0`, no `null`, cuando de verdad no
+            // hay IVA discriminado — cero es un dato, null es una ausencia.
+            const _alicRaw = document.getElementById('finRecFormAlic')?.value;
+            const _esMixta = _alicRaw === 'mixta';
+            const _alic = parseFloat(_alicRaw) || 0;
+            const _r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+            let neto = parseFloat(document.getElementById('finRecFormNeto')?.value);
+            let iva = parseFloat(document.getElementById('finRecFormIva')?.value);
+            // `total !== 0` y no `> 0`: una nota de crédito tipeada con el monto en
+            // negativo caía por afuera de los cuatro gates y volvía a guardar
+            // neto/iva en NULL — el mismo agujero del hallazgo 12, sobreviviendo en
+            // la única forma de input que el arreglo no contemplaba. La división y la
+            // resta funcionan igual con signo.
+            if (_esMixta && (isNaN(neto) || isNaN(iva))) {
+                Toast.warning('Elegiste alícuota mixta: cargá el neto y el IVA que dice la factura, o poné una alícuota para que se calculen solos.', 6000);
+                soltar(); return;
+            }
+            if (!isNaN(total) && total !== 0 && !_esMixta && (isNaN(neto) || isNaN(iva))) {
+                const nCalc = _alic > 0 ? _r2(total / (1 + _alic / 100)) : _r2(total);
+                if (isNaN(neto)) neto = nCalc;
+                if (isNaN(iva)) iva = _r2(total - neto);
+            }
+            if (isNaN(neto)) neto = null;
+            if (isNaN(iva)) iva = null;
             const categoria = document.getElementById('finRecFormCat')?.value;
             const canal = document.getElementById('finRecFormCanal')?.value;
             const proyecto_id = document.getElementById('finRecFormProyecto')?.value || null;
@@ -10482,6 +10752,18 @@ const FinanzasModule = {
                 soltar(); return;
             }
             if (monedaData.error) { Toast.warning(monedaData.error); soltar(); return; }
+
+            // Tanda 7 · hallazgo 12 — nada validaba que los tres números cerraran.
+            // Un neto y un IVA que no suman el total es una fila del Libro IVA que
+            // no va a cuadrar contra la DDJJ, y no se nota hasta que la arma el
+            // contador. Se frena acá, con el número que falta escrito en el aviso.
+            if (neto != null && iva != null) {
+                const dif = Math.abs(_r2(neto + iva) - _r2(total));
+                if (dif > 0.02) {
+                    Toast.warning(`Neto + IVA da ${this._formatMoney(_r2(neto + iva))} y el total dice ${this._formatMoney(total)}. Revisá los tres números antes de guardar.`, 6000);
+                    soltar(); return;
+                }
+            }
 
             // Fase 2 · percepciones. Si los tres quedan vacíos, van null y el
             // comportamiento es el de siempre.

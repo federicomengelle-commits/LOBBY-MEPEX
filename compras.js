@@ -873,28 +873,62 @@ const ComprasModule = {
     },
 
     // Datalist + mapa de resolución combinando insumos y piezas del catálogo.
-    // byName[nombre] = { insumo_id } | { catalogo_item_id } (+ unidad). Insumo tiene
-    // prioridad ante colisión de nombre (raro: materia prima vs producto terminado).
+    //
+    // ── Tanda 7 · hallazgo 17 ──
+    // Antes esto ofrecía DOS opciones con el mismo `value` (una etiquetada "insumo" y
+    // otra "pieza") y resolvía por nombre quedándose SIEMPRE con el insumo. En un
+    // `<datalist>` lo que viaja es el `value`, así que la etiqueta era decorativa:
+    // elegir "pieza" guardaba el insumo igual. Probado en prod: elegí la pieza y
+    // quedó `insumo_id: 84`, `catalogo_item_id: null`. Para esos ítems la rama
+    // `catalogo_item_id` era inalcanzable desde esta pantalla.
+    // El comentario viejo decía que la colisión era "rara (materia prima vs producto
+    // terminado)". Medido: **30 de los 83 insumos** colisionan, y son justo los
+    // muebles y electrodomésticos que MEPEX alquila — todas las sillas, sillones,
+    // mesas, taburetes, heladeras, TVs, el microondas, la cafetera, los reflectores y
+    // los matafuegos. Los que NO colisionan son las materias primas.
+    // Ahora: sólo a los nombres repetidos se les agrega un sufijo que los distingue,
+    // así los ~380 que no colisionan se siguen escribiendo igual que siempre.
     _invRef() {
         const byName = {};
         const norm = s => (s || '').trim().toLowerCase();
         const opts = [];
-        (this._insumos || []).forEach(i => {
-            const k = norm(i.nombre); if (!k) return;
-            if (!byName[k]) byName[k] = { insumo_id: i.id, unidad: i.unidad || null };
-            opts.push(`<option value="${this._escAttr(i.nombre)}" label="insumo">`);
+        const insumos = this._insumos || [];
+        const piezas = this._catalogoPiezas || [];
+
+        // Qué nombres están de los dos lados (o repetidos de un mismo lado).
+        const cuenta = {};
+        [...insumos, ...piezas].forEach(x => {
+            const k = norm(x.nombre); if (!k) return;
+            cuenta[k] = (cuenta[k] || 0) + 1;
         });
-        (this._catalogoPiezas || []).forEach(c => {
-            const k = norm(c.nombre); if (!k) return;
-            if (!byName[k]) byName[k] = { catalogo_item_id: c.id, unidad: c.unidad_medida || c.unidad || null };
-            opts.push(`<option value="${this._escAttr(c.nombre)}" label="pieza">`);
+        const etiqueta = (nombre, sufijo) => cuenta[norm(nombre)] > 1 ? `${nombre} · ${sufijo}` : nombre;
+
+        insumos.forEach(i => {
+            if (!norm(i.nombre)) return;
+            const visible = etiqueta(i.nombre, 'material');
+            byName[norm(visible)] = { insumo_id: i.id, unidad: i.unidad || null };
+            opts.push(`<option value="${this._escAttr(visible)}" label="material">`);
+        });
+        piezas.forEach(c => {
+            if (!norm(c.nombre)) return;
+            const visible = etiqueta(c.nombre, 'pieza');
+            byName[norm(visible)] = { catalogo_item_id: c.id, unidad: c.unidad_medida || c.unidad || null };
+            opts.push(`<option value="${this._escAttr(visible)}" label="pieza">`);
         });
         return { options: opts.join(''), byName };
     },
 
+    // Tanda 7 · hallazgo 16 — `new Date('2026-08-29')` lo parsea JS como MEDIANOCHE
+    // UTC; renderizado en UTC−3 da "28 de ago". Verificado contra la base: la OC
+    // guardada el 29 decía 28, y la OC-0001 (2026-07-10) decía "09 de jul".
+    // Agregarle la hora lo vuelve medianoche LOCAL, que es lo que significa una
+    // columna `date`. El idioma correcto ya estaba en el repo (66 lugares lo usan);
+    // faltaba acá y en `locaciones.js`. Un timestamp completo se deja como viene:
+    // ése ya trae su offset y se renderiza bien.
     _formatDate(d) {
         if (!d) return '—';
-        return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+        const v = (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? d + 'T00:00:00' : d;
+        return new Date(v).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
     },
 
     _formatMoney(n) {
@@ -1681,11 +1715,15 @@ const ComprasModule = {
                 <tbody>
                     ${items.map(i => `
                         <tr>
-                            <td>${i.nombre}</td>
+                            <!-- Tanda 7 - hallazgo 26: nombre y notas son texto libre y se
+                                 interpolaban CRUDOS, teniendo el modulo su propio _esc. Es
+                                 el mismo agujero que se tapo en modules.js y locaciones.js
+                                 en la fase 12.A. -->
+                            <td>${this._esc(i.nombre)}</td>
                             <td class="cmp-mono">${i.cantidad || '—'}</td>
                             <td class="cmp-mono">${this._formatMoney(i.precio_unitario)}</td>
                             <td class="cmp-mono">${this._formatMoney(i.subtotal)}</td>
-                            <td>${i.notas || ''}</td>
+                            <td>${this._esc(i.notas || '')}</td>
                             <td><button class="cmp-btn-del" data-item-id="${i.id}" title="Quitar">✕</button></td>
                         </tr>
                     `).join('')}
@@ -1726,7 +1764,29 @@ const ComprasModule = {
         });
     },
 
+    // Tanda 7 · hallazgo 19 — `monto_total` tenía DOS escritores y un solo rótulo.
+    // Lo escribía esto (suma de ítems) y lo escribía `_recomputeOCGanadora` (monto de
+    // la ganadora), y ganaba el último que hubiera corrido. La pantalla lo rotula
+    // "Monto Total (ganadora)". Verificado en prod: ganadora $500.000, ítems $480.000
+    // → la ficha mostraba "(ganadora) $480.000" justo encima del presupuesto que decía
+    // "$500.000 GANADORA", la lista de OC mostraba $480.000 y el KPI "Monto abierto"
+    // quedaba $20.000 corto. El egreso salía bien porque `generarEgresoDeOC` lee la
+    // ganadora de la base y no este cache — o sea que no se perdía plata, se perdía el
+    // número en el que uno se apoya para aprobar.
+    // La columna pasa a significar UNA cosa: **lo que nos comprometimos a pagar**. Si
+    // hay ganadora manda la ganadora; si no hay, la suma de los ítems es la mejor
+    // estimación disponible.
     async _recalcTotal(ordenId) {
+        try {
+            const { data: gan, error } = await supabaseClient.from('compras_oc_presupuestos')
+                .select('monto').eq('orden_id', ordenId).eq('es_ganadora', true).eq('_deleted', false).maybeSingle();
+            // Un error de lectura no puede hacer que se pise el monto de la ganadora:
+            // ante la duda, no se escribe (mismo criterio que `_recomputeOCGanadora`).
+            if (error) { console.warn('[Compras] _recalcTotal: no se pudo leer la ganadora, no se toca el monto:', error.message); return; }
+            if (gan) return;   // manda la ganadora, los ítems no la pisan
+        } catch (e) {
+            console.warn('[Compras] _recalcTotal:', e.message); return;
+        }
         const items = this._ordenItems.filter(i => String(i.orden_id) === String(ordenId));
         const total = items.reduce((sum, i) => sum + (i.subtotal || 0), 0);
         await supabaseClient.from('compras_ordenes').update({ monto_total: total }).eq('id', ordenId);
@@ -1796,6 +1856,16 @@ const ComprasModule = {
             });
 
             document.getElementById('cmpRecepSave')?.addEventListener('click', async () => {
+                // Tanda 7 · hallazgo 17 — un nombre tipeado que no matchea dejaba la fila
+                // sin vínculo y la recepción no sumaba stock, sin decir nada. Se juntan
+                // todas las filas con problema y se avisa una vez, no una por fila.
+                const sinMatch = [...document.querySelectorAll('[data-recep-row]')]
+                    .map(row => (row.querySelector('.cmp-recep-insumo')?.value || '').trim())
+                    .filter(v => v && !invByName[v.toLowerCase()]);
+                if (sinMatch.length) {
+                    Toast.warning(`No encuentro en la lista: ${[...new Set(sinMatch)].join(' · ')}. Elegilos del desplegable o dejá el campo vacío.`, 7000);
+                    return;
+                }
                 const payloadItems = [...document.querySelectorAll('[data-recep-row]')].map(row => {
                     const insumoInput = row.querySelector('.cmp-recep-insumo');
                     const cantInput = row.querySelector('.cmp-recep-cant');
@@ -2010,6 +2080,13 @@ const ComprasModule = {
                 const subtotal = cantidad * precioUnit;
                 const insumoNombre = (document.getElementById('cmpItemInsumo')?.value || '').trim();
                 const ref = insumoNombre ? (invByName[insumoNombre.toLowerCase()] || {}) : {};
+                // Tanda 7 · hallazgo 17 — si escribió algo en el campo y no matchea con
+                // nada, antes se guardaba el ítem SIN vínculo y en silencio: la recepción
+                // después no sumaba stock y nadie sabía por qué. Ahora se dice.
+                if (insumoNombre && !ref.insumo_id && !ref.catalogo_item_id) {
+                    Toast.warning(`"${insumoNombre}" no está en la lista. Elegilo del desplegable, o dejá el campo vacío si no querés vincularlo al stock.`, 6000);
+                    return;
+                }
 
                 try {
                     await supabaseClient.from('compras_orden_items').insert({

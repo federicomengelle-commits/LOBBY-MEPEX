@@ -532,16 +532,35 @@ const EventosModule = {
     //  FILTERS & SORT
     // ═══════════════════════════════════════════
 
+    // Tanda 7 · hallazgo 4 — esto hacía `appendChild` sin limpiar: cada vez que se
+    // volvía a la pantalla sumaba otra tanda entera de opciones. Medido en prod:
+    // 35 opciones para 7 predios distintos. Ahora se reconstruye de cero, y se
+    // conserva lo que estaba elegido para no resetearle el filtro al usuario en
+    // cada re-render.
+    // Tanda 7 · hallazgo 5 — ningún modal de la ficha decía de qué evento era. Con dos
+    // fichas parecidas abiertas una atrás de la otra no hay forma de saber dónde estás
+    // parado: en el relevamiento estuve a un click de pisarle las fechas a un evento
+    // real creyendo que editaba uno de prueba. El nombre va en el título, que es lo
+    // primero que se lee. (El modal de recepción de Compras ya lo hacía bien — el
+    // ejemplo a copiar estaba adentro de la casa.)
+    // `Modal.open` escapa el título, así que va texto plano.
+    _tituloConEvento(base, eventoId) {
+        const ev = (this._events || []).find(e => String(e.id) === String(eventoId));
+        const nombre = ev && ev.nombre ? String(ev.nombre).trim() : '';
+        return nombre ? `${base} · ${nombre}` : base;
+    },
+
     _populateVenueFilter() {
-        const venues = [...new Set(this._events.map(e => e.venue).filter(Boolean))].sort();
         const sel = document.getElementById('evFilterVenue');
         if (!sel) return;
-        venues.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v;
-            opt.textContent = v;
-            sel.appendChild(opt);
-        });
+        const elegido = this._venueFilter || sel.value || '';
+        const venues = [...new Set(this._events.map(e => e.venue).filter(Boolean))].sort();
+        sel.innerHTML = '<option value="">Todos los predios</option>'
+            + venues.map(v => `<option value="${this._escAttr(v)}">${this._esc(v)}</option>`).join('');
+        // Si el predio elegido ya no existe (se borró el último evento que lo usaba),
+        // el select vuelve solo a "Todos" en vez de quedar mostrando un filtro fantasma.
+        sel.value = venues.includes(elegido) ? elegido : '';
+        if (sel.value !== elegido) this._venueFilter = null;
     },
 
     _applyFilters() {
@@ -1060,6 +1079,8 @@ const EventosModule = {
         const c = document.getElementById('evJornadasContent');
         if (c) c.innerHTML = this._renderJornadasView(eventoId, jornadas, this._asignCache[eventoId]);
         this._attachJornadasViewEvents(eventoId);
+        document.getElementById('evJornadasEmptyCta')?.addEventListener('click', () =>
+            this._openJornadasModal(eventoId, this._jornadasCache[eventoId] || []));
         document.getElementById('evJornadasEdit')?.addEventListener('click', () =>
             this._openJornadasModal(eventoId, this._jornadasCache[eventoId] || []));
         document.getElementById('evJornadasAddGente')?.addEventListener('click', () =>
@@ -1077,7 +1098,11 @@ const EventosModule = {
         const fases = [{ k: 'armado', label: 'Armado' }, { k: 'evento', label: 'Evento' }, { k: 'desarme', label: 'Desarme' }];
         let html = '';
         if (!jornadas || jornadas.length === 0) {
-            html += `<div class="ev-j-empty">Sin jornadas. Tocá ✎ para armar la tabla de horarios por día.</div>`;
+            // Tanda 7 · hallazgo 6 — el cartel mandaba a tocar un ✎ que en una tablet
+            // no se ve (nace con opacity:0 y lo revela el hover). El cartel ES el
+            // botón: el mensaje y la acción pasan a ser la misma cosa, así no depende
+            // de que el lápiz se vea.
+            html += `<button type="button" class="ev-j-empty ev-j-empty-btn" id="evJornadasEmptyCta">Sin jornadas todavía. Tocá acá para armar la tabla de horarios por día.</button>`;
         } else {
             html += fases.map(f => {
                 const rows = jornadas.filter(j => j.fase === f.k);
@@ -1201,6 +1226,65 @@ const EventosModule = {
             if (!js.length) return '';
             return `<div class="ev-asig-fase"><span class="ev-asig-fase-lbl">${faseLabel[f]}</span>${js.map(j => `<label class="ev-asig-dia"><input type="checkbox" class="ev-asig-diack" value="${j.id}" data-fase="${j.fase}" data-fecha="${j.fecha}" ${j.id === preId ? 'checked' : ''}> ${this._fmtDiaFecha(j.fecha)}</label>`).join('')}</div>`;
         }).join('');
+        // ── Tanda 7 · hallazgo 1 — la gente comprometida en otro evento ──
+        // `API.detectarConflictosPersona` existía y lo usaba el modal de Logística,
+        // pero éste no lo llamaba: se podía citar a la misma persona al armado de dos
+        // eventos el mismo día sin ningún aviso, y no se notaba hasta ese día, con
+        // gente faltando en un galpón. Verificado en prod (Braian Ayala, 10-nov).
+        // Se resuelve con UNA consulta para todas las fechas del evento en vez de una
+        // por persona, y se muestra EN LA LISTA antes de elegir: frenar después de
+        // que tildó a diez personas no sirve de nada.
+        const fechasEvento = [...new Set(jornadas.map(j => j.fecha).filter(Boolean))].sort();
+        const ocupadas = new Map();   // personaId -> Map(fecha -> nombre del otro evento)
+        if (fechasEvento.length) {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('asignaciones_evento')
+                    .select('persona_id, fecha_inicio, fecha_fin, evento:eventos!evento_id(id, nombre)')
+                    .neq('evento_id', eventoId)
+                    .eq('_deleted', false)
+                    .neq('estado', 'cancelada')
+                    .lte('fecha_inicio', fechasEvento[fechasEvento.length - 1] + 'T23:59:59')
+                    // `NULL >= X` en SQL da `unknown`, no `true`: una asignación con
+                    // `fecha_fin` vacía (residuo de cuando existía Logística) quedaba
+                    // fuera EN SILENCIO, que es justo el bug que este bloque viene a
+                    // arreglar. Hoy no hay ninguna (0 de 53), pero cubrirlo es una línea
+                    // y además hace que el fallback de abajo deje de ser código muerto.
+                    .or(`fecha_fin.gte.${fechasEvento[0]},fecha_fin.is.null`);
+                if (error) throw error;
+                const setFechas = new Set(fechasEvento);
+                (data || []).forEach(a => {
+                    const ini = String(a.fecha_inicio || '').slice(0, 10);
+                    const fin = String(a.fecha_fin || a.fecha_inicio || '').slice(0, 10);
+                    if (!ini) return;
+                    // Tope de vueltas: una asignación de Logística puede abarcar meses
+                    // y no hay razón para recorrerlos día por día más allá del evento.
+                    let d = ini;
+                    for (let i = 0; d && d <= fin && i < 400; i++, d = this._nextDay(d)) {
+                        if (!setFechas.has(d)) continue;
+                        if (!ocupadas.has(String(a.persona_id))) ocupadas.set(String(a.persona_id), new Map());
+                        ocupadas.get(String(a.persona_id)).set(d, (a.evento && a.evento.nombre) || 'otro evento');
+                    }
+                });
+            } catch (e) {
+                // Que no se pueda avisar no puede impedir asignar: se degrada a como
+                // venía funcionando hasta hoy.
+                console.warn('[Eventos] no se pudieron leer los choques de agenda:', e.message);
+            }
+        }
+        let ovRef = null;   // se completa al abrir el modal; antes de eso no hay DOM
+        const diasElegidos = () => {
+            const cks = ovRef ? [...ovRef.querySelectorAll('.ev-asig-diack:checked')] : [];
+            if (cks.length) return cks.map(c => c.dataset.fecha);
+            return (jornada && jornada.fecha) ? [jornada.fecha] : [];
+        };
+        const choqueDe = (personaId) => {
+            const conf = ocupadas.get(String(personaId));
+            if (!conf) return null;
+            const dias = diasElegidos().filter(f => conf.has(f));
+            return dias.length ? { dias, evento: conf.get(dias[0]) } : null;
+        };
+
         const rolesDisponibles = [...new Set(personas.flatMap(p => p.roles_operativos || []))].sort();
         // Crew del armado (unión de la gente asignada a cualquier jornada de fase 'armado').
         // Preset "traer los del armado" — pensado para cargar el desarme de una.
@@ -1220,6 +1304,11 @@ const EventosModule = {
                 const checked = selected.has(String(p.id)) ? 'checked' : '';
                 const rolesTxt = (p.roles_operativos || []).map(r => this._ROL_LABELS[r] || r).join(' · ') || (p.rol_legacy || '');
                 const tipoChip = tipoLbl ? `<span class="ev-persona-tipo" style="background:${color}22;color:${color};border:1px solid ${color}55;">${tipoLbl}</span>` : '';
+                // Hallazgo 1: el aviso va acá, pegado al nombre, no en un cartel al final.
+                const ch = choqueDe(p.id);
+                const chipChoque = ch
+                    ? `<span class="ev-persona-choque" title="Ya está citada en «${this._escAttr(ch.evento)}»${ch.dias.length > 1 ? ` y en ${ch.dias.length} de los días elegidos` : ' ese día'}">⚠ ${this._esc(ch.evento)}${ch.dias.length > 1 ? ` ·${ch.dias.length}d` : ''}</span>`
+                    : '';
                 const telLink = p.telefono ? `<a class="ev-persona-option-tel" href="https://wa.me/${this._waNumber(p.telefono)}" target="_blank" rel="noopener" title="WhatsApp a ${this._escAttr(p.nombre)}">💬 ${this._escAttr(p.telefono)}</a>` : '';
                 return `
                     <label class="ev-persona-option ${checked ? 'ev-persona-selected' : ''}" data-persona-id="${p.id}">
@@ -1228,6 +1317,7 @@ const EventosModule = {
                             <span class="ev-persona-option-nombre">${this._escAttr(p.nombre)}</span>
                             <span class="ev-persona-option-rol" style="color:${color}">${this._escAttr(rolesTxt)}</span>
                         </div>
+                        ${chipChoque}
                         ${tipoChip}
                         ${telLink}
                     </label>`;
@@ -1249,6 +1339,7 @@ const EventosModule = {
                 .ev-asig-h-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
                 .ev-asig-copybtn{font-family:var(--font-main);font-size:0.68rem;text-transform:none;letter-spacing:0;font-weight:500;background:transparent;border:1px dashed var(--primary);color:var(--primary);border-radius:6px;padding:3px 9px;cursor:pointer;white-space:nowrap;}
                 .ev-asig-copybtn:hover{background:rgba(0,169,193,0.12);}
+                .ev-persona-choque{font-family:var(--font-mono);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.03em;background:rgba(255,68,68,0.12);color:#ff6b6b;border:1px solid rgba(255,68,68,0.4);border-radius:5px;padding:2px 7px;white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis;}
             </style>
             <div class="ev-asig">
                 <div>
@@ -1276,14 +1367,18 @@ const EventosModule = {
                 <div class="ev-addp-note">Las asignaciones se crean en estado <strong>aprobada</strong> directamente.</div>
             </div>`;
         const inst = Modal.open({
-            title: '👥 Agregar gente al evento',
+            title: this._tituloConEvento('👥 Agregar gente', eventoId),
             body, size: 'md',
             footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evAsigSave" disabled>Agregar (0)</button>`,
         });
         const ov = inst.overlay;
         const listEl = ov.querySelector('#evAsigPersonaList');
         const saveBtn = ov.querySelector('#evAsigSave');
+        ovRef = ov;   // desde acá `diasElegidos()` lee los checkboxes reales
         const refreshList = () => { listEl.innerHTML = buildPersonaList(filterRol, search, selected); };
+        // Al cambiar los días elegidos cambian los choques: la lista se repinta para
+        // que el aviso corresponda a los días que están tildados en ese momento.
+        ov.querySelectorAll('.ev-asig-diack').forEach(ck => ck.addEventListener('change', () => refreshList()));
         const updateCount = () => { const n = selected.size; saveBtn.disabled = n === 0; saveBtn.textContent = n > 0 ? `Agregar (${n})` : 'Agregar (0)'; };
 
         listEl.addEventListener('click', (e) => {
@@ -1314,6 +1409,30 @@ const EventosModule = {
             if (!dias.length) { Toast.warning('Elegí al menos un día.'); return; }
             if (!selected.size) { Toast.warning('Tildá al menos una persona.'); return; }
             const rolDef = ov.querySelector('#evAsigRolDef')?.value || null;
+
+            // Tanda 7 · hallazgo 1 — segunda red: el chip de la lista avisa mientras
+            // se elige, pero se puede tildar a alguien con el filtro de rol puesto y
+            // no llegar a verlo. Acá se frena antes de escribir, diciendo QUIÉN choca
+            // y CON QUÉ. No bloquea: a veces son dos eventos en el mismo predio y la
+            // persona va igual — la decisión es de quien arma, no del sistema.
+            const choques = [];
+            for (const pid of selected) {
+                const conf = ocupadas.get(String(pid));
+                if (!conf) continue;
+                for (const d of dias) if (conf.has(d.fecha)) choques.push({ pid, fecha: d.fecha, evento: conf.get(d.fecha) });
+            }
+            if (choques.length) {
+                const nombreDePid = (pid) => (personas.find(x => String(x.id) === String(pid)) || {}).nombre || 'Alguien';
+                const lineas = choques.slice(0, 8).map(c =>
+                    `• <b>${this._esc(nombreDePid(c.pid))}</b> — ${this._fmtDate(c.fecha)} en «${this._esc(c.evento)}»`).join('<br>');
+                const resto = choques.length > 8 ? `<br>…y ${choques.length - 8} más` : '';
+                const ok = await Confirm.action(
+                    choques.length === 1 ? 'Esa persona ya está citada en otro evento' : `${choques.length} choques de agenda`,
+                    `${lineas}${resto}<br><br>Si va igual, se cita en los dos. ¿Agregar de todos modos?`
+                );
+                if (!ok) return;
+            }
+
             const existentes = new Set((this._asignCache[eventoId] || []).filter(a => a.jornada_id).map(a => a.jornada_id + '|' + a.persona_id));
             saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
             let creadas = 0, saltadas = 0;
@@ -1379,7 +1498,7 @@ const EventosModule = {
                 <div class="ev-j-rows" data-fase="${f.k}">${work[f.k].map((r, i) => rowHtml(f.k, r, i)).join('')}</div>
             </div>`;
         const body = `<div class="ev-j-editor">${fases.map(faseHtml).join('')}<p class="ev-j-hint">Cada jornada = día + hora inicio + hora fin. Las filas sin fecha se descartan.</p></div>`;
-        const inst = Modal.open({ title: 'Editar jornadas', body, size: 'md', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evJSave">Guardar</button>` });
+        const inst = Modal.open({ title: this._tituloConEvento('Editar jornadas', eventoId), body, size: 'md', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evJSave">Guardar</button>` });
         const ov = inst.overlay;
         const repaint = (fase) => { const cont = ov.querySelector(`.ev-j-rows[data-fase="${fase}"]`); if (cont) cont.innerHTML = this._jWork[fase].map((r, i) => rowHtml(fase, r, i)).join(''); };
         ov.addEventListener('click', (e) => {
@@ -1431,6 +1550,47 @@ const EventosModule = {
             ['armado', 'evento', 'desarme'].forEach(fase => {
                 this._jWork[fase].filter(r => r.fecha).forEach((r, idx) => arr.push({ id: r.id, fase, fecha: r.fecha, hora_inicio: r.hora_inicio || null, hora_fin: r.hora_fin || null, orden: idx }));
             });
+
+            // Tanda 7 · hallazgo 2 — acá NO había ninguna validación de orden, y ésta
+            // es la pantalla donde se cargan las fechas de verdad: el modal de crear
+            // evento sí valida, pero las fechas del evento las deriva el trigger
+            // `fn_evento_jornadas_sync` del MIN/MAX de estas filas. Verificado en
+            // producción: un evento quedó con ARMADO 19-oct y DESARME 18-oct y la
+            // ficha lo mostró sin marcarlo. El trigger tampoco lo ve, porque hace
+            // MIN/MAX por fase y nunca compara una fase contra otra.
+            // Se reusa `_validateFaseDates`, que es el mismo chequeo encadenado que
+            // usa el modal de crear/editar: no hay dos criterios dando vueltas.
+            const _fechasDe = (fase) => arr.filter(r => r.fase === fase).map(r => r.fecha).sort();
+            const _borde = (fase, cual) => {
+                const f = _fechasDe(fase);
+                return f.length ? { date: cual === 'min' ? f[0] : f[f.length - 1] } : null;
+            };
+            const ordenErr = this._validateFaseDates([
+                { label: 'Fin del armado', d: _borde('armado', 'max') },
+                { label: 'Inicio del evento', d: _borde('evento', 'min') },
+                { label: 'Fin del evento', d: _borde('evento', 'max') },
+                { label: 'Inicio del desarme', d: _borde('desarme', 'min') },
+            ]);
+            if (ordenErr) {
+                // AVISA, NO BLOQUEA — y esto es a propósito. La primera versión de este
+                // chequeo cortaba con un Toast.error, y era MÁS ESTRICTA que la
+                // validación que ya existía en el modal de crear evento: aquélla sólo
+                // compara el ARRANQUE del armado contra el inicio del evento, porque
+                // nunca tuvo el fin del armado (lo deriva de estas mismas jornadas).
+                // Ésta compara el FIN del armado, así que dejaba sin poder guardar un
+                // caso legítimo: una jornada de armado fechada durante el primer día de
+                // una feria de varios días — los retoques del primer día. Sin válvula,
+                // la única salida habría sido mal-clasificar la fase de esa jornada,
+                // ensuciando el dato del que come el trigger.
+                // El bug que se encontró en producción era que NO había ningún aviso;
+                // un aviso que se puede pasar de largo lo arregla igual.
+                const seguir = await Confirm.action(
+                    'Las fechas no van en orden',
+                    `${this._esc(ordenErr)}<br><br>Puede estar bien (por ejemplo, retoques de armado durante el primer día del evento). ¿Guardar así?`
+                );
+                if (!seguir) return;
+            }
+
             try {
                 await API.setJornadas(eventoId, arr);
                 this._syncJornales(eventoId); // los días cambian → re-alimenta los jornales de Rendimiento
@@ -1457,6 +1617,8 @@ const EventosModule = {
         s.id = 'ev-jornadas-styles';
         s.textContent = `
             .ev-j-empty{color:var(--text-muted);font-size:0.82rem;padding:4px 0;}
+            .ev-j-empty-btn{display:block;width:100%;text-align:left;background:transparent;border:1px dashed var(--border);border-radius:6px;padding:12px 14px;cursor:pointer;font-family:inherit;transition:all .15s;}
+            .ev-j-empty-btn:hover,.ev-j-empty-btn:active{border-color:var(--primary);color:var(--primary);background:rgba(0,169,193,0.06);}
             .ev-j-vfase{margin-bottom:8px;}
             .ev-j-vfase-label{font-family:var(--font-mono);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-dim);margin-bottom:3px;}
             .ev-j-vtable{width:100%;border-collapse:collapse;}
@@ -2247,7 +2409,7 @@ const EventosModule = {
         `;
 
         Modal.open({
-            title: transId ? '🚚 Editar vehículo' : '🚚 Agregar vehículo al transporte',
+            title: this._tituloConEvento(transId ? '🚚 Editar vehículo' : '🚚 Agregar vehículo al transporte', eventoId),
             body, size: 'md',
             footer: `
                 <button class="btn btn-ghost" data-modal-close>Cancelar</button>
@@ -2571,7 +2733,7 @@ const EventosModule = {
                     <input class="form-input" type="text" id="evOLLink" value="${this._escAttr(ev.linkUrl || '')}" placeholder="https://… ó @instagram" autocomplete="off">
                 </div>
             </div>`;
-        const inst = Modal.open({ title: 'Organizador y link', body, size: 'sm', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evOLSave">Guardar</button>` });
+        const inst = Modal.open({ title: this._tituloConEvento('Organizador y link', ev && ev.id), body, size: 'sm', footer: `<button class="btn btn-ghost" data-modal-close>Cancelar</button><button class="btn btn-primary" id="evOLSave">Guardar</button>` });
         const orgInput = inst.overlay.querySelector('#evOLOrg');
         inst.overlay.querySelector('#evOLOrgAdd')?.addEventListener('click', async () => {
             const nombre = (orgInput?.value || '').trim();
@@ -3202,7 +3364,7 @@ const EventosModule = {
         `;
 
         const instance = Modal.open({
-            title: 'Vincular proyecto existente',
+            title: this._tituloConEvento('Vincular proyecto existente', eventoId),
             body,
             size: 'sm',
             footer: '<button class="btn btn-ghost" data-modal-close>Cerrar</button>',
@@ -3314,7 +3476,7 @@ const EventosModule = {
         `;
 
         const instance = Modal.open({
-            title: isSeguro ? 'Agregar seguro / acreditación' : 'Agregar documento',
+            title: this._tituloConEvento(isSeguro ? 'Agregar seguro / acreditación' : 'Agregar documento', ev && ev.id),
             body,
             size: 'sm',
             footer: `

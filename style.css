@@ -6291,6 +6291,20 @@ body {
     color: var(--primary, #00A9C1);
     border-color: rgba(0, 169, 193, 0.3);
 }
+/* Tanda 7 · hallazgo 6 — el lápiz nace en `opacity: 0` y sólo lo revela el hover de
+   la sección. En un dispositivo táctil no hay hover: TODOS los lápices de la ficha
+   del evento quedan invisibles (no sólo el de jornadas), y el cartel de vacío manda
+   a tocar un botón que no se ve. En touch se muestran siempre, apagados, y el
+   contraste sube al tocarlos. Es más ancho que el hallazgo original a propósito:
+   la causa era una sola para todos. */
+@media (hover: none) {
+    /* No alcanza con subir la opacidad: el ícono es #555 sobre un panel #0d0d12, y a
+       0.55 el contraste queda en ~1.5:1 — técnicamente visible, en la práctica no se
+       ve. Para el público que motivó el hallazgo (tablet en el galpón) tiene que
+       LEERSE como un botón: opacidad plena, gris más claro y un borde que lo delimite. */
+    .ev-edit-btn { opacity: 1; color: #9a9a9a; border-color: rgba(255,255,255,0.16); }
+    .ev-edit-btn:active { color: var(--primary, #00A9C1); border-color: rgba(0,169,193,0.5); background: rgba(0,169,193,0.12); }
+}
 
 .ev-section-empty {
     color: #444;

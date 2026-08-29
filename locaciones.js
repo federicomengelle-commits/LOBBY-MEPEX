@@ -356,9 +356,14 @@ const LocacionesModule = {
     //  HELPERS
     // ════════════════════════════════════════════════════
 
+    // Tanda 7 · hallazgo 16 — mismo arreglo que en compras.js: una columna `date`
+    // llega como '2026-08-29' y JS la parsea como medianoche UTC, así que en UTC−3
+    // se mostraba el día anterior. Acá pega en los vencimientos de documentos de las
+    // locaciones, que es justo donde un día de corrimiento importa.
     _formatDate(d) {
         if (!d) return '—';
-        return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+        const v = (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? d + 'T00:00:00' : d;
+        return new Date(v).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
     },
 
     _formatMonto(monto, moneda) {

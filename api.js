@@ -8530,6 +8530,61 @@ const API = {
         ['proyecto_id','cliente_id','cuenta_id','plan_cobro_item_id','evento_id','comprobante_id'].forEach(k => {
             if (row[k] === 'undefined' || row[k] === 'null' || row[k] === '') row[k] = null;
         });
+
+        // ── Tanda 7 · hallazgo 9 — candado contra el doble cobro de una cuota ──
+        // La pantalla del plan no se refrescaba al cobrar: la cuota seguía diciendo
+        // "Pendiente" con el botón activo, y volver a apretarlo insertaba una SEGUNDA
+        // aplicación. El trigger suma todas las vivas, así que la cuota terminaba con
+        // el 200% cobrado y dos ingresos reales con sus dos asientos.
+        // Va ACÁ y no en la pantalla porque éste es el circuito único de cobro: lo
+        // que entre por otra puerta (dos pestañas, dos personas, un flujo futuro)
+        // choca contra el mismo candado.
+        // Y va ANTES del insert del ingreso a propósito: si validara después,
+        // rechazar dejaría el ingreso cargado sin su aplicación, que es peor que el
+        // problema que vengo a resolver.
+        // ⚠️ El candado mira `row.plan_cobro_item_id`, NO `syncPlanItem`. La primera
+        // versión miraba el flag y tenía un agujero de manual: "⎘ Duplicar" copiaba un
+        // cobro con su `plan_cobro_item_id` y lo guardaba SIN el flag, así que pasaba
+        // de largo — y el trigger de la base cuenta la columna igual, sin importarle
+        // por qué puerta entró. La cuota quedaba sobre-cobrada sin un solo error.
+        // El vínculo con la cuota es lo que hay que validar; el flag sólo decide si
+        // además se escribe la fila de `cobro_aplicaciones`.
+        if (row.plan_cobro_item_id) {
+            const { data: cuota, error: eCuota } = await supabaseClient
+                .from('plan_cobro_items')
+                .select('id, concepto, monto, monto_cobrado, estado, moneda, _deleted')
+                .eq('id', row.plan_cobro_item_id).maybeSingle();
+            // Un error de lectura NO puede dejar pasar el cobro: un guard que falla
+            // abierto es peor que no tenerlo, porque da confianza sin darla.
+            if (eCuota) throw new Error('No se pudo verificar el estado de la cuota: ' + eCuota.message);
+            if (!cuota || cuota._deleted) throw new Error('Esa cuota ya no existe. Recargá el plan de cobro.');
+            // Espejo del guard que el trigger `fn_recalcular_cuota_plan` ya tiene del
+            // otro lado ("cuota anulada: no se toca, es una decisión humana"). Hoy la
+            // pantalla esconde el botón Cobrar en las anuladas, pero eso es un gate de
+            // UI y mañana puede entrar otro flujo por acá.
+            if (cuota.estado === 'anulada') {
+                throw new Error(`La cuota "${cuota.concepto || ''}" está anulada. Si el cliente pagó igual, registrá el cobro sin atarlo a esta cuota.`);
+            }
+            // La cuota y el cobro tienen que estar en la misma moneda: si no, el
+            // candado compararía magnitudes de monedas distintas y una cuota en USD
+            // se daría por cobrada con el mismo número en pesos.
+            const monedaCuota = cuota.moneda || 'ARS';
+            const monedaCobro = row.moneda || 'ARS';
+            if (monedaCuota !== monedaCobro) {
+                throw new Error(`La cuota está en ${monedaCuota} y el cobro en ${monedaCobro}. Poné la misma moneda, o registrá el cobro sin atarlo a la cuota.`);
+            }
+            const yaCobrado = Number(cuota.monto_cobrado) || 0;
+            const saldoCuota = (Number(cuota.monto) || 0) - yaCobrado;
+            const montoNuevo = Number(row.monto) || 0;
+            if (saldoCuota <= 0.01) {
+                throw new Error(`La cuota "${cuota.concepto || ''}" ya está cobrada por completo. Si el cliente pagó de más, registrá el cobro sin atarlo a esta cuota.`);
+            }
+            if (montoNuevo - saldoCuota > 1) {
+                const $ = (n) => '$' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                throw new Error(`A esa cuota le quedan ${$(saldoCuota)} y estás cobrando ${$(montoNuevo)}. Cobrá el saldo, o registrá la diferencia como un cobro aparte.`);
+            }
+        }
+
         const { data: ing, error } = await supabaseClient.from('ingresos').insert([row]).select('id').single();
         if (error) throw error;
         const out = { ingreso_id: ing.id, plan_sync: null, dif_cambio: null };

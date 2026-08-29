@@ -628,3 +628,200 @@ Los cinco valores verificados contra la base antes de tocar el código (223 con 
 receta = 352). El contenedor ya era `flex-wrap`, así que pasar de 3 a 5 no rompe el layout.
 
 `costos.js?v=44`
+
+---
+---
+
+# FASE 2 · TANDAS B · C · D · G · H *(2026-08-29)*
+
+## Tanda B — `finanzas.js` + `api.js`
+
+### Hallazgo 12 — el comprobante recibido que dejaba el Libro IVA en cero
+
+**Lo que pasaba:** el campo Neto decía *"Auto si ponés total"* y el único listener que existía iba
+**al revés** (calculaba desde el Neto). Como el número que uno tiene delante es el total de la
+factura, se cargaba el total, el neto y el IVA quedaban en NULL, y el **Libro IVA Compras** —lo que
+va a la DDJJ— mostraba **$0,00** de neto y de IVA sobre **$1.815.000** de facturas.
+
+**Lo que quedó:** la entrada es **Total + Alícuota** y el neto y el IVA se derivan.
+
+- La alícuota arranca sola según el tipo: **21% para las facturas A** (las únicas que dan crédito
+  fiscal) y **"sin IVA discriminado" para B, C, recibo y otro** — una B lleva el IVA adentro del
+  precio y no se recupera; una C no tiene.
+- Escribir el **IVA a mano** recalcula el neto desde el total: es la salida para la factura de
+  alícuota mixta.
+- Hay una **opción "Mixta — la cargo a mano"** que no deriva nada. Al abrir un comprobante viejo, si
+  el neto y el IVA guardados no caen en ninguna banda limpia, el select va solo ahí: adivinarle 21%
+  era una trampa, porque después alcanzaba con tocar el total para que el recálculo le pisara los
+  números buenos.
+- Un **cartel en vivo** dice si los tres cierran, y **al guardar se rechaza** si no.
+- Si el neto y el IVA llegan vacíos, **se derivan antes de escribir**: un NULL acá es un $0 en el
+  libro. Y va `0`, no `null`, cuando de verdad no hay IVA discriminado — cero es un dato, null es
+  una ausencia.
+- El `iva` se calcula como `total − neto` (y no como `neto × alícuota`) justamente para que los tres
+  cierren siempre, sin arrastres de redondeo.
+
+### Hallazgo 9 — el doble cobro de una cuota
+
+Eran **tres** cosas, no una:
+
+1. **La pantalla no se refrescaba.** Se recargaban los ingresos pero no el plan, así que la cuota
+   seguía diciendo "Pendiente" con el botón "Cobrar" activo. Arreglado.
+2. **Nada impedía el segundo cobro.** `registrarCobro` insertaba otra aplicación y el trigger las
+   suma: la cuota terminaba al 200% con dos ingresos reales y dos asientos. Ahora hay un candado
+   **antes** del insert (validar después dejaría un ingreso sin su aplicación, que es peor).
+3. **Y el candado, en su primera versión, tenía un agujero de manual que cazó el reviewer:** miraba
+   el flag `syncPlanItem` en vez de la columna. **"⎘ Duplicar" copiaba un cobro con su
+   `plan_cobro_item_id` y lo guardaba sin el flag**, así que pasaba de largo — y el trigger de la
+   base cuenta la columna igual, sin importarle por qué puerta entró. Un click en un botón que ya
+   estaba en pantalla, sin ninguna carrera. Ahora el candado mira **la columna**, y además Duplicar
+   limpia el vínculo a la cuota y a la factura: duplicar sirve para repetir un movimiento parecido,
+   no para cobrar dos veces lo mismo.
+
+El candado además rechaza cobrar una **cuota anulada** (espejo del guard que el trigger ya tenía del
+otro lado) y **cobrar en una moneda distinta** de la de la cuota — sin eso comparaba magnitudes de
+monedas distintas y una cuota en USD se daba por cobrada con el mismo número en pesos.
+
+**Lo que NO cierra, dicho:** el candado es *check-then-act*. Dos llamadas que se solapen dentro del
+round-trip pueden leer las dos el mismo saldo. Se le agregó al botón de Ingreso el mismo **candado de
+reentrancia** que el modal de comprobante recibido ya tenía —que cierra el camino realista, el doble
+click—, pero el cierre duro pide una constraint en la base y eso va con Fede.
+
+### Hallazgos 10 y 21
+
+- **10** — "Cobrar cuota" no prefilleaba el cliente aunque el proyecto tiene uno: el cobro nacía sin
+  cliente y no entraba en su cuenta corriente.
+- **21** — el `evento_id` del egreso **se guardaba y no se mostraba en ningún lado**, y el modal de
+  egreso no tenía campo Evento. Y no es un dato de adorno: la imputación a proyecto **o evento** es
+  lo que rutea el gasto a costo directo (5.1.x) en vez de a estructura (5.2.x). Un gasto de un evento
+  sin proyecto —los jornales de una expo, el flete del predio— no se podía imputar desde ahí. La OC y
+  el comprobante recibido ya lo tenían.
+
+---
+
+## Tanda C — `eventos.js` + `style.css`
+
+| # | Qué quedó |
+|---|---|
+| **1** | Se citaba a la misma persona a dos eventos el mismo día **sin ningún aviso**. Ahora el choque se ve **en la lista, antes de elegir** (chip rojo con el nombre del otro evento) y además se confirma al guardar, diciendo quién choca y con qué. **No bloquea**: a veces son dos eventos en el mismo predio. Una sola consulta por el rango de fechas del evento, no una por persona |
+| **2** | El modal de jornadas aceptaba un **desarme anterior al armado**. Reusa `_validateFaseDates`, el mismo chequeo del modal de crear/editar: no hay dos criterios dando vueltas |
+| **4** | El filtro de predios hacía `appendChild` sin limpiar — 35 opciones para 7 predios. Reconstruye y conserva lo elegido |
+| **5** | Ningún modal decía de qué evento era. Ahora el nombre va en el título de los cuatro (jornadas, gente, transporte, organizador) |
+| **6** | Resultó **más ancho que el hallazgo**: `.ev-edit-btn` nace en `opacity: 0` y sólo lo revela el hover, así que **en una tablet TODOS los lápices de la ficha son invisibles**, no sólo el de jornadas. Se muestran en touch, y de paso el cartel de "sin jornadas" pasó a ser el botón |
+
+**Decisión de dónde va cada cosa, que costó mirar:** la validación cronológica **no** puede ir como
+trigger que rechace. `API.setJornadas` escribe **fila por fila**, un HTTP por jornada, así que durante
+una edición normal existen estados intermedios inconsistentes (movés el armado y todavía no moviste
+el desarme). Un `RAISE` en la base rechazaría ediciones legítimas a mitad de camino. Para que el
+candado pueda vivir en la base, primero `setJornadas` tiene que escribir todo en una transacción.
+
+---
+
+## Tanda D — `inventario.js` · hallazgo 14
+
+Los **83 insumos tienen `stock_minimo` en NULL**, y `x < NULL` da NULL: **la alerta no podía
+encenderse nunca**. El tablero decía "0 · todo ok" y "Todo el stock está en niveles normales".
+Ahora distingue las dos cosas: si no hay ni un mínimo cargado el KPI dice **"—" en naranja** con
+"sin mínimos cargados", y el cartel explica que la alerta no puede encenderse. Si hay algunos, avisa
+cuántos siguen sin mínimo. Mismo criterio en el KPI de la pestaña Materiales, para que las dos
+pantallas digan lo mismo.
+
+*(`alertas.js` se miró y está bien: filtra `stock_minimo not null`, así que no genera una alerta
+falsa — simplemente no genera ninguna, que es honesto.)*
+
+---
+
+## Tanda G — `compras.js` + `locaciones.js`
+
+| # | Qué quedó |
+|---|---|
+| **17** | El picker ofrecía **dos opciones con el mismo `value`**: elegir "pieza" guardaba el insumo igual, probado en prod. Ahora **sólo a los nombres repetidos** se les agrega " · material" / " · pieza", así los ~380 que no colisionan se siguen escribiendo igual. Verificado en el browser: la pieza resuelve a `catalogo_item_id`, el material a `insumo_id`, y el nombre ambiguo a secas ya no resuelve solo. Y si se tipea algo que no matchea, **se avisa** en vez de guardar sin vínculo (antes la recepción no sumaba stock y nadie sabía por qué) |
+| **19** | `monto_total` tenía **dos escritores y un solo rótulo**. La columna pasa a significar una cosa: **lo que nos comprometimos a pagar** — si hay ganadora manda la ganadora, si no hay manda la suma de los ítems |
+| **16** | `_formatDate` mostraba **un día antes** toda columna `date`. Verificado en los dos sentidos: `2026-08-29` daba "28 de ago" y ahora da "29"; y en `locaciones.js`, donde pega en vencimientos de documentos, **`2026-01-01` se mostraba como "31 de dic de 2025"** |
+| **26** | `_renderOrdenItemsTable` interpolaba `nombre` y `notas` crudos |
+
+---
+
+## Tanda H — `proyecto-detalle.js`
+
+| # | Qué quedó |
+|---|---|
+| **28** | Los botones que avanzan el ciclo del taller vivían **sólo** en la vista galpón, que se renderiza únicamente si el rol es `taller`: **ninguna cuenta de oficina podía pasar de "En armado"**, ni corregir un estado mal puesto, ni cerrar un proyecto si el del taller se olvidaba. Ahora los pasos del stepper son clickeables para admin/superadmin/pm, con confirmación, y queda sellado quién y cuándo |
+| **29** | La cabecera no se repintaba cuando el checklist movía el estado: decía "Pendiente · 0%" con la base en "En armado · 25%", **en la misma pantalla**. Ahora, si el estado cambió, se repinta el shell — que es lo que ya hacía el cambio de estado del proyecto |
+| **30** | Completar el checklist al 100% no avisaba nada. **No se avanza solo a propósito** (marcar listo es una decisión de quien armó, no una consecuencia de tildar la última casilla), pero se dice que el paso quedó disponible |
+| **31** | Firmar la entrega tampoco movía el ciclo: el stand quedaba entregado y conformado, y el sistema decía que se estaba armando. Se avisa |
+
+---
+
+## Cómo se verificó todo esto
+
+- **`node --check`** en los 8 archivos tocados, y llaves balanceadas en `style.css`.
+- **21 asserts en Node** sobre la lógica pura de `eventos.js`: el orden cronológico entre fases (9
+  casos, incluido el real de producción), el título con el nombre del evento, y el recorrido de días
+  del detector de choques (fin de mes, fin de año, año bisiesto, rango invertido y el tope de 400).
+- **En navegador real, contra el server local:** los **47 scripts diferidos cargan**, los 16 globals
+  de módulo existen, **0 errores de consola**.
+- **Manejando el modal real de comprobante recibido**, los siete casos: Factura A con sólo el total
+  (500.000 + 105.000 ✓), cambio a 10,5%, Factura C que va sola a "sin discriminar", **nota de crédito
+  con total negativo** (−500.000 − 105.000 ✓), IVA cargado a mano, "mixta" que no pisa lo escrito, y
+  el descuadre que aparece en rojo con los dos números.
+- **El picker de compras** probado con datos que colisionan: dos opciones distinguibles, cada una
+  resolviendo al id correcto.
+- **El candado de doble submit**: tras un click inválido el botón vuelve a habilitarse (un guard que
+  deja el botón trabado es peor que no tenerlo).
+
+## Los tres HIGH del reviewer, verificados y arreglados
+
+1. **"Duplicar" evadía el candado del doble cobro** — un botón que ya está en pantalla, sin ninguna
+   carrera. Es el que más importa: mi propio comentario decía que el candado cubría "lo que entre por
+   otra puerta", y Duplicar era exactamente esa puerta.
+2. **El botón de Ingreso no tenía candado de reentrancia**, teniéndolo el modal de al lado con el
+   motivo escrito en un comentario.
+3. **El hallazgo 12 seguía vivo para una nota de crédito con total negativo**: los cuatro gates
+   usaban `> 0` y ninguno corría, así que se volvía a guardar neto y IVA en NULL.
+
+---
+
+## Correcciones a mis propios hallazgos, de mirar el código en vez de deducirlo
+
+Tres, y las tres iguales en la forma: **deduje una consecuencia sin verificar el camino.**
+
+### El 36 no existía (ya está en la tanda J)
+
+"Recalcular todos pondría en $0 a 23 cotizables". Los dos caminos de recálculo ya los excluyen.
+Lo probé sacándole el componente a un ítem demo: avisa y no escribe.
+
+### El 20 estaba mal en su parte más fuerte
+
+Dije: *"no hay forma desde ninguna pantalla de atar un comprobante a un egreso que ya existe"*.
+**Es falso: el modal de comprobante recibido tiene un select "Vincular a egreso"** con los últimos
+200 egresos vivos. Lo que sí es cierto, y quedó arreglado:
+
+- **Nada avisaba que estabas por crear un segundo egreso por la misma compra.** Cada rama se cuida
+  de sí misma —`_egresoForOC` mira el N° de OC en el concepto, el comprobante mira su `egreso_id`—
+  pero ninguna sabe de la otra. Ahora, antes de generar el pago, se buscan egresos del mismo
+  proveedor por un monto parecido y se muestran, sugiriendo vincular en vez de crear.
+- **La comparación mira el total Y el neto**, porque el egreso de la OC nace por el monto **neto** de
+  la cotización y el comprobante viene **con IVA**. Si sólo comparara el total, justo el caso real no
+  aparecería. Para los comprobantes viejos que quedaron con el neto en NULL (hallazgo 12), también
+  se prueba el neto que saldría al 21% y al 10,5%.
+- **El proveedor matchea por inclusión, no por igualdad.** El caso real era "Aglolam" en el egreso y
+  "Aglolam SA" en la factura: con igualdad exacta, el aviso no habría saltado. Lo probé con el caso
+  real y con dos falsos positivos (otro proveedor con el mismo monto, mismo proveedor con otro monto):
+  encuentra el bueno y descarta los dos.
+
+**Lo que queda abierto del 20, dicho con precisión:** vincular un comprobante a un egreso **ya
+pagado** no le agrega la línea de IVA al asiento que ya se posteó — el asiento lo dispara el cambio
+de estado del egreso, no el vínculo. Recuperar ese crédito fiscal pide anular y rehacer, o un
+recálculo del asiento que hoy no existe. Va con Fede.
+
+### El 16 era más chico de lo que dije
+
+Dije "~23 lugares". Midiendo columna por columna: los sitios reales eran **~16 llamadas en 4
+archivos** (`compras.js`, `locaciones.js`, `crm.js`, `costos.js`). Todo el resto de los 51 que había
+contado recibe **timestamps** (`created_at`, `crm_mensajes.fecha`, `asignaciones_evento.fecha_inicio`,
+`crm_casos.proxima_accion_fecha`), que traen su offset y **se renderizaban bien**.
+
+> **La regla que sale de las tres:** el patrón de la llamada no alcanza para saber si algo está mal.
+> Hay que ir a ver **el tipo de la columna** y **quién llama a qué**. Contar ocurrencias de un patrón
+> infla los hallazgos; medir la causa los define.

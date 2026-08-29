@@ -801,6 +801,7 @@ const ProyectoDetalle = {
         it.checked = willCheck;
         // Auto-estado: primer check → en_armado (igual que taller.js).
         const p = this._project;
+        const prevEstadoTaller = p.estado_taller;   // hallazgo 29: para saber si hay que repintar la cabecera
         if (willCheck && (!p.estado_taller || p.estado_taller === 'pendiente')) {
             const prevEstado = p.estado_taller;
             p.estado_taller = 'en_armado';
@@ -817,6 +818,36 @@ const ProyectoDetalle = {
         if (container) {
             container.innerHTML = this._renderProduccionContent();
             this._attachProduccionEvents();
+        }
+
+        // ── Tanda 7 · hallazgo 29 ──
+        // Acá sólo se repintaba `#pjdContent`. Cuando el primer tilde movía el
+        // `estado_taller`, la barra "Ciclo del taller" de la CABECERA se quedaba
+        // diciendo "Pendiente · 0%" con la base ya en "En armado · 25%": dos
+        // indicadores del mismo estado, uno al lado del otro, y sólo uno se
+        // actualizaba. Recién salías de la ficha y volvías y aparecía bien.
+        // Si el estado cambió, se repinta el shell entero — que es lo que ya hace
+        // `_changeStatus` cuando cambia el estado del proyecto.
+        if (p.estado_taller !== prevEstadoTaller) {
+            await this._loadProject();
+            const main = document.getElementById('mainContent');
+            if (main) {
+                main.innerHTML = this._buildShell();
+                this._attachShellEvents();
+                await this._renderTabContent();
+            }
+            return;
+        }
+
+        // ── Tanda 7 · hallazgo 30 ──
+        // Terminar el checklist al 100% no movía nada: el auto-avance existía sólo
+        // para el PRIMER tilde. El que arma terminaba todo y el sistema seguía
+        // diciendo que estaba a la cuarta parte. No se avanza solo a propósito —
+        // marcar listo es una decisión de quien armó, no una consecuencia de tildar
+        // la última casilla— pero al menos se dice que el paso quedó disponible.
+        const todos = (this._checklist || []);
+        if (willCheck && todos.length && todos.every(c => c.checked) && p.estado_taller === 'en_armado') {
+            Toast.info('Checklist completo. Ya se puede marcar el stand como Listo.', 6000);
         }
     },
 
@@ -1610,6 +1641,15 @@ const ProyectoDetalle = {
                 Modal.close(instance.id);
                 await this._verConformeData(row);
                 await this._renderTabContent();
+                // Tanda 7 · hallazgo 31 — firmar la entrega no movía el ciclo: el stand
+                // quedaba entregado y conformado por el cliente, y el sistema seguía
+                // diciendo que se estaba armando. No se avanza solo (mismo criterio que
+                // el 30: el estado del taller lo mueve una persona), pero se avisa que
+                // quedó atrás, porque de acá comen el tablero del galpón y los avisos.
+                const etAhora = this._project && this._project.estado_taller;
+                if (etAhora && !['despachado', 'cerrado'].includes(etAhora)) {
+                    Toast.info('El ciclo del taller sigue en «' + ((this._cicloEstados[etAhora] || {}).label || etAhora) + '». Si el stand ya salió, movelo desde la barra de arriba.', 7000);
+                }
             } catch (e) {
                 console.warn('[ProyectoDetalle] Error creando conforme:', e.message);
                 Toast.error('Error al guardar la entrega');
@@ -1727,6 +1767,40 @@ const ProyectoDetalle = {
     // ═══════════════════════════════════════════
 
     _attachShellEvents() {
+        // Tanda 7 · hallazgo 28 — mover el ciclo del taller desde la ficha.
+        // Se pregunta antes de escribir: es un estado que el taller también toca, y
+        // saltar pasos a mano tiene que ser una decisión, no un click de paso.
+        document.querySelectorAll('.pjd-cs-btn[data-ciclo]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const destino = btn.dataset.ciclo;
+                const cfg = this._cicloEstados[destino];
+                if (!cfg || btn.disabled) return;
+                const actual = this._cicloEstados[this._project.estado_taller || 'pendiente'];
+                const ok = await Confirm.action(
+                    `Mover el ciclo del taller a «${cfg.label}»`,
+                    `El proyecto pasa de <b>${actual ? actual.label : '—'}</b> a <b>${cfg.label}</b>.<br><br>Queda registrado quién lo movió y cuándo.`
+                );
+                if (!ok) return;
+                btn.disabled = true;
+                const previo = this._project.estado_taller;
+                const r = await API.setEstadoTaller(this._projectId, destino).catch(() => null);
+                if (!r) {
+                    this._project.estado_taller = previo;
+                    btn.disabled = false;
+                    Toast.error('No se pudo mover el ciclo.');
+                    return;
+                }
+                Toast.success(`Ciclo del taller: ${cfg.label}`);
+                // Se recarga de la base en vez de parchear el objeto en memoria: el
+                // `completitud_pct` lo recalcula un trigger, así que el valor bueno
+                // está allá y no acá (hallazgo 29, la misma familia).
+                await this._loadProject();
+                document.getElementById('mainContent').innerHTML = this._buildShell();
+                this._attachShellEvents();
+                await this._renderTabContent();
+            });
+        });
+
         // Tabs
         document.querySelectorAll('.pjd-tab').forEach(btn => {
             btn.addEventListener('click', async () => {
@@ -2348,16 +2422,34 @@ const ProyectoDetalle = {
     },
 
     // Sub-progreso del taller (solo visible cuando el proyecto está "En taller").
+    //
+    // ── Tanda 7 · hallazgo 28 ──
+    // Los pasos son clickeables para oficina (admin/superadmin/pm). Antes NO lo eran,
+    // y los botones que avanzan a Listo → Despachado vivían SÓLO en la vista "galpón"
+    // de `proyectos.js`, que se renderiza únicamente si `_userRole === 'taller'`
+    // (línea 450 de ese archivo). Desde la ficha, lo único que movía el estado era el
+    // primer tilde del checklist, con el valor hardcodeado en 'en_armado'. Resultado:
+    // Fede, Lelean, Sofi, Leo y Meli veían un ciclo de 5 pasos del que sólo podían
+    // empujar el primero, sin poder corregir un estado mal puesto ni cerrar un
+    // proyecto si el del taller se olvidaba — y nada en pantalla decía dónde se hacía
+    // el resto. Firmar la entrega tampoco lo movía (hallazgos 30 y 31).
+    // El taller sigue teniendo su camino con su regla (no puede marcar Listo sin
+    // completar el checklist); esto es la herramienta de corrección de la oficina, y
+    // queda registrada igual: `setEstadoTaller` sella quién y cuándo.
     _renderCicloSub(p) {
         const orden = ['pendiente', 'en_armado', 'listo', 'despachado', 'cerrado'];
         const et = p.estado_taller || 'pendiente';
         const cfg = this._cicloEstados[et] || this._cicloEstados.pendiente;
         const pct = typeof p.completitud_pct === 'number' ? p.completitud_pct : cfg.pct;
         const cur = orden.indexOf(et);
+        const puedeMover = !this._isRO && !this._isTaller && (this._isAdminLevel || this._userRole === 'pm');
         const steps = orden.map((e, i) => {
             const c = this._cicloEstados[e];
             const active = i === cur;
-            return `<span class="pjd-cs-step ${active ? 'active' : ''}"${active ? ` style="color:${c.color}"` : ''}>${active ? '● ' : ''}${c.label}</span>`;
+            if (!puedeMover) {
+                return `<span class="pjd-cs-step ${active ? 'active' : ''}"${active ? ` style="color:${c.color}"` : ''}>${active ? '● ' : ''}${c.label}</span>`;
+            }
+            return `<button type="button" class="pjd-cs-step pjd-cs-btn ${active ? 'active' : ''}" data-ciclo="${e}"${active ? ` style="color:${c.color}"` : ''} title="${active ? 'Es el estado actual' : 'Mover el ciclo del taller a «' + c.label + '»'}"${active ? ' disabled' : ''}>${active ? '● ' : ''}${c.label}</button>`;
         }).join('<span class="pjd-cs-sep">›</span>');
         return `<div class="pjd-ciclo-sub">
             <span class="pjd-cs-lbl">Ciclo del taller</span>
@@ -2566,6 +2658,10 @@ const ProyectoDetalle = {
             .pjd-cs-lbl { font-family: var(--font-mono, 'Space Mono', monospace); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5BC4D4; }
             .pjd-cs-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.72rem; color: #555; }
             .pjd-cs-step.active { font-weight: 700; }
+            /* Tanda 7 · hallazgo 28 — el paso pasa a ser botón para la oficina. */
+            .pjd-cs-btn { background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 1px 6px; font: inherit; color: inherit; cursor: pointer; transition: all .15s; }
+            .pjd-cs-btn:hover:not(:disabled) { border-color: rgba(0,169,193,0.45); background: rgba(0,169,193,0.10); color: #5BC4D4; }
+            .pjd-cs-btn:disabled { cursor: default; }
             .pjd-cs-sep { color: #333; }
             .pjd-cs-bar { flex: 1; min-width: 60px; height: 5px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
             .pjd-cs-bar > span { display: block; height: 100%; transition: width 250ms ease; }

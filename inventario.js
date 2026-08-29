@@ -1241,7 +1241,17 @@ const InventarioModule = {
         const tEl = document.getElementById('invMtKpiTotal'); if (tEl) tEl.textContent = this._materiales.length;
         const cEl = document.getElementById('invMtKpiConStock'); if (cEl) cEl.textContent = conStock;
         const sEl = document.getElementById('invMtKpiSinStock'); if (sEl) sEl.textContent = sinStock;
-        const bEl = document.getElementById('invMtKpiBajoMin'); if (bEl) { bEl.textContent = bajoMin; bEl.style.color = bajoMin > 0 ? '#E74C3C' : '#00CC88'; }
+        // Tanda 7 · hallazgo 14 — mismo criterio que el tablero: con CERO mínimos
+        // cargados la comparación no puede dar nunca, así que el KPI dice "—" y no
+        // un 0 verde. Que las dos pantallas digan lo mismo.
+        const conMinimoMt = this._materiales.filter(m => m.stock_minimo != null && Number(m.stock_minimo) > 0).length;
+        const ciegoMt = this._materiales.length > 0 && conMinimoMt === 0;
+        const bEl = document.getElementById('invMtKpiBajoMin');
+        if (bEl) {
+            bEl.textContent = ciegoMt ? '—' : bajoMin;
+            bEl.style.color = ciegoMt ? '#F28D15' : (bajoMin > 0 ? '#E74C3C' : '#00CC88');
+            bEl.title = ciegoMt ? 'Ningún material tiene stock mínimo cargado: la alerta no puede encenderse.' : '';
+        }
         this._applyMaterialesFilters();
     },
 
@@ -3174,6 +3184,19 @@ const InventarioModule = {
             .filter(m => m.stock != null && m.stock_minimo != null && Number(m.stock) < Number(m.stock_minimo))
             .sort((a, b) => (Number(a.stock) - Number(a.stock_minimo)) - (Number(b.stock) - Number(b.stock_minimo)));
 
+        // ── Tanda 7 · hallazgo 14 — el semáforo que sólo podía decir "todo ok" ──
+        // La comparación es `stock < stock_minimo`, y medido en prod los 83 insumos
+        // tienen `stock_minimo` en NULL: `x < NULL` da NULL, o sea que la alerta NO
+        // PUEDE encenderse nunca. El tablero mostraba "0 · todo ok" y el cartel
+        // "Todo el stock está en niveles normales" — un cero que parece un dato y es
+        // una ausencia, y encima tranquiliza. Es el mismo patrón que el Libro IVA en
+        // $0 (hallazgo 12) y el KPI de recetas (38).
+        // Ahora el tablero distingue las dos cosas: "no hay nada bajo el mínimo" y
+        // "no hay contra qué comparar" no son la misma frase.
+        const conMinimo = materiales.filter(m => m.stock_minimo != null && Number(m.stock_minimo) > 0).length;
+        const sinMinimo = materiales.length - conMinimo;
+        const semaforoCiego = materiales.length > 0 && conMinimo === 0;
+
         // Equipos fuera de servicio / en reparación (puente con la alerta de equipos).
         let equiposCaidos = [];
         try {
@@ -3250,10 +3273,10 @@ const InventarioModule = {
                     <div class="invd-kpi-value" style="color:#F28D15">${materiales.length}</div>
                     <div class="invd-kpi-go">ver stock →</div>
                 </div>
-                <div class="invd-kpi" data-goto="materiales">
+                <div class="invd-kpi" data-goto="materiales" ${semaforoCiego ? 'title="La alerta compara el stock contra el mínimo de cada material. Sin mínimos cargados no hay contra qué comparar: no puede encenderse."' : ''}>
                     <div class="invd-kpi-top"><span class="invd-kpi-label">Bajo el mínimo</span><span class="invd-kpi-icon">⚠️</span></div>
-                    <div class="invd-kpi-value" style="color:${bajoMin.length ? '#E74C3C' : '#00CC88'}">${bajoMin.length}</div>
-                    <div class="invd-kpi-go" ${bajoMin.length ? 'style="color:#E74C3C"' : ''}>${bajoMin.length ? 'ver faltantes' : 'todo ok'} →</div>
+                    <div class="invd-kpi-value" style="color:${semaforoCiego ? '#F28D15' : (bajoMin.length ? '#E74C3C' : '#00CC88')}">${semaforoCiego ? '—' : bajoMin.length}</div>
+                    <div class="invd-kpi-go" style="color:${semaforoCiego ? '#F28D15' : (bajoMin.length ? '#E74C3C' : '')}">${semaforoCiego ? 'sin mínimos cargados' : (bajoMin.length ? 'ver faltantes' : 'todo ok')} →</div>
                 </div>
                 <div class="invd-kpi" data-goto="equipos">
                     <div class="invd-kpi-top"><span class="invd-kpi-label">Equipos caídos</span><span class="invd-kpi-icon">🛠️</span></div>
@@ -3282,7 +3305,13 @@ const InventarioModule = {
                             <span class="invd-arrow">→</span>
                         </div>`).join('')}
                     ${atencion.length > 12 ? `<div class="invd-more">y ${atencion.length - 12} más…</div>` : ''}
-                ` : `<div class="invd-ok">✓ Todo el stock está en niveles normales y los equipos operativos.</div>`}
+                ` : (semaforoCiego ? `
+                    <div class="invd-ok" style="border-color:rgba(242,141,21,0.35);color:#F28D15;">
+                        ⚠ No hay ningún material con stock mínimo cargado, así que la alerta de faltantes
+                        <b>no puede encenderse</b>. Los ${materiales.length} materiales están sin mínimo:
+                        hasta que se carguen, este tablero no avisa aunque el galpón esté vacío.
+                    </div>` : `
+                    <div class="invd-ok">✓ Nada bajo el mínimo${sinMinimo ? `, aunque <b>${sinMinimo}</b> ${sinMinimo === 1 ? 'material sigue' : 'materiales siguen'} sin mínimo cargado` : ''}, y los equipos operativos.</div>`)}
             </div>
             <div class="invd-sec">
                 <h3 class="invd-sec-title">Movimientos recientes</h3>

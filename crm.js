@@ -2323,11 +2323,23 @@ const CRM = {
         `;
     },
 
+    // Tanda 7 · hallazgo 16 — `cotizaciones.fecha_emision` y `fecha_evento` son
+    // columnas `date`. `new Date('2026-08-29')` lo parsea como medianoche UTC, así que
+    // en UTC−3 se mostraba el día anterior (y un 1º de mes, el mes anterior). Se le
+    // agrega la hora para que sea medianoche LOCAL, que es lo que significa un `date`.
+    // Un timestamp completo —`createdAt`, que es el fallback de estos campos— se deja
+    // como viene: ése ya trae su offset y se renderiza bien.
+    _fechaCorta(v, opts) {
+        if (!v) return '—';
+        const x = (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) ? v + 'T00:00:00' : v;
+        return new Date(x).toLocaleDateString('es-AR', opts);
+    },
+
     _renderCotRow(cot) {
         const est = this._getCotEstadoConfig(cot.estado);
         const vencida = this._isCotVencida(cot);
         const fechaRef = cot.fechaEmision || cot.createdAt;
-        const fecha = fechaRef ? new Date(fechaRef).toLocaleDateString('es-AR') : '\u2014';
+        const fecha = this._fechaCorta(fechaRef);
         const monto = cot.montoTotal ? '$' + cot.montoTotal.toLocaleString('es-AR') : '\u2014';
         const isActive = this._cotPanelId === cot.id;
 
@@ -2465,8 +2477,8 @@ const CRM = {
         const est = this._getCotEstadoConfig(cot.estado);
         const vendedor = this._getVendedorName(cot.vendedorId);
         const casoVinc = cot.casoId ? this._casos.find(k => k.id === cot.casoId) : null;
-        const fecha = cot.fechaEvento ? new Date(cot.fechaEvento).toLocaleDateString('es-AR') : '\u2014';
-        const fechaEmision = cot.fechaEmision ? new Date(cot.fechaEmision).toLocaleDateString('es-AR') : (cot.createdAt ? new Date(cot.createdAt).toLocaleDateString('es-AR') : '\u2014');
+        const fecha = this._fechaCorta(cot.fechaEvento);
+        const fechaEmision = this._fechaCorta(cot.fechaEmision || cot.createdAt);
         const subtotal = cot.subtotal || cot.montoTotal || 0;
         const iva = cot.iva || Math.round(subtotal * 0.21);
         const total = subtotal + iva;

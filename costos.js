@@ -694,7 +694,13 @@ const CostosModule = {
         const fmtDate = (input) => {
             if (!input) return '—';
             try {
-                const d = typeof input === 'number' ? new Date(input) : new Date(input);
+                // Tanda 7 · hallazgo 16 — la "próxima revisión" sale de
+                // `parametros_globales` como 'AAAA-MM-DD' y JS lo parsea como
+                // medianoche UTC: en UTC−3 se mostraba el día anterior. Un timestamp
+                // completo (la última actualización) trae su offset y se deja como
+                // viene.
+                const v = (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input)) ? input + 'T00:00:00' : input;
+                const d = typeof v === 'number' ? new Date(v) : new Date(v);
                 return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
             } catch (_) { return '—'; }
         };
@@ -1071,8 +1077,11 @@ const CostosModule = {
 
         const items = this._filteredListaItems;
         const today = new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        // Hallazgo 16 — mismo caso que arriba, y acá pega en el PDF que se le manda
+        // al cliente o al socio.
         const prxRev = this._proximaRevisionLista
-            ? new Date(this._proximaRevisionLista).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(this._proximaRevisionLista) ? this._proximaRevisionLista + 'T00:00:00' : this._proximaRevisionLista)
+                .toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
             : '—';
 
         // Helper: cargar imagen como dataURL + sus dimensiones reales (para
