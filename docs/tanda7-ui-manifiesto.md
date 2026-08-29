@@ -86,6 +86,9 @@ Cuelgan de ellos: `evento_jornadas` (25 filas) y `asignaciones_evento` (11 filas
 | **12** | 🔴 **El comprobante recibido NO calcula neto ni IVA, y el Libro IVA Compras sale en CERO.** El campo dice **"Auto si pones total"** y no calcula: cargue una Factura A de Aglolam por **$1.210.000** y quedo con `neto = NULL` e `iva = NULL` en la base. **Evidencia visual: el Libro IVA Compras de agosto muestra la fila con NETO $0,00 · IVA $0,00 · TOTAL $1.210.000, y los TOTALES en $0,00.** Eso es lo que va a la **DDJJ**: se pierden **$210.000 de credito fiscal por comprobante**. Nada valida que `neto + iva = total`. **⚠️ No es nuevo: PROGRESO del 2026-08-05 ya documenta el mismo sintoma** (*"el CSV del Libro IVA Compras... cero si el auxiliar se cargo por total"*) — se arreglo el CSV, **no la carga**. Ademas, al generar el pago el asiento sale sin la linea de IVA credito fiscal `1.1.09` | `finanzas.js` comprobante recibido | **🔴 Alta — es plata** |
 | **13** | El numero del comprobante recibido se guarda con un prefijo de mas: cargue `0004-00009876` y el Libro IVA lo muestra como **`0000-0004-00009876`** | `finanzas.js` / libro IVA | Baja |
 
+| **14** | **El semaforo de stock solo puede decir "todo ok".** El dashboard muestra **BAJO EL MINIMO: 0 · todo ok** y el cartel *"Todo el stock esta en niveles normales y los equipos operativos"*. Medido: de **83 insumos, 82 tienen stock CERO** y **ninguno tiene stock minimo cargado**. No es que este todo bien: **es que no hay contra que comparar**, asi que la alerta no puede encenderse nunca. Mismo patron que el Libro IVA: **un cero que parece un dato y es una ausencia**, y encima tranquiliza | `inventario.js` dashboard | Media-alta |
+| **15** | **El mismo item fisico tiene DOS stocks que no se hablan.** El buscador de movimientos lista "Reflector LED 100w" dos veces, `{pieza}` y `{material}`. Cargue una entrada de 25 al material y quedo asi: `insumos_base` #84 = **25** · `catalogo_items` #6 = **50**. En el galpon hay UN monton de reflectores. **Es exactamente el problema de "si se modifica una punta tiene que modificarse la otra"** | `insumos_base` vs `catalogo_items` | **Alta (arquitectura)** |
+
 ## Falsos positivos descartados (valen tanto como los hallazgos)
 
 | que parecia | por que NO es bug |
@@ -182,3 +185,15 @@ update eventos set _deleted=true where id in (...);
 - **Los 2 comprobantes de Olavarria**: son los unicos con CAE real de AFIP.
 - **Los precios del catalogo**: la tabla de diferencias espera aprobacion de Fede.
 - **El item 89** (panel negro), que sigue congelado.
+
+
+## Verificado despues (2a tanda de la noche)
+
+- ✅ **Anulacion con contra-asiento**: anular el cobro en efectivo genero el asiento **#123 "Reversion"**
+  con las lineas **exactamente invertidas** del #116 original (DEBE 2.1.06 / HABER 1.1.01). No borra:
+  deja traza. Y el dialogo avisa de antemano que **"se dan de baja sus retenciones y lo aplicado a las
+  cuotas"**. **Cierre: 43 asientos, DEBE = HABER = $45.820.740, 0 desbalanceados.**
+- ✅ **Movimiento de stock**: la entrada de 25 unidades subio el stock del insumo de 0 a 25.
+- ⓘ Nota fina: **la lista de cobros SI se refresca al anular**, y el plan de cobro **no** se refresca al
+  cobrar (hallazgo 9). O sea que no es una limitacion del framework: es que en un lugar se hizo y en el
+  otro se olvido.
