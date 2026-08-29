@@ -440,3 +440,116 @@ El orden de `tanda7-orden-de-correccion.md` sigue valiendo; esto es dónde entra
 
 ⚠️ El egreso **aeeebb95 está pagado y tiene asiento**: se **anula por UI**, no se borra (el candado
 de T4.2 lo rechaza, y con razón — anular genera el contra-asiento).
+
+---
+
+## Corrección al hallazgo 8 (verificado el 2026-08-29, antes de tocar nada)
+
+**El hallazgo 8 es un falso positivo, y menos mal que se miró antes de borrar.**
+
+Decía: *"8 cuotas de plan huérfanas: `plan_cobro_items` tiene 8 filas y `plan_cobro` 0 planes vivos"*.
+La cuenta comparaba **el total** de una tabla contra **las filas vivas** de la otra. Mirando fila por
+fila: las 8 tienen `_deleted = true` **y su plan también** — se borraron juntos. **La cascada del
+soft-delete funciona.** Hoy hay 10 filas: 8 borradas (con sus 2 planes borrados) y 2 vivas, que son
+las del plan demo de anoche. `v_plan_cobro_resumen` devuelve exactamente eso: 1 plan, 2 cuotas,
+1 cobrada, $3.000.000 de $6.000.000.
+
+**Regla que confirma:** para decir que algo está huérfano hay que mirar las dos puntas con el mismo
+criterio de vivo/borrado. Contar `count(*)` de un lado y filtrar del otro fabrica huérfanos que no
+existen — y el arreglo habría sido borrar 8 filas legítimas.
+
+**Lo que sí apareció al mirar** (y no estaba anotado): queda **1 fila residual en
+`cobro_aplicaciones`** (`47d0d4fd`) que apunta a una cuota borrada, de un ingreso que después se
+**anuló**. Ni la baja de la cuota ni la anulación del cobro limpian esa tabla. **Es inerte**: el
+`monto_cobrado` de esa cuota quedó en 0 (o sea que `fn_recalcular_cuota_plan` sí excluye los
+anulados) y la vista de resumen no la cuenta. Queda anotado como **hallazgo 47 (Baja)**: la
+aplicación de cobro sobrevive a la baja de las dos puntas.
+
+---
+
+## Ampliación del hallazgo 2 (leí `fn_evento_jornadas_sync` el 2026-08-29)
+
+Confirmado el mecanismo: la función hace **tres UPDATE independientes**, uno por fase, cada uno con
+su `MIN(fecha)` / `MAX(fecha)`. **No compara nunca una fase contra otra**, así que un desarme anterior
+al armado le resulta perfectamente válido. Es exactamente lo que decía el hallazgo.
+
+**Y hay una segunda falla en la misma función, que no estaba anotada.** Los tres UPDATE terminan en:
+
+```sql
+WHERE e.id = v AND s.fmin IS NOT NULL
+```
+
+Cuando se borran **todas** las jornadas de una fase, el agregado devuelve `fmin = NULL` y el guard
+saltea el UPDATE → **el evento se queda con las fechas viejas de una fase que ya no tiene jornadas**.
+No hay forma de vaciar el armado de un evento: queda mostrando un armado que no existe, y de ahí
+comen el calendario operativo, el KPI "Próx. armado" y el aviso de armado a 7/2 días.
+
+**Las dos cosas se arreglan en el mismo lugar** cuando toque la tanda: comparar las tres fases entre
+sí, y dejar que la fase sin jornadas ponga sus fechas en NULL en vez de saltear el UPDATE.
+Queda como **hallazgo 48 (Media)**.
+
+---
+---
+
+# FASE 2 · TANDA A — el leak de modales *(hecha y verificada, 2026-08-29)*
+
+Archivos: `components.js` · `router.js` · **`cobranza.js`** (la excepción está justificada abajo).
+Versiones: `components.js?v=19` · `router.js?v=27` · `cobranza.js?v=6` · **`app.js?v=55`**.
+
+## Eran dos causas, no una
+
+1. **`Modal.close()` no aceptaba el objeto que devuelve `Modal.open()`.** Comparaba `m.id === id`
+   contra un objeto, no matcheaba nunca, y salía por un `return` mudo. Ahora tolera el objeto
+   (y el id como string numérico), y **avisa por consola** cuando el id no existe: un cierre que
+   no cierra es de los bugs más caros justamente por ser silencioso.
+2. **El router no cerraba los modales al navegar.** Hacía teardown de módulos desde la fase 12.A,
+   pero el modal quedaba en el DOM, en `Modal._stack` y con su Escape colgado de `document`. Ahora
+   `Modal.closeAll()` corre antes de renderizar la ruta nueva. Cierra en **cualquier** cambio de
+   hash, no sólo al cambiar de módulo, y es a propósito: pasar de `#proyectos/5` a `#proyectos/6`
+   con un modal del 5 abierto es justo la forma de editarle las fechas al evento equivocado.
+
+**Corrección al hallazgo 37: son 13 llamadas mal hechas, no 11.** Se me habían escapado dos en
+`costos.js` (`progressInstance`, líneas 2898 y 3551) porque mi grep buscaba nombres que empezaran
+con `instance`/`modal`. Las cazó el reviewer. **Y esas dos son el modal de progreso de "Recalcular
+todos"** — el mismo botón del hallazgo 36 — así que hasta hoy ese modal también quedaba clavado.
+Reparto real: **9 en `costos.js`, 1 en `contabilidad.js`, 3 en `flota.js`**, contra 71 llamadas
+correctas con `.id`.
+
+## Los dos HIGH del reviewer, verificados y arreglados
+
+| # | Qué | Dónde |
+|---|---|---|
+| **49** | **El aviso nuevo sonaba en CADA "Cancelar" de CADA confirmación.** El botón Cancelar de `Modal.confirm()` llevaba `data-modal-close` **y** su propio handler `cleanup(false)`: dos listeners sobre el mismo click, los dos llamando a `close()`. El primero cerraba de verdad; el segundo entraba con un id que ya no estaba en el stack. Mientras `close()` era mudo no se notaba. **`Confirm.delete()` y `Confirm.action()` son wrappers de esto**, o sea toda confirmación de borrado de la app. El ruido tapaba exactamente la señal que el aviso viene a dar. Arreglado en la raíz: se le sacó el `data-modal-close`, porque cerrar y resolver la promesa es una sola cosa y la hace `cleanup` | `components.js` `confirm()` |
+| **50** | 🔴 **Se podía borrar del bucket un certificado de retención mientras la cobranza se guardaba.** `Cobranza.abrir()` pone `onClose: () => this._limpiarCertificadosHuerfanos()`, que borra todo lo que esté en `_retenciones`. La invariante que lo hacía seguro —*"después de un guardado exitoso `_retenciones` se vacía"*— **tiene una ventana**: el array se vacía recién DESPUÉS de que `registrarCobranza` resuelve. Cerrar el modal en ese intervalo borra archivos que la fila de `creditos_fiscales` va a referenciar igual → **un crédito fiscal sin respaldo, con un "Cobranza registrada" impecable en pantalla**. El bug es previo, pero **antes pedía un click deliberado en la X, Escape o el fondo durante el request; desde que el router cierra al navegar, lo alcanza cualquier click en el sidebar**. Arreglado con un guard sobre `_guardando` | `cobranza.js` |
+
+**Por qué se tocó `cobranza.js` estando fuera de la tanda:** porque el cambio del router vuelve
+alcanzable por navegación normal una pérdida de dato que antes era casi inalcanzable. Dejarlo para
+su tanda significaba publicar el agujero abierto. Es una línea, en el archivo dueño de la invariante,
+y no toca nada más.
+
+**El intercambio que asume el guard:** si el guardado falla y el modal ya se cerró, el archivo queda
+huérfano en el bucket. Es el lado correcto: un archivo de más ocupa lugar, uno de menos es un crédito
+fiscal que no se puede justificar.
+
+## Cómo se verificó
+
+- **Node, 19 asserts** sobre `Modal` con un DOM mínimo: cerrar por objeto, por id, por string
+  numérico, sin argumentos, con id inexistente, `closeAll`, el desenganche del Escape y que `onClose`
+  corra una sola vez. **El mismo harness contra el código de antes del fix da 12 fallas**, así que la
+  prueba sirve.
+- **Navegador real** contra el server local, en pestaña limpia:
+  - En el **login**, `Modal` está `undefined` (`components.js` es diferido y `router.js` es CORE) y
+    el router **no rompe** — que era el riesgo del cambio.
+  - Con **dos modales abiertos**, navegar deja **el stack y el DOM en cero**.
+  - `Modal.close(objeto)` cierra y saca del DOM.
+  - `confirm()`: Cancelar resuelve `false`, Confirmar resuelve `true`, Escape resuelve `false`, y
+    **0 warnings** en los tres. Contra el código viejo, cancelar producía **1 warning** — probado en
+    las dos direcciones.
+  - **Cero errores de consola.**
+
+## Lo que el reviewer dejó anotado y NO entra acá
+
+`ContextMenu` tiene su propio overlay y sus propios listeners globales de `document`, y el router no
+lo toca: si se abre uno y se navega antes de cerrarlo, queda colgado. No es regresión de esta tanda
+—ya era así— pero es el mismo agujero que ésta cierra para los modales. Queda como **hallazgo 51
+(Baja)**, para la tanda F.

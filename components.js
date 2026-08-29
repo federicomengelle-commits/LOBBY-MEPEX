@@ -326,8 +326,18 @@ const Modal = {
                 title,
                 body: `<p class="modal-confirm-msg">${message}</p>`,
                 size: 'sm',
+                // Ojo: el botón Cancelar NO lleva `data-modal-close`. Si lo llevara,
+                // recibiría DOS handlers de click sobre el mismo elemento — el que
+                // `open()` engancha para `data-modal-close` y el `cleanup(false)` de
+                // acá abajo — y los dos llaman a `close()`: el primero cierra de
+                // verdad y el segundo entra con un id que ya no está en el stack.
+                // Mientras `close()` era mudo eso no se notaba; desde que avisa,
+                // ensuciaba la consola en CADA cancelación de CADA confirmación de la
+                // app (Confirm.delete / Confirm.action son wrappers de esto), y ese
+                // ruido tapaba justo la señal que el aviso viene a dar. Cerrar y
+                // resolver la promesa es una sola cosa y la hace `cleanup`.
                 footer: `
-                    <button class="btn btn-ghost" data-modal-close data-action="cancel">${cancelText}</button>
+                    <button class="btn btn-ghost" data-action="cancel">${cancelText}</button>
                     <button class="${btnClass}" data-action="confirm">${confirmText}</button>
                 `,
             });
@@ -350,8 +360,35 @@ const Modal = {
     close(id) {
         // Sin id → cierra el modal de arriba del stack (antes era no-op silencioso).
         if (id === undefined && this._stack.length) id = this._stack[this._stack.length - 1].id;
+
+        // Tanda 7 · hallazgo 37 — `open()` devuelve el OBJETO instancia, no el id, y
+        // 13 llamadas hacían `Modal.close(instance)`: 9 en costos.js (dos de ellas
+        // sobre `progressInstance`, que es el modal de progreso de "Recalcular
+        // todos"), 1 en contabilidad.js y 3 en flota.js con la variable mal
+        // nombrada `modalId`.
+        // El `findIndex` comparaba el objeto contra `m.id` (un número), no matcheaba
+        // nunca, y esto salía por el `return` de abajo: **no-op silencioso**. Efecto
+        // real: el modal "Nueva receta" quedaba clavado en "Creando…" con el ítem ya
+        // creado, y el overlay nunca salía del stack → el siguiente modal se apilaba
+        // encima. Eso es lo que se venía viendo como hallazgo 3 ("los modales se
+        // apilan") y como M6 ("al guardar quedás mirando un formulario vacío").
+        // Se acepta el objeto acá en vez de tocar los 11 llamadores porque viven en
+        // otros archivos (otras tandas) y porque así el próximo que se equivoque
+        // tampoco rompe nada.
+        if (id && typeof id === 'object' && id.id !== undefined) id = id.id;
+        // El id nace de `++this._idCounter` (número) pero en el DOM vive como string
+        // (`overlay.dataset.modalId`): quien lo lea de ahí traería un string y el
+        // `===` volvería a fallar.
+        if (typeof id === 'string' && /^\d+$/.test(id)) id = Number(id);
+
         const idx = this._stack.findIndex(m => m.id === id);
-        if (idx === -1) return;
+        if (idx === -1) {
+            // Un id que no está en el stack casi siempre es un error de programación
+            // (el caso de arriba). Que se vea: un cierre que no cierra es de los bugs
+            // más caros de encontrar, porque la pantalla miente y no hay error.
+            if (id !== undefined) console.warn('[Modal] close(): no hay ningún modal abierto con id', id);
+            return;
+        }
 
         const instance = this._stack[idx];
         this._stack.splice(idx, 1);

@@ -324,6 +324,24 @@ const Router = {
         }
         this._activeModuleObj = route.obj || null;
 
+        // Tanda 7 · hallazgo 3 (2ª causa) — un modal abierto NO se cerraba al navegar:
+        // quedaba en el DOM, en `Modal._stack` y con su handler de Escape colgado de
+        // `document`, tapando la pantalla nueva o esperando invisible a que el
+        // siguiente modal se apilara arriba. Es el mismo agujero que el teardown de
+        // arriba vino a tapar para los módulos. Un `confirm()` pendiente resuelve
+        // como cancelado, que es lo correcto.
+        //
+        // Alcance, a propósito: cierra en CUALQUIER cambio de hash, no sólo cuando
+        // cambia de módulo. Es más amplio que el teardown de arriba y así se quiere:
+        // pasar de `#proyectos/5` a `#proyectos/6` con un modal del 5 abierto es
+        // justo la forma de editarle las fechas al evento equivocado (hallazgo 5).
+        // Si alguna vez hace falta un modal que sobreviva a un cambio de `?query`
+        // sobre su propia ruta, va a haber que darle una excepción explícita.
+        if (typeof Modal !== 'undefined' && typeof Modal.closeAll === 'function') {
+            try { Modal.closeAll(); }
+            catch (e) { console.warn('[Router] closeAll() de modales falló:', e); }
+        }
+
         // Render the route
         route.render(routeParams);
 

@@ -351,6 +351,22 @@ const Cobranza = {
      * paths que ya estén referenciados por una fila de `creditos_fiscales`.
      */
     _limpiarCertificadosHuerfanos() {
+        // ⚠️ Tanda 7 · tanda A — La invariante de arriba tiene una ventana: `_retenciones`
+        // se vacía en `_guardar()` recién DESPUÉS de que `registrarCobranza` resuelve.
+        // Entre que arranca el guardado y que vuelve, los paths siguen acá y ya están
+        // por quedar referenciados. Si el modal se cierra en ese intervalo, esto borra
+        // del bucket un certificado que la fila de `creditos_fiscales` va a apuntar
+        // igual: queda un crédito fiscal sin respaldo, y en pantalla se ve un
+        // "Cobranza registrada" impecable.
+        //
+        // Antes esa ventana pedía un click deliberado en la X, Escape o el fondo
+        // durante el request. Desde que el router cierra los modales al navegar
+        // (hallazgo 3), la alcanza cualquier click en el sidebar mientras se guarda.
+        //
+        // Con el guard, si el guardado falla y el modal ya se cerró, el archivo queda
+        // huérfano en el bucket. Es el intercambio correcto: un archivo de más ocupa
+        // lugar; un archivo de menos es un crédito fiscal que no se puede justificar.
+        if (this._guardando) return;
         for (const r of (this._retenciones || [])) {
             if (r && r.archivo_url) API.borrarCertificadoRetencion(r.archivo_url);
         }
