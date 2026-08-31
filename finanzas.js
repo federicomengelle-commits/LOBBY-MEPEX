@@ -2747,7 +2747,16 @@ const FinanzasModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Nuevo ingreso
                 </button>
-                <button class="fin-btn-new" id="finBtnCargarCompIng" style="background:rgba(155,125,255,.12);border-color:#9B7DFF;color:#9B7DFF">📸 Cargar comprobante</button>
+                ${/* Tanda 7 · hallazgo 52 — acá había un botón "📸 Cargar comprobante"
+                      idéntico al de Egresos, y llamaba a la MISMA función:
+                      `CargaComprobante.open()` no recibe parámetros y siempre crea un
+                      `comprobantes_recibidos` (factura de PROVEEDOR) más un EGRESO.
+                      O sea: en la pantalla de la plata que ENTRA había un botón que
+                      cargaba un gasto. Quien estuviera registrando cobros metía un
+                      egreso sin darse cuenta. Se saca.
+                      Si algún día hace falta el equivalente del lado de cobros —leer el
+                      comprobante de una transferencia recibida— es otra cosa y hay que
+                      construirla: hoy no existe. */''}
                 <button class="fin-btn-new" id="finBtnCobranza" title="Un cobro aplicado a una o varias facturas, con las retenciones que le practicaron">🧾 Registrar cobranza</button>
                 ` : ''}
             </div>
@@ -3797,7 +3806,8 @@ const FinanzasModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     Nuevo egreso
                 </button>
-                <button class="fin-btn-new" id="finBtnCargarCompEgr" style="background:rgba(155,125,255,.12);border-color:#9B7DFF;color:#9B7DFF">📸 Cargar comprobante</button>
+                <button class="fin-btn-new" id="finBtnCargarCompEgr" style="background:rgba(155,125,255,.12);border-color:#9B7DFF;color:#9B7DFF" title="Sacá una foto de la factura y la IA la lee">📸 Cargar comprobante</button>
+                <button class="fin-btn-new" id="finBtnNewRecibidoEgr" style="background:rgba(155,125,255,.12);border-color:#9B7DFF;color:#9B7DFF" title="Cargar la factura del proveedor tipeando los datos, sin foto">🧾 Cargar a mano</button>
                 ` : ''}
             </div>
             <div class="fin-filters">
@@ -6093,6 +6103,27 @@ const FinanzasModule = {
 
         document.getElementById('finBtnNewEgreso')?.addEventListener('click', () => this._showEgresoModal());
         document.getElementById('finBtnCargarCompEgr')?.addEventListener('click', () => { if (typeof CargaComprobante !== 'undefined') CargaComprobante.open(); });
+        // Tanda 7 · hallazgo 52 — la carga a mano de la factura del proveedor VIVE ACÁ.
+        // Antes estaba sólo en Facturación → Recibidos, que es un LIBRO (lo que debo), no
+        // una pantalla de carga; y la carga por foto ya estaba acá. Dos puertas para el
+        // mismo hecho, en dos módulos distintos, y la más trabajosa en el módulo que no
+        // corresponde. Ahora las dos formas de entrar el mismo hecho —con foto o
+        // tipeada— están donde está la persona que carga.
+        // ⚠️ El comprobante NO es un egreso y NO se mudó de tabla: una factura sin pagar
+        // es una cuenta a pagar, y el Libro IVA Compras va por fecha de FACTURA, no de
+        // pago. Lo que se mudó es el botón, no el dato.
+        // ⚠️ Antes de abrir hay que cargar el lookup de egresos: el select "Vincular a
+        // egreso" del modal se llena de `_egresosLookup`, y eso sólo lo poblaba
+        // `_loadEgresosForLookup()` desde el `case 'facturacion'` de `_renderTabContent`.
+        // Hasta este cambio el modal se abría únicamente dentro de Facturación, donde el
+        // lookup ya había corrido; esta puerta nueva es la primera que lo abre sin pasar
+        // por ahí, y el combo salía VACÍO — justo en el caso que la mudanza fomenta
+        // (pagué el gasto antes, la factura llega después y la quiero atar a ese egreso).
+        // No rompía nada: fallaba en silencio, que es peor. Lo cazó el reviewer.
+        document.getElementById('finBtnNewRecibidoEgr')?.addEventListener('click', async () => {
+            try { await this._loadEgresosForLookup(); } catch (e) { console.warn('[Finanzas] lookup de egresos:', e.message); }
+            this._showRecibidoModal();
+        });
 
         document.getElementById('finEgrCatFilter')?.addEventListener('change', (ev) => {
             this._egresosCatFilter = ev.target.value;
@@ -6175,7 +6206,7 @@ const FinanzasModule = {
                 Toast.error('No se pudo abrir la cobranza');
             });
         });
-        document.getElementById('finBtnCargarCompIng')?.addEventListener('click', () => { if (typeof CargaComprobante !== 'undefined') CargaComprobante.open(); });
+        // (El handler de `finBtnCargarCompIng` se retiró con el botón — hallazgo 51.)
 
         // Filters
         document.getElementById('finIngMedioFilter')?.addEventListener('change', (e) => {
@@ -9515,11 +9546,12 @@ const FinanzasModule = {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <input type="text" class="fin-search-input" id="finFactRecSearch" placeholder="Buscar proveedor, concepto, número…" autocomplete="off" value="${this._factRecibidosSearch}">
                 </div>
+                ${/* Tanda 7 · hallazgo 52 — acá NO va un botón de carga. Esta pantalla es
+                      el libro de lo que debo: se mira, se filtra por "sin pagar", y desde
+                      la ficha se aprieta "Generar pago", que es la acción que sí le
+                      corresponde. La carga (con foto o a mano) vive en Egresos. */''}
                 ${!this._isRO ? `
-                <button class="fin-btn-new" id="finBtnNewRecibido">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Nuevo comprobante
-                </button>
+                <button class="fin-btn-new" id="finBtnIrACargarRec" style="background:transparent;border-color:var(--border);color:var(--text-muted)" title="La factura del proveedor se carga en Egresos, con foto o a mano">Cargar una factura → Egresos</button>
                 ` : ''}
             </div>
             <div class="fin-filters">
@@ -9676,16 +9708,22 @@ const FinanzasModule = {
             main.innerHTML = `
                 <div class="fin-empty">
                     <div class="fin-empty-icon">📥</div>
-                    <div class="fin-empty-text">No hay comprobantes recibidos. Cargá el primero.</div>
+                    <div class="fin-empty-text">No hay comprobantes recibidos. Las facturas de proveedor se cargan en <strong>Egresos</strong>, con foto o a mano.</div>
                     ${!this._isRO ? `
-                    <button class="fin-btn-new" id="finBtnNewRecibidoEmpty">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Nuevo comprobante
-                    </button>
+                    <button class="fin-btn-new" id="finBtnNewRecibidoEmpty">Ir a Egresos</button>
                     ` : ''}
                 </div>
             `;
-            document.getElementById('finBtnNewRecibidoEmpty')?.addEventListener('click', () => this._showRecibidoModal());
+            // Tanda 7 · hallazgo 52 — el empty-state tampoco carga desde acá: manda a Egresos.
+            document.getElementById('finBtnNewRecibidoEmpty')?.addEventListener('click', () => {
+                // `_egresosSubtab` también se resetea: si en la sesión se entró a
+                // "Registros auxiliares", queda pegado ahí y este click aterrizaba en una
+                // pantalla SIN los botones de carga que el cartel de acá al lado promete.
+                this._activeTab = 'egresos';
+                this._egresosSubtab = 'egresos';
+                document.querySelectorAll('.fin-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'egresos'));
+                this._renderTabContent();
+            });
             return;
         }
 
@@ -10840,7 +10878,17 @@ const FinanzasModule = {
         }
 
         // New button
-        document.getElementById('finBtnNewRecibido')?.addEventListener('click', () => this._showRecibidoModal());
+        // Tanda 7 · hallazgo 52 — desde el libro de recibidos se va a Egresos a cargar.
+        // Es un cambio de pestaña, no un `location.hash`: ya estamos adentro de Finanzas
+        // y navegar al mismo hash no re-renderiza nada (trampa conocida de este repo).
+        document.getElementById('finBtnIrACargarRec')?.addEventListener('click', () => {
+            // Mismo reseteo del sub-tab que en el empty-state: el destino prometido es la
+            // pantalla de carga de Egresos, no la de Registros auxiliares.
+            this._activeTab = 'egresos';
+            this._egresosSubtab = 'egresos';
+            document.querySelectorAll('.fin-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'egresos'));
+            this._renderTabContent();
+        });
 
         // Filter
         document.getElementById('finFactRecCatFilter')?.addEventListener('change', (e) => {

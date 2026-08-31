@@ -934,3 +934,236 @@ cargan otras con **otra fecha** (el camino normal del modal de jornadas), el avi
 puede quedar consumido para la fecha vieja y **no salir nunca para la nueva**. Es previo, no lo crea
 ni lo empeora esta tanda, pero es exactamente el síntoma del que este trigger es la fuente. Va a la
 próxima.
+
+---
+
+# FASE 3 — re-correr los casos *(2026-08-30, con Fede logueado)*
+
+## Hallazgo nuevo **52** — el botón de Ingresos que carga un gasto *(ALTA)*
+
+Salió de una observación de Fede en vivo: *"en facturación podemos poner nuevo comprobante recibido,
+y no tiene que ser ahí"*. Mirando por qué, apareció algo peor que lo señalado.
+
+`CargaComprobante.open()` **no recibe ningún parámetro** y siempre crea un `comprobantes_recibidos`
+(factura de **proveedor**) más un **egreso** opcional. Está cableado a dos botones idénticos —mismo
+label `📸 Cargar comprobante`, mismo violeta— uno en Egresos y **otro en la pestaña Ingresos**:
+
+- `finanzas.js:3800` → `finBtnCargarCompEgr` (Egresos) — correcto
+- `finanzas.js:2750` → `finBtnCargarCompIng` (**Ingresos**) — carga una factura de proveedor y
+  genera un egreso, en la pantalla de la plata que **entra**
+
+Quien esté cargando cobros mete un gasto sin darse cuenta.
+
+### Las tres puertas para el mismo hecho
+
+| puerta | dónde vive | qué crea |
+|---|---|---|
+| 📸 Cargar comprobante | Egresos · **Ingresos** · sidebar · lobby | comprobante + egreso opcional |
+| + Nuevo comprobante | Facturación → Recibidos | sólo el comprobante |
+| automática | `API.registrarGasto` (Rendimiento, OC, pago de gasto) | comprobante + egreso |
+
+### Lo que NO se hace, y por qué
+
+**El comprobante no se muda a `egresos`.** Son dos hechos distintos:
+
+- Una factura sin pagar es una **cuenta a pagar**. Si el comprobante sólo pudiera nacer adentro de un
+  egreso, no existiría hasta pagarla (las dos de Aglolam están así hoy).
+- El **Libro IVA Compras va por fecha de factura, no de pago** — es lo que va a la DDJJ. Una factura
+  de agosto pagada en octubre tiene que entrar en agosto.
+
+### Lo decidido (aprobado por Fede el 30/8)
+
+1. La **carga a mano se muda a Egresos**, al lado del 📸 que ya está.
+2. **Facturación → Recibidos pierde el botón de carga** y queda como *lo que debo*: mirar, filtrar
+   "sin pagar", y **Generar pago** — que ya existe y es la acción correcta de esa pantalla.
+3. **Se saca el 📸 de Ingresos.** Un equivalente del lado de cobros sería otra cosa (leer el
+   comprobante de una transferencia recibida) y hoy no existe.
+
+> **La regla que queda:** la plata que sale se carga en **Egresos**, con foto o a mano.
+> **Facturación se mira y se paga, no se carga.**
+
+## Caso 1 — hallazgo 12, el IVA del comprobante recibido ✅ **PASA**
+
+**El "antes", medido en prod antes de tocar nada:** Libro IVA Compras de agosto con
+**NETO $0,00 · IVA $0,00** sobre **$1.815.000** de facturas (dos Facturas A de Aglolam con `neto` e
+`iva` en NULL).
+
+| lo que se probó | resultado |
+|---|---|
+| Abrir un comprobante viejo con neto/IVA en NULL | la alícuota va sola a **21%** (es Factura A) y el cartel sale **rojo**: *"neto + IVA da $0,00 y el total dice $1.210.000,00"* |
+| Poner **sólo el total** (1.210.000) | NETO **1.000.000** e IVA **210.000** solos · cartel **verde** |
+| Ídem en la segunda (605.000) | NETO **500.000** · IVA **105.000** |
+| **Carga nueva** de cero con sólo el total (121.000) | NETO **100.000** · IVA **21.000** |
+| Cambiar el tipo a **Factura C** | la alícuota va sola a **"Sin IVA discriminado"**, NETO = total, IVA = 0 |
+| Escribir el **NETO** a mano (999) | recalcula el **total** (1.208,79) — sigue cuadrando |
+| **Mixta** + IVA a mano | re-deriva el neto desde el total (120.995 + 5 = 121.000) |
+| **Mixta** + mover el total al final | **único camino que descuadra** → cartel rojo |
+| **Guardar descuadrado** | **rechazado**: *"Neto + IVA da $121.000,00 y el total dice $500.000,00. Revisá los tres números antes de guardar."* El modal queda abierto y no escribe |
+
+**Nota fina:** el único camino que llega al gate de guardado es *Mixta + tocar el total al final*.
+Por cualquier otra puerta los tres números se re-derivan solos y **nunca se puede descuadrar**. El
+rechazo es defensa en profundidad, no el candado principal — y está bien que así sea.
+
+### Observación menor (no bloqueante)
+
+El modal de comprobante recibido tiene **scroll horizontal**: la grilla de montos es más ancha que el
+modal y **el campo IVA queda cortado** a 1920px de viewport. Es justo el campo del que trata todo el
+arreglo — ponés el total y no ves el IVA que salió sin scrollear.
+
+## Caso 2 — hallazgos 9 y 10, el doble cobro de una cuota ✅ **PASAN**
+
+Único candidato en prod: la cuota 2 del plan de *Stand 6x4 — Distribuidora Norte*, $3.000.000
+pendiente. Fede eligió cobrarla de verdad y dejarla.
+
+| lo que se probó | resultado |
+|---|---|
+| **Hallazgo 10** — abrir "Cobrar" | el modal viene con **CLIENTE: Distribuidora Norte SRL (demo)** prefilleado, más monto, concepto y proyecto. Antes el cobro nacía sin cliente y no entraba en su cuenta corriente |
+| **Hallazgo 9 · refresco** | al registrar, **el plan se repintó solo**: barra naranja 50% → verde **100% cobrado**, cuota en *✓ Cobrado*, y el botón "Cobrar" desapareció. Antes seguía diciendo "Pendiente" con el botón activo |
+| asiento | **#125**, DEBE = HABER = $3.000.000 |
+| **Hallazgo 9 · el candado por la puerta de Duplicar** | ⎘ Duplicar abre como **"Nuevo ingreso"** (no "Editar") y marca el concepto "(copia)" |
+
+**La prueba que importa**, mirando la base después de guardar la copia:
+
+| | vínculo a cuota | vínculo a factura | aplicaciones | asiento |
+|---|---|---|---|---|
+| cobro original | `d9e19cdd` | — | 1 | #125 |
+| **la copia** | **NULL** | **NULL** | **0** | #126 |
+
+Y **la cuota 2 quedó en `monto_cobrado = 3.000.000`, no en 6.000.000**. Antes del fix del reviewer,
+Duplicar copiaba el `plan_cobro_item_id` y el trigger de la base lo sumaba igual, sin importarle por
+qué puerta entró: la cuota terminaba al 200% con dos ingresos reales y dos asientos.
+
+La copia se **anuló por UI** al terminar (no representa nada real): contra-asiento **#127**, y el
+diálogo avisa de antemano que *"se dan de baja sus retenciones y lo aplicado a las cuotas"*.
+
+**Cierre contable del caso:** 47 asientos, DEBE = HABER = **$55.320.740**, 0 desbalanceados.
+
+## Caso 3 — Eventos: hallazgos 1, 2, 4 y 6 ✅ · **hallazgo 5 ✗ ROTO**
+
+| # | resultado |
+|---|---|
+| **1 · choque de personas** | ✅ Abriendo "＋ gente" en la jornada del 10-nov de *Encuentro Pyme Lanús (demo)*, la lista muestra el chip rojo **⚠ EXPO CAPPI 2026** al lado de **Adrián M. Fernández** y **Braian Ayala**, que ya están citados ahí ese día. **Se ve antes de elegir**, que es el punto |
+| **2 · fechas fuera de orden** | ✅ Puse el desarme el 05/11 con el armado el 09/11 → *"**Las fechas no van en orden.** «Inicio del desarme» no puede ser anterior a «Fin del evento». Puede estar bien (por ejemplo, retoques de armado durante el primer día del evento). ¿Guardar así?"* — **avisa y deja seguir**. Cancelé; la base quedó intacta (desarme 13/11) |
+| **4 · filtro de predios** | ✅ 6 predios únicos + "Todos". Antes eran 35 opciones para 7 predios |
+| **6 · los lápices** | ✅ el ✎ de jornadas se ve y responde |
+| **5 · nombre del evento en los modales** | ❌ **NO estaba cerrado.** Ver abajo |
+
+### 🐞 Hallazgo 5 — el fix estaba escrito y no hacía nada *(arreglado en esta sesión)*
+
+El modal decía literalmente **"👥 Agregar gente"**, y "Editar jornadas" igual. Pero el código SÍ
+llama al helper: `title: this._tituloConEvento('👥 Agregar gente', eventoId)`.
+
+La causa: **`_tituloConEvento` leía `ev.nombre`, y esa propiedad no existe.** `API.getEvents()`
+mapea la columna `eventos.nombre` de la base a **`name`** en el objeto interno (`api.js:242`), y todo
+el módulo usa `ev.name` — la lista (`eventos.js:702`), las cards (744), la cabecera del panel (890) y
+el PDF de pedido (2244, que hasta hace `nombre: ev.name`). Así que `nombre` daba siempre `undefined`,
+el helper devolvía el título pelado, y **los seis modales quedaron sin el nombre del evento**.
+
+> **La lección, que es la de la Fase 3 entera: el diff se veía bien y el caso no pasaba.** Un helper
+> puede estar bien escrito, bien llamado desde los seis lugares, y leer una propiedad que nadie
+> escribe. Sólo se ve abriendo la pantalla.
+
+Arreglado con `String(ev.name || ev.nombre || '').trim()` (`eventos.js?v=51`).
+
+## Caso 4 — Proyectos: hallazgos 28, 29 y 30 ✅ **PASAN**
+
+Sobre *Stand 6x4 — Distribuidora Norte*, que estaba en `en_armado · 25%`.
+
+| # | resultado |
+|---|---|
+| **28** | ✅ Los pasos del ciclo son clickeables desde una cuenta de oficina. *"**Mover el ciclo del taller a «Listo»** — El proyecto pasa de En armado a Listo. Queda registrado quién lo movió y cuándo."* La base lo sella: `estado_taller='listo'`, `completitud_pct=50`, con `estado_taller_updated_at` y `_by`. **Y anda para atrás también** (Listo → En armado), que era la otra mitad: corregir un estado mal puesto |
+| **29** | ✅ La cabecera se repinta en el lugar: barra 25% naranja → 50% verde, y la chapita del checklist pasó de `● EN ARMADO` a `● LISTO` y de vuelta. Antes decía "Pendiente · 0%" con la base en "En armado · 25%", en la misma pantalla |
+| **30** | ✅ Al completar el checklist 6/6 estando en `en_armado`, el toast dice: *"**Checklist completo. Ya se puede marcar el stand como Listo.**"* y **no avanza solo** |
+
+**Detalle que vale:** el aviso del 30 **no sale** si el proyecto ya está en *Listo*, porque no hay
+paso nuevo que ofrecer. Es correcto, pero hace falta saberlo para no darlo por roto.
+
+**El proyecto quedó exactamente como se lo encontró:** `en_armado · 25%`, checklist 6/6.
+*(Hallazgo 31 —firmar la entrega avisa que el ciclo quedó atrás— no se re-corrió: pide firmar una
+segunda acta, y usa el mismo mecanismo que el 30, que pasa.)*
+
+## Caso 5 — Compras: hallazgo 17 y **la regresión** ✅ **PASAN**
+
+OC-0002 ya estaba recibida completa, así que se creó **OC-0003** con un ítem de nombre colisionante
+(*Reflector LED 100w*: insumo **84** y pieza de catálogo **6**).
+
+| lo que se probó | resultado |
+|---|---|
+| **17 · el picker** | escribiendo la etiqueta **"Reflector LED 100w · material"**, el ítem guardó `insumo_id = 84` y `catalogo_item_id = null`. Resuelve al lado correcto |
+| **19 · el monto** | sin ganadora, `monto_total` tomó **$200.000** = la suma de los ítems |
+| **la regresión** | ✅ **el caso exacto.** El modal de Recepción **pre-llenó el vínculo con la etiqueta con sufijo** (el mapa inverso `byId`) y **"Confirmar recepción" quedó habilitado**. Antes precargaba el nombre crudo, que desde que hay sufijos ya no matchea ninguna clave, y el guard nuevo lo tomaba como "no encontrado" **bloqueando la recepción entera** |
+| efecto | recepción completa · `cantidad_recibida = 5` · **stock del insumo 84: 35 → 40** · 1 movimiento registrado, visible en el tablero de Inventario |
+
+## Caso 6 — Inventario y Costos ✅ **PASAN**
+
+- **Hallazgo 14:** el KPI "Bajo el mínimo" dice **"—" en naranja** con *"sin mínimos cargados"*, y el
+  panel explica: *"No hay ningún material con stock mínimo cargado, así que la alerta de faltantes
+  **no puede encenderse**. Los 43 materiales están sin mínimo: hasta que se carguen, este tablero no
+  avisa aunque el galpón esté vacío."* Antes: "0 · todo ok".
+  *(El tablero dice 43 y no 83 porque `_soloMaterialesReales` excluye los **40 de clasificación "Sub
+  alquiler"** — un subalquilado no es stock que tengas en el galpón. Verificado: 29 Materiales + 11
+  Insumo + 2 Logística + 1 Consumibles = 43. No es un bug.)*
+- **Hallazgo 38:** el KPI de Costos dice **352 ítems · 63 cotizables · 24 cotizables sin receta · 129
+  sin receta · 0 incompletas**. Antes: "351 recetas". Los **24 en rojo** son el gate del 36-bis.
+
+---
+
+## 🔴 Hallazgo nuevo 53 — el número de OC se repite, y hay código que lo usa como identidad *(ALTA)*
+
+Salió creando la OC-0003 de la prueba: la ficha decía **"✓ Egreso generado · Finanzas › Egresos"**
+en una OC recién creada, de $0, sin presupuestos y sin ítems.
+
+**Los números de OC no son únicos.** En prod hay **dos de cada uno**:
+
+| id | número | estado | `_deleted` |
+|---|---|---|---|
+| 4 · **15** | OC-0001 | pendiente · pendiente | **sí** · no |
+| 7 · **16** | OC-0002 | pendiente · recibida | **sí** · no |
+| 8 · **17** | OC-0003 | **pagada** · pendiente | **sí** · no |
+
+El numerador cuenta sólo las vivas, así que **reusa el número de una OC borrada**. El índice único
+parcial que se aplicó en la tanda E (hallazgo 22) protege sólo entre vivas — correcto para no
+bloquear números, pero deja el número repetido en la traza.
+
+**Y el número se usa como clave.** `compras.js:1562` hace `API._egresoForOC(oc.numero_oc)`, que busca
+el egreso por **prefijo de texto en el concepto** (`"OC OC-0003%"`). El propio código dice por qué:
+
+> *NOTA: el FK real OC↔egreso queda pendiente — `egresos.orden_compra_id` es UUID y
+> `compras_ordenes.id` es BIGINT → no matchean. Dedup sigue por N° de OC en el concepto.*
+
+**Consecuencia medida:** la OC-0003 nueva encontró el egreso de la OC-0003 **borrada** (pagada, $97,
+de junio) → la ficha muestra "✓ Egreso generado" y **esconde el botón "Generar egreso"**.
+
+**Y está tapiado en las dos capas, no sólo en la UI.** El mismo guard vive adentro de
+`generarEgresoDeOC` (`api.js:5313`):
+
+```js
+if (await this._egresoForOC(numeroOc)) return { error: 'Esta OC ya generó su egreso' };
+```
+
+Así que aunque se llegara a la función por otro camino, **la rechaza con un mensaje que para esa OC
+es falso**. No hay forma de generarle el egreso: la compra se recibe y no se puede pagar por ahí.
+
+*(El otro dedup, `_buscarEgresoDeLaMismaCompra` en `finanzas.js` —hallazgo 20—, compara por
+proveedor y monto, no por número de OC: ése no queda afectado.)*
+
+Es el mismo choque de tipos BIGINT↔UUID que ya mordió en la matriz del Paso 9 (2026-07-30b). El tipo
+obligó a una clave de texto, y la clave de texto no es única.
+
+**No se arregló en esta sesión**: el arreglo de fondo es el FK real, y eso es DDL + decidir si el
+numerador debe saltear los números ya usados por OC borradas. Va con Fede.
+
+---
+
+## Datos que dejó la Fase 3 (para el inventario de borrado)
+
+| qué | id / detalle |
+|---|---|
+| Los 2 comprobantes de Aglolam | **corregidos**, no creados: ahora con neto e IVA |
+| Comprobante nuevo "Proveedor Demo T7" | **NO se guardó** — se usó sólo para probar el rechazo del descuadre |
+| Ingreso "Saldo 50% contra entrega" $3.000.000 | `2269d76e` · asiento **#125** · **queda** (decisión de Fede) |
+| Ingreso "…(copia)" $3.000.000 | `…` · asiento #126 · **ANULADO**, contra-asiento **#127** |
+| **OC-0003** + 1 ítem, recibida | `compras_ordenes` **17** · `compras_orden_items` **14** |
+| Movimiento de stock +5 al insumo 84 | stock 35 → **40** |
+| Proyecto `a5511ebe` | **restaurado**: `en_armado · 25%`, checklist 6/6 |
+| Evento `2d814f1d` | **intacto**: desarme 13/11 (el cambio se canceló) |

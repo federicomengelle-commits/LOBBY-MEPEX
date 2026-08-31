@@ -93,3 +93,46 @@ No los toco hasta que digas qué querés.
    saltea en silencio**. Es carga de datos, no código, y es el gate que `PUESTA-A-PUNTO-2027.md`
    pone antes de cargar el catálogo. ¿Las armás vos, o querés que arme yo las recetas de los que
    más se cotizan?
+
+---
+
+# Después de la Fase 3 *(2026-08-30, re-corridos con Fede logueado)*
+
+El detalle de cada caso, con el antes y el después, está en `docs/tanda7-ui-manifiesto.md`
+§FASE 3. Acá sólo qué cambió de estado.
+
+## Confirmados cerrados — el caso que los destapó vuelve a pasar (14)
+
+**12** (el Libro IVA de agosto pasó de **$0 / $0** a **NETO $1.500.000 · IVA $315.000**) ·
+**9** y **10** (incluida la puerta de Duplicar: la copia sale con el vínculo en NULL y la cuota no
+se duplica) · **1** · **2** · **4** · **6** · **14** · **17** y la regresión de la Recepción ·
+**19** · **28** · **29** · **30** · **38**.
+
+## Reabierto y arreglado en la misma sesión (1)
+
+**5 — el nombre del evento en los modales.** El fix estaba escrito y **no hacía nada**: el helper
+leía `ev.nombre` y la propiedad se llama `ev.name` (`API.getEvents()` la mapea así, y los otros seis
+lugares del módulo la leen bien). Los seis modales seguían sin el nombre. Arreglado
+(`eventos.js?v=51`).
+
+> Es el resultado más útil de la Fase 3: **el diff se veía bien y el caso no pasaba.** Justifica la
+> fase entera.
+
+## No re-corrido (1)
+
+**31** — firmar la entrega avisa que el ciclo quedó atrás. Pide firmar una segunda acta sobre un
+proyecto que ya tiene una, y usa el mismo mecanismo que el **30**, que pasa.
+
+## Hallazgos nuevos, salidos de re-correr (2)
+
+| # | Una línea | Estado |
+|---|---|---|
+| **52** | **En la pestaña Ingresos había un botón que cargaba un gasto.** `CargaComprobante.open()` no recibe parámetros y siempre crea una factura de PROVEEDOR + un EGRESO; estaba cableado con el mismo label y el mismo color en Egresos (bien) y en **Ingresos** (mal). Lo vio Fede mirando la pantalla | ✅ **ARREGLADO** — y de paso se ordenaron las tres puertas: la carga a mano se mudó a Egresos, Facturación → Recibidos quedó como *lo que debo* (mirar + Generar pago), y el 📸 salió de Ingresos |
+| **53** | **El número de OC se repite y hay código que lo usa como identidad.** Hay dos OC-0001, dos OC-0002 y dos OC-0003 (una borrada y una viva de cada una); el numerador reusa números de OC borradas, y `_egresoForOC` busca el egreso por prefijo de texto del concepto porque `egresos.orden_compra_id` es UUID y `compras_ordenes.id` es BIGINT. **Una OC nueva hereda el egreso de la borrada con el mismo número, y pierde el botón "Generar egreso"** | ⏳ **ABIERTO** — el arreglo de fondo es el FK real (DDL) + decidir si el numerador saltea números usados. Va con Fede |
+
+## La regla que deja la Fase 3
+
+> **Un hallazgo no está cerrado porque el diff se vea bien.** De 15 casos re-corridos, 14 pasaron y
+> **uno estaba escrito, llamado desde los seis lugares correctos, y leyendo una propiedad que
+> nadie escribe**. Eso no se ve en el diff ni en un test de la lógica pura: se ve abriendo la
+> pantalla.

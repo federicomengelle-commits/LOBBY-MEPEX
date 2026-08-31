@@ -546,7 +546,13 @@ const EventosModule = {
     // `Modal.open` escapa el título, así que va texto plano.
     _tituloConEvento(base, eventoId) {
         const ev = (this._events || []).find(e => String(e.id) === String(eventoId));
-        const nombre = ev && ev.nombre ? String(ev.nombre).trim() : '';
+        // La propiedad es `name`, NO `nombre`: `API.getEvents()` mapea la columna
+        // `eventos.nombre` de la base a `name` en el objeto interno (api.js:242), y
+        // todo el módulo lee `ev.name` (lista, cards, cabecera del panel, PDF de pedido).
+        // Leer `ev.nombre` daba SIEMPRE undefined → el helper devolvía el título pelado
+        // y los cuatro modales quedaban sin el nombre del evento, que es justo lo que el
+        // hallazgo 5 venía a arreglar. Cazado re-corriendo el caso en la Fase 3.
+        const nombre = ev ? String(ev.name || ev.nombre || '').trim() : '';
         return nombre ? `${base} · ${nombre}` : base;
     },
 
