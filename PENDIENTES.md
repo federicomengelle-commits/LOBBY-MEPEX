@@ -250,6 +250,89 @@ Salieron de frisar los archivos sueltos de la raíz (ver `docs/frisados/README.m
 
 ---
 
+### C7 · La papelera — que lo borrado espere unos días antes de irse *(pedido de Fede, 2026-08-29)*
+
+> *"Un bucket de cosas eliminadas, que duren unos días ahí y luego se vayan, tipo 7 días, para evitar
+> posibles manqueadas."*
+
+**Lo primero, porque cambia el pedido: hoy no se borra nada.** Los 81 soft-deletes del sistema
+escriben `_deleted = true` y la fila **se queda para siempre**. Medido el 29/8: **93 filas borradas
+conviviendo con las vivas**, algunas desde marzo.
+
+| tabla | borradas | de un total de |
+|---|---|---|
+| cotizaciones | 15 | 18 |
+| comprobantes_recibidos | 14 | 16 |
+| clientes | 13 | 269 |
+| asignaciones_evento | 10 | 63 |
+| tareas | 9 | 22 |
+| plan_cobro_items | 8 | 10 |
+| receta_componentes | 8 | 310 |
+| proyectos | 6 | 15 |
+| compras_ordenes | 4 | 6 |
+| el resto | 6 | — |
+
+O sea que **la red de seguridad que pedís ya existe de hecho** — lo que no existe es poder **verla**.
+Hoy lo borrado sólo se recupera con Ctrl+Z en la misma sesión, o pidiéndome a mí un `UPDATE`.
+
+Y del otro lado hay algo que nadie pidió y conviene decir: **eso se acumula sin techo**, y ensucia
+todo lo que no filtre bien (es exactamente lo que produjo el falso positivo del hallazgo 8 de la
+tanda 7 — "8 cuotas huérfanas" que no eran huérfanas, eran borradas).
+
+#### ¿Es fácil? Son dos cosas y sólo una es fácil
+
+**Ver y restaurar: sí, es fácil.** Los datos ya están. Es una consulta y una pantalla.
+
+**Que se vayan a los 7 días: ahí está el trabajo, y es en dos partes.**
+
+1. **Falta saber CUÁNDO se borró cada cosa.** De las 81 tablas con `_deleted`, **una sola** tiene
+   `deleted_at`. Sin esa fecha no hay "7 días" posible. 35 tienen `updated_at` (un proxy aceptable:
+   el soft-delete *es* un update, así que el último update de una fila borrada suele ser el borrado)
+   y **45 no tienen ninguna referencia temporal**. `audit_log` sí tiene el cuándo y el quién, pero
+   **su `record_id` es UUID** y muchas tablas tienen id `bigint`, y sólo **11 tablas** aparecieron
+   ahí alguna vez: no alcanza como fuente.
+
+2. **Borrar de verdad es lo riesgoso.** Un `DELETE` real choca con las FKs — sólo a `proyectos` le
+   apuntan **24 tablas**. Purgar mal cascadea sobre datos vivos.
+
+#### Cómo lo haría (y por qué así)
+
+**Un solo mecanismo, no uno por módulo.** Es la lección que dejó toda la tanda 7: lo que se
+implementa lugar por lugar se olvida en alguno. Concretamente:
+
+- **Una función + un trigger por tabla, generados de una.** Cuando `_deleted` pasa de `false` a
+  `true`, el trigger escribe `deleted_at = now()` y `deleted_by = auth.uid()`. Va en la base y no en
+  las pantallas por la misma razón que el resto del sistema: **una pantalla se puede saltear, un
+  trigger no**. Se generan con un `DO` sobre las 81 tablas, no a mano.
+- **Pero la pantalla, por módulo.** Restaurar un cliente y restaurar una receta no son el mismo acto
+  ni los hace la misma persona. Una sola vista con filtro por módulo alcanza, pero los permisos
+  tienen que ser los del módulo dueño.
+
+**Reglas por tabla, no una regla única.** Tres familias:
+
+- **Papelera normal** (clientes, tareas, asignaciones, insumos, cotizaciones): 7 días y afuera.
+- **Papelera con hijos** (proyectos, planes de cobro, OC, recetas): restaurar el padre sin los hijos
+  deja algo **peor que lo borrado**. Estas piden restaurar el conjunto, o no ofrecerse.
+- **Sin papelera, a propósito: lo contable.** `ingresos`, `egresos`, `asientos`. Ahí la regla del
+  sistema ya es otra —**anular, no borrar**— y el candado de T4.2 rechaza el soft-delete de un
+  movimiento contabilizado. Meterlos en una papelera sería contradecir eso.
+
+#### Lo que propongo entregar, en dos partes
+
+| | qué | riesgo |
+|---|---|---|
+| **1ª — resuelve tu problema** | `deleted_at`/`deleted_by` por trigger + pantalla de papelera con "restaurar". **Sin purga.** | bajo: no borra nada, sólo hace visible lo que ya está |
+| **2ª — la higiene** | la purga a los 7 días con `pg_cron` (disponible y sin usar), en orden hijo→padre, con la lista de tablas excluidas | acá está el riesgo real |
+
+**La primera parte sola ya te cubre la "manqueada"**, que es lo que pediste. La segunda es limpieza y
+puede esperar a que la primera lleve unas semanas andando — que además es la forma de descubrir qué
+se restaura de verdad y qué nunca.
+
+**Dos cosas que decidís vos cuando lo encaremos:** si 7 días es el número para todo o si lo comercial
+(cotizaciones, clientes) merece más, y si la papelera la ve cualquiera que pueda borrar en ese módulo
+o sólo admin.
+
+
 ## D · Decisiones pendientes (una palabra tuya y las ejecuto)
 
 | | Qué | Estado |
